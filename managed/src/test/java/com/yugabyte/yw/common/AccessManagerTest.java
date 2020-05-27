@@ -66,6 +66,7 @@ import static org.mockito.Mockito.when;
   final static String TEST_KEY_CODE = "test-key";
   final static String TEST_KEY_PEM = TEST_KEY_CODE + ".pem";
   final static String PEM_PERMISSIONS = "r--------";
+  final static Integer SSH_PORT = 12345;
 
   @Before
   public void beforeTest() {
@@ -90,7 +91,8 @@ import static org.mockito.Mockito.when;
       response.code = 99;
       when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
       return Json.toJson(accessManager.uploadKeyFile(regionUUID,
-          new File("foo"), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE, "some-user"));
+          new File("foo"), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE, "some-user",
+          SSH_PORT, false));
     } else {
       response.code = 0;
       response.message = "{\"vault_file\": \"/path/to/vault_file\"," +
@@ -98,7 +100,8 @@ import static org.mockito.Mockito.when;
       when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
       String tmpFile = createTempFile("SOME DATA");
       return Json.toJson(accessManager.uploadKeyFile(regionUUID,
-          new File(tmpFile), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE, "some-user"));
+          new File(tmpFile), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE, "some-user",
+          SSH_PORT, false));
     }
   }
 
@@ -135,7 +138,7 @@ import static org.mockito.Mockito.when;
     }
 
     if (commandType.equals("add-key")) {
-      return Json.toJson(accessManager.addKey(regionUUID, "foo"));
+      return Json.toJson(accessManager.addKey(regionUUID, "foo", SSH_PORT, false));
     } else if (commandType.equals("list-keys")) {
       return accessManager.listKeys(regionUUID);
     } else if (commandType.equals("create-vault")) {

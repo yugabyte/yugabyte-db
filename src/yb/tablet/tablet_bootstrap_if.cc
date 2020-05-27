@@ -64,7 +64,7 @@ std::shared_ptr<Partition> TabletStatusListener::partition() const {
   return meta_->partition();
 }
 
-const Schema& TabletStatusListener::schema() const {
+SchemaPtr TabletStatusListener::schema() const {
   return meta_->schema();
 }
 

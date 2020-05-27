@@ -81,7 +81,9 @@ class OnPremNodesList extends Component {
                   ip: ip.trim(),
                   instanceType: val.machineType,
                   sshUser: isNonEmptyObject(currentCloudAccessKey) ?
-                    currentCloudAccessKey.keyInfo.sshUser : ""
+                    currentCloudAccessKey.keyInfo.sshUser : "",
+                  sshPort: isNonEmptyObject(currentCloudAccessKey) ?
+                    currentCloudAccessKey.keyInfo.sshPort : null
                 });
               });
             }

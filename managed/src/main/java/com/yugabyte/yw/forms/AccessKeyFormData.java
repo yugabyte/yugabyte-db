@@ -20,6 +20,8 @@ public class AccessKeyFormData {
 
     public String sshUser;
 
+    public Integer sshPort;
+
     public boolean passwordlessSudoAccess = true;
 
     public boolean airGapInstall = false;

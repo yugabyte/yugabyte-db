@@ -119,6 +119,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdaterWithActivePods(1, 3));
     defaultUniverse = Universe.get(defaultUniverse.universeUUID);
+    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+                                              Universe.HelmLegacy.V3.toString()));
   }
 
   List<TaskType> KUBERNETES_ADD_POD_TASKS = ImmutableList.of(

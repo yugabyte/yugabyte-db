@@ -140,6 +140,10 @@ class YBOperation {
   // Returns whether table partitions have been refreshed.
   Result<bool> MaybeRefreshTablePartitions();
 
+  int64_t GetQueryId() const {
+    return reinterpret_cast<int64_t>(this);
+  }
+
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
 

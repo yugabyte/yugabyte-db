@@ -110,29 +110,37 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "import_snapshot", " <file_name> [<keyspace> <table_name> [<keyspace> <table_name>]...]",
+      "import_snapshot", " <file_name> [<keyspace> <table_name> [<table_name>]...]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() < 3 || args.size() % 2 != 1) {
+        if (args.size() < 3) {
           return ClusterAdminCli::kInvalidArguments;
         }
 
         const string file_name = args[2];
-        const int num_tables = (args.size() - 3)/2;
+        TypedNamespaceName keyspace;
+        int num_tables = 0;
         vector<YBTableName> tables;
-        tables.reserve(num_tables);
 
-        for (int i = 0; i < num_tables; ++i) {
-          const auto typed_namespace = VERIFY_RESULT(ParseNamespaceName(args[3 + i*2]));
-          tables.push_back(
-              YBTableName(typed_namespace.db_type, typed_namespace.name, args[4 + i*2]));
+        if (args.size() >= 4) {
+          keyspace = VERIFY_RESULT(ParseNamespaceName(args[3]));
+          num_tables = args.size() - 4;
+
+          if (num_tables > 0) {
+            LOG_IF(DFATAL, keyspace.name.empty()) << "Uninitialized keyspace: " << keyspace.name;
+            tables.reserve(num_tables);
+
+            for (int i = 0; i < num_tables; ++i) {
+              tables.push_back(YBTableName(keyspace.db_type, keyspace.name, args[4 + i]));
+            }
+          }
         }
 
-        string msg = num_tables > 0 ?
+        const string msg = num_tables > 0 ?
             Substitute("Unable to import tables $0 from snapshot meta file $1",
                        yb::ToString(tables), file_name) :
             Substitute("Unable to import snapshot meta file $0", file_name);
 
-        RETURN_NOT_OK_PREPEND(client->ImportSnapshotMetaFile(file_name, tables), msg);
+        RETURN_NOT_OK_PREPEND(client->ImportSnapshotMetaFile(file_name, keyspace, tables), msg);
         return Status::OK();
       });
 

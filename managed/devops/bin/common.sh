@@ -51,6 +51,13 @@ regex_from_list() {
 # Constants
 # -------------------------------------------------------------------------------------------------
 
+readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-0}
+if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 != "0" &&
+      $YB_MANAGED_DEVOPS_USE_PYTHON3 != "1" ]]; then
+  fatal "Invalid value of YB_MANAGED_DEVOPS_USE_PYTHON3: $YB_MANAGED_DEVOPS_USE_PYTHON3," \
+        "expected 0 or 1"
+fi
+
 readonly yb_script_name=${0##*/}
 readonly yb_script_name_no_extension=${yb_script_name%.sh}
 
@@ -74,10 +81,14 @@ readonly VALID_CLOUD_TYPES=(
 readonly VALID_CLOUD_TYPES_RE=$( regex_from_list "${VALID_CLOUD_TYPES[@]}" )
 readonly VALID_CLOUD_TYPES_STR="${VALID_CLOUD_TYPES[@]}"
 
-readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python_requirements_frozen.txt"
-
 # Basename (i.e. name excluding the directory path) of our virtualenv.
-readonly YB_VIRTUALENV_BASENAME=python_virtual_env
+if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
+  readonly YB_VIRTUALENV_BASENAME=venv
+  readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
+else
+  readonly YB_VIRTUALENV_BASENAME=python_virtual_env
+  readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python_requirements_frozen.txt"
+fi
 
 readonly YBOPS_TOP_LEVEL_DIR_BASENAME=opscli
 readonly YBOPS_PACKAGE_NAME=ybops
@@ -220,11 +231,19 @@ activate_virtualenv() {
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     deactivate_virtualenv
 
-    pip_install "virtualenv<20"
+    if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
+      pip_install "virtualenv<20"
+    fi
+
     (
       set -x
       cd "${virtualenv_dir%/*}"
-      python -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
+      if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
+        python3 -m venv "$YB_VIRTUALENV_BASENAME"
+      else
+        # Assuming that the default python binary is pointing to Python 2.7.
+        python -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
+      fi
     )
   elif "$is_linux"; then
     deactivate_virtualenv
@@ -303,7 +322,11 @@ verbose_mkdir_p() {
 }
 
 run_pip() {
-  python $(which pip) $@
+  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
+    pip3 "$@"
+  else
+    python "$(which pip)" "$@"
+  fi
 }
 
 pip_install() {
@@ -335,7 +358,8 @@ pip_install() {
     log "Python module $module_name already installed, not upgrading."
   else
     log "Installing Python module(s) outside virtualenv, using --user."
-    verbose_cmd pip install --user "$@"
+
+    run_pip install --user "$@"
   fi
 }
 
@@ -407,7 +431,7 @@ install_ybops_package() {
 }
 
 is_virtual_env() {
-  [[ $( python -c 'import sys; print hasattr(sys, "real_prefix");' ) == "True" ]]
+  [[ -n ${VIRTUAL_ENV:-} ]]
 }
 
 should_use_virtual_env() {

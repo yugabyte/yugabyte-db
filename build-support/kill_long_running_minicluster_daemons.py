@@ -1,4 +1,5 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
+
 #
 # Copyright (c) YugaByte, Inc.
 #
@@ -33,7 +34,7 @@ if __name__ == '__main__':
         level=logging.INFO,
         format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
 
-    ps_output = subprocess.check_output(['ps', '-e', '-o', 'pid,lstart,command'])
+    ps_output = subprocess.check_output(['ps', '-e', '-o', 'pid,lstart,command']).decode('utf-8')
     current_time = datetime.now()
     threshold_sec = 3600
 

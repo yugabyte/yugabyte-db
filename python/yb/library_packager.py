@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 # Copyright (c) YugaByte, Inc.
 #
@@ -37,12 +37,13 @@ import shutil
 import subprocess
 import sys
 
+from functools import total_ordering
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from yb.command_util import run_program, mkdir_p, copy_deep  # nopep8
 from yb.linuxbrew import get_linuxbrew_dir  # nopep8
 from yb.common_util import get_thirdparty_dir, YB_SRC_ROOT, sorted_grouped_by, \
                            safe_path_join  # nopep8
-
 
 # A resolved shared library dependency shown by ldd.
 # Example (split across two lines):
@@ -59,7 +60,7 @@ SYSTEM_LIBRARY_PATHS = ['/usr/lib', '/usr/lib64', '/lib', '/lib64',
 HOME_DIR = os.path.expanduser('~')
 
 
-ADDITIONAL_LIB_NAME_GLOBS = ['libnss_*', 'libresolv*']
+ADDITIONAL_LIB_NAME_GLOBS = ['libnss_*', 'libresolv*', 'libthread_db*']
 
 YB_SCRIPT_BIN_DIR = os.path.join(YB_SRC_ROOT, 'bin')
 YB_BUILD_SUPPORT_DIR = os.path.join(YB_SRC_ROOT, 'build-support')
@@ -80,6 +81,7 @@ DistributionContext = collections.namedtuple(
          'verbose_mode'])
 
 
+@total_ordering
 class Dependency:
     """
     Describes a dependency of an executable or a shared library on another shared library.
@@ -107,7 +109,7 @@ class Dependency:
     def __repr__(self):
         return str(self)
 
-    def __cmp__(self, other):
+    def __lt__(self, other):
         return (self.name, self.target) < (other.name, other.target)
 
     def get_category(self):
@@ -246,21 +248,21 @@ class LibraryPackager:
         ldd_result = run_program([ldd_path, elf_file_path], error_ok=True)
         dependencies = set()
 
+        ldd_result_stdout_str = ldd_result.stdout
         if ldd_result.returncode != 0:
             # Interestingly, the below error message is printed to stdout, not stderr.
-            if ldd_result.stdout == 'not a dynamic executable':
+            if ldd_result_stdout_str == 'not a dynamic executable':
                 logging.debug(
                     "Not a dynamic executable: {}, ignoring dependency tracking".format(
                         elf_file_path))
                 return dependencies
             raise RuntimeError(ldd_result.error_msg)
 
-        for ldd_output_line in ldd_result.stdout.split("\n"):
+        for ldd_output_line in ldd_result_stdout_str.split("\n"):
             resolved_dep_match = RESOLVED_DEP_RE.match(ldd_output_line)
             if resolved_dep_match:
                 lib_name = resolved_dep_match.group(1)
                 lib_resolved_path = os.path.realpath(resolved_dep_match.group(2))
-
                 dependencies.add(Dependency(lib_name, lib_resolved_path, elf_file_path,
                                             self.context))
 
@@ -380,8 +382,10 @@ class LibraryPackager:
                     continue
                 if os.path.isfile(lib_path):
                     self.install_dyn_linked_binary(lib_path, linuxbrew_lib_dest_dir)
+                    logging.info("Installed additional lib: " + lib_path)
                 elif os.path.islink(lib_path):
                     link_target_basename = os.path.basename(os.readlink(lib_path))
+                    logging.info("Installed additional symlink: " + lib_path)
                     symlink(link_target_basename,
                             os.path.join(linuxbrew_lib_dest_dir, lib_basename))
                 else:

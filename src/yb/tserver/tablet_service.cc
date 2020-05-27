@@ -562,8 +562,11 @@ void TabletServiceAdminImpl::GetSafeTime(
 
       auto txn_particpant = tablet.peer->tablet()->transaction_participant();
       HybridTime min_running_ht;
-      while ((min_running_ht = txn_particpant->MinRunningHybridTime()) <
-             min_hybrid_time) {
+      for (;;) {
+        min_running_ht = txn_particpant->MinRunningHybridTime();
+        if (min_running_ht && min_running_ht >= min_hybrid_time) {
+          break;
+        }
         VLOG(2) << "MinRunningHybridTime is " << min_running_ht
                 << " need to wait for " << min_hybrid_time;
         if (CoarseMonoClock::Now() > deadline) {
@@ -574,17 +577,13 @@ void TabletServiceAdminImpl::GetSafeTime(
           // block if a transaction does not complete in a timely manner.
           // TODO(#3471): abort/restart such transactions so that the backfill process
           // does not wait forever.
-          SetupErrorAndRespond(resp->mutable_error(),
-                               STATUS_SUBSTITUTE(TimedOut,
-                                                 "TimedOut waiting on running "
-                                                 "transactions. Oldest started "
-                                                 "at $0 (before $1)",
-                                                 tablet.peer->tablet()
-                                                     ->transaction_participant()
-                                                     ->MinRunningHybridTime()
-                                                     .ToString(),
-                                                 min_hybrid_time.ToString()),
-                               TabletServerErrorPB::UNKNOWN_ERROR, &context);
+          SetupErrorAndRespond(
+              resp->mutable_error(),
+              STATUS_FORMAT(TimedOut,
+                            "TimedOut waiting on running transactions. "
+                                "Oldest started at $0 (before $1)",
+                            min_running_ht, min_hybrid_time),
+              TabletServerErrorPB::UNKNOWN_ERROR, &context);
           return;
         }
         SleepFor(MonoDelta::FromMilliseconds(
@@ -695,12 +694,12 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  const IndexMap& index_map = tablet.peer->tablet_metadata()->index_map();
+  const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map();
   std::vector<IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
-    indexes_to_backfill.push_back(index_map.at(idx.table_id()));
-    index_ids.push_back(index_map.at(idx.table_id()).table_id());
+    indexes_to_backfill.push_back(index_map->at(idx.table_id()));
+    index_ids.push_back(index_map->at(idx.table_id()).table_id());
   }
 
   Result<string> resume_from = tablet.peer->tablet()->BackfillIndexes(
@@ -738,8 +737,9 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
     return;
   }
 
-  Schema tablet_schema = tablet.peer->tablet_metadata()->schema();
-  uint32_t schema_version = tablet.peer->tablet_metadata()->schema_version();
+  auto table_info = tablet.peer->tablet_metadata()->primary_table_info();
+  const Schema& tablet_schema = table_info->schema;
+  uint32_t schema_version = table_info->schema_version;
   // Sanity check, to verify that the tablet should have the same schema
   // specified in the request.
   Schema req_schema;
@@ -1082,7 +1082,7 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
     return;
   }
 
-  if (req->tablet_ids_size() == 0) {
+  if (!req->all_tablets() && req->tablet_ids_size() == 0) {
     const Status s = STATUS(InvalidArgument, "No tablet ids");
     SetupErrorAndRespond(
         resp->mutable_error(), s, TabletServerErrorPB_Code_UNKNOWN_ERROR, &context);
@@ -1098,20 +1098,23 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   VLOG(1) << "Full FlushTablets request: " << req->DebugString();
   TabletPeers tablet_peers;
 
-  for (const TabletId& id : req->tablet_ids()) {
-    resp->set_failed_tablet_id(id);
-
-    auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
-        server_->tablet_peer_lookup(), id, resp, &context));
-
+  if (req->all_tablets()) {
+    server_->tablet_manager()->GetTabletPeers(&tablet_peers);
+  } else {
+    for (const TabletId& id : req->tablet_ids()) {
+      auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+          server_->tablet_peer_lookup(), id, resp, &context));
+      tablet_peers.push_back(tablet_peer);
+    }
+  }
+  for (const TabletPeerPtr& tablet_peer : tablet_peers) {
+    resp->set_failed_tablet_id(tablet_peer->tablet()->tablet_id());
     auto tablet = tablet_peer->tablet();
     if (req->is_compaction()) {
       tablet->ForceRocksDBCompactInTest();
     } else {
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
     }
-
-    tablet_peers.push_back(tablet_peer);
     resp->clear_failed_tablet_id();
   }
 
@@ -1606,8 +1609,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // serialization anomaly tested by TestOneOrTwoAdmins
   // (https://github.com/YugaByte/yugabyte-db/issues/1572).
 
-  LongOperationTracker long_operation_tracker("Read", 1s);
-
   bool serializable_isolation = false;
   TabletPeerPtr tablet_peer;
   if (req->has_transaction()) {
@@ -1783,7 +1784,11 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
     read_context->context->ResetRpcSidecars();
     VLOG(1) << "Read time: " << read_context->read_time
             << ", safe: " << read_context->safe_ht_to_read;
-    auto result = DoRead(read_context);
+    Result<ReadHybridTime> result{ReadHybridTime()};
+    {
+      LongOperationTracker long_operation_tracker("Read", 1s);
+      result = DoRead(read_context);
+    }
     if (!result.ok()) {
       WARN_NOT_OK(result.status(), "DoRead");
       SetupErrorAndRespond(
@@ -2292,8 +2297,8 @@ void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
   for (const TabletPeerPtr& peer : peers) {
     StatusAndSchemaPB* status = peer_status->Add();
     peer->GetTabletStatusPB(status->mutable_tablet_status());
-    SchemaToPB(peer->status_listener()->schema(), status->mutable_schema());
-    peer->tablet_metadata()->partition_schema().ToPB(status->mutable_partition_schema());
+    SchemaToPB(*peer->status_listener()->schema(), status->mutable_schema());
+    peer->tablet_metadata()->partition_schema()->ToPB(status->mutable_partition_schema());
   }
   context.RespondSuccess();
 }
@@ -2350,8 +2355,8 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 namespace {
 
 Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
-  const Schema& schema = tablet->metadata()->schema();
-  auto client_schema = schema.CopyWithoutColumnIds();
+  const shared_ptr<Schema> schema = tablet->metadata()->schema();
+  auto client_schema = schema->CopyWithoutColumnIds();
   auto iter = tablet->NewRowIterator(client_schema, boost::none, {}, "", deadline);
   RETURN_NOT_OK(iter);
 
@@ -2360,7 +2365,7 @@ Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) 
 
   while (VERIFY_RESULT((**iter).HasNext())) {
     RETURN_NOT_OK((**iter).NextRow(&value_map));
-    collector.HandleRow(schema, value_map);
+    collector.HandleRow(*schema, value_map);
   }
 
   return collector.agg_checksum();

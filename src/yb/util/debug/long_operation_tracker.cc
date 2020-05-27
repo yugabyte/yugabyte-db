@@ -132,6 +132,14 @@ LongOperationTracker::LongOperationTracker(const char* message, MonoDelta durati
 }
 
 LongOperationTracker::~LongOperationTracker() {
+  if (!tracked_operation_) {
+    return;
+  }
+  auto now = CoarseMonoClock::now();
+  if (now > tracked_operation_->time) {
+    LOG(WARNING) << tracked_operation_->message << " took a long time: "
+                 << MonoDelta(now - tracked_operation_->start);
+  }
 }
 
 } // namespace yb

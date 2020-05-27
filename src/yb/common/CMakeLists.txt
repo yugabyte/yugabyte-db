@@ -147,11 +147,7 @@ set(COMMON_LIBS
   gutil)
 
 if (NOT APPLE)
-  if (USING_LINUXREW)
-    list(APPEND COMMON_LIBS libuuid)
-  else()
-    list(APPEND COMMON_LIBS uuid)
-  endif()
+  list(APPEND COMMON_LIBS libuuid)
 endif()
 
 ADD_YB_LIBRARY(yb_common

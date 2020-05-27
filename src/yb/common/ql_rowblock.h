@@ -123,7 +123,7 @@ class QLRowBlock {
 
  private:
   // Schema of the selected columns. (Note: this schema has no key column definitions)
-  std::shared_ptr<Schema> schema_;
+  SchemaPtr schema_;
   // Rows in this block.
   std::vector<QLRow> rows_;
 };

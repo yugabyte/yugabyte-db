@@ -73,7 +73,7 @@ struct FlushExtraResult {
 // This class deletes itself after Rpc returns and is processed.
 class AsyncRpc : public rpc::Rpc, public TabletRpc {
  public:
-  explicit AsyncRpc(AsyncRpcData* data, YBConsistencyLevel consistency_level);
+  explicit AsyncRpc(AsyncRpcData* data, YBConsistencyLevel consistency_level, MonoDelta timeout);
 
   virtual ~AsyncRpc();
 
@@ -119,12 +119,16 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   MonoTime start_;
   std::shared_ptr<AsyncRpcMetrics> async_rpc_metrics_;
   rpc::RpcCommandPtr retained_self_;
+
+  // Amount of time to wait for a given op, from start to finish.
+  MonoDelta timeout_;
 };
 
 template <class Req, class Resp>
 class AsyncRpcBase : public AsyncRpc {
  public:
-  explicit AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel consistency_level);
+  explicit AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel consistency_level,
+                        MonoDelta timeout);
 
   const Resp& resp() const { return resp_; }
   Resp& resp() { return resp_; }
@@ -151,7 +155,7 @@ class AsyncRpcBase : public AsyncRpc {
 
 class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResponsePB> {
  public:
-  explicit WriteRpc(AsyncRpcData* data);
+  explicit WriteRpc(AsyncRpcData* data, MonoDelta timeout = MonoDelta::kZero);
 
   virtual ~WriteRpc();
 
@@ -164,7 +168,8 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
 class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadResponsePB> {
  public:
   explicit ReadRpc(
-      AsyncRpcData* data, YBConsistencyLevel yb_consistency_level = YBConsistencyLevel::STRONG);
+      AsyncRpcData* data, YBConsistencyLevel yb_consistency_level = YBConsistencyLevel::STRONG,
+      MonoDelta timeout = MonoDelta::kZero);
 
   virtual ~ReadRpc();
 

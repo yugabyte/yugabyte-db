@@ -136,6 +136,9 @@ class TransactionStatusManager {
   virtual void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) = 0;
 
+  // Returns minimal running hybrid time of all running transactions.
+  virtual HybridTime MinRunningHybridTime() const = 0;
+
  private:
   friend class RequestScope;
 

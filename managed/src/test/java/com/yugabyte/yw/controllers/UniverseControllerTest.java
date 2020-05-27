@@ -55,7 +55,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.forms.RollingRestartParams;
+import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -313,9 +313,7 @@ public class UniverseControllerTest extends WithApplication {
     UUID invalidUUID = UUID.randomUUID();
     String url = "/api/customers/" + customer.uuid + "/universes/" + invalidUUID;
     Result result = doRequestWithAuthToken("GET", url, authToken);
-    String expectedResult = String.format("Universe UUID: %s doesn't belong " +
-                                          "to Customer UUID: %s", invalidUUID,
-                                          customer.uuid);
+    String expectedResult = String.format("No universe found with UUID: %s", invalidUUID);
     assertBadRequest(result, expectedResult);
     assertAuditEntry(0, customer.uuid);
   }
@@ -373,7 +371,7 @@ public class UniverseControllerTest extends WithApplication {
     UniverseController universeController = new UniverseController(mockService);
     UUID invalidUUID = UUID.randomUUID();
     Result result = universeController.getMasterLeaderIP(invalidUUID, UUID.randomUUID());
-    assertBadRequest(result, "Invalid Customer UUID: " + invalidUUID);
+    assertBadRequest(result, "No customer found with UUID: " + invalidUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -824,11 +822,11 @@ public class UniverseControllerTest extends WithApplication {
     assertAuditEntry(0, customer.uuid);
   }
 
-  private ObjectNode getValidPayload(UUID univUUID, boolean isRolling) {
+  private ObjectNode getValidPayload(UUID univUUID, String upgradeOption) {
     ObjectNode bodyJson = Json.newObject()
                               .put("universeUUID", univUUID.toString())
                               .put("taskType", "Software")
-                              .put("rollingUpgrade", isRolling)
+                              .put("upgradeOption", upgradeOption)
                               .put("ybSoftwareVersion", "0.0.1");
     ObjectNode userIntentJson = Json.newObject()
        .put("universeName", "Single UserUniverse")
@@ -852,7 +850,7 @@ public class UniverseControllerTest extends WithApplication {
     Universe.saveDetails(universeUUID, updater);
   }
 
-  private void testUniverseUpgradeWithNodesInTransitHelper(boolean isRolling) {
+  private void testUniverseUpgradeWithNodesInTransitHelper(String upgradeOption) {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
@@ -861,10 +859,10 @@ public class UniverseControllerTest extends WithApplication {
 
     setInTransitNode(uUUID);
 
-    ObjectNode bodyJson = getValidPayload(uUUID, isRolling);
+    ObjectNode bodyJson = getValidPayload(uUUID, upgradeOption);
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    if (isRolling) {
+    if (upgradeOption.equals("Rolling")) {
       assertBadRequest(result, "as it has nodes in one of");
       assertNull(CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique());
       assertAuditEntry(0, customer.uuid);
@@ -878,12 +876,17 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testUniverseUpgradeWithNodesInTransit() {
-    testUniverseUpgradeWithNodesInTransitHelper(true);
+    testUniverseUpgradeWithNodesInTransitHelper("Rolling");
   }
 
   @Test
   public void testUniverseUpgradeWithNodesInTransitNonRolling() {
-    testUniverseUpgradeWithNodesInTransitHelper(false);
+    testUniverseUpgradeWithNodesInTransitHelper("Non-Rolling");
+  }
+
+  @Test
+  public void testUniverseUpgradeWithNodesInTransitNonRestart() {
+    testUniverseUpgradeWithNodesInTransitHelper("Non-Restart");
   }
 
   @Test
@@ -929,7 +932,7 @@ public class UniverseControllerTest extends WithApplication {
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getCustomerId());
 
-    ObjectNode bodyJson = getValidPayload(u.universeUUID, true);
+    ObjectNode bodyJson = getValidPayload(u.universeUUID, "Rolling");
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
@@ -1021,7 +1024,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
-    assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1046,7 +1049,7 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
         .put("taskType", "GFlags")
-        .put("rollingUpgrade", false);
+        .put("upgradeOption", "Non-Rolling");
     ObjectNode userIntentJson = Json.newObject().put("universeName", u.name);
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
@@ -1081,7 +1084,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJsonMissingGFlags);
 
-    assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1104,7 +1107,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
-    assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1127,7 +1130,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
-    assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1141,7 +1144,7 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = Json.newObject()
       .put("universeUUID", u.universeUUID.toString())
       .put("taskType", "GFlags")
-      .put("rollingUpgrade", false);
+      .put("upgradeOption", "Non-Rolling");
     ObjectNode userIntentJson = Json.newObject().put("universeName", "Single UserUniverse");
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
@@ -1159,8 +1162,8 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
     verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), taskParams.capture());
-    RollingRestartParams taskParam = (RollingRestartParams) taskParams.getValue();
-    assertFalse(taskParam.rollingUpgrade);
+    UpgradeParams taskParam = (UpgradeParams) taskParams.getValue();
+    assertEquals(taskParam.upgradeOption, UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE);
     assertEquals(taskParam.masterGFlags, ImmutableMap.of("master-flag", "123"));
     assertEquals(taskParam.tserverGFlags, ImmutableMap.of("tserver-flag", "456"));
     UserIntent primaryClusterIntent = taskParam.getPrimaryCluster().userIntent;
@@ -1179,7 +1182,7 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = Json.newObject()
       .put("universeUUID", u.universeUUID.toString())
       .put("taskType", "Software")
-      .put("rollingUpgrade", false)
+      .put("upgradeOption", "Non-Rolling")
       .put("ybSoftwareVersion", "new-version");
     ObjectNode userIntentJson = Json.newObject()
       .put("universeName", "Single UserUniverse")
@@ -1195,8 +1198,8 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
     verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), taskParams.capture());
-    RollingRestartParams taskParam = (RollingRestartParams) taskParams.getValue();
-    assertFalse(taskParam.rollingUpgrade);
+    UpgradeParams taskParam = (UpgradeParams) taskParams.getValue();
+    assertEquals(taskParam.upgradeOption, UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE);
     assertEquals("new-version", taskParam.ybSoftwareVersion);
     assertAuditEntry(1, customer.uuid);
   }

@@ -51,7 +51,12 @@ public class IOMetrics {
    * @return         the "total_count"
    */
   private static int getTotalCount(Metrics metrics, String name) {
-    return metrics.getHistogram(METRIC_PREFIX + name).totalCount;
+    String histogram_name = METRIC_PREFIX + name;
+    Metrics.Histogram histogram = metrics.getHistogram(histogram_name);
+    if (histogram == null) {
+      throw new IllegalArgumentException("Unable for find histogram: " + histogram_name);
+    }
+    return histogram.totalCount;
   }
 
   /**

@@ -1,8 +1,8 @@
 ---
-title: Create a multi-region Yugabyte Platform universe
+title: Create a multi-region universe using using Yugabyte Platform
 headerTitle: Create universe - Multi-region
 linkTitle: Create universe  - Multi-region
-description: Create a Yugabyte Platform universe that spans multiple geographic regions.
+description: Create a YugabyteDB universe that spans multiple geographic regions using Yugabyte Platform.
 menu:
   latest:
     identifier: manage-create-universe-multi-region

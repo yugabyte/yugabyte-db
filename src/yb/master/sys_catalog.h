@@ -164,7 +164,7 @@ class SysCatalogTable {
   // Drop YSQL table by removing the table metadata in sys-catalog.
   CHECKED_STATUS DeleteYsqlSystemTable(const string& table_id);
 
-  Result<ColumnId> MetadataColumnId();
+  const Schema& schema();
 
   const scoped_refptr<MetricEntity>& GetMetricEntity() const { return metric_entity_; }
 

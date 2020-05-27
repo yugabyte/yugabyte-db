@@ -34,7 +34,7 @@ namespace docdb {
 
 Status InMemDocDbState::SetPrimitive(const DocPath& doc_path, const PrimitiveValue& value) {
   VLOG(2) << __func__ << ": doc_path=" << doc_path.ToString() << ", value=" << value.ToString();
-  const PrimitiveValue encoded_doc_key_as_primitive(doc_path.encoded_doc_key().AsStringRef());
+  const PrimitiveValue encoded_doc_key_as_primitive(doc_path.encoded_doc_key().AsSlice());
   const bool is_deletion = value.value_type() == ValueType::kTombstone;
   if (doc_path.num_subkeys() == 0) {
     if (is_deletion) {
@@ -95,12 +95,12 @@ Status InMemDocDbState::DeleteSubDoc(const DocPath &doc_path) {
 }
 
 void InMemDocDbState::SetDocument(const KeyBytes& encoded_doc_key, SubDocument&& doc) {
-  root_.SetChild(PrimitiveValue(encoded_doc_key.AsStringRef()), std::move(doc));
+  root_.SetChild(PrimitiveValue(encoded_doc_key.AsSlice()), std::move(doc));
 }
 
 const SubDocument* InMemDocDbState::GetSubDocument(const SubDocKey& subdoc_key) const {
   const SubDocument* current =
-      root_.GetChild(PrimitiveValue(subdoc_key.doc_key().Encode().AsStringRef()));
+      root_.GetChild(PrimitiveValue(subdoc_key.doc_key().Encode().AsSlice()));
   for (const auto& subkey : subdoc_key.subkeys()) {
     if (current == nullptr) {
       return nullptr;

@@ -41,7 +41,7 @@ using yb::util::Decimal;
 using yb::util::VarInt;
 using yb::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
-using yb::util::FastAppendSignedVarIntToStr;
+using yb::util::FastAppendSignedVarIntToBuffer;
 using yb::util::FastDecodeSignedVarInt;
 using yb::util::kInt32SignBitFlipMask;
 using yb::util::AppendBigEndianUInt64;
@@ -64,6 +64,7 @@ using yb::util::DecodeDoubleFromKey;
     case ValueType::kJsonb: FALLTHROUGH_INTENDED; \
     case ValueType::kObject: FALLTHROUGH_INTENDED; \
     case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED; \
+    case ValueType::kGreaterThanIntentType: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisList: FALLTHROUGH_INTENDED;            \
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;  \
@@ -230,7 +231,8 @@ string PrimitiveValue::ToString() const {
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentPrefix:
+    case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
+    case ValueType::kGreaterThanIntentType:
       break;
     case ValueType::kLowest:
       return "-Inf";
@@ -499,7 +501,7 @@ string PrimitiveValue::ToValue() const {
       } else {
         key.AppendValueType(ValueType::kGroupEnd);
       }
-      return key.data();
+      return key.ToStringBuffer();
     }
 
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
@@ -558,6 +560,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
+    case ValueType::kGreaterThanIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
@@ -1137,6 +1140,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
+    case ValueType::kGreaterThanIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash: FALLTHROUGH_INTENDED;
     case ValueType::kInvalid: FALLTHROUGH_INTENDED;
     case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;

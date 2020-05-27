@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 # Copyright (c) YugaByte, Inc.
 #
@@ -37,4 +37,4 @@ if __name__ == '__main__':
 
     for line in sys.stdin:
         # We're using .rstrip() and not .strip() because we want to preserve original indentation.
-        print PATH_RE.sub(rewrite_path, line.rstrip())
+        print(PATH_RE.sub(rewrite_path, line.rstrip()))

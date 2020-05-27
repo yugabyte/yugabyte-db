@@ -69,6 +69,10 @@ class BoundedRocksDbIterator : public rocksdb::Iterator {
     iterator_->RegisterCleanup(function, arg1, arg2);
   }
 
+  void RevalidateAfterUpperBoundChange() override {
+    iterator_->RevalidateAfterUpperBoundChange();
+  }
+
  private:
   std::unique_ptr<rocksdb::Iterator> iterator_;
   const KeyBounds* key_bounds_;

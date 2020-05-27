@@ -37,7 +37,7 @@ for i in {1..6}
 do
   input_data[$i]=$input_data_path/data$i
   echo == Generating random input file ${input_data[$i]}
-  python - <<EOF
+  python3 - <<EOF
 import random
 random.seed($i)
 symbols=['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
@@ -52,7 +52,7 @@ with open('${input_data[$i]}', 'w') as f:
     v = ""
     for j in range(1, random.randint(1, 5)):
       v = v + vb
-    print >> f, k + " ==> " + v
+    f.write(k + " ==> " + v + "\n")
 EOF
 done
 

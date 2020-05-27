@@ -61,18 +61,11 @@ using yb::client::YBSession;
 using yb::client::YBMetaDataCache;
 using yb::rpc::InboundCall;
 
-CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
-                               ql::TransactionPoolProvider transaction_pool_provider)
+CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
     : CQLServerServiceIf(server->metric_entity()),
       server_(server),
-      async_client_init_(
-          "cql_ybclient", FLAGS_cql_ybclient_reactor_threads, kRpcTimeoutSec,
-          server->tserver() ? server->tserver()->permanent_uuid() : "",
-          &opts, server->metric_entity(), server->mem_tracker(),
-          server->tserver() ? server->tserver()->messenger() : nullptr),
       next_available_processor_(processors_.end()),
-      messenger_(server->messenger()),
-      transaction_pool_provider_(std::move(transaction_pool_provider)) {
+      messenger_(server->messenger()) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
   cql_metrics_ = std::make_shared<CQLMetrics>(server->metric_entity());
 
@@ -87,23 +80,16 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
       "",
       Substitute("SELECT $0, $1 FROM system_auth.roles WHERE role = ?",
                  kRoleColumnNameSaltedHash, kRoleColumnNameCanLogin));
-
-  async_client_init_.Start();
 }
 
 CQLServiceImpl::~CQLServiceImpl() {
 }
 
 client::YBClient* CQLServiceImpl::client() const {
-  auto client = async_client_init_.client();
+  auto client = server_->tserver()->client();
   if (client && !is_metadata_initialized_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> l(metadata_init_mutex_);
     if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
-      // Add local tserver if available.
-      if (server_->tserver() != nullptr && server_->tserver()->proxy() != nullptr) {
-        client->SetLocalTabletServer(
-            server_->tserver()->permanent_uuid(), server_->tserver()->proxy(), server_->tserver());
-      }
       // Create and save the metadata cache object.
       metadata_cache_ = std::make_shared<YBMetaDataCache>(client,
                                                           FLAGS_use_cassandra_authentication);
@@ -133,7 +119,6 @@ void CQLServiceImpl::Shutdown() {
     processor->Shutdown();
   }
 
-  async_client_init_.Shutdown();
   auto client = this->client();
   if (client) {
     client->messenger()->Shutdown();
@@ -285,10 +270,13 @@ void CQLServiceImpl::CollectGarbage(size_t required) {
           << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
 }
 
+client::TransactionPool* CQLServiceImpl::TransactionPool() {
+  return server_->tserver()->TransactionPool();
+}
+
 server::Clock* CQLServiceImpl::clock() {
   return server_->clock();
 }
-
 
 }  // namespace cqlserver
 }  // namespace yb

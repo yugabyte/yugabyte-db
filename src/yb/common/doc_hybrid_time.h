@@ -74,7 +74,8 @@ class DocHybridTime {
   // Returns pointer to byte after last used byte.
   char* EncodedInDocDbFormat(char* dest) const;
 
-  void AppendEncodedInDocDbFormat(std::string* dest) const {
+  template <class Buffer>
+  void AppendEncodedInDocDbFormat(Buffer* dest) const {
     char buf[kMaxBytesPerEncodedHybridTime];
     dest->append(buf, EncodedInDocDbFormat(buf));
   }
@@ -118,6 +119,8 @@ class DocHybridTime {
   static CHECKED_STATUS CheckAndGetEncodedSize(const Slice& encoded_key, int* encoded_ht_size);
 
   bool is_valid() const { return hybrid_time_.is_valid(); }
+
+  static std::string DebugSliceToString(Slice input);
 
  private:
   HybridTime hybrid_time_;

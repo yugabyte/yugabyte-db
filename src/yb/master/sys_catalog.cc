@@ -55,9 +55,11 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 
 #include "yb/fs/fs_manager.h"
+#include "yb/gutil/strings/numbers.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/sys_catalog_writer.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet.h"
@@ -74,6 +76,7 @@
 #include "yb/util/threadpool.h"
 
 using namespace std::literals; // NOLINT
+using namespace yb::size_literals;
 
 using std::shared_ptr;
 using std::unique_ptr;
@@ -112,9 +115,8 @@ METRIC_DEFINE_counter(
 
 DECLARE_int32(master_discovery_timeout_ms);
 
-DEFINE_int32(copy_table_batch_size, -1, "Batch size for copy pg sql tables");
-
 DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
+DEFINE_int32(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
 
 namespace yb {
 namespace master {
@@ -208,16 +210,16 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   RETURN_NOT_OK(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
 
   // Verify that the schema is the current one
-  if (!metadata->schema().Equals(schema_)) {
+  if (!metadata->schema()->Equals(schema_)) {
     // TODO: In this case we probably should execute the migration step.
-    return(STATUS(Corruption, "Unexpected schema", metadata->schema().ToString()));
+    return(STATUS(Corruption, "Unexpected schema", metadata->schema()->ToString()));
   }
 
   // Update partition schema of old SysCatalogTable. SysCatalogTable should be non-partitioned.
-  if (metadata->partition_schema().IsHashPartitioning()) {
+  if (metadata->partition_schema()->IsHashPartitioning()) {
     LOG(INFO) << "Updating partition schema of SysCatalogTable ...";
     PartitionSchema partition_schema;
-    RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), metadata->schema(),
+    RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), *metadata->schema(),
                                           &partition_schema));
     metadata->SetPartitionSchema(partition_schema);
     RETURN_NOT_OK(metadata->Flush());
@@ -674,43 +676,22 @@ void SysCatalogTable::InitLocalRaftPeerPB() {
 Status SysCatalogTable::Visit(VisitorBase* visitor) {
   TRACE_EVENT0("master", "Visitor::VisitAll");
 
-  const int8_t tables_entry = visitor->entry_type();
-  const int type_col_idx = schema_.find_column(kSysCatalogTableColType);
-  const int entry_id_col_idx = schema_.find_column(kSysCatalogTableColId);
-  const int metadata_col_idx = schema_.find_column(kSysCatalogTableColMetadata);
-  CHECK(type_col_idx != Schema::kColumnNotFound);
-
   auto tablet = tablet_peer()->shared_tablet();
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema_.CopyWithoutColumnIds(), boost::none));
 
-  auto doc_iter = dynamic_cast<yb::docdb::DocRowwiseIterator*>(iter.get());
-  CHECK(doc_iter != nullptr);
-  QLConditionPB cond;
-  cond.set_op(QL_OP_AND);
-  QLAddInt8Condition(&cond, schema_.column_id(type_col_idx), QL_OP_EQUAL, tables_entry);
-  yb::docdb::DocQLScanSpec spec(
-      schema_, boost::none /* hash_code */, boost::none /* max_hash_code */,
-      {} /* hashed_components */, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
-  RETURN_NOT_OK(doc_iter->Init(spec));
-
-  QLTableRow value_map;
-  QLValue entry_type, entry_id, metadata;
-  uint64_t count = 0;
   auto start = CoarseMonoClock::Now();
-  while (VERIFY_RESULT(iter->HasNext())) {
+
+  uint64_t count = 0;
+  RETURN_NOT_OK(EnumerateSysCatalog(tablet.get(), schema_, visitor->entry_type(),
+                                    [visitor, &count](const Slice& id, const Slice& data) {
     ++count;
-    RETURN_NOT_OK(iter->NextRow(&value_map));
-    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(type_col_idx), &entry_type));
-    CHECK_EQ(entry_type.int8_value(), tables_entry);
-    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(entry_id_col_idx), &entry_id));
-    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(metadata_col_idx), &metadata));
-    RETURN_NOT_OK(visitor->Visit(entry_id.binary_value(), metadata.binary_value()));
-  }
+    return visitor->Visit(id, data);
+  }));
+
   auto duration = CoarseMonoClock::Now() - start;
-  string id = Format("num_entries_with_type_$0_loaded", std::to_string(tables_entry));
+  string id = Format("num_entries_with_type_$0_loaded", std::to_string(visitor->entry_type()));
   if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
     string description = id + " metric for SysCatalogTable::Visit";
     std::unique_ptr<GaugePrototype<uint64>> counter_gauge =
@@ -722,7 +703,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   }
   visitor_duration_metrics_[id]->IncrementBy(count);
 
-  id = Format("duration_ms_loading_entries_with_type_$0", std::to_string(tables_entry));
+  id = Format("duration_ms_loading_entries_with_type_$0", std::to_string(visitor->entry_type()));
   if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
     string description = id + " metric for SysCatalogTable::Visit";
     std::unique_ptr<GaugePrototype<uint64>> duration_gauge =
@@ -753,9 +734,10 @@ Status SysCatalogTable::CopyPgsqlTables(
 
     const auto* tablet = tablet_peer()->tablet();
     const auto* meta = tablet->metadata();
-    const tablet::TableInfo* source_table_info = VERIFY_RESULT(meta->GetTableInfo(source_table_id));
-    const tablet::TableInfo* target_table_info = VERIFY_RESULT(meta->GetTableInfo(target_table_id));
-
+    const std::shared_ptr<tablet::TableInfo> source_table_info =
+        VERIFY_RESULT(meta->GetTableInfo(source_table_id));
+    const std::shared_ptr<tablet::TableInfo> target_table_info =
+        VERIFY_RESULT(meta->GetTableInfo(target_table_id));
     const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
     std::unique_ptr<common::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
         tablet->NewRowIterator(source_projection, boost::none, {}, source_table_id));
@@ -768,33 +750,41 @@ Status SysCatalogTable::CopyPgsqlTables(
           source_table_info->schema, source_row, target_table_id, target_table_info->schema,
           target_table_info->schema_version, true /* is_upsert */));
 
-      if (FLAGS_copy_table_batch_size > 0 &&
-          writer->req().pgsql_write_batch_size() >= FLAGS_copy_table_batch_size) {
-        RETURN_NOT_OK(SyncWrite(writer.get()));
+      ++total_count;
+      if (FLAGS_copy_tables_batch_bytes > 0 && 0 == (total_count % 128)) {
+          // Break up the write into batches of roughly the same serialized size
+          // in order to avoid uncontrolled large network writes.
+          // ByteSizeLong is an expensive calculation so do not perform it each time
 
-        total_bytes += writer->req().SpaceUsedLong();
-        total_count += writer->req().pgsql_write_batch_size();
-        ++batch_count;
-        LOG(INFO) << Format("CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes",
-          batch_count, writer->req().pgsql_write_batch_size(), writer->req().SpaceUsedLong());
+        size_t batch_bytes = writer->req().ByteSizeLong();
+        if (batch_bytes > FLAGS_copy_tables_batch_bytes) {
+          RETURN_NOT_OK(SyncWrite(writer.get()));
 
-        writer = NewWriter(leader_term);
+          total_bytes += batch_bytes;
+          ++batch_count;
+          LOG(INFO) << Format(
+              "CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes", batch_count,
+              writer->req().pgsql_write_batch_size(), HumanizeBytes(batch_bytes));
+
+          writer = NewWriter(leader_term);
+        }
       }
     }
   }
 
   if (writer->req().pgsql_write_batch_size() > 0) {
     RETURN_NOT_OK(SyncWrite(writer.get()));
-
-    total_bytes += writer->req().SpaceUsedLong();
-    total_count += writer->req().pgsql_write_batch_size();
+    size_t batch_bytes = writer->req().ByteSizeLong();
+    total_bytes += batch_bytes;
     ++batch_count;
-    LOG(INFO) << Format("CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes",
-      batch_count, writer->req().pgsql_write_batch_size(), writer->req().SpaceUsedLong());
+    LOG(INFO) << Format(
+        "CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes", batch_count,
+        writer->req().pgsql_write_batch_size(), HumanizeBytes(batch_bytes));
   }
 
-  LOG(INFO) << Format("CopyPgsqlTables: Copied total $0 rows, total $1 bytes in $2 batches",
-    total_count, total_bytes, batch_count);
+  LOG(INFO) << Format(
+      "CopyPgsqlTables: Copied total $0 rows, total $1 bytes in $2 batches", total_count,
+      HumanizeBytes(total_bytes), batch_count);
   return Status::OK();
 }
 
@@ -803,8 +793,8 @@ Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
   return Status::OK();
 }
 
-Result<ColumnId> SysCatalogTable::MetadataColumnId() {
-  return schema_.ColumnIdByName(kSysCatalogTableColMetadata);
+const Schema& SysCatalogTable::schema() {
+  return schema_;
 }
 
 } // namespace master

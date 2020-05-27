@@ -110,8 +110,8 @@ int InternalKeyComparator::Compare(const Slice& akey, const Slice& bkey) const {
   int r = user_comparator_->Compare(ExtractUserKey(akey), ExtractUserKey(bkey));
   PERF_COUNTER_ADD(user_key_comparison_count, 1);
   if (r == 0) {
-    const uint64_t anum = DecodeFixed64(akey.data() + akey.size() - 8);
-    const uint64_t bnum = DecodeFixed64(bkey.data() + bkey.size() - 8);
+    const uint64_t anum = DecodeFixed64(akey.end() - 8);
+    const uint64_t bnum = DecodeFixed64(bkey.end() - 8);
     if (anum > bnum) {
       r = -1;
     } else if (anum < bnum) {

@@ -231,7 +231,7 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
         [&result](IntentStrength strength, Slice value, KeyBytes* key, LastKey) {
-          RefCntPrefix prefix(key->data());
+          RefCntPrefix prefix(key->AsSlice());
           auto intent_types = strength == IntentStrength::kStrong
               ? IntentTypeSet({IntentType::kStrongRead})
               : IntentTypeSet({IntentType::kWeakRead});
@@ -485,7 +485,7 @@ Status EnumerateWeakIntents(
   RETURN_NOT_OK(functor(
       IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
 
-  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::UP_TO_HASH));
+  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::kUpToHash));
 
   // Remove kGroupEnd that we just added to generate a weak intent.
   encoded_key_buffer->RemoveLastByte();
@@ -680,7 +680,7 @@ class PrepareTransactionWriteBatchHelper {
       }
     } else {
       // This is done in tests when deterministic DocDB state is required.
-      std::vector<std::pair<std::string, IntentTypeSet>> intents_and_types(
+      std::vector<std::pair<KeyBuffer, IntentTypeSet>> intents_and_types(
           weak_intents_.begin(), weak_intents_.end());
       sort(intents_and_types.begin(), intents_and_types.end());
       for (const auto& intent_and_types : intents_and_types) {
@@ -691,14 +691,14 @@ class PrepareTransactionWriteBatchHelper {
 
  private:
   void AddWeakIntent(
-      const std::pair<std::string, IntentTypeSet>& intent_and_types,
+      const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
       const std::array<Slice, 2>& value,
       DocHybridTimeBuffer* doc_ht_buffer) {
     char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
                             static_cast<char>(intent_and_types.second.ToUIntPtr()) };
     constexpr size_t kNumKeyParts = 3;
     std::array<Slice, kNumKeyParts> key = {{
-        Slice(intent_and_types.first),
+        intent_and_types.first.AsSlice(),
         Slice(intent_type, 2),
         doc_ht_buffer->EncodeWithValueType(hybrid_time_, write_id_++),
     }};
@@ -714,7 +714,7 @@ class PrepareTransactionWriteBatchHelper {
   const TransactionId& transaction_id_;
   Slice replicated_batches_state_;
   IntentTypeSet strong_intent_types_;
-  std::unordered_map<std::string, IntentTypeSet> weak_intents_;
+  std::unordered_map<KeyBuffer, IntentTypeSet, ByteBufferHash> weak_intents_;
   IntraTxnWriteId write_id_ = 0;
   IntraTxnWriteId* intra_txn_write_id_;
 };
@@ -1001,15 +1001,27 @@ CHECKED_STATUS BuildSubDocument(
   return Status::OK();
 }
 
-}  // namespace
-
-yb::Status FindLastWriteTime(
+// If there is a key equal to key_bytes_without_ht + some timestamp, which is later than
+// max_overwrite_time, we update max_overwrite_time, and result_value (unless it is nullptr).
+// If there is a TTL with write time later than the write time in expiration, it is updated with
+// the new write time and TTL, unless its value is kMaxTTL.
+// When the TTL found is kMaxTTL and it is not a merge record, then it is assumed not to be
+// explicitly set. Because it does not override the default table ttl, exp, which was initialized
+// to the table ttl, is not updated.
+// Observe that exp updates based on the first record found, while max_overwrite_time updates
+// based on the first non-merge record found.
+// This should not be used for leaf nodes. - Why? Looks like it is already used for leaf nodes
+// also.
+// Note: it is responsibility of caller to make sure key_bytes_without_ht doesn't have hybrid
+// time.
+// TODO: We could also check that the value is kTombStone or kObject type for sanity checking - ?
+// It could be a simple value as well, not necessarily kTombstone or kObject.
+Status FindLastWriteTime(
     IntentAwareIterator* iter,
     const Slice& key_without_ht,
     DocHybridTime* max_overwrite_time,
     Expiration* exp,
-    Value* result_value) {
-
+    Value* result_value = nullptr) {
   Slice value;
   DocHybridTime doc_ht = *max_overwrite_time;
   RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &doc_ht, &value));
@@ -1078,6 +1090,8 @@ yb::Status FindLastWriteTime(
   return Status::OK();
 }
 
+}  // namespace
+
 yb::Status GetSubDocument(
     const DocDB& doc_db,
     const GetSubDocumentData& data,
@@ -1115,7 +1129,7 @@ yb::Status GetSubDocument(
 
   SubDocKey found_subdoc_key;
   auto dockey_size =
-      VERIFY_RESULT(DocKey::EncodedSize(data.subdocument_key, DocKeyPart::WHOLE_DOC_KEY));
+      VERIFY_RESULT(DocKey::EncodedSize(data.subdocument_key, DocKeyPart::kWholeDocKey));
 
   Slice key_slice(data.subdocument_key.data(), dockey_size);
 
@@ -1135,7 +1149,7 @@ yb::Status GetSubDocument(
       // the result in data.table_tombstone_time to avoid double seeking for the lifetime of the
       // DocRowwiseIterator.
       DocKey empty_key;
-      RETURN_NOT_OK(empty_key.DecodeFrom(key_slice, DocKeyPart::UP_TO_ID));
+      RETURN_NOT_OK(empty_key.DecodeFrom(key_slice, DocKeyPart::kUpToId));
       db_iter->Seek(empty_key);
       Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
       RETURN_NOT_OK(FindLastWriteTime(
@@ -1252,8 +1266,7 @@ yb::Status GetSubDocument(
   }
   // Make sure the iterator is placed outside the whole document in the end.
   key_bytes.Truncate(dockey_size);
-  key_bytes.AppendValueType(ValueType::kMaxByte);
-  db_iter->SeekForward(&key_bytes);
+  db_iter->SeekOutOfSubDoc(&key_bytes);
   return Status::OK();
 }
 
@@ -1266,7 +1279,7 @@ yb::Status GetTtl(const Slice& encoded_subdoc_key,
                   bool* doc_found,
                   Expiration* exp) {
   auto dockey_size =
-    VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, DocKeyPart::WHOLE_DOC_KEY));
+    VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, DocKeyPart::kWholeDocKey));
   Slice key_slice(encoded_subdoc_key.data(), dockey_size);
   iter->Seek(key_slice);
   if (!iter->valid())
@@ -1289,12 +1302,12 @@ template <class DumpStringFunc>
 void ProcessDumpEntry(
     Slice key, Slice value, IncludeBinary include_binary, StorageDbType db_type,
     DumpStringFunc func) {
-  KeyType key_type;
-  Result<std::string> key_str = DocDBKeyToDebugStr(key, db_type, &key_type);
+  const auto key_str = DocDBKeyToDebugStr(key, db_type);
   if (!key_str.ok()) {
     func(key_str.status().ToString());
     return;
   }
+  const KeyType key_type = GetKeyType(key, db_type);
   Result<std::string> value_str = DocDBValueToDebugStr(key_type, *key_str, value);
   if (!value_str.ok()) {
     func(value_str.status().CloneAndAppend(Substitute(". Key: $0", *key_str)).ToString());
@@ -1401,6 +1414,15 @@ template
 void DocDBDebugDumpToContainer(
     DocDB docdb, std::vector<std::string>* out, IncludeBinary include_binary);
 
+void DumpRocksDBToLog(rocksdb::DB* rocksdb, StorageDbType db_type) {
+  std::vector<std::string> lines;
+  DocDBDebugDumpToContainer(rocksdb, &lines, db_type);
+  LOG(INFO) << AsString(db_type) << " DB dump:";
+  for (const auto& line : lines) {
+    LOG(INFO) << "  " << line;
+  }
+}
+
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* out) {
   out->AppendValueType(ValueType::kTransactionId);
   out->AppendRawBytes(transaction_id.AsSlice());
@@ -1497,15 +1519,17 @@ Status PrepareApplyIntentsBatch(
   txn_reverse_index_prefix.AppendValueType(ValueType::kMaxByte);
   Slice key_prefix = txn_reverse_index_prefix.AsSlice();
   key_prefix.remove_suffix(1);
-  Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
+  const Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
 
   auto reverse_index_iter = CreateRocksDBIterator(
       intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
       rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound);
 
   BoundedRocksDbIterator intent_iter;
-  // If we don't have regular_batch, it means that we just removing intents.
-  // We don't need intent iterator, since reverse index iterator is enough in this case.
+
+  // If we don't have regular_batch, it means that we are just removing intents, i.e. when a
+  // transaction has been aborted. We don't need the intent iterator in that case, because the
+  // reverse index iterator is sufficient.
   if (regular_batch) {
     intent_iter = CreateRocksDBIterator(
         intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,

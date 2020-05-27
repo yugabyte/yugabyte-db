@@ -135,17 +135,9 @@ void FastEncodeSignedVarInt(int64_t v, uint8_t *dest, size_t *size) {
   }
 }
 
-void FastAppendSignedVarIntToStr(int64_t v, std::string* dest) {
-  char buf[kMaxVarIntBufferSize];
-  size_t len = 0;
-  FastEncodeSignedVarInt(v, to_uchar_ptr(buf), &len);
-  DCHECK_LE(len, 10);
-  dest->append(buf, len);
-}
-
 std::string FastEncodeSignedVarIntToStr(int64_t v) {
   string s;
-  FastAppendSignedVarIntToStr(v, &s);
+  FastAppendSignedVarIntToBuffer(v, &s);
   return s;
 }
 

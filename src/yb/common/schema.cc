@@ -543,6 +543,14 @@ size_t Schema::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
+Result<int> Schema::ColumnIndexByName(GStringPiece col_name) const {
+  auto index = find_column(col_name);
+  if (index == kColumnNotFound) {
+    return STATUS_FORMAT(Corruption, "$0 not found in schema $1", col_name, name_to_index_);
+  }
+  return index;
+}
+
 Result<ColumnId> Schema::ColumnIdByName(const std::string& column_name) const {
   size_t column_index = find_column(column_name);
   if (column_index == Schema::kColumnNotFound) {

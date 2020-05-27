@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 # Copyright (c) YugaByte, Inc.
 #
@@ -128,13 +128,13 @@ LIST_OF_TESTS_DIR_NAME = 'list_of_tests'
 
 SPARK_URLS = {
     'linux_default': os.getenv(
-        'YB_LINUX_SPARK_URL',
+        'YB_LINUX_PY3_SPARK_URL',
         'spark://spark-for-yugabyte-linux-default.example.com:7077'),
     'linux_asan_tsan': os.getenv(
-        'YB_ASAN_TSAN_SPARK_URL',
+        'YB_ASAN_TSAN_PY3_SPARK_URL',
         'spark://spark-for-yugabyte-linux-asan-tsan.example.com:7077'),
     'macos': os.getenv(
-        'YB_MACOS_SPARK_URL',
+        'YB_MACOS_PY3_SPARK_URL',
         'spark://spark-for-yugabyte-macos.example.com:7077'),
 }
 
@@ -189,7 +189,7 @@ def delete_if_exists_log_errors(file_path):
     if os.path.exists(file_path):
         try:
             os.remove(file_path)
-        except OSError, os_error:
+        except OSError as os_error:
             logging.error("Error deleting file %s: %s", file_path, os_error)
 
 
@@ -231,6 +231,7 @@ def init_spark_context(details=[]):
     if 'BUILD_URL' in os.environ:
         details.append('URL: {}'.format(os.environ['BUILD_URL']))
 
+    SparkContext.setSystemProperty("spark.pyspark.python", "/usr/local/bin/python3")
     spark_context = SparkContext(spark_master_url, "YB tests: {}".format(' '.join(details)))
     yb_python_zip_path = yb_dist_tests.get_tmp_filename(
             prefix='yb_python_module_for_spark_workers_', suffix='.zip', auto_remove=True)
@@ -338,7 +339,7 @@ def parallel_run_test(test_descriptor_str):
                 logging.info(error_msg)
                 try:
                     os.kill(process.pid, signal.SIGKILL)
-                except OSError, os_error:
+                except OSError as os_error:
                     if os_error.errno == errno.ESRCH:
                         logging.info(
                             "Process with pid %d disappeared suddenly, that's OK",
@@ -398,25 +399,31 @@ def parallel_run_test(test_descriptor_str):
             else:
                 logging.warning("Artifact list does not exist: '%s'", artifact_list_path)
 
-            num_artifacts_copied = 0
-            for artifact_path in artifact_paths:
-                if not os.path.exists(artifact_path):
-                    logging.warning("Build artifact file does not exist: '%s'", artifact_path)
-                    continue
-                dest_path = yb_dist_tests.to_real_nfs_path(artifact_path)
-                dest_dir = os.path.dirname(dest_path)
-                if not os.path.exists(dest_dir):
-                    logging.info("Creating directory %s", dest_dir)
-                    subprocess.check_call(['mkdir', '-p', dest_dir])
-                logging.info("Copying %s to %s", artifact_path, dest_path)
-                try:
-                    subprocess.check_call(['cp', '-f', artifact_path, dest_path])
-                except CalledProcessError as ex:
-                    logging.error("Error copying %s to %s: %s", artifact_path, dest_path, ex)
-                    num_errors_copying_artifacts = 1
+            if is_macos() and socket.gethostname() == os.environ.get('YB_BUILD_HOST'):
+                logging.info("Files already local to build host. Skipping artifact copy.")
+            else:
+                num_artifacts_copied = 0
+                for artifact_path in artifact_paths:
+                    if not os.path.exists(artifact_path):
+                        logging.warning("Build artifact file does not exist: '%s'", artifact_path)
+                        continue
+                    if is_macos():
+                        dest_path = get_mac_shared_nfs(artifact_path)
+                    else:
+                        dest_path = yb_dist_tests.to_real_nfs_path(artifact_path)
+                    dest_dir = os.path.dirname(dest_path)
+                    if not os.path.exists(dest_dir):
+                        logging.info("Creating directory %s", dest_dir)
+                        subprocess.check_call(['mkdir', '-p', dest_dir])
+                    logging.info("Copying %s to %s", artifact_path, dest_path)
+                    try:
+                        subprocess.check_call(['cp', '-f', artifact_path, dest_path])
+                    except CalledProcessError as ex:
+                        logging.error("Error copying %s to %s: %s", artifact_path, dest_path, ex)
+                        num_errors_copying_artifacts = 1
 
-                num_artifacts_copied += 1
-            logging.info("Number of build artifact files copied: %d", num_artifacts_copied)
+                    num_artifacts_copied += 1
+                logging.info("Number of build artifact files copied: %d", num_artifacts_copied)
 
             rel_artifact_paths = [
                     os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)
@@ -433,6 +440,13 @@ def parallel_run_test(test_descriptor_str):
         delete_if_exists_log_errors(test_started_running_flag_file)
         delete_if_exists_log_errors(artifact_list_path)
         os.umask(old_umask)
+
+
+def get_bash_shebang():
+    # Prefer /usr/local/bin/bash as we install Bash 4+ there on macOS.
+    if os.path.exists('/usr/local/bin/bash'):
+        return '/usr/local/bin/bash'
+    return '/usr/bin/env bash'
 
 
 def initialize_remote_task():
@@ -467,12 +481,14 @@ def initialize_remote_task():
                 worker_tmp_dir, 'untar_archive_once.sh')
         lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
                 global_conf.yb_src_root.replace('/', '__'))
+        bash_shebang = get_bash_shebang()
         with open(untar_script_path, 'w') as untar_script_file:
             # Do the locking using the flock command in Bash -- file locking in Python is painful.
             # Some curly braces in the script template are escaped as "{{" and }}".
-            untar_script_file.write("""#!/usr/bin/env bash
+            untar_script_file.write("""#!{bash_shebang}
 set -euo pipefail
 (
+    PATH=/usr/local/bin:$PATH
     flock -w 60 200
     if [[ -d '{remote_yb_src_root}' ]]; then
         previous_sha256_file_path='{remote_yb_src_root}/extracted_from_archive.sha256'
@@ -499,7 +515,7 @@ set -euo pipefail
         fi
         actual_archive_sha256sum=$( (
             [[ $OSTYPE == linux* ]] && sha256sum '{archive_path}' ||
-            shasum --portable --algorithm 256
+            shasum --portable --algorithm 256 '{archive_path}'
         ) | awk '{{ print $1 }}' )
         if [[ $actual_archive_sha256sum != '{expected_archive_sha256sum}' ]]; then
           echo "Archive SHA256 sum of '{archive_path}' is $actual_archive_sha256sum, which" \
@@ -521,7 +537,7 @@ set -euo pipefail
     fi
 )  200>'{lock_path}'
 """.format(**locals()))
-        os.chmod(untar_script_path, 0755)
+        os.chmod(untar_script_path, 0o755)
         subprocess.check_call(untar_script_path)
     finally:
         if os.path.exists(untar_script_path):
@@ -550,7 +566,7 @@ def parallel_list_test_descriptors(rel_test_path):
 
     try:
         prog_result = command_util.run_program(list_tests_cmd_line)
-    except OSError, ex:
+    except OSError as ex:
         logging.error("Failed running the command: %s", list_tests_cmd_line)
         raise
 
@@ -595,13 +611,13 @@ def parallel_list_test_descriptors(rel_test_path):
 def get_username():
     try:
         return os.getlogin()
-    except OSError, ex:
+    except OSError as ex:
         logging.warning(("Got an OSError trying to get the current user name, " +
                          "trying a workaround: {}").format(ex))
         # https://github.com/gitpython-developers/gitpython/issues/39
         try:
             return pwd.getpwuid(os.getuid()).pw_name
-        except KeyError, ex:
+        except KeyError as ex:
             user_from_env = os.getenv('USER')
             if user_from_env:
                 return user_from_env
@@ -614,6 +630,15 @@ def get_username():
                 "Could not get user name from the environment, and could not parse 'id' output: %s",
                 id_output)
             raise ex
+
+
+def get_mac_shared_nfs(path):
+    LOCAL_PATH = "/Volumes/share"
+    if not path.startswith(LOCAL_PATH):
+        raise ValueError("Local path %s does not start with expected prefix '%s'.\n" %
+                         (path, LOCAL_PATH))
+    relpath = path[len(LOCAL_PATH):]
+    return "/Volumes/net/v1/" + os.environ.get('YB_BUILD_HOST') + relpath
 
 
 def get_jenkins_job_name():
@@ -655,7 +680,7 @@ def save_json_to_paths(short_description, json_data, output_paths, should_gzip=F
         logging.info("Saving {} to {}".format(short_description, final_output_path))
         if should_gzip:
             with gzip.open(final_output_path, 'wb') as output_file:
-                output_file.write(json_data_str)
+                output_file.write(json_data_str.encode('utf-8'))
         else:
             with open(final_output_path, 'w') as output_file:
                 output_file.write(json_data_str)
@@ -947,7 +972,7 @@ def propagate_env_vars():
             propagated_env_vars[env_var_name] = os.environ[env_var_name]
             num_propagated += 1
 
-    for env_var_name, env_var_value in os.environ.iteritems():
+    for env_var_name, env_var_value in os.environ.items():
         if env_var_name.startswith(PROPAGATED_ENV_VAR_PREFIX):
             propagated_env_vars[env_var_name] = env_var_value
             logging.info("Propagating env var %s (value: %s) to Spark workers",
@@ -1082,11 +1107,13 @@ def main():
             args.run_java_tests and
             args.send_archive_to_workers):
         os.environ['YB_MVN_LOCAL_REPO'] = os.path.join(
-                yb_dist_tests.global_conf.yb_src_root, 'build', 'm2_repository')
+                yb_dist_tests.global_conf.build_root, 'm2_repository')
         logging.info("Automatically setting YB_MVN_LOCAL_REPO to %s",
                      os.environ['YB_MVN_LOCAL_REPO'])
 
     # End of argument validation.
+
+    os.environ['YB_BUILD_HOST'] = socket.gethostname()
 
     # ---------------------------------------------------------------------------------------------
     # Start the timer.
@@ -1097,8 +1124,18 @@ def main():
     if args.send_archive_to_workers:
         if (args.recreate_archive_for_workers or
                 not os.path.exists(yb_dist_tests.global_conf.archive_for_workers)):
+            archive_sha_path = os.path.join(yb_dist_tests.global_conf.yb_src_root,
+                                            'extracted_from_archive.sha256')
+            if os.path.exists(archive_sha_path):
+                os.remove(archive_sha_path)
+
             yb_dist_tests.create_archive_for_workers()
-        yb_dist_tests.compute_archive_sha256sum()
+
+            yb_dist_tests.compute_archive_sha256sum()
+
+            # Local host may also be worker, so leave expected checksum here after archive created.
+            with open(archive_sha_path, 'w') as archive_sha:
+                archive_sha.write(yb_dist_tests.global_conf.archive_sha256sum)
 
     if test_list_path:
         test_descriptors = load_test_list(test_list_path)
@@ -1133,7 +1170,7 @@ def main():
         test_descriptors = [
             test_descriptor.with_attempt_index(i)
             for test_descriptor in test_descriptors
-            for i in xrange(1, num_repetitions + 1)
+            for i in range(1, num_repetitions + 1)
         ]
 
     app_name_details = ['{} tests total'.format(total_num_tests)]
@@ -1197,10 +1234,10 @@ def main():
         with open(failed_test_list_path, 'w') as failed_test_file:
             failed_test_file.write("\n".join(failed_test_desc_strs) + "\n")
 
-    for language, num_tests in sorted(num_tests_by_language.iteritems()):
+    for language, num_tests in sorted(num_tests_by_language.items()):
         logging.info("Total tests we ran in {}: {}".format(language, num_tests))
 
-    for language, num_failures in sorted(failures_by_language.iteritems()):
+    for language, num_failures in sorted(failures_by_language.items()):
         logging.info("Failures in {} tests: {}".format(language, num_failures))
 
     total_elapsed_time_sec = time.time() - global_start_time

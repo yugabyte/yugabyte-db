@@ -62,11 +62,14 @@ using DocKeyHash = uint16_t;
 //     1. Each range component consists of a type byte (ValueType) followed by the encoded
 //        representation of the respective type (see PrimitiveValue's key encoding).
 //     2. ValueType::kGroupEnd terminates the sequence.
-enum class DocKeyPart {
-  UP_TO_HASH,
-  UP_TO_ID,
-  WHOLE_DOC_KEY,
-};
+YB_DEFINE_ENUM(
+    DocKeyPart,
+    (kUpToHash)
+    (kUpToId)
+    // Includes all doc key components up to hashed ones. If there are no hashed components -
+    // includes the first range component.
+    (kUpToHashOrFirstRange)
+    (kWholeDocKey));
 
 class DocKeyDecoder;
 
@@ -175,14 +178,14 @@ class DocKey {
   // part_to_decode specifies which part of key to decode.
   CHECKED_STATUS DecodeFrom(
       Slice* slice,
-      DocKeyPart part_to_decode = DocKeyPart::WHOLE_DOC_KEY,
+      DocKeyPart part_to_decode = DocKeyPart::kWholeDocKey,
       AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Decodes a document key from the given RocksDB key similar to the above but return the number
   // of bytes decoded from the input slice.
   Result<size_t> DecodeFrom(
       const Slice& slice,
-      DocKeyPart part_to_decode = DocKeyPart::WHOLE_DOC_KEY,
+      DocKeyPart part_to_decode = DocKeyPart::kWholeDocKey,
       AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Splits given RocksDB key into vector of slices that forms range_group of document key.
@@ -428,7 +431,9 @@ class DocKeyDecoder {
 // Clears range components from provided key. Returns true if they were exists.
 Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special = AllowSpecial::kFalse);
 
-Result<bool> HashedComponentsEqual(const Slice& lhs, const Slice& rhs);
+// Returns true if both keys have hashed components and them are equal or both keys don't have
+// hashed components and first range components are equal and false otherwise.
+Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rhs);
 
 bool DocKeyBelongsTo(Slice doc_key, const Schema& schema);
 
@@ -581,8 +586,12 @@ class SubDocKey {
   //     Otherwise, we allow decoding an incomplete SubDocKey without a hybrid_time in the end. Note
   //     that we also allow input that has a few bytes in the end but not enough to represent a
   //     hybrid_time.
+  // @param allow_special
+  //     Whether it is allowed to have special value types in slice, that are used during seek.
+  //     If such value type is found, decoding is stopped w/o error.
   CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice,
-                            HybridTimeRequired require_hybrid_time = HybridTimeRequired::kTrue);
+                            HybridTimeRequired require_hybrid_time = HybridTimeRequired::kTrue,
+                            AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Similar to DecodeFrom, but requires that the entire slice is decoded, and thus takes a const
   // reference to a slice. This still respects the require_hybrid_time parameter, but in case a
@@ -795,6 +804,7 @@ class SubDocKey {
   template<class Callback>
   static Status DoDecode(rocksdb::Slice* slice,
                          HybridTimeRequired require_hybrid_time,
+                         AllowSpecial allow_special,
                          const Callback& callback);
 
   KeyBytes DoEncode(bool include_hybrid_time) const;
@@ -816,15 +826,12 @@ inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key)
 std::string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes);
 std::string BestEffortDocDBKeyToStr(const rocksdb::Slice &slice);
 
-// This filter policy only takes into account hashed components of keys for filtering.
-class DocDbAwareFilterPolicy : public rocksdb::FilterPolicy {
+class DocDbAwareFilterPolicyBase : public rocksdb::FilterPolicy {
  public:
-  explicit DocDbAwareFilterPolicy(size_t filter_block_size_bits, rocksdb::Logger* logger) {
+  explicit DocDbAwareFilterPolicyBase(size_t filter_block_size_bits, rocksdb::Logger* logger) {
     builtin_policy_.reset(rocksdb::NewFixedSizeFilterPolicy(
         filter_block_size_bits, rocksdb::FilterPolicy::kDefaultFixedSizeFilterErrorRate, logger));
   }
-
-  const char* Name() const override { return "DocKeyHashedComponentsFilter"; }
 
   void CreateFilter(const rocksdb::Slice* keys, int n, std::string* dst) const override;
 
@@ -836,10 +843,34 @@ class DocDbAwareFilterPolicy : public rocksdb::FilterPolicy {
 
   FilterType GetFilterType() const override;
 
-  const KeyTransformer* GetKeyTransformer() const override;
-
  private:
   std::unique_ptr<const rocksdb::FilterPolicy> builtin_policy_;
+};
+
+// This filter policy only takes into account hashed components of keys for filtering.
+class DocDbAwareHashedComponentsFilterPolicy : public DocDbAwareFilterPolicyBase {
+ public:
+  DocDbAwareHashedComponentsFilterPolicy(size_t filter_block_size_bits, rocksdb::Logger* logger)
+      : DocDbAwareFilterPolicyBase(filter_block_size_bits, logger) {}
+
+  const char* Name() const override { return "DocKeyHashedComponentsFilter"; }
+
+  const KeyTransformer* GetKeyTransformer() const override;
+};
+
+// This filter policy takes into account following parts of keys for filtering:
+// - For range-based partitioned tables (such tables have 0 hashed components):
+// use all hash components of the doc key.
+// - For hash-based partitioned tables (such tables have >0 hashed components):
+// use first range component of the doc key.
+class DocDbAwareV2FilterPolicy : public DocDbAwareFilterPolicyBase {
+ public:
+  DocDbAwareV2FilterPolicy(size_t filter_block_size_bits, rocksdb::Logger* logger)
+      : DocDbAwareFilterPolicyBase(filter_block_size_bits, logger) {}
+
+  const char* Name() const override { return "DocKeyV2Filter"; }
+
+  const KeyTransformer* GetKeyTransformer() const override;
 };
 
 // Optional inclusive lower bound and exclusive upper bound for keys served by DocDB.

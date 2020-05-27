@@ -28,15 +28,13 @@ const MonoDelta Value::kResetTtl = MonoDelta::FromNanoseconds(0);
 const int64_t Value::kInvalidUserTimestamp = yb::common::kInvalidUserTimestamp;
 
 template <typename T>
-bool DecodeType(const ValueType& expected_value_type, const T& default_value, Slice* slice,
+bool DecodeType(ValueType expected_value_type, const T& default_value, Slice* slice,
                 T* val) {
-  const ValueType value_type = DecodeValueType(*slice);
-  if (value_type != expected_value_type) {
+  if (!slice->TryConsumeByte(static_cast<char>(expected_value_type))) {
     *val = default_value;
     return false;
   }
 
-  ConsumeValueType(slice);
   return true;
 }
 
@@ -158,7 +156,7 @@ void Value::EncodeAndAppend(std::string *value_bytes, const Slice* external_valu
   }
   if (!ttl_.Equals(kMaxTtl)) {
     value_bytes->push_back(ValueTypeAsChar::kTtl);
-    util::FastAppendSignedVarIntToStr(ttl_.ToMilliseconds(), value_bytes);
+    util::FastAppendSignedVarIntToBuffer(ttl_.ToMilliseconds(), value_bytes);
   }
   if (user_timestamp_ != kInvalidUserTimestamp) {
     value_bytes->push_back(ValueTypeAsChar::kUserTimestamp);
@@ -198,6 +196,10 @@ const Value& Value::Tombstone() {
 const string& Value::EncodedTombstone() {
   static const string kEncodedTombstone = Tombstone().Encode();
   return kEncodedTombstone;
+}
+
+void Value::ClearIntentDocHt() {
+  intent_doc_ht_ = DocHybridTime::kInvalid;
 }
 
 }  // namespace docdb

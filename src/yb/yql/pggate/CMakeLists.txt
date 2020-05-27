@@ -33,7 +33,8 @@ set(PGGATE_SRCS
     pg_doc_op.cc
     pg_tabledesc.cc
     pg_txn_manager.cc
-    pg_value.cc)
+    pg_value.cc
+    pg_memctx.cc)
 
 ADD_YB_LIBRARY(yb_pggate_flags
                SRCS pggate_flags.cc
@@ -45,7 +46,8 @@ set(PGGATE_LIBS
     yb_client
     tserver_util
     yb_pggate_util
-    yb_pggate_flags)
+    yb_pggate_flags
+    tablet_error)
 
 ADD_YB_LIBRARY(yb_pggate
                SRCS ${PGGATE_SRCS}

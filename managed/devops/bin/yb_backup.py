@@ -8,6 +8,8 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+from __future__ import print_function
+
 import argparse
 import atexit
 import copy
@@ -31,7 +33,8 @@ UUID_RE_STR = '[0-9a-f-]{32,36}'
 UUID_ONLY_RE = re.compile('^' + UUID_RE_STR + '$')
 NEW_OLD_UUID_RE = re.compile(UUID_RE_STR + '[ ]*\t' + UUID_RE_STR)
 LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
-FS_DATA_DIRS_ARG_PREFIX = '--fs_data_dirs='
+FS_DATA_DIRS_ARG_NAME = '--fs_data_dirs'
+FS_DATA_DIRS_ARG_PREFIX = FS_DATA_DIRS_ARG_NAME + '='
 IMPORTED_TABLE_RE = re.compile('Table being imported: ([^\.]*)\.(.*)')
 RESTORATION_RE = re.compile('^Restoration id: (' + UUID_RE_STR + r')\b')
 
@@ -245,19 +248,6 @@ def checksum_path_downloaded(file_path):
     return checksum_path(file_path) + '.downloaded'
 
 
-def create_checksum_cmd_not_quoted(file_path, checksum_file_path):
-    return "{} {} > {}".format(pipes.quote(SHA_TOOL_PATH), file_path, checksum_file_path)
-
-
-def create_checksum_cmd(file_path, checksum_file_path):
-    return create_checksum_cmd_not_quoted(pipes.quote(file_path), pipes.quote(checksum_file_path))
-
-
-def create_checksum_cmd_for_dir(dir_path):
-    return create_checksum_cmd_not_quoted(os.path.join(pipes.quote(strip_dir(dir_path)), '[!i]*'),
-                                          pipes.quote(checksum_path(strip_dir(dir_path))))
-
-
 # TODO: get rid of this sed / test program generation in favor of a more maintainable solution.
 def key_and_file_filter(checksum_file):
     return "\" $( sed 's| .*/| |' {} ) \"".format(pipes.quote(checksum_file))
@@ -399,7 +389,10 @@ class NfsBackupStorage(AbstractBackupStorage):
         return 'nfs'
 
     def _command_list_prefix(self):
-        return ['rsync', '-avhW', '--no-compress']
+        result = ['rsync', '-avhW']
+        if not self.options.args.mac:
+            result.append('--no-compress')
+        return result
 
     # This is a single string because that's what we need for doing `mkdir && rsync`.
     def upload_file_cmd(self, src, dest):
@@ -498,8 +491,10 @@ class YBBackup:
                    "For GCS:\n"
                    "    export GCS_CREDENTIALS_JSON=<contents_of_gcp_credentials>\n"
                    "Keys --keyspace, --table and --table_uuid can be repeated several times,\n"
-                   "recommended order: --keyspace ks1 --table tbl1 --table_uuid uuid1 "
-                   "--keyspace ks2 --table tbl2 --table_uuid uuid2 ...",
+                   "recommended order for backup creating: --keyspace ks1 --table tbl1 "
+                   "--table_uuid uuid1 --keyspace ks2 --table tbl2 --table_uuid uuid2 ...\n"
+                   "recommended order for backup restoring: --keyspace target_ks --table tbl1 "
+                   "--table tbl2 ...\n",
             formatter_class=RawDescriptionHelpFormatter)
 
         parser.add_argument(
@@ -509,8 +504,8 @@ class YBBackup:
             '--k8s_config', required=False,
             help="Namespace to use for kubectl in case of kubernetes deployment")
         parser.add_argument(
-            '--keyspace', action='append',
-            help="Repeatable keyspace of the tables to backup or restore")
+            '--keyspace', action='append', help="Repeatable keyspace of the tables to backup, "
+                                                "or a target keyspace for the backup restoring")
         parser.add_argument(
             '--table', action='append',
             help="Repeatable name of the tables to backup or restore")
@@ -529,6 +524,10 @@ class YBBackup:
             '--ssh_user', default='centos', help="Username to use for the ssh connection.")
         parser.add_argument(
             '--ssh_port', default='54422', help="Port to use for the ssh connection.")
+        parser.add_argument(
+            '--no_ssh', action='store_true', default=False, help="Don't use SSH to run commands")
+        parser.add_argument(
+            '--mac', action='store_true', default=False, help="Use MacOS tooling")
 
         backup_location_group = parser.add_mutually_exclusive_group(required=True)
         backup_location_group.add_argument(
@@ -829,7 +828,7 @@ class YBBackup:
                     '-c',
                     k8s_details.container
                 ], env=k8s_details.env_config)
-            else:
+            elif not self.args.no_ssh:
                 output += self.run_program(
                     ['scp',
                      '-S', ssh_wrapper_path,
@@ -886,7 +885,7 @@ class YBBackup:
                 cmd],
                 num_retry=num_retries,
                 env=k8s_details.env_config)
-        else:
+        elif not self.args.no_ssh:
             return self.run_program([
                 'ssh',
                 '-o', 'StrictHostKeyChecking=no',
@@ -897,6 +896,8 @@ class YBBackup:
                 '%s@%s' % (self.args.ssh_user, server_ip),
                 'cd / && sudo -u yugabyte bash -c ' + pipes.quote(cmd)],
                 num_retry=num_retries)
+        else:
+            return self.run_program(['bash', '-c', cmd])
 
     def find_data_dirs(self, tserver_ip):
         """
@@ -908,6 +909,9 @@ class YBBackup:
         # TODO(bogdan): figure out at runtime??
         if self.is_k8s():
             return K8S_DATA_DIRS
+
+        if self.args.no_ssh:
+            return self.find_local_data_dirs(tserver_ip)
 
         grep_output = self.run_ssh_cmd(
             ['egrep', '^' + FS_DATA_DIRS_ARG_PREFIX, TSERVER_CONF_PATH],
@@ -925,6 +929,22 @@ class YBBackup:
                  "'{}'. Was looking for '{}', got this: [[ {} ]]").format(
                     TSERVER_CONF_PATH, tserver_ip, FS_DATA_DIRS_ARG_PREFIX, grep_output))
         return data_dirs
+
+    def find_local_data_dirs(self, tserver_ip):
+        ps_output = self.run_ssh_cmd(['ps', '-o', 'command'], tserver_ip)
+        for line in ps_output.split('\n'):
+            args = line.split(' ')
+            if args[0].endswith('yb-tserver'):
+                fs_data_dirs = None
+                ip = None
+                for i in range(1, len(args)):
+                    if args[i] == FS_DATA_DIRS_ARG_NAME:
+                        fs_data_dirs = args[i + 1]
+                    elif args[i] == '--rpc_bind_addresses':
+                        ip = args[i + 1]
+                if ip == tserver_ip:
+                    return [fs_data_dirs]
+        raise BackupException("Unable find find data directories for {}".format(tserver_ip))
 
     def generate_snapshot_dirs(self, data_dir_by_tserver, snapshot_id,
                                tablets_by_tserver_ip, table_ids):
@@ -1103,6 +1123,19 @@ class YBBackup:
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
+    def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path):
+        prefix = pipes.quote(SHA_TOOL_PATH) if not self.args.mac else '/usr/bin/shasum'
+        return "{} {} > {}".format(prefix, file_path, checksum_file_path)
+
+    def create_checksum_cmd(self, file_path, checksum_file_path):
+        return self.create_checksum_cmd_not_quoted(
+            pipes.quote(file_path), pipes.quote(checksum_file_path))
+
+    def create_checksum_cmd_for_dir(self, dir_path):
+        return self.create_checksum_cmd_not_quoted(
+            os.path.join(pipes.quote(strip_dir(dir_path)), '[!i]*'),
+            pipes.quote(checksum_path(strip_dir(dir_path))))
+
     def prepare_upload_command(self, parallel_commands, snapshot_filepath, tablet_id,
                                tserver_ip, snapshot_dir):
         """
@@ -1116,7 +1149,7 @@ class YBBackup:
         """
         logging.info('Creating check-sum for %s on tablet server %s' % (
                      snapshot_dir, tserver_ip))
-        create_checksum_cmd = create_checksum_cmd_for_dir(snapshot_dir)
+        create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir)
 
         target_tablet_filepath = os.path.join(snapshot_filepath, 'tablet-%s' % (tablet_id))
         target_checksum_filepath = checksum_path(target_tablet_filepath)
@@ -1170,7 +1203,7 @@ class YBBackup:
         cmd_checksum = self.storage.download_file_cmd(
             source_checksum_filepath, snapshot_dir_checksum)
 
-        create_checksum_cmd = create_checksum_cmd_for_dir(snapshot_dir_tmp)
+        create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir_tmp)
         check_checksum_cmd = compare_checksums_cmd(
             snapshot_dir_checksum, checksum_path(strip_dir(snapshot_dir_tmp)))
 
@@ -1272,7 +1305,7 @@ class YBBackup:
                     "Could not find metadata file at '{}'".format(metadata_file_path))
 
             self.run_program(
-                create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)))
+                self.create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)))
 
             self.run_program(
                 self.storage.upload_file_cmd(checksum_path(metadata_file_path),
@@ -1285,7 +1318,7 @@ class YBBackup:
             self.run_yb_admin(['export_snapshot', snapshot_id, metadata_file_path])
 
             self.run_ssh_cmd(
-                create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)),
+                self.create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)),
                 server_ip)
 
             self.run_ssh_cmd(
@@ -1354,7 +1387,7 @@ class YBBackup:
         logging.info(
             'Backed up tables %s to %s successfully!' %
             (self.table_names_str(), snapshot_filepath))
-        print json.dumps({"snapshot_url": snapshot_filepath})
+        print(json.dumps({"snapshot_url": snapshot_filepath}))
 
     def download_metadata_file(self):
         """
@@ -1373,7 +1406,7 @@ class YBBackup:
                 self.storage.download_file_cmd(src_path, metadata_file_path))
 
             self.run_program(
-                create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)))
+                self.create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)))
 
             check_checksum_res = self.run_program(
                 compare_checksums_cmd(checksum_downloaded,
@@ -1391,7 +1424,7 @@ class YBBackup:
                 server_ip)
 
             self.run_ssh_cmd(
-                create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)),
+                self.create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)),
                 server_ip)
 
             check_checksum_res = self.run_ssh_cmd(
@@ -1414,13 +1447,12 @@ class YBBackup:
         table, keyspace, tablets and snapshot.
         """
         yb_admin_args = ['import_snapshot', metadata_file_path]
-        if self.args.table or self.args.keyspace:
-            if not self.args.table:
-                raise BackupException('Need to specify --table')
-            if not self.args.keyspace:
-                raise BackupException('Need to specify --keyspace')
 
-            yb_admin_args += self.table_names_str(' ').split(' ')
+        if self.args.keyspace:
+            yb_admin_args += [self.args.keyspace[0]]
+
+        if self.args.table:
+            yb_admin_args += [' '.join(self.args.table)]
 
         output = self.run_yb_admin(yb_admin_args)
 
@@ -1528,6 +1560,9 @@ class YBBackup:
         """
         Restore a table from the backup stored in the given backup path.
         """
+        if self.args.keyspace:
+            if len(self.args.keyspace) > 1:
+                raise BackupException('Only one --keyspace expected for the restore mode.')
 
         logging.info('Restoring backup from {}'.format(self.args.backup_location))
 
@@ -1592,7 +1627,7 @@ class YBBackup:
                                complete_restoration_state)
 
         logging.info('Restored backup successfully!')
-        print json.dumps({"success": True})
+        print(json.dumps({"success": True}))
 
     # At exit callbacks
 
@@ -1633,11 +1668,11 @@ class YBBackup:
                 self.backup_table()
             else:
                 logging.error('Command was not specified')
-                print json.dumps({"error": "Command was not specified"})
+                print(json.dumps({"error": "Command was not specified"}))
         except BackupException as ex:
-            print json.dumps({"error": "Backup exception: {}".format(str(ex))})
+            print(json.dumps({"error": "Backup exception: {}".format(str(ex))}))
         except Exception as ex:
-            print json.dumps({"error": "Exception: {}".format(str(ex))})
+            print(json.dumps({"error": "Exception: {}".format(str(ex))}))
 
 
 if __name__ == "__main__":

@@ -481,5 +481,71 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
       "wait for load balancer to become idle"));
 }
 
+TEST_F(AdminCliTest, TestLeaderStepdown) {
+  BuildAndStart();
+  std::string out;
+  auto call_admin = [
+      &out,
+      admin_path = GetAdminToolPath(),
+      master_address = ToString(cluster_->master()->bound_rpc_addr())] (
+      const std::initializer_list<std::string>& args) mutable {
+    auto cmds = ToStringVector(admin_path, "-master_addresses", master_address);
+    std::copy(args.begin(), args.end(), std::back_inserter(cmds));
+    return Subprocess::Call(cmds, &out);
+  };
+  auto regex_fetch_first = [&out](const std::string& exp) -> Result<std::string> {
+    std::smatch match;
+    if (!std::regex_search(out.cbegin(), out.cend(), match, std::regex(exp)) || match.size() != 2) {
+      return STATUS_FORMAT(NotFound, "No pattern in '$0'", out);
+    }
+    return match[1];
+  };
+
+  ASSERT_OK(call_admin({"list_tablets", kTableName.namespace_name(), kTableName.table_name()}));
+  const auto tablet_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+)"));
+  ASSERT_OK(call_admin({"list_tablet_servers", tablet_id}));
+  const auto tserver_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+FOLLOWER)"));
+  ASSERT_OK(call_admin({"leader_stepdown", tablet_id, tserver_id}));
+  ASSERT_OK(call_admin({"list_tablet_servers", tablet_id}));
+  ASSERT_EQ(tserver_id, ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+LEADER)")));
+}
+
+TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
+  std::string output;
+  std::vector<std::string> master_flags;
+  std::vector<std::string> ts_flags;
+  master_flags.push_back("--enable_load_balancing=true");
+  BuildAndStart(ts_flags, master_flags);
+
+  const std::string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder()
+                                  .add_master_server_addr(master_address)
+                                  .Build());
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+
+  ASSERT_NE(output.find("ENABLED"), std::string::npos);
+
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+      "-master_addresses", master_address, "set_load_balancer_enabled", "0"), &output));
+
+  ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
+
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+
+  ASSERT_NE(output.find("DISABLED"), std::string::npos);
+
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+      "-master_addresses", master_address, "set_load_balancer_enabled", "1"), &output));
+
+  ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
+
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+
+  ASSERT_NE(output.find("ENABLED"), std::string::npos);
+}
+
 }  // namespace tools
 }  // namespace yb

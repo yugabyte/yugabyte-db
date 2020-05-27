@@ -1,7 +1,7 @@
 ---
-title: "->, ->>, #>, and #>> (JSON subvalue operators)"
-headerTitle: "->, ->>, #>, and #>> (JSON subvalues)"
-linkTitle: "->, ->>, #>, and #>> (JSON subvalues)"
+title: "-> and ->> and #> and #>> (JSON subvalue operators)"
+headerTitle: "-> and ->> and #> and #>> (JSON subvalue operators)"
+linkTitle: "->, ->>, #>, #>> (JSON subvalues)"
 description: Read a JSON value at a specified path.
 menu:
   latest:
@@ -12,9 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** Read a JSON value at a specified path. The `>` variants return a `json` or `jsonb` value, according to the data type of the input. And the `>>` variants reurn a `text` value. The `#>` and `#>>` variants differ from `->` and `->>` variants in how the path is specified.
+**Purpose:** Read a JSON value at a specified path. The `>` variants return a `json` or `jsonb` value, according to the data type of the input. And the `>>` variants return a `text` value. The `#>` and `#>>` variants differ from `->` and `->>` variants in how the path is specified.
 
-## The `->` operator
+## The&#160; &#160;->&#160; &#160;operator
 
 **Purpose:** Read the value specified by a one-step path returning it as a `json` or `jsonb` value.
 
@@ -25,7 +25,7 @@ input values:       jsonb -> [int | text] [ -> [int | text] ]*
 return value:       jsonb
 ```
 
-**Notes:** `->` requires that the JSON value is an _object_ or an _array_. _Key_ is a SQL value. When _key_ is a SQL `text` value, it reads the JSON value of the key-value pair with that key from an _object_. When _key_ is a SQL `integer` value, it reads the JSON value at that index key from an _array_. If the input JSON value is `json`, then the output JSON value is `json`, and correspondingly if the input JSON value is `jsonb`.
+**Notes:** The `->` operator requires that the JSON value is an _object_ or an _array_. _Key_ is a SQL value. When _key_ is a SQL `text` value, it reads the JSON value of the key-value pair with that key from an _object_. When _key_ is a SQL `integer` value, it reads the JSON value at that index key from an _array_. If the input JSON value is `json`, then the output JSON value is `json`, and correspondingly if the input JSON value is `jsonb`.
 
 Reading a key value:
 
@@ -59,7 +59,7 @@ end;
 $body$;
 ```
 
-## The `#>` operator
+## The&#160; &#160;#>&#160; &#160;operator
 
 **Purpose:** Read the value specified by a multi-step path returning it as a `json` or `jsonb` value.
 
@@ -74,7 +74,7 @@ return value:       jsonb
 
 Consider this JSON value:
 
-```json
+```
 [
   1,
   {
@@ -92,15 +92,15 @@ Consider this JSON value:
 
 - At the topmost level of decomposition, it's an _array_ of three subvalues.
 
-- At the second level of decomposition, the second _array_ subvalue (i.e. the value with the index of `1`) is an _object_ with two key-value pairs called `"x"` and `"y"`.
+- At the second level of decomposition, the second _array_ subvalue (i.e. the value with the index of `1`) is an _object_ with two key-value pairs called _"x"_ and _"y"_.
 
-- At the third level of decomposition, the subvalue for the key `"x"` is an _array_ of subvalues.
+- At the third level of decomposition, the subvalue for the key _"x"_ is an _array_ of subvalues.
 
-- At the fourth level of decomposition, the third _array_ subvalue  (i.e. the value with the index of `2`) is an _object_ with two key-value pairs called `"a"` and `"b"`.
+- At the fourth level of decomposition, the third _array_ subvalue  (i.e. the value with the index of `2`) is an _object_ with two key-value pairs called _"a"_ and _"b"_.
 
-- And at the fifth level of decomposition, the subvalue for key `"b"` is the primitive _string_ value `"dog"`.
+- And at the fifth level of decomposition, the subvalue for key _"b"_ is the primitive _string_ value _"dog"_.
 
-This, therefore, is the path to the primitive JSON _string_ value `"dog"`:
+This, therefore, is the path to the primitive JSON _string_ value _"dog"_:
 
 ```
 -> 1 -> 'x' -> 2 -> 'b'
@@ -114,9 +114,9 @@ The `#>` operator is a convenient syntax sugar shorthand for specifying a long p
 #> array['1', 'x', '2', 'b']::text[]
 ```
 
-Notice that with the `->` operator, integers must be presented as such (so that `'1'` rather than `1` would, surprisingly, silently read out `null`. However, with the `#>` operator, integers must be presented as convertible `text` values because all the values in a SQL array must have the same data type.
+Notice that with the `->` operator, integers must be presented as such (so that `'1'` rather than `1` would silently read out `NULL`. However, with the `#>` operator, integers must be presented as convertible `text` values because all the values in a SQL array must have the same data type.
 
-The PL/pgSQL `assert` confirms that both the `->` path specification and the `#>` path specification produce the same result, thus:
+The PL/pgSQL `ASSERT` confirms that both the `->` path specification and the `#>` path specification produce the same result, thus:
 
 ```postgresql
 do $body$
@@ -158,7 +158,7 @@ $body$;
 
 The paths are written using PL/pgSQL variables so that, as a pedagogic device, the data types are explicit.
 
-## The `->>` and `#>>` operators
+## The&#160; &#160;->>&#160; &#160;and&#160; &#160;#>>&#160; &#160;operators
 
 **Purpose:** Read the specified JSON value as a `text` value.
 
@@ -174,14 +174,14 @@ input value:        jsonb #>> text[]
 return value:       text
 ```
 
-**Notes:** The `->` operator returns a JSON object. When the targeted value is compound, the `->>` operator returns the `::text` typecast of the value. But when the targeted value is primitive, the `->>` operator returns the value itself, as a `text` value. In particular; a JSON _number_ value is returned as the `::text` typecast of that value (for example `'4.2'`), allowing it to be trivially `::numeric` typecasted back to what it actually is; a JSON _boolean_ value is returned as the `::text` typecast of that value (`'true'` or `'false'`), allowing it to be trivially `::boolean` typecasted back to what it actually is; a JSON _string_ value is return as is as a `text` value; and a JSON _null_ value is returned as a genuine SQL `null` so that the `is null` test is `true`.
+**Notes:** The `->` operator returns a JSON object. When the targeted value is compound, the `->>` operator returns the `::text` typecast of the value. But when the targeted value is primitive, the `->>` operator returns the value itself, typecast to a `text` value. In particular; a JSON _number_ value is returned as the `::text` typecast of that value (for example `'4.2'`), allowing it to be trivially `::numeric` typecasted back to what it actually is; a JSON _boolean_ value is returned as the `::text` typecast of that value (`'TRUE'` or `'FALSE'`), allowing it to be trivially `::boolean` typecasted back to what it actually is; a JSON _string_ value is return as is as a `text` value; and a JSON _null_ value is returned as a genuine SQL `NULL` so that the `IS NULL` test is `TRUE`.
 
 The difference in semantics between the `->` operator and the `->>` operator is vividly illustrated (as promised above) by targeting this primitive JSON _string_ subvalue:
 
 ```
 "\"First line\"\n\"second line\""
 ```
-from the JSON value in which it is embedded. For example, here it is the value of the key `"a"` in a JSON _object_:
+from the JSON value in which it is embedded. For example, here it is the value of the key _"a"_ in a JSON _object_:
 
 ```postgresql
 do $body$
@@ -210,13 +210,13 @@ Understanding the difference between the `->` operator and the `->>` operator co
 
 The `>>` variant (both for `->` _vs_ `->>` and for `#>` _vs_ `#>>`) is interesting mainly when the denoted subvalue is a primitive value (as the example above showed for a primitive _string_ value). If you read such a subvalue, it's most likely that you'll want to cast it to a value of the appropriate SQL data type, `numeric`, `text`, or `boolean`.  You might use your understanding of a value's purpose (for example _"quantity ordered"_ or _"product SKU"_) to cast it to, say, an `int` value or a constrained text type like `varchar(30)`. In contrast, if you read a compound subvalue, it's most likely that you'll want it as a genuine `json` or `jsonb` value.
 
-### Summary: `->` versus `->>` and `#>` versus `#>>`
+## Summary:&#160; &#160;->&#160; &#160;versus&#160; &#160;->>&#160; &#160;and&#160; &#160;#>&#160; &#160;versus&#160; &#160;#>>
 
-- The `->` and `#>` operators each return a genuine JSON value. When the input is `json`, the return value is `json`. And when the input is `jsonb`, the return value is `jsonb`.
-- The `->>` and `#>>` operators each return a genuine `text` value, both when the input is `json`, and when the input is `jsonb`.
-- If the value that the path denotes is a compound JSON value, then the` >>` variant returns the `text` representation of the JSON value, as specified by RFC 7159. (The designers of the PostgreSQL functionality had no other feasible choice.) But if the JSON value that the path denotes is primitive, then the >> variant produces the text representation of the value itself. It turns out that the text representation of a primitive JSON value and the text representation of the value itself differ only for a JSON string—exemplified by `"a"` versus `a`.
+- Each of the `->` and `#>` operators returns a genuine JSON value. When the input is `json`, the return value is `json`. And when the input is `jsonb`, the return value is `jsonb`.
+- Each of the `->>` and `#>>` operators returns a genuine `text` value, both when the input is `json`, and when the input is `jsonb`.
+- If the value that the path denotes is a compound JSON value, then the` >>` variant returns the `text` representation of the JSON value, as specified by RFC 7159. (The designers of the PostgreSQL functionality had no other feasible choice.) But if the JSON value that the path denotes is primitive, then the >> variant produces the text representation of the value itself. It turns out that the text representation of a primitive JSON value and the text representation of the value itself differ only for a JSON string—exemplified by _"a"_ versus _a_.
 
-The following `assert` test all these rules:
+The following `ASSERT` tests all these rules:
 
 ```postgresql
 do $body$

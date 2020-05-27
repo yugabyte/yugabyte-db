@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 # Copyright (c) YugaByte, Inc.
 #
@@ -23,7 +23,7 @@ buffer = ''
 for line in sys.stdin:
     for c in line.rstrip():
         if c.isspace() and line_length > 80:
-            print buffer + c + '\\\\'
+            print(buffer + c + '\\\\')
             buffer = ''
             line_length = 0
         else:
@@ -31,4 +31,4 @@ for line in sys.stdin:
             line_length += 1
 
 if buffer:
-    print buffer,
+    sys.stdout.write(buffer)

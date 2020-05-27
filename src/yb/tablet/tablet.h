@@ -173,6 +173,8 @@ class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
   virtual ~TabletScopedIf() { }
 };
 
+YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
+
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
   class CompactionFaultHooks;
@@ -348,7 +350,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const boost::optional<TransactionId>& transaction_id,
       const ReadHybridTime read_hybrid_time = {},
       const TableId& table_id = "",
-      CoarseTimePoint deadline = CoarseTimePoint::max()) const;
+      CoarseTimePoint deadline = CoarseTimePoint::max(),
+      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
 
@@ -391,8 +394,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // has a very small number of rows.
   CHECKED_STATUS DebugDump(vector<std::string> *lines = NULL);
 
-  const Schema* schema() const {
-    return &metadata_->schema();
+  const yb::SchemaPtr schema() const {
+    return metadata_->schema();
   }
 
   // Returns a reference to the key projection of the tablet schema.
@@ -411,6 +414,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   const RaftGroupMetadata *metadata() const { return metadata_.get(); }
   RaftGroupMetadata *metadata() { return metadata_.get(); }
+
+  rocksdb::Env& rocksdb_env() const;
 
   const std::string& tablet_id() const override { return metadata_->raft_group_id(); }
 
@@ -459,8 +464,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return clock_;
   }
 
-  const Schema& SchemaRef(const std::string& table_id = "") const override {
-    return CHECK_RESULT(metadata_->GetTableInfo(table_id))->schema;
+  yb::SchemaPtr GetSchema(const std::string& table_id = "") const override {
+    auto table_info = CHECK_RESULT (metadata_->GetTableInfo(table_id));
+    return yb::SchemaPtr(table_info, &table_info->schema);
   }
 
   const common::YQLStorageIf& QLStorage() const override {
@@ -639,6 +645,16 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<bool> HasScanReachedMaxPartitionKey(
       const PgsqlReadRequestPB& pgsql_read_request, const string& partition_key) const;
 
+  // Sets metadata_cache_ to nullptr. This is done atomically to avoid race conditions.
+  void ResetYBMetaDataCache();
+
+  // Creates a new client::YBMetaDataCache object and atomically assigns it to metadata_cache_.
+  void CreateNewYBMetaDataCache();
+
+  // Creates a new shared pointer of the object managed by metadata_cache_. This is done
+  // atomically to avoid race conditions.
+  std::shared_ptr<client::YBMetaDataCache> YBMetaDataCache();
+
   // Lock protecting schema_ and key_schema_.
   //
   // Writers take this lock in shared mode before decoding and projecting
@@ -750,7 +766,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Created only when secondary indexes are present.
   boost::optional<client::TransactionManager> transaction_manager_;
-  boost::optional<client::YBMetaDataCache> metadata_cache_;
+
+  // This object should not be accessed directly to avoid race conditions.
+  // Use methods YBMetaDataCache, CreateNewYBMetaDataCache, and ResetYBMetaDataCache to read it
+  // and modify it.
+  std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
   // Created only if it is a unique index tablet.
   boost::optional<Schema> unique_index_key_schema_;

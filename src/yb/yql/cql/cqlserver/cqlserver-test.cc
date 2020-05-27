@@ -18,6 +18,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/tserver/heartbeater.h"
+
 #include "yb/yql/cql/cqlserver/cql_message.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
 
@@ -87,7 +89,7 @@ void TestCQLService::SetUp() {
   opts.SetMasterAddresses(master_addresses);
 
   io_.reset(new boost::asio::io_service());
-  server_.reset(new CQLServer(opts, io_.get(), nullptr));
+  server_.reset(new CQLServer(opts, io_.get(), mini_cluster()->mini_tablet_server(0)->server()));
   LOG(INFO) << "Starting CQL server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "CQL server successfully started.";
@@ -101,6 +103,10 @@ void TestCQLService::SetUp() {
 
 void TestCQLService::TearDown() {
   EXPECT_OK(client_sock_.Close());
+  DeleteTable();
+  WARN_NOT_OK(mini_cluster()->mini_tablet_server(0)->server()->heartbeater()->Stop(),
+              "Failed to stop heartbeater");
+  server_->Shutdown();
   YBTableTestBase::TearDown();
 }
 

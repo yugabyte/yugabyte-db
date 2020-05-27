@@ -2,7 +2,7 @@
 
 import React, { Fragment,  Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
-import { YBInputField, YBTextInputWithLabel, YBControlledSelectWithLabel, YBSelectWithLabel, YBToggle, YBAddRowButton, YBButton, YBDropZoneWithLabel } from 'components/common/forms/fields';
+import { YBInputField, YBTextInputWithLabel, YBControlledSelectWithLabel, YBSelectWithLabel, YBToggle, YBAddRowButton, YBButton, YBDropZoneWithLabel, YBNumericInputWithLabel } from 'components/common/forms/fields';
 
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 import { isDefinedNotNull, isNonEmptyString, isNonEmptyArray, isNonEmptyObject, isValidObject, trimString } from 'utils/ObjectUtils';
@@ -352,6 +352,8 @@ class AWSProviderInitView extends Component {
       regionFormVals["hostVpcRegion"] = awsHostInfo["region"];
       regionFormVals["hostVpcId"] = awsHostInfo["vpc-id"];
     }
+    regionFormVals["airGapInstall"] = formValues.airGapInstall;
+    regionFormVals["sshPort"] = formValues.sshPort;
 
     const perRegionMetadata = {};
     if (this.state.networkSetupType !== "new_vpc") {
@@ -544,6 +546,20 @@ class AWSProviderInitView extends Component {
     );
   }
 
+  rowSshPort() {
+    const label = "SSH Port";
+    const tooltipContent = "Which port should YugaWare open and connect to?";
+    return this.generateRow(
+      label,
+      <Field
+        name="sshPort"
+        component={YBNumericInputWithLabel}
+        infoTitle={label}
+        infoContent={tooltipContent}
+      />
+    );
+  }
+
   rowCustomKeypair() {
     const nameLabel = "Keypair Name";
     const nameTooltipContent = "Name of the custom keypair to use.\n" +
@@ -626,6 +642,22 @@ class AWSProviderInitView extends Component {
     );
   }
 
+
+  rowAirGapInstallToggle() {
+    const label = "Air Gap Installation";
+    const tooltipContent = "Would you like YugaWare to create instances in air gap mode for your universes?";
+    return this.generateRow(
+      label,
+      <Field
+        name="airGapInstall"
+        component={YBToggle}
+        defaultChecked={false}
+        infoTitle={label}
+        infoContent={tooltipContent}
+      />
+    );
+  }
+
   render() {
     const { handleSubmit, submitting, error, formRegions } = this.props;
     // VPC and region setup.
@@ -675,10 +707,12 @@ class AWSProviderInitView extends Component {
                 {customCredentialRows}
                 {divider}
                 {this.rowKeypairInput(keypair_input_options)}
+                {this.rowSshPort()}
                 {customKeypairRows}
                 {divider}
                 {this.rowHostedZoneToggle()}
                 {hostedZoneRow}
+                {this.rowAirGapInstallToggle()}
                 {divider}
                 {this.rowVpcSetup(network_setup_options)}
                 {regionsSection}

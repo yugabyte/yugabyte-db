@@ -40,6 +40,7 @@ public enum TaskType {
 
   EditKubernetesUniverse("EditKubernetesUniverse"),
 
+  @Deprecated
   KubernetesProvision("KubernetesProvision"),
 
   ImportIntoTable("ImportIntoTable"),

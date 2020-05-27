@@ -198,6 +198,18 @@ class YBClient::Data {
                                     std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback);
 
+  Result<IndexPermissions> GetIndexPermissions(
+      YBClient* client,
+      const TableId& table_id,
+      const TableId& index_id,
+      const CoarseTimePoint deadline);
+  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
+      YBClient* client,
+      const TableId& table_id,
+      const TableId& index_id,
+      const CoarseTimePoint deadline,
+      const IndexPermissions& target_index_permissions);
+
   void CreateCDCStream(YBClient* client,
                        const TableId& table_id,
                        const std::unordered_map<std::string, std::string>& options,

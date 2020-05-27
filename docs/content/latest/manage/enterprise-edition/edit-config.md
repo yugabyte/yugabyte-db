@@ -1,8 +1,8 @@
 ---
-title: Edit configuration flags using YugaWare
+title: Edit configuration flags using Yugabyte Platform
 headerTitle: Edit configuration flags
 linkTitle: Edit configuration flags
-description: Edit configuration flags using YugaWare
+description: Edit configuration flags using Yugabyte Platform.
 aliases:
   - /manage/enterprise-edition/edit-flags/
 menu:

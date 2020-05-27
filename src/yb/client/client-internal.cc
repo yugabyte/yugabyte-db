@@ -928,7 +928,6 @@ Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
   return RetryFunc(
       deadline, "Waiting for FlushTables to be completed", "Timed out waiting for FlushTables",
       std::bind(&YBClient::Data::IsFlushTableInProgress, this, client, flush_id, _1, _2));
-  return Status::OK();
 }
 
 Status YBClient::Data::InitLocalHostNames() {
@@ -1582,6 +1581,57 @@ Status YBClient::Data::GetTableSchemaById(YBClient* client,
       messenger_,
       proxy_cache_.get());
   return Status::OK();
+}
+
+Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
+    YBClient* client,
+    const TableId& table_id,
+    const TableId& index_id,
+    const CoarseTimePoint deadline) {
+  std::shared_ptr<YBTableInfo> yb_table_info = std::make_shared<YBTableInfo>();
+  Synchronizer sync;
+
+  RETURN_NOT_OK(GetTableSchemaById(client,
+                                   table_id,
+                                   deadline,
+                                   yb_table_info,
+                                   sync.AsStatusCallback()));
+  Status s = sync.Wait();
+  if (!s.ok()) {
+    return s;
+  }
+
+  const IndexInfo* index_info =
+      VERIFY_RESULT(yb_table_info->index_map.FindIndex(index_id));
+  return index_info->index_permissions();
+}
+
+Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
+    YBClient* client,
+    const TableId& table_id,
+    const TableId& index_id,
+    const CoarseTimePoint deadline,
+    const IndexPermissions& target_index_permissions) {
+  RETURN_NOT_OK(RetryFunc(
+      deadline,
+      "Waiting for index to have desired permissions",
+      "Timed out waiting for proper index permissions",
+      [&] (CoarseTimePoint deadline, bool* retry) -> Status {
+        IndexPermissions actual_index_permissions = VERIFY_RESULT(GetIndexPermissions(
+            client,
+            table_id,
+            index_id,
+            deadline));
+        *retry = (actual_index_permissions < target_index_permissions);
+        return Status::OK();
+      }));
+  // Now, the index permissions are guaranteed to be at (or beyond) the target.  Query again to
+  // return it.
+  return GetIndexPermissions(
+      client,
+      table_id,
+      index_id,
+      deadline);
 }
 
 void YBClient::Data::CreateCDCStream(YBClient* client,

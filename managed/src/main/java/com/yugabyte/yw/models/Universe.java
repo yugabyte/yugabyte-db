@@ -63,6 +63,12 @@ public class Universe extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Universe.class);
   public static final String DISABLE_ALERTS_UNTIL = "disableAlertsUntilSecs";
   public static final String TAKE_BACKUPS = "takeBackups";
+  public static final String HELM2_LEGACY = "helm2Legacy";
+
+  public enum HelmLegacy {
+    V3,
+    V2TO3
+  }
 
   // The universe UUID.
   @Id

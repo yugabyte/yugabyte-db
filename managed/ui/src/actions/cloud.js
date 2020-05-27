@@ -295,6 +295,7 @@ export function createAccessKey(providerUUID, regionUUID, keyInfo) {
     keyType: "PRIVATE",
     keyContent: keyInfo.privateKeyContent,
     sshUser: keyInfo.sshUser,
+    sshPort: keyInfo.sshPort,
     passwordlessSudoAccess: keyInfo.passwordlessSudoAccess,
     airGapInstall: keyInfo.airGapInstall
   };

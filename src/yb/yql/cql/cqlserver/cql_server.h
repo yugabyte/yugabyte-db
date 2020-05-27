@@ -52,7 +52,7 @@ class CQLServer : public server::RpcAndWebServerBase {
 
   void Shutdown();
 
-  const tserver::TabletServer* tserver() const { return tserver_; }
+  tserver::TabletServer* tserver() const { return tserver_; }
 
  private:
   CQLServerOptions opts_;

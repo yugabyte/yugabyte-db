@@ -224,7 +224,7 @@ class Postprocessor:
                 time_str = test_kvs["time"].replace(",", "")
                 try:
                     test_kvs["time"] = float(time_str)
-                except ValueError, ex:
+                except ValueError as ex:
                     test_kvs["time"] = None
                     parsing_errors.append(
                         "Could not parse time: %s. Error: %s" % (time_str, str(ex))

@@ -1,12 +1,9 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 """
 Build a dependency graph of sources, object files, libraries, and binaries.  Compute the set of
 tests that might be affected by changes to the given set of source files.
 """
-
-from __future__ import print_function
-from six import iteritems
 
 import argparse
 import fnmatch
@@ -51,7 +48,8 @@ def get_relative_path_or_none(abs_path, relative_to):
         return abs_path[len(relative_to):]
 
 
-SOURCE_FILE_EXTENSIONS = make_extensions(['c', 'cc', 'cpp', 'cxx', 'h', 'hpp', 'hxx', 'proto'])
+SOURCE_FILE_EXTENSIONS = make_extensions(['c', 'cc', 'cpp', 'cxx', 'h', 'hpp', 'hxx', 'proto',
+                                          'l', 'y'])
 LIBRARY_FILE_EXTENSIONS_NO_DOT = ['so', 'dylib']
 LIBRARY_FILE_EXTENSIONS = make_extensions(LIBRARY_FILE_EXTENSIONS_NO_DOT)
 TEST_FILE_SUFFIXES = ['_test', '-test', '_itest', '-itest']
@@ -454,7 +452,7 @@ class CMakeDepGraph:
                         continue
                     cmake_dep_set.add(cmake_dep)
 
-        for cmake_target, cmake_target_deps in iteritems(self.cmake_deps):
+        for cmake_target, cmake_target_deps in self.cmake_deps.items():
             adding_targets = [cmake_target] + list(cmake_target_deps)
             self.cmake_targets.update(set(adding_targets))
         logging.info("Found {} CMake targets in '{}'".format(
@@ -549,6 +547,27 @@ class DependencyGraphBuilder:
                                 os.path.join(root, file_name),
                                 source_str=source_str)
 
+    def find_flex_bison_files(self):
+        """
+        CMake commands generally include the C file compilation, but misses the case where flex
+        or bison generates those files, somewhat similiar to .proto files.
+        Only examining src/yb tree.
+        """
+        src_yb_root = os.path.join(self.conf.src_dir_path, 'yb')
+        logging.info("Finding .y and .l files in the source tree at '%s'", src_yb_root)
+        source_str = 'flex and bison files in {}'.format(src_yb_root)
+        for root, dirs, files in os.walk(src_yb_root):
+            for file_name in files:
+                if file_name.endswith('.y') or file_name.endswith('.l'):
+                    rel_path = os.path.relpath(root, self.conf.yb_src_root)
+                    assert not rel_path.startswith('../')
+                    dependent_file = os.path.join(self.conf.build_root,
+                                                  rel_path,
+                                                  file_name[:len(file_name)] + '.cc')
+                    self.register_dependency(dependent_file,
+                                             os.path.join(root, file_name),
+                                             source_str)
+
     def match_cmake_targets_with_files(self):
         logging.info("Matching CMake targets with the files found")
         self.cmake_target_to_nodes = {}
@@ -582,7 +601,7 @@ class DependencyGraphBuilder:
 
         # We're not adding nodes into our graph for CMake targets. Instead, we're finding files
         # that correspond to CMake targets, and add dependencies to those files.
-        for cmake_target, cmake_target_deps in iteritems(cmake_dep_graph.cmake_deps):
+        for cmake_target, cmake_target_deps in cmake_dep_graph.cmake_deps.items():
             if cmake_target in unmatched_cmake_targets:
                 continue
             node = self.cmake_target_to_node[cmake_target]
@@ -692,7 +711,7 @@ class DependencyGraphBuilder:
         if is_abs_path(rel_path):
             return self.find_node(rel_path, must_exist=True)
         candidates = []
-        for path, node in iteritems(self.node_by_path):
+        for path, node in self.node_by_path.items():
             if path.endswith('/' + rel_path):
                 candidates.append(node)
         if not candidates:
@@ -794,6 +813,7 @@ class DependencyGraphBuilder:
         else:
             self.parse_link_and_depend_files_for_make()
         self.find_proto_files()
+        self.find_flex_bison_files()
         self.dep_graph.validate_node_existence()
 
         self.load_cmake_deps()
@@ -825,7 +845,7 @@ class DependencyGraph:
         cmake_dep_graph = CMakeDepGraph(self.conf.build_root)
         for node in self.get_nodes():
             proto_lib = node.get_containing_proto_lib()
-            if proto_lib:
+            if proto_lib and self.conf.verbose:
                 logging.info("node: %s, proto lib: %s", node, proto_lib)
 
         self.cmake_dep_graph = cmake_dep_graph
@@ -868,7 +888,7 @@ class DependencyGraph:
             node_id = node_json['id']
             id_to_node[node_id] = self.find_or_create_node(node_json['path'])
             id_to_dep_ids[node_id] = node_json['deps']
-        for node_id, dep_ids in iteritems(id_to_dep_ids):
+        for node_id, dep_ids in id_to_dep_ids.items():
             node = id_to_node[node_id]
             for dep_id in dep_ids:
                 node.add_dependency(id_to_node[dep_id])
@@ -940,7 +960,7 @@ class DependencyGraph:
                 return node_id
 
             is_first = True
-            for node_path, node in iteritems(self.node_by_path):
+            for node_path, node in self.node_by_path.items():
                 node_json = dict(
                     id=get_node_id(node),
                     path=node_path,
@@ -1206,6 +1226,14 @@ class DependencyGraphTest(unittest.TestCase):
                 'yb-bulk_load.cc.o'
             ], 'yb-bulk_load.cc')
 
+    def test_flex_bison(self):
+        self.assert_affected_by([
+                'scanner_lex.l.cc'
+            ], 'scanner_lex.l')
+        self.assert_affected_by([
+                'parser_gram.y.cc'
+            ], 'parser_gram.y')
+
     def test_proto_deps_validity(self):
         self.dep_graph.validate_proto_deps()
 
@@ -1363,13 +1391,13 @@ def main():
     # Figure out the initial set of targets based on a git commit, a regex, etc.
     # ---------------------------------------------------------------------------------------------
 
-    updated_categories = None
+    updated_categories = set()
     file_changes = []
     if args.git_diff:
         old_working_dir = os.getcwd()
         with WorkDirContext(conf.yb_src_root):
             git_diff_output = subprocess.check_output(
-                    ['git', 'diff', args.git_diff, '--name-only'])
+                    ['git', 'diff', args.git_diff, '--name-only']).decode('utf-8')
 
             initial_nodes = set()
             file_paths = set()
@@ -1387,24 +1415,27 @@ def main():
                     initial_nodes.add(node)
 
         if not initial_nodes:
-            logging.warning("Did not find any graph nodes for this set of files: {}".format(
-                file_paths))
+            logging.warning("Did not find any graph nodes for this set of files: %s", file_paths)
             for basename in set([os.path.basename(file_path) for file_path in file_paths]):
                 logging.warning("Nodes for basename '{}': {}".format(
                     basename, dep_graph.find_nodes_by_basename(basename)))
 
-        file_changes_by_category = group_by(file_changes, get_file_category)
-        for category, changes in file_changes_by_category.items():
-            logging.info("File changes in category '{}':".format(category))
-            for change in sorted(changes):
-                logging.info("    {}".format(change))
-        updated_categories = set(file_changes_by_category.keys())
-
     elif conf.file_regex:
         logging.info("Using file name regex: {}".format(conf.file_regex))
         initial_nodes = dep_graph.find_nodes_by_regex(conf.file_regex)
+        if not initial_nodes:
+            logging.warning("Did not find any graph nodes for this pattern: %s", conf.file_regex)
+        for node in initial_nodes:
+            file_changes.append(node.path)
     else:
         raise RuntimeError("Could not figure out how to generate the initial set of files")
+
+    file_changes_by_category = group_by(file_changes, get_file_category)
+    for category, changes in file_changes_by_category.items():
+        logging.info("File changes in category '%s':", category)
+        for change in sorted(changes):
+            logging.info("    %s", change)
+    updated_categories = set(file_changes_by_category.keys())
 
     results = set()
     if cmd == LIST_AFFECTED_CMD:

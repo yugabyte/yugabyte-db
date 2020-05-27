@@ -1,4 +1,5 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
+
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -214,7 +215,7 @@ def print_failure_summary(tests, errors_by_test, is_xml):
         </testsuites>
         """
         cur_test_suite = None
-        print '<testsuites>'
+        print('<testsuites>')
 
         found_test_suites = False
         for test_name in tests:
@@ -223,26 +224,26 @@ def print_failure_summary(tests, errors_by_test, is_xml):
             # Test suite initialization or name change.
             if test_suite and test_suite != cur_test_suite:
                 if cur_test_suite:
-                    print '  </testsuite>'
+                    print('  </testsuite>')
                 cur_test_suite = test_suite
-                print '  <testsuite name="%s">' % cur_test_suite
+                print('  <testsuite name="%s">' % cur_test_suite)
                 found_test_suites = True
 
             # Print each test case.
-            print '    <testcase name="%s" classname="%s">' % (test_case, cur_test_suite)
+            print('    <testcase name="%s" classname="%s">' % (test_case, cur_test_suite))
             if errors_by_test.get(test_name):
                 errors = "\n\n".join(errors_by_test[test_name])
                 first_line = re.sub("\n.*", '', errors)
-                print '      <error message=%s>' % quoteattr(first_line)
-                print '<![CDATA['
-                print errors
-                print ']]>'
-                print '      </error>'
-            print '    </testcase>'
+                print('      <error message=%s>' % quoteattr(first_line))
+                print('<![CDATA[')
+                print(errors)
+                print(']]>')
+                print('      </error>')
+            print('    </testcase>')
 
         if found_test_suites:
-            print '  </testsuite>'
-        print '</testsuites>'
+            print('  </testsuite>')
+        print('</testsuites>')
 
 
 def main():
@@ -265,7 +266,7 @@ def main():
     test_case_id = args.junit_test_case_id
 
     if args.path:
-        in_file = file(args.path) if os.path.isfile(args.path) else None
+        in_file = open(args.path) if os.path.isfile(args.path) else None
     else:
         in_file = sys.stdin
 

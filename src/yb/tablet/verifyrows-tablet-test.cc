@@ -79,7 +79,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
     // Warm up code cache with all the projections we'll be using.
     ASSERT_OK(tablet()->NewRowIterator(client_schema_, boost::none));
-    const Schema* schema = tablet()->schema();
+    const SchemaPtr schema = tablet()->schema();
     ColumnSchema valcol = schema->column(schema->find_column("val"));
     valcol_projection_ = Schema({ valcol }, 0);
     ASSERT_OK(tablet()->NewRowIterator(valcol_projection_, boost::none));

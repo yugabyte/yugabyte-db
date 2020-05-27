@@ -35,9 +35,9 @@ showAsideToc: true
 
 ## Prerequisites
 
-1. Download and install [terraform](https://www.terraform.io/downloads.html).
+1. Download and install [Terraform](https://www.terraform.io/downloads.html).
 
-2. Verify using the `terraform` command. You should see a help message that looks similar to t.
+2. Verify using the `terraform` command. You should see a help message that looks similar to this.
 
     ```sh
     $ terraform
@@ -54,30 +54,41 @@ showAsideToc: true
         fmt                Rewrites config files to canonical format
     ```
 
-## 1. Create a terraform configuration file
+## 1. Set the Azure credentials
 
-Create a terraform configuration file named `yugabyte-db-config.tf` and add the following details to it. The terraform module can be found in the [terraform-azure-yugabyte](https://github.com/yugabyte/terraform-azure-yugabyte) GitHub repository.
+Export the required credentials in current shell with following commands.
 
 ```sh
-provider "azurerm" {
-  # Provide your Azure Creadentilals 
-    subscription_id = "AZURE_SUBSCRIPTION_ID"
-    client_id       = "AZURE_CLIENT_ID"
-    client_secret   = "AZURE_CLIENT_SECRET"
-    tenant_id       = "AZURE_TENANT_ID"
-}
+echo "Setting environment variables for Terraform"
+export ARM_SUBSCRIPTION_ID="your_subscription_id"
+export ARM_CLIENT_ID="your_appId"
+export ARM_CLIENT_SECRET="your_password"
+export ARM_TENANT_ID="your_tenant_id"
+```
+<!-- The above code snippet is from
+https://github.com/MicrosoftDocs/azure-docs/blob/eb381218252a33fb8b63e1163b6a39cd4b1835ef/articles/terraform/terraform-install-configure.md#configure-terraform-environment-variables
+which is licensed under the MIT
+license. https://github.com/MicrosoftDocs/azure-docs/blob/master/LICENSE-CODE
+-->
 
+**NOTE:** To install Terraform and configure it for Azure, see [Quickstart: Install and configure Terraform to provision Azure resources](https://docs.microsoft.com/en-gb/azure/virtual-machines/linux/terraform-install-configure)
+
+## 2. Create a Terraform configuration file
+
+Create a Terraform configuration file named `yugabyte-db-config.tf` and add the following details to it. The Terraform module can be found in the [terraform-azure-yugabyte](https://github.com/yugabyte/terraform-azure-yugabyte) GitHub repository.
+
+```sh
 module "yugabyte-db-cluster" {
-  # The source module used for creating AWS clusters.
+  # The source module used for creating clusters on Azure.
   source = "github.com/Yugabyte/terraform-azure-yugabyte"
 
   # The name of the cluster to be created, change as per need.
   cluster_name = "test-cluster"
 
   # key pair.
-  ssh_private_key = "SSH_PRIVATE_KEY_HERE"
-  ssh_public_key = "SSH_PUBLIC_KEY_HERE"
-  ssh_user = "SSH_USER_NAME_HERE"
+  ssh_private_key = "PATH_TO_SSH_PRIVATE_KEY_FILE"
+  ssh_public_key  = "PATH_TO_SSH_PUBLIC_KEY_FILE"
+  ssh_user        = "SSH_USER_NAME"
 
   # The region name where the nodes should be spawned.
   region_name = "YOUR VPC REGION"
@@ -91,13 +102,15 @@ module "yugabyte-db-cluster" {
   # The number of nodes in the cluster, this cannot be lower than the replication factor.
   node_count = "3"
 }
+
+output "outputs" {
+  value = module.yugabyte-db-cluster
+}
 ```
 
-**NOTE:** To install terraform and configure it for Azure, see [Quickstart: Install and configure Terraform to provision Azure resources](https://docs.microsoft.com/en-gb/azure/virtual-machines/linux/terraform-install-configure)
+## 3. Create a cluster
 
-## 2. Create a cluster
-
-Init terraform first if you have not already done so.
+Initialize terraform first, if you have not already done so.
 
 ```sh
 $ terraform init
@@ -109,13 +122,13 @@ Now, run the following to create the instances and bring up the cluster.
 $ terraform apply
 ```
 
-Once the cluster is created, you can go to the URL `http://<node ip or dns name>:7000` to view the UI. You can find the node's IP or DNS address by running the following:
+Once the cluster is created, you can go to the URL `http://<node ip or dns name>:7000` to view the UI. You can find the node's public IP address by running the following:
 
 ```sh
-$ terraform state show azurerm_virtual_machine.Yugabyte-Node[0]
+$ terraform state show module.yugabyte-db-cluster.azurerm_public_ip.YugaByte_Public_IP[0]
 ```
 
-You can access the cluster UI by going to any of the following URLs.
+You can access the cluster UI by going to public IP address of any of the instances at port `7000`. The IP address can be viewed by replacing `0` from above command with desired index.
 
 You can check the state of the nodes at any point by running the following command.
 
@@ -123,7 +136,7 @@ You can check the state of the nodes at any point by running the following comma
 $ terraform show
 ```
 
-## 3. Verify resources created
+## 4. Verify resources created
 
 The following resources are created by this module:
 
@@ -140,7 +153,7 @@ For a cluster named `test-cluster`, this security group will be named `yugabyte-
   
 For cluster named `test-cluster`, the network interface will be named `yugabyte-test-cluster-NIC-1`, `yugabyte-test-cluster-NIC-2`, `yugabyte-test-cluster-NIC-3`.
 
-## 4. Destroy the cluster [optional]
+## 5. Destroy the cluster [optional]
 
 To destroy what you just created, you can run the following command.
 

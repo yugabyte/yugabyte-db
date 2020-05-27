@@ -301,25 +301,6 @@ public class HealthChecker {
             cluster.placementInfo, details.nodePrefix, provider);
       }
 
-      // TODO(bogdan): We do not have access to the default port constant at this level, as it is
-      // baked in devops...hardcode it for now.
-      // Default to 54422.
-      int sshPort = 54422;
-      if (providerCode.equals(Common.CloudType.onprem.toString())) {
-        // For onprem, technically, each node could have a different port, but let's pick one of
-        // the nodes for now and go from there.
-        // TODO(bogdan): Improve the onprem support in devops to have port per node.
-        for (NodeDetails nd : details.nodeDetailsSet) {
-          NodeInstance onpremNode = NodeInstance.getByName(nd.nodeName);
-          if (onpremNode != null) {
-            NodeInstanceFormData.NodeInstanceData onpremDetails = onpremNode.getDetails();
-            if (onpremDetails != null) {
-              sshPort = onpremDetails.sshPort;
-              break;
-            }
-          }
-        }
-      }
       AccessKey accessKey = AccessKey.get(provider.uuid, cluster.userIntent.accessKeyCode);
       if (accessKey == null || accessKey.getKeyInfo() == null) {
         if (!providerCode.equals(CloudType.kubernetes.toString())) {
@@ -329,7 +310,7 @@ public class HealthChecker {
         }
       } else {
         info.identityFile = accessKey.getKeyInfo().privateKey;
-        info.sshPort = sshPort;
+        info.sshPort = accessKey.getKeyInfo().sshPort;
       }
       if (info.enableYSQL) {
         for (NodeDetails nd : details.nodeDetailsSet) {

@@ -76,6 +76,14 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
                      << tablet_->ToString() << " no further retry: " << status;
         TransitionToCompleteState();
         break;
+      case TabletServerErrorPB::INVALID_SNAPSHOT:
+        LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
+                     << tablet_->ToString() << ": " << status;
+        if (operation_ == tserver::TabletSnapshotOpRequestPB::RESTORE) {
+          LOG(WARNING) << "No further retry for RESTORE snapshot operation: " << status;
+          TransitionToCompleteState();
+        }
+        break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
                      << tablet_->ToString() << ": " << status;

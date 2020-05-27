@@ -185,6 +185,7 @@ public class NodeInstanceController extends AuthenticatedController {
 
       if (nodeAction == NodeActionType.ADD) {
         taskParams.clusters = universe.getUniverseDetails().clusters;
+        taskParams.rootCA = universe.getUniverseDetails().rootCA;
       }
       LOG.info("{} Node {} in universe={}: name={} at version={}.",
                nodeAction.toString(false), nodeName, universe.universeUUID,

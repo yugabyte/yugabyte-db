@@ -68,6 +68,8 @@ static constexpr const char* kDBTypeNameCql = "ycql";
 static constexpr const char* kDBTypeNamePgsql = "ysql";
 static constexpr const char* kDBTypeNameRedis = "yedis";
 
+const int64_t kCurlTimeoutSec = 180;
+
 const char* DatabaseTypeName(YQLDatabase db) {
   switch (db) {
     case YQL_DATABASE_UNKNOWN: break;
@@ -128,6 +130,56 @@ void MasterPathHandlers::ZoneTabletCounts::operator+=(const ZoneTabletCounts& ot
   active_tablets_count += other.active_tablets_count;
 }
 
+// Retrieve the specified URL response from the leader master
+void MasterPathHandlers::RedirectToLeader(const Webserver::WebRequest& req, stringstream* output) {
+  vector<ServerEntryPB> masters;
+  Status s = master_->ListMasters(&masters);
+  if (!s.ok()) {
+    s = s.CloneAndPrepend("Unable to list masters during web request handling");
+    LOG(WARNING) << s.ToString();
+    *output << "<h2>" << s.ToString() << "</h2>\n";
+    return;
+  }
+
+  string redirect;
+  for (const ServerEntryPB& master : masters) {
+    if (master.has_error()) {
+      continue;
+    }
+
+    if (master.role() == consensus::RaftPeerPB::LEADER) {
+      // URI already starts with a /, so none is needed between $1 and $2.
+      redirect = Substitute(
+          "http://$0:$1$2$3",
+          master.registration().http_addresses(0).host(),
+          master.registration().http_addresses(0).port(),
+          req.redirect_uri,
+          req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
+      break;
+    }
+  }
+
+  if (redirect.empty()) {
+    string error = "Unable to locate leader master to redirect this request: " + redirect;
+    LOG(WARNING) << error;
+    *output << error << "<br>";
+    return;
+  }
+
+  EasyCurl curl;
+  faststring buf;
+  s = curl.FetchURL(redirect, &buf, kCurlTimeoutSec);
+  if (!s.ok()) {
+    LOG(WARNING) << "Error retrieving leader master URL: " << redirect
+                 << ", error :" << s.ToString();
+    *output << "Error retrieving leader master URL: <a href=\"" << redirect
+            << "\">" + redirect + "</a><br> Error: " << s.ToString() << ".<br>";
+    return;
+  }
+
+  *output << buf.ToString();
+}
+
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
     const Webserver::WebRequest& req, stringstream* output,
     const Webserver::PathHandlerCallback& callback) {
@@ -136,58 +188,16 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
   {
     CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
 
-    // If we are the master leader, handle the request.
-    if (l.first_failed_status().ok()) {
-      callback(req, output);
+    // If we are not the master leader, redirect the URL.
+    if (!l.first_failed_status().ok()) {
+      RedirectToLeader(req, output);
       return;
     }
 
-    // List all the masters.
-    vector<ServerEntryPB> masters;
-    Status s = master_->ListMasters(&masters);
-    if (!s.ok()) {
-      s = s.CloneAndPrepend("Unable to list Masters");
-      LOG(WARNING) << s.ToString();
-      *output << "<h2>" << s.ToString() << "</h2>\n";
-      return;
-    }
-
-    // Prepare the query for the master leader.
-
-    for (const ServerEntryPB &master : masters) {
-      if (master.has_error()) {
-        *output << "<h2>" << "Error listing all masters." << "</h2>\n";
-        return;
-      }
-
-      if (master.role() == consensus::RaftPeerPB::LEADER) {
-        // URI already starts with a /, so none is needed between $1 and $2.
-        redirect = Substitute("http://$0:$1$2$3",
-                              master.registration().http_addresses(0).host(),
-                              master.registration().http_addresses(0).port(),
-                              req.redirect_uri,
-                              req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
-        break;
-      }
-    }
-  }
-
-  // Error out if we do not have a redirect URL to the current master leader.
-  if (redirect.empty()) {
-    *output << "<h2>" << "Error querying master leader." << "</h2>\n";
+    // Handle the request as a leader master.
+    callback(req, output);
     return;
   }
-
-  // Make a curl call to the current master leader and return that payload as the result of the
-  // web request.
-  EasyCurl curl;
-  faststring buf;
-  Status s = curl.FetchURL(redirect, &buf);
-  if (!s.ok()) {
-    *output << "<h2>" << "Error querying url " << redirect << "</h2>\n";
-    return;
-  }
-  *output << buf.ToString();
 }
 
 inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
@@ -991,53 +1001,10 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
 
   // First check if we are the master leader. If not, make a curl call to the master leader and
   // return that as the UI payload.
-  vector<ServerEntryPB> masters;
   CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
   if (!l.first_failed_status().ok()) {
-    do {
-      // List all the masters.
-      Status s = master_->ListMasters(&masters);
-      if (!s.ok()) {
-        s = s.CloneAndPrepend("Unable to list Masters");
-        LOG(WARNING) << s.ToString();
-        *output << "<h2>" << s.ToString() << "</h2>\n";
-        return;
-      }
-
-      // Find the URL of the current master leader.
-      string redirect;
-      for (const ServerEntryPB& master : masters) {
-        if (master.has_error()) {
-          // This will leave redirect empty and thus fail accordingly.
-          break;
-        }
-
-        if (master.role() == consensus::RaftPeerPB::LEADER) {
-          // URI already starts with a /, so none is needed between $1 and $2.
-          redirect = Substitute("http://$0:$1$2$3",
-                                master.registration().http_addresses(0).host(),
-                                master.registration().http_addresses(0).port(),
-                                req.redirect_uri,
-                                req.query_string.empty() ? "?raw" :
-                                                           "?" + req.query_string + "&raw");
-        }
-      }
-      // Fail if we were not able to find the current master leader.
-      if (redirect.empty()) {
-        break;
-      }
-      // Make a curl call to the current master leader and return that payload as the result of the
-      // web request.
-      EasyCurl curl;
-      faststring buf;
-      s = curl.FetchURL(redirect, &buf);
-      if (s.ok()) {
-        *output << buf.ToString();
-        return;
-      }
-    } while (0);
-
-    *output << "Cannot get Leader information to help you redirect...\n";
+    // We are not the leader master, retrieve the response from the leader master.
+    RedirectToLeader(req, output);
     return;
   }
 

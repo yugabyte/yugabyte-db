@@ -39,7 +39,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include <assert.h>
 
 #include <map>
 #include <string>
@@ -118,10 +117,20 @@ class Slice {
   // Return true iff the length of the referenced data is zero
   bool empty() const { return begin_ == end_; }
 
+  template <class... Args>
+  bool GreaterOrEqual(const Slice& arg0, Args&&... args) const {
+    return !Less(arg0, std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  bool Less(const Slice& arg0, Args&&... args) const {
+    return DoLess(arg0, std::forward<Args>(args)...);
+  }
+
   // Return the ith byte in the referenced data.
   // REQUIRES: n < size()
   uint8_t operator[](size_t n) const {
-    assert(n < size());
+    DCHECK_LT(n, size());
     return begin_[n];
   }
 
@@ -133,25 +142,51 @@ class Slice {
 
   // Drop the first "n" bytes from this slice.
   void remove_prefix(size_t n) {
-    assert(n <= size());
+    DCHECK_LE(n, size());
     begin_ += n;
+  }
+
+  Slice Prefix(size_t n) const {
+    DCHECK_LE(n, size());
+    return Slice(begin_, n);
   }
 
   // Drop the last "n" bytes from this slice.
   void remove_suffix(size_t n) {
-    assert(n <= size());
+    DCHECK_LE(n, size());
     end_ -= n;
+  }
+
+  Slice Suffix(size_t n) const {
+    DCHECK_LE(n, size());
+    return Slice(end_ - n, end_);
+  }
+
+  void CopyTo(void* buffer) const {
+    memcpy(buffer, begin_, size());
   }
 
   // Truncate the slice to "n" bytes
   void truncate(size_t n) {
-    assert(n <= size());
+    DCHECK_LE(n, size());
     end_ = begin_ + n;
   }
 
   char consume_byte() {
-    assert(end_ > begin_);
+    DCHECK_GT(end_, begin_);
     return *begin_++;
+  }
+
+  bool TryConsumeByte(char c) {
+    if (empty() || *begin_ != c) {
+      return false;
+    }
+    ++begin_;
+    return true;
+  }
+
+  char FirstByteOr(char def) {
+    return !empty() ? *begin_ : def;
   }
 
   MUST_USE_RESULT Status consume_byte(char c);
@@ -237,6 +272,25 @@ class Slice {
 
  private:
   friend bool operator==(const Slice& x, const Slice& y);
+
+  bool DoLess() const {
+    return !empty();
+  }
+
+  template <class... Args>
+  bool DoLess(const Slice& arg0, Args&&... args) const {
+    auto arg0_size = arg0.size();
+    if (size() < arg0_size) {
+      return compare(arg0) < 0;
+    }
+
+    int cmp = Slice(begin_, arg0_size).compare(arg0);
+    if (cmp != 0) {
+      return cmp < 0;
+    }
+
+    return Slice(begin_ + arg0_size, end_).DoLess(std::forward<Args>(args)...);
+  }
 
   static bool MemEqual(const void* a, const void* b, size_t n) {
     return strings::memeq(a, b, n);

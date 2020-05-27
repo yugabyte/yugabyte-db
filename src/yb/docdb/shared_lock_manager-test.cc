@@ -36,8 +36,8 @@ using std::thread;
 namespace yb {
 namespace docdb {
 
-const RefCntPrefix kKey1("foo");
-const RefCntPrefix kKey2("bar");
+const RefCntPrefix kKey1("foo"s);
+const RefCntPrefix kKey2("bar"s);
 
 class SharedLockManagerTest : public YBTest {
  protected:

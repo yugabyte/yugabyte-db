@@ -65,7 +65,7 @@ std::mutex& TabletComponent::create_checkpoint_lock() const {
 }
 
 rocksdb::Env& TabletComponent::rocksdb_env() const {
-  return *tablet_.tablet_options_.rocksdb_env;
+  return tablet_.rocksdb_env();
 }
 
 } // namespace tablet

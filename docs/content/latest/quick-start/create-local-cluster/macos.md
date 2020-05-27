@@ -54,7 +54,9 @@ showAsideToc: true
 
 You can use the [`yb-ctl`](../../../admin/yb-ctl/) utility, located in the `bin` directory of the YugabyteDB package, to create and administer a local cluster. The default data directory is `$HOME/yugabyte-data`. You can change the location of the data directory by using the [`--data_dir`](../../../admin/yb-ctl/#data-dir) flag.
 
-To quickly create a 1-node or 3-node local cluster, follow the steps below. For details on using the `yb-ctl create` command and the cluster configuration, see [Create a local cluster](../../../admin/yb-ctl/#create-cluster) in the CLI reference.
+To create a 1-node or 3-node local cluster, follow the steps below. For details on using the `yb-ctl create` command and the cluster configuration, see [Create a local cluster](../../../admin/yb-ctl/#create-cluster) in the CLI reference.
+
+After the cluster is created, clients can connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
 
 ### Create a 1-node cluster with RF of 1
 
@@ -64,19 +66,23 @@ To create a 1-node cluster with a replication factor (RF) of 1, run the followin
 $ ./bin/yb-ctl create
 ```
 
-The initial cluster creation may take a minute or so **without any output** on the prompt.
+Note that in this 1-node mode, you can bind IP address for all ports to `0.0.0.0`. This will allow you to have **external access** of the database APIs and admin UIs.
+
+```sh
+$ ./bin/yb-ctl create --listen_ip=0.0.0.0
+```
 
 ### Create a 3-node cluster with RF of 3
 
-To run a distributed SQL cluster locally for testing and development, you can quickly create a 3-node cluster with RF of 3 by running the following command.
+To run a distributed SQL cluster locally for development and testing, you can create a 3-node cluster with RF of 3 by executing the following command.
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
 ```
 
-You can now check `$HOME/yugabyte-data` to see `node-i` directories created where `i` represents the `node_id` of the node. Inside each such directory, there will be two disks, `disk1` and `disk2`, to highlight the fact that YugabyteDB can work with multiple disks at the same time. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
+Note that in this 3-node mode, the bind IP address by default for all ports is the individual loopback address (that you setup in the previous step). In this mode you will not be able to externally access the database APIs and admin UIs because `0.0.0.0` remains unbound.
 
-Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
+You can now check `$HOME/yugabyte-data` to see `node-i` directories created where `i` represents the `node_id` of the node. Inside each such directory, there will be two disks, `disk1` and `disk2`, to highlight the fact that YugabyteDB can work with multiple disks at the same time. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
 
 ## 2. Check cluster status with yb-ctl
 
@@ -99,7 +105,7 @@ $ ./bin/yb-ctl status
 | YCQL Shell          : bin/cqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | Web UI              : http://127.0.0.1:7000/                                                     |
-| Cluster Data        : /Users/yugabyte/yugabyte-data                                             |
+| Cluster Data        : /Users/yugabyte/yugabyte-data                                              |
 ----------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
 | Node 1: yb-tserver (pid 20696), yb-master (pid 20693)                                            |
@@ -108,9 +114,9 @@ $ ./bin/yb-ctl status
 | YSQL Shell          : bin/ysqlsh                                                                 |
 | YCQL Shell          : bin/cqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
-| data-dir[0]         : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data                       |
-| yb-tserver Logs     : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/tserver/logs          |
-| yb-master Logs      : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/master/logs           |
+| data-dir[0]         : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data                        |
+| yb-tserver Logs     : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/tserver/logs           |
+| yb-master Logs      : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/master/logs            |
 ----------------------------------------------------------------------------------------------------
 ```
 

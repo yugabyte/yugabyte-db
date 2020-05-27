@@ -276,9 +276,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
 
     url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
     result = doRequestWithAuthToken("GET", url, authToken);
-    String expectedResult = String.format("Universe UUID: %s doesn't belong " +
-                                          "to Customer UUID: %s", univUUID,
-                                          customer.uuid);
+    String expectedResult = String.format("No universe found with UUID: %s", univUUID);
     assertBadRequest(result, expectedResult);
 
     try {

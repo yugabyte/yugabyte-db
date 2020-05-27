@@ -43,7 +43,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -736,40 +735,5 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       PlacementInfoUtil.verifyNodesAndRF(cluster.clusterType, cluster.userIntent.numNodes,
                                          cluster.userIntent.replicationFactor);
     }
-  }
-
-  // Subtask to update gflags in memory.
-  public void createSetFlagInMemoryTasks(Collection<NodeDetails> nodes,
-                                         ServerType serverType,
-                                         boolean force,
-                                         Map<String, String> gflags,
-                                         boolean updateMasterAddrs) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("InMemoryGFlagUpdate", executor);
-    for (NodeDetails node : nodes) {
-      // Create the task params.
-      SetFlagInMemory.Params params = new SetFlagInMemory.Params();
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // The server type for the flag.
-      params.serverType = serverType;
-      // If the flags need to be force updated.
-      params.force = force;
-      // The flags to update.
-      params.gflags = gflags;
-      // If only master addresses need to be updated.
-      params.updateMasterAddrs = updateMasterAddrs;
-
-      // Create the task.
-      SetFlagInMemory setFlag = new SetFlagInMemory();
-      setFlag.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addTask(setFlag);
-    }
-    // Add the task list to the task queue.
-    subTaskGroupQueue.add(subTaskGroup);
-    // Configure the user facing subtask for this task list.
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
 }

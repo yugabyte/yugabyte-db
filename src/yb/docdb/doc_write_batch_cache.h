@@ -74,7 +74,7 @@ class DocWriteBatchCache {
   void Clear();
 
  private:
-  std::unordered_map<std::string, Entry> prefix_to_gen_ht_;
+  std::unordered_map<KeyBuffer, Entry, ByteBufferHash> prefix_to_gen_ht_;
 };
 
 

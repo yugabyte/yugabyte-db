@@ -73,6 +73,7 @@ set(ROCKSDB_SRCS
     db/write_controller.cc
     db/write_thread.cc
     db/xfunc_test_points.cc
+    db/db_iterator_wrapper.cc
     memtable/hash_cuckoo_rep.cc
     memtable/hash_linklist_rep.cc
     memtable/hash_skiplist_rep.cc

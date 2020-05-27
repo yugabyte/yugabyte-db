@@ -186,7 +186,6 @@ public class CloudProviderController extends AuthenticatedController {
             } catch (javax.persistence.PersistenceException ex) {
               // TODO: make instance types more multi-tenant friendly...
             }
-            kubernetesProvision(provider, provider.getConfig(), customerUUID);
             break;
         }
       }
@@ -252,7 +251,6 @@ public class CloudProviderController extends AuthenticatedController {
       provider = Provider.create(customerUUID, providerCode, formData.name);
       boolean isConfigInProvider = updateKubeConfig(provider, config, false);
       if (isConfigInProvider) {
-        kubernetesProvision(provider, config, customerUUID);
       }
       List<RegionData> regionList = formData.regionList;
       for (RegionData rd : regionList) {
@@ -260,14 +258,12 @@ public class CloudProviderController extends AuthenticatedController {
         Region region = Region.create(provider, rd.code, rd.name, null, rd.latitude, rd.longitude);
         boolean isConfigInRegion = updateKubeConfig(provider, region, regionConfig, false);
         if (isConfigInRegion) {
-          kubernetesProvision(provider, regionConfig, customerUUID);
         }
         for (ZoneData zd : rd.zoneList) {
           Map<String, String> zoneConfig = zd.config;
           AvailabilityZone az = AvailabilityZone.create(region, zd.code, zd.name, null);
           boolean isConfigInZone = updateKubeConfig(provider, region, az, zoneConfig, false);
           if (isConfigInZone) {
-            kubernetesProvision(provider, zoneConfig, customerUUID);
           }
         }
       }
@@ -363,10 +359,13 @@ public class CloudProviderController extends AuthenticatedController {
   }
 
   private void updateGCPConfig(Provider provider, Map<String, String> config) {
+    // Remove the key to avoid generating a credentials file unnecessarily.
+    config.remove("GCE_HOST_PROJECT");
     // If we were not given a config file, then no need to do anything here.
     if (config.isEmpty()) {
       return;
     }
+
     String gcpCredentialsFile = null;
     try {
       gcpCredentialsFile = accessManager.createCredentialsFile(
@@ -422,24 +421,6 @@ public class CloudProviderController extends AuthenticatedController {
           idt
       );
     }
-  }
-
-  /* Function to create Commissioner task for provisioning K8s providers
-  // Will also be helpful to provision regions/AZs in the future
-  */
-  private void kubernetesProvision(Provider provider, Map<String, String> config, UUID customerUUID) {
-    KubernetesClusterInitParams taskParams = new KubernetesClusterInitParams();
-    taskParams.config = config;
-    taskParams.providerUUID = provider.uuid;
-    Customer customer = Customer.get(customerUUID);
-    UUID taskUUID = commissioner.submit(TaskType.KubernetesProvision, taskParams);
-    CustomerTask.create(customer,
-      provider.uuid,
-      taskUUID,
-      CustomerTask.TargetType.Provider,
-      CustomerTask.TaskType.Create,
-      provider.name);
-
   }
 
   // TODO: This is temporary endpoint, so we can setup docker, will move this
@@ -645,13 +626,9 @@ public class CloudProviderController extends AuthenticatedController {
           config = Json.fromJson(contents, Map.class);
         }
 
-        // Default to not using host VPC.
-        boolean shouldUseHostVpc = configNode.has("use_host_vpc")
-                                     && configNode.get("use_host_vpc").asBoolean();
-        contents = configNode.get("project_id");
-        if (!config.isEmpty() && !shouldUseHostVpc && contents != null
-            && !contents.textValue().isEmpty()) {
-          config.put("project_id", contents.textValue());
+        contents = configNode.get("host_project_id");
+        if (contents != null && !contents.textValue().isEmpty()) {
+          config.put("GCE_HOST_PROJECT", contents.textValue());
         }
 
         contents = configNode.get("YB_FIREWALL_TAGS");

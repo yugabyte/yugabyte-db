@@ -19,6 +19,7 @@
 #include "yb/client/transaction.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/transaction_priority.h"
 
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -28,18 +29,12 @@
 
 namespace {
 
-/*
- * Bounds for transaction priority. We distinguish two classes of transactions:
- *  1. high-pri, currently used for transactions/statements with explicit locking clauses
- *    (e.g. SELECT .. FOR UPDATE).
- *  2. regular used for all other transactions.
- * We reserve the top uint32 range of txn priorities (uint64) for high priority transactions.
- */
-uint64_t txn_priority_regular_lower_bound = 0;
-uint64_t txn_priority_highpri_upper_bound = std::numeric_limits<uint64_t>::max();
-uint64_t txn_priority_highpri_lower_bound = txn_priority_highpri_upper_bound -
-                                            std::numeric_limits<uint32_t>::max();
-uint64_t txn_priority_regular_upper_bound = txn_priority_highpri_lower_bound - 1;
+constexpr uint64_t txn_priority_highpri_upper_bound = yb::kHighPriTxnUpperBound;
+constexpr uint64_t txn_priority_highpri_lower_bound = yb::kHighPriTxnLowerBound;
+
+// Local copies that can be modified.
+uint64_t txn_priority_regular_upper_bound = yb::kRegularTxnUpperBound;
+uint64_t txn_priority_regular_lower_bound = yb::kRegularTxnLowerBound;
 
 // Converts double value in range 0..1 to uint64_t value in range
 // 0..(txn_priority_highpri_lower_bound - 1)

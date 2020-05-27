@@ -2748,13 +2748,12 @@ BuildYBTupleId(Relation pk_rel, Relation fk_rel, Relation idx_rel,
 		next_attr->is_null = true;
 	}
 
-	HandleYBStmtStatus(YBCPgDmlBuildYBTupleId(ybc_stmt, attrs, nattrs, &tuple_id), ybc_stmt);
+	HandleYBStatus(YBCPgDmlBuildYBTupleId(ybc_stmt, attrs, nattrs, &tuple_id));
 
 	const YBCPgTypeEntity *type_entity = YBCDataTypeFromOidMod(YBTupleIdAttributeNumber, BYTEAOID);
 	type_entity->datum_to_yb(tuple_id, value, bytes);
 
 	pfree(attrs);
-	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
 }
 
 /*

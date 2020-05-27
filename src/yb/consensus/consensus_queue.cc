@@ -104,11 +104,17 @@ DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
              "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
              "consumer while determining which op IDs to evict.");
 
-DEFINE_bool(enable_consensus_exponential_backoff, false,
+DEFINE_bool(enable_consensus_exponential_backoff, true,
             "Whether exponential backoff based on number of retransmissions at tablet leader "
             "for number of entries to replicate to lagging follower is enabled.");
 TAG_FLAG(enable_consensus_exponential_backoff, advanced);
 TAG_FLAG(enable_consensus_exponential_backoff, runtime);
+
+DEFINE_int32(consensus_lagging_follower_threshold, 10,
+             "Number of retransmissions at tablet leader to mark a follower as lagging. "
+             "-1 disables the feature.");
+TAG_FLAG(consensus_lagging_follower_threshold, advanced);
+TAG_FLAG(consensus_lagging_follower_threshold, runtime);
 
 namespace {
 
@@ -478,7 +484,10 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     // This is initialized to the queue's last appended op but gets set to the id of the
     // log entry preceding the first one in 'messages' if messages are found for the peer.
     preceding_id = queue_state_.last_appended;
+
+    // NOTE: committed_op_id may be overwritten later.
     *request->mutable_committed_op_id() = queue_state_.committed_op_id;
+
     request->set_caller_term(queue_state_.current_term);
     unreachable_time =
         MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time);
@@ -496,6 +505,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       // Transmit as many entries as allowed.
       to_index = 0;
     }
+
+    peer->current_retransmissions++;
 
     if (peer->member_type == RaftPeerPB::VOTER) {
       is_voter = true;
@@ -538,6 +549,19 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
         NotifyObserversOfFailedFollower(uuid, queue_state_.current_term, msg);
       }
       return result.status();
+    }
+
+    if (!result->messages.empty()) {
+      // All entries committed at leader may not be available at lagging follower.
+      // `commited_op_id` in this request may make a lagging follower aware of the
+      // highest committed op index at the leader. We have a sanity check during tablet
+      // bootstrap, in TabletBootstrap::PlaySegments(), that this tablet did not lose a
+      // committed operation. Hence avoid sending a committed op id that is too large
+      // to such a lagging follower.
+      const auto& msg = result->messages.back();
+      if (msg->id().index() < request->mutable_committed_op_id()->index()) {
+        *request->mutable_committed_op_id() = msg->id();
+      }
     }
 
     result->preceding_op.ToPB(&preceding_id);
@@ -632,9 +656,13 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const yb::O
   // The batch of messages read from cache.
 
   int64_t to_index;
+  bool pending_messages = false;
   {
     LockGuard lock(queue_lock_);
-    to_index = queue_state_.majority_replicated_op_id.index();
+    // Use committed_op_id because it's already been processed by the Transaction codepath.
+    to_index = queue_state_.committed_op_id.index();
+    // Determine if there are pending operations in RAFT but not yet LogCache.
+    pending_messages = to_index != queue_state_.majority_replicated_op_id.index();
   }
   if (repl_index) {
     *repl_index = to_index;
@@ -657,7 +685,9 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const yb::O
         "The logs from index $0 have been garbage collected and cannot be read ($1)",
         after_op_index, result.status());
   }
-
+  if (result.ok()) {
+    result->have_more_messages |= pending_messages;
+  }
   return result;
 }
 
@@ -726,6 +756,29 @@ void PeerMessageQueue::UpdateAllReplicatedOpId(OpId* result) {
 
   CHECK_NE(MaximumOpId().index(), new_op_id.index());
   *result = new_op_id;
+}
+
+void PeerMessageQueue::UpdateAllNonLaggingReplicatedOpId(int32_t threshold) {
+  OpId new_op_id = MaximumOpId();
+
+  for (const auto& peer : peers_map_) {
+    // Ignore lagging follower.
+    if (peer.second->current_retransmissions >= threshold) {
+      continue;
+    }
+    if (peer.second->last_received.index() < new_op_id.index()) {
+      new_op_id = peer.second->last_received;
+    }
+  }
+
+  if (new_op_id.index() == MaximumOpId().index()) {
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Non lagging peer(s) not found.";
+    new_op_id = queue_state_.all_replicated_op_id;
+  }
+
+  if (queue_state_.all_nonlagging_replicated_op_id.index() < new_op_id.index()) {
+    queue_state_.all_nonlagging_replicated_op_id = new_op_id;
+  }
 }
 
 HAS_MEMBER_FUNCTION(InfiniteWatermarkForLocalPeer);
@@ -1005,6 +1058,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
     // Reset so that next transmission is not considered a re-transmission.
     peer->last_num_messages_sent = -1;
+    peer->current_retransmissions = -1;
 
     if (response.has_status()) {
       const auto& status = response.status();
@@ -1121,9 +1175,17 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
     UpdateAllReplicatedOpId(&queue_state_.all_replicated_op_id);
 
-    auto evict_op = std::min(
-        queue_state_.all_replicated_op_id.index(), GetCDCConsumerOpIdToEvict().index);
-    log_cache_.EvictThroughOp(evict_op);
+    auto evict_index = GetCDCConsumerOpIdToEvict().index;
+
+    int32_t lagging_follower_threshold = FLAGS_consensus_lagging_follower_threshold;
+    if (lagging_follower_threshold > 0) {
+      UpdateAllNonLaggingReplicatedOpId(lagging_follower_threshold);
+      evict_index = std::min(evict_index, queue_state_.all_nonlagging_replicated_op_id.index());
+    } else {
+      evict_index = std::min(evict_index, queue_state_.all_replicated_op_id.index());
+    }
+
+    log_cache_.EvictThroughOp(evict_index);
 
     UpdateMetrics();
   }

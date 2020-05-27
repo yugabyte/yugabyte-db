@@ -51,9 +51,8 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 link_directories(${YB_BUILD_ROOT}/postgres/lib)
 
 add_library(yb_pgbackend SHARED IMPORTED)
-set_target_properties(yb_pgbackend
-      PROPERTIES IMPORTED_LOCATION "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend${YB_SHARED_LIBRARY_SUFFIX}")
-message("Added shared library dependency yb_pgbackend: ${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend${YB_SHARED_LIBRARY_SUFFIX}")
+set_target_properties(yb_pgbackend PROPERTIES IMPORTED_LOCATION "${YB_PGBACKEND_SHARED_LIB}")
+message("Added shared library dependency yb_pgbackend: ${YB_PGBACKEND_SHARED_LIB}")
 
 set(DOCDB_SRCS
         bounded_rocksdb_iterator.cc
@@ -116,7 +115,6 @@ add_dependencies(
         gen_src_yb_tserver_tserver_proto
 )
 
-add_dependencies(yb_pgbackend postgres)
 add_dependencies(yb_docdb postgres)
 
 cotire(yb_docdb_encoding)

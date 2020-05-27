@@ -52,6 +52,9 @@ YB_DEFINE_HANDLE_TYPE(PgExpr);
 // Handle to a table description
 YB_DEFINE_HANDLE_TYPE(PgTableDesc);
 
+// Handle to a memory context.
+YB_DEFINE_HANDLE_TYPE(PgMemctx);
+
 //--------------------------------------------------------------------------------------------------
 // Other definitions are the same between C++ and C.
 //--------------------------------------------------------------------------------------------------
@@ -227,6 +230,7 @@ typedef struct PgAttrValueDescriptor {
 
 typedef struct PgCallbacks {
   void (*FetchUniqueConstraintName)(YBCPgOid, char*, size_t);
+  YBCPgMemctx (*GetCurrentYbMemctx)();
 } YBCPgCallbacks;
 
 #ifdef __cplusplus

@@ -1,8 +1,8 @@
 ---
-title: Node status and actions in YugaWare
+title: Node status and actions in Yugabyte Platform
 headerTitle: Node status and actions
 linkTitle: Node status and actions
-description: Node status and actions in YugaWare
+description: Node status and actions in Yugabyte Platform.
 aliases:
   - /manage/enterprise-edition/node-actions/
 menu:

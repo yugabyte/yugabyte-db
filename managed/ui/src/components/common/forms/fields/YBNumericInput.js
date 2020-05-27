@@ -45,9 +45,9 @@ export class YBUnControlledNumericInput extends Component {
 
 export default class YBNumericInputWithLabel extends Component {
   render() {
-    const { label, meta, ...otherProps } = this.props;
+    const { label, meta, infoContent, infoTitle, ...otherProps } = this.props;
     return (
-      <YBLabel label={label} meta={meta}>
+      <YBLabel label={label} meta={meta} infoContent={infoContent} infoTitle={infoTitle}>
         <YBUnControlledNumericInput {...otherProps} />
       </YBLabel>
     );

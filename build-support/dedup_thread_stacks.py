@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 """
 Deduplicates similar stack frames. Used for post-processing thread stacks dumped from a core file.
@@ -91,7 +91,7 @@ class Collector:
 
         line_groups = []
 
-        for key, stacks in groups.iteritems():
+        for key, stacks in groups.items():
             stacks = sorted(stacks, key=lambda stack: stack.thread_id)
             header = "Thread " + ", ".join(
                     "%d (LWP %d)" % (stack.thread_id, stack.lwp_id) for stack in stacks)
@@ -108,7 +108,7 @@ class Collector:
         # Sort stack trace groups by the minimum thread id in the group.
         line_groups.sort(key=lambda t: t[0])
         for _, lines in line_groups:
-            print "\n".join(lines)
+            print("\n".join(lines))
 
 
 if __name__ == '__main__':
@@ -117,6 +117,6 @@ if __name__ == '__main__':
     for line in sys.stdin:
         line = line.rstrip()
         if not collector.process_line(line):
-            print line
+            print(line)
 
     collector.print_grouped_stacks()

@@ -2,7 +2,7 @@
 title: Table creation
 headerTitle: Table creation
 linkTitle: Table creation
-description: Learn how the YugabyteDB YB-Master leader creates tables.
+description: Learn how YugabyteDB creates tables and manages schema changes.
 aliases:
   - /architecture/core-functions/table-creation/
 menu:

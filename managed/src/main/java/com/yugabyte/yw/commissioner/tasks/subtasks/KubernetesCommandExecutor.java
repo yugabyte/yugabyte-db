@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
@@ -75,8 +76,6 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
           return UserTaskDetails.SubTaskGroupType.CreateNamespace.name();
         case APPLY_SECRET:
           return UserTaskDetails.SubTaskGroupType.ApplySecret.name();
-        case HELM_INIT:
-          return UserTaskDetails.SubTaskGroupType.HelmInit.name();
         case HELM_INSTALL:
           return UserTaskDetails.SubTaskGroupType.HelmInstall.name();
         case HELM_UPGRADE:
@@ -179,9 +178,6 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
           response = kubernetesManager.applySecret(config, taskParams().nodePrefix, pullSecret);
         }
         break;
-      case HELM_INIT:
-        response = kubernetesManager.helmInit(config, taskParams().providerUUID);
-        break;
       case HELM_INSTALL:
         overridesFile = this.generateHelmOverride();
         response = kubernetesManager.helmInstall(config, taskParams().providerUUID, taskParams().nodePrefix, overridesFile);
@@ -248,12 +244,42 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       response.message = "No pods even scheduled. Previous step(s) incomplete";
     }
     else {
-      if (environment.isDev()) {
-        response.code = 0;
-      }
       response.message = "Pods are ready. Services still not running";
     }
     return response;
+  }
+
+  private Map<String, String> getClusterIpForLoadBalancer() {
+    Universe u = Universe.get(taskParams().universeUUID);
+    PlacementInfo pi = taskParams().placementInfo;
+
+    Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
+    Map<UUID, String> azToDomain = PlacementInfoUtil.getDomainPerAZ(pi);
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(Provider.get(taskParams().providerUUID));
+
+    Map<String, String> serviceToIP = new HashMap<String, String>();
+
+    for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+      UUID azUUID = entry.getKey();
+      String azName = AvailabilityZone.get(azUUID).code;
+      String regionName = AvailabilityZone.get(azUUID).region.code;
+      Map<String, String> config = entry.getValue();
+
+      String namespace = taskParams().nodePrefix;
+
+      ShellProcessHandler.ShellResponse svcResponse =
+          kubernetesManager.getServices(config, namespace);
+      JsonNode svcInfos = parseShellResponseAsJson(svcResponse);
+
+      for (JsonNode svcInfo: svcInfos.path("items")) {
+        JsonNode serviceMetadata =  svcInfo.path("metadata");
+        JsonNode serviceSpec = svcInfo.path("spec");
+        String serviceType = serviceSpec.path("type").asText();
+        serviceToIP.put(serviceMetadata.path("name").asText(),
+                        serviceSpec.path("clusterIP").asText());
+      }
+    }
+    return serviceToIP;
   }
 
   private void processNodeInfo() {
@@ -385,10 +411,6 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     overrides = (HashMap<String, Object>) yaml.load(
         application.resourceAsStream("k8s-expose-all.yml")
     );
-
-    if (environment.isDev()) {
-        overrides.put("enableLoadBalancer", false);
-    }
 
     Provider provider = Provider.get(taskParams().providerUUID);
     Map<String, String> config = provider.getConfig();
@@ -649,6 +671,25 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       annotations =(HashMap<String, Object>) yaml.load(overridesYAML);
       if (annotations != null ) {
         overrides.putAll(annotations);
+      }
+    }
+
+
+    Map<String, String> universeConfig = u.getConfig();
+    boolean helmLegacy = Universe.HelmLegacy.valueOf(universeConfig.get(Universe.HELM2_LEGACY))
+        == Universe.HelmLegacy.V2TO3;
+
+    if (helmLegacy) {
+      overrides.put("helm2Legacy", helmLegacy);
+      Map<String, String> serviceToIP = getClusterIpForLoadBalancer();
+      ObjectMapper mapper = new ObjectMapper();
+      ArrayList<Object> serviceEndpoints = (ArrayList) overrides.get("serviceEndpoints");
+      for (Object serviceEndpoint: serviceEndpoints) {
+        Map<String, Object> endpoint = mapper.convertValue(serviceEndpoint, Map.class);
+        String endpointName = (String) endpoint.get("name");
+        if (serviceToIP.containsKey(endpointName)) {
+          endpoint.put("clusterIP", serviceToIP.get(endpointName));
+        }
       }
     }
 

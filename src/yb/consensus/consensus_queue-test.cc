@@ -852,8 +852,10 @@ TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   // Ack last_committed_index messages.
   SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(last_committed_index));
   ASSERT_TRUE(queue_->ResponseFromPeer(response.responder_uuid(), response));
+  queue_->raft_pool_observers_token_->Wait();
+  ASSERT_OPID_EQ(queue_->GetCommittedIndexForTests(), MakeOpIdForIndex(last_committed_index));
 
-  // Read from the startOpId
+// Read from the startOpId
   auto read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(
       yb::OpId::FromPB(MakeOpIdForIndex(3))));
   ASSERT_EQ(last_committed_index - startOpId.index(), read_result.messages.size());

@@ -58,58 +58,62 @@ CHECKED_STATUS CheckHybridTimeSizeAndValueType(
 // @param hybrid_time Where to store the hybrid time. Undefined in case of failure.
 yb::Status ConsumeHybridTimeFromKey(rocksdb::Slice* slice, DocHybridTime* hybrid_time);
 
-inline void AppendUInt16ToKey(uint16_t val, std::string* dest) {
+template <class Buffer>
+void AppendUInt16ToKey(uint16_t val, Buffer* dest) {
   char buf[sizeof(uint16_t)];
   BigEndian::Store16(buf, val);
   dest->append(buf, sizeof(buf));
 }
 
-inline void AppendUInt32ToKey(uint32_t val, std::string* dest) {
+template <class Buffer>
+void AppendUInt32ToKey(uint32_t val, Buffer* dest) {
   char buf[sizeof(uint32_t)];
   BigEndian::Store32(buf, val);
   dest->append(buf, sizeof(buf));
 }
 
-inline void AppendUInt64ToKey(uint64_t val, std::string* dest) {
+template <class Buffer>
+void AppendUInt64ToKey(uint64_t val, Buffer* dest) {
   char buf[sizeof(uint64_t)];
   BigEndian::Store64(buf, val);
   dest->append(buf, sizeof(buf));
 }
 
-inline void AppendColumnIdToKey(ColumnId val, std::string* dest) {
-  yb::util::FastAppendSignedVarIntToStr(val.rep(), dest);
+template <class Buffer>
+inline void AppendColumnIdToKey(ColumnId val, Buffer* dest) {
+  yb::util::FastAppendSignedVarIntToBuffer(val.rep(), dest);
 }
 
 // Encodes the given string by replacing '\x00' with "\x00\x01" and appends it to the given
 // destination string.
-void AppendZeroEncodedStrToKey(const std::string &s, std::string *dest);
+void AppendZeroEncodedStrToKey(const std::string &s, KeyBuffer *dest);
 
 // Encodes the given string by replacing '\xff' with "\xff\xfe" and appends it to the given
 // destination string.
-void AppendComplementZeroEncodedStrToKey(const string &s, string *dest);
+void AppendComplementZeroEncodedStrToKey(const string &s, KeyBuffer *dest);
 
 // Appends two zero characters to the given string. We don't add final end-of-string characters in
 // this function.
-void TerminateZeroEncodedKeyStr(std::string *dest);
+void TerminateZeroEncodedKeyStr(KeyBuffer *dest);
 
 // Appends two '\0xff' characters to the given string. We don't add final end-of-string characters
 // in this function.
-void TerminateComplementZeroEncodedKeyStr(std::string *dest);
+void TerminateComplementZeroEncodedKeyStr(KeyBuffer *dest);
 
-inline void ZeroEncodeAndAppendStrToKey(const std::string &s, std::string *dest) {
+inline void ZeroEncodeAndAppendStrToKey(const std::string &s, KeyBuffer *dest) {
   AppendZeroEncodedStrToKey(s, dest);
   TerminateZeroEncodedKeyStr(dest);
 }
 
-inline void ComplementZeroEncodeAndAppendStrToKey(const std::string &s, std::string *dest) {
+inline void ComplementZeroEncodeAndAppendStrToKey(const std::string &s, KeyBuffer* dest) {
   AppendComplementZeroEncodedStrToKey(s, dest);
   TerminateComplementZeroEncodedKeyStr(dest);
 }
 
-inline std::string ZeroEncodeStr(std::string s) {
-  std::string result;
+inline std::string ZeroEncodeStr(const std::string& s) {
+  KeyBuffer result;
   ZeroEncodeAndAppendStrToKey(s, &result);
-  return result;
+  return result.ToString();
 }
 
 // Reverses the encoding we use for string fields in a RocksDB key where a zero is represented as

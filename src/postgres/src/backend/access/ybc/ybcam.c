@@ -134,8 +134,6 @@ static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 	{
 		ybcCheckPrimaryKeyAttribute(scan_plan, ybc_table_desc, ObjectIdAttributeNumber);
 	}
-
-	HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
 }
 
 static Oid ybc_get_atttypid(TupleDesc bind_desc, AttrNumber attnum)
@@ -165,9 +163,9 @@ static void ybcBindColumn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber att
 
 	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, value, false /* isnull */);
 
-	HandleYBStmtStatusWithOwner(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr),
-															ybScan->handle,
-															ybScan->stmt_owner);
+	HandleYBStatusWithOwner(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr),
+													ybScan->handle,
+													ybScan->stmt_owner);
 }
 
 void ybcBindColumnCondEq(YbScanDesc ybScan, bool is_hash_key, TupleDesc bind_desc,
@@ -178,13 +176,13 @@ void ybcBindColumnCondEq(YbScanDesc ybScan, bool is_hash_key, TupleDesc bind_des
 	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, value, false /* isnull */);
 
 	if (is_hash_key)
-		HandleYBStmtStatusWithOwner(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr),
-									ybScan->handle,
-									ybScan->stmt_owner);
+		HandleYBStatusWithOwner(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr),
+														ybScan->handle,
+														ybScan->stmt_owner);
 	else
-		HandleYBStmtStatusWithOwner(YBCPgDmlBindColumnCondEq(ybScan->handle, attnum, ybc_expr),
-									ybScan->handle,
-									ybScan->stmt_owner);
+		HandleYBStatusWithOwner(YBCPgDmlBindColumnCondEq(ybScan->handle, attnum, ybc_expr),
+														ybScan->handle,
+														ybScan->stmt_owner);
 }
 
 static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum,
@@ -197,10 +195,10 @@ static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc, Att
 	YBCPgExpr ybc_expr_end = end_valid ? YBCNewConstant(ybScan->handle, atttypid, value_end,
       false /* isnull */) : NULL;
 
-  HandleYBStmtStatusWithOwner(YBCPgDmlBindColumnCondBetween(ybScan->handle, attnum, ybc_expr,
-        ybc_expr_end),
-      ybScan->handle,
-      ybScan->stmt_owner);
+  HandleYBStatusWithOwner(YBCPgDmlBindColumnCondBetween(ybScan->handle, attnum, ybc_expr,
+																												ybc_expr_end),
+													ybScan->handle,
+													ybScan->stmt_owner);
 }
 
 /*
@@ -216,9 +214,9 @@ static void ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumb
     ybc_exprs[i] = YBCNewConstant(ybScan->handle, atttypid, values[i], false /* isnull */);
   }
 
-  HandleYBStmtStatusWithOwner(YBCPgDmlBindColumnCondIn(ybScan->handle, attnum, nvalues, ybc_exprs),
-      ybScan->handle,
-      ybScan->stmt_owner);
+  HandleYBStatusWithOwner(YBCPgDmlBindColumnCondIn(ybScan->handle, attnum, nvalues, ybc_exprs),
+													ybScan->handle,
+													ybScan->stmt_owner);
 }
 
 /*
@@ -241,9 +239,9 @@ static void ybcAddTargetColumn(YbScanDesc ybScan, AttrNumber attnum)
 
 	YBCPgTypeAttrs type_attrs = { atttypmod };
 	YBCPgExpr expr = YBCNewColumnRef(ybScan->handle, attnum, atttypid, &type_attrs);
-	HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybScan->handle, expr),
-								ybScan->handle,
-								ybScan->stmt_owner);
+	HandleYBStatusWithOwner(YBCPgDmlAppendTarget(ybScan->handle, expr),
+													ybScan->handle,
+													ybScan->stmt_owner);
 }
 
 static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
@@ -259,24 +257,24 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 	/* Execute the select statement. */
 	if (!ybScan->is_exec_done)
 	{
-		HandleYBStmtStatusWithOwner(YBCPgSetForwardScan(ybScan->handle, is_forward_scan),
-									ybScan->handle,
-									ybScan->stmt_owner);
-		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybScan->handle, ybScan->exec_params),
-									ybScan->handle,
-									ybScan->stmt_owner);
+		HandleYBStatusWithOwner(YBCPgSetForwardScan(ybScan->handle, is_forward_scan),
+														ybScan->handle,
+														ybScan->stmt_owner);
+		HandleYBStatusWithOwner(YBCPgExecSelect(ybScan->handle, ybScan->exec_params),
+														ybScan->handle,
+														ybScan->stmt_owner);
 		ybScan->is_exec_done = true;
 	}
 
 	/* Fetch one row. */
-	HandleYBStmtStatusWithOwner(YBCPgDmlFetch(ybScan->handle,
-	                                          tupdesc->natts,
-	                                          (uint64_t *) values,
-	                                          nulls,
-	                                          &syscols,
-	                                          &has_data),
-	                            ybScan->handle,
-	                            ybScan->stmt_owner);
+	HandleYBStatusWithOwner(YBCPgDmlFetch(ybScan->handle,
+																				tupdesc->natts,
+																				(uint64_t *) values,
+																				nulls,
+																				&syscols,
+																				&has_data),
+													ybScan->handle,
+													ybScan->stmt_owner);
 
 	if (has_data)
 	{
@@ -314,17 +312,17 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
 	/* Execute the select statement. */
 	if (!ybScan->is_exec_done)
 	{
-		HandleYBStmtStatusWithOwner(YBCPgSetForwardScan(ybScan->handle, is_forward_scan),
+		HandleYBStatusWithOwner(YBCPgSetForwardScan(ybScan->handle, is_forward_scan),
 									ybScan->handle,
 									ybScan->stmt_owner);
-		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybScan->handle, ybScan->exec_params),
+		HandleYBStatusWithOwner(YBCPgExecSelect(ybScan->handle, ybScan->exec_params),
 									ybScan->handle,
 									ybScan->stmt_owner);
 		ybScan->is_exec_done = true;
 	}
 
 	/* Fetch one row. */
-	HandleYBStmtStatusWithOwner(YBCPgDmlFetch(ybScan->handle,
+	HandleYBStatusWithOwner(YBCPgDmlFetch(ybScan->handle,
 	                                          tupdesc->natts,
 	                                          (uint64_t *) values,
 	                                          nulls,
@@ -429,9 +427,9 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 		bool colocated = false;
 		bool notfound;
 		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
-														   RelationGetRelid(relation),
-														   &colocated),
-									 &notfound);
+																											 RelationGetRelid(relation),
+																											 &colocated),
+																 &notfound);
 		ybScan->prepare_params.querying_colocated_table |= colocated;
 	}
 
@@ -1031,7 +1029,7 @@ ybcBeginScan(Relation relation, Relation index, bool xs_want_itup, int nkeys, Sc
 	 */
 	if (!IsSystemRelation(relation))
 	{
-		HandleYBStmtStatusWithOwner(YBCPgSetCatalogCacheVersion(ybScan->handle,
+		HandleYBStatusWithOwner(YBCPgSetCatalogCacheVersion(ybScan->handle,
 		                                                        yb_catalog_cache_version),
 		                            ybScan->handle,
 		                            ybScan->stmt_owner);
@@ -1048,7 +1046,6 @@ void ybcEndScan(YbScanDesc ybScan)
 {
 	if (ybScan->handle)
 	{
-		HandleYBStatus(YBCPgDeleteStatement(ybScan->handle));
 		ResourceOwnerForgetYugaByteStmt(ybScan->stmt_owner, ybScan->handle);
 	}
 	pfree(ybScan);
@@ -1440,9 +1437,7 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 										   BYTEAOID,
 										   ybctid,
 										   false);
-	HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt,
-										  YBTupleIdAttributeNumber,
-										  ybctid_expr), ybc_stmt);
+	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 
 	/*
 	 * Set up the scan targets. For index-based scan we need to return all "real" columns.
@@ -1452,25 +1447,25 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 		YBCPgTypeAttrs type_attrs = { 0 };
 		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, ObjectIdAttributeNumber, InvalidOid,
 										   &type_attrs);
-		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, expr), ybc_stmt);
+		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
 	}
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
 		YBCPgTypeAttrs type_attrs = { att->atttypmod };
 		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid, &type_attrs);
-		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, expr), ybc_stmt);
+		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
 	}
 	YBCPgTypeAttrs type_attrs = { 0 };
 	YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, YBTupleIdAttributeNumber, InvalidOid,
 									   &type_attrs);
-	HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, expr), ybc_stmt);
+	HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
 
 	/*
 	 * Execute the select statement.
 	 * This select statement fetch the row for a specific YBCTID, LIMIT setting is not needed.
 	 */
-	HandleYBStmtStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */), ybc_stmt);
+	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */));
 
 	HeapTuple tuple    = NULL;
 	bool      has_data = false;
@@ -1480,13 +1475,12 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	YBCPgSysColumns syscols;
 
 	/* Fetch one row. */
-	HandleYBStmtStatus(YBCPgDmlFetch(ybc_stmt,
-									 tupdesc->natts,
-									 (uint64_t *) values,
-									 nulls,
-									 &syscols,
-									 &has_data),
-					   ybc_stmt);
+	HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
+															 tupdesc->natts,
+															 (uint64_t *) values,
+															 nulls,
+															 &syscols,
+															 &has_data));
 
 	if (has_data)
 	{
@@ -1504,9 +1498,6 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	}
 	pfree(values);
 	pfree(nulls);
-
-	/* Complete execution */
-	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
 
 	return tuple;
 }

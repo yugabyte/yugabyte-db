@@ -176,6 +176,9 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
         "--yb_num_total_tablets=18",
         "--index_backfill_rpc_timeout_ms=6000",
         "--index_backfill_rpc_max_delay_ms=1000",
+        "--index_backfill_rpc_max_retries=10",
+        "--retrying_ts_rpc_max_delay_ms=1000",
+        "--unresponsive_ts_rpc_retry_limit=10",
         "--TEST_slowdown_backfill_alter_table_rpcs_ms=200"};
   }
 
@@ -745,6 +748,8 @@ Result<IndexPermissions> GetIndexPermissions(
   return index_info_pb.index_permissions();
 }
 
+// TODO(jason): make Client::WaitUntilIndexPermissionsAtLeast compatible with this function
+// (particularly the exponential_backoff), and replace all instances of this function with that one.
 IndexPermissions WaitUntilIndexPermissionIsAtLeast(
     client::YBClient* client, const YBTableName& table_name, const YBTableName& index_table_name,
     IndexPermissions min_permission, bool exponential_backoff = true) {
@@ -896,9 +901,11 @@ void TestBackfillIndexTable(
   }
 
   for (auto& future : futures) {
-    if (!future.Wait().ok()) {
+    auto res = future.Wait();
+    if (!res.ok()) {
       num_failures++;
     }
+    WARN_NOT_OK(res, "Write batch failed: ")
   }
   if (num_failures > 0) {
     LOG(INFO) << num_failures << " write batches failed.";
@@ -1689,8 +1696,8 @@ struct IOMetrics {
       const ExternalMiniCluster& cluster, int ts_index,
       const MetricPrototype* metric_proto, int64_t* value) {
     const ExternalTabletServer& ts = *CHECK_NOTNULL(cluster.tablet_server(ts_index));
-    const auto result = ts.GetInt64CQLMetric(
-        &METRIC_ENTITY_server, "yb.cqlserver", CHECK_NOTNULL(metric_proto),
+    const auto result = ts.GetInt64Metric(
+        &METRIC_ENTITY_server, "yb.tabletserver", CHECK_NOTNULL(metric_proto),
         "total_count");
 
     if (!result.ok()) {

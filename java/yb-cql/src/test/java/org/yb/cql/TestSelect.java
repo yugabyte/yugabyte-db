@@ -531,9 +531,7 @@ public class TestSelect extends BaseCQLTest {
     // Get the base metrics of each tserver.
     Map<MiniYBDaemon, IOMetrics> baseMetrics = new HashMap<>();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-                                                    ts.getCqlWebPort(),
-                                                    "server"));
+      IOMetrics metrics = createIOMetrics(ts);
       baseMetrics.put(ts, metrics);
     }
 
@@ -552,10 +550,7 @@ public class TestSelect extends BaseCQLTest {
     IOMetrics totalMetrics = new IOMetrics();
     int tsCount = miniCluster.getTabletServers().values().size();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-                                                    ts.getCqlWebPort(),
-                                                    "server"))
-                          .subtract(baseMetrics.get(ts));
+      IOMetrics metrics = createIOMetrics(ts).subtract(baseMetrics.get(ts));
       LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
       totalMetrics.add(metrics);
     }

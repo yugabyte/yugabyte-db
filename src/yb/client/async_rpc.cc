@@ -105,7 +105,7 @@ AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
       time_to_send(METRIC_handler_latency_yb_client_time_to_send.Instantiate(entity)) {
 }
 
-AsyncRpc::AsyncRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
+AsyncRpc::AsyncRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level, MonoDelta timeout)
     : Rpc(data->batcher->deadline(), data->batcher->messenger(), &data->batcher->proxy_cache()),
       batcher_(data->batcher),
       trace_(new Trace),
@@ -119,7 +119,9 @@ AsyncRpc::AsyncRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
                       trace_.get()),
       ops_(std::move(data->ops)),
       start_(MonoTime::Now()),
-      async_rpc_metrics_(data->batcher->async_rpc_metrics()) {
+      async_rpc_metrics_(data->batcher->async_rpc_metrics()),
+      timeout_(timeout) {
+
   mutable_retrier()->mutable_controller()->set_allow_local_calls_in_curr_thread(
       data->allow_local_calls_in_curr_thread);
   if (Trace::CurrentTrace()) {
@@ -268,8 +270,11 @@ void AsyncRpc::SendRpcToTserver(int attempt_num) {
 }
 
 template <class Req, class Resp>
-AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel consistency_level)
-    : AsyncRpc(data, consistency_level) {
+AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data,
+                                      YBConsistencyLevel consistency_level,
+                                      MonoDelta timeout)
+    : AsyncRpc(data, consistency_level, timeout) {
+
   req_.set_tablet_id(tablet_invoker_.tablet()->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
   const ConsistentReadPoint* read_point = batcher_->read_point();
@@ -345,8 +350,9 @@ void AsyncRpcBase<Req, Resp>::SendRpcToTserver(int attempt_num) {
   AsyncRpc::SendRpcToTserver(attempt_num);
 }
 
-WriteRpc::WriteRpc(AsyncRpcData* data)
-    : AsyncRpcBase(data, YBConsistencyLevel::STRONG) {
+WriteRpc::WriteRpc(AsyncRpcData* data, MonoDelta timeout)
+    : AsyncRpcBase(data, YBConsistencyLevel::STRONG, timeout) {
+
   TRACE_TO(trace_, "WriteRpc initiated to $0", data->tablet->tablet_id());
 
   if (data->write_time_for_backfill_.is_valid()) {
@@ -435,7 +441,7 @@ void WriteRpc::CallRemoteMethod() {
   ADOPT_TRACE(trace.get());
 
   tablet_invoker_.proxy()->WriteAsync(
-      req_, &resp_, PrepareController(),
+      req_, &resp_, PrepareController(timeout_),
       std::bind(&WriteRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
@@ -572,8 +578,9 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
   SwapRequestsAndResponses(false);
 }
 
-ReadRpc::ReadRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
-    : AsyncRpcBase(data, yb_consistency_level) {
+ReadRpc::ReadRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level, MonoDelta timeout)
+    : AsyncRpcBase(data, yb_consistency_level, timeout) {
+
   TRACE_TO(trace_, "ReadRpc initiated to $0", data->tablet->tablet_id());
   req_.set_consistency_level(yb_consistency_level);
   req_.set_proxy_uuid(data->batcher->proxy_uuid());
@@ -648,7 +655,7 @@ void ReadRpc::CallRemoteMethod() {
   ADOPT_TRACE(trace.get());
 
   tablet_invoker_.proxy()->ReadAsync(
-      req_, &resp_, PrepareController(),
+      req_, &resp_, PrepareController(timeout_),
       std::bind(&ReadRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }

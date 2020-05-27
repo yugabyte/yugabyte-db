@@ -33,6 +33,7 @@ set(build_postgres_args
       --ldflags_ex          " ${CMAKE_EXE_LINKER_FLAGS}"
       --openssl_include_dir "${OPENSSL_INCLUDE_DIR}"
       --openssl_lib_dir     "${OPENSSL_LIB_DIR}"
+      --thirdparty-dir      "${YB_THIRDPARTY_DIR}"
     )
 
 # Invoke our PostgreSQL build script in two steps: "configure" and "make". The "configure" step
@@ -41,7 +42,8 @@ set(build_postgres_args
 # We add spaces before every "flags" parameter so that Python's argparse does not interpret them as
 # its own flags.
 add_custom_target(configure_postgres ALL COMMAND ${build_postgres_args} --step configure)
-add_custom_target(postgres ALL COMMAND ${build_postgres_args} --step make BYPRODUCTS "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend.dylib")
+add_custom_target(postgres ALL COMMAND ${build_postgres_args} --step make
+                           BYPRODUCTS "${YB_PGBACKEND_SHARED_LIB}")
 add_dependencies(postgres configure_postgres)
 
 # ------------------------------------------------------------------------------------------------

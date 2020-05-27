@@ -147,8 +147,70 @@ public class CustomerControllerTest extends WithApplication {
     params.put("callhomeLevel", "LOW");
     Result result = route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
     assertEquals(OK, result.status());
-    CustomerConfig config = CustomerConfig.getAlertingData(customer.uuid);
+    CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
     assertEquals(alertEmail, config.data.get("alertingEmail").asText());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerPUTWithSmtpData() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("code", "tc");
+    params.put("email", "admin");
+    params.put("name", "Test Customer");
+    ObjectNode smtpData = Json.newObject();
+    String smtpEmail = "alerts@yugabyte.com";
+    smtpData.put("smtpUsername", smtpEmail);
+    smtpData.put("smtpServer", "test.foo.bar");
+    params.put("smtpData", smtpData);
+    params.put("callhomeLevel", "MEDIUM");
+    Result result = route(fakeRequest("PUT", baseRoute + customer.uuid)
+                    .cookie(validCookie)
+                    .bodyJson(params));
+    assertEquals(OK, result.status());
+    CustomerConfig config = CustomerConfig.getSmtpConfig(customer.uuid);
+    assertEquals(smtpEmail, config.data.get("smtpUsername").asText());
+    CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
+    assertEquals(CollectionLevel.MEDIUM, callhomeLevel);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerPUTWithSmtpAndAlertData() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("code", "tc");
+    params.put("email", "admin");
+    params.put("name", "Test Customer");
+    ObjectNode smtpData = Json.newObject();
+    String smtpEmail = "alerts@yugabyte.com";
+    smtpData.put("smtpUsername", smtpEmail);
+    smtpData.put("smtpServer", "test.foo.bar");
+    params.put("smtpData", smtpData);
+    ObjectNode alertingData = Json.newObject();
+    String alertEmail = "alerts@yugabyte.com";
+    alertingData.put("alertingEmail", alertEmail);
+    alertingData.put("sendAlertsToYb", true);
+    alertingData.put("reportOnlyErrors", false);
+    params.put("alertingData", alertingData);
+    params.put("callhomeLevel", "MEDIUM");
+    Result result = route(fakeRequest("PUT", baseRoute + customer.uuid)
+                    .cookie(validCookie)
+                    .bodyJson(params));
+    assertEquals(OK, result.status());
+    CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customer.uuid);
+    CustomerConfig alertConfig = CustomerConfig.getAlertConfig(customer.uuid);
+    assertEquals(smtpEmail, smtpConfig.data.get("smtpUsername").asText());
+    assertEquals(alertEmail, alertConfig.data.get("alertingEmail").asText());
+    CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
+    assertEquals(CollectionLevel.MEDIUM, callhomeLevel);
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
     assertAuditEntry(0, customer.uuid);
@@ -225,21 +287,6 @@ public class CustomerControllerTest extends WithApplication {
     json = Json.parse(contentAsString(result));
     assertEquals(expectedFeatures, json);
     assertAuditEntry(2, customer.uuid);
-  }
-
-  @Test
-  public void testCustomerPUTWithInvalidParams() {
-    String authToken = user.createAuthToken();
-    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    ObjectNode params = Json.newObject();
-    params.put("password", "new-password");
-
-    Result result = route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
-    assertEquals(BAD_REQUEST, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    assertThat(contentAsString(result), is(containsString("\"name\":[\"This field is required\"]")));
-    assertThat(contentAsString(result), is(containsString("\"email\":[\"This field is required\"]")));
-    assertAuditEntry(0, customer.uuid);
   }
 
   @Test

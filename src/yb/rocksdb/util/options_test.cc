@@ -1895,6 +1895,7 @@ TEST_F(OptionsParserTest, BlockBasedTableOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(BlockBasedTableOptions, block_cache),
       BLACKLIST_ENTRY(BlockBasedTableOptions, block_cache_compressed),
       BLACKLIST_ENTRY(BlockBasedTableOptions, filter_policy),
+      BLACKLIST_ENTRY(BlockBasedTableOptions, supported_filter_policies),
   };
 
   // In this test, we catch a new option of BlockBasedTableOptions that is not

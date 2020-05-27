@@ -55,21 +55,18 @@ class TabletPeer;
 
 // Operation Context for the AlterSchema operation.
 // Keeps track of the Operation states (request, result, ...)
-class ChangeMetadataOperationState : public OperationState {
+class ChangeMetadataOperationState : public OperationStateBase<tserver::ChangeMetadataRequestPB> {
  public:
   ~ChangeMetadataOperationState() {
   }
 
-  ChangeMetadataOperationState(Tablet* tablet, log::Log* log,
-                            const tserver::ChangeMetadataRequestPB* request = nullptr)
-      : OperationState(tablet), log_(log), request_(request) {
-  }
+  ChangeMetadataOperationState(
+      Tablet* tablet, log::Log* log, const tserver::ChangeMetadataRequestPB* request = nullptr)
+      : OperationStateBase(tablet, request), log_(log) {}
 
   explicit ChangeMetadataOperationState(const tserver::ChangeMetadataRequestPB* request)
       : ChangeMetadataOperationState(nullptr, nullptr, request) {
   }
-
-  const tserver::ChangeMetadataRequestPB* request() const override { return request_; }
 
   void UpdateRequestFromConsensusRound() override;
 
@@ -83,23 +80,23 @@ class ChangeMetadataOperationState : public OperationState {
   }
 
   std::string new_table_name() const {
-    return request_->new_table_name();
+    return request()->new_table_name();
   }
 
   bool has_new_table_name() const {
-    return request_->has_new_table_name();
+    return request()->has_new_table_name();
   }
 
   uint32_t schema_version() const {
-    return request_->schema_version();
+    return request()->schema_version();
   }
 
   uint32_t wal_retention_secs() const {
-    return request_->wal_retention_secs();
+    return request()->wal_retention_secs();
   }
 
   bool has_wal_retention_secs() const {
-    return request_->has_wal_retention_secs();
+    return request()->has_wal_retention_secs();
   }
 
   void AcquireSchemaLock(rw_semaphore* l);
@@ -112,7 +109,7 @@ class ChangeMetadataOperationState : public OperationState {
   void Finish() {
     // Make the request NULL since after this transaction commits
     // the request may be deleted at any moment.
-    request_ = nullptr;
+    UseRequest(nullptr);
   }
 
   log::Log* log() const { return log_; }
@@ -131,7 +128,7 @@ class ChangeMetadataOperationState : public OperationState {
   IndexMap index_map_;
 
   // The original RPC request and response.
-  const tserver::ChangeMetadataRequestPB *request_;
+  std::atomic<const tserver::ChangeMetadataRequestPB*> request_;
 
   // The lock held on the tablet's schema_lock_.
   std::unique_lock<rw_semaphore> schema_lock_;

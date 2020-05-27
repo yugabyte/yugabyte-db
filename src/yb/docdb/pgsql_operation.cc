@@ -116,8 +116,13 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
     case PgsqlWriteRequestPB::PGSQL_DELETE:
       return ApplyDelete(data);
 
-    case PgsqlWriteRequestPB::PGSQL_UPSERT:
+    case PgsqlWriteRequestPB::PGSQL_UPSERT: {
+      // Upserts should not have column refs (i.e. require read).
+      DSCHECK(!request_.has_column_refs() || request_.column_refs().ids().empty(),
+              IllegalState,
+              "Upsert operation should not have column references");
       return ApplyInsert(data, IsUpsert::kTrue);
+    }
 
     case PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED:
       return ApplyTruncateColocated(data);
@@ -385,7 +390,7 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
         buffer.AppendColumnId(column_id);
         RefCntBuffer path(doc_key.size() + buffer.size());
         memcpy(path.data(), doc_key.data(), doc_key.size());
-        memcpy(path.data() + doc_key.size(), buffer.data().c_str(), buffer.size());
+        buffer.AsSlice().CopyTo(path.data() + doc_key.size());
         paths->push_back(RefCntPrefix(path));
       }
       return Status::OK();
@@ -597,9 +602,9 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIte
           paging_state->set_next_partition_key(
               PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
         } else {
-          paging_state->set_next_partition_key(keybytes.data());
+          paging_state->set_next_partition_key(keybytes.ToStringBuffer());
         }
-        paging_state->set_next_row_key(keybytes.data());
+        paging_state->set_next_row_key(keybytes.ToStringBuffer());
       }
     }
   }
@@ -657,14 +662,14 @@ Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB
     // could still contain hash_code as part of tablet routing.
     // So we should ignore it.
     DocKey doc_key(schema);
-    pair->set_key(doc_key.Encode().data());
+    pair->set_key(doc_key.Encode().ToStringBuffer());
   } else {
     std::vector<PrimitiveValue> hashed_components;
     RETURN_NOT_OK(InitKeyColumnPrimitiveValues(
         request_.partition_column_values(), schema, 0 /* start_idx */, &hashed_components));
 
     DocKey doc_key(schema, request_.hash_code(), hashed_components);
-    pair->set_key(doc_key.Encode().data());
+    pair->set_key(doc_key.Encode().ToStringBuffer());
   }
 
   pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));

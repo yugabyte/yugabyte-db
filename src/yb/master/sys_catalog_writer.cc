@@ -14,10 +14,15 @@
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/common/ql_expr.h"
+#include "yb/common/ql_protocol_util.h"
 
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
 
 #include "yb/master/sys_catalog_constants.h"
+
+#include "yb/tablet/tablet.h"
 
 #include "yb/util/pb_util.h"
 
@@ -141,6 +146,40 @@ Status FillSysCatalogWriteRequest(
 
   // Add column id.
   SetBinaryValue(item_id, req->add_range_column_values());
+
+  return Status::OK();
+}
+
+Status EnumerateSysCatalog(
+    tablet::Tablet* tablet, const Schema& schema, int8_t entry_type,
+    const std::function<Status(const Slice& id, const Slice& data)>& callback) {
+  const int type_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColType));
+  const int entry_id_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColId));
+  const int metadata_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColMetadata));
+
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+      schema.CopyWithoutColumnIds(), boost::none, ReadHybridTime::Max(), /* table_id= */"",
+      CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
+
+  auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+  QLConditionPB cond;
+  cond.set_op(QL_OP_AND);
+  QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, entry_type);
+  docdb::DocQLScanSpec spec(
+      schema, boost::none /* hash_code */, boost::none /* max_hash_code */,
+      {} /* hashed_components */, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
+  RETURN_NOT_OK(doc_iter->Init(spec));
+
+  QLTableRow value_map;
+  QLValue found_entry_type, entry_id, metadata;
+  while (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&value_map));
+    RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
+    SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
+    RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
+    RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
+    RETURN_NOT_OK(callback(entry_id.binary_value(), metadata.binary_value()));
+  }
 
   return Status::OK();
 }

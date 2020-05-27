@@ -3,7 +3,8 @@
 import React, { Component } from 'react';
 import { Field, FieldArray } from 'redux-form';
 import { Row, Col, Tabs, Tab, Alert } from 'react-bootstrap';
-import { YBModal, YBInputField, YBAddRowButton, YBSelectWithLabel, YBToggle, YBCheckBox } from '../fields';
+import { YBModal, YBInputField, YBAddRowButton, YBSelectWithLabel, YBToggle, YBCheckBox,
+         YBRadioButtonBarWithLabel } from '../fields';
 import { isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 import './RollingUpgradeForm.scss';
@@ -152,7 +153,11 @@ export default class RollingUpgradeForm extends Component {
       return;
     }
     payload.ybSoftwareVersion = values.ybSoftwareVersion;
-    payload.rollingUpgrade = values.rollingUpgrade;
+    if (payload.taskType === "GFlags") {
+      payload.upgradeOption = values.upgradeOption;
+    } else {
+      payload.upgradeOption = values.rollingUpgrade ? "Rolling" : "Non-Rolling";
+    }
     payload.universeUUID = universeUUID;
     payload.nodePrefix = nodePrefix;
     let masterGFlagList = [];
@@ -188,7 +193,6 @@ export default class RollingUpgradeForm extends Component {
     const self = this;
     const {onHide, modalVisible, handleSubmit, universe, modal: { visibleModal }, 
       universe: { error }, resetRollingUpgrade, softwareVersions} = this.props;
-
     let currentVersion = null;
     if(isDefinedNotNull(universe.currentUniverse.data) && isNonEmptyObject(universe.currentUniverse.data)) {
       const primaryCluster = getPrimaryCluster(universe.currentUniverse.data.universeDetails.clusters);
@@ -241,7 +245,9 @@ export default class RollingUpgradeForm extends Component {
             </Tab>
           </Tabs>
           <div className="form-right-aligned-labels top-10 time-delay-container">
-            <Field name="rollingUpgrade" component={YBToggle} label="Rolling Upgrade"/>
+            <Field name="upgradeOption" component={YBRadioButtonBarWithLabel}
+                   options={["Rolling", "Non-Rolling", "Non-Restart"]} label="Upgrade Option"
+                   initialValue="Rolling"/>
             <Field name="timeDelay" component={YBInputField}
                    label="Rolling Upgrade Delay Between Servers (secs)" />
           </div>

@@ -156,4 +156,19 @@ extern void RestoreReindexState(void *reindexstate);
 
 extern void IndexSetParentIndex(Relation idx, Oid parentOid);
 
+/*
+ * This should exactly match the IndexPermissions enum in
+ * src/yb/common/common.proto.  See the definition there for details.
+ */
+typedef enum
+{
+	YB_INDEX_PERM_DELETE_ONLY = 0,
+	YB_INDEX_PERM_WRITE_AND_DELETE = 2,
+	YB_INDEX_PERM_DO_BACKFILL = 4,
+	YB_INDEX_PERM_READ_WRITE_AND_DELETE = 6,
+	YB_INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING = 8,
+	YB_INDEX_PERM_DELETE_ONLY_WHILE_REMOVING = 10,
+	YB_INDEX_PERM_INDEX_UNUSED = 12,
+} YBIndexPermissions;
+
 #endif							/* INDEX_H */

@@ -144,9 +144,10 @@ public class NodeManager extends DevopsBase {
           }
         }
       }
+      subCommand.add("--custom_ssh_port");
+      subCommand.add(keyInfo.sshPort.toString());
 
       if (params instanceof AnsibleSetupServer.Params &&
-          userIntent.providerType.equals(Common.CloudType.onprem) &&
           accessKey.getKeyInfo().airGapInstall) {
         subCommand.add("--air_gap");
       }
@@ -305,10 +306,12 @@ public class NodeManager extends DevopsBase {
       case GFlags:
         {
           if (!taskParam.updateMasterAddrsOnly &&
-              (taskParam.gflags == null || taskParam.gflags.isEmpty())) {
-            throw new RuntimeException(taskParam.gflags + " GFlags data provided for " +
+              (taskParam.gflags == null || taskParam.gflags.isEmpty()) &&
+              (taskParam.gflagsToRemove == null || taskParam.gflagsToRemove.isEmpty())) {
+            throw new RuntimeException("GFlags data provided for " +
                                        taskParam.nodeName + "'s " +
-                                       taskParam.getProperty("processType") + " process.");
+                                       taskParam.getProperty("processType") + " process" +
+                                        " have no changes from existing flags.");
           }
 
           String processType = taskParam.getProperty("processType");
@@ -336,6 +339,11 @@ public class NodeManager extends DevopsBase {
           }
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
+
+          if (taskParam.gflagsToRemove != null && !taskParam.gflagsToRemove.isEmpty()) {
+            subcommand.add("--gflags_to_remove");
+            subcommand.add(Json.stringify(Json.toJson(taskParam.gflagsToRemove)));
+          }
         }
         break;
     }

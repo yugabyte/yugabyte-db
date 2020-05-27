@@ -16,7 +16,7 @@ import subprocess
 def construct_command(args):
     return '{{devops_home}}/bin/ybcloud.sh {{cloud}} '\
         '--node_metadata '\
-        '\'{"ip":"%s","sshPort":{{ssh_port}},"sshUser":"{{ssh_user}}","nodeName":"@@DEFAULT_NODE_NAME@@"}\' '\
+        '\'{"ip":"%s","sshPort":{{custom_ssh_port}},"sshUser":"{{ssh_user}}","nodeName":"@@DEFAULT_NODE_NAME@@"}\' '\
         'instance provision '\
         '--vars_file {{vars_file}} ' \
         '--vault_password_file {{vault_password_file}} '\

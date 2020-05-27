@@ -1,4 +1,4 @@
-#!/usr/bin/python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
 # This script builds unaccent.rules on standard output when given the
@@ -30,7 +30,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 def print_record(codepoint, letter):
-    print (unichr(codepoint) + "\t" + letter).encode("UTF-8")
+    print(chr(codepoint) + "\t" + letter).encode("UTF-8")
 
 class Codepoint:
     def __init__(self, id, general_category, combining_ids):
@@ -105,7 +105,7 @@ def parse_cldr_latin_ascii_transliterator(latinAsciiFilePath):
     charactersSet = set()
 
     # RegEx to parse rules
-    rulePattern = re.compile(ur'^(?:(.)|(\\u[0-9a-fA-F]{4})) \u2192 (?:\'(.+)\'|(.+)) ;')
+    rulePattern = re.compile(r'^(?:(.)|(\\u[0-9a-fA-F]{4})) \u2192 (?:\'(.+)\'|(.+)) ;')
 
     # construct tree from XML
     transliterationTree = ET.parse(latinAsciiFilePath)

@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import {Field} from 'redux-form';
 import {Row, Col} from 'react-bootstrap';
-import {YBInputField, YBButton, YBTextArea} from '../../../common/forms/fields';
+import {YBInputField, YBButton, YBTextArea, YBNumericInput} from '../../../common/forms/fields';
 import constants from './OnPremWizardConstants.json';
 import YBToggle from "../../../common/forms/fields/YBToggle";
 
@@ -24,7 +24,8 @@ export default class OnPremProviderAndAccessKey extends Component {
   render() {
     const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;
     const {nameHelpContent, userHelpContent, pkHelpContent,
-           passwordlessSudoHelp, airGapInstallHelp, homeDirHelp} = constants;
+           passwordlessSudoHelp, airGapInstallHelp, homeDirHelp,
+           portHelpContent} = constants;
     const isReadOnly = this.props.isEditProvider;
 
     return (
@@ -39,6 +40,9 @@ export default class OnPremProviderAndAccessKey extends Component {
                 <Field name="sshUser" component={YBInputField} label="SSH User" insetError={true}
                        isReadOnly={isReadOnly} infoContent={userHelpContent}
                        infoTitle="SSH User" />
+                <Field name="sshPort" component={YBNumericInput} label="SSH Port" insetError={true}
+                       isReadOnly={isReadOnly} infoContent={portHelpContent} infoTitle="SSH Port"
+                       infoTitle="SSH Port" />
                 <Field name="passwordlessSudoAccess" component={YBToggle}
                        label="Passwordless Sudo" defaultChecked={true} isReadOnly={isReadOnly}
                        infoContent={passwordlessSudoHelp} infoTitle="Passwordless Sudo"/>

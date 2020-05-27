@@ -76,14 +76,14 @@ static void YBCAddSysCatalogColumn(YBCPgStatement yb_stmt,
 	 */
 	if (key == is_key)
 	{
-		HandleYBStmtStatus(YBCPgCreateTableAddColumn(yb_stmt,
-		                                             attname,
-		                                             attnum,
-		                                             col_type,
-		                                             false /* is_hash */,
-		                                             is_key,
-		                                             false /* is_desc */,
-		                                             false /* is_nulls_first */), yb_stmt);
+		HandleYBStatus(YBCPgCreateTableAddColumn(yb_stmt,
+																						 attname,
+																						 attnum,
+																						 col_type,
+																						 false /* is_hash */,
+																						 is_key,
+																						 false /* is_desc */,
+																						 false /* is_nulls_first */));
 	}
 }
 
@@ -148,6 +148,5 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	}
 	YBCAddSysCatalogColumns(yb_stmt, tupdesc, pkey_idx, /* key */ false);
 
-	HandleYBStmtStatus(YBCPgExecCreateTable(yb_stmt), yb_stmt);
-	HandleYBStatus(YBCPgDeleteStatement(yb_stmt));
+	HandleYBStatus(YBCPgExecCreateTable(yb_stmt));
 }

@@ -75,6 +75,23 @@ class PgApiImpl {
   // If database_name is empty, a session is created without connecting to any database.
   CHECKED_STATUS InitSession(const PgEnv *pg_env, const string& database_name);
 
+  // YB Memctx: Create, Destroy, and Reset must be "static" because a few contexts are created
+  //            before YugaByte environments including PgGate are created and initialized.
+  // Create YB Memctx. Each memctx will be associated with a Postgres's MemoryContext.
+  static PgMemctx *CreateMemctx();
+  // Destroy YB Memctx.
+  static void DestroyMemctx(PgMemctx *memctx);
+  // Reset YB Memctx.
+  static void ResetMemctx(PgMemctx *memctx);
+  // Cache statements in YB Memctx. When Memctx is destroyed, the statement is destructed.
+  CHECKED_STATUS AddToCurrentPgMemctx(const PgStatement::ScopedRefPtr &stmt,
+                                      PgStatement **handle);
+  // Cache table descriptor in YB Memctx. When Memctx is destroyed, the descriptor is destructed.
+  CHECKED_STATUS AddToCurrentPgMemctx(size_t table_desc_id,
+                                      const PgTableDesc::ScopedRefPtr &table_desc);
+  // Read table descriptor that was cached in YB Memctx.
+  CHECKED_STATUS GetTabledescFromCurrentPgMemctx(size_t table_desc_id, PgTableDesc **handle);
+
   // Invalidate the sessions table cache.
   CHECKED_STATUS InvalidateCache();
 
@@ -114,9 +131,6 @@ class PgApiImpl {
                                    bool *is_called);
 
   CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
-
-  // Delete statement.
-  CHECKED_STATUS DeleteStatement(PgStatement *handle);
 
   // Remove all values and expressions that were bound to the given statement.
   CHECKED_STATUS ClearBinds(PgStatement *handle);
@@ -218,8 +232,6 @@ class PgApiImpl {
   CHECKED_STATUS GetTableDesc(const PgObjectId& table_id,
                               PgTableDesc **handle);
 
-  CHECKED_STATUS DeleteTableDesc(PgTableDesc *handle);
-
   CHECKED_STATUS GetColumnInfo(YBCPgTableDesc table_desc,
                                int16_t attr_number,
                                bool *is_primary,
@@ -254,6 +266,11 @@ class PgApiImpl {
                               PgStatement **handle);
 
   CHECKED_STATUS ExecDropIndex(PgStatement *handle);
+
+  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
+      const PgObjectId& table_id,
+      const PgObjectId& index_id,
+      const IndexPermissions& target_index_permissions);
 
   //------------------------------------------------------------------------------------------------
   // All DML statements
@@ -318,8 +335,10 @@ class PgApiImpl {
 
   // Buffer write operations.
   void StartOperationsBuffering();
-  void ResetOperationsBuffering();
+  CHECKED_STATUS StopOperationsBuffering();
+  CHECKED_STATUS ResetOperationsBuffering();
   CHECKED_STATUS FlushBufferedOperations();
+  void DropBufferedOperations();
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -328,6 +347,8 @@ class PgApiImpl {
                            PgStatement **handle);
 
   CHECKED_STATUS ExecInsert(PgStatement *handle);
+
+  CHECKED_STATUS InsertStmtSetUpsertMode(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Update.
@@ -416,6 +437,9 @@ class PgApiImpl {
   CHECKED_STATUS CacheForeignKeyReference(YBCPgOid table_id, std::string&& ybctid);
   CHECKED_STATUS DeleteForeignKeyReference(YBCPgOid table_id, std::string&& ybctid);
   void ClearForeignKeyReferenceCache();
+
+  // Sets the specified timeout in the rpc service.
+  void SetTimeout(int timeout_ms);
 
   struct MessengerHolder {
     std::unique_ptr<rpc::SecureContext> security_context;

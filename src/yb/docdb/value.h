@@ -69,6 +69,10 @@ class Value {
 
   const uint64_t merge_flags() const { return merge_flags_; }
 
+  const DocHybridTime& intent_doc_ht() const { return intent_doc_ht_; }
+
+  void ClearIntentDocHt();
+
   // Consume the merge_flags portion of the slice if it exists and return it.
   static CHECKED_STATUS DecodeMergeFlags(rocksdb::Slice* slice, uint64_t* merge_flags);
 

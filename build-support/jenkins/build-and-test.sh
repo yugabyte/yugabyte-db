@@ -566,9 +566,7 @@ random_build_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
 # Java build
 # -------------------------------------------------------------------------------------------------
 
-if is_linux; then
-  export YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
-fi
+export YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
 
 java_build_failed=false
 if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
@@ -743,9 +741,14 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
         extra_args+=( "--test_conf" "$test_conf_path" )
         unset test_conf_path
       fi
-      if is_linux; then
+      if is_linux || (is_mac && ! is_src_root_on_nfs); then
         log "Will create an archive for Spark workers with all the code instead of using NFS."
         extra_args+=( "--send_archive_to_workers" )
+      fi
+      # Workers use /private path, which caused mis-match when check is done by yb_dist_tests that
+      # YB_MVN_LOCAL_REPO is in source tree. So unsetting value here to allow default.
+      if is_mac; then
+        unset YB_MVN_LOCAL_REPO
       fi
       set +u  # because extra_args can be empty
       if ! run_tests_on_spark "${extra_args[@]}"; then

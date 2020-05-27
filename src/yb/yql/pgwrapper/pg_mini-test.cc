@@ -38,15 +38,21 @@ using namespace std::literals;
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
+DECLARE_bool(TEST_force_master_leader_resolution);
+DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_double(respond_write_failed_probability);
+DECLARE_double(transaction_ignore_applying_probability_in_tests);
 DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
+DECLARE_bool(rocksdb_use_logging_iterator);
 
 namespace yb {
 namespace pgwrapper {
@@ -58,13 +64,15 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void SetUp() override {
+    HybridTime::TEST_SetPrettyToString(true);
+
     constexpr int kNumMasters = 1;
 
     FLAGS_client_read_write_timeout_ms = 120000;
     FLAGS_enable_ysql = true;
     FLAGS_hide_pg_catalog_table_creation_logs = true;
     FLAGS_master_auto_run_initdb = true;
-    FLAGS_retryable_rpc_single_call_timeout_ms = NonTsanVsTsan(10000, 30000);
+    FLAGS_retryable_rpc_single_call_timeout_ms = 30000;
     FLAGS_yb_client_admin_operation_timeout_sec = 120;
     FLAGS_pggate_rpc_timeout_secs = 120;
     FLAGS_ysql_num_shards_per_tserver = 1;
@@ -146,6 +154,13 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
  private:
   std::unique_ptr<PgSupervisor> pg_supervisor_;
   HostPort pg_host_port_;
+};
+
+class PgMiniSingleTServerTest : public PgMiniTest {
+ public:
+  int NumTabletServers() override {
+    return 1;
+  }
 };
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(Simple)) {
@@ -956,13 +971,6 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigSelect)) {
   ASSERT_EQ(res, kRows);
 }
 
-class PgMiniSingleTServerTest : public PgMiniTest {
- public:
-  int NumTabletServers() override {
-    return 1;
-  }
-};
-
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ManyRowsInsert), PgMiniSingleTServerTest) {
   constexpr int kRows = 100000;
   auto conn = ASSERT_RESULT(Connect());
@@ -987,6 +995,278 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MoveMaster)) {
     WARN_NOT_OK(status, "Failed to create table");
     return status.ok();
   }, 15s, "Create table"));
+}
+
+class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
+ protected:
+  void SetUp() override {
+    FLAGS_ysql_prefetch_limit = 20000000;
+    PgMiniTest::SetUp();
+  }
+
+  void Run(int rows, int block_size, int reads, bool compact = false) {
+    auto conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+    auto last_row = 0;
+    while (last_row < rows) {
+      auto first_row = last_row + 1;
+      last_row = std::min(rows, last_row + block_size);
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO t SELECT generate_series($0, $1)", first_row, last_row));
+    }
+
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    for (const auto& peer : peers) {
+      auto tp = peer->tablet()->transaction_participant();
+      if (tp) {
+        LOG(INFO) << peer->LogPrefix() << "Intents: " << tp->TEST_CountIntents().first;
+      }
+    }
+
+    if (compact) {
+      FLAGS_timestamp_history_retention_interval_sec = 0;
+      FLAGS_history_cutoff_propagation_interval_ms = 1;
+      ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+      ASSERT_OK(cluster_->CompactTablets());
+    }
+
+    LOG(INFO) << "Perform read";
+
+    if (VLOG_IS_ON(4)) {
+      google::SetVLOGLevel("intent_aware_iterator", 4);
+      google::SetVLOGLevel("docdb_rocksdb_util", 4);
+      google::SetVLOGLevel("docdb", 4);
+    }
+
+    for (int i = 0; i != reads; ++i) {
+      auto start = MonoTime::Now();
+      auto fetched_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT count(*) FROM t"));
+      auto finish = MonoTime::Now();
+      ASSERT_EQ(rows, fetched_rows);
+      LOG(INFO) << i << ") Full Time: " << finish - start;
+    }
+  }
+};
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigRead), PgMiniBigPrefetchTest) {
+  constexpr int kRows = RegularBuildVsSanitizers(1000000, 10000);
+  constexpr int kBlockSize = 1000;
+  constexpr int kReads = 3;
+
+  Run(kRows, kBlockSize, kReads);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigReadWithCompaction), PgMiniBigPrefetchTest) {
+  constexpr int kRows = RegularBuildVsSanitizers(1000000, 10000);
+  constexpr int kBlockSize = 1000;
+  constexpr int kReads = 3;
+
+  Run(kRows, kBlockSize, kReads, /* compact= */ true);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest) {
+  constexpr int kRows = 10;
+  constexpr int kBlockSize = kRows;
+  constexpr int kReads = 1;
+
+  Run(kRows, kBlockSize, kReads);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
+  SetAtomicFlag(1.0, &FLAGS_transaction_ignore_applying_probability_in_tests);
+  FLAGS_TEST_force_master_leader_resolution = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY)"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ShutdownAllMasters(cluster_.get());
+
+  LOG(INFO) << "Start masters";
+  ASSERT_OK(StartAllMasters(cluster_.get()));
+
+  auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, 0);
+}
+
+class PgMiniRocksDbIteratorLoggingTest : public PgMiniSingleTServerTest {
+ public:
+  struct IteratorLoggingTestConfig {
+    int num_non_pk_columns;
+    int num_rows;
+    int num_overwrites;
+    int first_row_to_scan;
+    int last_row_to_scan;
+  };
+
+  void RunIteratorLoggingTest(const IteratorLoggingTestConfig& config) {
+    auto conn = ASSERT_RESULT(Connect());
+
+    std::string non_pk_columns_schema;
+    std::string non_pk_column_names;
+    for (int i = 0; i < config.num_non_pk_columns; ++i) {
+      non_pk_columns_schema += Format(", $0 TEXT", GetNonPkColName(i));
+      non_pk_column_names += Format(", $0", GetNonPkColName(i));
+    }
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t (pk TEXT, PRIMARY KEY (pk ASC)$0)",
+                                 non_pk_columns_schema));
+    // Delete and overwrite every row multiple times.
+    for (int overwrite_index = 0; overwrite_index < config.num_overwrites; ++overwrite_index) {
+      for (int row_index = 0; row_index < config.num_rows; ++row_index) {
+        string non_pk_values;
+        for (int non_pk_col_index = 0;
+             non_pk_col_index < config.num_non_pk_columns;
+             ++non_pk_col_index) {
+          non_pk_values += Format(", '$0'", GetNonPkColValue(
+              non_pk_col_index, row_index, overwrite_index));
+        }
+
+        const auto pk_value = GetPkForRow(row_index);
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO t(pk$0) VALUES('$1'$2)", non_pk_column_names, pk_value, non_pk_values));
+        if (overwrite_index != config.num_overwrites - 1) {
+          ASSERT_OK(conn.ExecuteFormat("DELETE FROM t WHERE pk = '$0'", pk_value));
+        }
+      }
+    }
+    const auto first_pk_to_scan = GetPkForRow(config.first_row_to_scan);
+    const auto last_pk_to_scan = GetPkForRow(config.last_row_to_scan);
+    auto count_stmt_str = Format(
+        "SELECT COUNT(*) FROM t WHERE pk >= '$0' AND pk <= '$1'",
+        first_pk_to_scan,
+        last_pk_to_scan);
+    // Do the same scan twice, and only turn on iterator logging on the second scan.
+    // This way we won't be logging system table operations needed to fetch PostgreSQL metadata.
+    for (bool is_warmup : {true, false}) {
+      if (!is_warmup) {
+        SetAtomicFlag(true, &FLAGS_rocksdb_use_logging_iterator);
+      }
+      auto count_result = ASSERT_RESULT(conn.Fetch(count_stmt_str));
+      ASSERT_EQ(PQntuples(count_result.get()), 1);
+
+      auto actual_num_rows = ASSERT_RESULT(GetInt64(count_result.get(), 0, 0));
+      const int expected_num_rows = config.last_row_to_scan - config.first_row_to_scan + 1;
+      ASSERT_EQ(expected_num_rows, actual_num_rows);
+    }
+    SetAtomicFlag(false, &FLAGS_rocksdb_use_logging_iterator);
+  }
+
+ private:
+  std::string GetNonPkColName(int non_pk_col_index) {
+    return Format("non_pk_col$0", non_pk_col_index);
+  }
+
+  std::string GetPkForRow(int row_index) {
+    return Format("PrimaryKeyForRow$0", row_index);
+  }
+
+  std::string GetNonPkColValue(int non_pk_col_index, int row_index, int overwrite_index) {
+    return Format("NonPkCol$0ValueForRow$1Overwrite$2",
+                  non_pk_col_index, row_index, overwrite_index);
+  }
+};
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(IteratorLogPkOnly), PgMiniRocksDbIteratorLoggingTest) {
+  RunIteratorLoggingTest({
+    .num_non_pk_columns = 0,
+    .num_rows = 5,
+    .num_overwrites = 100,
+    .first_row_to_scan = 1,  // 0-based
+    .last_row_to_scan = 3,
+  });
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(IteratorLogTwoNonPkCols), PgMiniRocksDbIteratorLoggingTest) {
+  RunIteratorLoggingTest({
+    .num_non_pk_columns = 2,
+    .num_rows = 5,
+    .num_overwrites = 100,
+    .first_row_to_scan = 1,  // 0-based
+    .last_row_to_scan = 3,
+  });
+}
+
+// ------------------------------------------------------------------------------------------------
+// Backward scan on an index
+// ------------------------------------------------------------------------------------------------
+
+class PgMiniBackwardIndexScanTest : public PgMiniSingleTServerTest {
+ protected:
+  void BackwardIndexScanTest(bool uncommitted_intents) {
+    auto conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(conn.Execute(R"#(
+        create table events_backwardscan (
+
+          log       text not null,
+          src       text not null,
+          inserted  timestamp(3) without time zone not null,
+          created   timestamp(3) without time zone not null,
+          data      jsonb not null,
+
+          primary key (log, src, created)
+        );
+      )#"));
+    ASSERT_OK(conn.Execute("create index on events_backwardscan (inserted asc);"));
+
+    ASSERT_OK(conn.Execute(R"#(
+        insert into events_backwardscan
+
+        select
+          'log',
+          'src',
+          t,
+          t,
+          '{}'
+
+        from generate_series(
+          timestamp '2020-01-01',
+          timestamp '2020-02-01',
+          interval  '1 minute'
+        )
+
+        as t(day);
+    )#"));
+
+    boost::optional<PGConn> uncommitted_intents_conn;
+    if (uncommitted_intents) {
+      uncommitted_intents_conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(uncommitted_intents_conn->Execute("BEGIN"));
+      auto ts = "1970-01-01 00:00:00";
+      ASSERT_OK(uncommitted_intents_conn->ExecuteFormat(
+          "insert into events_backwardscan values ('log', 'src', '$0', '$0', '{}')", ts, ts));
+    }
+
+    auto count = ASSERT_RESULT(
+        conn.FetchValue<int64_t>("SELECT COUNT(*) FROM events_backwardscan"));
+    LOG(INFO) << "Total rows inserted: " << count;
+
+    auto select_result = ASSERT_RESULT(conn.Fetch(
+        "select * from events_backwardscan order by inserted desc limit 100"
+    ));
+    ASSERT_EQ(PQntuples(select_result.get()), 100);
+
+    if (uncommitted_intents) {
+      ASSERT_OK(uncommitted_intents_conn->Execute("ROLLBACK"));
+    }
+  }
+};
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(BackwardIndexScanNoIntents),
+          PgMiniBackwardIndexScanTest) {
+  BackwardIndexScanTest(/* uncommitted_intents */ false);
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(BackwardIndexScanWithIntents),
+          PgMiniBackwardIndexScanTest) {
+  BackwardIndexScanTest(/* uncommitted_intents */ true);
 }
 
 } // namespace pgwrapper

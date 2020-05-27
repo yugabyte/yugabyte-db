@@ -97,6 +97,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         defaultUniverse.getUniverseDetails().nodePrefix,
         defaultProvider.customerUUID, "/tmp/certs",
         true));
+    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+                                              Universe.HelmLegacy.V3.toString()));
   }
 
   @After
@@ -145,14 +147,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     params.placementInfo = placementInfo;
     kubernetesCommandExecutor.initialize(params);
     return kubernetesCommandExecutor;
-  }
-
-  @Test
-  public void testHelmInit() {
-    KubernetesCommandExecutor kubernetesCommandExecutor =
-        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INIT);
-    kubernetesCommandExecutor.run();
-    verify(kubernetesManager, times(1)).helmInit(config, defaultProvider.uuid);
   }
 
   private Map<String, Object> getExpectedOverrides(boolean exposeAll) {
@@ -287,6 +281,12 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       }
     }
     expectedOverrides.put("disableYsql", !defaultUserIntent.enableYSQL);
+    Map<String, String> universeConfig = defaultUniverse.getConfig();
+    boolean helmLegacy = Universe.HelmLegacy.valueOf(universeConfig.get(Universe.HELM2_LEGACY))
+        == Universe.HelmLegacy.V2TO3;
+    if (helmLegacy) {
+      expectedOverrides.put("helm2Legacy", helmLegacy);
+    }
 
     return expectedOverrides;
   }
@@ -711,5 +711,46 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       assertEquals(node.cloudInfo.az, az);
       assertEquals(node.cloudInfo.region, azToRegion.get(az));
     }
+  }
+
+  @Test
+  public void testHelmInstallLegacy() throws IOException {
+    ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
+    shellResponse.message =
+        "{\"items\": [{\"metadata\": {\"name\": \"test\"}, \"spec\": {\"clusterIP\": \"None\"," +
+        "\"type\":\"clusterIP\"}}]}";
+    when(kubernetesManager.getServices(any(), any())).thenReturn(shellResponse);
+    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+                                              Universe.HelmLegacy.V2TO3.toString()));
+    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+                       defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+    kubernetesCommandExecutor.run();
+    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+
+    ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    verify(kubernetesManager, times(1)).helmInstall(expectedConfig.capture(),
+                                                    expectedProviderUUID.capture(),
+                                                    expectedNodePrefix.capture(),
+                                                    expectedOverrideFile.capture());
+    verify(kubernetesManager, times(1)).getServices(expectedConfig.capture(),
+                                                    expectedNodePrefix.capture());
+    assertEquals(config, expectedConfig.getValue());
+    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+    assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
+    assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    // TODO implement exposeAll false case
+    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+    assertEquals(getExpectedOverrides(true), overrides);
   }
 }

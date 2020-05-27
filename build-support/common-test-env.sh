@@ -565,7 +565,7 @@ analyze_existing_core_file() {
     set -x
     echo "$debugger_input" |
       "${debugger_cmd[@]}" 2>&1 |
-      egrep -v "^\[New LWP [0-9]+\]$" |
+      grep -Ev "^\[New LWP [0-9]+\]$" |
       "$YB_SRC_ROOT"/build-support/dedup_thread_stacks.py |
       tee -a "$append_output_to"
   ) >&2
@@ -756,23 +756,6 @@ handle_cxx_test_xml_output() {
         "$junit_test_case_id" "$test_log_path" >"$xml_output_file"
   fi
 
-  if [[ -z ${test_log_url:-} ]]; then
-    # Even if there is no test log URL available we need it, because we use
-    # update_test_result_xml.py to mark test as failed in XML in case test produced XML without
-    # errors, but just returned non-zero exit code (for example under Address/Thread Sanitizer).
-
-    # Converting path to local file URL (may be useful for local debugging purposes). However,
-    # don't fail if the "six" Python module is not available.
-    if python -c "import six" &>/dev/null; then
-      test_log_url=$(
-        python -c "import six; print six.moves.urllib_parse.urljoin(\"file://\", \
-        six.moves.urllib.request.pathname2url('$test_log_path'))"
-      )
-    else
-      test_log_url="http://i-would-put-local-file-url-here-but-could-not-import-python-six-module"
-    fi
-  fi
-
   process_tree_supervisor_append_log_to_on_error=$test_log_path
 
   stop_process_tree_supervisor
@@ -786,10 +769,15 @@ handle_cxx_test_xml_output() {
   else
     log "Test succeeded, updating $xml_output_file"
   fi
-  "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
-    --result-xml "$xml_output_file" \
-    --log-url "$test_log_url" \
+  update_test_result_xml_cmd=(
+    "$YB_SRC_ROOT"/build-support/update_test_result_xml.py
+    --result-xml "$xml_output_file"
     --mark-as-failed "$test_failed"
+  )
+  if [[ -n ${test_log_url:-} ]]; then
+    update_test_result_xml_cmd+=( --log-url "$test_log_url" )
+  fi
+  ( set -x; "${update_test_result_xml_cmd[@]}" )
 
   # Useful for distributed builds in an NFS environment.
   chmod g+w "$xml_output_file"
@@ -1250,23 +1238,25 @@ find_spark_submit_cmd() {
   fi
 
   if is_mac; then
-    spark_submit_cmd_path=$YB_MACOS_SPARK_SUBMIT_CMD
+    spark_submit_cmd_path=$YB_MACOS_PY3_SPARK_SUBMIT_CMD
     return
   fi
 
   if [[ $build_type == "tsan" || $build_type == "asan" ]]; then
-    spark_submit_cmd_path=$YB_ASAN_TSAN_SPARK_SUBMIT_CMD
+    spark_submit_cmd_path=$YB_ASAN_TSAN_PY3_SPARK_SUBMIT_CMD
     return
   fi
 
-  spark_submit_cmd_path=$YB_LINUX_SPARK_SUBMIT_CMD
+  spark_submit_cmd_path=$YB_LINUX_PY3_SPARK_SUBMIT_CMD
 }
 
 spark_available() {
   find_spark_submit_cmd
-  if [[ -f $spark_submit_cmd_path ]]; then
+  log "spark_submit_cmd_path=$spark_submit_cmd_path"
+  if [[ -x $spark_submit_cmd_path ]]; then
     return 0  # true
   fi
+  log "File $spark_submit_cmd_path not found or not executable, Spark is unavailable"
   return 1  # false
 }
 
@@ -1753,7 +1743,8 @@ run_python_doctest() {
     if [[ $python_file == managed/* ||
           $python_file == cloud/* ||
           $python_file == src/postgres/src/test/locale/sort-test.py ||
-          $python_file == bin/test_bsopt.py ]]; then
+          $python_file == bin/test_bsopt.py ||
+          $python_file == thirdparty/* ]]; then
       continue
     fi
     if [[ $basename == .ycm_extra_conf.py ||
@@ -1761,13 +1752,16 @@ run_python_doctest() {
           $python_file =~ managed/.* ]]; then
       continue
     fi
-    python -m doctest "$python_file"
+    python3 -m doctest "$python_file"
   done
 }
 
 run_python_tests() {
   activate_virtualenv
-  run_python_doctest
+  (
+    export PYTHONPATH=$YB_SRC_ROOT/python
+    run_python_doctest
+  )
   check_python_script_syntax
 }
 

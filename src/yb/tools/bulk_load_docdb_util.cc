@@ -52,21 +52,22 @@ Status BulkLoadDocDBUtil::InitRocksDBDir() {
 
 Status BulkLoadDocDBUtil::InitRocksDBOptions() {
   RETURN_NOT_OK(InitCommonRocksDBOptions());
-  rocksdb_options_.max_write_buffer_number = num_memtables_;
-  rocksdb_options_.write_buffer_size = memtable_size_;
-  rocksdb_options_.allow_concurrent_memtable_write = true;
-  rocksdb_options_.enable_write_thread_adaptive_yield = true;
-  rocksdb_options_.max_background_flushes = max_background_flushes_;
-  rocksdb_options_.env->SetBackgroundThreads(max_background_flushes_, rocksdb::Env::Priority::HIGH);
+  regular_db_options_.max_write_buffer_number = num_memtables_;
+  regular_db_options_.write_buffer_size = memtable_size_;
+  regular_db_options_.allow_concurrent_memtable_write = true;
+  regular_db_options_.enable_write_thread_adaptive_yield = true;
+  regular_db_options_.max_background_flushes = max_background_flushes_;
+  regular_db_options_.env->SetBackgroundThreads(
+      max_background_flushes_, rocksdb::Env::Priority::HIGH);
   // We need to set level0_file_num_compaction_trigger even in case compaction is disabled, because
   // RocksDB SanitizeOptions function is increasing level0_slowdown_writes_trigger to be greater
   // or equal to level0_file_num_compaction_trigger.
-  rocksdb_options_.level0_file_num_compaction_trigger = -1;
-  rocksdb_options_.level0_slowdown_writes_trigger = -1;
-  rocksdb_options_.level0_stop_writes_trigger = std::numeric_limits<int>::max();
-  rocksdb_options_.delayed_write_rate = std::numeric_limits<int>::max();
+  regular_db_options_.level0_file_num_compaction_trigger = -1;
+  regular_db_options_.level0_slowdown_writes_trigger = -1;
+  regular_db_options_.level0_stop_writes_trigger = std::numeric_limits<int>::max();
+  regular_db_options_.delayed_write_rate = std::numeric_limits<int>::max();
 
-  rocksdb_options_.memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
+  regular_db_options_.memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
       0 /* lookahead */, rocksdb::ConcurrentWrites::kTrue);
 
   // TODO - we might consider also set disableDataSync to true and do manual sync after bulk load,

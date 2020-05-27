@@ -39,6 +39,8 @@
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/port/port.h"
+#include "yb/util/random_util.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 namespace checkpoint {
@@ -59,10 +61,11 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
   uint64_t sequence_number = db->GetLatestSequenceNumber();
   bool same_fs = true;
   VectorLogPtr live_wal_files;
+  bool delete_checkpoint_dir = false;
 
   Status s = db->GetCheckpointEnv()->FileExists(checkpoint_dir);
   if (s.ok()) {
-    return STATUS_FORMAT(InvalidArgument, "Directory exists: $0", checkpoint_dir);
+    delete_checkpoint_dir = true;
   } else if (!s.IsNotFound()) {
     assert(s.IsIOError());
     return s;
@@ -87,7 +90,8 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
        "Started the snapshot process -- creating snapshot in directory %s",
        checkpoint_dir.c_str());
 
-  std::string full_private_path = checkpoint_dir + ".tmp";
+  const std::string full_private_path =
+      checkpoint_dir + ".tmp." + ToString(yb::RandomUniformInt<uint64_t>());
 
   // create snapshot directory
   s = db->GetCheckpointEnv()->CreateDir(full_private_path);
@@ -171,6 +175,13 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
   RETURN_NOT_OK(db->EnableFileDeletions(false));
 
   if (s.ok()) {
+    if (delete_checkpoint_dir) {
+      const Status s_del = DeleteRecursively(db->GetCheckpointEnv(), checkpoint_dir);
+      RLOG(
+          db->GetOptions().info_log, "Deleted dir %s -- %s",
+          checkpoint_dir.c_str(), s_del.ToString().c_str());
+    }
+
     // move tmp private backup to real snapshot directory
     s = db->GetCheckpointEnv()->RenameFile(full_private_path, checkpoint_dir);
   }
@@ -187,19 +198,10 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
     RLOG(db->GetOptions().info_log, "Snapshot failed -- %s",
          s.ToString().c_str());
     // we have to delete the dir and all its children
-    std::vector<std::string> subchildren;
-    db->GetCheckpointEnv()->GetChildrenWarnNotOk(full_private_path, &subchildren);
-    for (auto& subchild : subchildren) {
-      Status s1 = db->GetCheckpointEnv()->DeleteFile(full_private_path + subchild);
-      if (s1.ok()) {
-        RLOG(db->GetOptions().info_log, "Deleted %s",
-             (full_private_path + subchild).c_str());
-      }
-    }
-    // finally delete the private dir
-    Status s1 = db->GetCheckpointEnv()->DeleteDir(full_private_path);
-    RLOG(db->GetOptions().info_log, "Deleted dir %s -- %s",
-        full_private_path.c_str(), s1.ToString().c_str());
+    const Status s_del = DeleteRecursively(db->GetCheckpointEnv(), full_private_path);
+    RLOG(
+        db->GetOptions().info_log, "Deleted dir %s -- %s",
+        full_private_path.c_str(), s_del.ToString().c_str());
     return s;
   }
 

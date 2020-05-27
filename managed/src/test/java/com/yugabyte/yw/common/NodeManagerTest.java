@@ -38,6 +38,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Predicate;
+import java.util.Set;
+import java.util.HashSet;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
@@ -356,14 +358,16 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--extra_gflags");
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
         } else if (configureParams.type == GFlags) {
-          if (!configureParams.gflags.isEmpty()) {
-            String processType = configureParams.getProperty("processType");
-            expectedCommand.add("--yb_process_type");
-            expectedCommand.add(processType.toLowerCase());
-            String gflagsJson =  Json.stringify(Json.toJson(gflags));
-            expectedCommand.add("--replace_gflags");
-            expectedCommand.add("--gflags");
-            expectedCommand.add(gflagsJson);
+          String processType = configureParams.getProperty("processType");
+          expectedCommand.add("--yb_process_type");
+          expectedCommand.add(processType.toLowerCase());
+          String gflagsJson =  Json.stringify(Json.toJson(gflags));
+          expectedCommand.add("--replace_gflags");
+          expectedCommand.add("--gflags");
+          expectedCommand.add(gflagsJson);
+          if (configureParams.gflagsToRemove != null && !configureParams.gflagsToRemove.isEmpty()) {
+            expectedCommand.add("--gflags_to_remove");
+            expectedCommand.add(Json.stringify(Json.toJson(configureParams.gflagsToRemove)));
           }
         } else {
           expectedCommand.add("--extra_gflags");
@@ -551,6 +555,7 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
+      keyInfo.sshPort = 3333;
       keyInfo.airGapInstall = true;
       getOrCreate(t.provider.uuid, "demo-access", keyInfo);
 
@@ -575,26 +580,25 @@ public class NodeManagerTest extends FakeDBApplication {
           accessKeyIndexOffset += 2;
         }
       }
+
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
-      List<String> accessKeyCommand = new ArrayList<String>(ImmutableList.of("--vars_file", "/path/to/vault_file",
+      List<String> accessKeyCommands = new ArrayList<String>(ImmutableList.of("--vars_file", "/path/to/vault_file",
           "--vault_password_file", "/path/to/vault_password", "--private_key_file",
           "/path/to/private.key"));
-      if (t.cloudType.equals(Common.CloudType.onprem)) {
-        accessKeyCommand.add("--air_gap");
-      }
-      expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommand);
       if (t.cloudType.equals(Common.CloudType.aws)) {
-        List<String> awsAccessKeyCommands = new ArrayList<>();
-        awsAccessKeyCommands.add("--key_pair_name");
-        awsAccessKeyCommands.add(userIntent.accessKeyCode);
+        accessKeyCommands.add("--key_pair_name");
+        accessKeyCommands.add(userIntent.accessKeyCode);
         String customSecurityGroupId = t.region.getSecurityGroupId();
         if (customSecurityGroupId != null) {
-          awsAccessKeyCommands.add("--security_group_id");
-          awsAccessKeyCommands.add(customSecurityGroupId);
+          accessKeyCommands.add("--security_group_id");
+          accessKeyCommands.add(customSecurityGroupId);
         }
-        expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, awsAccessKeyCommands);
       }
+      accessKeyCommands.add("--custom_ssh_port");
+      accessKeyCommands.add("3333");
+      accessKeyCommands.add("--air_gap");
+      expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommands);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
@@ -709,6 +713,7 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
+      keyInfo.sshPort = 3333;
       getOrCreate(t.provider.uuid, "demo-access", keyInfo);
 
       // Set up task params
@@ -731,7 +736,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       List<String> accessKeyCommand = ImmutableList.of(
           "--vars_file", "/path/to/vault_file", "--vault_password_file", "/path/to/vault_password",
-          "--private_key_file", "/path/to/private.key");
+          "--private_key_file", "/path/to/private.key", "--custom_ssh_port", "3333");
       expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommand);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
@@ -877,6 +882,30 @@ public class NodeManagerTest extends FakeDBApplication {
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(),
             is("Unable to fetch yugabyte release for version: 0.0.2")));
+      }
+    }
+  }
+
+  @Test
+  public void testGFlagRemove() {
+    for (TestData t : testData) {
+      for (String serverType : ImmutableList.of(MASTER.toString(), TSERVER.toString())) {
+        AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+        buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+                ApiUtils.mockUniverseUpdater(t.cloudType)));
+        Set<String> gflagsToRemove = new HashSet<>();
+        gflagsToRemove.add("flag1");
+        gflagsToRemove.add("flag2");
+        params.type = GFlags;
+        params.isMasterInShellMode = true;
+        params.gflagsToRemove = gflagsToRemove;
+        params.setProperty("processType", serverType);
+
+        List<String> expectedCommand = new ArrayList<>(t.baseCommand);
+        expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        verify(shellProcessHandler, times(1)).run(expectedCommand,
+                t.region.provider.getConfig());
       }
     }
   }

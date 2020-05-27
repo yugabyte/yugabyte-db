@@ -436,6 +436,7 @@ get_filename_component(YB_BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME
 string(REPLACE "-" ";" YB_BUILD_ROOT_BASENAME_COMPONENTS ${YB_BUILD_ROOT_BASENAME})
 list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 0 YB_BUILD_TYPE)
 message("YB_BUILD_TYPE: ${YB_BUILD_TYPE}")
+message("CMAKE_MAKE_PROGRAM: ${CMAKE_MAKE_PROGRAM}")
 
 # CMAKE_LINK_DEPENDS_NO_SHARED prevents prevent re-linking dependents of a shared library when it
 # is re-linked. Enabling the optimized behavior by default, and allowing to customize it with the
@@ -1308,9 +1309,7 @@ function(ADD_THIRDPARTY_LIB LIB_NAME)
 endfunction()
 
 # Look in thirdparty prefix paths before anywhere else for system dependencies.
-# TODO: get rid of unnecessary variables.
-set(THIRDPARTY_PREFIX ${YB_PREFIX_COMMON})
-set(CMAKE_PREFIX_PATH ${THIRDPARTY_PREFIX} ${CMAKE_PREFIX_PATH})
+set(CMAKE_PREFIX_PATH ${YB_PREFIX_COMMON} ${CMAKE_PREFIX_PATH})
 
 set(YB_THIRDPARTY_INSTALLED_DEPS_DIR
     "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_INSTRUMENTATION_TYPE}")
@@ -1417,12 +1416,7 @@ if (NOT APPLE)
     STATIC_LIB "${UNWIND_STATIC_ARCH_LIB}"
     SHARED_LIB "${UNWIND_SHARED_ARCH_LIB}")
   list(APPEND YB_BASE_LIBS unwind)
-endif()
 
-# libuuid
-# We only need it on macOS and on Linux when using Linuxbrew. When building on Ubuntu 17.10+ without
-# Linuxbrew, libuuid is found in default include/library paths.
-if (USING_LINUXBREW)
   find_package(LibUuid REQUIRED)
   include_directories(SYSTEM ${LIBUUID_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(libuuid
@@ -1758,6 +1752,9 @@ elseif(APPLE)
 endif()
 
 message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
+
+set(YB_PGBACKEND_SHARED_LIB 
+    "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend${YB_SHARED_LIBRARY_SUFFIX}")
 
 # -------------------------------------------------------------------------------------------------
 # Subdirectories

@@ -10,7 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <cds/init.h>
+#include <string>
+
+#include <cds/init.h> // NOLINT
 
 #include "yb/common/ybc-internal.h"
 #include "yb/util/atomic.h"
@@ -30,6 +32,8 @@ DEFINE_int32(pggate_num_connections_to_server, 1,
 DECLARE_int32(num_connections_to_server);
 
 DECLARE_int32(delay_alter_sequence_sec);
+
+DECLARE_int32(client_read_write_timeout_ms);
 
 namespace yb {
 namespace pggate {
@@ -95,6 +99,18 @@ YBCStatus YBCPgInitSession(const YBCPgEnv pg_env,
                            const char *database_name) {
   const string db_name(database_name ? database_name : "");
   return ToYBCStatus(pgapi->InitSession(pg_env, db_name));
+}
+
+YBCPgMemctx YBCPgCreateMemctx() {
+  return pgapi->CreateMemctx();
+}
+
+void YBCPgDestroyMemctx(YBCPgMemctx memctx) {
+  return pgapi->DestroyMemctx(memctx);
+}
+
+void YBCPgResetMemctx(YBCPgMemctx memctx) {
+  return pgapi->ResetMemctx(memctx);
 }
 
 YBCStatus YBCPgInvalidateCache() {
@@ -186,7 +202,8 @@ YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
 // Statement Operations ----------------------------------------------------------------------------
 
 YBCStatus YBCPgDeleteStatement(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->DeleteStatement(handle));
+  return ToYBCStatus(Status::OK());
+  // return ToYBCStatus(pgapi->DeleteStatement(handle));
 }
 
 YBCStatus YBCPgClearBinds(YBCPgStatement handle) {
@@ -327,10 +344,6 @@ YBCStatus YBCPgGetTableDesc(const YBCPgOid database_oid,
   return ToYBCStatus(pgapi->GetTableDesc(table_id, handle));
 }
 
-YBCStatus YBCPgDeleteTableDesc(YBCPgTableDesc handle) {
-  return ToYBCStatus(pgapi->DeleteTableDesc(handle));
-}
-
 YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              int16_t attr_number,
                              bool *is_primary,
@@ -418,6 +431,28 @@ YBCStatus YBCPgExecDropIndex(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropIndex(handle));
 }
 
+YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
+    const YBCPgOid database_oid,
+    const YBCPgOid table_oid,
+    const YBCPgOid index_oid,
+    const uint32_t target_index_permissions,
+    uint32_t *actual_index_permissions) {
+  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId index_id(database_oid, index_oid);
+  IndexPermissions returned_index_permissions = IndexPermissions::INDEX_PERM_DELETE_ONLY;
+  YBCStatus s = ExtractValueFromResult(pgapi->WaitUntilIndexPermissionsAtLeast(
+        table_id,
+        index_id,
+        static_cast<IndexPermissions>(target_index_permissions)),
+      &returned_index_permissions);
+  if (s) {
+    // Bad status.
+    return s;
+  }
+  *actual_index_permissions = static_cast<uint32_t>(returned_index_permissions);
+  return YBCStatusOK();
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statements.
 //--------------------------------------------------------------------------------------------------
@@ -460,15 +495,23 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
 }
 
 void YBCPgStartOperationsBuffering() {
-  return pgapi->StartOperationsBuffering();
+  pgapi->StartOperationsBuffering();
 }
 
-void YBCPgResetOperationsBuffering() {
-  return pgapi->ResetOperationsBuffering();
+YBCStatus YBCPgStopOperationsBuffering() {
+  return ToYBCStatus(pgapi->StopOperationsBuffering());
+}
+
+YBCStatus YBCPgResetOperationsBuffering() {
+  return ToYBCStatus(pgapi->ResetOperationsBuffering());
 }
 
 YBCStatus YBCPgFlushBufferedOperations() {
   return ToYBCStatus(pgapi->FlushBufferedOperations());
+}
+
+void YBCPgDropBufferedOperations() {
+  pgapi->DropBufferedOperations();
 }
 
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
@@ -491,6 +534,10 @@ YBCStatus YBCPgNewInsert(const YBCPgOid database_oid,
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecInsert(handle));
+}
+
+YBCStatus YBCPgInsertStmtSetUpsertMode(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->InsertStmtSetUpsertMode(handle));
 }
 
 // UPDATE Operations -------------------------------------------------------------------------------
@@ -716,6 +763,19 @@ int32_t YBCGetOutputBufferSize() {
 
 bool YBCPgIsYugaByteEnabled() {
   return pgapi;
+}
+
+void YBCSetTimeout(int timeout_ms, void* extra) {
+  // We set the rpc timeouts as a min{STATEMENT_TIMEOUT, FLAGS_client_read_write_timeout_ms}.
+  if (timeout_ms <= 0) {
+    // The timeout is not valid. Use the default GFLAG value.
+    return;
+  }
+  timeout_ms = std::min(timeout_ms, FLAGS_client_read_write_timeout_ms);
+
+  // The statement timeout is lesser than FLAGS_client_read_write_timeout_ms, hence the rpcs would
+  // need to use a shorter timeout.
+  pgapi->SetTimeout(timeout_ms);
 }
 
 //------------------------------------------------------------------------------------------------

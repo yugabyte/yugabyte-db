@@ -64,9 +64,6 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
     int numOfCalls = 1;
     switch(commandType) {
-      case HELM_INIT:
-        kubernetesManager.helmInit(configProvider, defaultProvider.uuid);
-        break;
       case HELM_INSTALL:
         kubernetesManager.helmInstall(configProvider, defaultProvider.uuid, "demo-universe",
             "/tmp/override.yml");
@@ -91,29 +88,12 @@ public class KubernetesManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testHelmInitWithRequiredConfig() {
-    runCommand(KubernetesCommandExecutor.CommandType.HELM_INIT);
-    assertEquals(configProvider, config.getValue());
-    assertEquals(ImmutableList.of("helm", "init", "--service-account", "demo-account", "--upgrade", "--wait"),
-        command.getValue());
-  }
-
-  @Test
-  public void testHelmInitWithoutRequiredConfig() {
-    try {
-      runCommand(KubernetesCommandExecutor.CommandType.HELM_INIT);
-    } catch (RuntimeException e) {
-      assertEquals("Service Account is required.", e.getMessage());
-    }
-  }
-
-  @Test
   public void testHelmUpgrade() {
     when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
     when(mockAppConfig.getLong("yb.helm.timeout_secs")).thenReturn((long)600);
     runCommand(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
-    assertEquals(ImmutableList.of("helm",  "upgrade",  "-f", "/tmp/override.yml", "--namespace", "demo-universe",
-        "demo-universe", "/my/helm.tgz", "--timeout", "600", "--wait"),
+    assertEquals(ImmutableList.of("helm",  "upgrade",  "demo-universe", "/my/helm.tgz", "-f",
+        "/tmp/override.yml", "--namespace", "demo-universe"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
@@ -122,8 +102,8 @@ public class KubernetesManagerTest extends FakeDBApplication {
   public void testHelmUpgradeNoTimeout() {
     when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
     runCommand(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
-    assertEquals(ImmutableList.of("helm",  "upgrade",  "-f", "/tmp/override.yml", "--namespace", "demo-universe",
-        "demo-universe", "/my/helm.tgz", "--timeout", "300", "--wait"),
+    assertEquals(ImmutableList.of("helm",  "upgrade",  "demo-universe", "/my/helm.tgz", "-f",
+        "/tmp/override.yml", "--namespace", "demo-universe"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
@@ -142,9 +122,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
     when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
     when(mockAppConfig.getLong("yb.helm.timeout_secs")).thenReturn((long)600);
     runCommand(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
-    assertEquals(ImmutableList.of("helm", "install", "/my/helm.tgz",
-        "--namespace", "demo-universe", "--name", "demo-universe", "-f",
-        "/tmp/override.yml", "--timeout", "600", "--wait"),
+    assertEquals(ImmutableList.of("helm", "install", "demo-universe", "/my/helm.tgz",
+        "--namespace", "demo-universe", "-f",
+        "/tmp/override.yml", "--timeout", "600s", "--wait"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
@@ -153,9 +133,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
   public void helmInstallWithNoTimeout() {
     when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
     runCommand(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
-    assertEquals(ImmutableList.of("helm", "install", "/my/helm.tgz",
-        "--namespace", "demo-universe", "--name", "demo-universe", "-f",
-        "/tmp/override.yml", "--timeout", "300", "--wait"),
+    assertEquals(ImmutableList.of("helm", "install", "demo-universe", "/my/helm.tgz",
+        "--namespace", "demo-universe", "-f",
+        "/tmp/override.yml", "--timeout", "300s", "--wait"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
@@ -181,7 +161,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
   @Test
   public void helmDelete() {
     runCommand(KubernetesCommandExecutor.CommandType.HELM_DELETE);
-    assertEquals(ImmutableList.of("helm", "delete", "demo-universe", "--purge"),
+    assertEquals(ImmutableList.of("helm", "delete", "demo-universe", "-n", "demo-universe"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
@@ -216,5 +196,15 @@ public class KubernetesManagerTest extends FakeDBApplication {
     assertEquals(ImmutableList.of("kubectl", "get", "svc",
         "yb-tserver-service", "--namespace", "demo-universe", "-o",
         "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"), command.getValue());
+  }
+
+  @Test
+  public void getServices() {
+    kubernetesManager.getServices(configProvider, "demo-universe");
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), (Map<String, String>) config.capture());
+    assertEquals(ImmutableList.of("kubectl", "get", "services",
+        "--namespace", "demo-universe", "-o", "json", "-l", "release=" + "demo-universe"),
+        command.getValue());
   }
 }

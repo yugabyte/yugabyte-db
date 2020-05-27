@@ -160,5 +160,35 @@ TEST_F(YBAdminMultiMasterTest, AddShellMaster) {
   ASSERT_EQ(lines4.size(), kNumInitMasters + 2);
 }
 
+TEST_F(YBAdminMultiMasterTest, TestMasterLeaderStepdown) {
+  const int kNumInitMasters = 3;
+  ASSERT_NO_FATALS(StartCluster({}, {}, 1/*num tservers*/, kNumInitMasters));
+  std::string out;
+  auto call_admin = [
+      &out,
+      admin_path = GetToolPath(kAdminToolName),
+      master_address = ToString(cluster_->GetMasterAddresses())] (
+      const std::initializer_list<std::string>& args) mutable {
+    auto cmds = ToStringVector(admin_path, "-master_addresses", master_address);
+    std::copy(args.begin(), args.end(), std::back_inserter(cmds));
+    return Subprocess::Call(cmds, &out);
+  };
+  auto regex_fetch_first = [&out](const std::string& exp) -> Result<std::string> {
+    std::smatch match;
+    if (!std::regex_search(out.cbegin(), out.cend(), match, std::regex(exp)) || match.size() != 2) {
+      return STATUS_FORMAT(NotFound, "No pattern in '$0'", out);
+    }
+    return match[1];
+  };
+
+  ASSERT_OK(call_admin({"list_all_masters"}));
+  const auto new_leader_id = ASSERT_RESULT(
+      regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+\S+\s+FOLLOWER)"));
+  ASSERT_OK(call_admin({"master_leader_stepdown", new_leader_id}));
+  ASSERT_OK(call_admin({"list_all_masters"}));
+  ASSERT_EQ(new_leader_id, ASSERT_RESULT(
+      regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+\S+\s+LEADER)")));
+}
+
 }  // namespace tools
 }  // namespace yb

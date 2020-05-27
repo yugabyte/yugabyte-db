@@ -21,6 +21,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 
 public class AnsibleConfigureServers extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleConfigureServers.class);
@@ -37,6 +39,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean enableClientToNodeEncrypt = false;
     public boolean allowInsecure = true;
     public Map<String, String> gflags = new HashMap<>();
+    public Set<String> gflagsToRemove = new HashSet<>();
     public boolean updateMasterAddrsOnly = false;
     public CollectionLevel callhomeLevel;
     // Development params.

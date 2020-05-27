@@ -149,6 +149,9 @@ class RefCntPrefix {
   explicit RefCntPrefix(const std::string& string)
       : bytes_(RefCntBuffer(string)), size_(bytes_.size()) {}
 
+  explicit RefCntPrefix(const Slice& slice)
+      : bytes_(RefCntBuffer(slice)), size_(bytes_.size()) {}
+
   RefCntPrefix(RefCntBuffer bytes) // NOLINT
       : bytes_(std::move(bytes)), size_(bytes_.size()) {}
 

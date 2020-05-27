@@ -88,6 +88,7 @@ METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(not_leader_rejections);
 METRIC_DECLARE_gauge_int64(raft_term);
 METRIC_DECLARE_counter(log_cache_disk_reads);
+METRIC_DECLARE_gauge_int64(log_cache_num_ops);
 
 namespace yb {
 namespace tserver {
@@ -792,6 +793,150 @@ TEST_F(RaftConsensusITest, TestCatchupOpsReadFromDisk) {
   // NOTE: empirically determined threshold.
   const int kOpsReadFromDiskThreshold = kNumWrites * 2;
   ASSERT_LE(ops_read_from_disk, kOpsReadFromDiskThreshold);
+}
+
+// Test that when a follower is paused so that it misses several writes, is resumed
+// briefly such that it only receives some of the entries from the leader but
+// becomes aware of the highest committed op id, it is able to bootstrap successfully
+// after a restart.
+TEST_F(RaftConsensusITest, TestLaggingFollowerRestart) {
+  vector<string> extra_flags = {
+      "--consensus_inject_latency_ms_in_notifications=10"s,
+      "--consensus_max_batch_size_bytes=1024"s
+  };
+  ASSERT_NO_FATALS(BuildAndStart(extra_flags));
+
+  // Find leader.
+  TServerDetails* leader = nullptr;
+  ASSERT_OK(FindTabletLeader(tablet_servers_, tablet_id_, 30s, &leader));
+  CHECK_NOTNULL(leader);
+
+  // Find a follower to pause, resume, and restart.
+  TServerDetails* replica = nullptr;
+  for (const auto& tablet_replica : tablet_replicas_) {
+      TServerDetails* ts_details = tablet_replica.second;
+      if (ts_details->uuid() != leader->uuid()) {
+        replica = ts_details;
+        break;
+      }
+  }
+  CHECK_NOTNULL(replica);
+  ASSERT_NE(replica->uuid(), leader->uuid());
+
+  ExternalTabletServer* replica_ets = cluster_->tablet_server_by_uuid(replica->uuid());
+
+  // Pause a replica.
+  ASSERT_OK(replica_ets->Pause());
+  LOG(INFO)<< "Paused replica " << replica->uuid() << ", starting to write.";
+
+  // Insert 3MB worth of data.
+  const int kNumWrites = 1000;
+  ASSERT_NO_FATALS(WriteOpsToLeader(kNumWrites, 3_KB));
+
+  // Allow for paused replica to lag.
+  SleepFor(20s);
+
+  // Now unpause the replica, the lagging replica should eventually catch back up.
+  ASSERT_OK(replica_ets->Resume());
+  LOG(INFO)<< "Resumed replica " << replica->uuid() << ".";
+
+  // Wait for resumed follower to get some but not all entries.
+  int64_t actual_minimum_index = consensus::kInvalidOpIdIndex;
+  ASSERT_OK(WaitUntilAllReplicasHaveOp(kNumWrites / 4, tablet_id_,
+                                       TServerDetailsVector(tablet_servers_), 10s,
+                                       &actual_minimum_index));
+  LOG(INFO) << "Replica " << replica->uuid() << " received " << actual_minimum_index;
+  ASSERT_LE(actual_minimum_index, kNumWrites / 2);
+
+  replica_ets->Shutdown();
+  LOG(INFO)<< "Shutdown replica " << replica->uuid() << ".";
+
+  CHECK_OK(replica_ets->Restart());
+  LOG(INFO)<< "Restarted replica " << replica->uuid() << ".";
+
+  // Wait for successful replication to restarted follower.
+  ASSERT_OK(WaitForServersToAgree(60s, tablet_servers_, tablet_id_, kNumWrites));
+}
+
+// Test that when a follower is shutdown so that it misses several writes, the
+// leader evicts almost all entries from log cache.
+TEST_F(RaftConsensusITest, TestLaggingFollowerLogCacheEviction) {
+  const auto kHeartBeatInterval = 1s;
+  const int32_t kConsensusLaggingFollowerThreshold = 10;
+
+  vector<string> extra_flags = {
+      "--consensus_inject_latency_ms_in_notifications=10"s,
+      "--consensus_max_batch_size_bytes=1024"s,
+      Format("--consensus_lagging_follower_threshold=$0", kConsensusLaggingFollowerThreshold),
+      Format("--raft_heartbeat_interval_ms=$0", ToMilliseconds(kHeartBeatInterval))
+  };
+  ASSERT_NO_FATALS(BuildAndStart(extra_flags));
+
+  // Find leader.
+  TServerDetails* leader = nullptr;
+  ASSERT_OK(FindTabletLeader(tablet_servers_, tablet_id_, 30s, &leader));
+  CHECK_NOTNULL(leader);
+
+  // Find a follower to pause, resume, and restart.
+  TServerDetails* replica = nullptr;
+  for (const auto& tablet_replica : tablet_replicas_) {
+    TServerDetails* ts_details = tablet_replica.second;
+    if (ts_details->uuid() != leader->uuid()) {
+      replica = ts_details;
+      break;
+    }
+  }
+  CHECK_NOTNULL(replica);
+  ASSERT_NE(replica->uuid(), leader->uuid());
+
+  ExternalTabletServer* replica_ets = cluster_->tablet_server_by_uuid(replica->uuid());
+
+  // Shutdown a replica.
+  replica_ets->Shutdown();
+  LOG(INFO)<< "Shutdown replica " << replica->uuid() << ".";
+
+  // Insert 3MB worth of data.
+  const int kNumWrites = 1000;
+  ASSERT_NO_FATALS(WriteOpsToLeader(kNumWrites, 3_KB));
+
+  // Allow for shutdown replica to be retransmitted to more than
+  // consensus_lagging_follower_threshold times so that it can be marked as lagging.
+  // Also use a multiplicative factor to reduce flakiness.
+  SleepFor(kHeartBeatInterval * kConsensusLaggingFollowerThreshold * 2);
+
+  // Allow for shutdown replica to lag.
+  auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
+  ASSERT_EQ(1, active_tablet_servers.erase(replica->uuid()));
+  ASSERT_OK(WaitForServersToAgree(60s, active_tablet_servers, tablet_id_, kNumWrites));
+
+  // Find log cache num ops at leader - value from non-leaders will be zero,
+  // hence it is unncessary to omit values from followers.
+  int64_t log_cache_num_ops = 0;
+  for (const auto& tablet_replica : tablet_replicas_) {
+    // Skip shutdown replica.
+    if (tablet_replica.second->uuid() == replica->uuid()) {
+      continue;
+    }
+
+    log_cache_num_ops += ASSERT_RESULT(
+        cluster_->tablet_server_by_uuid(tablet_replica.second->uuid())->GetInt64Metric(
+            &METRIC_ENTITY_tablet,
+            nullptr,
+            &METRIC_log_cache_num_ops,
+            "value"));
+  }
+  LOG(INFO)<< "Num ops in log cache: " << log_cache_num_ops;
+
+  // NOTE: empirically determined threshold.
+  const int kLogCacheNumOpsThreshold = kNumWrites / 10;
+  ASSERT_LE(log_cache_num_ops, kLogCacheNumOpsThreshold);
+
+  // Now restart the replica shutdown earlier, the lagging replica should eventually catch back up.
+  CHECK_OK(replica_ets->Restart());
+  LOG(INFO)<< "Restarted replica " << replica->uuid() << ".";
+
+  // Wait for successful replication to restarted follower.
+  ASSERT_OK(WaitForServersToAgree(60s, tablet_servers_, tablet_id_, kNumWrites));
 }
 
 TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {

@@ -24,6 +24,9 @@ class IndexInfo;
 class IndexMap;
 class PartitionSchema;
 
+class Schema;
+typedef std::shared_ptr<Schema> SchemaPtr;
+
 class PgsqlBCallPB;
 class PgsqlConditionPB;
 class PgsqlExpressionPB;

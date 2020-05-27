@@ -227,7 +227,7 @@ static std::unique_ptr<YBqlWriteOp> NewYBqlWriteOp(const shared_ptr<YBTable>& ta
   req->set_client(YQL_CLIENT_CQL);
   // TODO: Request ID should be filled with CQL stream ID. Query ID should be replaced too.
   req->set_request_id(reinterpret_cast<uint64_t>(op.get()));
-  req->set_query_id(reinterpret_cast<int64_t>(op.get()));
+  req->set_query_id(op->GetQueryId());
 
   req->set_schema_version(table->schema().version());
 
@@ -380,7 +380,7 @@ std::unique_ptr<YBqlReadOp> YBqlReadOp::NewSelect(const shared_ptr<YBTable>& tab
   req->set_client(YQL_CLIENT_CQL);
   // TODO: Request ID should be filled with CQL stream ID. Query ID should be replaced too.
   req->set_request_id(reinterpret_cast<uint64_t>(op.get()));
-  req->set_query_id(reinterpret_cast<int64_t>(op.get()));
+  req->set_query_id(op->GetQueryId());
 
   req->set_schema_version(table->schema().version());
 
@@ -537,8 +537,7 @@ Status GetRangePartitionKey(
       "Cannot get range partition key for hash partitioned table");
 
   RETURN_NOT_OK(GetRangeComponents(schema, range_cols, &range_components));
-  const auto& keybytes = docdb::DocKey(std::move(range_components)).Encode();
-  *key = std::move(keybytes.data());
+  *key = docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
   return Status::OK();
 }
 
@@ -564,10 +563,8 @@ Status SetRangePartitionBounds(
     return Status::OK();
   }
 
-  const auto& keybytes = docdb::DocKey(std::move(range_components)).Encode();
-  *key = std::move(keybytes.data());
-  const auto& keybytes_upper_bound = docdb::DocKey(std::move(range_components_end)).Encode();
-  *key_upper_bound = std::move(keybytes_upper_bound.data());
+  *key = docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
+  *key_upper_bound = docdb::DocKey(std::move(range_components_end)).Encode().ToStringBuffer();
   return Status::OK();
 }
 
@@ -591,6 +588,7 @@ static std::unique_ptr<YBPgsqlWriteOp> NewYBPgsqlWriteOp(
   req->set_client(YQL_CLIENT_PGSQL);
   req->set_table_id(table->id());
   req->set_schema_version(table->schema().version());
+  req->set_stmt_id(op->GetQueryId());
 
   return op;
 }
@@ -665,6 +663,7 @@ std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable
   req->set_client(YQL_CLIENT_PGSQL);
   req->set_table_id(table->id());
   req->set_schema_version(table->schema().version());
+  req->set_stmt_id(op->GetQueryId());
 
   return op;
 }
