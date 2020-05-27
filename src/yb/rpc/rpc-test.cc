@@ -912,7 +912,11 @@ TestServerOptions SetupServerForTestCantAllocateReadBuffer() {
 
 void TestCantAllocateReadBuffer(Messenger* client_messenger, const HostPort& server_addr) {
   const MonoDelta kTimeToWaitForOom = 20s;
-  const MonoDelta kCallsTimeout = NonTsanVsTsan(3s, 10s);
+  // Reactor threads are blocked by pauses injected into calls processing by the test and also we
+  // can have other random slow downs in this tests due to large requests processing in reactor
+  // thread, so we turn off application level RPC keepalive mechanism to prevent connections from
+  // being closed.
+  FLAGS_enable_rpc_keepalive = false;
 
   Proxy p(client_messenger, server_addr);
 
@@ -932,7 +936,9 @@ void TestCantAllocateReadBuffer(Messenger* client_messenger, const HostPort& ser
     req.set_data(std::string(10_MB + i, 'X'));
     auto controller = new RpcController();
     controllers.push_back(std::unique_ptr<RpcController>(controller));
-    controller->set_timeout(kCallsTimeout);
+    // No need to wait more than kTimeToWaitForOom + some delay, because we only need these
+    // calls to cause hitting hard memory limit.
+    controller->set_timeout(kTimeToWaitForOom + 5s);
     p.AsyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller, [&latch]() {
       latch.CountDown();
     });
@@ -978,7 +984,7 @@ void TestCantAllocateReadBuffer(Messenger* client_messenger, const HostPort& ser
 #endif
           LOG(INFO) << "Memory consumption: " << HumanReadableNumBytes::ToString(consumption);
           return consumption < target_memory_consumption;
-        }, 10s,
+        }, 10s * kTimeMultiplier,
         Format("Waiting until memory consumption is less than $0 ...", target_memory_consumption));
     LOG(INFO) << DumpMemoryUsage();
     ASSERT_OK(wait_status);
@@ -986,6 +992,7 @@ void TestCantAllocateReadBuffer(Messenger* client_messenger, const HostPort& ser
 
   // Further calls should be processed successfully since memory consumption is now under limit.
   n_calls = 20;
+  const MonoDelta kCallsTimeout = 60s * kTimeMultiplier;
   LOG(INFO) << "Start sending more calls...";
   latch.Reset(n_calls);
   for (int i = 0; i < n_calls; i++) {
