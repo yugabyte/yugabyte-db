@@ -94,7 +94,7 @@ YSQL java tests are in `java/yb-pgsql/src/test/java/org/yb/pgsql/`.  They can be
 ```bash
 ./yb_build.sh --java-test org.yb.pgsql.TestPgTruncate
 ```
-Some of those tests, `TestPgRegress*`, use the postgres regress test framework: `src/postgres/src/test/regress`.  
+Some of those tests, `TestPgRegress*`, use the PostgreSQL regress test framework: `src/postgres/src/test/regress`.  
 They should each correspond to a schedule (e.g. `java/yb-pgsql/src/test/java/org/yb/pgsql/TestPgRegressArrays.java` references `src/postgres/src/test/regress/yb_arrays_schedule`) 
 that is run by our modified version of `pg_regress`.
 
@@ -108,11 +108,11 @@ If a build fails to pick up the changes and fails to copy them, you can remove `
 
    - If you want to quickly run specific sql files, you can create a dummy java file and dummy schedule with that one test in it.
    - Use the naming convention (some older files haven't adopted it yet, but should):
-     - `src/postgres/src/test/regress/sql/foo.sql`: unchanged from original postgres code
+     - `src/postgres/src/test/regress/sql/foo.sql`: unchanged from original PostgreSQL code
      - `src/postgres/src/test/regress/sql/yb_foo.sql`: completely new file (for example, with new features)
-     - `src/postgres/src/test/regress/sql/yb_pg_foo.sql`: modified version of original postgres foo.sql (e.g. for compatibility edits) 
+     - `src/postgres/src/test/regress/sql/yb_pg_foo.sql`: modified version of original PostgreSQL foo.sql (e.g. for compatibility edits) 
      - The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
    - When creating new `yb_pg_foo.{out,sql}` files and adding them to one of our schedules, sort them into the schedule using `src/postgres/src/test/regress/serial_schedule` as reference. 
-     Schedules `parallel_schedule` and `serial_schedule` should be untouched as they are from original postgres code.
+     Schedules `parallel_schedule` and `serial_schedule` should be untouched as they are from original PostgreSQL code.
 
 {{< /tip >}}
