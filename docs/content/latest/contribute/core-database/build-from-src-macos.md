@@ -63,12 +63,7 @@ Install the following packages using Homebrew:
 brew install autoconf automake bash ccache cmake  \
              coreutils flex gnu-tar icu4c libtool \
              maven ninja pkg-config pstree wget \
-             zlib
-```
-If `pip2` does not exist locally, you will need to install:
-```sh
-curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-sudo python2 get-pip.py
+             zlib python@3
 ```
 
 An older version of `bison` is required to correctly compile the code. The following command installs the required `3.4.1` version of bison.
