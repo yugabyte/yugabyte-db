@@ -24,18 +24,19 @@
 #include "postgres.h"
 
 #include "miscadmin.h"
-#include "catalog/pg_attribute.h"
 #include "access/sysattr.h"
-#include "catalog/pg_class.h"
-#include "catalog/pg_namespace.h"
-#include "catalog/pg_type.h"
-#include "commands/dbcommands.h"
-#include "catalog/pg_database.h"
-#include "commands/ybccmds.h"
-#include "catalog/ybctype.h"
-
 #include "catalog/catalog.h"
 #include "catalog/index.h"
+#include "catalog/pg_am.h"
+#include "catalog/pg_attribute.h"
+#include "catalog/pg_class.h"
+#include "catalog/pg_database.h"
+#include "catalog/pg_namespace.h"
+#include "catalog/pg_type.h"
+#include "catalog/ybctype.h"
+#include "commands/dbcommands.h"
+#include "commands/ybccmds.h"
+
 #include "access/htup_details.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
@@ -48,7 +49,6 @@
 #include "pg_yb_utils.h"
 
 #include "access/nbtree.h"
-#include "catalog/pg_am.h"
 #include "commands/defrem.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parser.h"
@@ -751,10 +751,12 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 			}
 
 			case AT_AddIndex:
-			case AT_AddIndexConstraint: {
+			case AT_AddIndexConstraint:
+			{
 				IndexStmt *index = (IndexStmt *) cmd->def;
-				// Only allow adding indexes when it is a unique non-primary-key constraint
-				if (!index->unique || index->primary || !index->isconstraint) {
+				/* Only allow adding indexes when it is a unique non-primary-key constraint */
+				if (!index->unique || index->primary || !index->isconstraint)
+				{
 					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("This ALTER TABLE command is not yet supported.")));
 				}
