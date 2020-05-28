@@ -570,12 +570,6 @@ export YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
 
 java_build_failed=false
 if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
-  # This sets the proper NFS-shared directory for Maven's local repository on Jenkins.
-  # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
-  # into ~/.m2/repository.
-  if is_mac; then
-    export YB_TMP_GROUP_ID=org.ybtmpgroupid$random_build_id
-  fi
   set_mvn_parameters
 
   heading "Building Java code..."
@@ -589,16 +583,6 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
 
   for java_project_dir in "${yb_java_project_dirs[@]}"; do
     pushd "$java_project_dir"
-    # For macs, we still need to do the custom java group id.
-    if is_mac; then
-      heading \
-        "Changing groupId from 'org.yb' to '$YB_TMP_GROUP_ID' in directory '$java_project_dir'"
-      find "$java_project_dir" -name "pom.xml" | \
-        while read pom_file_path; do
-          sed_i "s#<groupId>org[.]yb</groupId>#<groupId>$YB_TMP_GROUP_ID</groupId>#g" \
-                "$pom_file_path"
-        done
-    fi
     heading "Building Java code in directory '$java_project_dir'"
     if ! build_yb_java_code_with_retries -DskipTests clean install; then
       EXIT_STATUS=1
@@ -627,20 +611,6 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   # being built, not our temporary commit to update pom.xml files.
   get_current_git_sha1
   export YB_VERSION_INFO_GIT_SHA1=$current_git_sha1
-
-  # For macs, we still need to do the custom java group id.
-  if is_mac; then
-    heading "Committing local changes (groupId update)"
-    commit_msg="Updating groupId to $YB_TMP_GROUP_ID during testing"
-
-    (
-      set -x
-      cd "$YB_SRC_ROOT"
-      git add -A .
-      git commit -m "$commit_msg"
-    )
-    unset commit_msg
-  fi
 
   collect_java_tests
 

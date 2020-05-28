@@ -799,11 +799,10 @@ determine_test_timeout() {
   if [[ -n ${YB_TEST_TIMEOUT:-} ]]; then
     timeout_sec=$YB_TEST_TIMEOUT
   else
-    if [[ $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" || \
+    if [[ $rel_test_binary == "tests-pgwrapper/create_initial_sys_catalog_snapshot" || \
           $rel_test_binary == "tests-pgwrapper/pg_libpq-test" || \
-          $rel_test_binary == "tests-pgwrapper/create_initial_sys_catalog_snapshot" ]]; then
-      # This test is particularly slow on TSAN, and it has to be run all at once (we cannot use
-      # --gtest_filter) because of dependencies between tests.
+          $rel_test_binary == "tests-pgwrapper/pg_mini-test" || \
+          $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" ]]; then
       timeout_sec=$INCREASED_TEST_TIMEOUT_SEC
     else
       timeout_sec=$DEFAULT_TEST_TIMEOUT_SEC
@@ -1429,7 +1428,6 @@ run_java_test() {
     fatal "Running Java tests requires that BUILD_ROOT be set"
   fi
   set_mvn_parameters
-  copy_artifacts_to_non_shared_mvn_repo
 
   set_sanitizer_runtime_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"

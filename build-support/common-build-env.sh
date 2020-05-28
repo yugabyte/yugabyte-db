@@ -614,19 +614,11 @@ set_mvn_parameters() {
     return
   fi
   local should_use_shared_dirs=false
-  should_copy_artifacts_to_non_shared_repo=false
-  if is_jenkins ; then
-    if is_mac && "$is_run_test_script" && [[ -d $BUILD_ROOT/m2_repository ]]; then
+  if is_jenkins; then
+    if "$is_run_test_script" && [[ -d $BUILD_ROOT/m2_repository ]]; then
       should_use_shared_dirs=false
-      should_copy_artifacts_to_non_shared_repo=false
       YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
       log "Will use Maven repository from build root ($YB_MVN_LOCAL_REPO)"
-    elif is_mac && "$is_run_test_script" && [[ -n ${YB_TMP_GROUP_ID:-} ]]; then
-      should_use_shared_dirs=false
-      should_copy_artifacts_to_non_shared_repo=true
-      log "Will not use shared Maven repository ($YB_SHARED_MVN_LOCAL_REPO), but will copy" \
-          "the artifact with group id ${YB_TMP_GROUP_ID:-undefined} from it to" \
-          "$YB_NON_SHARED_MVN_LOCAL_REPO."
     else
       should_use_shared_dirs=true
       if [[ -z ${YB_MVN_LOCAL_REPO:-} ]]; then
@@ -637,7 +629,6 @@ set_mvn_parameters() {
       fi
       log "The above choices are based on:" \
           "is_run_test_script=$is_run_test_script," \
-          "YB_TMP_GROUP_ID=${YB_TMP_GROUP_ID:-undefined}," \
           "OSTYPE=$OSTYPE"
     fi
   fi
@@ -667,8 +658,7 @@ set_mvn_parameters() {
   )
   log "The result of set_mvn_parameters:" \
       "YB_MVN_LOCAL_REPO=$YB_MVN_LOCAL_REPO," \
-      "YB_MVN_SETTINGS_PATH=$YB_MVN_SETTINGS_PATH," \
-      "should_copy_artifacts_to_non_shared_repo=$should_copy_artifacts_to_non_shared_repo"
+      "YB_MVN_SETTINGS_PATH=$YB_MVN_SETTINGS_PATH"
   yb_mvn_parameters_already_set=true
 }
 
@@ -689,20 +679,6 @@ rsync_with_retries() {
     sleep 1
     (( attempt+=1 ))
   done
-}
-
-copy_artifacts_to_non_shared_mvn_repo() {
-  if ! "$should_copy_artifacts_to_non_shared_repo"; then
-    return
-  fi
-  local group_id_rel_path=${YB_TMP_GROUP_ID//./\/}
-  local src_dir=$YB_SHARED_MVN_LOCAL_REPO/$group_id_rel_path
-  local dest_dir=$YB_MVN_LOCAL_REPO/$group_id_rel_path
-  log "Copying Maven artifacts from '$src_dir' to '$dest_dir'"
-  mkdir -p "${dest_dir%/*}"
-  rsync_with_retries -az "$src_dir/" "$dest_dir"
-  log "Copying non-YB artifacts from '$YB_SHARED_MVN_LOCAL_REPO' to '$YB_MVN_LOCAL_REPO'"
-  rsync_with_retries "$YB_SHARED_MVN_LOCAL_REPO/" "$YB_MVN_LOCAL_REPO" --exclude 'org/yb*'
 }
 
 # Appends the settings path specified by $YB_MVN_SETTINGS_PATH (in case that path exists), as well
