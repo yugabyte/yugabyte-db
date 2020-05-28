@@ -60,9 +60,11 @@ docker pull yugabytedb/yugabyte:2.1.7.0-b17 ???
 
 ## System improvements
 
-- New `yb-ts-cli` commands, [`flush_all_tablets`](../admin/yb-ts-cli/#flush-all-tablets) and [`flush_tablet <tablet_id>`](../admin/yb-ts-cli/#flush-tablet), to flush tablets and improve rolling restarts by flushing all YB-TServer tablets.
-- Improve load balancing by creating a global count of tablets starting across all tables before issuing AddReplica requests to prevent exceeding the maximum number of tablets being remote bootstrapped. [#4053](https://github.com/yugabyte/yugabyte-db/issues/4053)
+- [DocDB] Add `yb-ts-cli` commands, [`flush_all_tablets`](../../admin/yb-ts-cli/#flush-all-tablets) and [`flush_tablet <tablet_id>`](../../admin/yb-ts-cli/#flush-tablet), to flush tablets. When used with rolling restarts, less time is spent applying WAL records to rocksdb. [#2785](https://github.com/yugabyte/yugabyte-db/issues/2785) 
+  - Special thanks to [mirageyjd](https://github.com/mirageyjd) for your contribution.
+- Introduced load balancing throttle on the total number of tablets being remote bootstrapped, across the cluster. [#4053](https://github.com/yugabyte/yugabyte-db/issues/4053)
 - [Colocation] During load balancing operations, load balance each colocated tablet once. This fix removes unnecessary load balancing for every user table sharing that table and the parent table.
+- Fix YB-Master hangs due to transaction status resolution. [#4410](https://github.com/yugabyte/yugabyte-db/issues/4410)
 - Redirect the master UI to the master leader UI without failing when one master is down. [#4442](https://github.com/yugabyte/yugabyte-db/issues/4442) and [#3869](https://github.com/yugabyte/yugabyte-db/issues/3869)
 - Avoid race in `change_metadata_operation`. Use atomic<P*> to avoid race between
 `Finish()` and `ToString` from updating or accessing request. [#3912](https://github.com/yugabyte/yugabyte-db/issues/3912)
@@ -73,6 +75,7 @@ docker pull yugabytedb/yugabyte:2.1.7.0-b17 ???
 - Improve latency tracking by splitting overall operation metrics into individual rows for each API. [#3825](https://github.com/yugabyte/yugabyte-db/issues/3825)
   - YCQL and YEDIS metrics include `ops`, `avg latency`, and `P99 latency`.
   - YSQL metrics include only `ops` and `avg latency`.
+- Add metrics for RPC queue sizes of services, including YB-Master, YB-TServer, YCQL, and YEDIS. [#4294](https://github.com/yugabyte/yugabyte-db/issues/4294)
 - When configuration flags are edited in the YugabyteDB Admin Console, 
 - When configuration flags are deleted using the YugabyteDB Admin Console, they are also removed from `server.conf` file and the server restarts. [#4341](https://github.com/yugabyte/yugabyte-db/issues/4341)
 
