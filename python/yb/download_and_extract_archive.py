@@ -80,7 +80,7 @@ def compute_sha256sum(file_path):
     else:
         raise ValueError("Don't know how to compute SHA256 checksum on platform %s" % sys.platform)
 
-    checksum_str = subprocess.check_output(cmd_line).strip().split()[0]
+    checksum_str = subprocess.check_output(cmd_line).strip().split()[0].decode('utf-8')
     validate_sha256sum(checksum_str)
     return checksum_str
 
@@ -243,7 +243,8 @@ def download_and_extract(url, dest_dir_parent, local_cache_dir, nfs_cache_dir):
         nfs_checksum_file_path = os.path.join(nfs_cache_dir, checksum_file_name)
         if (os.path.isdir(nfs_cache_dir) and 
             os.access(nfs_cache_dir, os.W_OK) and
-            (not os.path.exists(nfs_tar_gz_path) or not os.path.exists(nfs_checksum_file_path))):
+            (not os.path.exists(nfs_tar_gz_path) or
+             not os.path.exists(nfs_checksum_file_path))):
             for file_name in file_names:
                 run_cmd(['cp',
                         os.path.join(local_cache_dir, file_name),
