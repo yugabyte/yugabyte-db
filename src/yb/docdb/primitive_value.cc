@@ -1689,6 +1689,7 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
     case FROZEN: {
       const auto& type = ql_type->param_type(0);
       QLSeqValuePB *frozen_value = ql_value->mutable_frozen_value();
+      frozen_value->clear_elems();
       switch (type->main()) {
         case MAP: {
           const std::shared_ptr<QLType>& keys_type = type->param_type(0);

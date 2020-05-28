@@ -2066,7 +2066,7 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
 Status Tablet::UpdateIndexInBatches(
     const QLTableRow& row, const std::vector<IndexInfo>& indexes,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests) {
-  const QLTableRow kEmptyRow;
+  const QLTableRow& kEmptyRow = QLTableRow::empty_row();
   QLExprExecutor expr_executor;
 
   for (const IndexInfo& index : indexes) {

@@ -136,7 +136,7 @@ bool JoinStaticRow(
 
   // Join the static columns in the static row into the non-static row.
   for (size_t i = 0; i < static_projection.num_columns(); i++) {
-    CHECK_OK(non_static_row->CopyColumn(static_projection.column_id(i), static_row));
+    non_static_row->CopyColumn(static_projection.column_id(i), static_row);
   }
 
   return true;
@@ -163,7 +163,7 @@ bool JoinNonStaticRow(
     }
 
     for (size_t i = 0; i < schema.num_hash_key_columns(); i++) {
-      CHECK_OK(static_row->CopyColumn(schema.column_id(i), non_static_row));
+      static_row->CopyColumn(schema.column_id(i), non_static_row);
     }
   }
   return join_successful;
@@ -905,7 +905,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
               data.read_time, data.deadline, request_.query_id(), user_timestamp));
           if (update_indexes_) {
-            new_row.ClearValue(column_id);
+            new_row.MarkTombstoned(column_id);
           }
         }
         if (update_indexes_) {

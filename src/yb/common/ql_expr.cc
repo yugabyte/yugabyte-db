@@ -10,6 +10,12 @@
 
 namespace yb {
 
+namespace {
+
+constexpr size_t kInvalidIndex = std::numeric_limits<size_t>::max();
+
+}
+
 bfql::TSOpcode QLExprExecutor::GetTSWriteInstruction(const QLExpressionPB& ql_expr) const {
   // "kSubDocInsert" instructs the tablet server to insert a new value or replace an existing value.
   if (ql_expr.has_tscall()) {
@@ -580,13 +586,52 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
 
 //--------------------------------------------------------------------------------------------------
 
-const QLValuePB* QLTableRow::GetColumn(ColumnIdRep col_id) const {
-  const auto& col_iter = col_map_.find(col_id);
-  if (col_iter == col_map_.end()) {
+const QLTableRow& QLTableRow::empty_row() {
+  static QLTableRow empty_row;
+  return empty_row;
+}
+
+size_t QLTableRow::ColumnCount() const {
+  size_t result = 0;
+  for (auto i : assigned_) {
+    result += i;
+  }
+  return result;
+}
+
+void QLTableRow::Clear() {
+  if (num_assigned_ == 0) {
+    return;
+  }
+
+  memset(assigned_.data(), 0, assigned_.size());
+  num_assigned_ = 0;
+}
+
+size_t QLTableRow::ColumnIndex(ColumnIdRep col_id) const {
+  if (col_id < kFirstNonPreallocatedColumnId && col_id >= kFirstColumnIdRep) {
+    return col_id - kFirstColumnIdRep;
+  }
+  const auto& col_iter = column_id_to_index_.find(col_id);
+  if (col_iter == column_id_to_index_.end()) {
+    return kInvalidIndex;
+  }
+
+  return col_iter->second;
+}
+
+const QLTableColumn* QLTableRow::FindColumn(ColumnIdRep col_id) const {
+  size_t index = ColumnIndex(col_id);
+  if (index == kInvalidIndex || index >= assigned_.size() || !assigned_[index]) {
     return nullptr;
   }
 
-  return &col_iter->second.value;
+  return &values_[index];
+}
+
+const QLValuePB* QLTableRow::GetColumn(ColumnIdRep col_id) const {
+  const auto* column = FindColumn(col_id);
+  return column ? &column->value : nullptr;
 }
 
 CHECKED_STATUS QLTableRow::ReadColumn(ColumnIdRep col_id, QLExprResultWriter result_writer) const {
@@ -603,23 +648,25 @@ CHECKED_STATUS QLTableRow::ReadColumn(ColumnIdRep col_id, QLExprResultWriter res
 CHECKED_STATUS QLTableRow::ReadSubscriptedColumn(const QLSubscriptedColPB& subcol,
                                                  const QLValuePB& index_arg,
                                                  QLExprResultWriter result_writer) const {
-  const auto& col_iter = col_map_.find(subcol.column_id());
-  if (col_iter == col_map_.end()) {
-    // Not exists.
+  const auto* value = GetColumn(subcol.column_id());
+  if (!value) {
+    // Does not exist.
     result_writer.SetNull();
     return Status::OK();
-  } else if (col_iter->second.value.has_map_value()) {
+  }
+
+  if (value->has_map_value()) {
     // map['key']
-    auto& map = col_iter->second.value.map_value();
+    auto& map = value->map_value();
     for (int i = 0; i < map.keys_size(); i++) {
       if (map.keys(i) == index_arg) {
         result_writer.SetExisting(&map.values(i));
         return Status::OK();
       }
     }
-  } else if (col_iter->second.value.has_list_value()) {
+  } else if (value->has_list_value()) {
     // list[index]
-    auto& list = col_iter->second.value.list_value();
+    auto& list = value->list_value();
     if (index_arg.has_int32_value()) {
       int list_index = index_arg.int32_value();
       if (list_index >= 0 && list_index < list.elems_size()) {
@@ -633,86 +680,162 @@ CHECKED_STATUS QLTableRow::ReadSubscriptedColumn(const QLSubscriptedColPB& subco
   return Status::OK();
 }
 
-CHECKED_STATUS QLTableRow::GetTTL(ColumnIdRep col_id, int64_t *ttl_seconds) const {
-  const auto& col_iter = col_map_.find(col_id);
-  if (col_iter == col_map_.end()) {
-    // Not exists.
+Result<const QLTableColumn&> QLTableRow::Column(ColumnIdRep col_id) const {
+  const auto* column = FindColumn(col_id);
+  if (column == nullptr) {
+    // Does not exist.
     return STATUS(InternalError, "Column unexpectedly not found in cache");
   }
-  *ttl_seconds = col_iter->second.ttl_seconds;
+
+  return *column;
+}
+
+CHECKED_STATUS QLTableRow::GetTTL(ColumnIdRep col_id, int64_t *ttl_seconds) const {
+  *ttl_seconds = VERIFY_RESULT(Column(col_id)).get().ttl_seconds;
   return Status::OK();
 }
 
 CHECKED_STATUS QLTableRow::GetWriteTime(ColumnIdRep col_id, int64_t *write_time) const {
-  const auto& col_iter = col_map_.find(col_id);
-  if (col_iter == col_map_.end()) {
-    // Not exists.
-    return STATUS(InternalError, "Column unexpectedly not found in cache");
-  }
-  DCHECK_NE(QLTableColumn::kUninitializedWriteTime, col_iter->second.write_time);
-  *write_time = col_iter->second.write_time;
+  const QLTableColumn& column = VERIFY_RESULT(Column(col_id));
+  DCHECK_NE(QLTableColumn::kUninitializedWriteTime, column.write_time) << "Column id: " << col_id;
+  *write_time = column.write_time;
   return Status::OK();
 }
 
 CHECKED_STATUS QLTableRow::GetValue(ColumnIdRep col_id, QLValue *column) const {
-  const auto& col_iter = col_map_.find(col_id);
-  if (col_iter == col_map_.end()) {
-    // Not exists.
-    return STATUS(InternalError, "Column unexpectedly not found in cache");
-  }
-  *column = std::move(col_iter->second.value);
+  *column = VERIFY_RESULT(Column(col_id)).get().value;
   return Status::OK();
 }
 
 boost::optional<const QLValuePB&> QLTableRow::GetValue(ColumnIdRep col_id) const {
-  const auto& col_iter = col_map_.find(col_id);
-  if (col_iter == col_map_.end()) {
-    return boost::none;
+  const auto* column = FindColumn(col_id);
+  if (column) {
+    return column->value;
   }
-  return col_iter->second.value;
+  return boost::none;
 }
 
 bool QLTableRow::IsColumnSpecified(ColumnIdRep col_id) const {
-  return col_map_.find(col_id) != col_map_.end();
+  size_t index = ColumnIndex(col_id);
+  if (index == kInvalidIndex) {
+    LOG(DFATAL) << "Checking whether unknown column is specified: " << col_id;
+    return false;
+  }
+  return assigned_[index];
 }
 
-void QLTableRow::ClearValue(ColumnIdRep col_id) {
-  col_map_[col_id].value.Clear();
+void QLTableRow::MarkTombstoned(ColumnIdRep col_id) {
+  AllocColumn(col_id).value.Clear();
 }
 
 bool QLTableRow::MatchColumn(ColumnIdRep col_id, const QLTableRow& source) const {
-  auto this_iter = col_map_.find(col_id);
-  auto source_iter = source.col_map_.find(col_id);
-  if (this_iter != col_map_.end() && source_iter != source.col_map_.end()) {
-    return this_iter->second.value == source_iter->second.value;
+  const auto* this_column = FindColumn(col_id);
+  const auto* source_column = source.FindColumn(col_id);
+  if (this_column && source_column) {
+    return this_column->value == source_column->value;
   }
-  if (this_iter != col_map_.end() || source_iter != source.col_map_.end()) {
-    return false;
-  }
-  return true;
+  return !this_column && !source_column;
+}
+
+QLTableColumn& QLTableRow::AppendColumn() {
+  values_.emplace_back();
+  assigned_.push_back(true);
+  ++num_assigned_;
+  return values_.back();
 }
 
 QLTableColumn& QLTableRow::AllocColumn(ColumnIdRep col_id) {
-  return col_map_[col_id];
+  size_t index = col_id;
+  if (index < kFirstNonPreallocatedColumnId && index >= kFirstColumnIdRep) {
+    index -= kFirstColumnIdRep;
+    // We are in directly mapped part. Ensure that vector is big enough.
+    if (values_.size() <= index) {
+      // We don't need reserve here, because no allocation would take place.
+      if (values_.size() < index) {
+        values_.resize(index);
+        assigned_.resize(index);
+      }
+      // This column was not yet allocated, so allocate it. Also vector has `col_id` size, so
+      // new column will be added at `col_id` position.
+      return AppendColumn();
+    }
+  } else {
+    // We are in part that is mapped using `column_id_to_index_`, so need to allocate at least
+    // part that is mapped directly, to avoid index overlapping.
+    if (values_.size() < kPreallocatedSize) {
+      values_.resize(kPreallocatedSize);
+      assigned_.resize(kPreallocatedSize);
+    }
+    auto iterator_and_flag = column_id_to_index_.emplace(col_id, values_.size());
+    if (iterator_and_flag.second) {
+      return AppendColumn();
+    }
+    index = iterator_and_flag.first->second;
+  }
+
+  if (!assigned_[index]) {
+    assigned_[index] = true;
+    ++num_assigned_;
+  }
+  return values_[index];
 }
 
 QLTableColumn& QLTableRow::AllocColumn(ColumnIdRep col_id, const QLValue& ql_value) {
-  col_map_[col_id].value = ql_value.value();
-  return col_map_[col_id];
+  return AllocColumn(col_id, ql_value.value());
 }
 
 QLTableColumn& QLTableRow::AllocColumn(ColumnIdRep col_id, const QLValuePB& ql_value) {
-  col_map_[col_id].value = ql_value;
-  return col_map_[col_id];
+  QLTableColumn& result = AllocColumn(col_id);
+  result.value = ql_value;
+  return result;
 }
 
-CHECKED_STATUS QLTableRow::CopyColumn(ColumnIdRep col_id,
-                                      const QLTableRow& source) {
-  auto col_iter = source.col_map_.find(col_id);
-  if (col_iter != source.col_map_.end()) {
-    col_map_[col_id] = col_iter->second;
+QLTableColumn& QLTableRow::AllocColumn(ColumnIdRep col_id, QLValuePB&& ql_value) {
+  QLTableColumn& result = AllocColumn(col_id);
+  result.value = std::move(ql_value);
+  return result;
+}
+
+void QLTableRow::CopyColumn(ColumnIdRep col_id, const QLTableRow& source) {
+  const auto* value = source.FindColumn(col_id);
+  if (value) {
+    AllocColumn(col_id) = *value;
+    return;
   }
-  return Status::OK();
+
+  auto index = ColumnIndex(col_id);
+  if (index == kInvalidIndex) {
+    return;
+  }
+  if (assigned_[index]) {
+    assigned_[index] = false;
+    --num_assigned_;
+  }
+}
+
+std::string QLTableRow::ToString() const {
+  std::string ret("{ ");
+
+  for (size_t i = 0; i != kPreallocatedSize; ++i) {
+    if (i >= values_.size()) {
+      break;
+    }
+    if (!assigned_[i]) {
+      continue;
+    }
+    ret.append(Format("$0 => $1 ", i + kFirstColumnIdRep, values_[i]));
+  }
+
+  for (auto p : column_id_to_index_) {
+    if (!assigned_[p.second]) {
+      continue;
+    }
+
+    ret.append(Format("$0 => $1 ", p.first, values_[p.second]));
+  }
+
+  ret.append("}");
+  return ret;
 }
 
 std::string QLTableRow::ToString(const Schema& schema) const {
@@ -720,9 +843,9 @@ std::string QLTableRow::ToString(const Schema& schema) const {
   ret.append("{ ");
 
   for (size_t col_idx = 0; col_idx < schema.num_columns(); col_idx++) {
-    auto it = col_map_.find(schema.column_id(col_idx));
-    if (it != col_map_.end() && it->second.value.value_case() != QLValuePB::VALUE_NOT_SET) {
-      ret += it->second.value.ShortDebugString();
+    const auto* value = GetColumn(schema.column_id(col_idx));
+    if (value && value->value_case() != QLValuePB::VALUE_NOT_SET) {
+      ret += value->ShortDebugString();
     } else {
       ret += "null";
     }
