@@ -196,9 +196,7 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
       RpcController rpc;
       change_resp.Clear();
-      SCOPED_TRACE(change_req.DebugString());
       RETURN_NOT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
-      SCOPED_TRACE(change_resp.DebugString());
       if (change_resp.has_error()) return Result<bool>(StatusFromPB(change_resp.error().status()));
 
       // Expect at least 4 records because transaction is now committed: 3 rows + txn commit.
