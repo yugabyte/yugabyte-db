@@ -370,7 +370,7 @@ def get_release_file(repository, release_name, build_type=None):
         # TODO: why are we mkdir-ing during a function that's supposed to return a path...
         os.makedirs(build_dir)
 
-    cur_commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip()
+    cur_commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip().decode('utf-8')
     release = ReleasePackage.from_pieces(release_name, base_version, cur_commit, build_type)
     file_name = release.get_release_package_name()
     return os.path.join(build_dir, file_name)
