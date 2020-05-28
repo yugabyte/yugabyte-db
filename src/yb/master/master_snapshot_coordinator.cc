@@ -420,7 +420,15 @@ class SnapshotState : public StateWithTablets {
 
  private:
   bool IsTerminalFailure(const Status& status) override {
-    return TransactionError(status) == TransactionErrorCode::kSnapshotTooOld;
+    // Table was removed.
+    if (status.IsExpired()) {
+      return true;
+    }
+    // Would not be able to create snapshot at specific time, since history was garbage collected.
+    if (TransactionError(status) == TransactionErrorCode::kSnapshotTooOld) {
+      return true;
+    }
+    return false;
   }
 
   TxnSnapshotId id_;

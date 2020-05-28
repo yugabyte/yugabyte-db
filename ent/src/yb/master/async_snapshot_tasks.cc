@@ -162,7 +162,12 @@ void AsyncTabletSnapshotOp::Finished(const Status& status) {
     return;
   }
   if (resp_.has_error()) {
-    callback_(StatusFromPB(resp_.error().status()));
+    if (!tablet_->table()->is_running()) {
+      callback_(STATUS_FORMAT(
+          Expired, "Table is not running: $0", tablet_->table()->ToStringWithState()));
+    } else {
+      callback_(StatusFromPB(resp_.error().status()));
+    }
   } else {
     callback_(&resp_);
   }
