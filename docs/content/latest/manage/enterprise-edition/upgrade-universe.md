@@ -2,13 +2,13 @@
 title: Upgrade universes using Yugabyte Platform
 headerTitle: Upgrade universe
 linkTitle: Upgrade universe
-description: Upgrade universes using Yugabyte Platform.
+description: Use Yugabyte Platform to upgrade universes and clusters.
 aliases:
   - /manage/enterprise-edition/upgrade-universe/
 menu:
   latest:
-    identifier: manage-upgrade-universe
-    parent: manage-enterprise-edition
+    identifier: upgrade-universes
+    parent: enterprise-edition
     weight: 750
 isTocNested: true
 showAsideToc: true

@@ -83,7 +83,7 @@ menu:
         <div class="title">Yugabyte Platform</div>
       </div>
       <div class="body">
-        Manage YugabyteDB without any downtime using the Yugabyte Platform's built-in orchestration and monitoring.
+        Use Yugabyte Platform's orchestration and monitoring to manage YugabyteDB universes.
       </div>
     </a>
   </div>
