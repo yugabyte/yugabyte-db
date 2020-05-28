@@ -2,9 +2,9 @@
 title: Yugabyte Platform
 headerTitle: Yugabyte Platform
 linkTitle: Yugabyte Platform
-description: Use Yugabyte Platform to manage YugabyteDB universes and clusters.
+description: Use Yugabyte Platform to manage YugabyteDB universes.
 image: /images/section_icons/manage/enterprise.png
-headcontent: Manage YugabyteDB without any downtime using the Yugabyte Platform's built-in orchestration and monitoring.
+headcontent: Use Yugabyte Platform's orchestration and monitoring to manage YugabyteDB universes.
 aliases:
   - /manage/enterprise-edition/
 menu:
