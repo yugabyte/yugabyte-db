@@ -44,6 +44,14 @@
 using namespace std;
 using namespace yb::ql;
 
+/*
+ * Flex 2.6.3 generates cc file which raises warning wile compilation by gcc 7.5.x
+ * scanner_lex.l.cc:3318:28: error: the compiler can assume that the address of ‘file’ will never be NULL [-Werror=address]
+ */
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Waddress"
+#endif
+
 #undef YY_DECL
 #define YY_DECL \
   GramProcessor::symbol_type LexProcessor::yylex(const ScanState& scan_state)
