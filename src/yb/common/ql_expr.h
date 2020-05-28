@@ -83,23 +83,16 @@ class QLTableRow {
   typedef std::shared_ptr<QLTableRow> SharedPtr;
   typedef std::shared_ptr<const QLTableRow> SharedPtrConst;
 
-  static const QLTableRow& empty_row() {
-    static QLTableRow empty_row;
-    return empty_row;
-  }
+  static const QLTableRow& empty_row();
 
   // Check if row is empty (no column).
-  bool IsEmpty() const {
-    return col_map_.empty();
-  }
+  bool IsEmpty() const { return num_assigned_ == 0; }
 
   // Get column count.
-  size_t ColumnCount() const {
-    return col_map_.size();
-  }
+  size_t ColumnCount() const;
 
   // Clear the row.
-  void Clear() { col_map_.clear(); }
+  void Clear();
 
   // Compare column value between two rows.
   bool MatchColumn(ColumnIdRep col_id, const QLTableRow& source) const;
@@ -120,9 +113,14 @@ class QLTableRow {
     return AllocColumn(col.rep(), ql_value);
   }
 
+  QLTableColumn& AllocColumn(ColumnIdRep col_id, QLValuePB&& ql_value);
+  QLTableColumn& AllocColumn(const ColumnId& col, QLValuePB&& ql_value) {
+    return AllocColumn(col.rep(), std::move(ql_value));
+  }
+
   // Copy column-value from 'source' to the 'col_id' entry in the cached column-map.
-  CHECKED_STATUS CopyColumn(ColumnIdRep col_id, const QLTableRow& source);
-  CHECKED_STATUS CopyColumn(const ColumnId& col, const QLTableRow& source) {
+  void CopyColumn(ColumnIdRep col_id, const QLTableRow& source);
+  void CopyColumn(const ColumnId& col, const QLTableRow& source) {
     return CopyColumn(col.rep(), source);
   }
 
@@ -147,9 +145,9 @@ class QLTableRow {
   bool IsColumnSpecified(ColumnIdRep col_id) const;
 
   // Clear the column value.
-  void ClearValue(ColumnIdRep col_id);
-  void ClearValue(const ColumnId& col) {
-    return ClearValue(col.rep());
+  void MarkTombstoned(ColumnIdRep col_id);
+  void MarkTombstoned(const ColumnId& col) {
+    return MarkTombstoned(col.rep());
   }
 
   // Get the column value in PB format.
@@ -161,20 +159,43 @@ class QLTableRow {
 
   // For testing only (no status check).
   const QLTableColumn& TestValue(ColumnIdRep col_id) const {
-    return col_map_.at(col_id);
+    return *FindColumn(col_id);
   }
   const QLTableColumn& TestValue(const ColumnId& col) const {
-    return col_map_.at(col.rep());
+    return *FindColumn(col.rep());
   }
 
-  std::string ToString() const {
-    return yb::ToString(col_map_);
-  }
-
+  std::string ToString() const;
   std::string ToString(const Schema& schema) const;
 
  private:
-  std::unordered_map<ColumnIdRep, QLTableColumn> col_map_;
+  // Return kInvalidIndex when column index is unknown.
+  size_t ColumnIndex(ColumnIdRep col_id) const;
+  const QLTableColumn* FindColumn(ColumnIdRep col_id) const;
+  Result<const QLTableColumn&> Column(ColumnIdRep col_id) const;
+  // Appends new entry to values_ and assigned_ fields.
+  QLTableColumn& AppendColumn();
+
+  // Map from column id to index in values_ and assigned_ vectors.
+  // For columns from [kFirstColumnId; kFirstColumnId + kPreallocatedSize) we don't use
+  // this field and map them directly.
+  // I.e. column with id kFirstColumnId will have index 0 etc.
+  // We are using unsigned int as map value and std::numeric_limits<size_t>::max() as invalid
+  // column.
+  // This way, the compiler would understand that this invalid value could never be stored in the
+  // map and optimize away the comparison with it when inlining the ColumnIndex function call.
+  std::unordered_map<ColumnIdRep, unsigned int> column_id_to_index_;
+
+  static constexpr size_t kPreallocatedSize = 8;
+  static constexpr size_t kFirstNonPreallocatedColumnId = kFirstColumnIdRep + kPreallocatedSize;
+
+  // The two following vectors will be of the same size.
+  // We use separate fields to achieve the following features:
+  // 1) Fast was to cleanup row, just by setting assigned to false with one call.
+  // 2) Avoid destroying values_, so they would be able to reuse allocated storage during row reuse.
+  boost::container::small_vector<QLTableColumn, kPreallocatedSize> values_;
+  boost::container::small_vector<bool, kPreallocatedSize> assigned_;
+  size_t num_assigned_ = 0;
 };
 
 class QLExprExecutor {
