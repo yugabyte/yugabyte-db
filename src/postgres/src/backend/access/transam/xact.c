@@ -2065,6 +2065,15 @@ CommitTransaction(void)
 			break;
 	}
 
+	/*
+	 * Firing the triggers may abort current transaction.
+	 * At this point all the them has been fired already.
+	 * It is time to commit YB transaction.
+	 * Postgres transaction can be aborted at this point without an issue
+	 * in case of YBCCommitTransaction failure.
+	 */
+	YBCCommitTransaction();
+
 	CallXactCallbacks(is_parallel_worker ? XACT_EVENT_PARALLEL_PRE_COMMIT
 					  : XACT_EVENT_PRE_COMMIT);
 
@@ -2863,26 +2872,6 @@ IsCurrentTxnWithPGRel(void)
 	return CurrentTransactionState->isYBTxnWithPostgresRel;
 }
 
-void
-YBCCommitTransactionAndUpdateBlockState() {
-	TransactionState s = CurrentTransactionState;
-	if (YBCCommitTransaction()) {
-		/*
-		 * This is still needed in the YugaByte case because we need to manage the
-		 * PostgreSQL transaction state correctly.
-		 */
-		CommitTransaction();
-		s->blockState = TBLOCK_DEFAULT;
-	} else {
-		/*
-		 * TBLOCK_STARTED means that we aren't in a transaction block, so should switch to
-		 * default state in this case.
-		 */
-		s->blockState = s->blockState == TBLOCK_STARTED ? TBLOCK_DEFAULT : TBLOCK_ABORT;
-		YBCHandleCommitError();
-	}
-}
-
 /*
  *	CommitTransactionCommand
  */
@@ -2910,11 +2899,6 @@ CommitTransactionCommand(void)
 			 * transaction commit, and return to the idle state.
 			 */
 		case TBLOCK_STARTED:
-			if (YBTransactionsEnabled())
-			{
-				YBCCommitTransactionAndUpdateBlockState();
-				break;
-			}
 			CommitTransaction();
 			s->blockState = TBLOCK_DEFAULT;
 			break;
@@ -2945,11 +2929,6 @@ CommitTransactionCommand(void)
 			 * idle state.
 			 */
 		case TBLOCK_END:
-			if (YBTransactionsEnabled())
-			{
-				YBCCommitTransactionAndUpdateBlockState();
-				break;
-			}
 			CommitTransaction();
 			s->blockState = TBLOCK_DEFAULT;
 			break;
@@ -3698,14 +3677,6 @@ EndTransactionBlock(void)
 			 */
 		case TBLOCK_INPROGRESS:
 			s->blockState = TBLOCK_END;
-			if (YBTransactionsEnabled()) {
-				/*
-				 * YugaByte transaction commit happens here, but could also happen in
-				 * CommitTransactionCommand if this function is not called first.
-				 */
-				result = YBCCommitTransaction();
-				break;
-			}
 			result = true;
 			break;
 

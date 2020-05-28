@@ -135,3 +135,27 @@ DROP TABLE fk_unique_y;
 DROP TABLE fk_unique_x;
 DROP TABLE fk_primary;
 DROP TABLE pk;
+
+-- DEFERRABLE foreign key constraints
+CREATE TABLE parent(k INT PRIMARY KEY);
+CREATE TABLE child(k INT PRIMARY KEY, v INT REFERENCES parent INITIALLY DEFERRED);
+BEGIN;
+INSERT INTO child VALUES(1, 1);
+INSERT INTO child VALUES(2, 2);
+COMMIT; -- should fail
+
+SELECT * FROM child ORDER BY k;
+
+BEGIN;
+INSERT INTO child VALUES(1, 1);
+INSERT INTO child VALUES(2, 1);
+INSERT INTO child VALUES(3, 2), (4, 3), (5, 4);
+INSERT INTO parent VALUES(1);
+INSERT INTO parent VALUES(2), (3), (4);
+COMMIT;
+
+SELECT * FROM parent ORDER BY k;
+SELECT * FROM child ORDER BY k;
+
+DROP TABLE child;
+DROP TABLE parent;

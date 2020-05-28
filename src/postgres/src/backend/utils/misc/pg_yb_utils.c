@@ -60,8 +60,6 @@ uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 int ybc_pg_double_write = -1;
 int ybc_disable_pg_locking = -1;
 
-YBCStatus ybc_commit_status = NULL;
-
 /* Forward declarations */
 static void YBCInstallTxnDdlHook();
 
@@ -373,32 +371,14 @@ YBCRestartTransaction()
 	HandleYBStatus(YBCPgRestartTransaction());
 }
 
-static void
-YBCResetCommitStatus()
-{
-	if (ybc_commit_status)
-	{
-		YBCFreeStatus(ybc_commit_status);
-		ybc_commit_status = NULL;
-	}
-}
-
-bool
+void
 YBCCommitTransaction()
 {
 	if (!IsYugaByteEnabled())
-		return true;
+		return;
 
-	YBCStatus status = YBCPgFlushBufferedOperations();
-	if (status == NULL)
-		status = YBCPgCommitTransaction();
-	if (status != NULL) {
-		YBCResetCommitStatus();
-		ybc_commit_status = status;
-		return false;
-	}
-
-	return true;
+	HandleYBStatus(YBCPgFlushBufferedOperations());
+	HandleYBStatus(YBCPgCommitTransaction());
 }
 
 void
@@ -411,19 +391,6 @@ YBCAbortTransaction()
 
 	if (YBTransactionsEnabled())
 		HandleYBStatus(YBCPgAbortTransaction());
-}
-
-void
-YBCHandleCommitError()
-{
-	YBCStatus status = ybc_commit_status;
-	if (status != NULL) {
-		char* msg = DupYBStatusMessage(status, false /* message_only */);
-		YBCResetCommitStatus();
-		ereport(ERROR,
-				(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-				 errmsg("Error during commit: %s", msg)));
-	}
 }
 
 bool

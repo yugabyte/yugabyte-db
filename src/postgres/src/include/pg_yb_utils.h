@@ -162,24 +162,14 @@ extern void YBOnPostgresBackendShutdown();
 extern void YBCRestartTransaction();
 
 /*
- * Commits the current YugaByte-level transaction. Returns true in case of
- * successful commit and false in case of failure. If there is no transaction in
- * progress, also returns true.
+ * Commits the current YugaByte-level transaction (if any).
  */
-extern bool YBCCommitTransaction();
+extern void YBCCommitTransaction();
 
 /*
  * Aborts the current YugaByte-level transaction.
  */
 extern void YBCAbortTransaction();
-
-/*
- * Handle a commit error if it happened during a previous call to
- * YBCCommitTransaction. We allow deferring this handling in order to be able
- * to make PostgreSQL transaction block state transitions before calling
- * ereport.
- */
-extern void YBCHandleCommitError();
 
 /*
  * Return true if we want to allow PostgreSQL's own locking. This is needed

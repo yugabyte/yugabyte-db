@@ -1004,57 +1004,40 @@ CREATE TABLE fktable (
 	id		INT4 PRIMARY KEY,
 	fk		INT4 REFERENCES pktable DEFERRABLE
 );
-ERROR:  DEFERRABLE constraint not supported yet
-LINE 3:  fk  INT4 REFERENCES pktable DEFERRABLE
-                                     ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
-/*
 -- default to immediate: should fail
 INSERT INTO fktable VALUES (5, 10);
-
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
+DETAIL:  Key (fk)=(10) is not present in table "pktable".
 -- explicitly defer the constraint
 BEGIN;
-
 SET CONSTRAINTS ALL DEFERRED;
-
 INSERT INTO fktable VALUES (10, 15);
 INSERT INTO pktable VALUES (15, 0); -- make the FK insert valid
-
 COMMIT;
-
 DROP TABLE fktable, pktable;
-
 -- deferrable, initially deferred
 CREATE TABLE pktable (
 	id		INT4 PRIMARY KEY,
 	other	INT4
 );
-
 CREATE TABLE fktable (
 	id		INT4 PRIMARY KEY,
 	fk		INT4 REFERENCES pktable DEFERRABLE INITIALLY DEFERRED
 );
-
 -- default to deferred, should succeed
 BEGIN;
-
 INSERT INTO fktable VALUES (100, 200);
 INSERT INTO pktable VALUES (200, 500); -- make the FK insert valid
-
 COMMIT;
-
 -- default to deferred, explicitly make immediate
 BEGIN;
-
 SET CONSTRAINTS ALL IMMEDIATE;
-
 -- should fail
 INSERT INTO fktable VALUES (500, 1000);
-
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
+DETAIL:  Key (fk)=(1000) is not present in table "pktable".
 COMMIT;
-
 DROP TABLE fktable, pktable;
-
 -- tricky behavior: according to SQL99, if a deferred constraint is set
 -- to 'immediate' mode, it should be checked for validity *immediately*,
 -- not when the current transaction commits (i.e. the mode change applies
@@ -1063,50 +1046,39 @@ CREATE TABLE pktable (
 	id		INT4 PRIMARY KEY,
 	other	INT4
 );
-
 CREATE TABLE fktable (
 	id		INT4 PRIMARY KEY,
 	fk		INT4 REFERENCES pktable DEFERRABLE
 );
-
 BEGIN;
-
 SET CONSTRAINTS ALL DEFERRED;
-
 -- should succeed, for now
 INSERT INTO fktable VALUES (1000, 2000);
-
 -- should cause transaction abort, due to preceding error
 SET CONSTRAINTS ALL IMMEDIATE;
-
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
+DETAIL:  Key (fk)=(2000) is not present in table "pktable".
 INSERT INTO pktable VALUES (2000, 3); -- too late
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
-
 DROP TABLE fktable, pktable;
-
 -- deferrable, initially deferred
 CREATE TABLE pktable (
 	id		INT4 PRIMARY KEY,
 	other	INT4
 );
-
 CREATE TABLE fktable (
 	id		INT4 PRIMARY KEY,
 	fk		INT4 REFERENCES pktable DEFERRABLE INITIALLY DEFERRED
 );
-
 BEGIN;
-
 -- no error here
 INSERT INTO fktable VALUES (100, 200);
-
 -- error here on commit
 COMMIT;
-
-DROP TABLE fktable;
-*/
-DROP TABLE pktable;
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
+DETAIL:  Key (fk)=(200) is not present in table "pktable".
+DROP TABLE fktable, pktable;
 -- test notice about expensive referential integrity checks,
 -- where the index cannot be used because of type incompatibilities.
 CREATE TEMP TABLE pktable (
@@ -1178,10 +1150,6 @@ DROP TABLE pktable, fktable;
 -- created the updated row and the trigger is deferred, since our UPDATE
 -- will have invalidated the original newly-inserted tuple, and therefore
 -- cause the on-INSERT RI trigger not to be fired.
--- TODO YugaByte does not support deferrable constraints yet.
--- Leaving the first failing statement uncommented so that this test
--- will fail when the feature is implemented (the full test should
--- be uncommented then).
 CREATE TEMP TABLE pktable (
     id int primary key,
     other int
@@ -1190,100 +1158,103 @@ CREATE TEMP TABLE fktable (
     id int primary key,
     fk int references pktable deferrable initially deferred
 );
-ERROR:  DEFERRABLE constraint not supported yet
-LINE 3:     fk int references pktable deferrable initially deferred
-                                      ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
-/*
 INSERT INTO pktable VALUES (5, 10);
-
 BEGIN;
-
 -- doesn't match PK, but no error yet
 INSERT INTO fktable VALUES (0, 20);
-
 -- don't change FK
 UPDATE fktable SET id = id + 1;
-
 -- should catch error from initial INSERT
 COMMIT;
-
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
+DETAIL:  Key (fk)=(20) is not present in table "pktable".
 -- check same case when insert is in a different subtransaction than update
-
 BEGIN;
-
 -- doesn't match PK, but no error yet
 INSERT INTO fktable VALUES (0, 20);
-
 -- UPDATE will be in a subxact
 SAVEPOINT savept1;
-
+ERROR:  SAVEPOINT <transaction> not supported yet
+LINE 1: SAVEPOINT savept1;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 -- don't change FK
 UPDATE fktable SET id = id + 1;
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- should catch error from initial INSERT
 COMMIT;
-
 BEGIN;
-
 -- INSERT will be in a subxact
 SAVEPOINT savept1;
-
+ERROR:  SAVEPOINT <transaction> not supported yet
+LINE 1: SAVEPOINT savept1;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 -- doesn't match PK, but no error yet
 INSERT INTO fktable VALUES (0, 20);
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 RELEASE SAVEPOINT savept1;
-
+ERROR:  RELEASE SAVEPOINT <transaction> not supported yet
+LINE 1: RELEASE SAVEPOINT savept1;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 -- don't change FK
 UPDATE fktable SET id = id + 1;
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- should catch error from initial INSERT
 COMMIT;
-
 BEGIN;
-
 -- doesn't match PK, but no error yet
 INSERT INTO fktable VALUES (0, 20);
-
 -- UPDATE will be in a subxact
 SAVEPOINT savept1;
-
+ERROR:  SAVEPOINT <transaction> not supported yet
+LINE 1: SAVEPOINT savept1;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 -- don't change FK
 UPDATE fktable SET id = id + 1;
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- Roll back the UPDATE
 ROLLBACK TO savept1;
-
+ERROR:  ROLLBACK <transaction> not supported yet
+LINE 1: ROLLBACK TO savept1;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 -- should catch error from initial INSERT
 COMMIT;
-
 --
 -- check ALTER CONSTRAINT
 --
-
 INSERT INTO fktable VALUES (1, 5);
-
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey DEFERRABLE INITIALLY IMMEDIATE;
-
+ERROR:  ALTER TABLE ALTER CONSTRAINT not supported yet
+LINE 1: ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey DEFERRA...
+                            ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 BEGIN;
-
 -- doesn't match FK, should throw error now
 UPDATE pktable SET id = 10 WHERE id = 5;
-
 COMMIT;
-
+ERROR:  update or delete on table "pktable" violates foreign key constraint "fktable_fk_fkey" on table "fktable"
+DETAIL:  Key (id)=(5) is still referenced from table "fktable".
 BEGIN;
-
 -- doesn't match PK, should throw error now
 INSERT INTO fktable VALUES (0, 20);
-
 COMMIT;
-
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
+DETAIL:  Key (fk)=(20) is not present in table "pktable".
 -- try additional syntax
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEFERRABLE;
+ERROR:  ALTER TABLE ALTER CONSTRAINT not supported yet
+LINE 1: ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEF...
+                            ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 -- illegal option
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEFERRABLE INITIALLY DEFERRED;
-*/
+ERROR:  constraint declared INITIALLY DEFERRED must be DEFERRABLE
+LINE 1: ...e ALTER CONSTRAINT fktable_fk_fkey NOT DEFERRABLE INITIALLY ...
+                                                             ^
 -- test order of firing of FK triggers when several RI-induced changes need to
 -- be made to the same row.  This was broken by subtransaction-related
 -- changes in 8.0.
@@ -1476,44 +1447,56 @@ update pktable2 set d = 5;
 ERROR:  Update PRIMARY KEY columns are not yet supported
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
 drop table pktable2, fktable2;
--- TODO YugaByte does not support deferrable constraints yet.
-/*
 --
 -- Test deferred FK check on a tuple deleted by a rolled-back subtransaction
 --
 create table pktable2(f1 int primary key);
 create table fktable2(f1 int references pktable2 deferrable initially deferred);
 insert into pktable2 values(1);
-
 begin;
 insert into fktable2 values(1);
 savepoint x;
+ERROR:  SAVEPOINT <transaction> not supported yet
+LINE 1: savepoint x;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 delete from fktable2;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback to x;
+ERROR:  ROLLBACK <transaction> not supported yet
+LINE 1: rollback to x;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 commit;
-
 begin;
 insert into fktable2 values(2);
 savepoint x;
+ERROR:  SAVEPOINT <transaction> not supported yet
+LINE 1: savepoint x;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 delete from fktable2;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback to x;
+ERROR:  ROLLBACK <transaction> not supported yet
+LINE 1: rollback to x;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 commit; -- fail
-
 --
 -- Test that we prevent dropping FK constraint with pending trigger events
 --
 begin;
 insert into fktable2 values(2);
 alter table fktable2 drop constraint fktable2_f1_fkey;
+ERROR:  cannot ALTER TABLE "fktable2" because it has pending trigger events
 commit;
-
 begin;
 delete from pktable2 where f1 = 1;
 alter table fktable2 drop constraint fktable2_f1_fkey;
+ERROR:  cannot ALTER TABLE "pktable2" because it has pending trigger events
 commit;
-
 drop table pktable2, fktable2;
-*/
 --
 -- Foreign keys and partitioned tables
 --
@@ -1525,8 +1508,8 @@ drop table pktable2, fktable2;
 CREATE TABLE fk_partitioned_pk (a int, b int, primary key (a, b))
   PARTITION BY RANGE (a, b);
 ERROR:  PARTITION BY not supported yet
-LINE 47:   PARTITION BY RANGE (a, b);
-           ^
+LINE 2:   PARTITION BY RANGE (a, b);
+          ^
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority
 /*
 -- verify with create table first ...

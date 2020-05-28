@@ -646,7 +646,6 @@ CREATE TABLE fktable (
 	fk		INT4 REFERENCES pktable DEFERRABLE
 );
 
-/*
 -- default to immediate: should fail
 INSERT INTO fktable VALUES (5, 10);
 
@@ -742,9 +741,7 @@ INSERT INTO fktable VALUES (100, 200);
 -- error here on commit
 COMMIT;
 
-DROP TABLE fktable;
-*/
-DROP TABLE pktable;
+DROP TABLE fktable, pktable;
 
 -- test notice about expensive referential integrity checks,
 -- where the index cannot be used because of type incompatibilities.
@@ -828,11 +825,6 @@ DROP TABLE pktable, fktable;
 -- will have invalidated the original newly-inserted tuple, and therefore
 -- cause the on-INSERT RI trigger not to be fired.
 
--- TODO YugaByte does not support deferrable constraints yet.
--- Leaving the first failing statement uncommented so that this test
--- will fail when the feature is implemented (the full test should
--- be uncommented then).
-
 CREATE TEMP TABLE pktable (
     id int primary key,
     other int
@@ -843,7 +835,6 @@ CREATE TEMP TABLE fktable (
     fk int references pktable deferrable initially deferred
 );
 
-/*
 INSERT INTO pktable VALUES (5, 10);
 
 BEGIN;
@@ -932,7 +923,6 @@ COMMIT;
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEFERRABLE;
 -- illegal option
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEFERRABLE INITIALLY DEFERRED;
-*/
 
 -- test order of firing of FK triggers when several RI-induced changes need to
 -- be made to the same row.  This was broken by subtransaction-related
@@ -1058,8 +1048,6 @@ delete from pktable2;
 update pktable2 set d = 5;
 drop table pktable2, fktable2;
 
--- TODO YugaByte does not support deferrable constraints yet.
-/*
 --
 -- Test deferred FK check on a tuple deleted by a rolled-back subtransaction
 --
@@ -1095,7 +1083,6 @@ alter table fktable2 drop constraint fktable2_f1_fkey;
 commit;
 
 drop table pktable2, fktable2;
-*/
 
 --
 -- Foreign keys and partitioned tables

@@ -863,6 +863,59 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 	}
 }
 
+static void
+YBCheckDeferrableConstraint(CreateStmtContext *cxt, Constraint *constraint)
+{
+	if (!constraint->deferrable || cxt->relation->relpersistence == RELPERSISTENCE_TEMP)
+		return;
+	const char* message = NULL;
+	switch (constraint->contype)
+	{
+		case CONSTR_PRIMARY:
+			message = "DEFERRABLE primary key constraints are not supported yet";
+			break;
+
+		case CONSTR_UNIQUE:
+			message = "DEFERRABLE unique constraints are not supported yet";
+			break;
+
+		case CONSTR_EXCLUSION:
+			message = "DEFERRABLE exclusion constraints are not supported yet";
+			break;
+
+		case CONSTR_CHECK:
+			message = "DEFERRABLE check constraints are not supported yet";
+			break;
+
+		case CONSTR_FOREIGN:
+			/* DEFERRABLE foreign key constraints are supported */
+			return;
+
+		case CONSTR_NULL:
+		case CONSTR_NOTNULL:
+		case CONSTR_DEFAULT:
+		case CONSTR_ATTR_DEFERRABLE:
+		case CONSTR_ATTR_NOT_DEFERRABLE:
+		case CONSTR_ATTR_DEFERRED:
+		case CONSTR_ATTR_IMMEDIATE:
+			elog(ERROR, "invalid context for constraint type %d",
+				 constraint->contype);
+			return;
+
+		default:
+			elog(ERROR, "unrecognized constraint type: %d",
+				 constraint->contype);
+			return;
+	}
+
+	ereport(ERROR,
+			 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("%s", message),
+			 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1129. "
+			         "Click '+' on the description to raise its priority"),
+			 parser_errposition(cxt->pstate, constraint->location)));
+}
+
 /*
  * transformTableConstraint
  *		transform a Constraint node within CREATE TABLE or ALTER TABLE
@@ -938,6 +991,9 @@ transformTableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 				 constraint->contype);
 			break;
 	}
+
+	if (IsYugaByteEnabled())
+		YBCheckDeferrableConstraint(cxt, constraint);
 }
 
 /*
