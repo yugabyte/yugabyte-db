@@ -1,10 +1,10 @@
 ---
-title: Back up data for YCQL
+title: Back up data
 headerTitle: Back up data
 linkTitle: Back up data
-description: Back up data in YugabyteDB for YCQL.
+description: Back up YCQL data in YugabyteDB.
 aliases:
-  - /manage/backup-restore/backing-up-data
+  - /latest/manage/backup-restore/backing-up-data
 menu:
   latest:
     identifier: back-up-data-ycql

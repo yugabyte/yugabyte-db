@@ -4,7 +4,7 @@ headerTitle: Create and edit instance tags
 linkTitle: Create and edit instance tags
 description: Use Yugabyte Platform to create and edit instance tags.
 aliases:
-  - /manage/enterprise-edition/instance-tags/
+  - /latest/manage/enterprise-edition/instance-tags/
 menu:
   latest:
     identifier: create-edit-instance-tags

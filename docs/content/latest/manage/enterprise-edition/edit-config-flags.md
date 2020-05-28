@@ -4,10 +4,10 @@ headerTitle: Edit configuration flags
 linkTitle: Edit configuration flags
 description: Use Yugabyte Platform to manage configuration flags.
 aliases:
-  - /manage/enterprise-edition/edit-flags/
+  - /latest/manage/enterprise-edition/edit-flags/
 menu:
   latest:
-    identifier: manage-config-flags
+    identifier: edit-config-flags
     parent: enterprise-edition
     weight: 740
 isTocNested: true

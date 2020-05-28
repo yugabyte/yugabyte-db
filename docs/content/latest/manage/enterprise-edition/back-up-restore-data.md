@@ -2,9 +2,9 @@
 title: Back up and restore data using Yugabyte Platform
 headerTitle: Back up and restore data
 linkTitle: Back up and restore data
-description: Use Yugabyte Platform to back up and restore data in universes.
+description: Use Yugabyte Platform to back up and restore data in YCQL tables.
 aliases:
-  - /manage/enterprise-edition/backup-restore
+  - /latest/manage/enterprise-edition/backup-restore
 menu:
   latest:
     identifier: back-up-restore-data
@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to back up and restore YCQL tables using the Yugabyte Platform.
+This section will describe how to use the Yugabyte Platform to back up and restore data in YCQL tables.
 
 ## Create universe
 

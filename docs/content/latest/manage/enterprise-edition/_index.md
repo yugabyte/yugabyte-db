@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to manage YugabyteDB universes.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Use Yugabyte Platform's orchestration and monitoring to manage YugabyteDB universes.
 aliases:
-  - /manage/enterprise-edition/
+  - latest/manage/enterprise-edition/
 menu:
   latest:
     identifier: enterprise-edition
@@ -24,7 +24,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
         <div class="title">Create a multi-zone universe</div>
       </div>
       <div class="body">
-        Create YugabyteDB universes in one region across multiple zones using YugabyteDB Admin Console's intent-driven orchestration.
+        Use Yugabyte Platform to create a YugabyteDB universe spans multiple zones within one region.
       </div>
     </a>
   </div>
@@ -36,7 +36,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
         <div class="title">Create a multi-region universe</div>
       </div>
       <div class="body">
-        Create YugabyteDB universes in multiple regions using YugabyteDB Admin Console's intent-driven orchestration.
+        Use Yugabyte Platform to create a YugabyteDB universe that spans multiple regions.
       </div>
     </a>
   </div>
@@ -48,19 +48,19 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
         <div class="title">Edit a universe</div>
       </div>
       <div class="body">
-        Expand, shrink, and reconfigure universes without any downtime.
+        Expand, shrink, or reconfigure a universe without downtime.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="edit-config/">
+    <a class="section-link icon-offset" href="edit-config-flags/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />    
         <div class="title">Edit configuration flags</div>
       </div>
       <div class="body">
-        Change the configuration flags for universes in a rolling manner without any application impact.
+        Change configuration flags for a universe in a rolling manner, without any application impact.
       </div>
     </a>
   </div>
@@ -84,7 +84,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
         <div class="title">Configure health checks and alerts</div>
       </div>
       <div class="body">
-        Configure automatic health checking and error reporting for universes.
+        Configure automatic health checking and error reporting for a universe.
       </div>
     </a>
   </div>
@@ -96,7 +96,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
         <div class="title">Create a read replica cluster</div>
       </div>
       <div class="body">
-        Create YugabyteDB universes with primary and read replica clusters in a hybrid cloud deployment.
+        Create a YugabyteDB universe, with a primary cluster and one or more read replica clusters.
       </div>
     </a>
   </div>
@@ -126,13 +126,25 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="schedule-data-backup/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <div class="title">Schedule a data backup</div>
+      </div>
+      <div class="body">
+        Use Yugabyte Platform to perform a regular scheduled backup of universe data.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="upgrade-universe/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/upgrade_universe.png" aria-hidden="true" />   
-        <div class="title">Upgrade universe</div>
+        <div class="title">Upgrade a universe</div>
       </div>
       <div class="body">
-        Upgrade universes in a rolling manner without any application impact.
+        Perform a rolling upgrade of a universe, without any application impact.
       </div>
     </a>
   </div>
@@ -156,7 +168,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
         <div class="title">Delete a universe</div>
       </div>
       <div class="body">
-        Delete a universe that is no longer needed to free up infrastructure capacity.
+        Delete a universe to free up infrastructure capacity.
       </div>
     </a>
   </div>
