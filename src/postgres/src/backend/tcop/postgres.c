@@ -2561,10 +2561,6 @@ finish_xact_command(void)
 #endif
 
 		xact_started = false;
-
-		if (YBTransactionsEnabled()) {
-			YBCHandleCommitError();
-		}
 	}
 }
 

@@ -3788,7 +3788,6 @@ generated_when:
 ConstraintAttr:
 			DEFERRABLE
 				{
-					parser_ybc_signal_unsupported(@1, "DEFERRABLE constraint", 1129);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_ATTR_DEFERRABLE;
 					n->location = @1;
@@ -3796,7 +3795,6 @@ ConstraintAttr:
 				}
 			| NOT DEFERRABLE
 				{
-					parser_ybc_signal_unsupported(@1, "NOT DEFERRABLE constraint", 1129);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_ATTR_NOT_DEFERRABLE;
 					n->location = @1;
@@ -3804,7 +3802,6 @@ ConstraintAttr:
 				}
 			| INITIALLY DEFERRED
 				{
-					parser_ybc_signal_unsupported(@1, "INITIALLY DEFERRED constraint", 1129);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_ATTR_DEFERRED;
 					n->location = @1;
@@ -3812,7 +3809,6 @@ ConstraintAttr:
 				}
 			| INITIALLY IMMEDIATE
 				{
-					parser_ybc_signal_unsupported(@1, "INITIALLY IMMEDIATE constraint", 1129);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_ATTR_IMMEDIATE;
 					n->location = @1;
@@ -5920,15 +5916,12 @@ ConstraintAttributeSpec:
 ConstraintAttributeElem:
 			NOT DEFERRABLE				{ $$ = CAS_NOT_DEFERRABLE; }
 			| DEFERRABLE				{
-				parser_ybc_signal_unsupported(@1, "DEFERRABLE constraint", 1129);
 				$$ = CAS_DEFERRABLE;
 			  }
 			| INITIALLY IMMEDIATE		{
-				parser_ybc_signal_unsupported(@1, "INITIALLY IMMEDIATE constraint", 1129);
 				$$ = CAS_INITIALLY_IMMEDIATE;
 			}
 			| INITIALLY DEFERRED		{
-				parser_ybc_signal_unsupported(@1, "INITIALLY DEFERRED constraint", 1129);
 				$$ = CAS_INITIALLY_DEFERRED;
 			}
 			| NOT VALID					{ $$ = CAS_NOT_VALID; }

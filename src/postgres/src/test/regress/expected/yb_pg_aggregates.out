@@ -879,10 +879,6 @@ create temp table t1 (a int, b int, c int, d int, primary key (a, b));
 create temp table t2 (x int, y int, z int, primary key (x, y));
 -- Don't yet support deferrable.
 create temp table t3 (a int, b int, c int, primary key(a, b) deferrable);
-ERROR:  DEFERRABLE constraint not supported yet
-LINE 1: ... table t3 (a int, b int, c int, primary key(a, b) deferrable...
-                                                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
 -- Non-primary-key columns can be removed from GROUP BY
 explain (costs off) select * from t1 group by a,b,c,d;
       QUERY PLAN
