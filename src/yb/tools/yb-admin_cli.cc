@@ -275,7 +275,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "list_tablets",
-      " <(<keyspace> <table_name>)|<table_id>> [max_tablets] (default 10, set 0 for max)",
+      " <(<keyspace> <table_name>)|tableid.<table_id>> [max_tablets] (default 10, set 0 for max)",
       [client](const CLIArguments& args) -> Status {
         int max = -1;
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
@@ -369,7 +369,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_table", " <(<keyspace> <table_name>)|<table_id>>",
+      "delete_table", " <(<keyspace> <table_name>)|tableid.<table_id>>",
       [client](const CLIArguments& args) -> Status {
         const auto table_name = VERIFY_RESULT(
             ResolveSingleTableName(client, args.begin() + 2, args.end()));
@@ -411,7 +411,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "flush_table", " <(<keyspace> <table_name>)|<table_id>> [timeout_in_seconds] (default 20)",
+      "flush_table",
+      " <(<keyspace> <table_name>)|tableid.<table_id>> [timeout_in_seconds] (default 20)",
       [client](const CLIArguments& args) -> Status {
         int timeout_secs = 20;
         const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
@@ -448,7 +449,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "compact_table", " <(<keyspace> <table_name>)|<table_id>> [timeout_in_seconds] (default 20)",
+      "compact_table",
+      " <(<keyspace> <table_name>)|tableid.<table_id>> [timeout_in_seconds] (default 20)",
       [client](const CLIArguments& args) -> Status {
         int timeout_secs = 20;
         const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
@@ -619,7 +621,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "list_leader_counts", " <(<keyspace> <table_name>)|<table_id>>",
+      "list_leader_counts", " <(<keyspace> <table_name>)|tableid.<table_id>>",
       [client](const CLIArguments& args) -> Status {
         const auto table_name = VERIFY_RESULT(
             ResolveSingleTableName(client, args.begin() + 2, args.end()));
@@ -659,7 +661,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       std::bind(&ChangeBlacklist, client, _1, true, "Unable to change leader blacklist"));
 
   Register(
-      "master_leader_stepdown"," <dest_uuid>",
+      "master_leader_stepdown", " <dest_uuid>",
       std::bind(&MasterLeaderStepDown, client, _1));
 
   Register(
