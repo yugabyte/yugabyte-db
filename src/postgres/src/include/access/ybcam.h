@@ -137,11 +137,33 @@ void ybcEndScan(YbScanDesc ybScan);
 /* Number of rows assumed for a YB table if no size estimates exist */
 #define YBC_DEFAULT_NUM_ROWS  1000
 
-#define YBC_SINGLE_KEY_SELECTIVITY	(1.0 / YBC_DEFAULT_NUM_ROWS)
-#define YBC_HASH_SCAN_SELECTIVITY	(10.0 / YBC_DEFAULT_NUM_ROWS)
+#define YBC_SINGLE_ROW_SELECTIVITY	(1.0 / YBC_DEFAULT_NUM_ROWS)
+#define YBC_SINGLE_KEY_SELECTIVITY	(10.0 / YBC_DEFAULT_NUM_ROWS)
+#define YBC_HASH_SCAN_SELECTIVITY	(100.0 / YBC_DEFAULT_NUM_ROWS)
 #define YBC_FULL_SCAN_SELECTIVITY	1.0
 
+/*
+ * For a partial index the index predicate will filter away some rows.
+ * TODO: Evaluate this based on the predicate itself and table stats.
+ */
+#define YBC_PARTIAL_IDX_PRED_SELECTIVITY 0.8
+
+/*
+ * Backwards scans are more expensive in DocDB.
+ * TODO: the ysql_backward_prefetch_scale_factor gflag is correlated to this
+ * but is too low (1/16 implying 16x slower) to be used here.
+ */
+#define YBC_BACKWARDS_SCAN_COST_FACTOR 1.1
+
+/*
+ * Uncovered indexes will require extra RPCs to the main table to retrieve the
+ * values for all required columns. These requests are now batched in PgGate
+ * so the extra cost should be relatively low in general.
+ */
+#define YBC_UNCOVERED_INDEX_COST_FACTOR 1.1
+
 extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
+                            bool is_backwards_scan, bool is_uncovered_idx_scan,
 							Cost *startup_cost, Cost *total_cost);
 extern void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 								 Cost *startup_cost, Cost *total_cost);

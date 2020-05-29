@@ -7,14 +7,14 @@
 -- Normally it'd take two operations, one to select ROWID and another to select actual data.
 --
 -- Test forward scan.
-EXPLAIN SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
+EXPLAIN (COSTS OFF) SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
 		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
 		ORDER BY classid, objid, objsubid
 		LIMIT 2;
                                               QUERY PLAN
 ------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..0.22 rows=2 width=21)
-   ->  Index Scan using pg_depend_depender_index on pg_depend  (cost=0.00..111.52 rows=1000 width=21)
+ Limit
+   ->  Index Scan using pg_depend_depender_index on pg_depend
          Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
 (3 rows)
 
@@ -26,14 +26,14 @@ EXPLAIN SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_d
 --		ORDER BY classid, objid, objsubid
 --		LIMIT 2;
 -- Test reverse scan.
-EXPLAIN SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
+EXPLAIN (COSTS OFF) SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
 		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
 		ORDER BY classid DESC, objid DESC, objsubid DESC
 		LIMIT 2;
-                                                  QUERY PLAN
----------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..0.22 rows=2 width=21)
-   ->  Index Scan Backward using pg_depend_depender_index on pg_depend  (cost=0.00..111.52 rows=1000 width=21)
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan Backward using pg_depend_depender_index on pg_depend
          Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
 (3 rows)
 

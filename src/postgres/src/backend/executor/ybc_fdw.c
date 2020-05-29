@@ -90,8 +90,16 @@ ybcGetForeignRelSize(PlannerInfo *root,
 
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
-	/* Save the output-rows estimate for the planner */
-	baserel->rows = YBC_DEFAULT_NUM_ROWS;
+	/* Set the estimate for the total number of rows (tuples) in this table. */
+	baserel->tuples = YBC_DEFAULT_NUM_ROWS;
+
+	/*
+	 * Initialize the estimate for the number of rows returned by this query.
+	 * This does not yet take into account the restriction clauses, but it will
+	 * be updated later by ybcIndexCostEstimate once it inspects the clauses.
+	 */
+	baserel->rows = baserel->tuples;
+
 	baserel->fdw_private = ybc_plan;
 
 	/*
@@ -115,7 +123,10 @@ ybcGetForeignPaths(PlannerInfo *root,
 	Cost total_cost;
 
 	/* Estimate costs */
-	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY, &startup_cost, &total_cost);
+	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY,
+	                false /* is_backwards scan */,
+	                false /* is_uncovered_idx_scan */,
+	                &startup_cost, &total_cost);
 
 	/* Create a ForeignPath node and it as the scan path */
 	add_path(baserel,

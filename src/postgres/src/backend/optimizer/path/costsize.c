@@ -2875,8 +2875,10 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 	 * We could include disable_cost in the preliminary estimate, but that
 	 * would amount to optimizing for the case where the join method is
 	 * disabled, which doesn't seem like the way to bet.
+	 * TODO: disable merge joins in Yugabyte mode until the needed functions
+	 *       'ammarkpos' and 'amrestrpos' are implemented in 'ybcin.c'.
 	 */
-	if (!enable_mergejoin)
+	if (!enable_mergejoin || IsYugaByteEnabled())
 		startup_cost += disable_cost;
 
 	/*

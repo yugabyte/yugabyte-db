@@ -197,30 +197,30 @@ GRANT SELECT ON atest12v TO PUBLIC;
 -- This plan should use nestloop, knowing that few rows will be selected.
 -- TODO(jason): fix expected output when issue #1420 is closed or closing.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
-                   QUERY PLAN
--------------------------------------------------
- Merge Join
-   Merge Cond: (atest12.a = atest12_1.b)
-   ->  Index Scan using atest12_a_idx on atest12
+                  QUERY PLAN
+-----------------------------------------------
+ Hash Join
+   Hash Cond: (atest12.a = atest12_1.b)
+   ->  Foreign Scan on atest12
          Filter: (b <<< 5)
-   ->  Sort
-         Sort Key: atest12_1.b
+   ->  Hash
          ->  Foreign Scan on atest12 atest12_1
                Filter: (b <<< 5)
-(8 rows)
+(7 rows)
 
 -- And this one.
 -- TODO(jason): fix expected output when issue #2076 is closed or closing.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12 x, atest12 y
   WHERE x.a = y.b and abs(y.a) <<< 5;
-                    QUERY PLAN
----------------------------------------------------
- Nested Loop
+              QUERY PLAN
+---------------------------------------
+ Hash Join
+   Hash Cond: (y.b = x.a)
    ->  Foreign Scan on atest12 y
          Filter: (abs(a) <<< 5)
-   ->  Index Scan using atest12_a_idx on atest12 x
-         Index Cond: (a = y.b)
-(5 rows)
+   ->  Hash
+         ->  Foreign Scan on atest12 x
+(6 rows)
 
 -- Check if regress_priv_user2 can break security.
 SET SESSION AUTHORIZATION regress_priv_user2;
@@ -235,17 +235,16 @@ ERROR:  permission denied for table atest12
 -- This plan should use hashjoin, as it will expect many rows to be selected.
 -- TODO(jason): fix expected output when issue #1420 is closed or closing.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
-                   QUERY PLAN
--------------------------------------------------
- Merge Join
-   Merge Cond: (atest12.a = atest12_1.b)
-   ->  Index Scan using atest12_a_idx on atest12
+                  QUERY PLAN
+-----------------------------------------------
+ Hash Join
+   Hash Cond: (atest12.a = atest12_1.b)
+   ->  Foreign Scan on atest12
          Filter: (b <<< 5)
-   ->  Sort
-         Sort Key: atest12_1.b
+   ->  Hash
          ->  Foreign Scan on atest12 atest12_1
                Filter: (b <<< 5)
-(8 rows)
+(7 rows)
 
 -- Now regress_priv_user1 grants sufficient access to regress_priv_user2.
 SET SESSION AUTHORIZATION regress_priv_user1;
@@ -254,31 +253,31 @@ SET SESSION AUTHORIZATION regress_priv_user2;
 -- Now regress_priv_user2 will also get a good row estimate.
 -- TODO(jason): fix expected output when issue #1420 is closed or closing.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
-                   QUERY PLAN
--------------------------------------------------
- Merge Join
-   Merge Cond: (atest12.a = atest12_1.b)
-   ->  Index Scan using atest12_a_idx on atest12
+                  QUERY PLAN
+-----------------------------------------------
+ Hash Join
+   Hash Cond: (atest12.a = atest12_1.b)
+   ->  Foreign Scan on atest12
          Filter: (b <<< 5)
-   ->  Sort
-         Sort Key: atest12_1.b
+   ->  Hash
          ->  Foreign Scan on atest12 atest12_1
                Filter: (b <<< 5)
-(8 rows)
+(7 rows)
 
 -- But not for this, due to lack of table-wide permissions needed
 -- to make use of the expression index's statistics.
 -- TODO(jason): fix expected output when issue #1420 is closed or closing.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12 x, atest12 y
   WHERE x.a = y.b and abs(y.a) <<< 5;
-                    QUERY PLAN
----------------------------------------------------
- Nested Loop
+              QUERY PLAN
+---------------------------------------
+ Hash Join
+   Hash Cond: (y.b = x.a)
    ->  Foreign Scan on atest12 y
          Filter: (abs(a) <<< 5)
-   ->  Index Scan using atest12_a_idx on atest12 x
-         Index Cond: (a = y.b)
-(5 rows)
+   ->  Hash
+         ->  Foreign Scan on atest12 x
+(6 rows)
 
 -- clean up (regress_priv_user1's objects are all dropped later)
 DROP FUNCTION leak2(integer, integer) CASCADE;

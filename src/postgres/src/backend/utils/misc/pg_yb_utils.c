@@ -142,6 +142,17 @@ AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
 	return attr_num;
 }
 
+int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum)
+{
+	return attnum - YBGetFirstLowInvalidAttributeNumber(rel);
+}
+
+AttrNumber YBBmsIndexToAttnum(Relation rel, int idx)
+{
+	return idx + YBGetFirstLowInvalidAttributeNumber(rel);
+}
+
+
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 {
 	TriggerDesc *trigdesc = rel->trigdesc;

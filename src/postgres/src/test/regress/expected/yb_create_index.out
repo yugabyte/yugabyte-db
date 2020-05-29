@@ -62,10 +62,10 @@ SELECT * FROM test_index WHERE v1 IN (1, 2, 3);
 
 -- Verify indexes on system catalog tables are updated properly
 CREATE TABLE test_sys_catalog_update (k int primary key, v int);
-EXPLAIN SELECT relname FROM pg_class WHERE relname = 'test_sys_catalog_update';
-                                            QUERY PLAN
---------------------------------------------------------------------------------------------------
- Index Only Scan using pg_class_relname_nsp_index on pg_class  (cost=0.00..5.04 rows=10 width=64)
+EXPLAIN (COSTS OFF) SELECT relname FROM pg_class WHERE relname = 'test_sys_catalog_update';
+                          QUERY PLAN
+--------------------------------------------------------------
+ Index Only Scan using pg_class_relname_nsp_index on pg_class
    Index Cond: (relname = 'test_sys_catalog_update'::name)
 (2 rows)
 
@@ -75,10 +75,10 @@ SELECT relname  FROM pg_class WHERE relname = 'test_sys_catalog_update';
  test_sys_catalog_update
 (1 row)
 
-EXPLAIN SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
-                                           QUERY PLAN
-------------------------------------------------------------------------------------------------
- Index Only Scan using pg_type_typname_nsp_index on pg_type  (cost=0.00..5.04 rows=10 width=64)
+EXPLAIN (COSTS OFF) SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+                         QUERY PLAN
+------------------------------------------------------------
+ Index Only Scan using pg_type_typname_nsp_index on pg_type
    Index Cond: (typname = 'test_sys_catalog_update'::name)
 (2 rows)
 
@@ -88,10 +88,10 @@ SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
  test_sys_catalog_update
 (1 row)
 
-EXPLAIN SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
-                                              QUERY PLAN
-------------------------------------------------------------------------------------------------------
- Index Scan using pg_attribute_relid_attnam_index on pg_attribute  (cost=0.00..5.04 rows=10 width=68)
+EXPLAIN (COSTS OFF) SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+                            QUERY PLAN
+------------------------------------------------------------------
+ Index Scan using pg_attribute_relid_attnam_index on pg_attribute
    Index Cond: (attname = 'v'::name)
 (2 rows)
 
@@ -457,10 +457,10 @@ CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
 INSERT INTO test_truncate VALUES (1, 2);
 INSERT INTO test_truncate VALUES (2, 2);
 ERROR:  duplicate key value violates unique constraint "test_truncate_index"
-EXPLAIN SELECT b FROM test_truncate WHERE b = 2;
-                                          QUERY PLAN
-----------------------------------------------------------------------------------------------
- Index Only Scan using test_truncate_index on test_truncate  (cost=0.00..4.11 rows=1 width=4)
+EXPLAIN (COSTS OFF) SELECT b FROM test_truncate WHERE b = 2;
+                         QUERY PLAN
+------------------------------------------------------------
+ Index Only Scan using test_truncate_index on test_truncate
    Index Cond: (b = 2)
 (2 rows)
 
@@ -508,10 +508,10 @@ CREATE UNIQUE INDEX ON test_include (c1) include (c2);
 ERROR:  duplicate key value violates unique constraint "test_include_c1_c2_idx"
 DELETE FROM test_include WHERE c1 = 1 AND c2 = 2;
 CREATE UNIQUE INDEX ON test_include (c1) include (c2);
-EXPLAIN SELECT c1, c2 FROM test_include WHERE c1 = 1;
-                                           QUERY PLAN
-------------------------------------------------------------------------------------------------
- Index Only Scan using test_include_c1_c2_idx on test_include  (cost=0.00..4.11 rows=1 width=8)
+EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 = 1;
+                          QUERY PLAN
+--------------------------------------------------------------
+ Index Only Scan using test_include_c1_c2_idx on test_include
    Index Cond: (c1 = 1)
 (2 rows)
 
@@ -535,21 +535,21 @@ Indexes:
 -- on c1 below to force the scan on the index vs. base table. Select the non-included column c3 in
 -- the other case to force the use of sequential scan on the base table.
 UPDATE test_include SET c2 = 22 WHERE c1 = 2;
-EXPLAIN SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
-                                QUERY PLAN
----------------------------------------------------------------------------
- Sort  (cost=152.33..154.83 rows=1000 width=8)
+EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
+             QUERY PLAN
+------------------------------------
+ Sort
    Sort Key: c2
-   ->  Foreign Scan on test_include  (cost=0.00..102.50 rows=1000 width=8)
+   ->  Foreign Scan on test_include
          Filter: (c1 > 0)
 (4 rows)
 
-EXPLAIN SELECT * FROM test_include ORDER BY c2;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
- Sort  (cost=149.83..152.33 rows=1000 width=12)
+EXPLAIN (COSTS OFF) SELECT * FROM test_include ORDER BY c2;
+             QUERY PLAN
+------------------------------------
+ Sort
    Sort Key: c2
-   ->  Foreign Scan on test_include  (cost=0.00..100.00 rows=1000 width=12)
+   ->  Foreign Scan on test_include
 (3 rows)
 
 SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
@@ -630,12 +630,12 @@ INSERT INTO test_method VALUES
   (2, 0, 1, 1, 9, 19),
   (2, 1, 1, 2, 10, 20);
 -- Test scans using different indexes. Verify order by.
-EXPLAIN SELECT * FROM test_method ORDER BY h1, h2;
-                                QUERY PLAN
----------------------------------------------------------------------------
- Sort  (cost=149.83..152.33 rows=1000 width=24)
+EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY h1, h2;
+            QUERY PLAN
+-----------------------------------
+ Sort
    Sort Key: h1, h2
-   ->  Foreign Scan on test_method  (cost=0.00..100.00 rows=1000 width=24)
+   ->  Foreign Scan on test_method
 (3 rows)
 
 SELECT * FROM test_method ORDER BY h1, h2;
@@ -653,10 +653,10 @@ SELECT * FROM test_method ORDER BY h1, h2;
   2 |  1 |  1 |  2 | 10 | 20
 (10 rows)
 
-EXPLAIN SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
-                                      QUERY PLAN
---------------------------------------------------------------------------------------
- Index Scan using test_method_pkey on test_method  (cost=0.00..5.06 rows=10 width=24)
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
+                    QUERY PLAN
+--------------------------------------------------
+ Index Scan using test_method_pkey on test_method
    Index Cond: ((h1 = 1) AND (h2 = 1))
 (2 rows)
 
@@ -669,12 +669,12 @@ SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
   1 |  1 |  2 |  2 |  4 | 14
 (4 rows)
 
-EXPLAIN SELECT * FROM test_method ORDER BY r1, r2;
-                                QUERY PLAN
----------------------------------------------------------------------------
- Sort  (cost=149.83..152.33 rows=1000 width=24)
+EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY r1, r2;
+            QUERY PLAN
+-----------------------------------
+ Sort
    Sort Key: r1, r2
-   ->  Foreign Scan on test_method  (cost=0.00..100.00 rows=1000 width=24)
+   ->  Foreign Scan on test_method
 (3 rows)
 
 SELECT * FROM test_method ORDER BY r1, r2;
@@ -692,12 +692,12 @@ SELECT * FROM test_method ORDER BY r1, r2;
   1 |  1 |  2 |  2 |  4 | 14
 (10 rows)
 
-EXPLAIN SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
-                                QUERY PLAN
----------------------------------------------------------------------------
- Sort  (cost=152.33..154.83 rows=1000 width=24)
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
+            QUERY PLAN
+-----------------------------------
+ Sort
    Sort Key: v1, v2
-   ->  Foreign Scan on test_method  (cost=0.00..102.50 rows=1000 width=24)
+   ->  Foreign Scan on test_method
          Filter: (v1 > 5)
 (4 rows)
 
@@ -711,12 +711,12 @@ SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
   2 |  1 |  1 |  2 | 10 | 20
 (5 rows)
 
-EXPLAIN SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
-                                             QUERY PLAN
-----------------------------------------------------------------------------------------------------
- Sort  (cost=5.20..5.23 rows=10 width=24)
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Sort
    Sort Key: r1, r2
-   ->  Index Scan using test_method_h2_r2_r1_idx on test_method  (cost=0.00..5.04 rows=10 width=24)
+   ->  Index Scan using test_method_h2_r2_r1_idx on test_method
          Index Cond: (h2 = 2)
 (4 rows)
 
@@ -729,11 +729,11 @@ SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
   1 |  2 |  2 |  2 |  8 | 18
 (4 rows)
 
-EXPLAIN UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
-                                             QUERY PLAN
------------------------------------------------------------------------------------------------------
- Update on test_method  (cost=0.00..5.06 rows=10 width=104)
-   ->  Index Scan using test_method_h2_r2_r1_idx on test_method  (cost=0.00..5.06 rows=10 width=104)
+EXPLAIN (COSTS OFF) UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Update on test_method
+   ->  Index Scan using test_method_h2_r2_r1_idx on test_method
          Index Cond: (h2 = 2)
 (3 rows)
 
@@ -770,21 +770,21 @@ SELECT * FROM test_method ORDER BY r1, r2;
 (10 rows)
 
 -- Test delete using a unique index
-EXPLAIN DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
-                                           QUERY PLAN
-------------------------------------------------------------------------------------------------
- Delete on test_method  (cost=0.00..4.12 rows=1 width=80)
-   ->  Index Scan using test_method_v1_v2_idx on test_method  (cost=0.00..4.12 rows=1 width=80)
+EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Delete on test_method
+   ->  Index Scan using test_method_v1_v2_idx on test_method
          Index Cond: ((v1 = 5) AND (v2 = 25))
 (3 rows)
 
 DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
 -- Test delete using the primary key
-EXPLAIN DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
-                                         QUERY PLAN
---------------------------------------------------------------------------------------------
- Delete on test_method  (cost=0.00..5.06 rows=10 width=80)
-   ->  Index Scan using test_method_pkey on test_method  (cost=0.00..5.06 rows=10 width=80)
+EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
+                       QUERY PLAN
+--------------------------------------------------------
+ Delete on test_method
+   ->  Index Scan using test_method_pkey on test_method
          Index Cond: ((h1 = 2) AND (h2 = 0))
 (3 rows)
 

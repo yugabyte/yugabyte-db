@@ -7,7 +7,7 @@
 -- Normally it'd take two operations, one to select ROWID and another to select actual data.
 --
 -- Test forward scan.
-EXPLAIN SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
+EXPLAIN (COSTS OFF) SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
 		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
 		ORDER BY classid, objid, objsubid
 		LIMIT 2;
@@ -21,7 +21,7 @@ EXPLAIN SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_d
 --		LIMIT 2;
 
 -- Test reverse scan.
-EXPLAIN SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
+EXPLAIN (COSTS OFF) SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
 		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
 		ORDER BY classid DESC, objid DESC, objsubid DESC
 		LIMIT 2;

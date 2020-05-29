@@ -1,0 +1,8 @@
+# src/test/regress/yb_planner_serial_schedule
+#
+####################################################################################################
+# Testsuite for tests covering planner/optimizer behavior.
+####################################################################################################
+test: yb_planner_indexes
+test: yb_planner_joins
+
