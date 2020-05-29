@@ -37,4 +37,10 @@
       }
     }
   }
+  .form-group.file-upload.form-alt.has-value {
+    .drop-zone-file {
+      width: calc( 100% - 250px );
+      left: auto;
+    }
+  }
 }

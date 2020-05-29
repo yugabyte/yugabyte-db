@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
+import { connect } from 'react-redux';
 import { Row, Col } from 'react-bootstrap';
 import { YBButton, YBAddRowButton, YBToggle, YBNumericInput } from '../../../common/forms/fields';
 import { YBTextInputWithLabel, YBSelectWithLabel, YBDropZone, YBInputField } from '../../../common/forms/fields';
@@ -315,7 +316,18 @@ const validate = (values) => {
   return errors;
 };
 
-export default reduxForm({
+function mapStateToProps(state) {
+  return {
+    initialValues: {
+      accountName: '',
+      credential_input: 'upload_service_account_json',
+      airGapInstall: false,
+      network_setup: 'new_vpc'
+    }
+  };
+}
+
+export default connect(mapStateToProps, null)(reduxForm({
   form: 'gcpProviderConfigForm',
   validate
-})(GCPProviderInitView);
+})(GCPProviderInitView));

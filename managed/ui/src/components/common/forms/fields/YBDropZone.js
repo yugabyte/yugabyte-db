@@ -14,7 +14,7 @@ export default class YBDropZone extends Component {
     const { input, title, meta: { touched, error } } = this.props;
     return (
       <Fragment>
-        <div className={`form-group file-upload ${ touched && error ? 'has-error' : ''} ${input.value ? 'has-value' : ''}`}>
+        <div className={`form-group file-upload form-alt ${ touched && error ? 'has-error' : ''} ${input.value ? 'has-value' : ''}`}>
           <Dropzone
             className={this.props.className}
             name={this.props.name}
@@ -42,7 +42,7 @@ export class YBDropZoneWithLabel extends Component {
     return (
       <YBLabel label={label} insetError={insetError} meta={this.props.meta} infoContent={infoContent} infoTitle={infoTitle}
                infoPlacement={infoPlacement}>
-        <div className={`form-group yb-field-group file-upload ${ touched && error ? 'has-error' : ''} ${input.value ? 'has-value' : ''}`}>
+        <div className={`form-group yb-field-group form-alt file-upload ${ touched && error ? 'has-error' : ''} ${input.value ? 'has-value' : ''}`}>
           <Dropzone
             className={this.props.className}
             name={this.props.name}
