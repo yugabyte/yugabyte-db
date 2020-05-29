@@ -134,11 +134,21 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
   log::Log* log = state()->mutable_log();
   size_t num_operations = 0;
 
+  if (state()->request()->has_wal_retention_secs()) {
+    // We don't consider wal retention changes as another operation because this value is always
+    // sent together with the schema, as long as it has been changed in the master's sys-catalog.
+    auto s = tablet->AlterWalRetentionSecs(state());
+    if (s.ok()) {
+      log->set_wal_retention_secs(state()->request()->wal_retention_secs());
+    } else {
+      LOG(WARNING) << "T " << tablet->tablet_id() << ": Unable to alter wal retention secs";
+    }
+  }
+
   // Only perform one operation.
   enum MetadataChange {
     NONE,
     SCHEMA,
-    WAL_RETENTION_SECS,
     ADD_TABLE,
     REMOVE_TABLE,
     BACKFILL_DONE,
@@ -151,13 +161,6 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
     request_has_newer_schema = tablet->metadata()->schema_version() < state()->schema_version();
     if (request_has_newer_schema) {
       ++num_operations;
-    }
-  }
-
-  if (state()->request()->has_wal_retention_secs()) {
-    metadata_change = MetadataChange::NONE;
-    if (++num_operations == 1) {
-      metadata_change = MetadataChange::WAL_RETENTION_SECS;
     }
   }
 
@@ -199,12 +202,6 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
       RETURN_NOT_OK(tablet->AlterSchema(state()));
       log->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
                                       state()->schema_version());
-      break;
-    case MetadataChange::WAL_RETENTION_SECS:
-      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
-                                   << num_operations;
-      RETURN_NOT_OK(tablet->AlterWalRetentionSecs(state()));
-      log->set_wal_retention_secs(state()->request()->wal_retention_secs());
       break;
     case MetadataChange::ADD_TABLE:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "

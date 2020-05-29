@@ -3689,7 +3689,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   TRACE("Committing in-memory state");
   l->Commit();
 
-  SendAlterTableRequest(table);
+  SendAlterTableRequest(table, req);
 
   LOG(INFO) << "Successfully initiated ALTER TABLE (pending tablet schema updates) for "
             << table->ToString() << " per request from " << RequestorString(rpc);
@@ -5998,12 +5998,14 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   return Status::OK();
 }
 
-void CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table) {
+void CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
+                                           const AlterTableRequestPB* req) {
   vector<scoped_refptr<TabletInfo>> tablets;
   table->GetAllTablets(&tablets);
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    auto call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet);
+    auto call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet,
+        req && req->has_wal_retention_secs());
     tablet->table()->AddTask(call);
     WARN_NOT_OK(ScheduleTask(call), "Failed to send alter table request");
   }

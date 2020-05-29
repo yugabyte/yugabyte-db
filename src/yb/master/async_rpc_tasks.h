@@ -356,7 +356,8 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
 class AsyncAlterTable : public AsyncTabletLeaderTask {
  public:
   AsyncAlterTable(
-      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      bool has_wal_retention_secs = false)
       : AsyncTabletLeaderTask(master, callback_pool, tablet) {}
 
   Type type() const override { return ASYNC_ALTER_TABLE; }
