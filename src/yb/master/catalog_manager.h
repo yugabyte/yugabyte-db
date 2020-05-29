@@ -922,7 +922,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // updated to INDEX_PERM_WRITE_AND_DELETE state; followed by backfilling. Once
   // all the tablets have completed backfilling, the index will be updated
   // to be in INDEX_PERM_READ_WRITE_AND_DELETE state.
-  void SendAlterTableRequest(const scoped_refptr<TableInfo>& table);
+  void SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
+                             const AlterTableRequestPB* req = nullptr);
 
   // Start the background task to send the CopartitionTable() RPC to the leader for this
   // tablet.
