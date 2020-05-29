@@ -111,3 +111,11 @@ Connect to “yugabyte-consumer” universe using the YSQL shell (`ysqlsh`) or t
 **For bidirectional replication**
 
 Repeat the steps above, but pump data into “yugabyte-consumer”. To avoid primary key conflict errors, keep the key space for the two universes separate.
+
+
+{{< note title="How to check replication lag" >}}
+Replication lag is computed at the tablet level by subtracting the `last_read_hybrid_time` from the `hybrid_clock_time`. 
+[Here](/files/determine_replication_lag.sh) is an example script that does it for you. 
+The script requires [`jq`](https://stedolan.github.io/jq/) package.
+
+{{< /note >}}
