@@ -23,6 +23,8 @@ Use Yugabyte Platform to perform a regularly scheduled backup of a full Yugabyte
 2. Click the **Tables** tab and verify that backups are enabled. If disabled, click **Enable Backup**.
 3. Click the **Backups** tab and then click **Create Scheduled Backup**. The **Create Backup** form appears.
 
+
+
 ![Create Backup form](/images/ee/create-backup.png)
 
 4. Enter the **Backup frequency** (an interval in in milliseconds) or enter a `cron` expression.
