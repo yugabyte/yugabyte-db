@@ -92,6 +92,7 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) | PROGRESS  |  v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1958) | This feature will be done in two phases: supporting PostgreSQL partitions followed by geo-placement support for partitions |
 | [Support for most `ALTER TABLE` variants](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS |  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |
 
+
 ## Planned additions to roadmap
 
 The following items are being planned as additions to the roadmap
@@ -104,6 +105,7 @@ The following items are being planned as additions to the roadmap
 | Point in time restores | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/1820) |  |
 | IPV6 support for YugabyteDB | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/3644) |  |
 | LDAP authentication support | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) |  |
+| Support Kafka as source and sink | PLANNING |  |  | Support source and sink for both YSQL and YSQL |
 
 ## Recently released features
 
