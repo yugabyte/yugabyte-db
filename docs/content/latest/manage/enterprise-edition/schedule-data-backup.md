@@ -19,19 +19,23 @@ Use Yugabyte Platform to perform a regularly scheduled backup of a full Yugabyte
 
 ## Schedule a backup
 
-1. In the YugabyteDB Admin Console, go to the universe that you want to schedule backups for.
-2. Verify that backups are enabled by checking the **Tables** page. If disabled, click **Enable Backup** to enable backups.
-3. Open the **Backups** tab.
-4. Click **Create Backup**.
-5. Use the **Tables to backup** dropdown to select tables or select **Full Universe Backup**.
-6. Click **OK**.
-7. Enter the desired frequency for backups. You can either enter the frequency in milliseconds (with the first backup being started immediately) or you can enter a `cron` expression.
-8. Click **OK** to create the schedule.
-9. To verify that the schedule has been created, click **Profile** and select **Schedules** from the drop-down.
+1. In the YugabyteDB Admin Console, click **Universes** in the navigation bar, then click the name of the universe you want to schedule backups for.
+2. Click the **Tables** tab and verify that backups are enabled. If disabled, click **Enable Backup**.
+3. Click the **Backups** tab and then click **Create Scheduled Backup**. The **Create Backup** form appears.
+
+![Create Backup form](/images/ee/create-backup.png)
+
+4. Enter the **Backup frequency** (an interval in in milliseconds) or enter a `cron` expression.
+5. Select the **Storage** option.
+6. Select the **Table keyspace**.
+7. In the **Tables to backup** field, select specific tables or the **Full Universe Backup** option.
+8. Click **OK** to create the schedule. The first backup will begin immediately and then subsequent backups will be created based on the backup frequency.
+
+To verify that the schedule has been created, you can click **Profile** and select **Schedules** from the drop-down.
 
 ## Disable a scheduled backup
 
-If required, you can temporarily disable scheduled backups by going to the **Tables** tab and selecting **Disable Backups**.
+If required, you can temporarily disable scheduled backups by going to the **Tables** tab in a universe and click **Disable Backups**.
 
 ## Delete a schedule
 
