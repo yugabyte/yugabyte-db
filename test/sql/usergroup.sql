@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(78);
+SELECT plan(90);
 --SELECT * FROM no_plan();
 
 /****************************************************************************/
@@ -178,6 +178,40 @@ SELECT * FROM check_test(
     true,
     'hasnt_group(nonexistent group, desc)',
     'desc',
+    ''
+);
+
+/****************************************************************************/
+-- Test isnt_member_of().
+SELECT * FROM check_test(
+    isnt_member_of('meanies', ARRAY[current_user], 'whatever' ),
+    true,
+    'isnt_member_of(meanies, [current_user], desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_member_of('meanies', ARRAY[current_user] ),
+    true,
+    'isnt_member_of(meanies, [current_user])',
+    'Should not have members of role meanies',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_member_of('meanies', current_user, 'whatever' ),
+    true,
+    'isnt_member_of(meanies, current_user, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_member_of('meanies', current_user ),
+    true,
+    'isnt_member_of(meanies, current_user)',
+    'Should not have members of role meanies',
     ''
 );
 

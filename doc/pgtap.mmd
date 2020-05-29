@@ -5952,6 +5952,45 @@ If the group role does not exist, the diagnostics will tell you that, instead.
 But you use `has_role()` to make sure the role exists before you check its
 members, don't you? Of course you do.
 
+### `isnt_member_of()` ###
+
+    SELECT isnt_member_of( :role, :members, :description );
+    SELECT isnt_member_of( :role, :members );
+    SELECT isnt_member_of( :role, :member, :description );
+    SELECT isnt_member_of( :role, :member );
+
+**Parameters**
+
+`:role`
+: Name of a PostgreSQL group role.
+
+`:members`
+: Array of names of roles that should *not* be members of the group role.
+
+`:member`
+: Name of a role that should *not* be a member of the group role.
+
+`:description`
+: A short description of the test.
+
+    SELECT isnt_member_of( 'meanies', 'anna' 'Anna should not be a meanie' );
+    SELECT isnt_member_of( 'sweeties', ARRAY['dr_evil', 'dr_no' ] );
+
+The inverse of `is_member_of()`, checks whether a group role does not contain
+a member role or none of an array of member roles. If the description is
+omitted, it will default to "Should not have members of role `:role`." On
+failure, `isnt_member_of()` will output diagnostics listing the missing member
+roles, like so:
+
+    # Failed test 371: "Should not have members of role sweeties"
+    #     Members, who should not be in sweeties role:
+    #         dr_evil
+    #         dr_no
+
+If the group role does not exist, the diagnostics will tell you that, instead.
+But you use `has_role()` to make sure the role exists before you check its
+members, don't you? Of course you do.
+
 ### `rule_is_instead()` ###
 
     SELECT rule_is_instead( :schema, :table, :rule, :description );

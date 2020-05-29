@@ -26,6 +26,8 @@ Revision history for pgTAP
   report (#276).
 * Fixed test failures due to changes in PostgreSQL 14. Thanks to Christoph Berg
   for the report (#277).
+* Added `isnt_member_of()` (#38, #204). Thanks to Wolfgang Walther for the
+  pull request (#249).
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------
@@ -44,7 +46,7 @@ Revision history for pgTAP
   version 0.99.0 to 1.0.0 (#214).
 * Fix issue with using pg_upgrade to PostgreSQL 11+ with pgTap installed (#201,
   #215).
-* Start using `DEFAULT` in functions. Previously
+* Start using `DEFAULT` in functions.
 * Add automated testing of extension upgrade scripts (#128), as well as testing
   of pg_upgrade with pgTap installed (#218, #222).
 
