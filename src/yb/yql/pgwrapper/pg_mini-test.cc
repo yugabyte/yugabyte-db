@@ -36,6 +36,7 @@
 using namespace std::literals;
 
 DECLARE_bool(enable_ysql);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_bool(TEST_force_master_leader_resolution);
@@ -1267,6 +1268,14 @@ TEST_F_EX(PgMiniTest,
           YB_DISABLE_TEST_IN_TSAN(BackwardIndexScanWithIntents),
           PgMiniBackwardIndexScanTest) {
   BackwardIndexScanTest(/* uncommitted_intents */ true);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CreateDatabase)) {
+  FLAGS_flush_rocksdb_on_shutdown = false;
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string kDatabaseName = "testdb";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
+  ASSERT_OK(cluster_->RestartSync());
 }
 
 } // namespace pgwrapper
