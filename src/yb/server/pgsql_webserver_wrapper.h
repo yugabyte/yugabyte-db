@@ -44,6 +44,7 @@ typedef struct rpczEntry {
     int64 transaction_start_timestamp;
     int64 query_start_timestamp;
     char *backend_type;
+    uint8 backend_active;
     char *backend_status;
     char *host;
     char *port;

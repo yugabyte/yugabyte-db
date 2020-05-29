@@ -140,9 +140,14 @@ static void PgStatStatementsResetHandler(const Webserver::WebRequest& req,
 }
 
 static void WriteAsJsonTimestampAndRunningForMs(JsonWriter *writer, const std::string& prefix,
-                                                int64 start_timestamp, int64 snapshot_timestamp) {
+                                                int64 start_timestamp, int64 snapshot_timestamp,
+                                                bool active) {
   writer->String(prefix + "_start_time");
   writer->String(pgCallbacks.getTimestampTzToStr(start_timestamp));
+
+  if (!active) {
+    return;
+  }
 
   writer->String(prefix + "_running_for_ms");
   writer->Int64(pgCallbacks.getTimestampTzDiffMs(start_timestamp, snapshot_timestamp));
@@ -157,57 +162,57 @@ static void PgRpczHandler(const Webserver::WebRequest& req, std::stringstream* o
   json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
               JsonWriter::COMPACT : JsonWriter::PRETTY;
   JsonWriter writer(output, json_mode);
-  rpczEntry *rpczResult = *rpczResultPointer;
+  rpczEntry *entry = *rpczResultPointer;
 
   writer.StartObject();
   writer.String("connections");
   writer.StartArray();
-  for (int i = 0; i < *num_backends; ++i) {
-    if (rpczResult[i].proc_id > 0) {
+  for (int i = 0; i < *num_backends; ++i, ++entry) {
+    if (entry->proc_id > 0) {
       writer.StartObject();
-      if (rpczResult[i].db_oid) {
+      if (entry->db_oid) {
         writer.String("db_oid");
-        writer.Int64(rpczResult[i].db_oid);
+        writer.Int64(entry->db_oid);
         writer.String("db_name");
-        writer.String(rpczResult[i].db_name);
+        writer.String(entry->db_name);
       }
 
-      if (strlen(rpczResult[i].query) > 0) {
+      if (strlen(entry->query) > 0) {
         writer.String("query");
-        writer.String(rpczResult[i].query);
+        writer.String(entry->query);
       }
 
       WriteAsJsonTimestampAndRunningForMs(&writer, "process",
-                                          rpczResult[i].process_start_timestamp,
-                                          snapshot_timestamp);
+                                          entry->process_start_timestamp,
+                                          snapshot_timestamp, entry->backend_active);
 
-      if (rpczResult[i].transaction_start_timestamp > 0) {
+      if (entry->transaction_start_timestamp > 0) {
         WriteAsJsonTimestampAndRunningForMs(&writer, "transaction",
-                                            rpczResult[i].transaction_start_timestamp,
-                                            snapshot_timestamp);
+                                            entry->transaction_start_timestamp,
+                                            snapshot_timestamp, entry->backend_active);
       }
 
-      if (rpczResult[i].query_start_timestamp > 0) {
+      if (entry->query_start_timestamp > 0) {
         WriteAsJsonTimestampAndRunningForMs(&writer, "query",
-                                            rpczResult[i].query_start_timestamp,
-                                            snapshot_timestamp);
+                                            entry->query_start_timestamp,
+                                            snapshot_timestamp, entry->backend_active);
       }
 
       writer.String("application_name");
-      writer.String(rpczResult[i].application_name);
+      writer.String(entry->application_name);
       writer.String("backend_type");
-      writer.String(rpczResult[i].backend_type);
+      writer.String(entry->backend_type);
       writer.String("backend_status");
-      writer.String(rpczResult[i].backend_status);
+      writer.String(entry->backend_status);
 
-      if (rpczResult[i].host) {
+      if (entry->host) {
         writer.String("host");
-        writer.String(rpczResult[i].host);
+        writer.String(entry->host);
       }
 
-      if (rpczResult[i].port) {
+      if (entry->port) {
         writer.String("port");
-        writer.String(rpczResult[i].port);
+        writer.String(entry->port);
       }
 
       writer.EndObject();
