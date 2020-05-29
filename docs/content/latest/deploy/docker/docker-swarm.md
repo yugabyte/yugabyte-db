@@ -168,7 +168,7 @@ $ docker service create \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
 --master_addresses=tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100 \
---rpc_bind_addresses=0.0.0.0:7100 \
+--rpc_bind_addresses=tasks.yb-master1:7100 \
 --replication_factor=3
 ```
 
@@ -181,7 +181,7 @@ $ docker service create \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
 --master_addresses=tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100 \
---rpc_bind_addresses=0.0.0.0:7100 \
+--rpc_bind_addresses=tasks.yb-master2:7100 \
 --replication_factor=3
 ```
 
@@ -194,7 +194,7 @@ $ docker service create \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
 --master_addresses=tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100 \
---rpc_bind_addresses=0.0.0.0:7100 \
+--rpc_bind_addresses=tasks.yb-master3:7100 \
 --replication_factor=3
 ```
 
