@@ -63,6 +63,10 @@ alignment:crcutil::Crc32cSSE4::Crc32c
 # snappy works with unaligned data
 alignment:snappy::
 
+# explicit unaligned read in jenkins_hash in the c++ driver
+# in cassandra-cpp-driver-2.9.0-yb-6/src/jenkins_hash.cpp:97
+alignment:cass::Word64At
+
 # https://goo.gl/AaE3P5
 pointer-overflow:google::*::DumpStackFrameInfo*
 
