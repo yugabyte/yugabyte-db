@@ -609,6 +609,14 @@ find_make_or_ninja_and_update_cmake_opts() {
   cmake_opts+=( "-DCMAKE_MAKE_PROGRAM=$make_program" )
 }
 
+create_mvn_repo_path_file() {
+  if [[ -n ${YB_MVN_LOCAL_REPO:-} ]]; then
+    local mvn_repo_path=$BUILD_ROOT/mvn_repo
+    echo "Saving YB_MVN_LOCAL_REPO to $mvn_repo_path"
+    echo "$YB_MVN_LOCAL_REPO" > "$mvn_repo_path"
+  fi
+}
+
 set_mvn_parameters() {
   if "$yb_mvn_parameters_already_set"; then
     return
@@ -659,6 +667,7 @@ set_mvn_parameters() {
   log "The result of set_mvn_parameters:" \
       "YB_MVN_LOCAL_REPO=$YB_MVN_LOCAL_REPO," \
       "YB_MVN_SETTINGS_PATH=$YB_MVN_SETTINGS_PATH"
+  create_mvn_repo_path_file
   yb_mvn_parameters_already_set=true
 }
 
