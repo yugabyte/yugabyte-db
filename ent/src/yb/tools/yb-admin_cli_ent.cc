@@ -59,7 +59,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "create_snapshot",
-      " <(<keyspace> <table_name>)|<table_id>> [<(<keyspace> <table_name>)|<table_id>>]..."
+      " <(<keyspace> <table_name>)|tableid.<table_id>> " \
+      "[<(<keyspace> <table_name>)|tableid.<table_id>>]..."
       " [deprecated_flush_timeout_in_seconds]",
       [client](const CLIArguments& args) -> Status {
         const auto tables = VERIFY_RESULT(ResolveTableNames(
@@ -158,7 +159,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "list_replica_type_counts", " <(<keyspace> <table_name>)|<table_id>>",
+      "list_replica_type_counts",
+      " <(<keyspace> <table_name>)|tableid.<table_id>>",
       [client](const CLIArguments& args) -> Status {
         const auto table_name = VERIFY_RESULT(
             ResolveSingleTableName(client, args.begin() + 2, args.end()));
