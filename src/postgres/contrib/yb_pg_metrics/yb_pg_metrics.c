@@ -187,18 +187,21 @@ pullRpczEntries(void)
       rpcz[i].backend_type = (char *) palloc(40);
       strcpy(rpcz[i].backend_type, pgstat_get_backend_desc(beentry->st_backendType));
 
+      rpcz[i].backend_active = 0;
       rpcz[i].backend_status = (char *) palloc(30);
       switch (beentry->st_state) {
         case STATE_IDLE:
           strcpy(rpcz[i].backend_status, "idle");
           break;
         case STATE_RUNNING:
+          rpcz[i].backend_active = 1;
           strcpy(rpcz[i].backend_status, "active");
           break;
         case STATE_IDLEINTRANSACTION:
           strcpy(rpcz[i].backend_status, "idle in transaction");
           break;
         case STATE_FASTPATH:
+          rpcz[i].backend_active = 1;
           strcpy(rpcz[i].backend_status, "fastpath function call");
           break;
         case STATE_IDLEINTRANSACTION_ABORTED:
