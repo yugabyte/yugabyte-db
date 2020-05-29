@@ -354,14 +354,6 @@ create_build_root_file() {
   fi
 }
 
-create_mvn_repo_path_file() {
-  if [[ -n ${YB_MVN_LOCAL_REPO:-} ]]; then
-    local mvn_repo_path=$BUILD_ROOT/mvn_repo
-    echo "Saving YB_MVN_LOCAL_REPO to $mvn_repo_path"
-    echo "$YB_MVN_LOCAL_REPO" > "$mvn_repo_path"
-  fi
-}
-
 capture_sec_timestamp() {
   expect_num_args 1 "$@"
   local current_timestamp=$(date +%s)
@@ -1361,7 +1353,6 @@ if "$build_java"; then
       build_yb_java_code $user_mvn_opts "${java_build_opts[@]}"
     )
   done
-  create_mvn_repo_path_file
   unset java_project_dir
 
   if "$run_java_tests" && should_run_java_test_methods_separately; then
