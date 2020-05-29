@@ -21,17 +21,17 @@
 -- INSERT INTO text_books (id, author, year)
 --   VALUES (5, '{ "first_name": "Stephen", "last_name": "Hawking" }', 1988);
 --
--- EXPLAIN SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
+-- EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
 -- SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
--- EXPLAIN SELECT id FROM text_books
+-- EXPLAIN (COSTS OFF) SELECT id FROM text_books
 --   WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
 -- SELECT id FROM text_books
 --   WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
 -- Drop INDEX and run again.
 -- DROP index text_books_author_first_name;
--- EXPLAIN SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
+-- EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
 -- SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
--- EXPLAIN SELECT id FROM text_books
+-- EXPLAIN (COSTS OFF) SELECT id FROM text_books
 --   WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
 -- SELECT id FROM text_books
 --   WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
@@ -68,25 +68,24 @@
 --                 "year": 1988,
 --                 "genre": "science",
 --                 "editors": ["Melisa", "Mark", "John"] }');
--- EXPLAIN SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+-- EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
 --   ORDER BY details->>'name';
 -- SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
 --   ORDER BY details->>'name';
--- EXPLAIN SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+-- EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
 --   ORDER BY details->>'name';
 -- SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
 --   ORDER BY details->>'name';
 -- Drop INDEX and run again.
 -- DROP index books_author_first_name;
--- EXPLAIN SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+-- EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
 --   ORDER BY details->>'name';
 -- SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
 --   ORDER BY details->>'name';
--- EXPLAIN SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+-- EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
 --   ORDER BY details->>'name';
 -- SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
 --   ORDER BY details->>'name';
-
 --
 -- Logical test on larger size table.
 -- Table definition
@@ -113,17 +112,17 @@
 -- NOTE: In the above indexes, range column "ident" is in ASC.
 --
 -- Column 'ident' should be sorted in ASC for this SELECT
-EXPLAIN SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
 SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
 --
 -- This query the first 10 rows.
-EXPLAIN SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
   ORDER BY ident LIMIT 10;
 SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
   ORDER BY ident LIMIT 10;
 --
 -- This query the last 10 rows.
-EXPLAIN SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
   ORDER BY ident DESC LIMIT 10;
 SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
   ORDER BY ident DESC LIMIT 10;

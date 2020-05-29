@@ -194,8 +194,11 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * interested in doing a mergejoin.  However, mergejoin may be our only
 	 * way of implementing a full outer join, so override enable_mergejoin if
 	 * it's a full join.
+	 * TODO: disable merge joins in Yugabyte mode until the needed functions
+	 *       'ammarkpos' and 'amrestrpos' are implemented in 'ybcin.c'.
+	 *       (tracked in #4519).
 	 */
-	if (enable_mergejoin || jointype == JOIN_FULL)
+	if ((enable_mergejoin && !IsYugaByteEnabled()) || jointype == JOIN_FULL)
 		extra.mergeclause_list = select_mergejoin_clauses(root,
 														  joinrel,
 														  outerrel,

@@ -72,7 +72,7 @@ typedef YbScanPlanData *YbScanPlan;
 
 static void ybcAddAttributeColumn(YbScanPlan scan_plan, AttrNumber attnum)
 {
-  const int idx = attnum - FirstLowInvalidHeapAttributeNumber;
+  const int idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
 
   if (bms_is_member(idx, scan_plan->primary_key))
     scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
@@ -89,20 +89,20 @@ static void ybcCheckPrimaryKeyAttribute(YbScanPlan      scan_plan,
 	bool is_primary = false;
 	bool is_hash    = false;
 
-  /*
+	/*
 	 * TODO(neil) We shouldn't need to upload YugaByte table descriptor here because the structure
-   * Postgres::Relation already has all information.
-   * - Primary key indicator: IndexRelation->rd_index->indisprimary
-   * - Number of key columns: IndexRelation->rd_index->indnkeyatts
-   * - Number of all columns: IndexRelation->rd_index->indnatts
-   * - Hash, range, etc: IndexRelation->rd_indoption (Bits INDOPTION_HASH, RANGE, etc)
-   */
+	 * Postgres::Relation already has all information.
+	 * - Primary key indicator: IndexRelation->rd_index->indisprimary
+	 * - Number of key columns: IndexRelation->rd_index->indnkeyatts
+	 * - Number of all columns: IndexRelation->rd_index->indnatts
+	 * - Hash, range, etc: IndexRelation->rd_indoption (Bits INDOPTION_HASH, RANGE, etc)
+	 */
 	HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
 											   attnum,
 											   &is_primary,
 											   &is_hash), ybc_table_desc);
 
-	int idx = attnum - FirstLowInvalidHeapAttributeNumber;
+	int idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
 
 	if (is_hash)
 	{
@@ -449,8 +449,8 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 		 * - The target table descriptor, where data is read and returned, is the main table.
 		 * - The binding table descriptor, whose column is bound to values, is also the main table.
 		 */
-		ybcLoadTableInfo(relation, scan_plan);
 		scan_plan->target_relation = relation;
+		ybcLoadTableInfo(relation, scan_plan);
 		ybScan->target_desc = RelationGetDescr(relation);
 		scan_plan->bind_desc = RelationGetDescr(relation);
 	}
@@ -460,8 +460,6 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 		 * Index-Scan: SELECT data FROM UserTable WHERE rowid IN (SELECT ybctid FROM indexTable)
 		 *
 		 */
-		ybcLoadTableInfo(index, scan_plan);
-		scan_plan->bind_desc = RelationGetDescr(index);
 
 		if (ybScan->prepare_params.index_only_scan)
 		{
@@ -486,6 +484,9 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 			scan_plan->target_relation = relation;
 			ybScan->target_desc = RelationGetDescr(relation);
 		}
+
+		ybcLoadTableInfo(index, scan_plan);
+		scan_plan->bind_desc = RelationGetDescr(index);
 	}
 
 	/*
@@ -537,7 +538,7 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 
 static bool ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int op_strategy)
 {
-  const int idx = attnum - FirstLowInvalidHeapAttributeNumber;
+  const int idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
 
   switch (op_strategy)
   {
@@ -605,9 +606,9 @@ static void	ybcSetupScanKeys(Relation relation,
 		if (scan_plan->bind_key_attnums[i] == InvalidOid)
 			break;
 
-		int idx = scan_plan->bind_key_attnums[i] - FirstLowInvalidHeapAttributeNumber;
-    bool is_primary_key = bms_is_member(idx, scan_plan->primary_key);
-    bool is_search_array_only = ((ybScan->key[i].sk_flags & SK_SEARCHARRAY) == SK_SEARCHARRAY);
+		int idx = YBAttnumToBmsIndex(scan_plan->target_relation, scan_plan->bind_key_attnums[i]);
+		bool is_primary_key = bms_is_member(idx, scan_plan->primary_key);
+		bool is_search_array_only = ((ybScan->key[i].sk_flags & SK_SEARCHARRAY) == SK_SEARCHARRAY);
 
     if (!ShouldPushdownScanKey(relation, scan_plan, scan_plan->bind_key_attnums[i],
 															 &ybScan->key[i], is_search_array_only, is_primary_key))
@@ -649,7 +650,7 @@ static void	ybcSetupScanKeys(Relation relation,
 	if (index && index->rd_index->indisprimary) {
 		/* For primary key, column_attnums are used, so we process it different from other scans */
 		for (int i = 0; i < index->rd_index->indnatts; i++) {
-			int key_column = index->rd_index->indkey.values[i] - FirstLowInvalidHeapAttributeNumber;
+			int key_column = YBAttnumToBmsIndex(index, index->rd_index->indkey.values[i]);
 			if (!delete_key && !bms_is_member(key_column, scan_plan->sk_cols)) {
 				delete_key = true;
 			}
@@ -658,8 +659,8 @@ static void	ybcSetupScanKeys(Relation relation,
 				bms_del_member(scan_plan->sk_cols, key_column);
 		}
 	} else {
-		int idx;
-		for (idx = 0; idx <= scan_plan->bind_desc->natts - FirstLowInvalidHeapAttributeNumber; idx++)
+		int max_idx = YBAttnumToBmsIndex(relation, scan_plan->bind_desc->natts);
+		for (int idx = 0; idx <= max_idx; idx++)
 		{
 			if (!delete_key &&
 					bms_is_member(idx, scan_plan->primary_key) &&
@@ -690,7 +691,7 @@ static void ybcBindScanKeys(Relation relation,
     /* Bind the scan keys */
     for (int i = 0; i < ybScan->nkeys; i++)
     {
-      int idx = scan_plan->bind_key_attnums[i] - FirstLowInvalidHeapAttributeNumber;
+      int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
       if (bms_is_member(idx, scan_plan->sk_cols))
         ybcBindColumn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
 											ybScan->key[i].sk_argument);
@@ -702,7 +703,7 @@ static void ybcBindScanKeys(Relation relation,
     int max_idx = 0;
     for (int i = 0; i < ybScan->nkeys; i++)
     {
-      int idx = scan_plan->bind_key_attnums[i] - FirstLowInvalidHeapAttributeNumber;
+      int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
 
       if (!bms_is_member(idx, scan_plan->sk_cols))
 		    continue;
@@ -737,7 +738,7 @@ static void ybcBindScanKeys(Relation relation,
     for (int i = 0; i < ybScan->nkeys; i++)
     {
 			/* Check if this is primary columns */
-      int idx = scan_plan->bind_key_attnums[i] - FirstLowInvalidHeapAttributeNumber;
+      int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
       if (!bms_is_member(idx, scan_plan->sk_cols))
         continue;
 
@@ -776,7 +777,7 @@ static void ybcBindScanKeys(Relation relation,
     for (int k = 0; k < noffsets; k++)
     {
       int i = offsets[k];
-      int idx = scan_plan->bind_key_attnums[i] - FirstLowInvalidHeapAttributeNumber;
+      int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
 
       /* Do not bind more than one condition to a column */
       if (is_column_bound[idx])
@@ -912,7 +913,8 @@ static void ybcBindScanKeys(Relation relation,
     }
 
     /* Bind keys for BETWEEN */
-    for (int idx = 1 - FirstLowInvalidHeapAttributeNumber; idx < max_idx; idx++)
+	int min_idx = YBAttnumToBmsIndex(relation, 1);
+    for (int idx = min_idx; idx < max_idx; idx++)
     {
       /* Do not bind more than one condition to a column */
       if (is_column_bound[idx])
@@ -922,8 +924,10 @@ static void ybcBindScanKeys(Relation relation,
         continue;
 
       ybcBindColumnCondBetween(ybScan,
-															 scan_plan->bind_desc, idx + FirstLowInvalidHeapAttributeNumber,
-															 start_valid[idx], start[idx], end_valid[idx], end[idx]);
+								scan_plan->bind_desc, 
+								YBBmsIndexToAttnum(relation, idx),
+								start_valid[idx], start[idx], 
+								end_valid[idx], end[idx]);
       is_column_bound[idx] = true;
     }
   }
@@ -1343,12 +1347,66 @@ void ybc_heap_endscan(HeapScanDesc scan_desc)
 /* --------------------------------------------------------------------------------------------- */
 
 void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
+					 bool is_backwards_scan, bool is_uncovered_idx_scan,
 					 Cost *startup_cost, Cost *total_cost)
 {
-	Cost cpu_per_tuple = cpu_tuple_cost * 10 + baserel->baserestrictcost.per_tuple;
+	/*
+	 * Yugabyte-specific per-tuple cost considerations:
+	 *   - 10x the regular CPU cost to account for network/RPC + DocDB overhead.
+	 *   - backwards scan scale factor as it will need that many more fetches
+	 *     to get all rows/tuples.
+	 *   - uncovered index scan is more costly than index-only or seq scan because
+	 *     it requires extra request to the main table.
+	 */
+	Cost yb_per_tuple_cost_factor = 10;
+	if (is_backwards_scan)
+	{
+		yb_per_tuple_cost_factor *= YBC_BACKWARDS_SCAN_COST_FACTOR;
+	}
+	if (is_uncovered_idx_scan)
+	{
+		yb_per_tuple_cost_factor *= YBC_UNCOVERED_INDEX_COST_FACTOR;
+	}
+
+	Cost cost_per_tuple = cpu_tuple_cost * yb_per_tuple_cost_factor +
+	                      baserel->baserestrictcost.per_tuple;
 
 	*startup_cost = baserel->baserestrictcost.startup;
-	*total_cost   = *startup_cost + cpu_per_tuple * baserel->rows * selectivity;
+
+	*total_cost   = *startup_cost + cost_per_tuple * baserel->tuples * selectivity;
+}
+
+/*
+ * Evaluate the selectivity for some qualified cols given the hash and primary key cols.
+ * TODO this should look into the actual operators and distinguish, for instance
+ * equality and inequality conditions (for ASC/DESC columns) better.
+ */
+static double ybcIndexEvalClauseSelectivity(Bitmapset *qual_cols,
+                                            bool is_unique_idx,
+                                            Bitmapset *hash_key,
+                                            Bitmapset *primary_key)
+{
+	/*
+	 * If there is no search condition, or not all of the hash columns have
+	 * search conditions, it will be a full-table scan.
+	 */
+	if (bms_is_empty(qual_cols) || !bms_is_subset(hash_key, qual_cols))
+	{
+		return YBC_FULL_SCAN_SELECTIVITY;
+	}
+
+	/*
+	 * Otherwise, it will be either a primary key lookup or range scan
+	 * on a hash key.
+	 */
+	if (bms_is_subset(primary_key, qual_cols))
+	{
+		/* For unique indexes full key guarantees single row. */
+		return is_unique_idx ? YBC_SINGLE_ROW_SELECTIVITY
+						     : YBC_SINGLE_KEY_SELECTIVITY;
+	}
+
+	return YBC_HASH_SCAN_SELECTIVITY;
 }
 
 void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
@@ -1360,10 +1418,19 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 	RelOptInfo *baserel = path->path.parent;
 	List	   *qinfos;
 	ListCell   *lc;
+	bool        is_backwards_scan = path->indexscandir == BackwardScanDirection;
+	bool        is_unique = index->rd_index->indisunique;
+	bool        is_partial_idx = path->indexinfo->indpred != NIL && path->indexinfo->predOK;
+	Bitmapset  *const_quals = NULL;
+
+	/* Primary-index scans are always covered in Yugabyte (internally) */
+	bool       is_uncovered_idx_scan = !index->rd_index->indisprimary &&
+	                                   path->path.pathtype != T_IndexOnlyScan;
 
 	YbScanPlanData	scan_plan;
 	memset(&scan_plan, 0, sizeof(scan_plan));
-	ybcLoadTableInfo(isprimary ? relation : index, &scan_plan);
+	scan_plan.target_relation = isprimary ? relation : index;
+	ybcLoadTableInfo(scan_plan.target_relation, &scan_plan);
 
 	/* Do preliminary analysis of indexquals */
 	qinfos = deconstruct_indexquals(path);
@@ -1378,9 +1445,13 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 		Expr	   *clause = rinfo->clause;
 		Oid			clause_op;
 		int			op_strategy;
+		int			bms_idx = YBAttnumToBmsIndex(scan_plan.target_relation, attnum);
 
 		if (IsA(clause, NullTest))
+		{
 			ybcAddAttributeColumn(&scan_plan, attnum);
+			const_quals = bms_add_member(const_quals, bms_idx);
+		}
 		else
 		{
 			clause_op = qinfo->clause_op;
@@ -1388,11 +1459,15 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 			if (OidIsValid(clause_op))
 			{
 				op_strategy = get_op_opfamily_strategy(clause_op,
-																							 path->indexinfo->opfamily[qinfo->indexcol]);
+													   path->indexinfo->opfamily[qinfo->indexcol]);
 				Assert(op_strategy != 0);  /* not a member of opfamily?? */
 
 				if (ybc_should_pushdown_op(&scan_plan, attnum, op_strategy))
+				{
 					ybcAddAttributeColumn(&scan_plan, attnum);
+					if (qinfo->other_operand && IsA(qinfo->other_operand, Const))
+						const_quals = bms_add_member(const_quals, bms_idx);
+				}
 			}
 		}
 	}
@@ -1402,19 +1477,41 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 	 * will be a full-table scan. Otherwise, it will be either a primary key lookup or range scan
 	 * on a hash key.
 	 */
-	if (bms_is_empty(scan_plan.sk_cols) || !bms_is_subset(scan_plan.hash_key, scan_plan.sk_cols))
-	{
-		*selectivity = YBC_FULL_SCAN_SELECTIVITY;
-	}
-	else
-	{
-		*selectivity = bms_is_subset(scan_plan.primary_key, scan_plan.sk_cols)
-						? YBC_SINGLE_KEY_SELECTIVITY
-						: YBC_HASH_SCAN_SELECTIVITY;
-	}
-	path->path.rows = baserel->rows * (*selectivity);
+	*selectivity = ybcIndexEvalClauseSelectivity(scan_plan.sk_cols,
+	                                             is_unique,
+	                                             scan_plan.hash_key,
+	                                             scan_plan.primary_key);
+	path->path.rows = baserel->tuples * (*selectivity);
 
-	ybcCostEstimate(baserel, *selectivity, startup_cost, total_cost);
+	/*
+	 * For partial indexes, scale down the rows to account for the predicate.
+	 * Do this after setting the baserel rows since this does not apply to base rel.
+	 * TODO: this should be evaluated based on the index condition in the future.
+	 */
+	if (is_partial_idx)
+	{
+		*selectivity *= YBC_PARTIAL_IDX_PRED_SELECTIVITY;
+	}
+
+	ybcCostEstimate(baserel, *selectivity, is_backwards_scan,
+	                is_uncovered_idx_scan, startup_cost, total_cost);
+
+	/*
+	 * Try to evaluate the number of rows this baserel might return.
+	 * We cannot rely on the join conditions here (e.g. t1.c1 = t2.c2) because
+	 * they may not be applied if another join path is chosen.
+	 * So only use the t1.c1 = <const_value> quals (filtered above) for this.
+	 */
+	double const_qual_selectivity = ybcIndexEvalClauseSelectivity(const_quals,
+	                                                              is_unique,
+	                                                              scan_plan.hash_key,
+	                                                              scan_plan.primary_key);
+	double baserel_rows_estimate = const_qual_selectivity * baserel->tuples;
+	if (baserel_rows_estimate < baserel->rows)
+	{
+		baserel->rows = baserel_rows_estimate;
+	}
+
 
 	if (relation)
 		RelationClose(relation);

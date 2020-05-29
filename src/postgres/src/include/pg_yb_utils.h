@@ -95,6 +95,10 @@ extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
 
+extern int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum);
+
+extern AttrNumber YBBmsIndexToAttnum(Relation rel, int idx);
+
 /*
  * Check if a relation has row triggers that may reference the old row.
  * Specifically for an update/delete DML (where there actually is an old row).

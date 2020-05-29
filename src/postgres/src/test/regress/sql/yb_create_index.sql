@@ -42,13 +42,13 @@ SELECT * FROM test_index WHERE v1 IN (1, 2, 3);
 
 CREATE TABLE test_sys_catalog_update (k int primary key, v int);
 
-EXPLAIN SELECT relname FROM pg_class WHERE relname = 'test_sys_catalog_update';
+EXPLAIN (COSTS OFF) SELECT relname FROM pg_class WHERE relname = 'test_sys_catalog_update';
 SELECT relname  FROM pg_class WHERE relname = 'test_sys_catalog_update';
 
-EXPLAIN SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+EXPLAIN (COSTS OFF) SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
 SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
 
-EXPLAIN SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+EXPLAIN (COSTS OFF) SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
 SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
 
 ALTER TABLE test_sys_catalog_update RENAME TO test_sys_catalog_update_new;
@@ -173,7 +173,7 @@ CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
 INSERT INTO test_truncate VALUES (1, 2);
 INSERT INTO test_truncate VALUES (2, 2);
 
-EXPLAIN SELECT b FROM test_truncate WHERE b = 2;
+EXPLAIN (COSTS OFF) SELECT b FROM test_truncate WHERE b = 2;
 SELECT b FROM test_truncate WHERE b = 2;
 
 TRUNCATE test_truncate;
@@ -199,15 +199,15 @@ INSERT INTO test_include VALUES (1, 1, 1), (1, 2, 2), (2, 2, 2), (3, 3, 3);
 CREATE UNIQUE INDEX ON test_include (c1) include (c2);
 DELETE FROM test_include WHERE c1 = 1 AND c2 = 2;
 CREATE UNIQUE INDEX ON test_include (c1) include (c2);
-EXPLAIN SELECT c1, c2 FROM test_include WHERE c1 = 1;
+EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 = 1;
 SELECT c1, c2 FROM test_include WHERE c1 = 1;
 \d test_include
 -- Verify the included column is updated in both the base table and the index. Use WHERE condition
 -- on c1 below to force the scan on the index vs. base table. Select the non-included column c3 in
 -- the other case to force the use of sequential scan on the base table.
 UPDATE test_include SET c2 = 22 WHERE c1 = 2;
-EXPLAIN SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
-EXPLAIN SELECT * FROM test_include ORDER BY c2;
+EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
+EXPLAIN (COSTS OFF) SELECT * FROM test_include ORDER BY c2;
 SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
 SELECT * FROM test_include ORDER BY c2;
 UPDATE test_include SET c2 = NULL WHERE c1 = 1;
@@ -243,17 +243,17 @@ INSERT INTO test_method VALUES
   (2, 1, 1, 2, 10, 20);
 
 -- Test scans using different indexes. Verify order by.
-EXPLAIN SELECT * FROM test_method ORDER BY h1, h2;
+EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY h1, h2;
 SELECT * FROM test_method ORDER BY h1, h2;
-EXPLAIN SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
 SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
-EXPLAIN SELECT * FROM test_method ORDER BY r1, r2;
+EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY r1, r2;
 SELECT * FROM test_method ORDER BY r1, r2;
-EXPLAIN SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
 SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
-EXPLAIN SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
 SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
-EXPLAIN UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
+EXPLAIN (COSTS OFF) UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
 
 -- Test update using a hash index
 UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
@@ -261,11 +261,11 @@ SELECT * FROM test_method ORDER BY h1, h2;
 SELECT * FROM test_method ORDER BY r1, r2;
 
 -- Test delete using a unique index
-EXPLAIN DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
+EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
 DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
 
 -- Test delete using the primary key
-EXPLAIN DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
+EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
 DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
 
 SELECT * FROM test_method ORDER BY h1, h2;

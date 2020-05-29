@@ -68,7 +68,7 @@ SELECT DISTINCT
 			 avg(col_real) OVER yuga_win
 	 FROM feature_tab_dml
 	 WINDOW yuga_win AS (PARTITION BY col_integer ORDER BY col_smallint)
-	 ORDER BY yuga_rank;
+	 ORDER BY yuga_rank, count, sum, avg;
 --
 -- JOIN Test Cases
 -- Table Join
