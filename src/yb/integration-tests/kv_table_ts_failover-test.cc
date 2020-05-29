@@ -42,6 +42,8 @@ using integration_tests::YBTableTestBase;
 class KVTableTsFailoverTest : public YBTableTestBase {
  public:
   bool use_external_mini_cluster() override { return true; }
+
+  bool enable_ysql() override { return NonTsanVsTsan(true, false); }
 };
 
 TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
