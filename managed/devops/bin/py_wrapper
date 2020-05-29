@@ -12,7 +12,7 @@ set -e
 # py_wrapper is already in bin/
 . "${BASH_SOURCE%/*}"/common.sh
 
-activate_virtualenv --with-system-python-path
+activate_virtualenv
 cd "$yb_devops_home"
 
 activate_virtualenv

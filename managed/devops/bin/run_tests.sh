@@ -2,7 +2,7 @@
 set -e
 . "${BASH_SOURCE%/*}"/common.sh
 
-activate_virtualenv --with-system-python-path
+activate_virtualenv
 test_path="$yb_devops_home"/tests/opscli
 cd $test_path
 
