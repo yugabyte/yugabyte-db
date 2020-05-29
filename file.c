@@ -1126,18 +1126,21 @@ utl_file_fcopy(PG_FUNCTION_ARGS)
 static int
 copy_text_file(FILE *srcfile, FILE *dstfile, int start_line, int end_line)
 {
-	char	buffer[MAX_LINESIZE];
-	size_t	len;
-	int		i;
+	char	   *buffer;
+	size_t		len;
+	int			i;
+
+	buffer = palloc(MAX_LINESIZE);
 
 	errno = 0;
+
 	/* skip first start_line. */
 	for (i = 1; i < start_line; i++)
 	{
 		CHECK_FOR_INTERRUPTS();
 		do
 		{
-			if (fgets(buffer, lengthof(buffer), srcfile) == NULL)
+			if (fgets(buffer, MAX_LINESIZE, srcfile) == NULL)
 				return errno;
 			len = strlen(buffer);
 		} while(buffer[len - 1] != '\n');
@@ -1149,13 +1152,15 @@ copy_text_file(FILE *srcfile, FILE *dstfile, int start_line, int end_line)
 		CHECK_FOR_INTERRUPTS();
 		do
 		{
-			if (fgets(buffer, lengthof(buffer), srcfile) == NULL)
+			if (fgets(buffer, MAX_LINESIZE, srcfile) == NULL)
 				return errno;
 			len = strlen(buffer);
 			if (fwrite(buffer, 1, len, dstfile) != len)
 				return errno;
 		} while(buffer[len - 1] != '\n');
 	}
+
+	pfree(buffer);
 
 	return 0;
 }
