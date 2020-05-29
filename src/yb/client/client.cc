@@ -1137,8 +1137,9 @@ void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback call
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
-  if (use_cache && tserver_count_cached_ > 0) {
-    *tserver_count = tserver_count_cached_;
+  int tserver_count_cached = data_->tserver_count_cached_.load(std::memory_order_acquire);
+  if (use_cache && tserver_count_cached > 0) {
+    *tserver_count = tserver_count_cached;
     return Status::OK();
   }
 
@@ -1146,7 +1147,8 @@ Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool u
   ListTabletServersResponsePB resp;
   req.set_primary_only(primary_only);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTabletServers);
-  *tserver_count = tserver_count_cached_ = resp.servers_size();
+  data_->tserver_count_cached_.store(resp.servers_size(), std::memory_order_release);
+  *tserver_count = resp.servers_size();
   return Status::OK();
 }
 

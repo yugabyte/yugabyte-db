@@ -697,8 +697,6 @@ class YBClient {
 
   std::unique_ptr<Data> data_;
 
-  int tserver_count_cached_ = 0;
-
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };
 
