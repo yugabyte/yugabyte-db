@@ -541,5 +541,25 @@ TEST_F(BackupTxnTest, Consistency) {
   LOG(INFO) << "Value: " << restored_value;
 }
 
+TEST_F(BackupTxnTest, DeleteTable) {
+  FLAGS_unresponsive_ts_rpc_timeout_ms = 1000;
+  FLAGS_snapshot_coordinator_poll_interval_ms = 2500 * kTimeMultiplier;
+
+  ASSERT_NO_FATALS(WriteData());
+
+  ShutdownAllTServers(cluster_.get());
+
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(StartSnapshot());
+
+  std::this_thread::sleep_for(FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms + 1s);
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::CREATING));
+
+  ASSERT_OK(client_->DeleteTable(kTableName, false));
+
+  ASSERT_OK(StartAllTServers(cluster_.get()));
+
+  ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::FAILED, 5s * kTimeMultiplier));
+}
+
 } // namespace client
 } // namespace yb

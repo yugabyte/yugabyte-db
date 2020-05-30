@@ -146,7 +146,7 @@ class ReleaseUtil(object):
 
     @staticmethod
     def get_head_commit_hash():
-        return check_output(["git", "rev-parse", "HEAD"]).strip()
+        return check_output(["git", "rev-parse", "HEAD"]).strip().decode()
 
     def get_release_file(self):
         """

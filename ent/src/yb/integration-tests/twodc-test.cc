@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/common/schema.h"
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -1226,6 +1227,20 @@ TEST_P(TwoDCTest, TestWalRetentionSet) {
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 32));
 
   cdc::VerifyWalRetentionTime(producer_cluster(), "test_table_", FLAGS_cdc_wal_retention_time_secs);
+
+  YBTableName table_name(YQL_DATABASE_CQL, kNamespaceName, "test_table_0");
+
+  // Issue an ALTER TABLE request on the producer to verify that it doesn't crash.
+  auto table_alterer = producer_client()->NewTableAlterer(table_name);
+  table_alterer->AddColumn("new_col")->Type(INT32);
+  ASSERT_OK(table_alterer->timeout(MonoDelta::FromSeconds(kRpcTimeout))->Alter());
+
+  // Verify that the table got altered on the producer.
+  YBSchema schema;
+  PartitionSchema partition_schema;
+  ASSERT_OK(producer_client()->GetTableSchema(table_name, &schema, &partition_schema));
+
+  ASSERT_NE(static_cast<int>(Schema::kColumnNotFound), schema.FindColumn("new_col"));
 
   Destroy();
 }

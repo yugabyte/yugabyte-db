@@ -1860,7 +1860,9 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
       table = FindPtrOrNull(*table_ids_map_, stream->table_id());
     }
     // GetAllTablets locks lock_ in shared mode.
-    table->GetAllTablets(&tablets);
+    if (table) {
+      table->GetAllTablets(&tablets);
+    }
 
     for (const auto& tablet : tablets) {
       const auto delete_op = cdc_table.NewDeleteOp();

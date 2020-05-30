@@ -244,7 +244,6 @@ def main():
     # ---------------------------------------------------------------------------------------------
 
     if args.yw:
-        os.environ['YB_MANAGED_DEVOPS_USE_PYTHON3'] = '1'
         managed_dir = os.path.join(YB_SRC_ROOT, "managed")
         yw_dir = os.path.join(build_target, "ui")
         if not os.path.exists(yw_dir):

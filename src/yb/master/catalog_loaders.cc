@@ -203,7 +203,7 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
   auto state = metadata.state();
   if (!metadata.has_state()) {
     state = SysNamespaceEntryPB::RUNNING;
-    LOG(INFO) << "Changing metadata without state to RUNNING";
+    LOG(INFO) << "Changing metadata without state to RUNNING: " << ns->ToString();
     l->mutable_data()->pb.set_state(state);
   }
 
@@ -216,17 +216,39 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       } else {
         LOG(WARNING) << "Namespace with id " << ns_id << " has empty name";
       }
-
       l->Commit();
       LOG(INFO) << "Loaded metadata for namespace " << ns->ToString();
       break;
-    case SysNamespaceEntryPB::DELETING: FALLTHROUGH_INTENDED;
-    case SysNamespaceEntryPB::DELETED: FALLTHROUGH_INTENDED;
-    case SysNamespaceEntryPB::FAILED: FALLTHROUGH_INTENDED;
     case SysNamespaceEntryPB::PREPARING:
-      // TODO(NIC): Finish any remaining Delete steps.
+      // PREPARING means the server restarted before completing NS creation.
+      // Consider it FAILED & remove any partially-created data.
+      FALLTHROUGH_INTENDED;
+    case SysNamespaceEntryPB::FAILED:
+      LOG(INFO) << "Transitioning failed namespace (state="  << metadata.state()
+                << ") to DELETING: " << ns->ToString();
+      l->mutable_data()->pb.set_state(SysNamespaceEntryPB::DELETING);
+      FALLTHROUGH_INTENDED;
+    case SysNamespaceEntryPB::DELETING:
+      catalog_manager_->namespace_ids_map_[ns_id] = ns;
+      if (!pb_data.name().empty()) {
+        catalog_manager_->namespace_names_mapper_[pb_data.database_type()][pb_data.name()] = ns;
+      } else {
+        LOG(WARNING) << "Namespace with id " << ns_id << " has empty name";
+      }
+      l->Commit();
+      LOG(INFO) << "Loaded metadata to DELETE namespace " << ns->ToString();
+      WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
+          std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns)),
+          "Could not submit DeleteYsqlDatabaseAsync to thread pool");
+      break;
+    case SysNamespaceEntryPB::DELETED:
       LOG(INFO) << "Skipping metadata for namespace (state="  << metadata.state()
                 << "): " << ns->ToString();
+      // Garbage collection.  Async remove the Namespace from the SysCatalog.
+      // No in-memory state needed since tablet deletes have already been processed.
+      WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
+          std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns)),
+          "Could not submit DeleteYsqlDatabaseAsync to thread pool");
       break;
     default:
       FATAL_INVALID_ENUM_VALUE(SysNamespaceEntryPB_State, state);

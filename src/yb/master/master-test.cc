@@ -53,6 +53,7 @@
 #include "yb/server/rpc_server.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/random_util.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
@@ -62,8 +63,9 @@ DECLARE_string(callhome_url);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(simulate_slow_table_create_secs);
 DECLARE_bool(return_error_if_namespace_not_found);
-DECLARE_bool(hang_on_namespace_creation);
+DECLARE_bool(TEST_hang_on_namespace_transition);
 DECLARE_bool(simulate_crash_after_table_marked_deleting);
+DECLARE_int32(TEST_sys_catalog_write_rejection_percentage);
 
 namespace yb {
 namespace master {
@@ -869,6 +871,12 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
+
+    // Must wait for IsDeleteNamespaceDone with PGSQL Namespaces.
+    IsDeleteNamespaceDoneRequestPB del_req;
+    del_req.mutable_namespace_()->set_id(other_ns_pgsql_id);
+    del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    ASSERT_OK(DeleteNamespaceWait(del_req));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -1167,7 +1175,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
   NamespaceName test_name = "test_pgsql";
 
   // Don't allow the BG thread to process namespaces.
-  SetAtomicFlag(true, &FLAGS_hang_on_namespace_creation);
+  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
 
   // Create a new PGSQL namespace.
   CreateNamespaceResponsePB resp;
@@ -1175,22 +1183,24 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
   ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
   nsid = resp.id();
 
-  // ListNamespaces should show the Namespace, because it's in the PREPARING state.
+  // ListNamespaces should not yet show the Namespace, because it's in the PREPARING state.
   ListNamespacesResponsePB namespaces;
   ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
-  ASSERT_TRUE(FindNamespace(std::make_tuple(test_name, nsid), namespaces));
+  ASSERT_FALSE(FindNamespace(std::make_tuple(test_name, nsid), namespaces));
 
   // Test that Basic Access is not allowed to a Namespace while INITIALIZING.
-  // 1. Create a Table on the namespace.
+  // 1. CANNOT Create a Table on the namespace.
   const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
   ASSERT_NOK(CreatePgsqlTable(nsid, "test_table", kTableSchema));
-  // 2. Alter the namespace.
+  // 2. CANNOT Alter the namespace.
   {
     AlterNamespaceResponsePB alter_resp;
     ASSERT_NOK(AlterNamespace(test_name, nsid, YQLDatabase::YQL_DATABASE_PGSQL,
                               "new_" + test_name, &alter_resp));
+    ASSERT_TRUE(alter_resp.has_error());
+    ASSERT_EQ(alter_resp.error().code(), MasterErrorPB::IN_TRANSITION_CAN_RETRY);
   }
-  // 3. Delete the namespace.
+  // 3. CANNOT Delete the namespace.
   {
     DeleteNamespaceRequestPB req;
     DeleteNamespaceResponsePB resp;
@@ -1198,10 +1208,11 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
     req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
     ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
     ASSERT_TRUE(resp.has_error());
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::IN_TRANSITION_CAN_RETRY);
   }
 
   // Finish Namespace create.
-  SetAtomicFlag(false, &FLAGS_hang_on_namespace_creation);
+  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
   CreateNamespaceWait(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
 
   // Verify that Basic Access to a Namespace is now available.
@@ -1216,12 +1227,32 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
   }
   // 3. Delete the namespace.
   {
-    DeleteNamespaceRequestPB req;
-    DeleteNamespaceResponsePB resp;
-    req.mutable_namespace_()->set_name("new_" + test_name);
-    req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
-    ASSERT_FALSE(resp.has_error());
+    SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+
+    DeleteNamespaceRequestPB del_req;
+    DeleteNamespaceResponsePB del_resp;
+    del_req.mutable_namespace_()->set_name("new_" + test_name);
+    del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    ASSERT_OK(proxy_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
+    ASSERT_FALSE(del_resp.has_error());
+
+    // ListNamespaces should not show the Namespace, because it's in the DELETING state.
+    ListNamespacesResponsePB namespaces;
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    ASSERT_FALSE(FindNamespace(std::make_tuple("new_" + test_name, nsid), namespaces));
+
+    // Resume finishing both [1] the delete and [2] the create.
+    SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+
+    // Verify the old namespace finishes deletion.
+    IsDeleteNamespaceDoneRequestPB is_del_req;
+    is_del_req.mutable_namespace_()->set_id(nsid);
+    is_del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    ASSERT_OK(DeleteNamespaceWait(is_del_req));
+
+    // We should be able to create a namespace with the same NAME at this time.
+    ASSERT_OK(CreateNamespaceAsync("new_" + test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+    CreateNamespaceWait("new_" + test_name, YQLDatabase::YQL_DATABASE_PGSQL);
   }
 }
 
@@ -1230,7 +1261,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
   NamespaceName test_name = "test_pgsql";
 
   // Don't allow the BG thread to process namespaces.
-  SetAtomicFlag(true, &FLAGS_hang_on_namespace_creation);
+  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
 
   // Create a new PGSQL namespace.
   CreateNamespaceResponsePB resp;
@@ -1238,33 +1269,191 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
   ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
   nsid = resp.id();
 
-  // ListNamespaces should show the Namespace, because it's in the INITIALIZING state.
   {
-    ListNamespacesResponsePB namespaces;
-    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
-    ASSERT_TRUE(FindNamespace(std::make_tuple(test_name, nsid), namespaces));
+    // Public ListNamespaces should not show the Namespace, because it's in the PREPARING state.
+    ListNamespacesResponsePB namespace_pb;
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespace_pb));
+    ASSERT_FALSE(FindNamespace(std::make_tuple(test_name, nsid), namespace_pb));
+
+    // Internal search of CatalogManager should reveal it's state (debug UI uses this function).
+    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
+    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
+                 [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
+                   return ns && ns->id() == nsid;
+                 });
+    ASSERT_NE(pos, namespace_internal.end());
+    ASSERT_EQ((*pos)->state(), SysNamespaceEntryPB::PREPARING);
   }
 
-  // Restart the master, which handles namespace changes.
+  // Restart the master (Shutdown kills Namespace BG Thread).
   ASSERT_OK(mini_master_->Restart());
-
-  // Allow normal namespace processing.
-  SetAtomicFlag(false, &FLAGS_hang_on_namespace_creation);
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  // ListNamespaces should not show the Namespace on restart because it didn't finish.
   {
+    // ListNamespaces should not show the Namespace on restart because it didn't finish.
     ListNamespacesResponsePB namespaces;
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_FALSE(FindNamespace(std::make_tuple(test_name, nsid), namespaces));
+
+    // Internal search of CatalogManager should reveal it's DELETING to cleanup any partial apply.
+    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
+    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
+        [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
+          return ns && ns->id() == nsid;
+        });
+    ASSERT_NE(pos, namespace_internal.end());
+    ASSERT_EQ((*pos)->state(), SysNamespaceEntryPB::DELETING);
   }
+
+  // Resume BG thread work and verify that the Namespace is eventually DELETED internally.
+  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
+    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
+        [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
+          return ns && ns->id() == nsid;
+        });
+    return pos != namespace_internal.end() && (*pos)->state() == SysNamespaceEntryPB::DELETED;
+  }, MonoDelta::FromSeconds(10), "Verify Namespace was DELETED"));
+
+  // Restart the master #2, this round should completely remove the Namespace from memory.
+  ASSERT_OK(mini_master_->Restart());
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
+    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
+        [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
+          return ns && ns->id() == nsid;
+        });
+    return pos == namespace_internal.end();
+  }, MonoDelta::FromSeconds(10), "Verify Namespace was completely removed"));
 }
 
-// TODO: TEST_F(MasterTest, TestNamespaceCreateSysCatalogFailure)
-// A. CreateNamespace
-// B. Inject Failure into sys catalog commit
-// 1. Ensure that Namespace is in ListNamespaces with a failure status.
+class LoopedMasterTest : public MasterTest, public testing::WithParamInterface<int> {};
+INSTANTIATE_TEST_CASE_P(Loops, LoopedMasterTest, ::testing::Values(10));
 
+TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
+  NamespaceName test_name = "test_pgsql"; // Reuse name to find errors with delete cleanup.
+  CreateNamespaceResponsePB resp;
+  DeleteNamespaceRequestPB del_req;
+  del_req.mutable_namespace_()->set_name(test_name);
+  del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  IsDeleteNamespaceDoneRequestPB is_del_req;
+  is_del_req.mutable_namespace_()->set_name(test_name);
+  is_del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+
+  int failures = 0, created = 0, iter = 0;
+  int loops = GetParam();
+  LOG(INFO) << "Loops = " << loops;
+
+  // Loop this to cover a spread of random failure situations.
+  while (failures < loops) {
+    // Inject Frequent failures into sys catalog commit.
+    // The below code should eventually succeed but require a lot of restarts.
+    FLAGS_TEST_sys_catalog_write_rejection_percentage = 50;
+
+    // CreateNamespace : Inject IO Errors.
+    LOG(INFO) << "Iteration " << ++iter;
+    Status s = CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp);
+    if (!s.ok()) {
+      WARN_NOT_OK(s, "CreateNamespace with injected failures");
+      ++failures;
+    }
+
+    // Turn off random failures.
+    FLAGS_TEST_sys_catalog_write_rejection_percentage = 0;
+
+    // Internal search of CatalogManager should reveal whether it was partially created.
+    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
+    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    auto was_internally_created = std::any_of(namespace_internal.begin(), namespace_internal.end(),
+        [&test_name](const scoped_refptr<NamespaceInfo>& ns) {
+          if (ns && ns->name() == test_name && ns->state() != SysNamespaceEntryPB::DELETED) {
+            LOG(INFO) << "Namespace " << ns->name() << " = " << ns->state();
+            return true;
+          }
+          return false;
+        });
+
+    if (was_internally_created) {
+      ++created;
+      // Ensure we can delete the failed namespace.
+      DeleteNamespaceResponsePB del_resp;
+      ASSERT_OK(proxy_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
+      if (del_resp.has_error()) {
+        LOG(INFO) << del_resp.error().DebugString();
+      }
+      ASSERT_FALSE(del_resp.has_error());
+      ASSERT_OK(DeleteNamespaceWait(is_del_req));
+    }
+  }
+  ASSERT_EQ(failures, loops);
+  LOG(INFO) << "created = " << created;
+}
+
+TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
+  NamespaceName test_name = "test_pgsql";
+  CreateNamespaceResponsePB resp;
+  DeleteNamespaceRequestPB del_req;
+  DeleteNamespaceResponsePB del_resp;
+  del_req.mutable_namespace_()->set_name(test_name);
+  del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  IsDeleteNamespaceDoneRequestPB is_del_req;
+  is_del_req.mutable_namespace_()->set_name(test_name);
+  is_del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  int failures = 0, iter = 0;
+  int loops = GetParam();
+  LOG(INFO) << "Loops = " << loops;
+
+// Loop this to cover a spread of random failure situations.
+  while (failures < loops) {
+    // CreateNamespace to setup test
+    CreateNamespaceResponsePB resp;
+    NamespaceId nsid;
+    ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+    nsid = resp.id();
+
+    // The below code should eventually succeed but require a lot of restarts.
+    FLAGS_TEST_sys_catalog_write_rejection_percentage = 50;
+
+    // DeleteNamespace : Inject IO Errors.
+    LOG(INFO) << "Iteration " << ++iter;
+    bool delete_failed = false;
+
+    ASSERT_OK(proxy_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
+
+    delete_failed = del_resp.has_error();
+    if (del_resp.has_error()) {
+      LOG(INFO) << "Expected failure: " << del_resp.error().DebugString();
+    }
+
+    if (!del_resp.has_error()) {
+      Status s = DeleteNamespaceWait(is_del_req);
+      WARN_NOT_OK(s, "Expected failure");
+      delete_failed = !s.ok();
+    }
+
+    // Turn off random failures.
+    FLAGS_TEST_sys_catalog_write_rejection_percentage = 0;
+
+    if (delete_failed) {
+      ++failures;
+      LOG(INFO) << "Next Delete should succeed";
+
+      // If the namespace delete fails, Ensure that we can restart the delete and it succeeds.
+      ASSERT_OK(proxy_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
+      ASSERT_FALSE(del_resp.has_error());
+      ASSERT_OK(DeleteNamespaceWait(is_del_req));
+    }
+  }
+  ASSERT_EQ(failures, loops);
+}
 
 TEST_F(MasterTest, TestFullTableName) {
   const TableName kTableName = "testtb";

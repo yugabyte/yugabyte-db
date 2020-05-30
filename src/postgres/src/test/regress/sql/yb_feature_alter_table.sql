@@ -154,6 +154,31 @@ select * from atacc1;
 
 drop table atacc1;
 
+-- test dropping primary key constraints
+CREATE TABLE with_simple_pk_i (i int PRIMARY KEY);
+ALTER TABLE with_simple_pk_i DROP CONSTRAINT with_simple_pk_i_pkey;
+INSERT INTO with_simple_pk_i VALUES (1);
+INSERT INTO with_simple_pk_i VALUES (1);
+DROP TABLE with_simple_pk_i;
+--
+CREATE TABLE with_simple_pk_ij (i int, j int, PRIMARY KEY(i, j));
+ALTER TABLE with_simple_pk_ij DROP CONSTRAINT with_simple_pk_ij_pkey;
+INSERT INTO with_simple_pk_ij VALUES (1, 1);
+INSERT INTO with_simple_pk_ij VALUES (1, 1);
+DROP TABLE with_simple_pk_ij;
+--
+CREATE TABLE with_named_pk_i (i int CONSTRAINT named_pk_i PRIMARY KEY);
+ALTER TABLE with_named_pk_i DROP CONSTRAINT named_pk_i;
+INSERT INTO with_named_pk_i VALUES (1);
+INSERT INTO with_named_pk_i VALUES (1);
+DROP TABLE with_named_pk_i;
+--
+CREATE TABLE with_named_pk_ij (i int, j int, CONSTRAINT named_pk_ij PRIMARY KEY (i HASH, j ASC));
+ALTER TABLE with_named_pk_ij DROP CONSTRAINT named_pk_ij;
+INSERT INTO with_named_pk_ij VALUES (1, 1);
+INSERT INTO with_named_pk_ij VALUES (1, 1);
+DROP TABLE with_named_pk_ij;
+
 --
 -- rename
 --

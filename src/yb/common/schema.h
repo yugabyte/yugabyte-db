@@ -149,10 +149,11 @@ static const ColumnId kInvalidColumnId = ColumnId(std::numeric_limits<ColumnIdRe
 // 10, ensuring that if we accidentally mix up IDs and indexes, we're likely to fire an
 // assertion or bad memory access.
 #ifdef NDEBUG
-static const ColumnId kFirstColumnId(0);
+constexpr ColumnIdRep kFirstColumnIdRep = 0;
 #else
-static const ColumnId kFirstColumnId(10);
+constexpr ColumnIdRep kFirstColumnIdRep = 10;
 #endif
+const ColumnId kFirstColumnId(kFirstColumnIdRep);
 
 template<char... digits>
 ColumnId operator"" _ColId() {

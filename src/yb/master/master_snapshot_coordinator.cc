@@ -420,7 +420,15 @@ class SnapshotState : public StateWithTablets {
 
  private:
   bool IsTerminalFailure(const Status& status) override {
-    return TransactionError(status) == TransactionErrorCode::kSnapshotTooOld;
+    // Table was removed.
+    if (status.IsExpired()) {
+      return true;
+    }
+    // Would not be able to create snapshot at specific time, since history was garbage collected.
+    if (TransactionError(status) == TransactionErrorCode::kSnapshotTooOld) {
+      return true;
+    }
+    return false;
   }
 
   TxnSnapshotId id_;
@@ -629,9 +637,14 @@ class MasterSnapshotCoordinator::Impl {
     docdb::SubDocKey sub_doc_key;
     RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
 
+    if (sub_doc_key.doc_key().has_cotable_id()) {
+      return Status::OK();
+    }
+
     if (sub_doc_key.doc_key().range_group().size() != 2) {
       LOG(DFATAL) << "Unexpected size of range group in sys catalog entry (2 expected): "
-                  << AsString(sub_doc_key.doc_key().range_group());
+                  << AsString(sub_doc_key.doc_key().range_group()) << "(" << sub_doc_key.ToString()
+                  << ")";
       return Status::OK();
     }
 

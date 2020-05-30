@@ -178,6 +178,7 @@ target_link_libraries(yb_common_test_util
 set(YB_TEST_LINK_LIBS yb_common yb_partition ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)
+ADD_YB_TEST(ql_table_row-test)
 ADD_YB_TEST(partial_row-test)
 ADD_YB_TEST(partition-test)
 ADD_YB_TEST(row_key-util-test)

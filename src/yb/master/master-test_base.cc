@@ -287,6 +287,29 @@ Status MasterTestBase::AlterNamespace(const NamespaceName& ns_name,
   return Status::OK();
 }
 
+// PGSQL Namespaces are deleted asynchronously since they may delete a large number of tables.
+// CQL Namespaces don't need to call this function and return success if present.
+Status MasterTestBase::DeleteNamespaceWait(IsDeleteNamespaceDoneRequestPB const& del_req) {
+  Status status = Status::OK();
+  AssertLoggedWaitFor([&]() -> Result<bool> {
+    IsDeleteNamespaceDoneResponsePB del_resp;
+    status = proxy_->IsDeleteNamespaceDone(del_req, &del_resp, ResetAndGetController());
+    if (!status.ok()) {
+      WARN_NOT_OK(status, "IsDeleteNamespaceDone returned unexpected error");
+      return true;
+    }
+    if (del_resp.has_done() && del_resp.done()) {
+      if (del_resp.has_error()) {
+        status = StatusFromPB(del_resp.error().status());
+      }
+      return true;
+    }
+    return false;
+  }, MonoDelta::FromSeconds(10), "Wait for delete namespace to finish async cleanup tasks.");
+
+  return status;
+}
+
 Status MasterTestBase::DeleteTableSync(const NamespaceName& ns_name, const TableName& table_name,
                                        TableId* table_id) {
   RETURN_NOT_OK(DeleteTable(ns_name, table_name, table_id));

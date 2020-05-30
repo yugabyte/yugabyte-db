@@ -744,7 +744,7 @@ Result<scoped_refptr<master::TableInfo>> FindTable(
 
 Status WaitForInitDb(MiniCluster* cluster) {
   const auto start_time = CoarseMonoClock::now();
-  const auto kTimeout = NonTsanVsTsan(600s, 1800s);
+  const auto kTimeout = RegularBuildVsSanitizers(600s, 1800s);
   while (CoarseMonoClock::now() <= start_time + kTimeout) {
     auto* catalog_manager = cluster->leader_mini_master()->master()->catalog_manager();
     master::IsInitDbDoneRequestPB req;

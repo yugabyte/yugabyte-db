@@ -100,6 +100,17 @@ class YBClient::Data {
                                 const boost::optional<YQLDatabase>& database_type,
                                 CoarseTimePoint deadline);
 
+  CHECKED_STATUS IsDeleteNamespaceInProgress(YBClient* client,
+                                             const std::string& namespace_name,
+                                             const boost::optional<YQLDatabase>& database_type,
+                                             CoarseTimePoint deadline,
+                                             bool *delete_in_progress);
+
+  CHECKED_STATUS WaitForDeleteNamespaceToFinish(YBClient* client,
+                                                const std::string& namespace_name,
+                                                const boost::optional<YQLDatabase>& database_type,
+                                                CoarseTimePoint deadline);
+
   CHECKED_STATUS CreateTable(YBClient* client,
                              const master::CreateTableRequestPB& req,
                              const YBSchema& schema,
