@@ -302,15 +302,18 @@ void LexProcessor::TruncateIdentifier(const MCSharedPtr<MCString>& ident, bool w
 // from '/**/' to '//'.
 //--------------------------------------------------------------------------------------------------
 
-void LexProcessor::EnlargeLiteralBuf(int bytes) {
+inline void LexProcessor::EnlargeLiteralBuf(int bytes) {
   // Increase literalbuf by the given number of "bytes".
-  if (literalalloc_ <= 0) {
+  int prev_literalalloc_;
+  if ((prev_literalalloc_ = literalalloc_) <= 0) {
     literalalloc_ = 4096;
   }
   while (literalalloc_ < literallen_ + bytes) {
-    literalalloc_ *= 2;
+    literalalloc_ <<= 1;
   }
-  literalbuf_ = reinterpret_cast<char *>(realloc(literalbuf_, literalalloc_));
+  if (prev_literalalloc_ != literalalloc_) {
+    literalbuf_ = reinterpret_cast<char *>(realloc(literalbuf_, literalalloc_));
+  }
 }
 
 void LexProcessor::startlit() {
@@ -331,8 +334,7 @@ void LexProcessor::addlitchar(unsigned char ychar) {
   EnlargeLiteralBuf(1);
 
   // Append new data.
-  literalbuf_[literallen_] = ychar;
-  literallen_ += 1;
+  literalbuf_[literallen_++] = ychar;
 }
 
 char *LexProcessor::litbuf_udeescape(unsigned char escape) {
