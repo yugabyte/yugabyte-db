@@ -728,7 +728,7 @@ SELECT * FROM check_test(
     'users_are(users, desc) extras',
     'whatever',
     '    Extra users:
-        ' || current_user
+        ' || quote_ident(current_user)
 );
 
 SELECT * FROM check_test(
@@ -737,7 +737,7 @@ SELECT * FROM check_test(
     'users_are(users, desc) missing and extras',
     'whatever',
     '    Extra users:
-        ' || current_user || '
+        ' || quote_ident(current_user) || '
     Missing users:
         __howdy__'
 );

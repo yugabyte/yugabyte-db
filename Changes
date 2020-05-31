@@ -14,6 +14,8 @@ Revision history for pgTAP
   must be double-quoted when passed to `has_index()` or `is_indexed()`,
   sadly unlike other column arguments in pgTAP. Thanks to Keith Fiske for
   the report (#247).
+* Fixed a test failure where the current username was not being quoted as an
+  identifier. Thanks to Matt DeLuco for the report (#216)!
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------
