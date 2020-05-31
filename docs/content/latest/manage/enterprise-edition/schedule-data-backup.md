@@ -23,8 +23,6 @@ Use Yugabyte Platform to perform a regularly scheduled backup of a full Yugabyte
 2. Click the **Tables** tab and verify that backups are enabled. If disabled, click **Enable Backup**.
 3. Click the **Backups** tab and then click **Create Scheduled Backup**. The **Create Backup** form appears.
 
-
-
 ![Create Backup form](/images/ee/create-backup.png)
 
 4. Enter the **Backup frequency** (an interval in in milliseconds) or enter a `cron` expression.
@@ -33,12 +31,10 @@ Use Yugabyte Platform to perform a regularly scheduled backup of a full Yugabyte
 7. In the **Tables to backup** field, select specific tables or the **Full Universe Backup** option.
 8. Click **OK** to create the schedule. The first backup will begin immediately and then subsequent backups will be created based on the backup frequency.
 
-To verify that the schedule has been created, you can click **Profile** and select **Schedules** from the drop-down.
-
 ## Disable a scheduled backup
 
 If required, you can temporarily disable scheduled backups by going to the **Tables** tab in a universe and click **Disable Backups**.
 
 ## Delete a schedule
 
-If you need to remove a scheduled backup, go to the **Schedules** page and for the schedule you want to delete, click **Options** and then select **Delete schedule**.
+If you need to remove a scheduled backup, go to the **Backups** tab for your universe and for the scheduled backup, click **Options** and then click **Delete schedule**. The scheduled backup is deleted.
