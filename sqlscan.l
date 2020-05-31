@@ -913,14 +913,14 @@ orafce_sql_yyerror(List **result, const char *message)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("%s at end of input", _(message)),
+				 errmsg("%s at end of input", message),
 				 lexer_errposition()));
 	}
 	else
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("%s at or near \"%s\"", _(message), loc),
+				 errmsg("%s at or near \"%s\"", message, loc),
 				 lexer_errposition()));
 	}
 }

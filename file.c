@@ -1,14 +1,10 @@
 /*
- * This functionality doesn't work on Microsoft Windows. Probably, there are more
- * than one issue:
- *
- *  functions fwrite, fclose, .. fails on segfault when file is locked. Probably 
- *  PostgreSQL process and extension is not fully initialized and these "safe"
- *  functions crashes. Possible solution is nolock thread unsafe functions like
- *  _fwrite_nolock, It doesn't crash, but doesn't work. Returned file - file handler
- *  is not valid (although fileptr is not NULL). 
- *
- *  From these reasons, this functionality is blocked on MS Windows.
+ * Attention - this functionality doesn't work when Orace is not linked with
+ * correct runtime library. The combination "vcruntime140.dll" is working for
+ * PostgreSQL 12 (vcruntime140d.dll doesn't work). Probably this runtime should
+ * be same like Postgres server runtime (what is used can be detected by
+ * dependency walker). Without correct linking the server crash when IO related
+ * functionality is used.
  */
 
 #ifdef _MSC_VER
@@ -122,17 +118,6 @@ static char *get_safe_path(text *location, text *filename);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
 
-#ifdef _MSC_VER
-
-#define		DISABLE_UTL_FILE_FOR_MSC \
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows")
-
-#else
-
-#define		DISABLE_UTL_FILE_FOR_MSC
-
-#endif
-
 /*
  * get_descriptor(FILE *file) find any free slot for FILE pointer.
  * If isn't realloc array slots and add 32 new free slots.
@@ -227,8 +212,6 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 	char	   *fullname;
 	int			d;
 
-	DISABLE_UTL_FILE_FOR_MSC;
-
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
 	NOT_NULL_ARG(2);
@@ -309,8 +292,6 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 Datum
 utl_file_is_open(PG_FUNCTION_ARGS)
 {
-	DISABLE_UTL_FILE_FOR_MSC;
-
 	if (!PG_ARGISNULL(0))
 	{
 		int	i;
@@ -341,13 +322,6 @@ get_line(FILE *f, size_t max_linesize, int encoding, bool *iseof)
 	size_t csize = 0;
 	text *result = NULL;
 	bool eof = true;
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
-
-	
 
 	buffer = palloc(max_linesize + 2);
 	bpt = buffer;
@@ -434,8 +408,6 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 	text   *result;
 	bool	iseof;
 
-	DISABLE_UTL_FILE_FOR_MSC;
-
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
 
@@ -477,8 +449,6 @@ utl_file_get_nextline(PG_FUNCTION_ARGS)
 	FILE   *f;
 	text   *result;
 	bool	iseof;
-
-	DISABLE_UTL_FILE_FOR_MSC;
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
@@ -579,8 +549,6 @@ do_put(PG_FUNCTION_ARGS)
 Datum
 utl_file_put(PG_FUNCTION_ARGS)
 {
-	DISABLE_UTL_FILE_FOR_MSC;
-
 	do_put(fcinfo);
 	PG_RETURN_BOOL(true);
 }
@@ -607,8 +575,6 @@ utl_file_put_line(PG_FUNCTION_ARGS)
 	FILE   *f;
 	bool	autoflush;
 
-	DISABLE_UTL_FILE_FOR_MSC;
-
 	f = do_put(fcinfo);
 
 	autoflush = PG_GETARG_IF_EXISTS(2, BOOL, false);
@@ -626,8 +592,6 @@ utl_file_new_line(PG_FUNCTION_ARGS)
 {
 	FILE   *f;
 	int		lines;
-
-	DISABLE_UTL_FILE_FOR_MSC;
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), NULL, NULL);
@@ -664,8 +628,6 @@ utl_file_putf(PG_FUNCTION_ARGS)
 	char   *fpt;
 	int		cur_par = 0;
 	size_t	cur_len = 0;
-
-	DISABLE_UTL_FILE_FOR_MSC;
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
@@ -731,8 +693,6 @@ utl_file_fflush(PG_FUNCTION_ARGS)
 {
 	FILE *f;
 
-	DISABLE_UTL_FILE_FOR_MSC;
-
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), NULL, NULL);
 	do_flush(f);
@@ -758,8 +718,6 @@ utl_file_fclose(PG_FUNCTION_ARGS)
 {
 	int i;
 	int	d = PG_GETARG_INT32(0);
-
-	DISABLE_UTL_FILE_FOR_MSC;
 
 	for (i = 0; i < MAX_SLOTS; i++)
 	{
@@ -795,8 +753,6 @@ Datum
 utl_file_fclose_all(PG_FUNCTION_ARGS)
 {
 	int i;
-
-	DISABLE_UTL_FILE_FOR_MSC;
 
 	for (i = 0; i < MAX_SLOTS; i++)
 	{
@@ -1000,8 +956,6 @@ utl_file_fremove(PG_FUNCTION_ARGS)
 {
 	char	   *fullname;
 
-	DISABLE_UTL_FILE_FOR_MSC;
-
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
 
@@ -1027,8 +981,6 @@ utl_file_frename(PG_FUNCTION_ARGS)
 	char	   *srcpath;
 	char	   *dstpath;
 	bool		overwrite;
-
-	DISABLE_UTL_FILE_FOR_MSC;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -1073,8 +1025,6 @@ utl_file_fcopy(PG_FUNCTION_ARGS)
 	int			end_line;
 	FILE	   *srcfile;
 	FILE	   *dstfile;
-
-	DISABLE_UTL_FILE_FOR_MSC;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -1185,8 +1135,6 @@ utl_file_fgetattr(PG_FUNCTION_ARGS)
 	Datum		values[3];
 	bool		nulls[3] = { 0 };
 
-	DISABLE_UTL_FILE_FOR_MSC;
-
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
 
@@ -1237,8 +1185,6 @@ utl_file_tmpdir(PG_FUNCTION_ARGS)
 
 	canonicalize_path(tmpdir);
 #endif
-
-	DISABLE_UTL_FILE_FOR_MSC;
 
 	PG_RETURN_TEXT_P(cstring_to_text(tmpdir));
 }

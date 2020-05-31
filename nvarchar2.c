@@ -61,7 +61,7 @@ nvarchar2_input(const char *s, size_t len, int32 atttypmod)
 						errmsg("input value length is %zd; too long for type nvarchar2(%zd)", mbmaxlen , maxlen)));
 	}
 
-	result = (VarChar *) cstring_to_text_with_len(s, len);
+	result = (VarChar *) cstring_to_text_with_len(s, size2int(len));
 	return  result;
 }
 
