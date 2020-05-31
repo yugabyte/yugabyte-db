@@ -1,6 +1,9 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2016  Orafce Global Development Group
 
+Version 3.13.3 - 31. May 2020
+* enable utl_file on MS
+
 Version 3.12.0 - 18. May 2020
 * trigger functions oracle.replace_empty_strings and oracle.replace_null_strings
 & remove support for 9.4
