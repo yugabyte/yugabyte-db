@@ -20,6 +20,7 @@ Build on Microsoft Windows with Microsoft Visual Studio
   Under C/C++ -> Preprocessor Directives, add the directive “WIN32”
   
   Under C/C++ -> Code Generation, set “Enable C++ Exceptions” to “No”
+  C/C++ ->Code generation -> Runtime library must be /MD
   
   under “Advanced” set “Compile As” to “C Code”
   
