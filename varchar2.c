@@ -56,7 +56,7 @@ varchar2_input(const char *s, size_t len, int32 atttypmod)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("input value length is %zd; too long for type varchar2(%zd)", len , maxlen)));
 
-	result = (VarChar *) cstring_to_text_with_len(s, len);
+	result = (VarChar *) cstring_to_text_with_len(s, size2int(len));
 	return  result;
 }
 

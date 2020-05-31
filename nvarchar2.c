@@ -182,7 +182,7 @@ nvarchar2(PG_FUNCTION_ARGS)
 						errmsg("input value too long for type nvarchar2(%d)", maxlen)));
 	}
 
-	PG_RETURN_VARCHAR_P((VarChar *) cstring_to_text_with_len(s_data, maxmblen));
+	PG_RETURN_VARCHAR_P((VarChar *) cstring_to_text_with_len(s_data, size2int(maxmblen)));
 }
 
 

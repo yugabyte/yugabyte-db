@@ -381,9 +381,9 @@ get_line(FILE *f, size_t max_linesize, int encoding, bool *iseof)
 		char   *decoded;
 		size_t		len;
 
-		pg_verify_mbstr(encoding, buffer, csize, false);
+		pg_verify_mbstr(encoding, buffer, size2int(csize), false);
 		decoded = (char *) pg_do_encoding_conversion((unsigned char *) buffer,
-									 csize, encoding, GetDatabaseEncoding());
+									 size2int(csize), encoding, GetDatabaseEncoding());
 		len = (decoded == buffer ? csize : strlen(decoded));
 		result = palloc(len + VARHDRSZ);
 		memcpy(VARDATA(result), decoded, len);
@@ -954,7 +954,7 @@ get_safe_path(text *location_or_dirname, text *filename)
 	location = safe_named_location(location_or_dirname);
 	if (location)
 	{
-		int		aux_pos = strlen(location);
+		int		aux_pos = size2int(strlen(location));
 		int		aux_len = VARSIZE_ANY_EXHDR(filename);
 
 		fullname = palloc(aux_pos + 1 + aux_len + 1);

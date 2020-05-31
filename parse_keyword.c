@@ -16,14 +16,6 @@
 
 #if PG_VERSION_NUM >= 120000
 
-#define PG_KEYWORD(kwname, value, category) value,
-
-const uint16 ScanKeywordTokens[] = {
-#include "parser/kwlist.h"
-};
-
-#undef PG_KEYWORD
-
 const char *
 orafce_scan_keyword(const char *text, int *keycode)
 {

@@ -53,4 +53,16 @@ extern STRING_PTR_FIELD_TYPE ora_days[];
 
 extern int ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], size_t max);
 
+#ifdef _MSC_VER
+
+#define int2size(v)			(size_t)(v)
+#define size2int(v)			(int)(v)
+
+#else
+
+#define int2size(v)			v
+#define size2int(v)			v
+
+#endif
+
 #endif

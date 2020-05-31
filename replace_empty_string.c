@@ -97,7 +97,7 @@ static HeapTuple
 get_rettuple(FunctionCallInfo fcinfo)
 {
 	TriggerData	   *trigdata = (TriggerData *) fcinfo->context;
-	HeapTuple		rettuple;
+	HeapTuple		rettuple = NULL;
 
 	if (TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
 		rettuple = trigdata->tg_trigtuple;
