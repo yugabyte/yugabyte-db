@@ -162,13 +162,14 @@ Docker Swarm lacks an equivalent of [Kubernetes StatefulSets](https://kubernetes
 $ docker service create \
 --replicas 1 \
 --name yb-master1 \
+--hostname yb-master1 \
 --network yugabytedb \
 --mount type=volume,source=yb-master1,target=/mnt/data0 \
 --publish 7000:7000 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
---master_addresses=tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100 \
---rpc_bind_addresses=tasks.yb-master1:7100 \
+--master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
+--rpc_bind_addresses=yb-master1:7100 \
 --replication_factor=3
 ```
 
@@ -176,12 +177,13 @@ yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 $ docker service create \
 --replicas 1 \
 --name yb-master2 \
+--hostname yb-master2 \
 --network yugabytedb \
 --mount type=volume,source=yb-master2,target=/mnt/data0 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
---master_addresses=tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100 \
---rpc_bind_addresses=tasks.yb-master2:7100 \
+--master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
+--rpc_bind_addresses=yb-master2:7100 \
 --replication_factor=3
 ```
 
@@ -189,12 +191,13 @@ yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 $ docker service create \
 --replicas 1 \
 --name yb-master3 \
+--hostname yb-master3 \
 --network yugabytedb \
 --mount type=volume,source=yb-master3,target=/mnt/data0 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
---master_addresses=tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100 \
---rpc_bind_addresses=tasks.yb-master3:7100 \
+--master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
+--rpc_bind_addresses=yb-master3:7100 \
 --replication_factor=3
 ```
 
@@ -231,7 +234,7 @@ $ docker service create \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-tserver \
 --fs_data_dirs=/mnt/data0 \
 --rpc_bind_addresses=0.0.0.0:9100 \
---tserver_master_addrs=tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100
+--tserver_master_addrs=yb-master1:7100,yb-master2:7100,yb-master3:7100
 ```
 
 {{< tip title="Tip" >}}
@@ -300,7 +303,7 @@ cqlsh>
 - Initialize the YEDIS API.
 
 ```sh
-$ docker exec -it <ybmaster_container_id> /home/yugabyte/bin/yb-admin --master_addresses tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100 setup_redis_table
+$ docker exec -it <ybmaster_container_id> /home/yugabyte/bin/yb-admin --master_addresses yb-master1:7100,yb-master2:7100,yb-master3:7100 setup_redis_table
 ```
 
 ```sh
