@@ -1,18 +1,20 @@
 ---
-title: Back up and restore clusters using Yugabyte Platform
-headerTitle: Back up and restore
-linkTitle: Back up and restore
-description: Use the YugabyteDB Admin Console to back up and restore clusters.
+title: Back up and restore data using Yugabyte Platform
+headerTitle: Back up and restore data
+linkTitle: Back up and restore data
+description: Use Yugabyte Platform to back up and restore data in YCQL tables.
+aliases:
+  - /latest/manage/enterprise-edition/backup-restore
 menu:
   latest:
-    identifier: manage-ee-backup-restore
-    parent: manage-enterprise-edition
+    identifier: back-up-restore-data
+    parent: enterprise-edition
     weight: 747
 isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to back up and restore tables using the YugabyteDB Admin Console.
+This section will describe how to use the Yugabyte Platform to back up and restore data in YCQL tables.
 
 ## Create universe
 

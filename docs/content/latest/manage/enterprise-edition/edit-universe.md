@@ -1,14 +1,14 @@
 ---
-title: Edit universe using Yugabyte Platform
-headerTitle: Edit universe
-linkTitle: Edit universe
-description: Use the YugabyteDB Admin Console to edit a universe.
+title: Edit a universe using Yugabyte Platform
+headerTitle: Edit a universe
+linkTitle: Edit a universe
+description: Use Yugabyte Platform to edit a universe.
 aliases:
-  - /manage/enterprise-edition/edit-universe/
+  - /latest/manage/enterprise-edition/edit-universe/
 menu:
   latest:
-    identifier: manage-edit-universe
-    parent: manage-enterprise-edition
+    identifier: edit-universe
+    parent: enterprise-edition
     weight: 730
 isTocNested: true
 showAsideToc: true

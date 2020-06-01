@@ -1,15 +1,15 @@
 ---
-title: Health checking and alerts using using Yugabyte Platform
-headerTitle: Health checking and alerts
-linkTitle: Health checking and alerts
-description: Use Yugabyte Platform for health checking and alerts
+title: Configure health checks and alerts using using Yugabyte Platform
+headerTitle: Configure health checks and alerts
+linkTitle: Configure health checks and alerts
+description: Use Yugabyte Platform to configure health checks and alerts for universes.
 aliases:
-  - /manage/enterprise-edition/cluster-health/
-  - /manage/cluster-health/
+  - /latest/manage/enterprise-edition/cluster-health/
+  - /latest/manage/cluster-health/
 menu:
   latest:
     identifier: cluster-health
-    parent: manage-enterprise-edition
+    parent: enterprise-edition
     weight: 740
 isTocNested: true
 showAsideToc: true
@@ -19,7 +19,7 @@ For staying aware of potential issues with your deployment, YugaWare has the cap
 
 ## How to enable and tweak
 
-To configure health checking, visit your profile page in YugaWare by clicking the top-right dropdown featuring your account email and then clicking on the `Profile` entry.
+To configure health checking, visit your profile page in the YugabyteDB Admin Console by clicking the top-right dropdown featuring your account email and then clicking on the **Profile** entry.
 
 ![Profile Dropdown](/images/ee/health/profile-button.png)
 
@@ -27,7 +27,7 @@ You should see something like the following:
 
 ![Alerting Controls](/images/ee/health/alerting-controls.png)
 
-Under the `Alerting Controls` section, there are two fields that you can edit:
+Under the **Alerting Controls**, there are two fields that you can edit:
 
 - A text input for a CSV of custom email addresses to send alerts to.
 - A toggle to switch on/off sending the same alerts back to the Yugabyte support team.
@@ -41,7 +41,7 @@ Both of the timers are currently fixed, but will soon be user-configurable knobs
 
 ## How to view the health of a universe
 
-Finally, here is a sample of how to actually see the health of your universe, by navigating to any of your universes and clicking the `Health` tab:
+Finally, here is a sample of how to actually see the health of your universe, by navigating to any of your universes and clicking the **Health** tab:
 
 ![Universe Health](/images/ee/health/universe-health.png)
 
@@ -54,4 +54,4 @@ As you can see, the checks run every 5 minutes, across every node. Currently we 
 - Total number of open file descriptors, which if too great, might end up causing problems in normal operation.
 - Connectivity with either `cqlsh` or `redis-cli`, which could indicate either network connectivity issues in your deployment or server-side issues processing requests.
 
-This list is not exhaustive, and we are actively working on expanding this! Furthermore, we are also working on more tightly integrating with the underlying `Prometheus` server that we bundle with YugaWare to have significantly more granular and user-configurable metrics-based alerting enabled in our product!
+This list is not exhaustive, and we are actively working on expanding this! Furthermore, we are also working on more tightly integrating with the underlying `Prometheus` server that is bundled with Yugabyte Platform to provide significantly more granular, user-configurable, metrics-based alerting enabled.
