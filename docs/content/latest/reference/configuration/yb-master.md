@@ -92,7 +92,11 @@ Default: Same value as `--fs_data_dirs`
 
 ##### --rpc_bind_addresses
 
-Specifies the comma-separated list of the network interface addresses to bind to for RPC connections. Typically, the value is set to the private IP address of the host on which the server is running. When using the default, or explicitly setting the value to `0.0.0.0:7100`, the server will listen on all available network interfaces.
+Specifies the comma-separated list of the network interface addresses to bind to for RPC connections
+
+- Typically, the value is set to the private IP address of the host on which the server is running. When using the default, or explicitly setting the value to `0.0.0.0:7100`, the server will listen on all available network interfaces.
+
+- The values used must match on all `yb-master` and [`yb-tserver`](../yb-tserver/#rpc-bind-addresses) configurations.
 
 Default: `0.0.0.0:7100`
 
