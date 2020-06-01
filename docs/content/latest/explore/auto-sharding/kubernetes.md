@@ -79,18 +79,18 @@ $ ./yb-docker-ctl add_node
 $ ./yb-docker-ctl add_node
 ```
 
-Create a CQL table. The keyspace and table name below must be named as shown below, since the sample application writes data to this table. We will use the sample application to write data to this table to understand sharding in a subsequent step.
+Create a YCQL table. The keyspace and table name below must be named as shown below, since the sample application writes data to this table. We will use the sample application to write data to this table to understand sharding in a subsequent step.
 
 ```sh
-$ ./bin/cqlsh
+$ ./bin/ycqlsh
 ```
 
 ```sql
-cqlsh> CREATE KEYSPACE ybdemo_keyspace;
+ycqlsh> CREATE KEYSPACE ybdemo_keyspace;
 ```
 
 ```sql
-cqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
+ycqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
 ```
 
 ## 2. Examine tablets

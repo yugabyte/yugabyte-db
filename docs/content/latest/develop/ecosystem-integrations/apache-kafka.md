@@ -17,24 +17,24 @@ In this tutorial, we are going to use the [Kafka Connect-based Sink Connector fo
 
 ## 1. Start local cluster
 
-Start a YugabyteDB cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to YugabyteDB using `cqlsh` by doing the following.
+Start a YugabyteDB cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to YugabyteDB using `ycqlsh` by doing the following.
 
 ```sh
-$ ./bin/cqlsh localhost
+$ ./bin/ycqlsh localhost
 ```
 
 ```
 Connected to local cluster at 127.0.0.1:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh>
+ycqlsh>
 ```
 
 Create the table that would store the Kafka events.
 
 ```sql
-cqlsh> CREATE KEYSPACE IF NOT EXISTS demo;
-cqlsh> CREATE TABLE demo.test_table (key text, value bigint, ts timestamp, PRIMARY KEY (key));
+ycqlsh> CREATE KEYSPACE IF NOT EXISTS demo;
+ycqlsh> CREATE TABLE demo.test_table (key text, value bigint, ts timestamp, PRIMARY KEY (key));
 ```
 
 ## 2. Download Apache Kafka
@@ -151,7 +151,7 @@ Enter the following.
 The events above should now show up as rows in the YugabyteDB table.
 
 ```sql
-cqlsh> SELECT * FROM demo.test_table;
+ycqlsh> SELECT * FROM demo.test_table;
 ```
 
 ```

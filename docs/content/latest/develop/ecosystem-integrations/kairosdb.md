@@ -57,27 +57,27 @@ You should see the following lines if KairosDB starts up successfully.
 18:34:01.145 [main] INFO  [Main.java:380] - ------------------------------------------
 ```
 
-## 4. Verify Cassandra integration with cqlsh
+## 4. Verify Cassandra integration with ycqlsh
 
-- Run cqlsh to connect to the YugabyteDB's YCQL API.
+- Run ycqlsh to connect to the YugabyteDB's YCQL API.
 
 Assuming you are using the macOS or Linux binary
 
 ```sh
-$ ./bin/cqlsh localhost
+$ ./bin/ycqlsh localhost
 ```
 
 ```
 Connected to local cluster at 127.0.0.1:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh> 
+ycqlsh>
 ```
 
 - Run a cql command to verify it is working.
 
 ```sql
-cqlsh> describe keyspaces;
+ycqlsh> describe keyspaces;
 ```
 
 ```
@@ -85,8 +85,8 @@ kairosdb  system_schema  system_auth  system
 ```
 
 ```sql
-cqlsh> use kairosdb;
-cqlsh:kairosdb> describe tables;
+ycqlsh> use kairosdb;
+ycqlsh:kairosdb> describe tables;
 ```
 
 ```

@@ -97,7 +97,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/cqlsh                                                                  |
+| YCQL Shell          : bin/ycqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | Web UI              : http://127.0.0.1:7000/                                                     |
 | Cluster Data        : /Users/yugabyte/yugabyte-data                                              |
@@ -107,7 +107,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/cqlsh                                                                  |
+| YCQL Shell          : bin/ycqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | data-dir[0]         : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data                        |
 | yb-tserver Logs     : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/tserver/logs           |
