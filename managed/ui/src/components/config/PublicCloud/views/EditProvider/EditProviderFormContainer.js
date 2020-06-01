@@ -2,7 +2,7 @@
 
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
-import {isNonEmptyString} from 'utils/ObjectUtils';
+import {isNonEmptyString} from '../../../../../utils/ObjectUtils';
 import {editProvider, editProviderResponse, fetchCloudMetadata} from '../../../../../actions/cloud';
 import EditProviderForm from './EditProviderForm';
 

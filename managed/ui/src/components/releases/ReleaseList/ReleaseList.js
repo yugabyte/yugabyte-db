@@ -4,14 +4,13 @@ import React, { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { DropdownButton } from 'react-bootstrap';
 
-import { YBPanelItem } from 'components/panels';
-import { YBButton, YBTextInput } from 'components/common/forms/fields';
-import { TableAction } from 'components/tables';
-import { YBLoadingCircleIcon } from 'components/common/indicators';
-import { getPromiseState } from 'utils/PromiseUtils';
-import { isAvailable } from 'utils/LayoutUtils';
-
-import { showOrRedirect } from 'utils/LayoutUtils';
+import { YBPanelItem } from '../../../components/panels';
+import { YBButton, YBTextInput } from '../../../components/common/forms/fields';
+import { TableAction } from '../../../components/tables';
+import { YBLoadingCircleIcon } from '../../../components/common/indicators';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { isAvailable } from '../../../utils/LayoutUtils';
+import { showOrRedirect } from '../../../utils/LayoutUtils';
 
 import './ReleaseList.scss';
 

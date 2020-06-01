@@ -6,9 +6,9 @@ import { YBFormInput, YBButton, YBToggle,
          YBControlledSelectWithLabel } from '../common/forms/fields';
 import { Formik, Form, Field } from 'formik';
 import { browserHistory} from 'react-router';
-import { isNonAvailable, showOrRedirect } from 'utils/LayoutUtils';
+import { isNonAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 import * as Yup from 'yup';
-import { isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
 
 // TODO set predefined defaults another way not to share defaults this way

@@ -3,10 +3,10 @@
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { YBButton } from 'components/common/forms/fields';
-import { UniverseTableContainer } from 'components/universes';
+import { YBButton } from '../../../components/common/forms/fields';
+import { UniverseTableContainer } from '../../../components/universes';
 import { HighlightedStatsPanelContainer } from '../../panels';
-import { isNotHidden, isDisabled, isAvailable, showOrRedirect } from 'utils/LayoutUtils';
+import { isNotHidden, isDisabled, isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
 
 import './ListUniverse.scss';
 

@@ -41,7 +41,7 @@ export default class OnPremProviderAndAccessKey extends Component {
                        isReadOnly={isReadOnly} infoContent={userHelpContent}
                        infoTitle="SSH User" />
                 <Field name="sshPort" component={YBNumericInput} label="SSH Port" insetError={true}
-                       isReadOnly={isReadOnly} infoContent={portHelpContent} infoTitle="SSH Port"
+                       isReadOnly={isReadOnly} infoContent={portHelpContent}
                        infoTitle="SSH Port" />
                 <Field name="passwordlessSudoAccess" component={YBToggle}
                        label="Passwordless Sudo" defaultChecked={true} isReadOnly={isReadOnly}

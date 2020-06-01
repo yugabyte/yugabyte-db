@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import Toggle from 'react-toggle';
 import PropTypes from 'prop-types';
 import { isValidObject } from '../../../../utils/ObjectUtils';
-import { YBLabel, DescriptionItem } from 'components/common/descriptors';
+import { YBLabel, DescriptionItem } from '../../../../components/common/descriptors';
 import 'react-toggle/style.css';
 import './stylesheets/YBToggle.scss';
 

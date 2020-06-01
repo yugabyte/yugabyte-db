@@ -4,16 +4,16 @@ import React, { Component, Fragment } from 'react';
 import axios from 'axios';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBModal, YBButton } from '../../common/forms/fields';
-import { getUniverseEndpoint } from 'actions/common';
+import { getUniverseEndpoint } from '../../../actions/common';
 import { connect } from 'react-redux';
 import { openDialog, closeDialog } from '../../../actions/modal';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isNonEmptyObject } from "../../../utils/ObjectUtils";
 import { YBLoading } from '../../common/indicators';
 import { YBCodeBlock, YBCopyButton } from '../../common/descriptors';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
-import { isEnabled } from 'utils/LayoutUtils';
+import { isEnabled } from '../../../utils/LayoutUtils';
 
 import './UniverseConnectModal.scss';
 

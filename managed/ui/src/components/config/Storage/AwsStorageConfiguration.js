@@ -5,7 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import { YBTextInput, YBButton, YBToggle } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import { YBConfirmModal } from '../../modals';
-import { isDefinedNotNull, isEmptyObject } from "utils/ObjectUtils";
+import { isDefinedNotNull, isEmptyObject } from "../../../utils/ObjectUtils";
 
 class AwsStorageConfiguration extends Component {
   state = {

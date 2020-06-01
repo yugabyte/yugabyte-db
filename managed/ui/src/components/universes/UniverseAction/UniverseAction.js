@@ -5,9 +5,9 @@ import { Row, Col } from 'react-bootstrap';
 import { connect } from 'react-redux';
 import moment from 'moment';
 
-import { YBModalForm } from 'components/common/forms';
+import { YBModalForm } from '../../../components/common/forms';
 import { YBButton } from '../../common/forms/fields';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { AlertSnoozeModal } from '../../universes';
 
 import { setAlertsConfig, setAlertsConfigResponse,
@@ -35,7 +35,7 @@ class UniverseAction extends Component {
       };
     });
   }
-  componentWillReceiveProps = (nextProps) => {
+  UNSAFE_componentWillReceiveProps = (nextProps) => {
     if (getPromiseState(nextProps.backupState).isSuccess() ||
         getPromiseState(nextProps.alertsConfig).isSuccess()) {
       this.closeModal();

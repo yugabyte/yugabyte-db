@@ -4,8 +4,8 @@ import React, { Component } from 'react';
 import { isFunction } from 'lodash';
 import Select from 'react-select';
 
-import { YBLabel } from 'components/common/descriptors';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
+import { YBLabel } from '../../../../components/common/descriptors';
+import { isNonEmptyArray } from '../../../../utils/ObjectUtils';
 
 // TODO: Rename to YBMultiSelect after changing prior YBMultiSelect references.
 // TODO: Make default export after checking all corresponding imports.

@@ -8,11 +8,11 @@ import { OverviewMetricsContainer } from '../../metrics';
 import { UniverseResources } from '../UniverseResources';
 import { YBPanelItem, YBWidget } from '../../panels';
 import { RegionMap, YBMapLegend} from '../../maps';
-import { isNonEmptyObject } from 'utils/ObjectUtils';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
-import { isEnabled } from 'utils/LayoutUtils';
+import { isEnabled } from '../../../utils/LayoutUtils';
 
 export default class UniverseOverview extends Component {
   hasReadReplica = (universeInfo) => {

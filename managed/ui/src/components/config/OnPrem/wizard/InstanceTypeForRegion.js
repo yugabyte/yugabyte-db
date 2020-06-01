@@ -6,7 +6,7 @@ import { YBSelect, YBInputField } from '../../../common/forms/fields';
 import { Field } from 'redux-form';
 
 export default class InstanceTypeForRegion extends Component {
-  componentWillMount() {
+  UNSAFE_componentWillMount() {
     const {fields} = this.props;
     if (fields.length === 0) {
       this.props.fields.push({});

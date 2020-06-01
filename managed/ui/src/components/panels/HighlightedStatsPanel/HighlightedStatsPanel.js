@@ -3,13 +3,13 @@
 import React, { Component } from 'react';
 import moment from 'moment';
 import { YBFormattedNumber } from '../../common/descriptors';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBResourceCount } from '../../common/descriptors';
 import './HighlightedStatsPanel.scss';
 import { isDefinedNotNull, isNonEmptyObject } from "../../../utils/ObjectUtils";
 import { getUniverseNodes } from "../../../utils/UniverseUtils";
-import { isAvailable } from 'utils/LayoutUtils';
+import { isAvailable } from '../../../utils/LayoutUtils';
 
 export default class HighlightedStatsPanel extends Component {
   render() {

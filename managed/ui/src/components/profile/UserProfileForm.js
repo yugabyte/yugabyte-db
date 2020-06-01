@@ -6,11 +6,11 @@ import { Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBButton } from '../common/forms/fields';
 import { Formik, Form, Field } from 'formik';
 import { browserHistory} from 'react-router';
-import { isNonAvailable, showOrRedirect, isDisabled } from 'utils/LayoutUtils';
+import { isNonAvailable, showOrRedirect, isDisabled } from '../../utils/LayoutUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox';
 import { YBCopyButton } from '../common/descriptors';
 import * as Yup from 'yup';
-import { isNonEmptyArray} from 'utils/ObjectUtils';
+import { isNonEmptyArray} from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
 
 export default class UserProfileForm extends Component {

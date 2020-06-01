@@ -7,7 +7,7 @@ import { retrieveClientCertificate } from '../../actions/customers';
 
 import { getTlsCertificates,
   getTlsCertificatesResponse }
-  from 'actions/customers';
+  from '../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {

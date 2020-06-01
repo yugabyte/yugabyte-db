@@ -3,9 +3,9 @@
 import React, { Component } from 'react';
 import { RegionMap } from '../../maps';
 import { RegionMapLegend } from '../../maps';
-import { isNonEmptyArray, isValidObject, isEmptyArray } from 'utils/ObjectUtils';
-import {getPromiseState} from 'utils/PromiseUtils';
-import { getPrimaryCluster, getProviderMetadata } from 'utils/UniverseUtils';
+import { isNonEmptyArray, isValidObject, isEmptyArray } from '../../../utils/ObjectUtils';
+import {getPromiseState} from '../../../utils/PromiseUtils';
+import { getPrimaryCluster, getProviderMetadata } from '../../../utils/UniverseUtils';
 
 export default class UniverseRegionLocationPanel extends Component {
   constructor(props) {

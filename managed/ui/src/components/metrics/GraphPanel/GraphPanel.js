@@ -6,8 +6,8 @@ import { Panel } from 'react-bootstrap';
 import { MetricsPanel } from '../../metrics';
 import './GraphPanel.scss';
 import { YBLoading } from '../../common/indicators';
-import { isNonEmptyObject, isEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
-import { isKubernetesUniverse } from 'utils/UniverseUtils';
+import { isNonEmptyObject, isEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
+import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 
 const panelTypes = {
   container: {title: "Container",

@@ -1,8 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { isObject } from 'lodash';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyArray } from '../../../../utils/ObjectUtils';
 import YBRadioButton from './YBRadioButton';
 import { YBLabel } from '../../descriptors';
 import _ from 'lodash';
@@ -34,7 +33,7 @@ export default class YBRadioButtonBar extends Component {
       let value, display;
       if (isNonEmptyArray(option)) {
         [value, display] = option;
-      } else if (isObject(option)) {
+      } else if (_.isObject(option)) {
         value = option.value;
         display = option.display;
       } else {
@@ -83,7 +82,7 @@ export class YBRadioButtonBarDefault extends Component {
       let value, display;
       if (isNonEmptyArray(option)) {
         [value, display] = option;
-      } else if (isObject(option)) {
+      } else if (_.isObject(option)) {
         value = option.value;
         display = option.display;
       } else {

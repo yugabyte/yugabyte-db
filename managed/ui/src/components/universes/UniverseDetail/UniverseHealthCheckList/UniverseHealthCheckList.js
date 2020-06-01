@@ -5,14 +5,14 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import * as moment from 'moment';
 import { sortBy, values } from 'lodash';
 
-import { YBLoading } from 'components/common/indicators';
-import TreeNode from 'components/common/TreeNode';
-import { YBPanelItem } from 'components/panels';
+import { YBLoading } from '../../../../components/common/indicators';
+import TreeNode from '../../../../components/common/TreeNode';
+import { YBPanelItem } from '../../../../components/panels';
 import { Panel } from 'react-bootstrap';
-import { isNonEmptyArray, isEmptyArray } from 'utils/ObjectUtils';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { isNonEmptyArray, isEmptyArray } from '../../../../utils/ObjectUtils';
+import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { UniverseAction } from '../../../universes';
-import { isDisabled } from 'utils/LayoutUtils';
+import { isDisabled } from '../../../../utils/LayoutUtils';
 
 import './UniverseHealthCheckList.scss';
 

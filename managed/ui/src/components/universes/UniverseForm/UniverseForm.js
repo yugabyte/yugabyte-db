@@ -6,15 +6,15 @@ import { Grid } from 'react-bootstrap';
 import { change, Fields } from 'redux-form';
 import {browserHistory, withRouter} from 'react-router';
 import _ from 'lodash';
-import { isNonEmptyObject, isDefinedNotNull, isNonEmptyString, isNonEmptyArray } from 'utils/ObjectUtils';
-import { YBButton, YBModal } from 'components/common/forms/fields';
+import { isNonEmptyObject, isDefinedNotNull, isNonEmptyString, isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { YBButton, YBModal } from '../../../components/common/forms/fields';
 import { UniverseResources } from '../UniverseResources';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import './UniverseForm.scss';
 import ClusterFields from './ClusterFields';
 import { getPrimaryCluster, getReadOnlyCluster } from "../../../utils/UniverseUtils";
 import { DeleteUniverseContainer } from '../../universes';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import pluralize from 'pluralize';
 
 const initialState = {
@@ -137,7 +137,7 @@ class UniverseForm extends Component {
     this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
   }
 
-  componentWillMount() {
+  UNSAFE_componentWillMount() {
     this.props.resetConfig();
     this.setState({editNotAllowed: true});
   }
@@ -146,7 +146,7 @@ class UniverseForm extends Component {
     this.props.resetConfig();
   }
 
-  componentWillUpdate(newProps) {
+  UNSAFE_componentWillUpdate(newProps) {
     if (newProps.universe.formSubmitSuccess) {
       this.props.reset();
     }

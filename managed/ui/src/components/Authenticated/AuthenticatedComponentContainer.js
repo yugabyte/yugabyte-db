@@ -14,7 +14,7 @@ import { fetchSoftwareVersions, fetchSoftwareVersionsSuccess,
   fetchSoftwareVersionsFailure, fetchYugaWareVersion, fetchYugaWareVersionResponse,
   fetchCustomerConfigs, fetchCustomerConfigsResponse, getTlsCertificates,
   getTlsCertificatesResponse, insecureLogin, insecureLoginResponse }
-  from 'actions/customers';
+  from '../../actions/customers';
 import {fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure} from '../../actions/tasks';
 import {setUniverseMetrics} from '../../actions/universe';
 import { queryMetrics } from '../../actions/graph';

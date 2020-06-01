@@ -1,13 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, {Component} from 'react';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { YBLoadingCircleIcon } from '../../../common/indicators';
 import { withRouter } from 'react-router';
-import { isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import ListKubernetesConfigurations from './ListKubernetesConfigurations';
 import CreateKubernetesConfigurationContainer from './CreateKubernetesConfigurationContainer';
-import { KUBERNETES_PROVIDERS } from 'config';
+import { KUBERNETES_PROVIDERS } from '../../../../config';
 
 const PROVIDER_TYPE = "kubernetes";
 

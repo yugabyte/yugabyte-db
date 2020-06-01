@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { isDefinedNotNull, isNonEmptyObject } from 'utils/ObjectUtils';
-import { showOrRedirect } from 'utils/LayoutUtils';
+import { isDefinedNotNull, isNonEmptyObject } from '../../utils/ObjectUtils';
+import { showOrRedirect } from '../../utils/LayoutUtils';
 
 export default class YugawareLogs extends Component {
   componentDidMount() {

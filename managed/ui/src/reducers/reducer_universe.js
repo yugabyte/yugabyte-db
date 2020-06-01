@@ -21,8 +21,14 @@ import { FETCH_UNIVERSE_INFO, RESET_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_RESPONSE,
   UPDATE_BACKUP_STATE, UPDATE_BACKUP_STATE_RESPONSE, SET_ALERTS_CONFIG, SET_ALERTS_CONFIG_RESPONSE
 } from '../actions/universe';
 import _ from 'lodash';
-import { getInitialState, setInitialState, setLoadingState, setPromiseResponse, setSuccessState } from 'utils/PromiseUtils.js';
-import { isNonEmptyArray, isNonEmptyObject } from 'utils/ObjectUtils.js';
+import {
+  getInitialState,
+  setInitialState,
+  setLoadingState,
+  setPromiseResponse,
+  setSuccessState
+} from '../utils/PromiseUtils.js';
+import { isNonEmptyArray, isNonEmptyObject } from '../utils/ObjectUtils.js';
 
 const INITIAL_STATE = {
   currentUniverse: getInitialState({}),

@@ -8,18 +8,18 @@ import PropTypes from 'prop-types';
 import { FormattedDate, FormattedRelative } from 'react-intl';
 import { ClusterInfoPanelContainer, YBWidget } from '../../panels';
 import { OverviewMetricsContainer, StandaloneMetricsPanelContainer, DiskUsagePanel, CpuUsagePanel } from '../../metrics';
-import { YBResourceCount, YBCost, DescriptionList, YBCodeBlock } from 'components/common/descriptors';
+import { YBResourceCount, YBCost, DescriptionList, YBCodeBlock } from '../../../components/common/descriptors';
 import { RegionMap, YBMapLegend} from '../../maps';
 import { isNonEmptyObject, isNullOrEmpty,
-  isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+  isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import moment from 'moment';
 import pluralize from 'pluralize';
-import { isEnabled, isDisabled } from 'utils/LayoutUtils';
+import { isEnabled, isDisabled } from '../../../utils/LayoutUtils';
 
 class DatabasePanel extends PureComponent {
   static propTypes = {

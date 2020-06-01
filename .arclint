@@ -16,6 +16,7 @@
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
+        "(^managed/ui/)",
         "(^thirdparty/thirdparty_src_checksums[.]txt$)",
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
         "(^cmake_modules/cotire[.]cmake$)",

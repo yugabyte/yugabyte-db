@@ -5,15 +5,14 @@ import PropTypes from 'prop-types';
 import { MetricsPanelOverview } from '../';
 import './OverviewMetrics.scss';
 import { YBLoading } from '../../common/indicators';
-import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { YBPanelLegend } from '../../common/descriptors';
 import { YBWidget } from '../../panels';
 import { METRIC_COLORS } from '../MetricsConfig';
-import { getPromiseState } from 'utils/PromiseUtils';
-import { getFeatureState } from 'utils/LayoutUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { getFeatureState } from '../../../utils/LayoutUtils';
 import _ from 'lodash';
-
-const moment = require('moment');
+import moment from 'moment';
 
 // TODO set predefined defaults another way not to share defaults this way
 const OVERVIEW_METRICS_INTERVAL_MS = 15000;
