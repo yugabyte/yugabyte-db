@@ -15,16 +15,34 @@ INSERT INTO ybaggtest VALUES (1, 32767, 2147483647, 9223372036854775807, 1.1, 2.
 INSERT INTO ybaggtest
     SELECT series, t.int_2, t.int_4, t.int_8, t.float_4, t.float_8
     FROM ybaggtest as t CROSS JOIN generate_series(2, 100) as series;
--- Verify COUNT(*) returns proper value.
+-- Verify COUNT(...) returns proper value.
 SELECT COUNT(*) FROM ybaggtest;
  count
 -------
    100
 (1 row)
 
--- Delete row, verify COUNT(*) returns proper value.
+SELECT COUNT(0) FROM ybaggtest;
+ count
+-------
+   100
+(1 row)
+
+SELECT COUNT(NULL) FROM ybaggtest;
+ count
+-------
+     0
+(1 row)
+
+-- Delete row, verify COUNT(...) returns proper value.
 DELETE FROM ybaggtest WHERE id = 100;
 SELECT COUNT(*) FROM ybaggtest;
+ count
+-------
+    99
+(1 row)
+
+SELECT COUNT(0) FROM ybaggtest;
  count
 -------
     99
@@ -100,6 +118,19 @@ SELECT MAX(a), MIN(a) FROM ybaggtest2;
  max | min
 -----+-----
    3 |   1
+(1 row)
+
+-- Verify SUM/MAX/MIN work as expected with constant arguments.
+SELECT SUM(2), MAX(2), MIN(2) FROM ybaggtest2;
+ sum | max | min
+-----+-----+-----
+  12 |   2 |   2
+(1 row)
+
+SELECT SUM(NULL::int), MAX(NULL), MIN(NULL) FROM ybaggtest2;
+ sum | max | min
+-----+-----+-----
+     |     |
 (1 row)
 
 CREATE TABLE digit(k INT PRIMARY KEY, v TEXT NOT NULL);
