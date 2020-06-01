@@ -19,6 +19,7 @@ ycqlsh>
 ```sql
 ycqlsh> describe keyspaces;
 ```
+
 ```
 system_schema  system_auth  system
 
