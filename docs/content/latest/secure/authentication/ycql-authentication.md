@@ -37,7 +37,7 @@ showAsideToc: true
   </li>
 </ul>
 
-YCQL authentication is based on roles. Roles can be created with superuser, non-superuser and login privileges. New roles can be created, and existing ones altered or dropped by administrators using CQL commands.
+YCQL authentication is based on roles. Roles can be created with superuser, non-superuser and login privileges. New roles can be created, and existing ones altered or dropped by administrators using YCQL commands.
 
 ## 1. Enable YCQL authentication
 
@@ -72,7 +72,7 @@ cassandra@ycqlsh>
 
 ## 3. Create a new user
 
-Use the [CREATE ROLE command](../../../api/ycql/ddl_create_role/) to create a new role. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all the CQL commands on any of the database resources.
+Use the [CREATE ROLE command](../../../api/ycql/ddl_create_role/) to create a new role. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all the YCQL commands on any of the database resources.
 
 **NOTE** By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges, these need to be explicitly granted.
 

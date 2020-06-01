@@ -24,9 +24,10 @@ Use the `FROZEN` data type to specify columns of binary strings that result from
 ```
 type_specification ::= FROZEN<type>
 ```
+
 Where
 
-- `type` is a well-formed CQL data type (additional restrictions for `type` are covered in the Semantics section below).
+- `type` is a well-formed YCQL data type (additional restrictions for `type` are covered in the Semantics section below).
 
 ## Semantics
 

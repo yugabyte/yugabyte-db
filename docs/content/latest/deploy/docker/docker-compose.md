@@ -138,7 +138,7 @@ $ docker exec -it yb-tserver-n1 /home/yugabyte/bin/ycqlsh yb-tserver-n1
 
 ```
 Connected to local cluster at yb-tserver-n1:9042.
-[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | YCQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
 ycqlsh>
 ```

@@ -243,7 +243,7 @@ object CassandraSparkWordCount {
     //---------------------- Save to Cassandra table -----------------------\\
 
     // -----------------------------------------------------------------------
-    // Save the output to the CQL table, using RDD as the source.
+    // Save the output to the YCQL table, using RDD as the source.
     // This has been tested to be fungible with the DataFrame->CQL code block.
 
     /* Comment this line out to enable this code block.
@@ -261,7 +261,7 @@ object CassandraSparkWordCount {
     // */
 
     // ----------------------------------------------------------------------
-    // Save the output to the CQL table, using DataFrame as the source.
+    // Save the output to the YCQL table, using DataFrame as the source.
 
     // /* Uncomment this line out to disable this code block.
     wordCountDf

@@ -62,7 +62,7 @@ plugin activated: tinkerpop.tinkergraph
 gremlin>
 ```
 
-- Now use the CQL config to initialize JanusGraph to talk to Yugabyte.
+- Now use the YCQL config to initialize JanusGraph to talk to Yugabyte.
 
 ```sql
 gremlin> graph = JanusGraphFactory.open('conf/janusgraph-cql.properties')

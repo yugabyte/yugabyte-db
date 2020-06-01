@@ -51,7 +51,7 @@ Where
 - `type` must be a [non-parametric data type](../#data-types) or a [frozen](../type_frozen) data type.
 - `key_type` must be any data type that is allowed in a primary key (Currently `FROZEN` and all non-parametric data types except `BOOL`).
 - For `map_literal` the left-side `expression` represents the key and the right-side one represents the value.
-- `expression` is any well formed CQL expression. See [Expression](..#expressions) for more information on syntax rules.
+- `expression` is any well formed YCQL expression. See [Expression](..#expressions) for more information on syntax rules.
 
 ## Semantics
 
