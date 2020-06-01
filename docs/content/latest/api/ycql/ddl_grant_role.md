@@ -49,7 +49,7 @@ Where
 ## Examples
 
 ```sql
-cqlsh:example> GRANT ROLE eng to robert;
+ycqlsh:example> GRANT ROLE eng to robert;
 ```
 
 ## See also

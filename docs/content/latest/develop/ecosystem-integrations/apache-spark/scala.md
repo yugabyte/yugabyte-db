@@ -54,7 +54,7 @@ libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`cqlsh`). If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`ycqlsh`). If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
 
 - installed Scala version 2.12 or later and sbt 1.3.8 or later/
 

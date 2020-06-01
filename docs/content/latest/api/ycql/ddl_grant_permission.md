@@ -96,19 +96,19 @@ Operation| Permission| Resource|
 ### Grant `MODIFY` permission on a table so role `qa` can insert rows into a table.
 
 ```sql
-cqlsh:example> GRANT MODIFY ON TABLE performance_tests.metrics TO qa;
+ycqlsh:example> GRANT MODIFY ON TABLE performance_tests.metrics TO qa;
 ```
 
 ### Grant `SELECT` permission on a table so role `qa` can read the table.
 
 ```sql
-cqlsh:example> GRANT SELECT ON performance_tests.metrics TO qa;
+ycqlsh:example> GRANT SELECT ON performance_tests.metrics TO qa;
 ```
 
 ### Grant `CREATE` permission on `ALL KEYSPACES` so role `tests` can create new keyspaces.
 
 ```sql
-cqlsh:example> GRANT CREATE ON ALL KEYSPACES TO tests;
+ycqlsh:example> GRANT CREATE ON ALL KEYSPACES TO tests;
 ```
 
 ## See also

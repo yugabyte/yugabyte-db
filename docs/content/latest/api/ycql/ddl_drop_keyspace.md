@@ -45,15 +45,15 @@ Where
 You can do this as shown below.
 
 ```sql
-cqlsh> CREATE KEYSPACE example;
+ycqlsh> CREATE KEYSPACE example;
 ```
 
 ```sql
-cqlsh> DROP KEYSPACE example;
+ycqlsh> DROP KEYSPACE example;
 ```
 
 ```sql
-cqlsh> DROP KEYSPACE IF EXISTS example;
+ycqlsh> DROP KEYSPACE IF EXISTS example;
 ```
 
 ## See also

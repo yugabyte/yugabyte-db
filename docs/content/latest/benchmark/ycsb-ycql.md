@@ -134,7 +134,7 @@ $ ./bin/ycqlsh <ip>
 Create the `ycsb` keyspace.
 
 ```postgres
-cqlsh> CREATE KEYSPACE ycsb;
+ycqlsh> CREATE KEYSPACE ycsb;
 ```
 
 Connect to the created keyspace.

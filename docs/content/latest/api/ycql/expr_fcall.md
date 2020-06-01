@@ -152,7 +152,7 @@ For example, suppose we have a table `page_views` with a column named `views`:
 
 ## TTL function
 
-The TTL function returns the number of seconds until a column or row expires. 
+The TTL function returns the number of seconds until a column or row expires.
 Assuming we have a table `page_views` and a column named `views`:
 
 ```sql
@@ -168,15 +168,15 @@ SELECT TTL(views) FROM page_views;
 ## Examples
 
 ```sql
-cqlsh:example> CREATE TABLE test_cast (k INT PRIMARY KEY, ts TIMESTAMP);
+ycqlsh:example> CREATE TABLE test_cast (k INT PRIMARY KEY, ts TIMESTAMP);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO test_cast (k, ts) VALUES (1, '2018-10-09 12:00:00');
+ycqlsh:example> INSERT INTO test_cast (k, ts) VALUES (1, '2018-10-09 12:00:00');
 ```
 
 ```sql
-cqlsh:example> SELECT CAST(ts AS DATE) FROM test_cast;
+ycqlsh:example> SELECT CAST(ts AS DATE) FROM test_cast;
 ```
 
 ```

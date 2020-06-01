@@ -58,12 +58,12 @@ Where
 
 ## Semantics
 
-- Permission `AUTHORIZE` on `ALL ROLES` or on the role being used in the statement is necessary. Otherwise, an unauthorized error will be returned.
+Permission `AUTHORIZE` on `ALL ROLES` or on the role being used in the statement is necessary. Otherwise, an unauthorized error will be returned.
 
 ## Examples
 
 ```sql
-cqlsh:example> REVOKE CREATE ON KEYSPACE qa FROM fred;
+ycqlsh:example> REVOKE CREATE ON KEYSPACE qa FROM fred;
 ```
 
 ## See also

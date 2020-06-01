@@ -106,7 +106,7 @@ For bidirectional replication, repeat this step in the "yugabyte-consumer" unive
 
 **For unidirectional replication**
 
-Connect to “yugabyte-consumer” universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`cqlsh`), and then confirm that you can see expected records.
+Connect to “yugabyte-consumer” universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and then confirm that you can see expected records.
 
 **For bidirectional replication**
 

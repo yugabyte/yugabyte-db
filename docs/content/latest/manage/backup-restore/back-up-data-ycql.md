@@ -38,7 +38,7 @@ This page documents backups for YugabyteDB’s [Cassandra compatible YCQL API](.
 In order to backup the schema for a particular keyspace, run the following command.
 
 ```sh
-$ cqlsh -e "DESC KEYSPACE <keyspace name>" > schema.cql
+$ ycqlsh -e "DESC KEYSPACE <keyspace name>" > schema.cql
 ```
 
 - Backing up schema for entire cluster
@@ -112,13 +112,13 @@ This section assumes you already have a YugabyteDB cluster. You can install a lo
 Create a keyspace for the stock ticker app.
 
 ```sql
-cqlsh> CREATE KEYSPACE myapp;
+ycqlsh> CREATE KEYSPACE myapp;
 ```
 
 Create the stock ticker table.
 
 ```sql
-cqlsh> CREATE TABLE myapp.stock_market (
+ycqlsh> CREATE TABLE myapp.stock_market (
     stock_symbol text,
     ts text,
     current_price float,
@@ -129,7 +129,7 @@ cqlsh> CREATE TABLE myapp.stock_market (
 Insert some sample data.
 
 ```sql
-cqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
+ycqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 10:00:00',170.1);
@@ -137,10 +137,10 @@ INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
 ```
 
-You can query all the 6 rows we inserted by running the following command in `cqlsh`.
+You can query all the 6 rows we inserted by running the following command in `ycqlsh`.
 
 ```sql
-cqlsh> SELECT * FROM myapp.stock_market;
+ycqlsh> SELECT * FROM myapp.stock_market;
 ```
 
 ```
@@ -161,7 +161,7 @@ cqlsh> SELECT * FROM myapp.stock_market;
 Run the following in order to backup the schema of the keyspace `myapp`.
 
 ```sh
-$ cqlsh -e "DESC KEYSPACE myapp" > myapp_schema.cql
+$ ycqlsh -e "DESC KEYSPACE myapp" > myapp_schema.cql
 ```
 
 
@@ -170,6 +170,7 @@ The schema of the keyspace `myapp` along with the tables in it are saved to the 
 ```sh
 $ cat myapp_schema.cql
 ```
+
 ```
 CREATE KEYSPACE myapp WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '3'}  AND durable_writes = true;
 
@@ -187,7 +188,7 @@ CREATE TABLE myapp.stock_market (
 Run the following command in order to backup the data in the table `myapp.stock_market`.
 
 ```sh
-$ cqlsh -e "COPY myapp.stock_market TO 'myapp_data.csv' WITH HEADER = TRUE ;"
+$ ycqlsh -e "COPY myapp.stock_market TO 'myapp_data.csv' WITH HEADER = TRUE ;"
 ```
 
 All columns of the rows in the table `myapp.stock_market` are saved to the file `myapp_data.csv`.
@@ -208,7 +209,7 @@ GOOG,2017-10-26 10:00:00,971.90997
 In order to backup a subset of columns, you can specify them in the backup command. In the example below, the `stock_symbol` and `ts` columns are backed up, while the `current_price` column is not.
 
 ```sh
-$ cqlsh -e "COPY myapp.stock_market (stock_symbol, ts) TO 'myapp_data_partial.csv' WITH HEADER = TRUE ;"
+$ ycqlsh -e "COPY myapp.stock_market (stock_symbol, ts) TO 'myapp_data_partial.csv' WITH HEADER = TRUE ;"
 ```
 
 The selected columns (`stock_symbol` and `ts`) of the rows in the table `myapp.stock_market` are saved to the file `myapp_data_partial.csv`.

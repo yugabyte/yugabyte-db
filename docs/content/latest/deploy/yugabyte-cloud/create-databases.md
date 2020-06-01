@@ -22,7 +22,7 @@ To configure a local YSQL shell to connect to your clusters, see [Connect using 
 
 ## Create a keyspace using YCQL
 
-You can use the YCQL shell (`cqlsh`) and the [YCQL API](../../../api/ycql/) to create and manage YugabyteDB keyspaces and tables in your Yugabyte Cloud clusters.
+You can use the YCQL shell (`ycqlsh`) and the [YCQL API](../../../api/ycql/) to create and manage YugabyteDB keyspaces and tables in your Yugabyte Cloud clusters.
 
 To configure a local YCQL shell to connect to your clusters, see [Connect using the YCQL shell (cqlsh)](../connect-to-clusters/#connect-using-the-ycql-shell-cqlsh).
 

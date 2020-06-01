@@ -39,13 +39,13 @@ Create a role with a password. You can do this with the [CREATE ROLE](../../../a
 As an example, let us create a role `engineering` for an engineering team in an organization. Note that we add the `IF NOT EXISTS` clause in case the role already exists.
 
 ```sql
-cassandra@cqlsh> CREATE ROLE IF NOT EXISTS engineering;
+cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS engineering;
 ```
 
 Roles that have `LOGIN` permissions are users. As an example, you can create a user `john` as follows:
 
 ```sql
-cassandra@cqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
+cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
 ```
 
 Read about [how to create users in YugabyteDB](../../authentication/) in the authentication section.
@@ -57,7 +57,7 @@ You can grant a role to another role (which can be a user), or revoke a role tha
 As an example, you can grant the `engineering` role we created above to the user `john` as follows:
 
 ```sql
-cassandra@cqlsh> GRANT engineering TO john;
+cassandra@ycqlsh> GRANT engineering TO john;
 ```
 
 Read more about [granting roles](../../../api/ycql/ddl_grant_role/).
@@ -71,13 +71,13 @@ As an example, let us say that in the above example, we want to create a `develo
 First, create the `developer` role.
 
 ```sql
-cassandra@cqlsh> CREATE ROLE IF NOT EXISTS developer;
+cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS developer;
 ```
 
 Next, `GRANT` the `engineering` role to the `developer` role.
 
 ```sql
-cassandra@cqlsh> GRANT engineering TO developer;
+cassandra@ycqlsh> GRANT engineering TO developer;
 ```
 
 ## 4. List roles
@@ -85,7 +85,7 @@ cassandra@cqlsh> GRANT engineering TO developer;
 You can list all the roles by running the following command:
 
 ```sql
-cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
+cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
 You should see the following output:
@@ -115,13 +115,13 @@ Roles can be revoked using the [REVOKE ROLE](../../../api/ycql/ddl_revoke_role/)
 In the above example, we can revoke the `engineering` role from the user `john` as follows:
 
 ```sql
-cassandra@cqlsh> REVOKE engineering FROM john;
+cassandra@ycqlsh> REVOKE engineering FROM john;
 ```
 
 Listing all the roles now shows that `john` no longer inherits from the `engineering` role:
 
 ```sql
-cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
+cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
 ```
@@ -142,13 +142,13 @@ Roles can be dropped with the [DROP ROLE](../../../api/ycql/ddl_drop_role/) comm
 In the above example, we can drop the `developer` role with the following command:
 
 ```sql
-cassandra@cqlsh> DROP ROLE IF EXISTS developer;
+cassandra@ycqlsh> DROP ROLE IF EXISTS developer;
 ```
 
 The `developer` role would no longer be present upon listing all the roles:
 
 ```sql
-cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
+cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
 ```

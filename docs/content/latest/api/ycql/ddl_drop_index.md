@@ -43,15 +43,15 @@ Where
 ## Examples
 
 ```sql
-cqlsh:example> CREATE TABLE users(id INT PRIMARY KEY, name TEXT) WITH transactions = { 'enabled' : true };
+ycqlsh:example> CREATE TABLE users(id INT PRIMARY KEY, name TEXT) WITH transactions = { 'enabled' : true };
 ```
 
 ```sql
-cqlsh:example> CREATE INDEX users_by_name ON users(name);
+ycqlsh:example> CREATE INDEX users_by_name ON users(name);
 ```
 
 ```sql
-cqlsh:example> DROP INDEX users_by_name;
+ycqlsh:example> DROP INDEX users_by_name;
 ```
 
 ## See also

@@ -108,7 +108,7 @@ Where
 'customer_id' is the partitioning column and 'order_date' is the clustering column.
 
 ```sql
-cqlsh:example> CREATE TABLE orders (customer_id INT,
+ycqlsh:example> CREATE TABLE orders (customer_id INT,
                                     order_date TIMESTAMP,
                                     product JSONB,
                                     warehouse_id INT,
@@ -120,38 +120,38 @@ cqlsh:example> CREATE TABLE orders (customer_id INT,
 ### Create an index for query by the `order_date` column
 
 ```sql
-cqlsh:example> CREATE INDEX orders_by_date ON orders (order_date) INCLUDE (amount);
+ycqlsh:example> CREATE INDEX orders_by_date ON orders (order_date) INCLUDE (amount);
 ```
 
 ### Create an index for query by the JSONB attribute `product->>'name'`
 
 ```sql
-cqlsh:example> CREATE INDEX product_name ON orders (product->>'name') INCLUDE (amount);
+ycqlsh:example> CREATE INDEX product_name ON orders (product->>'name') INCLUDE (amount);
 ```
 
 ### Create an index for query by the `warehouse_id` column
 
 ```sql
-cqlsh:example> CREATE INDEX orders_by_warehouse ON orders (warehouse_id, order_date) INCLUDE (amount);
+ycqlsh:example> CREATE INDEX orders_by_warehouse ON orders (warehouse_id, order_date) INCLUDE (amount);
 ```
 
 ### Insert some data
 
 ```sql
-cqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
+ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
                VALUES (1001, '2018-01-10', '{ "name":"desk" }', 107, 100.30);
-cqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
+ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
                VALUES (1002, '2018-01-11', '{ "name":"chair" }', 102, 50.45);
-cqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
+ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
                VALUES (1001, '2018-04-09', '{ "name":"pen" }', 102, 20.25);
-cqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
+ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
                VALUES (1003, '2018-04-09', '{ "name":"pencil" }', 108, 200.80);
 ```
 
 ### Query by the partition column `customer_id` in the table
 
 ```sql
-cqlsh:example> SELECT SUM(amount) FROM orders WHERE customer_id = 1001 AND order_date >= '2018-01-01';
+ycqlsh:example> SELECT SUM(amount) FROM orders WHERE customer_id = 1001 AND order_date >= '2018-01-01';
 ```
 
 ```
@@ -163,7 +163,7 @@ cqlsh:example> SELECT SUM(amount) FROM orders WHERE customer_id = 1001 AND order
 ### Query by the partition column `order_date` in the index `orders_by_date`
 
 ```sql
-cqlsh:example> SELECT SUM(amount) FROM orders WHERE order_date = '2018-04-09';
+ycqlsh:example> SELECT SUM(amount) FROM orders WHERE order_date = '2018-04-09';
 ```
 
 ```
@@ -175,7 +175,7 @@ cqlsh:example> SELECT SUM(amount) FROM orders WHERE order_date = '2018-04-09';
 ### Query by the partition column `product->>'name'` in the index `product_name`
 
 ```sql
-cqlsh:example> SELECT SUM(amount) FROM orders WHERE product->>'name' = 'desk';
+ycqlsh:example> SELECT SUM(amount) FROM orders WHERE product->>'name' = 'desk';
 ```
 
 ```
@@ -187,7 +187,7 @@ cqlsh:example> SELECT SUM(amount) FROM orders WHERE product->>'name' = 'desk';
 ### Query by the partition column `warehouse_id` column in the index `orders_by_warehouse`
 
 ```sql
-cqlsh:example> SELECT SUM(amount) FROM orders WHERE warehouse_id = 102 AND order_date >= '2018-01-01';
+ycqlsh:example> SELECT SUM(amount) FROM orders WHERE warehouse_id = 102 AND order_date >= '2018-01-01';
 ```
 
 ```
@@ -201,32 +201,32 @@ cqlsh:example> SELECT SUM(amount) FROM orders WHERE warehouse_id = 102 AND order
 You can do this as shown below.
 
 ```sql
-cqlsh:example> CREATE TABLE emp (enum INT primary key,
+ycqlsh:example> CREATE TABLE emp (enum INT primary key,
                                  lastname VARCHAR,
                                  firstname VARCHAR,
                                  userid VARCHAR)
                WITH transactions = { 'enabled' : true };
-cqlsh:example> CREATE UNIQUE INDEX emp_by_userid ON emp (userid);
+ycqlsh:example> CREATE UNIQUE INDEX emp_by_userid ON emp (userid);
 ```
 
 ### Insert values into the table and verify no duplicate `userid` is inserted
 
 ```sql
-cqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
+ycqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
                VALUES (1001, 'Smith', 'John', 'jsmith');
-cqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
+ycqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
                VALUES (1002, 'Smith', 'Jason', 'jsmith');
 InvalidRequest: Error from server: code=2200 [Invalid query] message="SQL error: Execution Error. Duplicate value disallowed by unique index emp_by_userid
 INSERT INTO emp (enum, lastname, firstname, userid)
        ^^^^
 VALUES (1002, 'Smith', 'Jason', 'jsmith');
  (error -300)"
-cqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
+ycqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
                VALUES (1002, 'Smith', 'Jason', 'jasmith');
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM emp;
+ycqlsh:example> SELECT * FROM emp;
 ```
 
 ```
