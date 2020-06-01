@@ -6,8 +6,8 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FieldArray } from 'redux-form';
 import { withRouter } from 'react-router';
 
-import { getPromiseState } from 'utils/PromiseUtils';
-import { isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';
 import { YBBreadcrumb } from '../../common/descriptors';
@@ -111,7 +111,7 @@ class OnPremNodesList extends Component {
     this.props.reset();
   };
 
-  componentWillMount() {
+  UNSAFE_componentWillMount() {
     // Get OnPrem provider if provider list is already loaded during component load
     const onPremProvider = this.props.cloud.providers.data.find((provider)=>provider.code === "onprem");
     this.props.getRegionListItems(onPremProvider.uuid);

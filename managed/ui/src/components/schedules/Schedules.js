@@ -1,14 +1,14 @@
 import React, { Component, Fragment } from 'react';
 import { YBPanelItem } from '../panels';
 import { Row, Col, Alert, DropdownButton, MenuItem } from 'react-bootstrap';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../utils/PromiseUtils';
 import moment from 'moment';
 import _ from 'lodash';
 import pluralize from 'pluralize';
 import cronstrue from 'cronstrue';
-import { DescriptionItem } from 'components/common/descriptors';
-import { isNonEmptyObject, isDefinedNotNull, isNonEmptyArray } from 'utils/ObjectUtils';
-import { isAvailable, isNonAvailable } from 'utils/LayoutUtils';
+import { DescriptionItem } from '../common/descriptors';
+import { isNonEmptyObject, isDefinedNotNull, isNonEmptyArray } from '../../utils/ObjectUtils';
+import { isAvailable, isNonAvailable } from '../../utils/LayoutUtils';
 import { YBModalForm } from '../common/forms';
 import { TableAction } from '../tables';
 

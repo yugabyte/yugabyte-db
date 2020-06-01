@@ -2,8 +2,14 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { removeNullProperties, isNonEmptyObject, isNonEmptyArray, isNonEmptyString,
-        isYAxisGreaterThanThousand, divideYAxisByThousand } from 'utils/ObjectUtils';
+import {
+  removeNullProperties,
+  isNonEmptyObject,
+  isNonEmptyArray,
+  isNonEmptyString,
+  isYAxisGreaterThanThousand,
+  divideYAxisByThousand
+} from '../../../utils/ObjectUtils';
 import './MetricsPanel.scss';
 import { METRIC_FONT } from '../MetricsConfig';
 

@@ -18,7 +18,7 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
 
 import { getInitialState, setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }
   from '../utils/PromiseUtils';
-import {isNonEmptyArray, isDefinedNotNull, sortInstanceTypeList} from 'utils/ObjectUtils';
+import {isNonEmptyArray, isDefinedNotNull, sortInstanceTypeList} from '../utils/ObjectUtils';
 import _ from 'lodash';
 
 const INITIAL_STATE = {

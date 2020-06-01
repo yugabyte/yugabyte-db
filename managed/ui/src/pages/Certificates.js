@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-import { CertificatesContainer } from 'components/certificates';
+import { CertificatesContainer } from '../components/certificates';
 
 const Certificates = () => {
   return (

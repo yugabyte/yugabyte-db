@@ -5,8 +5,8 @@ import { Row, Col } from 'react-bootstrap';
 import { Field } from 'formik';
 import * as Yup from "yup";
 
-import { YBFormInput } from 'components/common/forms/fields';
-import { YBModalForm } from 'components/common/forms';
+import { YBFormInput } from '../../../components/common/forms/fields';
+import { YBModalForm } from '../../../components/common/forms';
 
 export default class ImportRelease extends Component {
   importRelease = values => {

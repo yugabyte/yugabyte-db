@@ -2,12 +2,11 @@
 
 import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
-import { BulkImportContainer, DropTableContainer, CreateBackupContainer, RestoreBackupContainer } from 'components/tables';
-import { ImportReleaseContainer, UpdateReleaseContainer } from 'components/releases';
+import { BulkImportContainer, DropTableContainer, CreateBackupContainer, RestoreBackupContainer } from '../../../components/tables';
+import { ImportReleaseContainer, UpdateReleaseContainer } from '../../../components/releases';
 import {  MenuItem } from 'react-bootstrap';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBButton } from '../../common/forms/fields';
-
 import _ from 'lodash';
 
 export default class TableAction extends Component {

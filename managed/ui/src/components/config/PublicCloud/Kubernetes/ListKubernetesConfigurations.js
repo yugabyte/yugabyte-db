@@ -9,10 +9,10 @@ import { YBPanelItem } from '../../../panels';
 import { Row, Col } from 'react-bootstrap';
 import { Link, browserHistory } from 'react-router';
 import { YBCopyButton } from '../../../common/descriptors';
-import { KUBERNETES_PROVIDERS } from 'config';
-import { isDefinedNotNull } from 'utils/ObjectUtils';
+import { KUBERNETES_PROVIDERS } from '../../../../config';
+import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import { YBTextInput, YBModal } from '../../../common/forms/fields';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../../utils/PromiseUtils';
 
 export default class ListKubernetesConfigurations extends Component {
   constructor(props) {

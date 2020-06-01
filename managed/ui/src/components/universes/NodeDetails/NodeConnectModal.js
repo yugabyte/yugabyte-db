@@ -4,10 +4,10 @@ import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBModal } from '../../common/forms/fields';
-import {getPromiseState} from 'utils/PromiseUtils';
+import {getPromiseState} from '../../../utils/PromiseUtils';
 import { connect } from 'react-redux';
 import { isEmptyObject } from "../../../utils/ObjectUtils";
-import { YBCopyButton } from 'components/common/descriptors';
+import { YBCopyButton } from '../../../components/common/descriptors';
 import { MenuItem } from 'react-bootstrap';
 
 import './NodeConnectModal.scss';

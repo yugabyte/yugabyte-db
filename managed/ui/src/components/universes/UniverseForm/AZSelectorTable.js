@@ -11,7 +11,7 @@ import _ from 'lodash';
 import { isNonEmptyArray, isDefinedNotNull, areUniverseConfigsEqual, isEmptyObject, isNonEmptyObject} from '../../../utils/ObjectUtils';
 import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import { getPrimaryCluster, getReadOnlyCluster, getClusterByType } from '../../../utils/UniverseUtils';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 
 const nodeStates = {
   activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Starting"],
@@ -290,7 +290,7 @@ export default class AZSelectorTable extends Component {
       uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length});
   };
 
-  componentWillMount() {
+  UNSAFE_componentWillMount() {
     const {universe: {currentUniverse, universeConfigTemplate}, type, clusterType} = this.props;
     const currentCluster = getPromiseState(universeConfigTemplate).isSuccess() ?
       getClusterByType(universeConfigTemplate.data.clusters, clusterType) :

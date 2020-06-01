@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Link } from 'react-router';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import moment from 'moment';
 
 import './TaskAlerts.scss';
@@ -62,9 +62,11 @@ export default class TaskAlerts extends Component {
   componentDidMount() {
     this.props.fetchCustomerTasks();
   }
-  componentWillUnMount() {
+
+  componentWillUnmount() {
     this.props.resetCustomerTasks();
   }
+
   render() {
     const {tasks: {customerTaskList}} = this.props;
     let tasksDisplayList = [];

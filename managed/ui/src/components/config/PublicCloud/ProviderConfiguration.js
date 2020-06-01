@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { getPromiseState } from 'utils/PromiseUtils';
-import { isNonEmptyObject, isDefinedNotNull, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { isNonEmptyObject, isDefinedNotNull, isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { withRouter } from 'react-router';
 import _ from 'lodash';
 import ProviderResultView from './views/ProviderResultView';

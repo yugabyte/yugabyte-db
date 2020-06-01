@@ -2,10 +2,10 @@
 
 import React, { Component } from 'react';
 import { withRouter } from 'react-router';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
-import { getPromiseState } from 'utils/PromiseUtils';
-import { isHidden } from 'utils/LayoutUtils';
-const PropTypes = require('prop-types');
+import { isNonEmptyArray } from '../../utils/ObjectUtils';
+import { getPromiseState } from '../../utils/PromiseUtils';
+import { isHidden } from '../../utils/LayoutUtils';
+import PropTypes from 'prop-types';
 
 class AuthenticatedComponent extends Component {
   constructor(props) {

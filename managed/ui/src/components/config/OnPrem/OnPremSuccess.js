@@ -6,9 +6,9 @@ import { cloneDeep, map, sortBy } from 'lodash';
 
 import { YBButton } from '../../common/forms/fields';
 import { Row, Col } from 'react-bootstrap';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 
-import { isNonEmptyArray, isDefinedNotNull, isEmptyObject, pickArray, isNonEmptyObject } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isDefinedNotNull, isEmptyObject, pickArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { YBConfirmModal } from '../../modals';
 import { DescriptionList } from '../../common/descriptors';
 import { RegionMap, YBMapLegend } from '../../maps';
@@ -26,7 +26,7 @@ class OnPremSuccess extends Component {
     this.props.deleteProviderConfig(uuid);
   }
 
-  componentWillMount() {
+  UNSAFE_componentWillMount() {
     const { configuredProviders } = this.props;
     const currentProvider = configuredProviders.data.find(provider => provider.code === 'onprem');
     if (isDefinedNotNull(currentProvider)) {
@@ -47,7 +47,7 @@ class OnPremSuccess extends Component {
     this.setState({manageInstances: false});
   }
 
-  componentWillReceiveProps(nextProps) {
+  UNSAFE_componentWillReceiveProps(nextProps) {
     const {
       accessKeys,
       cloud: {nodeInstanceList, instanceTypes, onPremJsonFormData},

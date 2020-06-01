@@ -5,7 +5,7 @@ import PropTypes from 'prop-types';
 import { NodeActionModalContainer, NodeConnectModal } from '../../universes';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { YBLabelWithIcon } from '../../common/descriptors';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 
 import _ from 'lodash';
 

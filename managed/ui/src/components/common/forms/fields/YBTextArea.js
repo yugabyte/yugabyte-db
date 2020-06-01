@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { FormControl } from 'react-bootstrap';
 import { isFunction } from 'lodash';
-import { YBLabel } from 'components/common/descriptors';
+import { YBLabel } from '../../../../components/common/descriptors';
 
 export default class YBTextArea extends Component {
   static defaultProps = {

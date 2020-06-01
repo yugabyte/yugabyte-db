@@ -2,10 +2,25 @@
 
 import React, { Fragment,  Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
-import { YBInputField, YBTextInputWithLabel, YBControlledSelectWithLabel, YBSelectWithLabel, YBToggle, YBAddRowButton, YBButton, YBDropZoneWithLabel, YBNumericInputWithLabel } from 'components/common/forms/fields';
+import {
+  YBInputField,
+  YBTextInputWithLabel,
+  YBControlledSelectWithLabel,
+  YBSelectWithLabel,
+  YBToggle,
+  YBAddRowButton,
+  YBButton,
+  YBDropZoneWithLabel,
+  YBNumericInputWithLabel
+} from '../../../../components/common/forms/fields';
 
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
-import { isDefinedNotNull, isNonEmptyString, isNonEmptyArray, isNonEmptyObject, isValidObject, trimString } from 'utils/ObjectUtils';
+import { isDefinedNotNull,
+  isNonEmptyString,
+  isNonEmptyArray,
+  isNonEmptyObject,
+  isValidObject,
+  trimString } from '../../../../utils/ObjectUtils';
 import { reduxForm, formValueSelector, change, FieldArray, Field, getFormValues } from 'redux-form';
 import { connect } from 'react-redux';
 import AddRegionPopupForm from './AddRegionPopupForm';

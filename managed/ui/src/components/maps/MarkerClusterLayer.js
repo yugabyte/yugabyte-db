@@ -6,7 +6,7 @@ import { Link } from 'react-router';
 import { MapLayer } from 'react-leaflet';
 import { isObject } from 'lodash';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
-import { isNonEmptyArray, isValidObject, sortByLengthOfArrayProperty } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isValidObject, sortByLengthOfArrayProperty } from '../../utils/ObjectUtils';
 import React, { Component } from 'react';
 import './stylesheets/MarkerClusterLayer.scss';
 import ReactDOMServer from 'react-dom/server';
@@ -60,6 +60,7 @@ export default class MarkerClusterLayer extends MapLayer {
   createLeafletElement(props) {
     // Needed to react-leaflet^1.1.1 when extending Base Map Classes
   }
+
   UNSAFE_componentWillMount() {
     super.componentWillMount();
     this.leafletElement = Leaflet.markerClusterGroup({

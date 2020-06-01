@@ -5,8 +5,8 @@ import { Link, IndexLink, withRouter } from 'react-router';
 import { NavDropdown } from 'react-bootstrap';
 import slackIcon from './images/slack-monochrome-black.svg';
 import './stylesheets/SideNavBar.scss';
-import { getPromiseState } from 'utils/PromiseUtils';
-import { isHidden, isNotHidden, getFeatureState } from 'utils/LayoutUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { isHidden, isNotHidden, getFeatureState } from '../../../utils/LayoutUtils';
 
 class NavLink extends Component {
   render () {

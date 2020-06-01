@@ -5,9 +5,9 @@ import PropTypes from 'prop-types';
 import { Image, Label } from 'react-bootstrap';
 import { RootMarkerIcon, ReadReplicaMarkerIcon, CacheMarkerIcon } from './images';
 import './stylesheets/YBMapLegendItem.scss';
-import { isNonEmptyArray, isNonEmptyObject } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isNonEmptyObject } from '../../utils/ObjectUtils';
 import { PROVIDER_TYPES } from '../../config';
-const pluralize = require('pluralize');
+import pluralize from 'pluralize';
 
 export default class YBMapLegendItem extends Component {
   render() {

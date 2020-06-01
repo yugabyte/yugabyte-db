@@ -5,8 +5,8 @@ import { Field, FieldArray } from 'redux-form';
 import { Row, Col, Tabs, Tab, Alert } from 'react-bootstrap';
 import { YBModal, YBInputField, YBAddRowButton, YBSelectWithLabel, YBToggle, YBCheckBox,
          YBRadioButtonBarWithLabel } from '../fields';
-import { isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { isNonEmptyArray, isNonEmptyString } from '../../../../utils/ObjectUtils';
+import { getPromiseState } from '../../../../utils/PromiseUtils';
 import './RollingUpgradeForm.scss';
 import _ from 'lodash';
 import { getPrimaryCluster } from "../../../../utils/UniverseUtils";

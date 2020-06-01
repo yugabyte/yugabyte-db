@@ -3,14 +3,14 @@
 import React, { Fragment, Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBFormSelect, YBButton } from '../common/forms/fields';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../utils/PromiseUtils';
 import { isNonEmptyObject } from "../../utils/ObjectUtils";
 import Highlight from 'react-highlight';
 import { Link } from 'react-router';
 import { Formik, Field } from 'formik';
 import * as Yup from "yup";
 import './Importer.scss';
-import { showOrRedirect } from 'utils/LayoutUtils';
+import { showOrRedirect } from '../../utils/LayoutUtils';
 
 const stepsEnum = [
   "BEGIN",

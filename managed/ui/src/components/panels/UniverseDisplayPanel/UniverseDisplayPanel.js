@@ -5,16 +5,15 @@ import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { isFinite } from 'lodash';
 import { YBLoading } from '../../common/indicators';
-import { getPromiseState } from 'utils/PromiseUtils';
-import { YBCost, DescriptionItem } from 'components/common/descriptors';
-import { UniverseStatusContainer } from 'components/universes';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { YBCost, DescriptionItem } from '../../../components/common/descriptors';
+import { UniverseStatusContainer } from '../../../components/universes';
 import './UniverseDisplayPanel.scss';
 import { isNonEmptyObject } from "../../../utils/ObjectUtils";
 import { YBButton } from '../../common/forms/fields';
 import { getPrimaryCluster, getReadOnlyCluster, getClusterProviderUUIDs, getProviderMetadata } from "../../../utils/UniverseUtils";
-import { isNotHidden, isDisabled } from 'utils/LayoutUtils';
-
-const moment = require('moment');
+import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
+import moment from 'moment';
 
 class CTAButton extends Component {
   render() {

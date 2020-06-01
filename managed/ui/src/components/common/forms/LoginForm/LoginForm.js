@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { PageHeader } from 'react-bootstrap';
 import { YBButton, YBFormInput } from '../fields';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../../utils/PromiseUtils';
 import YBLogo from '../../YBLogo/YBLogo';
 import { browserHistory } from 'react-router';
 import { Field, Form, Formik } from 'formik';

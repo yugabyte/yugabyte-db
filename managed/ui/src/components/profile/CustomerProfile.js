@@ -3,14 +3,14 @@
 import React, { Component } from 'react';
 import { Tab } from 'react-bootstrap';
 import { browserHistory} from 'react-router';
-import { isNonAvailable, isDisabled, showOrRedirect, isNotHidden } from 'utils/LayoutUtils';
+import { isNonAvailable, isDisabled, showOrRedirect, isNotHidden } from '../../utils/LayoutUtils';
 import { YBTabsWithLinksPanel } from '../panels';
-import { isDefinedNotNull } from 'utils/ObjectUtils';
+import { isDefinedNotNull } from '../../utils/ObjectUtils';
 import UserProfileForm from './UserProfileForm';
 import AlertProfileForm from './AlertProfileForm';
 import UserList from './UserList';
 import { YBLoading } from '../common/indicators';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../utils/PromiseUtils';
 
 export default class CustomerProfile extends Component {
   constructor(props) {

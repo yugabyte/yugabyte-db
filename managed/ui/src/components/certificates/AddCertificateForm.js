@@ -4,9 +4,9 @@ import React, { Component, Fragment } from 'react';
 import { Alert } from 'react-bootstrap';
 import PropTypes from 'prop-types';
 import { YBFormInput, YBFormDatePicker, YBFormDropZone } from '../common/forms/fields';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../utils/PromiseUtils';
 import { YBModalForm } from '../common/forms';
-import { isDefinedNotNull, isNonEmptyObject } from 'utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyObject } from '../../utils/ObjectUtils';
 import { Field } from 'formik';
 import * as Yup from "yup";
 

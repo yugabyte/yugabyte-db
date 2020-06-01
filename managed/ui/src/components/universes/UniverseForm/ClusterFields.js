@@ -6,13 +6,13 @@ import { Field, FieldArray } from 'redux-form';
 import {browserHistory} from 'react-router';
 import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
-  isNonEmptyArray, trimSpecialChars } from 'utils/ObjectUtils';
+  isNonEmptyArray, trimSpecialChars } from '../../../utils/ObjectUtils';
 import {
   YBTextInput,YBTextInputWithLabel, YBSelectWithLabel, YBMultiSelectWithLabel,
   YBRadioButtonBarWithLabel, YBToggle, YBUnControlledNumericInput,
   YBControlledNumericInputWithLabel
-} from 'components/common/forms/fields';
-import { getPromiseState } from 'utils/PromiseUtils';
+} from '../../../components/common/forms/fields';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
@@ -116,7 +116,7 @@ export default class ClusterFields extends Component {
     }
   }
 
-  componentWillMount() {
+  UNSAFE_componentWillMount() {
     const { formValues, clusterType, updateFormField, type } = this.props;
     const { universe: { currentUniverse: { data: { universeDetails }}}} = this.props;
     // Set default software version in case of create
@@ -218,7 +218,7 @@ export default class ClusterFields extends Component {
     }
   }
 
-  componentWillReceiveProps(nextProps) {
+  UNSAFE_componentWillReceiveProps(nextProps) {
     const { universe: { currentUniverse }, cloud: { nodeInstanceList, instanceTypes }, clusterType, formValues } = nextProps;
 
     const currentFormValues = formValues[clusterType];

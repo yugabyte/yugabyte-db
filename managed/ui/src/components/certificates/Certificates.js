@@ -4,11 +4,11 @@ import { Row, Col } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Field } from 'formik';
 import * as Yup from 'yup';
-import { YBButton } from 'components/common/forms/fields';
-import { YBModalForm } from 'components/common/forms';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { YBButton } from '../common/forms/fields';
+import { YBModalForm } from '../common/forms';
+import { getPromiseState } from '../../utils/PromiseUtils';
 import moment from 'moment';
-import { isNotHidden, isDisabled } from 'utils/LayoutUtils';
+import { isNotHidden, isDisabled } from '../../utils/LayoutUtils';
 
 import './certificates.scss';
 import { AddCertificateFormContainer } from './';

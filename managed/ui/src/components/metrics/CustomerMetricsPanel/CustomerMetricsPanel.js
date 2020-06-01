@@ -5,7 +5,7 @@ import { GraphPanelHeaderContainer, GraphPanelContainer } from '../../metrics';
 import PropTypes from 'prop-types';
 import { PanelGroup } from 'react-bootstrap';
 import { browserHistory} from 'react-router';
-import { showOrRedirect } from 'utils/LayoutUtils';
+import { showOrRedirect } from '../../../utils/LayoutUtils';
 
 const graphPanelTypes = {
   "universe": {

@@ -6,7 +6,7 @@ import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
-import { isNotHidden, isDisabled } from 'utils/LayoutUtils';
+import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
 import moment from 'moment';

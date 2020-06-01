@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { isNonEmptyObject } from 'utils/ObjectUtils';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 const statusTypes =
   {
     singleRF: {currentStatusIcon: "fa fa-exclamation", currentStatusString: "Primary data placement is not redundant," +

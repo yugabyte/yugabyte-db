@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { YBLoading } from '../../common/indicators';
-import { isNonEmptyObject,  } from 'utils/ObjectUtils';
+import { isNonEmptyObject,  } from '../../../utils/ObjectUtils';
 import { METRIC_COLORS } from '../MetricsConfig';
 import { YBWidget } from '../../panels';
 

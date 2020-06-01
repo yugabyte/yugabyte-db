@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Marker, FeatureGroup, Polygon } from 'react-leaflet';
 import { divIcon } from 'leaflet';
 import MapMarker from './MapMarker';
-import {getPointsOnCircle} from 'utils/ObjectUtils';
+import {getPointsOnCircle} from '../../utils/ObjectUtils';
 import './stylesheets/universeRegionMarkerLayer.scss';
 import { getPrimaryCluster, getReadOnlyCluster, getPlacementRegions } from "../../utils/UniverseUtils";
 import { isNonEmptyObject, isNonEmptyArray } from "../../utils/ObjectUtils";

@@ -4,7 +4,7 @@ import { connect } from 'react-redux';
 import { AddCertificateForm } from './';
 
 import { addCertificate, addCertificateResponse,
-  getTlsCertificates, getTlsCertificatesResponse, addCertificateReset } from 'actions/customers';
+  getTlsCertificates, getTlsCertificatesResponse, addCertificateReset } from '../../actions/customers';
 import { closeDialog } from '../../actions/modal';
 
 const mapDispatchToProps = (dispatch) => {

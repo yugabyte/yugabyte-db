@@ -6,7 +6,7 @@ import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { CustomerMetricsPanel } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
-import { RollingUpgradeFormContainer } from 'components/common/forms';
+import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 import { UniverseFormContainer, UniverseStatusContainer, NodeDetailsContainer,
          DeleteUniverseContainer, UniverseAppsModal, UniverseConnectModal,
          UniverseOverviewContainerNew, EncryptionKeyModalContainer } from '../../universes';
@@ -16,13 +16,13 @@ import { ListTablesContainer, ListBackupsContainer } from '../../tables';
 import { isEmptyObject, isNonEmptyObject, isNonEmptyArray, isEmptyArray } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { hasLiveNodes } from 'utils/UniverseUtils';
+import { hasLiveNodes } from '../../../utils/UniverseUtils';
 
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
 import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import UniverseHealthCheckList from './UniverseHealthCheckList/UniverseHealthCheckList.js';
-import { isNonAvailable, isDisabled, isEnabled, isHidden, isNotHidden, getFeatureState } from 'utils/LayoutUtils';
+import { isNonAvailable, isDisabled, isEnabled, isHidden, isNotHidden, getFeatureState } from '../../../utils/LayoutUtils';
 import { LinkContainer } from 'react-router-bootstrap';
 
 import './UniverseDetail.scss';

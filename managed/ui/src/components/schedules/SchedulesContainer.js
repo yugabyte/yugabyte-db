@@ -2,7 +2,7 @@
 
 import { connect } from 'react-redux';
 import Schedules from './Schedules';
-import { getSchedules, getSchedulesResponse, deleteSchedule, deleteScheduleResponse } from 'actions/customers';
+import { getSchedules, getSchedulesResponse, deleteSchedule, deleteScheduleResponse } from '../../actions/customers';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../actions/universe';
 import { openDialog, closeDialog } from '../../actions/modal';
 

@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { YBTextInput } from 'components/common/forms/fields';
+import { YBTextInput } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import { Row, Col } from 'react-bootstrap';
 import PropTypes from 'prop-types';

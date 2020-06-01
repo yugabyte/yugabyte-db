@@ -7,9 +7,14 @@ import * as Yup from "yup";
 import { connect } from 'react-redux';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { YBModal, YBFormSelect, YBFormInput } from '../common/forms/fields';
-import { getCustomerUsers, getCustomerUsersSuccess, getCustomerUsersFailure,
-         createUser, createUserResponse } from '../../actions/customers';
-import { isNonEmptyObject } from 'utils/ObjectUtils';
+import {
+  getCustomerUsers,
+  getCustomerUsersSuccess,
+  getCustomerUsersFailure,
+  createUser,
+  createUserResponse
+} from '../../actions/customers';
+import { isNonEmptyObject } from '../../utils/ObjectUtils';
 
 class AddUserModal extends Component {
   handleSubmitForm = (values) => {

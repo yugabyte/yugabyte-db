@@ -6,7 +6,7 @@ import { Row, Col } from 'react-bootstrap';
 import { UniverseRegionLocationPanelContainer, HighlightedStatsPanelContainer,
   UniverseDisplayPanelContainer } from '../panels';
 import './stylesheets/Dashboard.scss';
-import { isAvailable, showOrRedirect } from 'utils/LayoutUtils';
+import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 
 export default class Dashboard extends Component {
   componentDidMount() {
