@@ -57,3 +57,26 @@ CREATE INDEX ON sc_multi_desc(k, r DESC);
 INSERT INTO sc_multi_desc(k, r, v) VALUES (1, 10, 10),(1, 10, 10),(1, NULL, 2),(1, 20, 3);
 EXPLAIN (COSTS OFF) SELECT * FROM sc_multi_desc WHERE k = 1;
 SELECT * FROM sc_multi_desc WHERE k = 1;
+
+-- Test NULLS last ordering.
+CREATE TABLE sc_desc_nl(h int, r int, v int);
+CREATE INDEX on sc_desc_nl(h HASH, r DESC NULLS LAST);
+INSERT INTO sc_desc_nl(h,r,v) values (1,1,1), (1,2,2), (1,3,3), (1,4,4), (1,5,5), (1, null, 6);
+-- Rows should be ordered DESC NULLS LAST by r.
+SELECT * FROM sc_desc_nl WHERE h = 1;
+SELECT * FROM sc_desc_nl WHERE h = 1 AND r >= 2;
+SELECT * FROM sc_desc_nl WHERE h = 1 AND r < 4;
+SELECT * FROM sc_desc_nl WHERE h = 1 AND r > 1 AND r <= 4;
+
+-- <value> >/>=/=/<=/< null is never true per SQL semantics.
+SELECT * FROM sc_desc_nl WHERE h = 1 AND r = null;
+SELECT * FROM sc_desc_nl WHERE h = 1 AND r >= null;
+SELECT * FROM sc_desc_nl WHERE h = 1 AND r > null;
+SELECT * FROM sc_desc_nl WHERE h = 1 AND r <= null;
+SELECT * FROM sc_desc_nl WHERE h = 1 AND r < null;
+
+-- IS NULL should be pushed down and return the expected result.
+SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS null;
+EXPLAIN (COSTS OFF) SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS null;
+
+DROP TABLE sc_desc_nl;

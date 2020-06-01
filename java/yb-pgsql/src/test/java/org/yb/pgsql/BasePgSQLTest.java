@@ -954,20 +954,32 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected void assertOneRow(Statement statement,
+                              String query,
+                              Object... values) throws SQLException {
+    try (ResultSet rs = statement.executeQuery(query)) {
+      assertNextRow(rs, values);
+      assertFalse(rs.next());
+    }
+  }
+
   protected void assertOneRow(String stmt, Object... values) throws SQLException {
     try (Statement statement = connection.createStatement()) {
-      try (ResultSet rs = statement.executeQuery(stmt)) {
-        assertNextRow(rs, values);
-        assertFalse(rs.next());
-      }
+     assertOneRow(statement, stmt, values);
+    }
+  }
+
+  protected void assertRowSet(Statement statement,
+                              String query,
+                              Set<Row> expectedRows) throws SQLException {
+    try (ResultSet rs = statement.executeQuery(query)) {
+      assertEquals(expectedRows, getRowSet(rs));
     }
   }
 
   protected void assertRowSet(String stmt, Set<Row> expectedRows) throws SQLException {
     try (Statement statement = connection.createStatement()) {
-      try (ResultSet rs = statement.executeQuery(stmt)) {
-        assertEquals(expectedRows, getRowSet(rs));
-      }
+      assertRowSet(statement, stmt, expectedRows);
     }
   }
 
@@ -1325,6 +1337,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return getTableCounterMetricByTableUUID(getTableUUID(tableName), metricName);
   }
 
+  protected String getExplainAnalyzeOutput(Statement stmt, String query) throws Exception {
+    try (ResultSet rs = stmt.executeQuery("EXPLAIN ANALYZE " + query)) {
+      StringBuilder sb = new StringBuilder();
+      while (rs.next()) {
+        sb.append(rs.getString(1)).append("\n");
+      }
+      return sb.toString().trim();
+    }
+  }
 
   // TODO(alex): This should be reworked and made immutable.
   public static class ConnectionBuilder implements Cloneable {
