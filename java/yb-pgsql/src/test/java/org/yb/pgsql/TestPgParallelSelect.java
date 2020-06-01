@@ -32,7 +32,7 @@ public class TestPgParallelSelect extends BasePgSQLTest {
   private static final long maxTotalMillis =
     (long)((3 * kNumShardsPerTserver * kSlowdownPgsqlAggregateReadMs) * 0.9);
 
-  private void verifyStatementPushdownMetric(Statement statement,
+  private void verifyAggregatePushdownMetric(Statement statement,
                                              String stmt,
                                              boolean pushdown_expected) throws Exception {
     long elapsedMillis = verifyStatementMetric(statement, stmt, AGGREGATE_PUSHDOWNS_METRIC,
@@ -70,32 +70,32 @@ public class TestPgParallelSelect extends BasePgSQLTest {
       createSimpleTable("aggtest");
 
       // Pushdown COUNT/MAX/MIN/SUM for INTEGER/FLOAT.
-      verifyStatementPushdownMetric(
+      verifyAggregatePushdownMetric(
           statement, "SELECT COUNT(vi), MAX(vi), MIN(vi), SUM(vi) FROM aggtest", true);
-      verifyStatementPushdownMetric(
+      verifyAggregatePushdownMetric(
           statement, "SELECT COUNT(r), MAX(r), MIN(r), SUM(r) FROM aggtest", true);
 
       // Pushdown COUNT(*).
-      verifyStatementPushdownMetric(
+      verifyAggregatePushdownMetric(
           statement, "SELECT COUNT(*) FROM aggtest", true);
 
       // Pushdown for BIGINT COUNT/MAX/MIN.
-      verifyStatementPushdownMetric(
+      verifyAggregatePushdownMetric(
           statement, "SELECT COUNT(h), MAX(h), MIN(h) FROM aggtest", true);
 
       // Pushdown COUNT/MIN/MAX for text.
-      verifyStatementPushdownMetric(
+      verifyAggregatePushdownMetric(
           statement, "SELECT COUNT(vs), MAX(vs), MIN(vs) FROM aggtest", true);
 
       // Pushdown shared aggregates.
-      verifyStatementPushdownMetric(
+      verifyAggregatePushdownMetric(
           statement, "SELECT MAX(vi), MAX(vi) + 1 FROM aggtest", true);
 
       // Create table with NUMERIC/DECIMAL types.
       statement.execute("CREATE TABLE aggtest2 (n numeric, d decimal)");
 
       // Pushdown COUNT for NUMERIC/DECIMAL types.
-      verifyStatementPushdownMetric(
+      verifyAggregatePushdownMetric(
           statement, "SELECT COUNT(n), COUNT(d) FROM aggtest2", true);
     }
   }

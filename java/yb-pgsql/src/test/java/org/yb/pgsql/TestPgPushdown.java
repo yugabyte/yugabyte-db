@@ -1359,6 +1359,26 @@ public class TestPgPushdown extends BasePgSQLTest {
     tester.test();
   }
 
+  /** Ensure pushing down aggregate functions with constant argument. */
+  @Test
+  public void aggregates_const() throws Exception {
+    String tableName = "aggregate";
+    int numRows = 5000;
+
+    new AggregatePushdownTester(tableName, numRows, "COUNT(*)").test();
+    new AggregatePushdownTester(tableName, numRows, "COUNT(0)").test();
+    new AggregatePushdownTester(tableName, numRows, "COUNT(NULL)").test();
+
+    new AggregatePushdownTester(tableName, numRows, "SUM(2)").test();
+    new AggregatePushdownTester(tableName, numRows, "SUM(NULL::int)").test();
+
+    // Postgres optimizes MAX(<const>) or MIN(<const>) so it isn't a real pushdown.
+  }
+
+  //
+  // Helpers
+  //
+
   /**
    * Tests execution plan and elapsed time of SELECT/UPDATE/DELETE ... WHERE ... IN (...) type of
    * statements by comparing it with the execution time of similar non-optimized queries.
@@ -1456,28 +1476,28 @@ public class TestPgPushdown extends BasePgSQLTest {
         createTable(stmt);
         fillTable(stmt);
 
-        List<Row> expectedResult = getExpectedRows();
-        testSelect(stmt, expectedResult);
-        testUpdate(stmt, expectedResult);
-        testDelete(stmt, expectedResult);
+        List<Row> expectedRows = getExpectedRows();
+        testSelect(stmt, expectedRows);
+        testUpdate(stmt, expectedRows);
+        testDelete(stmt, expectedRows);
 
         dropTable(stmt);
       }
     }
 
-    private void testSelect(Statement stmt, List<Row> expectedResult) throws Exception {
-      int lastColIdx = expectedResult.get(0).elems.size() - 1;
-      int numRows = expectedResult.size();
+    private void testSelect(Statement stmt, List<Row> expectedRows) throws Exception {
+      int lastColIdx = expectedRows.get(0).elems.size() - 1;
+      int numRows = expectedRows.size();
 
       long nonOptimizedTime;
       {
         // Full scan query used as an execution time reference
         String inClause = StringUtils
-            .join(expectedResult.stream().map(r -> r.getInt(lastColIdx)).iterator(), ",");
+            .join(expectedRows.stream().map(r -> r.getInt(lastColIdx)).iterator(), ",");
         String nonOptimizedQuery = String.format(
             "SELECT * FROM %s WHERE v IN (%s)", tableName, inClause);
         assertPushdownPlan(stmt, nonOptimizedQuery, false);
-        assertEquals(expectedResult, getSortedRowList(stmt.executeQuery(nonOptimizedQuery)));
+        assertEquals(expectedRows, getSortedRowList(stmt.executeQuery(nonOptimizedQuery)));
         nonOptimizedTime = timeQueryWithRowCount(nonOptimizedQuery, numRows, queryRunCount);
         LOG.info("Non-optimized SELECT total time (ms): " + nonOptimizedTime);
       }
@@ -1488,8 +1508,10 @@ public class TestPgPushdown extends BasePgSQLTest {
       {
         String query = getOptimizedSelectQuery();
         assertPushdownPlan(stmt, query, true);
-        assertEquals(expectedResult, getSortedRowList(stmt.executeQuery(query)));
-        assertQueryRuntimeWithRowCount(query, numRows, queryRunCount, maxOptimizedTime);
+        assertEquals(expectedRows, getSortedRowList(stmt.executeQuery(query)));
+        long optimizedTime = assertQueryRuntimeWithRowCount(query, numRows, queryRunCount,
+            maxOptimizedTime);
+        LOG.info("Optimized plain SELECT total time (ms): " + optimizedTime);
       }
 
       // Prepared optimized query
@@ -1503,18 +1525,20 @@ public class TestPgPushdown extends BasePgSQLTest {
           }
         }, true);
         try (PreparedStatement pquery = prepareSelectOrDeleteQuery(queryString)) {
-          assertEquals(expectedResult, getSortedRowList(pquery.executeQuery()));
-          assertQueryRuntimeWithRowCount(pquery, numRows, queryRunCount, maxOptimizedTime);
+          assertEquals(expectedRows, getSortedRowList(pquery.executeQuery()));
+          long optimizedTime = assertQueryRuntimeWithRowCount(pquery, numRows, queryRunCount,
+              maxOptimizedTime);
+          LOG.info("Optimized prepared SELECT total time (ms): " + optimizedTime);
         }
       }
     }
 
-    private void testUpdate(Statement stmt, List<Row> expectedResult) throws Exception {
-      int lastColIdx = expectedResult.get(0).elems.size() - 1;
+    private void testUpdate(Statement stmt, List<Row> expectedRows) throws Exception {
+      int lastColIdx = expectedRows.get(0).elems.size() - 1;
       int valueToSet = 123456789;
 
-      List<Row> updatedResult = new ArrayList<>(expectedResult.size());
-      for (Row row : expectedResult) {
+      List<Row> updatedResult = new ArrayList<>(expectedRows.size());
+      for (Row row : expectedRows) {
         Row urow = row.clone();
         urow.elems.set(lastColIdx, valueToSet);
         updatedResult.add(urow);
@@ -1527,7 +1551,7 @@ public class TestPgPushdown extends BasePgSQLTest {
       {
         // Full scan update query used as an execution time reference
         String inClause = StringUtils
-            .join(expectedResult.stream().map(r -> r.getInt(lastColIdx)).iterator(), ",");
+            .join(expectedRows.stream().map(r -> r.getInt(lastColIdx)).iterator(), ",");
         String nonOptimizedQuery = String.format(
             "UPDATE %s SET v = %d WHERE v IN (%s)", tableName, valueToSet, inClause);
         assertPushdownPlan(stmt, nonOptimizedQuery, false);
@@ -1672,6 +1696,51 @@ public class TestPgPushdown extends BasePgSQLTest {
                 query, plan),
             plan.contains("Foreign Scan"));
       }
+    }
+  }
+
+  /**
+   * Tests pushdown of aggregate SELECTs statements by analyzing YSQL {@code AggregatePushdowns}
+   * metrics.
+   * <p>
+   * Uses a {@code (id int PRIMARY KEY, v int)} table
+   */
+  private class AggregatePushdownTester {
+    private final String tableName;
+    private final int numRowsToInsert;
+    private final String optimizedExpr;
+
+    public AggregatePushdownTester(String tableName, int numRowsToInsert, String optimizedExpr) {
+      this.tableName = tableName;
+      this.numRowsToInsert = numRowsToInsert;
+      this.optimizedExpr = optimizedExpr;
+    }
+
+    public void test() throws Exception {
+      try (Statement stmt = connection.createStatement()) {
+        stmt.executeUpdate(String.format(
+            "CREATE TABLE %s (id int PRIMARY KEY, v int)",
+            tableName));
+        stmt.executeUpdate(String.format(
+            "INSERT INTO %s ("
+                + "SELECT generate_series, generate_series + 1 FROM generate_series(1, %s)"
+                + ");",
+            tableName, numRowsToInsert));
+        verifyPushdown(stmt);
+        stmt.executeUpdate(String.format("DROP TABLE %s", tableName));
+      }
+    }
+
+    private void verifyPushdown(Statement stmt) throws Exception {
+      String query = String.format("SELECT %s FROM %s", optimizedExpr, tableName);
+      verifyStatementMetric(
+          stmt,
+          query,
+          AGGREGATE_PUSHDOWNS_METRIC,
+          1 /* queryMetricDelta */,
+          1 /* txnMetricDelta */,
+          true /* validStmt */
+      );
     }
   }
 }

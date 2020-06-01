@@ -18,12 +18,15 @@ INSERT INTO ybaggtest
     SELECT series, t.int_2, t.int_4, t.int_8, t.float_4, t.float_8
     FROM ybaggtest as t CROSS JOIN generate_series(2, 100) as series;
 
--- Verify COUNT(*) returns proper value.
+-- Verify COUNT(...) returns proper value.
 SELECT COUNT(*) FROM ybaggtest;
+SELECT COUNT(0) FROM ybaggtest;
+SELECT COUNT(NULL) FROM ybaggtest;
 
--- Delete row, verify COUNT(*) returns proper value.
+-- Delete row, verify COUNT(...) returns proper value.
 DELETE FROM ybaggtest WHERE id = 100;
 SELECT COUNT(*) FROM ybaggtest;
+SELECT COUNT(0) FROM ybaggtest;
 
 -- Verify selecting different aggs for same column works.
 SELECT SUM(int_4), MAX(int_4), MIN(int_4), SUM(int_2), MAX(int_2), MIN(int_2) FROM ybaggtest;
@@ -60,6 +63,10 @@ SELECT COUNT(*), COUNT(a) FROM ybaggtest2;
 
 -- Verify MAX/MIN respect NULL values.
 SELECT MAX(a), MIN(a) FROM ybaggtest2;
+
+-- Verify SUM/MAX/MIN work as expected with constant arguments.
+SELECT SUM(2), MAX(2), MIN(2) FROM ybaggtest2;
+SELECT SUM(NULL::int), MAX(NULL), MIN(NULL) FROM ybaggtest2;
 
 CREATE TABLE digit(k INT PRIMARY KEY, v TEXT NOT NULL);
 INSERT INTO digit VALUES(1, 'one'), (2, 'two'), (3, 'three'), (4, 'four'), (5, 'five'), (6, 'six');

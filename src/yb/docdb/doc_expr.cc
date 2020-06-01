@@ -186,17 +186,22 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
                                            const Schema *schema) {
   bfpg::TSOpcode tsopcode = static_cast<bfpg::TSOpcode>(tscall.opcode());
   switch (tsopcode) {
-    case bfpg::TSOpcode::kCount:
-      if (tscall.operands(0).has_column_id()) {
+    case bfpg::TSOpcode::kCount: {
+      const auto& operand = tscall.operands(0);
+      if (operand.has_column_id()) {
         // Check if column value is NULL. Postgres does not count NULL value of a column, unless
         // it's COUNT(*).
         QLExprResult arg_result;
-        RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, arg_result.Writer()));
+        RETURN_NOT_OK(EvalExpr(operand, table_row, arg_result.Writer()));
         if (IsNull(arg_result.Value())) {
           return Status::OK();
         }
+      } else if (operand.has_value() && QLValue::IsNull(operand.value())) {
+        // We've got COUNT(null) which is bound to return zero.
+        return Status::OK();
       }
       return EvalCount(result);
+    }
 
     case bfpg::TSOpcode::kSumInt8:
       return EvalSumInt(tscall.operands(0), table_row, result, [](const QLValuePB& value) {
