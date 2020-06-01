@@ -155,7 +155,7 @@ ycqlsh> CREATE TABLE banking.accounts (
 ) with transactions = { 'enabled' : true };
 ```
 
-You can verify that this table has transactions enabled on it by querying the 
+You can verify that this table has transactions enabled on it by running the following query.
 
 ```sql
 ycqlsh> select keyspace_name, table_name, transactions from system_schema.tables
