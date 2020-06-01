@@ -45,7 +45,7 @@ A transaction is a sequence of operations performed as a single logical unit of 
 The table should be created with the `transactions` property enabled. The statement should look something as follows.
 
 ```sql
-ycqlsh> CREATE TABLE IF NOT EXISTS <TABLE_NAME> (...) WITH transactions = { 'enabled' : true };
+CREATE TABLE IF NOT EXISTS <TABLE_NAME> (...) WITH transactions = { 'enabled' : true };
 ```
 
 ### Java example
@@ -64,7 +64,7 @@ String create_stmt =
 You can insert data by performing the sequence of commands inside a `BEGIN TRANSACTION` and `END TRANSACTION` block.
 
 ```sql
-ycqlsh> BEGIN TRANSACTION
+BEGIN TRANSACTION
   statement 1
   statement 2
 END TRANSACTION;
@@ -144,7 +144,7 @@ Create a keyspace.
 ycqlsh> CREATE KEYSPACE banking;
 ```
 
-Create a table with the `transactions` property set to enabled.
+Create a table with the `transactions` property set enabled.
 
 ```sql
 ycqlsh> CREATE TABLE banking.accounts (
