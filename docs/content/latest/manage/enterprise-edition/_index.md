@@ -2,29 +2,29 @@
 title: Yugabyte Platform
 headerTitle: Yugabyte Platform
 linkTitle: Yugabyte Platform
-description: Manage YugabyteDB without any downtime using the Yugabyte Platform's built-in orchestration and monitoring.
+description: Use Yugabyte Platform to manage YugabyteDB universes.
 image: /images/section_icons/manage/enterprise.png
-headcontent: Manage YugabyteDB without any downtime using the Yugabyte Platform's built-in orchestration and monitoring.
+headcontent: Use Yugabyte Platform's orchestration and monitoring to manage YugabyteDB universes.
 aliases:
-  - /manage/enterprise-edition/
+  - latest/manage/enterprise-edition/
 menu:
   latest:
-    identifier: manage-enterprise-edition
+    identifier: enterprise-edition
     parent: manage
     weight: 707
 ---
 
-YugabyteDB creates a universe with many instances (VMs, pods, machines, etc., provided by IaaS) logically grouped together to form one logical distributed database. Each such universe can be made up of one or more clusters. These are comprised of one primary cluster and zero or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
+Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pods, machines, etc., provided by IaaS), logically grouped together to form one logical distributed database. Each universe includes one or more clusters. A universe is comprised of one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="create-universe-multi-zone/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
-        <div class="title">Create universe - Multi-zone</div>
+        <div class="title">Create a multi-zone universe</div>
       </div>
       <div class="body">
-        Create YugabyteDB universes in one region across multiple zones using Yugabyte Admin Console's intent-driven orchestration.
+        Use Yugabyte Platform to create a YugabyteDB universe spans multiple zones within one region.
       </div>
     </a>
   </div>
@@ -33,10 +33,10 @@ YugabyteDB creates a universe with many instances (VMs, pods, machines, etc., pr
     <a class="section-link icon-offset" href="create-universe-multi-region/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
-        <div class="title">Create universe - Multi-region</div>
+        <div class="title">Create a multi-region universe</div>
       </div>
       <div class="body">
-        Create YugabyteDB universes in multiple regions using Yugabyte Admin Console's intent-driven orchestration.
+        Use Yugabyte Platform to create a YugabyteDB universe that spans multiple regions.
       </div>
     </a>
   </div>
@@ -45,22 +45,22 @@ YugabyteDB creates a universe with many instances (VMs, pods, machines, etc., pr
     <a class="section-link icon-offset" href="edit-universe/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />   
-        <div class="title">Edit universe</div>
+        <div class="title">Edit a universe</div>
       </div>
       <div class="body">
-        Expand, shrink, and reconfigure universes without any downtime.
+        Expand, shrink, or reconfigure a universe without downtime.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="edit-config/">
+    <a class="section-link icon-offset" href="edit-config-flags/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />    
-        <div class="title">Edit config flags</div>
+        <div class="title">Edit configuration flags</div>
       </div>
       <div class="body">
-        Change the config flags for universes in a rolling manner without any application impact.
+        Change configuration flags for a universe in a rolling manner, without any application impact.
       </div>
     </a>
   </div>
@@ -69,10 +69,10 @@ YugabyteDB creates a universe with many instances (VMs, pods, machines, etc., pr
     <a class="section-link icon-offset" href="instance-tags/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />    
-        <div class="title">Instance tags</div>
+        <div class="title">Create and edit instance tags</div>
       </div>
       <div class="body">
-        Create and edit instance tags.
+        Create and edit instance tags to help manage, bill, or audit resources.
       </div>
     </a>
   </div>
@@ -81,10 +81,10 @@ YugabyteDB creates a universe with many instances (VMs, pods, machines, etc., pr
     <a class="section-link icon-offset" href="cluster-health/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
-        <div class="title">Health checks and alerts</div>
+        <div class="title">Configure health checks and alerts</div>
       </div>
       <div class="body">
-        Setup automatic cluster health checking and error reporting.
+        Configure automatic health checking and error reporting for a universe.
       </div>
     </a>
   </div>
@@ -93,10 +93,10 @@ YugabyteDB creates a universe with many instances (VMs, pods, machines, etc., pr
     <a class="section-link icon-offset" href="read-replicas/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
-        <div class="title">Read replicas</div>
+        <div class="title">Create a read replica cluster</div>
       </div>
       <div class="body">
-        Create YugabyteDB universes with primary and read replica clusters in a hybrid cloud deployment.
+        Create a YugabyteDB universe, with a primary cluster and one or more read replica clusters.
       </div>
     </a>
   </div>
@@ -105,10 +105,34 @@ YugabyteDB creates a universe with many instances (VMs, pods, machines, etc., pr
     <a class="section-link icon-offset" href="backup-restore/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="title">Backup and restore</div>
+        <div class="title">Back up and restore data</div>
       </div>
       <div class="body">
-        Backup and restore tables using the Yugabyte Admin Console.
+        Use Yugabyte Platform to back up and restore universe data.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="back-up-restore-yp/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <div class="title">Back up and restore Yugabyte Platform</div>
+      </div>
+      <div class="body">
+        Back up and restore Yugabyte Platform for disaster recovery.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="schedule-data-backup/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <div class="title">Schedule a data backup</div>
+      </div>
+      <div class="body">
+        Use Yugabyte Platform to perform a regular scheduled backup of universe data.
       </div>
     </a>
   </div>
@@ -117,10 +141,10 @@ YugabyteDB creates a universe with many instances (VMs, pods, machines, etc., pr
     <a class="section-link icon-offset" href="upgrade-universe/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/upgrade_universe.png" aria-hidden="true" />   
-        <div class="title">Upgrade universe</div>
+        <div class="title">Upgrade a universe</div>
       </div>
       <div class="body">
-        Upgrade universes in a rolling manner without any application impact.
+        Perform a rolling upgrade of a universe, without any application impact.
       </div>
     </a>
   </div>
@@ -141,10 +165,10 @@ YugabyteDB creates a universe with many instances (VMs, pods, machines, etc., pr
     <a class="section-link icon-offset" href="delete-universe/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/delete_universe.png" aria-hidden="true" /> 
-        <div class="title">Delete universe</div>
+        <div class="title">Delete a universe</div>
       </div>
       <div class="body">
-        Delete unwanted universes to free up infrastructure capacity.
+        Delete a universe to free up infrastructure capacity.
       </div>
     </a>
   </div>

@@ -1,11 +1,11 @@
 ---
-title: Upgrade deployment
-headerTitle: Upgrade deployment
-linkTitle: Upgrade deployment
-description: Upgrade deployment
+title: Upgrade a deployment
+headerTitle: Upgrade a deployment
+linkTitle: Upgrade a deployment
+description: Upgrade a deployment
 aliases:
   - /deploy/manual-deployment/upgrade-deployment
-  - /manage/upgrade-deployment
+  - /latest/manage/upgrade-deployment
 menu:
   latest:
     identifier: manage-upgrade-deployment

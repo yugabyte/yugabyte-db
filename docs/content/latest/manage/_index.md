@@ -6,7 +6,7 @@ description: Manage YugabyteDB clusters.
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 aliases:
-  - /manage/
+  - /latest/manage/
 section: USER GUIDES
 menu:
   latest:
@@ -55,7 +55,7 @@ menu:
     <a class="section-link icon-offset" href="./upgrade-deployment/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
-        <div class="title">Upgrade deployment</div>
+        <div class="title">Upgrade a deployment</div>
       </div>
       <div class="body">
           Upgrade the YB software deployment.
@@ -83,7 +83,7 @@ menu:
         <div class="title">Yugabyte Platform</div>
       </div>
       <div class="body">
-        Manage YugabyteDB without any downtime using the Yugabyte Platform's built-in orchestration and monitoring.
+        Use Yugabyte Platform's orchestration and monitoring to manage YugabyteDB universes.
       </div>
     </a>
   </div>

@@ -2,19 +2,19 @@
 title: Node status and actions in Yugabyte Platform
 headerTitle: Node status and actions
 linkTitle: Node status and actions
-description: Node status and actions in Yugabyte Platform.
+description: Use Yugabyte Platform to view Node status and perform actions.
 aliases:
-  - /manage/enterprise-edition/node-actions/
+  - /latest/manage/enterprise-edition/node-actions/
 menu:
   latest:
-    identifier: manage-node-actions
-    parent: manage-enterprise-edition
+    identifier: node-status-actions
+    parent: enterprise-edition
     weight: 745
 isTocNested: true
 showAsideToc: true
 ---
 
-Each node in a universe has a **Status** column indicating its current logical state based on the YugaWare layer. This section first describes what each of them means and gives information on when and how these can be modified by the user. The nodes tab on the universe page shows them. When we create a universe, the **Nodes** tab on the universe page provides the physical (such as ip, cloud) and the logical state information (master, status, etc.) about that node. Note that the `STATUS` for each node is **Live**. This is the steady state value for a normally functioning node.
+Each node in a universe has a **Status** column indicating its current logical state based on the Yugabyte Platform layer. This section first describes what each of them means and gives information on when and how these can be modified by the user. The nodes tab on the universe page shows them. When you create a universe, the **Nodes** tab on the universe page provides the physical (such as IP, cloud) and the logical state information (master, status, etc.) about that node. Note that the `STATUS` for each node is **Live**. This is the steady state value for a normally functioning node.
 
 ![Node Actions](/images/ee/node-actions-live.png)
 
@@ -29,12 +29,12 @@ Live | Steady state default status of a healthy node. All the server processes a
 Stopped | Server processes (`yb-tserver` and `yb-master`, if applicable) on that node have been stopped.
 Removed | The node does not have any more data and the server processes have been stopped. It is not participating in the universe.
 Decommissioned | The underlying instance has been released to the IaaS. This can happen only after a node is removed or processes stopped.
-Provisioned | During universe (or cluster) creation, this indicates the instance is being setup with the required OS packages (for example, `ntp` and `chronyd`).
-Software Installed | During universe (or cluster) creation, this indicates YugabyteDB software is being deployed on this node.
+Provisioned | During universe creation, this indicates the instance is being setup with the required OS packages (for example, `ntp` and `chronyd`).
+Software Installed | During universe creation, this indicates YugabyteDB software is being deployed on this node.
 Upgrade Software | The software version is being updated on this node and the master/tserver processes will be restarted.
 Upgrade GFlags | A server (`master` or `tserver`) process configuration file is being updated and the corresponding server will be restarted.
-Unreachable | YugaWare is not able to get information from the `node_exporter` process on that node.
-Destroyed | Very transient, while the universe (or cluster) is being deleted.
+Unreachable | Yugabyte Platform is not able to get information from the `node_exporter` process on that node.
+Destroyed | Very transient, while the universe is being deleted.
 
 ## Node actions
 
@@ -52,11 +52,11 @@ Rest of the status types do not have any user actions, as they are mostly transi
 
 {{< note title="Note" >}}
 
-**Add Node** just recreates a new backing instance for an existing node in the universe or cluster. To add a completely new node (as in, increase the number of nodes in the universe), one can use the **Edit Universe** option to expand the universe.
+**Add Node** just recreates a new backing instance for an existing node in the universe. To add a completely new node (as in, increase the number of nodes in the universe), one can use the **Edit Universe** option to expand the universe.
 
 {{< /note >}}
 
-The rest of this page describes how to modify the state of each node in a universe/cluster. The UI provides different actions that can be taken against each node under the **ACTION** column drop down.
+The rest of this page describes how to modify the state of each node in a universe. The UI provides different actions that can be taken against each node under the **ACTION** column drop down.
 
 There are two broad set of use cases:
 
@@ -66,7 +66,7 @@ Following are the steps to ensure that an underlying instance for a given node c
 
 ### Removal of an instance that is dying
 
-Let's say, for example, that a VM/machine in the universe is hitting end of life or having unrecoverable hardware or other system (OS, disk, etc.) problems. The machine crashes for good, and so there are no processes running on it. This will be detected by the UI and shown as an `Unreachable` node. Note that RAFT will ensure other leaders will get elected for the underlying data shards. But the universe is in an partial under replicated scenario and will not be able to tolerate many more failures. So quick remedy is needed.
+Let's say, for example, that a VM or machine in the universe is hitting end of life or having unrecoverable hardware or other system (OS, disk, etc.) problems. The machine crashes for good, and so there are no processes running on it. This will be detected by the UI and shown as an `Unreachable` node. Note that RAFT will ensure other leaders will get elected for the underlying data shards. But the universe is in an partial under replicated scenario and will not be able to tolerate many more failures. So a quick remedy is needed.
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 

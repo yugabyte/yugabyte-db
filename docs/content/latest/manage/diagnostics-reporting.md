@@ -4,7 +4,7 @@ headerTitle: Diagnostics reporting
 linkTitle: Diagnostics reporting
 description: Enable diagnostics reporting and set collection levels on YB-Master and YB-TServer nodes.
 aliases:
-  - /manage/diagnostics-reporting/
+  - /latest/manage/diagnostics-reporting/
 menu:
   latest:
     identifier: diagnostics-reporting
