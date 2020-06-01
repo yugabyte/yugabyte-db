@@ -85,6 +85,7 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Improve YSQL performance and support for benchmarks | PROGRESS  | v2.2  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3226) |  |
 | YSQL cluster administration features | PROGRESS  | v2.2  | [Track](https://github.com/yugabyte/yugabyte-db/issues/4194) |  |
 | [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) GA | PROGRESS  | v2.2  |  |  |
+| IPV6 support for YugabyteDB | PROGRESS  |  v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/3644) |  |
 | [`DEFERRED` constraints support in YSQL](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS  |  v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |
 | Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) | PROGRESS  |  v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1808) |  |
 | Audit logging support | PLANNING  | v2.3  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1331) |  |
@@ -103,7 +104,6 @@ The following items are being planned as additions to the roadmap
 | Support advanced features with [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) | PLANNING  |   |  | Support the following in colocated tables: `ALTER` table, xCluster replication, transactional backups, 2DC replication, multiple colocation groups support |
 | Performance improvements for [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) | PLANNING  |   |  | Pushdown joins, geo-distributed perf by routing queries to colocated tablet leader, ability to pull out fast growing tables out of colocation groups |
 | Point in time restores | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/1820) |  |
-| IPV6 support for YugabyteDB | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/3644) |  |
 | LDAP authentication support | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) |  |
 | Support Kafka as source and sink | PLANNING |  |  | Support source and sink for both YSQL and YSQL |
 
