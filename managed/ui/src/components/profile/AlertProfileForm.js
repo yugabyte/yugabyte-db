@@ -54,7 +54,8 @@ export default class AlertProfileForm extends Component {
           .default(false)
           .nullable(),
 
-        alertingEmail: Yup.string().email('Must be an email').nullable(),
+        // This field can be one or more emails separated by commas
+        alertingEmail: Yup.string().nullable(),
 
         checkIntervalMs: Yup.number()
           .typeError('Must specify a number'),
@@ -127,8 +128,8 @@ export default class AlertProfileForm extends Component {
                     name="alertingData.alertingEmail"
                     type="text"
                     component={YBFormInput}
-                    label="Alert email"
-                    placeholder="Email to forward alerts to"
+                    label="Alert emails"
+                    placeholder="Emails to forward alerts to"
                   />
                   <Field name="alertingData.sendAlertsToYb">
                     {({field, form}) => (<YBToggle onToggle={handleChange}
