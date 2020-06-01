@@ -89,7 +89,7 @@ DEFAULT_CALLHOME = True
 VERSION_METADATA_PATH = os.path.join(YUGABYTE_DIR, "version_metadata.json")
 YUGABYTE_API_CLIENT_PROGRAMS = {
     "ysql": "ysqlsh",
-    "ycql": "cqlsh",
+    "ycql": "ycqlsh",
 }
 YB_NUM_SHARDS_PER_TSERVER = 1
 YSQL_NUM_SHARDS_PER_TSERVER = 1
@@ -967,7 +967,7 @@ class ControlScript(object):
                "jdbc:postgresql://{}:{}/yugabyte?user=yugabyte&password=yugabyte".format(
                 advertise_ip, ysql_port)),
             (Output.make_yellow("YSQL"), "bin/ysqlsh{}".format(ysql_flags)),
-            (Output.make_yellow("YCQL"), "bin/cqlsh{}".format(ycql_flags)),
+            (Output.make_yellow("YCQL"), "bin/ycqlsh{}".format(ycql_flags)),
             (Output.make_yellow("Data Dir"), self.configs.saved_data.get("data_dir")),
             (Output.make_yellow("Log Dir"), self.configs.saved_data.get("log_dir")),
             (Output.make_yellow("Universe UUID"), self.configs.saved_data.get("universe_uuid"))

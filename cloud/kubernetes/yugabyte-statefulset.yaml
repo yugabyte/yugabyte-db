@@ -10,7 +10,7 @@
 # Using YB with k8s
 #    - Create cluster    : kubectl apply -f yugabyte-statefulset.yaml
 #    - List the pods     : kubectl get pods
-#    - Run cqlsh         : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh
+#    - Run ycqlsh         : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ycqlsh
 #    - Run Redis cli     : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/redis-cli
 #    - Run psql          : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ysqlsh --
 #                             -U postgres -d postgres -h yb-tserver-0 -p 5433

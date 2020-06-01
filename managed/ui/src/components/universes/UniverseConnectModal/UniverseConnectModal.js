@@ -133,7 +133,7 @@ class UniverseConnectModal extends Component {
               <tr>
                 <td>YCQL Shell</td>
                 <td>:    </td>
-                <td>bin/cqlsh</td>
+                <td>bin/ycqlsh</td>
               </tr>
               <tr>
                 <td>YEDIS Shell</td>
