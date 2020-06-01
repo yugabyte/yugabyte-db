@@ -190,6 +190,8 @@ class PrimitiveValue {
     column_id_val_ = column_id;
   }
 
+  static PrimitiveValue NullValue(ColumnSchema::SortingType sorting);
+
   // Converts a ColumnSchema::SortingType to its SortOrder equivalent.
   // ColumnSchema::SortingType::kAscending and ColumnSchema::SortingType::kNotSpecified get
   // converted to SortOrder::kAscending.

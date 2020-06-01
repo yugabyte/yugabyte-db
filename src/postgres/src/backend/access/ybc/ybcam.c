@@ -169,11 +169,11 @@ static void ybcBindColumn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber att
 }
 
 void ybcBindColumnCondEq(YbScanDesc ybScan, bool is_hash_key, TupleDesc bind_desc,
-												 AttrNumber attnum, Datum value)
+						 AttrNumber attnum, Datum value, bool is_null)
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
 
-	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, value, false /* isnull */);
+	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, value, is_null);
 
 	if (is_hash_key)
 		HandleYBStatusWithOwner(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr),
@@ -186,7 +186,7 @@ void ybcBindColumnCondEq(YbScanDesc ybScan, bool is_hash_key, TupleDesc bind_des
 }
 
 static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum,
-    bool start_valid, Datum value, bool end_valid, Datum value_end)
+                                     bool start_valid, Datum value, bool end_valid, Datum value_end)
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
 
@@ -538,43 +538,92 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 
 static bool ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int op_strategy)
 {
-  const int idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
+	const int idx =  YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
 
-  switch (op_strategy)
-  {
-    case BTEqualStrategyNumber:
-      return bms_is_member(idx, scan_plan->primary_key);
+	switch (op_strategy)
+	{
+		case BTEqualStrategyNumber:
+			return bms_is_member(idx, scan_plan->primary_key);
 
-    case BTLessStrategyNumber:
-    case BTLessEqualStrategyNumber:
-    case BTGreaterEqualStrategyNumber:
-    case BTGreaterStrategyNumber:
-      /* range key */
-      return (!bms_is_member(idx, scan_plan->hash_key) &&
-          bms_is_member(idx, scan_plan->primary_key));
+		case BTLessStrategyNumber:
+		case BTLessEqualStrategyNumber:
+		case BTGreaterEqualStrategyNumber:
+		case BTGreaterStrategyNumber:
+			/* range key */
+			return (!bms_is_member(idx, scan_plan->hash_key) &&
+				bms_is_member(idx, scan_plan->primary_key));
 
-    default:
-      /* TODO: support other logical operators */
-      return false;
-  }
+		default:
+			/* TODO: support other logical operators */
+			return false;
+	}
+}
+
+/*
+ * Is this a basic (c =/</<=/>=/> value) (in)equality condition.
+ * TODO: The null value case (SK_ISNULL) should always evaluate to false
+ *       per SQL semantics but in DocDB it will be true. So this case
+ *       will require PG filtering (for null values only).
+ */
+static bool IsBasicOpSearch(int sk_flags) {
+	return sk_flags == 0 || sk_flags == SK_ISNULL;
+}
+
+/*
+ * Is this a null search (c IS NULL) -- same as equality cond for DocDB.
+ */
+static bool IsSearchNull(int sk_flags) {
+	return sk_flags == (SK_ISNULL | SK_SEARCHNULL);
+}
+
+/*
+ * Is this an array search (c = ANY(..) or c IN ..).
+ */
+static bool IsSearchArray(int sk_flags) {
+	return sk_flags == SK_SEARCHARRAY;
 }
 
 static bool
-ShouldPushdownScanKey(Relation relation, YbScanPlan scan_plan, AttrNumber attnum, ScanKey key,
-    bool is_search_array_only, bool is_hash_or_primary_key) {
-  /*
-   * TODO: support the different search options like SK_SEARCHNULL and SK_SEARCHNOTNULL.
-   */
+ShouldPushdownScanKey(Relation relation, YbScanPlan scan_plan, AttrNumber attnum,
+                      ScanKey key, bool is_primary_key) {
+	if (IsSystemRelation(relation))
+	{
+		/*
+		 * Only support eq operators for system tables.
+		 * TODO: we can probably allow ineq conditions for system tables now.
+		 */
+		return IsBasicOpSearch(key->sk_flags) &&
+			key->sk_strategy == BTEqualStrategyNumber &&
+			is_primary_key;
+	}
+	else
+	{
+		if (IsBasicOpSearch(key->sk_flags))
+		{
+			/* Eq strategy for hash key, eq + ineq for range key. */
+			return ybc_should_pushdown_op(scan_plan, attnum, key->sk_strategy);
+		}
 
-  if (IsSystemRelation(relation))
-  {
-    return key->sk_flags == 0 && key->sk_strategy == BTEqualStrategyNumber;
-  }
-  else
-  {
-    return (key->sk_flags == 0 || (is_search_array_only && is_hash_or_primary_key)) &&
-      ybc_should_pushdown_op(scan_plan, attnum, key->sk_strategy);
-  }
+		if (IsSearchNull(key->sk_flags))
+		{
+			/* Always expect InvalidStrategy for NULL search. */
+			Assert(key->sk_strategy == InvalidStrategy);
+			return is_primary_key;
+		}
+
+		if (IsSearchArray(key->sk_flags))
+		{
+			/*
+			 * Expect equal strategy here (i.e. IN .. or = ANY(..) conditions,
+			 * NOT IN will generate <> which is not a supported LSM/BTREE
+			 * operator, so it should not get to this point.
+			 */
+			Assert(key->sk_strategy == BTEqualStrategyNumber);
+			return is_primary_key;
+		}
+		/* No other operators are supported. */
+		return false;
+	}
 }
 
 /* int comparator for qsort() */
@@ -607,14 +656,17 @@ static void	ybcSetupScanKeys(Relation relation,
 			break;
 
 		int idx = YBAttnumToBmsIndex(scan_plan->target_relation, scan_plan->bind_key_attnums[i]);
+		/*
+		 * TODO: Can we have bound keys on non-pkey columsn here?
+		 *       If not we do not need the is_primary_key below.
+		 */
 		bool is_primary_key = bms_is_member(idx, scan_plan->primary_key);
-		bool is_search_array_only = ((ybScan->key[i].sk_flags & SK_SEARCHARRAY) == SK_SEARCHARRAY);
 
-    if (!ShouldPushdownScanKey(relation, scan_plan, scan_plan->bind_key_attnums[i],
-															 &ybScan->key[i], is_search_array_only, is_primary_key))
-      continue;
+		if (!ShouldPushdownScanKey(relation, scan_plan, scan_plan->bind_key_attnums[i],
+		                           &ybScan->key[i], is_primary_key))
+			continue;
 
-    if (is_primary_key)
+		if (is_primary_key)
 			scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
 	}
 
@@ -686,251 +738,266 @@ static void ybcBindScanKeys(Relation relation,
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybScan->handle);
 	ybScan->stmt_owner = CurrentResourceOwner;
 
-  if (IsSystemRelation(relation))
-  {
-    /* Bind the scan keys */
-    for (int i = 0; i < ybScan->nkeys; i++)
-    {
-      int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
-      if (bms_is_member(idx, scan_plan->sk_cols))
-        ybcBindColumn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
-											ybScan->key[i].sk_argument);
-    }
-  }
-  else
-  {
-    /* Find max number of cols in schema in use in query */
-    int max_idx = 0;
-    for (int i = 0; i < ybScan->nkeys; i++)
-    {
-      int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
+	if (IsSystemRelation(relation))
+	{
+		/* Bind the scan keys */
+		for (int i = 0; i < ybScan->nkeys; i++)
+		{
+			int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
+			if (bms_is_member(idx, scan_plan->sk_cols))
+				ybcBindColumn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
+							  ybScan->key[i].sk_argument);
+		}
+	}
+	else
+	{
+		/* Find max number of cols in schema in use in query */
+		int max_idx = 0;
+		for (int i = 0; i < ybScan->nkeys; i++)
+		{
+			int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
+			if (!bms_is_member(idx, scan_plan->sk_cols))
+				continue;
 
-      if (!bms_is_member(idx, scan_plan->sk_cols))
-		    continue;
+			if (max_idx < idx)
+				max_idx = idx;
+		}
+		max_idx++;
 
-      if (max_idx < idx)
-        max_idx = idx;
-    }
-    max_idx++;
+		/* Find intervals for columns */
 
-    /* Find intervals for columns */
+		bool is_column_bound[max_idx]; /* VLA - scratch space */
+		memset(is_column_bound, 0, sizeof(bool) * max_idx);
 
-    bool is_column_bound[max_idx]; /* VLA - scratch space */
-    memset(is_column_bound, 0, sizeof(bool) * max_idx);
+		bool start_valid[max_idx]; /* VLA - scratch space */
+		memset(start_valid, 0, sizeof(bool) * max_idx);
 
-    bool start_valid[max_idx]; /* VLA - scratch space */
-    memset(start_valid, 0, sizeof(bool) * max_idx);
+		bool end_valid[max_idx]; /* VLA - scratch space */
+		memset(end_valid, 0, sizeof(bool) * max_idx);
 
-    bool end_valid[max_idx]; /* VLA - scratch space */
-    memset(end_valid, 0, sizeof(bool) * max_idx);
+		Datum start[max_idx]; /* VLA - scratch space */
+		Datum end[max_idx]; /* VLA - scratch space */
 
-    Datum start[max_idx]; /* VLA - scratch space */
-    Datum end[max_idx]; /* VLA - scratch space */
-
-    /*
+		/*
 		 * find an order of relevant keys such that for the same column, an EQUAL
-     * condition is encountered before IN or BETWEEN. is_column_bound is then used
-     * to establish priority order EQUAL > IN > BETWEEN.
+		 * condition is encountered before IN or BETWEEN. is_column_bound is then used
+		 * to establish priority order EQUAL > IN > BETWEEN.
 		 */
-    int noffsets = 0;
-    int offsets[ybScan->nkeys + 1]; /* VLA - scratch space: +1 to avoid zero elements */
+		int noffsets = 0;
+		int offsets[ybScan->nkeys + 1]; /* VLA - scratch space: +1 to avoid zero elements */
 
-    for (int i = 0; i < ybScan->nkeys; i++)
-    {
+		for (int i = 0; i < ybScan->nkeys; i++)
+		{
 			/* Check if this is primary columns */
-      int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
-      if (!bms_is_member(idx, scan_plan->sk_cols))
-        continue;
+			int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
+			if (!bms_is_member(idx, scan_plan->sk_cols))
+				continue;
 
 			/* Assign key offsets */
-      bool is_search_array_only = ((ybScan->key[i].sk_flags & SK_SEARCHARRAY) == SK_SEARCHARRAY);
-      switch (ybScan->key[i].sk_strategy)
-      {
-        case BTEqualStrategyNumber:
-          if (ybScan->key[i].sk_flags == 0)
-            /* Use a -ve value so that qsort places EQUAL before others */
-            offsets[noffsets++] = -i;
-          else if (is_search_array_only)
-            offsets[noffsets++] = i;
-          break;
+			switch (ybScan->key[i].sk_strategy)
+			{
+				case InvalidStrategy:
+					/* Should be ensured during planning. */
+					Assert(IsSearchNull(ybScan->key[i].sk_flags));
+					/* fallthrough  -- treating IS NULL as (DocDB) = (null) */
+				case BTEqualStrategyNumber:
+					if (IsBasicOpSearch(ybScan->key[i].sk_flags) ||
+						IsSearchNull(ybScan->key[i].sk_flags))
+					{
+						/* Use a -ve value so that qsort places EQUAL before others */
+						offsets[noffsets++] = -i;
+					}
+					else if (IsSearchArray(ybScan->key[i].sk_flags))
+					{
+						offsets[noffsets++] = i;
+					}
+					break;
+				case BTGreaterEqualStrategyNumber:
+				case BTGreaterStrategyNumber:
+				case BTLessStrategyNumber:
+				case BTLessEqualStrategyNumber:
+					offsets[noffsets++] = i;
 
-        case BTGreaterEqualStrategyNumber:
-        case BTGreaterStrategyNumber:
-        case BTLessStrategyNumber:
-        case BTLessEqualStrategyNumber:
-          offsets[noffsets++] = i;
+				default:
+					break; /* unreachable */
+			}
+		}
 
-        default:
-          break; /* unreachable */
-      }
-    }
+		qsort(offsets, noffsets, sizeof(int), int_compar_cb);
+		/* restore -ve offsets to +ve */
+		for (int i = 0; i < noffsets; i++)
+		if (offsets[i] < 0)
+			offsets[i] = -offsets[i];
+		else
+			break;
 
-    qsort(offsets, noffsets, sizeof(int), int_compar_cb);
-    /* restore -ve offsets to +ve */
-    for (int i = 0; i < noffsets; i++)
-      if (offsets[i] < 0)
-        offsets[i] = -offsets[i];
-      else
-        break;
+		/* Bind keys for EQUALS and IN */
+		for (int k = 0; k < noffsets; k++)
+		{
+			int i = offsets[k];
+			int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
 
-    /* Bind keys for EQUALS and IN */
-    for (int k = 0; k < noffsets; k++)
-    {
-      int i = offsets[k];
-      int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
+			/* Do not bind more than one condition to a column */
+			if (is_column_bound[idx])
+				continue;
 
-      /* Do not bind more than one condition to a column */
-      if (is_column_bound[idx])
-        continue;
+			bool is_hash_key = bms_is_member(idx, scan_plan->hash_key);
+			bool is_primary_key = bms_is_member(idx, scan_plan->primary_key); // Includes hash key
 
-      bool is_hash_key = bms_is_member(idx, scan_plan->hash_key);
-      bool is_primary_key = bms_is_member(idx, scan_plan->primary_key); // Includes hash key
-      bool is_search_array_only = ((ybScan->key[i].sk_flags & SK_SEARCHARRAY) == SK_SEARCHARRAY);
-
-      switch (ybScan->key[i].sk_strategy)
-      {
-        case BTEqualStrategyNumber:
-          /* Bind the scan keys */
-          if (ybScan->key[i].sk_flags == 0)
-          {
+			switch (ybScan->key[i].sk_strategy)
+			{
+				case InvalidStrategy: /* fallthrough, c IS NULL -> c = NULL (checked above) */
+				case BTEqualStrategyNumber:
+					/* Bind the scan keys */
+					if (IsBasicOpSearch(ybScan->key[i].sk_flags) ||
+						IsSearchNull(ybScan->key[i].sk_flags))
+					{
+						/* Either c = NULL or c IS NULL. */
+						bool is_null = (ybScan->key[i].sk_flags & SK_ISNULL) == SK_ISNULL;
 						ybcBindColumnCondEq(ybScan, is_hash_key, scan_plan->bind_desc,
-																scan_plan->bind_key_attnums[i], ybScan->key[i].sk_argument);
+											scan_plan->bind_key_attnums[i],
+											ybScan->key[i].sk_argument, is_null);
 						is_column_bound[idx] = true;
-          } else if (is_search_array_only && is_primary_key) {
-            /* based on _bt_preprocess_array_keys() */
-            ArrayType  *arrayval;
-            int16		elmlen;
-            bool		elmbyval;
-            char		elmalign;
-            int			num_elems;
-            Datum	   *elem_values;
-            bool	   *elem_nulls;
-            int			num_nonnulls;
-            int			j;
+					}
+					else if (IsSearchArray(ybScan->key[i].sk_flags) && is_primary_key)
+					{
+						/* based on _bt_preprocess_array_keys() */
+						ArrayType  *arrayval;
+						int16		elmlen;
+						bool		elmbyval;
+						char		elmalign;
+						int			num_elems;
+						Datum	   *elem_values;
+						bool	   *elem_nulls;
+						int			num_nonnulls;
+						int			j;
 
-            ScanKey cur = &ybScan->key[i];
+						ScanKey cur = &ybScan->key[i];
 
-            /*
-             * First, deconstruct the array into elements.  Anything allocated
-             * here (including a possibly detoasted array value) is in the
-             * workspace context.
-             */
-            arrayval = DatumGetArrayTypeP(cur->sk_argument);
-            /* We could cache this data, but not clear it's worth it */
-            get_typlenbyvalalign(ARR_ELEMTYPE(arrayval),
-                &elmlen, &elmbyval, &elmalign);
-            deconstruct_array(arrayval,
-                ARR_ELEMTYPE(arrayval),
-                elmlen, elmbyval, elmalign,
-                &elem_values, &elem_nulls, &num_elems);
+						/*
+						 * First, deconstruct the array into elements.  Anything allocated
+						 * here (including a possibly detoasted array value) is in the
+						 * workspace context.
+						 */
+						arrayval = DatumGetArrayTypeP(cur->sk_argument);
+						/* We could cache this data, but not clear it's worth it */
+						get_typlenbyvalalign(ARR_ELEMTYPE(arrayval), &elmlen,
+						                     &elmbyval, &elmalign);
+						deconstruct_array(arrayval,
+						                  ARR_ELEMTYPE(arrayval),
+						                  elmlen, elmbyval, elmalign,
+						                  &elem_values, &elem_nulls, &num_elems);
 
-            /*
-             * Compress out any null elements.  We can ignore them since we assume
-             * all btree operators are strict.
-             */
-            num_nonnulls = 0;
-            for (j = 0; j < num_elems; j++)
-            {
-              if (!elem_nulls[j])
-                elem_values[num_nonnulls++] = elem_values[j];
-            }
+						/*
+						 * Compress out any null elements.  We can ignore them since we assume
+						 * all btree operators are strict.
+						 */
+						num_nonnulls = 0;
+						for (j = 0; j < num_elems; j++)
+						{
+							if (!elem_nulls[j])
+							elem_values[num_nonnulls++] = elem_values[j];
+						}
 
-            /* We could pfree(elem_nulls) now, but not worth the cycles */
+						/* We could pfree(elem_nulls) now, but not worth the cycles */
 
-            /* If there's no non-nulls, the scan qual is unsatisfiable */
-            /* TODO(rajukumaryb): when num_nonnulls is zero, the query should not be
-             * sent to DocDB as it will return rows that will all be dropped.
-             * Example: SELECT ... FROM ... WHERE h = ... AND r IN (NULL,NULL); */
-            if (num_nonnulls == 0)
-              break;
+						/*
+						 * If there's no non-nulls, the scan qual is unsatisfiable
+						 * TODO(rajukumaryb): when num_nonnulls is zero, the query should not be
+						 * sent to DocDB as it will return rows that will all be dropped.
+						 * Example: SELECT ... FROM ... WHERE h = ... AND r IN (NULL,NULL);
+						 */
+						if (num_nonnulls == 0)
+							break;
 
-            /* Build temporary vars */
+						/* Build temporary vars */
 						IndexScanDescData tmp_scan_desc;
 						memset(&tmp_scan_desc, 0, sizeof(IndexScanDescData));
 						tmp_scan_desc.indexRelation = index;
 
-            /*
-             * Sort the non-null elements and eliminate any duplicates.  We must
-             * sort in the same ordering used by the index column, so that the
-             * successive primitive indexscans produce data in index order.
-             */
-            num_elems = _bt_sort_array_elements(&tmp_scan_desc, cur,
-                false /* reverse */, elem_values, num_nonnulls);
+						/*
+						 * Sort the non-null elements and eliminate any duplicates.  We must
+						 * sort in the same ordering used by the index column, so that the
+						 * successive primitive indexscans produce data in index order.
+						 */
+						num_elems = _bt_sort_array_elements(&tmp_scan_desc, cur,
+						                                    false /* reverse */,
+						                                    elem_values, num_nonnulls);
 
-            /*
-             * And set up the BTArrayKeyInfo data.
-             */
-            ybcBindColumnCondIn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
-																num_elems, elem_values);
-            is_column_bound[idx] = true;
-          } else {
-            /* unreachable */
-          }
-          break;
+						/*
+						 * And set up the BTArrayKeyInfo data.
+						 */
+						ybcBindColumnCondIn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
+						                    num_elems, elem_values);
+						is_column_bound[idx] = true;
+					} else {
+						/* unreachable */
+					}
+					break;
 
-        case BTGreaterEqualStrategyNumber:
-        case BTGreaterStrategyNumber:
-          if (start_valid[idx]) {
-            /* take max of old value and new value */
-            bool is_gt = DatumGetBool(FunctionCall2Coll(&ybScan->key[i].sk_func,
-																												ybScan->key[i].sk_collation,
-																												start[idx],
-																												ybScan->key[i].sk_argument));
-            if (!is_gt) {
-              start[idx] = ybScan->key[i].sk_argument;
-            }
-          }
-          else
-          {
-            start[idx] = ybScan->key[i].sk_argument;
-            start_valid[idx] = true;
-          }
-          break;
+				case BTGreaterEqualStrategyNumber:
+				case BTGreaterStrategyNumber:
+					if (start_valid[idx]) {
+						/* take max of old value and new value */
+						bool is_gt = DatumGetBool(FunctionCall2Coll(&ybScan->key[i].sk_func,
+						                                            ybScan->key[i].sk_collation,
+						                                            start[idx],
+						                                            ybScan->key[i].sk_argument));
+						if (!is_gt) {
+						start[idx] = ybScan->key[i].sk_argument;
+						}
+					}
+					else
+					{
+						start[idx] = ybScan->key[i].sk_argument;
+						start_valid[idx] = true;
+					}
+					break;
 
-        case BTLessStrategyNumber:
-        case BTLessEqualStrategyNumber:
-          if (end_valid[idx])
-          {
-            /* take min of old value and new value */
-            bool is_lt = DatumGetBool(FunctionCall2Coll(&ybScan->key[i].sk_func,
-																												ybScan->key[i].sk_collation,
-																												end[idx],
-																												ybScan->key[i].sk_argument));
-            if (!is_lt) {
-              end[idx] = ybScan->key[i].sk_argument;
-            }
-          }
-          else
-          {
-            end[idx] = ybScan->key[i].sk_argument;
-            end_valid[idx] = true;
-          }
-          break;
+				case BTLessStrategyNumber:
+				case BTLessEqualStrategyNumber:
+					if (end_valid[idx])
+					{
+						/* take min of old value and new value */
+						bool is_lt = DatumGetBool(FunctionCall2Coll(&ybScan->key[i].sk_func,
+						                                            ybScan->key[i].sk_collation,
+						                                            end[idx],
+						                                            ybScan->key[i].sk_argument));
+						if (!is_lt) {
+							end[idx] = ybScan->key[i].sk_argument;
+						}
+					}
+					else
+					{
+						end[idx] = ybScan->key[i].sk_argument;
+						end_valid[idx] = true;
+					}
+					break;
 
-        default:
-          break; /* unreachable */
-      }
-    }
+				default:
+					break; /* unreachable */
+			}
+		}
 
-    /* Bind keys for BETWEEN */
-	int min_idx = YBAttnumToBmsIndex(relation, 1);
-    for (int idx = min_idx; idx < max_idx; idx++)
-    {
-      /* Do not bind more than one condition to a column */
-      if (is_column_bound[idx])
-        continue;
+		/* Bind keys for BETWEEN */
+		int min_idx = YBAttnumToBmsIndex(relation, 1);
+		for (int idx = min_idx; idx < max_idx; idx++)
+		{
+			/* Do not bind more than one condition to a column */
+			if (is_column_bound[idx])
+				continue;
 
-      if (!start_valid[idx] && !end_valid[idx])
-        continue;
+			if (!start_valid[idx] && !end_valid[idx])
+				continue;
 
-      ybcBindColumnCondBetween(ybScan,
-								scan_plan->bind_desc, 
-								YBBmsIndexToAttnum(relation, idx),
-								start_valid[idx], start[idx], 
-								end_valid[idx], end[idx]);
-      is_column_bound[idx] = true;
-    }
-  }
+			ybcBindColumnCondBetween(ybScan,
+			                         scan_plan->bind_desc,
+									 YBBmsIndexToAttnum(relation, idx),
+									 start_valid[idx], start[idx],
+									 end_valid[idx], end[idx]);
+			is_column_bound[idx] = true;
+		}
+	}
 }
 
 /* Setup the targets */
@@ -1449,8 +1516,13 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 
 		if (IsA(clause, NullTest))
 		{
-			ybcAddAttributeColumn(&scan_plan, attnum);
-			const_quals = bms_add_member(const_quals, bms_idx);
+			NullTest *nt = (NullTest *) clause;
+			/* We only support IS NULL (i.e. not IS NOT NULL). */
+			if (nt->nulltesttype == IS_NULL)
+			{
+				const_quals = bms_add_member(const_quals, bms_idx);
+				ybcAddAttributeColumn(&scan_plan, attnum);
+			}
 		}
 		else
 		{

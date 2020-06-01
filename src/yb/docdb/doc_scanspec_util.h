@@ -25,9 +25,14 @@ namespace yb {
 namespace docdb {
 
 // Get the scanspec for range key components.
-std::vector<PrimitiveValue> GetRangeKeyScanSpec(
-    const Schema& schema, const common::QLScanRange* scan_range, bool lower_bound);
+std::vector<PrimitiveValue> GetRangeKeyScanSpec(const Schema& schema,
+                                                const common::QLScanRange* scan_range,
+                                                bool lower_bound,
+                                                bool include_static_columns = false);
 
+PrimitiveValue GetQLRangeBoundAsPVal(const common::QLScanRange::QLRange& ql_range,
+                                     ColumnSchema::SortingType sorting_type,
+                                     bool lower_bound);
 }  // namespace docdb
 }  // namespace yb
 

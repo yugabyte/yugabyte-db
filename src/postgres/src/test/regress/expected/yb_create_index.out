@@ -326,12 +326,12 @@ EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY k;
 (4 rows)
 
 EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY k;
-                             QUERY PLAN
----------------------------------------------------------------------
+               QUERY PLAN
+-----------------------------------------
  Sort
    Sort Key: k
-   ->  Index Scan using null_unique_index_k_idx on null_unique_index
-         Index Cond: (k IS NOT NULL)
+   ->  Foreign Scan on null_unique_index
+         Filter: (k IS NOT NULL)
 (4 rows)
 
 SELECT * FROM null_unique_index WHERE k = 4;
@@ -385,11 +385,11 @@ SELECT * FROM null_unique_index ORDER BY v;
 
 INSERT INTO null_unique_index values (NULL, 2), (3, 3), (NULL, 5);
 EXPLAIN(COSTS OFF) UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
-                             QUERY PLAN
----------------------------------------------------------------------
+               QUERY PLAN
+-----------------------------------------
  Update on null_unique_index
-   ->  Index Scan using null_unique_index_k_idx on null_unique_index
-         Index Cond: (k IS NOT NULL)
+   ->  Foreign Scan on null_unique_index
+         Filter: (k IS NOT NULL)
 (3 rows)
 
 UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
