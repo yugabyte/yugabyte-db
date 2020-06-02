@@ -86,27 +86,27 @@ Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb
 
 ## 3. Connect to YugabyteDB Shell
 
-Connect to `cqlsh` on node `1`.
+Connect to `ycqlsh` on node `1`.
 
 ```sh
-$ kubectl -n yb-demo exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0
+$ kubectl -n yb-demo exec -it yb-tserver-0 /home/yugabyte/bin/ycqlsh yb-tserver-0
 ```
 
 ```
 Connected to local cluster at 127.0.0.1:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh>
+ycqlsh>
 ```
 
 Create a keyspace and a table.
 
 ```sql
-cqlsh> CREATE KEYSPACE users;
+ycqlsh> CREATE KEYSPACE users;
 ```
 
 ```sql
-cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
+ycqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 	                               email text,
 	                               password text,
 	                               profile frozen<map<text, text>>);
@@ -114,17 +114,17 @@ cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 
 ## 4. Insert data through a node
 
-Now insert some data by typing the following into `cqlsh` shell.
+Now insert some data by typing the following into `ycqlsh` shell.
 
 ```sql
-cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
+ycqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (1000, 'james.bond@yugabyte.com', 'licensed2Kill',
    {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
   );
 ```
 
 ```sql
-cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
+ycqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (2000, 'sherlock.holmes@yugabyte.com', 'itsElementary',
    {'firstname': 'Sherlock', 'lastname': 'Holmes'}
   );
@@ -133,7 +133,7 @@ cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
 Query all the rows.
 
 ```sql
-cqlsh> SELECT email, profile FROM users.profile;
+ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
 ```
@@ -150,11 +150,11 @@ cqlsh> SELECT email, profile FROM users.profile;
 Let us now query the data from node `3`.
 
 ```sh
-$ kubectl -n yb-demo exec -it yb-tserver-2 /home/yugabyte/bin/cqlsh yb-tserver-2
+$ kubectl -n yb-demo exec -it yb-tserver-2 /home/yugabyte/bin/ycqlsh yb-tserver-2
 ```
 
 ```sql
-cqlsh> SELECT email, profile FROM users.profile;
+ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
 ```
@@ -165,8 +165,9 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 (2 rows)
 ```
+
 ```sql
-cqlsh> exit;
+ycqlsh> exit;
 ```
 
 ## 6. Verify one node failure has no impact
@@ -196,13 +197,13 @@ yb-tserver-2   1/1       Terminating   0          33m
 Now connect to node `2`.
 
 ```sh
-$ kubectl -n yb-demo exec -it yb-tserver-1 /home/yugabyte/bin/cqlsh yb-tserver-1
+$ kubectl -n yb-demo exec -it yb-tserver-1 /home/yugabyte/bin/ycqlsh yb-tserver-1
 ```
 
 Let us insert some data to ensure that the loss of a node hasn't impacted the ability of the universe to take writes.
 
 ```sql
-cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES 
+ycqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES 
   (3000, 'austin.powers@yugabyte.com', 'imGroovy',
    {'firstname': 'Austin', 'lastname': 'Powers'});
 ```
@@ -210,7 +211,7 @@ cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
 Now query the data. We see that all the data inserted so far is returned and the loss of the node has no impact on data integrity.
 
 ```sql
-cqlsh> SELECT email, profile FROM users.profile;
+ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
 ```

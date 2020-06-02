@@ -52,6 +52,6 @@ As you can see, the checks run every 5 minutes, across every node. Currently we 
 - Presence of any internal google logging `FATAL` files, indicating some previous serious failure of Yugabyte.
 - Presence of any core files, indicating some previous serious failure of Yugabyte.
 - Total number of open file descriptors, which if too great, might end up causing problems in normal operation.
-- Connectivity with either `cqlsh` or `redis-cli`, which could indicate either network connectivity issues in your deployment or server-side issues processing requests.
+- Connectivity with either `ycqlsh` or `redis-cli`, which could indicate either network connectivity issues in your deployment or server-side issues processing requests.
 
 This list is not exhaustive, and we are actively working on expanding this! Furthermore, we are also working on more tightly integrating with the underlying `Prometheus` server that is bundled with Yugabyte Platform to provide significantly more granular, user-configurable, metrics-based alerting enabled.

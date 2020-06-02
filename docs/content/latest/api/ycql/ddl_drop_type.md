@@ -42,11 +42,11 @@ Where
 ## Examples
 
 ```sql
-cqlsh:example> CREATE TYPE person(first_name TEXT, last_name TEXT, email TEXT);
+ycqlsh:example> CREATE TYPE person(first_name TEXT, last_name TEXT, email TEXT);
 ```
 
 ```sql
-cqlsh:example> DROP TYPE person;
+ycqlsh:example> DROP TYPE person;
 ```
 
 ## See also

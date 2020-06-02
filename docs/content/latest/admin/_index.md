@@ -63,7 +63,7 @@ Information about configuring the [YB-Master](../reference/configuration/yb-mast
     <a class="section-link icon-offset" href="cqlsh/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/ycql.png" aria-hidden="true" />
-        <div class="title">cqlsh</div>
+        <div class="title">ycqlsh</div>
       </div>
       <div class="body">
         CLI shell for interacting with YugabyteDB using YCQL.

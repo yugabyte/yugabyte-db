@@ -144,7 +144,7 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 
 - [User-defined data types](ddl_create_type) are also supported.
 
-- The following table lists all CQL primitive types that are not yet implemented.
+- The following table lists all YCQL primitive types that are not yet implemented.
 
 Primitive Type |
 ---------------|

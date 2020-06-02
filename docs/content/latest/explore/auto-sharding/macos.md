@@ -107,7 +107,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL                : ./bin/ysqlsh                                                               |
-| YCQL                : ./bin/cqlsh 127.0.0.1 9042                                                 |
+| YCQL                : ./bin/ycqlsh 127.0.0.1 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
 | Web UI              : http://127.0.0.1:7000/                                                     |
 | Cluster Data        : /Users/schoudhury/yugabyte-data                                            |
@@ -117,7 +117,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL                : ./bin/ysqlsh                                                               |
-| YCQL                : ./bin/cqlsh 127.0.0.1 9042                                                 |
+| YCQL                : ./bin/ycqlsh 127.0.0.1 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
 | data-dir[0]         : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data                      |
 | TServer Logs        : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data/tserver/logs         |
@@ -128,7 +128,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL                : ./bin/ysqlsh                                                               |
-| YCQL                : ./bin/cqlsh 127.0.0.2 9042                                                 |
+| YCQL                : ./bin/ycqlsh 127.0.0.2 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.2 -p 6379                                       |
 | data-dir[0]         : /Users/schoudhury/yugabyte-data/node-2/disk-1/yb-data                      |
 | TServer Logs        : /Users/schoudhury/yugabyte-data/node-2/disk-1/yb-data/tserver/logs         |
@@ -138,7 +138,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL                : ./bin/ysqlsh -U postgres -h 127.0.0.3 -p 5433                              |
-| YCQL                : ./bin/cqlsh 127.0.0.3 9042                                                 |
+| YCQL                : ./bin/ycqlsh 127.0.0.3 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.3 -p 6379                                       |
 | data-dir[0]         : /Users/schoudhury/yugabyte-data/node-3/disk-1/yb-data                      |
 | TServer Logs        : /Users/schoudhury/yugabyte-data/node-3/disk-1/yb-data/tserver/logs         |
@@ -150,15 +150,15 @@ $ ./bin/yb-ctl status
 Create a YCQL table. Since we will be using a workload application in the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) to write data into this table, the keyspace and table name below must created exactly as shown.
 
 ```sh
-$ ./bin/cqlsh
+$ ./bin/ycqlsh
 ```
 
 ```sql
-cqlsh> CREATE KEYSPACE ybdemo_keyspace;
+ycqlsh> CREATE KEYSPACE ybdemo_keyspace;
 ```
 
 ```sql
-cqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
+ycqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
 ```
 
 For each table, we have instructed YugabyteDB to create four shards for each YB-TServer in this universe. Because we have three nodes, we expect 12 tablets for the `ybdemo_keyspace.cassandrakeyvalue` table.
@@ -239,14 +239,14 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
 2018-02-05 07:33:36,899 [INFO|...] The sample app has finished
 ```
 
-Let us check what we have inserted using `cqlsh`.
+Let us check what we have inserted using `ycqlsh`.
 
 ```sh
-$ ./bin/cqlsh
+$ ./bin/ycqlsh
 ```
 
 ```sql
-cqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
+ycqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 ```
 
 ```

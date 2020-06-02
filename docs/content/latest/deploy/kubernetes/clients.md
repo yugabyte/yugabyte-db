@@ -39,13 +39,13 @@ yugabyte=# CREATE TABLE demo(id INT PRIMARY KEY);
 CREATE TABLE
 ```
 
-Here is an example of a client that uses the YCQL shell ([`cqlsh`](../../../admin/cqlsh)) to connect.
+Here is an example of a client that uses the YCQL shell ([`ycqlsh`](../../../admin/cqlsh)) to connect.
 
 ```sh
 $ kubectl run cqlsh-shell -it --rm  --image yugabytedb/yugabyte-client --command -- cqlsh yb-tservers.yb-demo.svc.cluster.local 9042
-cqlsh> CREATE KEYSPACE demo;
-cqlsh> use demo;
-cqlsh:demo> CREATE TABLE t_demo(id INT PRIMARY KEY);
+ycqlsh> CREATE KEYSPACE demo;
+ycqlsh> use demo;
+ycqlsh:demo> CREATE TABLE t_demo(id INT PRIMARY KEY);
 ```
 
 Note that although tables are [internally sharded](../../../architecture/concepts/yb-tserver/) across multiple tserver pods, every tserver pod has the ability to process any query, irrespective of its actual tablet assignment.
@@ -71,13 +71,13 @@ yugabyte=# CREATE TABLE demo(id INT PRIMARY KEY);
 CREATE TABLE
 ```
 
-Here is an example of a client that uses the YCQL shell ([`cqlsh`](../../../admin/cqlsh)) to connect.
+Here is an example of a client that uses the YCQL shell ([`ycqlsh`](../../../admin/cqlsh)) to connect.
 
 ```sh
-$ docker run yugabytedb/yugabyte-client cqlsh 98.138.219.232 9042
-cqlsh> CREATE KEYSPACE demo;
-cqlsh> use demo;
-cqlsh:demo> CREATE TABLE t_demo(id INT PRIMARY KEY);
+$ docker run yugabytedb/yugabyte-client ycqlsh 98.138.219.232 9042
+ycqlsh> CREATE KEYSPACE demo;
+ycqlsh> use demo;
+ycqlsh:demo> CREATE TABLE t_demo(id INT PRIMARY KEY);
 ```
 
 ### Master UI dashboard
@@ -92,9 +92,9 @@ Forwarding from 127.0.0.1:7000 -> 7000
 Forwarding from [::1]:7000 -> 7000
 ```
 
-### Connecting externally to a minikube cluster
+### Connecting externally to a Minikube cluster
 
-When the Kubernetes cluster is set up using [Minikube](https://kubernetes.io/docs/setup/learning-environment/minikube/), an external IP is not available by default for the LoadBalancer endpoints. To enable the load balancer IP address, run the command `minikube tunnel` as documented [here](https://minikube.sigs.k8s.io/docs/handbook/accessing/#loadbalancer-access).
+When the Kubernetes cluster is set up using [Minikube](https://kubernetes.io/docs/setup/learning-environment/minikube/), an external IP address is not available by default for the LoadBalancer endpoints. To enable the load balancer IP address, run the command `minikube tunnel`. For details, see [LoadBalancer access](https://minikube.sigs.k8s.io/docs/handbook/accessing/#loadbalancer-access).
 
 ```sh
 $ minikube tunnel

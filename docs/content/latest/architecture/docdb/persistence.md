@@ -110,7 +110,7 @@ with the value using the same encoding as Redis. The Table TTL is not stored in 
 in master’s syscatalog as part of the table’s schema). If no TTL is present at the column’s value,
 the table TTL acts as the default value.
 
-Furthermore, CQL has a distinction between rows created using Insert vs Update. We keep track of
+Furthermore, YCQL has a distinction between rows created using Insert vs Update. We keep track of
 this difference (and row level TTLs) using a "liveness column", a special system column invisible to
 the user. It is added for inserts, but not updates: making sure the row is present even if all
 non-primary key columns are deleted only in the case of inserts.

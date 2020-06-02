@@ -42,20 +42,20 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --value_size 10240
 ```
 
-In the above command, we have set the value of `num_unique_keys` to `1`, which means we are overwriting a single key `key:0`. We can verify this using `cqlsh`:
+In the above command, we have set the value of `num_unique_keys` to `1`, which means we are overwriting a single key `key:0`. We can verify this using `ycqlsh`:
 
 ```sh
-$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/cqlsh
+$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/ycqlsh
 ```
 
 ```
 Connected to local cluster at localhost:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
 ```
 
 ```sql
-cqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
+ycqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 ```
 
 ```

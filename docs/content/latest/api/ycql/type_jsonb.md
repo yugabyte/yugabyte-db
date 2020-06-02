@@ -60,11 +60,11 @@ type.
 - Create table with a JSONB column
 
 ```sql
-cqlsh> CREATE KEYSPACE store;
+ycqlsh> CREATE KEYSPACE store;
 ```
 
 ```sql
-cqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
+ycqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
 ```
 
 - Insert JSONB documents
@@ -85,7 +85,7 @@ INSERT INTO store.books (id, details) VALUES
 - Select from JSONB column
 
 ```sql
-cqlsh> SELECT * FROM store.books;
+ycqlsh> SELECT * FROM store.books;
 ```
 
 ```
@@ -101,7 +101,7 @@ cqlsh> SELECT * FROM store.books;
 - Select with condition on JSONB object value
 
 ```sql
-cqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'William' AND details->'author'->>'last_name' = 'Shakespeare';
+ycqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'William' AND details->'author'->>'last_name' = 'Shakespeare';
 ```
 
 ```
@@ -114,7 +114,7 @@ cqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'Willi
 - Select with condition on JSONB array element
 
 ```sql
-cqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
+ycqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
 ```
 
 ```
@@ -126,7 +126,7 @@ cqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
 - Select with condition using on JSONB element
 
 ```sql
-cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
+ycqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
 ```
 
 ```
@@ -140,11 +140,11 @@ cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
 You can do this as shown below.
 
 ```sql
-cqlsh> UPDATE store.books SET details = '{"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}' WHERE id = 1;
+ycqlsh> UPDATE store.books SET details = '{"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}' WHERE id = 1;
 ```
 
 ```sql
-cqlsh> SELECT * FROM store.books WHERE id = 1;
+ycqlsh> SELECT * FROM store.books WHERE id = 1;
 ```
 
 ```
@@ -156,11 +156,11 @@ cqlsh> SELECT * FROM store.books WHERE id = 1;
 - Update a JSONB object value.
 
 ```sql
-cqlsh> UPDATE store.books SET details->'author'->>'first_name' = '"Steve"' WHERE id = 4;
+ycqlsh> UPDATE store.books SET details->'author'->>'first_name' = '"Steve"' WHERE id = 4;
 ```
 
 ```sql
-cqlsh> SELECT * FROM store.books WHERE id = 4;
+ycqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
 
 ```
@@ -172,11 +172,11 @@ cqlsh> SELECT * FROM store.books WHERE id = 4;
 - Update a JSONB array element.
 
 ```sql
-cqlsh> UPDATE store.books SET details->'editors'->>1 = '"Jack"' WHERE id = 4;
+ycqlsh> UPDATE store.books SET details->'editors'->>1 = '"Jack"' WHERE id = 4;
 ```
 
 ```sql
-cqlsh> SELECT * FROM store.books WHERE id = 4;
+ycqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
 
 ```
@@ -188,11 +188,11 @@ cqlsh> SELECT * FROM store.books WHERE id = 4;
 - Update a JSONB subdocument.
 
 ```sql
-cqlsh> UPDATE store.books SET details->'author' = '{"first_name":"John", "last_name":"Doe"}' WHERE id = 4;
+ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"John", "last_name":"Doe"}' WHERE id = 4;
 ```
 
 ```sql
-cqlsh> SELECT * FROM store.books WHERE id = 4;
+ycqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
 
 ```
@@ -206,11 +206,11 @@ cqlsh> SELECT * FROM store.books WHERE id = 4;
 ```sql
 INSERT INTO store.books (id, details) VALUES
   (6, '{}');
-cqlsh> UPDATE store.books SET details->'editors' = '["Adam", "Bryan", "Charles"]' WHERE id = 6;
+ycqlsh> UPDATE store.books SET details->'editors' = '["Adam", "Bryan", "Charles"]' WHERE id = 6;
 ```
 
 ```sql
-cqlsh> SELECT * FROM store.books WHERE id = 6;
+ycqlsh> SELECT * FROM store.books WHERE id = 6;
 ```
 
 ```
@@ -222,11 +222,11 @@ cqlsh> SELECT * FROM store.books WHERE id = 6;
 - Upsert: Update a missing JSONB document resulting in an insert of a subdocument.
 
 ```sql
-cqlsh> UPDATE store.books SET details->'author' = '{"first_name":"Jack", "last_name":"Kerouac"}' WHERE id = 6;
+ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"Jack", "last_name":"Kerouac"}' WHERE id = 6;
 ```
 
 ```sql
-cqlsh> SELECT * FROM store.books WHERE id = 6;
+ycqlsh> SELECT * FROM store.books WHERE id = 6;
 ```
 
 ```

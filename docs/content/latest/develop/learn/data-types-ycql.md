@@ -56,19 +56,21 @@ Let us take the example of an ecommerce app of an online bookstore. The database
 }
 ```
 
-### Create a Table
+### Create a table
 
 The books table for this bookstore can be modelled as shown below. We assume that the id of each book is an int, but this could be a string or a uuid.
 
 ```sql
-cqlsh> CREATE KEYSPACE store;
-```
-```sql
-cqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
+ycqlsh> CREATE KEYSPACE store;
 ```
 
-### Insert Data
-Next we insert some sample data for a few books into this store. You can copy and paste the following commands into the cqlsh shell for YugabyteDB to insert the data. Note that you would need a cqlsh that has the enhancement to work with YugabyteDB JSON documents, you can download it using the documentation here.
+```sql
+ycqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
+```
+
+### Insert data
+
+Next we insert some sample data for a few books into this store. You can copy and paste the following commands into the YCQL shell (`ycqlsh`) for YugabyteDB to insert the data.
 
 ```sql
 INSERT INTO store.books (id, details) VALUES (1, 
@@ -107,25 +109,27 @@ INSERT INTO store.books (id, details) VALUES (5,
 ```
 
 Note the following interesting points about the book details above:
+
 - The year attribute for each of the books is interpreted as an integer.
 - The first two books do not have a genre attribute, which the others do.
 - The author attribute is a map.
 - The editors attribute is an array.
 
+### Retrieve a subset of attributes
 
-### Retrieve a Subset of Attributes
-
-Running the following default select query will return all attributes of each book.
-
-```sql
-cqlsh> SELECT * FROM store.books;
-
-```
-But a number of times we may want to query just a subset of attributes from YugabyteDB database. Below is an example of a query that retrieves just the id and name for all the books.
+Running the following default `SELECT` query will return all attributes of each book.
 
 ```sql
-cqlsh> SELECT id, details->>'name' as book_title FROM store.books;
+ycqlsh> SELECT * FROM store.books;
+
 ```
+
+But a number of times you might want to query just a subset of attributes from YugabyteDB database. Below is an example of a query that retrieves just the id and name for all the books.
+
+```sql
+ycqlsh> SELECT id, details->>'name' as book_title FROM store.books;
+```
+
 ```
  id | book_title
 ----+-------------------------
@@ -136,13 +140,14 @@ cqlsh> SELECT id, details->>'name' as book_title FROM store.books;
   3 |            Oliver Twist
 ```
 
-### Query by Attribute Values - String
+### Query by attribute values - string
 
-The name attribute is a string in the book details JSON document. Let us query all the details of book named Hamlet.
+The name attribute is a string in the book details JSON document. Run the following to query the details of the book named *Hamlet*.
 
 ```sql
-cqlsh> SELECT * FROM store.books WHERE details->>'name'='Hamlet';
+ycqlsh> SELECT * FROM store.books WHERE details->>'name'='Hamlet';
 ```
+
 ```
  id | details
 ----+---------------------------------------------------------------
@@ -151,14 +156,15 @@ cqlsh> SELECT * FROM store.books WHERE details->>'name'='Hamlet';
        "name":"Hamlet","year":1603}
 ```
 
-Note that we can query by attributes that exist only in some of the documents. For example, we can query for all books that have a genre of novel. Recall from before that all books do not have a genre attribute defined.
+Note that you can query by attributes that exist only in some of the documents. For example, you can query for all books that have a genre of novel. Recall from before that all books do not have a genre attribute defined.
 
 ```sql
-cqlsh> SELECT id, details->>'name' as title,
+ycqlsh> SELECT id, details->>'name' as title,
               details->>'genre' as genre
          FROM store.books
          WHERE details->>'genre'='novel';
 ```
+
 ```
  id | title              | genre
 ----+--------------------+-------
@@ -166,15 +172,16 @@ cqlsh> SELECT id, details->>'name' as title,
   3 |       Oliver Twist | novel
 ```
 
-### Query by Attribute Values - Integer
+### Query by attribute values - integer
 
-The year attribute is an integer in the book details JSON document. Let us query the id and name of books written after 1900.
+The year attribute is an integer in the book details JSON document. Run the following to query the ID and name of books written after 1900.
 
 ```sql
-cqlsh> SELECT id, details->>'name' as title, details->>'year'
+ycqlsh> SELECT id, details->>'name' as title, details->>'year'
          FROM store.books
          WHERE CAST(details->>'year' AS integer) > 1900;
 ```
+
 ```
  id | title                   | expr
 ----+-------------------------+------
@@ -182,17 +189,18 @@ cqlsh> SELECT id, details->>'name' as title, details->>'year'
   4 |      Great Expectations | 1950
 ```
 
-### Query by Attribute Values - Map
+### Query by attribute values - map
 
-The author attribute is a map, which in turn consists of the attributes first_name and last_name. Let us fetch the ids and titles of all books written by the author William Shakespeare.
+The author attribute is a map, which in turn consists of the attributes `first_name` and `last_name`. Let us fetch the IDs and titles of all books written by the author William Shakespeare.
 
 ```sql
-cqlsh> SELECT id, details->>'name' as title,
+ycqlsh> SELECT id, details->>'name' as title,
               details->>'author' as author
          FROM store.books
          WHERE details->'author'->>'first_name' = 'William' AND
                details->'author'->>'last_name' = 'Shakespeare';
 ```
+
 ```
  id | title   | author
 ----+---------+----------------------------------------------------
@@ -200,16 +208,16 @@ cqlsh> SELECT id, details->>'name' as title,
   2 |  Hamlet | {"first_name":"William","last_name":"Shakespeare"}
 ```
 
+### Query by attribute Values - array
 
-### Query by Attribute Values - Array
-
-The editors attribute is an array consisting of the first names of the editors of each of the books. We can query for the book titles where Mark is the first entry in the editors list as follows.
+The editors attribute is an array consisting of the first names of the editors of each of the books. You can query for the book titles where `Mark` is the first entry in the editors list as follows.
 
 ```sql
-cqlsh> SELECT id, details->>'name' as title,
+ycqlsh> SELECT id, details->>'name' as title,
               details->>'editors' as editors FROM store.books
          WHERE details->'editors'->>0 = 'Mark';
 ```
+
 ```
  id | title        | editors
 ----+--------------+---------------------------

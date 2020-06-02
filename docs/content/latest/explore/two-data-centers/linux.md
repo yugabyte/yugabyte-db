@@ -62,7 +62,7 @@ Waiting for cluster to be ready.
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/cqlsh                                                                  |
+| YCQL Shell          : bin/ycqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | Web UI              : http://127.0.0.1:7000/                                                     |
 | Cluster Data        : /Users/yugabyte_user/yugabyte/yb-datacenter-east                           |
@@ -85,7 +85,7 @@ Waiting for cluster to be ready.
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.2:5433/postgres                                  |
 | YSQL Shell          : bin/ysqlsh -h 127.0.0.2                                                    |
-| YCQL Shell          : bin/cqlsh 127.0.0.2                                                        |
+| YCQL Shell          : bin/ycqlsh 127.0.0.2                                                        |
 | YEDIS Shell         : bin/redis-cli -h 127.0.0.2                                                 |
 | Web UI              : http://127.0.0.2:7000/                                                     |
 | Cluster Data        : /Users/yugabyte_user/yugabyte/yb-datacenter-west                           |

@@ -44,26 +44,26 @@ Where
 ### Truncate a table
 
 ```sql
-cqlsh:example> CREATE TABLE employees(department_id INT, 
-                                      employee_id INT, 
-                                      name TEXT, 
+ycqlsh:example> CREATE TABLE employees(department_id INT,
+                                      employee_id INT,
+                                      name TEXT,
                                       PRIMARY KEY(department_id, employee_id));
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -72,15 +72,16 @@ cqlsh:example> SELECT * FROM employees;
              2 |           1 |  Joe
              1 |           1 | John
              1 |           2 | Jane
-```             
+```
+
 Remove all rows from the table.
 
 ```sql
-cqlsh:example> TRUNCATE employees;
+ycqlsh:example> TRUNCATE employees;
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```

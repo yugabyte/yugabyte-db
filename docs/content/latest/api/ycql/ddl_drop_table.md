@@ -43,11 +43,11 @@ Where
 ## Examples
 
 ```sql
-cqlsh:example> CREATE TABLE users(id INT PRIMARY KEY, name TEXT);
+ycqlsh:example> CREATE TABLE users(id INT PRIMARY KEY, name TEXT);
 ```
 
 ```sql
-cqlsh:example> DROP TABLE users;
+ycqlsh:example> DROP TABLE users;
 ```
 
 ## See also

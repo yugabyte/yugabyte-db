@@ -41,23 +41,23 @@ Where
 ## Examples
 
 ```sql
-cqlsh:example> CREATE TABLE users(user_name TEXT PRIMARY KEY, full_name VARCHAR);
+ycqlsh:example> CREATE TABLE users(user_name TEXT PRIMARY KEY, full_name VARCHAR);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('jane', 'Jane Doe');
+ycqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('jane', 'Jane Doe');
 ```
 
 ```sql
-cqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('john', 'John Doe');
+ycqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('john', 'John Doe');
 ```
 
 ```sql
-cqlsh:example> UPDATE users set full_name = 'Jane Poe' WHERE user_name = 'jane';
+ycqlsh:example> UPDATE users set full_name = 'Jane Poe' WHERE user_name = 'jane';
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM users;
+ycqlsh:example> SELECT * FROM users;
 ```
 
 ```

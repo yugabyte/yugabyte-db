@@ -48,7 +48,7 @@ Where
 ## Examples
 
 ```sql
-cqlsh:example> REVOKE ROLE project_y from diana;
+ycqlsh:example> REVOKE ROLE project_y from diana;
 ```
 
 ## See also

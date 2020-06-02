@@ -46,9 +46,9 @@ Generally, the endpoints are:
 | Master Web Page  | `<node-ip>:7000`          |
 | TServer Web Page | `<node-ip>:9000`          |
 | Redis Metrics    | `<node-ip>:11000/metrics` |
-| CQL Metrics      | `<node-ip>:12000/metrics` |
+| YCQL Metrics      | `<node-ip>:12000/metrics` |
 | Redis Server     | `<node-ip>:6379`          |
-| CQL Server       | `<node-ip>:9042`          |
+| YCQL Server       | `<node-ip>:9042`          |
 
 However, in some setups these endpoints may not be accessible, depending on the configuration on your physical machines or on your cloud-provider account.
 

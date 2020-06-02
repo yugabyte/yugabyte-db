@@ -59,13 +59,13 @@ Where
 ### Create a simple role with no properties
 
 ```sql
-cqlsh:example> CREATE ROLE role1;
+ycqlsh:example> CREATE ROLE role1;
 ```
 
 ### Create a `SUPERUSER` role
 
 ```sql
-cqlsh:example> CREATE ROLE role2 WITH SUPERUSER = true;
+ycqlsh:example> CREATE ROLE role2 WITH SUPERUSER = true;
 ```
 
 ### Create a regular user with ability to login
@@ -73,7 +73,7 @@ cqlsh:example> CREATE ROLE role2 WITH SUPERUSER = true;
 You can create a regular user with login privileges as shown below. Note the `SUPERUSER` set to `false`.
 
 ```sql
-cqlsh:example> CREATE ROLE role3 WITH SUPERUSER = false AND LOGIN = true AND PASSWORD = 'aid8134'
+ycqlsh:example> CREATE ROLE role3 WITH SUPERUSER = false AND LOGIN = true AND PASSWORD = 'aid8134'
 ```
 
 ## See also

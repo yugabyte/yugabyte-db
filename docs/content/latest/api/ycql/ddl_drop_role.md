@@ -50,11 +50,11 @@ Where
 You can do this as shown below.
 
 ```sql
-cqlsh:example> DROP ROLE role1;
+ycqlsh:example> DROP ROLE role1;
 ```
 
 ```sql
-cqlsh:example> DROP ROLE IF EXISTS role2;
+ycqlsh:example> DROP ROLE IF EXISTS role2;
 ```
 
 ## See also

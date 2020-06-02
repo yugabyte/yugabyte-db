@@ -321,7 +321,7 @@ Following is the output shown for a 3-node RF3 cluster.
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/cqlsh                                                                  |
+| YCQL Shell          : bin/ycqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | Web UI              : http://127.0.0.1:7000/                                                     |
 | Cluster Data        : /Users/testuser12/yugabyte-data                                            |
@@ -331,7 +331,7 @@ Following is the output shown for a 3-node RF3 cluster.
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/cqlsh                                                                  |
+| YCQL Shell          : bin/ycqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | data-dir[0]         : /Users/testuser12/yugabyte-data/node-1/disk-1/yb-data                      |
 | yb-tserver Logs     : /Users/testuser12/yugabyte-data/node-1/disk-1/yb-data/tserver/logs         |
@@ -342,7 +342,7 @@ Following is the output shown for a 3-node RF3 cluster.
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.2:5433/postgres                                  |
 | YSQL Shell          : bin/ysqlsh -h 127.0.0.2                                                    |
-| YCQL Shell          : bin/cqlsh 127.0.0.2                                                        |
+| YCQL Shell          : bin/ycqlsh 127.0.0.2                                                        |
 | YEDIS Shell         : bin/redis-cli -h 127.0.0.2                                                 |
 | data-dir[0]         : /Users/testuser12/yugabyte-data/node-2/disk-1/yb-data                      |
 | yb-tserver Logs     : /Users/testuser12/yugabyte-data/node-2/disk-1/yb-data/tserver/logs         |
@@ -353,7 +353,7 @@ Following is the output shown for a 3-node RF3 cluster.
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.3:5433/postgres                                  |
 | YSQL Shell          : bin/ysqlsh -h 127.0.0.3                                                    |
-| YCQL Shell          : bin/cqlsh 127.0.0.3                                                        |
+| YCQL Shell          : bin/ycqlsh 127.0.0.3                                                        |
 | YEDIS Shell         : bin/redis-cli -h 127.0.0.3                                                 |
 | data-dir[0]         : /Users/testuser12/yugabyte-data/node-3/disk-1/yb-data                      |
 | yb-tserver Logs     : /Users/testuser12/yugabyte-data/node-3/disk-1/yb-data/tserver/logs         |

@@ -58,7 +58,7 @@ Waiting for cluster to be ready.
 ----------------------------------------------------------------------------------------------------
 | JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
 | YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/cqlsh                                                                  |
+| YCQL Shell          : bin/ycqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | Web UI              : http://127.0.0.1:7000/                                                     |
 | Cluster Data        : /home/guru/yugabyte-data                                                   |
@@ -71,24 +71,24 @@ For details on flags, see [yb-ctl reference](../../../admin/yb-ctl).
 
 ## Step 2: Create a table with data
 
-After [getting started on YCQL API](../../../api/ycql/quick-start/), open `cqlsh`:
+After [getting started on YCQL API](../../../api/ycql/quick-start/), open `ycqlsh`:
 
 ```
-$ ./bin/cqlsh
+$ ./bin/ycqlsh
 ```
 
 Create a keyspace, table, and insert some test data.
 
 ```
-cqlsh> CREATE KEYSPACE ydb;
-cqlsh> CREATE TABLE IF NOT EXISTS ydb.test_tb(user_id INT PRIMARY KEY);
-cqlsh> INSERT INTO ydb.test_tb(user_id) VALUES (5);
+ycqlsh> CREATE KEYSPACE ydb;
+ycqlsh> CREATE TABLE IF NOT EXISTS ydb.test_tb(user_id INT PRIMARY KEY);
+ycqlsh> INSERT INTO ydb.test_tb(user_id) VALUES (5);
 ```
 
 You can verify that you have data in the database by running a simple SELECT statement.
 
 ```
-cqlsh> SELECT * FROM ydb.test_tb;
+ycqlsh> SELECT * FROM ydb.test_tb;
 ```
 
 ```
@@ -215,7 +215,7 @@ Waiting for cluster to be ready.
 ----------------------------------------------------------------------------------------------------
 | JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
 | YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/cqlsh                                                                  |
+| YCQL Shell          : bin/ycqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | Web UI              : http://127.0.0.1:7000/                                                     |
 | Cluster Data        : /home/guru/yugabyte-data                                                   |
@@ -294,11 +294,11 @@ Snapshot UUID                    	State
 ## Step 6: Verify the data
 
 ```sh
-$ ./bin/cqlsh
+$ ./bin/ycqlsh
 ```
 
 ```
-cqlsh> SELECT * FROM ydb.test_tb;
+ycqlsh> SELECT * FROM ydb.test_tb;
 
  user_id
 ---------
