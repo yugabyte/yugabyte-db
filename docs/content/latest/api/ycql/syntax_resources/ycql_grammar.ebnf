@@ -139,3 +139,5 @@ resource ::=   'ALL' ('KEYSPACES' | 'ROLES')
              | 'ROLE' role_name ;
 
 alter_keyspace ::= 'ALTER' ('KEYSPACE' | 'SCHEMA') keyspae_name keyspace_properties
+
+explain ::= 'EXPLAIN' select
