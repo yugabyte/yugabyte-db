@@ -1194,8 +1194,9 @@ bool CatalogManager::IsYcqlTable(const TableInfo& table) {
 Status CatalogManager::PrepareNamespace(
     YQLDatabase db_type, const NamespaceName& name, const NamespaceId& id, int64_t term) {
 
-  if (FindPtrOrNull(namespace_names_mapper_[db_type], name) != nullptr) {
-    LOG(INFO) << "Keyspace " << name << " already created, skipping initialization";
+  scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, id);
+  if (ns != nullptr) {
+    LOG(INFO) << "Keyspace " << ns->ToString() << " already created, skipping initialization";
     return Status::OK();
   }
 
@@ -1206,7 +1207,7 @@ Status CatalogManager::PrepareNamespace(
   ns_entry.set_state(SysNamespaceEntryPB::RUNNING);
 
   // Create in memory object.
-  scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(id);
+  ns = new NamespaceInfo(id);
 
   // Prepare write.
   auto l = ns->LockForWrite();
@@ -1417,8 +1418,7 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   }
 
   auto table_ids_map_checkout = table_ids_map_.CheckOut();
-  CHECK_EQ(table_names_map_.erase({table_namespace_id, table_name}), 1)
-      << "Unable to erase table named " << table_name << " from table names map.";
+  table_names_map_.erase({table_namespace_id, table_name}); // Not present if PGSQL table.
   CHECK_EQ(table_ids_map_checkout->erase(table_id), 1)
       << "Unable to erase table with id " << table_id << " from table ids map.";
 
@@ -4567,8 +4567,12 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Validate the user request.
 
-    // Verify that the namespace does not exist (no matter what state).
-    ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
+    // Verify that the namespace does not already exist.
+    ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id()); // Same ID.
+    if (ns == nullptr && db_type != YQL_DATABASE_PGSQL) {
+      // PGSQL databases have name uniqueness handled at a different layer, so ignore overlaps.
+      ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
+    }
     if (ns != nullptr) {
       resp->set_id(ns->id());
       return_status = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists",
@@ -4782,7 +4786,7 @@ void CatalogManager::ProcessPendingNamespace(
       auto s = sys_catalog_->UpdateItem(ns.get(), leader_ready_term());
       if (s.ok()) {
         TRACE("Done processing keyspace");
-        LOG(INFO) << "Activated keyspace: " << ns->ToString();
+        LOG(INFO) << (success ? "Processed" : "Failed") << " keyspace: " << ns->ToString();
       } else {
         metadata.set_state(SysNamespaceEntryPB::FAILED);
         if (s.IsIllegalState() || s.IsAborted()) {
@@ -4853,6 +4857,9 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
       break;
     // Failure cases.  Done, but we need to give the user an error message.
     case SysNamespaceEntryPB::FAILED:
+      resp->set_done(true);
+      return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, STATUS(InternalError,
+              "Namespace Create Failed: not onlined."));
     default:
       Status s = STATUS_SUBSTITUTE(IllegalState,
           "IsCreateNamespaceDone failure: state=$0", metadata.state());
@@ -4958,10 +4965,9 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   // Remove the namespace from all CatalogManager mappings.
   {
     std::lock_guard<LockType> l_map(lock_);
-    if (namespace_names_mapper_[ns->database_type()].erase(ns->name()) < 1 ||
-        namespace_ids_map_.erase(ns->id()) < 1) {
-      LOG(WARNING) << Format("Could not remove namespace from maps, name=$0, id=$1",
-                             ns->name(), ns->id());
+    namespace_names_mapper_[ns->database_type()].erase(ns->name());
+    if (namespace_ids_map_.erase(ns->id()) < 1) {
+      LOG(WARNING) << Format("Could not remove namespace from maps, id=$1", ns->id());
     }
   }
 
@@ -5250,7 +5256,7 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
         ns->database_type() == req->namespace_().database_type()) {
       Status s = STATUS_SUBSTITUTE(AlreadyPresent,
           "Keyspace '$0' already exists", ns->name());
-      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed alterring keyspace with error: "
+      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed altering keyspace with error: "
                    << s.ToString() << " Request:\n" << req->DebugString();
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
     }

@@ -1219,7 +1219,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
 
   // Finish Namespace create.
   SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
-  CreateNamespaceWait(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
+  CreateNamespaceWait(nsid, YQLDatabase::YQL_DATABASE_PGSQL);
 
   // Verify that Basic Access to a Namespace is now available.
   // 1. Create a Table within the Schema.
@@ -1258,7 +1258,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
 
     // We should be able to create a namespace with the same NAME at this time.
     ASSERT_OK(CreateNamespaceAsync("new_" + test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
-    CreateNamespaceWait("new_" + test_name, YQLDatabase::YQL_DATABASE_PGSQL);
+    CreateNamespaceWait(resp.id(), YQLDatabase::YQL_DATABASE_PGSQL);
   }
 }
 
