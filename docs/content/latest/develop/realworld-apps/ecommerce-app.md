@@ -60,7 +60,7 @@ All the source for the various components can be found in the following location
   - You can find the components in the [ui/src/components](https://github.com/yugabyte/yugastore/tree/master/ui/src/components) subdirectory.
 
 - Express / NodeJS web framework
-  - You can find all the Rest API routes for products in [routes/product.js](https://github.com/yugabyte/yugastore/blob/master/routes/products.js).
+  - You can find all the REST API routes for products in [routes/product.js](https://github.com/yugabyte/yugastore/blob/master/routes/products.js).
   - You can find the web framework setup in [app.js](https://github.com/yugabyte/yugastore/blob/master/app.js).
 
 - Models
@@ -150,7 +150,7 @@ The homepage is rendered by the `App` react component. The React route is the fo
 <Route exact path="/" component={App} />
 ```
 
-It uses the following Rest API to query Express/NodeJS for all the products:
+It uses the following REST API to query Express/NodeJS for all the products:
 
 ```
 /products
@@ -181,7 +181,7 @@ This is rendered by the `Products` react component. Here is the react route:
   )} />
 ```
 
-The component internally uses the following Rest API:
+The component internally uses the following REST API:
 
 ```
 /products/catgory/business
