@@ -42,7 +42,7 @@ showAsideToc: true
 This tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, please follow these steps in the [Quick start](../../../../api/ycql/quick-start/).
-- installed Go version 1.8+
+- installed Go version 1.13 or later.
 
 ## Install the Go Cassandra driver
 
