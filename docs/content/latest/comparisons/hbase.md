@@ -32,7 +32,7 @@ failure of the leader, and initiate leader election.
 ## C++ implementation
 
 Avoids GC tuning; can run better on large memory machines.
-Richer data model: YugabyteDB offers a multi-model/multi-API using YSQL, YCQL, and Redis.
+Richer data model: YugabyteDB offers a multi-model/multi-API using YSQL, YCQL, and YEDIS.
 Rather than deal with just byte keys and values, YugabyteDB offers a rich set of scalar (int, text,
 decimal, binary, timestamp, etc.) and composite types (such as collections, UDTs, etc.).
 
