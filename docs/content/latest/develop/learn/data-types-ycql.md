@@ -70,7 +70,7 @@ ycqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
 
 ### Insert data
 
-Next we insert some sample data for a few books into this store. You can copy and paste the following commands into the cqlsh shell for YugabyteDB to insert the data. Note that you would need a cqlsh that has the enhancement to work with YugabyteDB JSON documents, you can download it using the documentation here.
+Next we insert some sample data for a few books into this store. You can copy and paste the following commands into the YCQL shell (`ycqlsh`) for YugabyteDB to insert the data.
 
 ```sql
 INSERT INTO store.books (id, details) VALUES (1, 
@@ -117,14 +117,14 @@ Note the following interesting points about the book details above:
 
 ### Retrieve a subset of attributes
 
-Running the following default select query will return all attributes of each book.
+Running the following default `SELECT` query will return all attributes of each book.
 
 ```sql
 ycqlsh> SELECT * FROM store.books;
 
 ```
 
-But a number of times we may want to query just a subset of attributes from YugabyteDB database. Below is an example of a query that retrieves just the id and name for all the books.
+But a number of times you might want to query just a subset of attributes from YugabyteDB database. Below is an example of a query that retrieves just the id and name for all the books.
 
 ```sql
 ycqlsh> SELECT id, details->>'name' as book_title FROM store.books;
@@ -142,7 +142,7 @@ ycqlsh> SELECT id, details->>'name' as book_title FROM store.books;
 
 ### Query by attribute values - string
 
-The name attribute is a string in the book details JSON document. Let us query all the details of book named Hamlet.
+The name attribute is a string in the book details JSON document. Run the following to query the details of the book named *Hamlet*.
 
 ```sql
 ycqlsh> SELECT * FROM store.books WHERE details->>'name'='Hamlet';
@@ -156,7 +156,7 @@ ycqlsh> SELECT * FROM store.books WHERE details->>'name'='Hamlet';
        "name":"Hamlet","year":1603}
 ```
 
-Note that we can query by attributes that exist only in some of the documents. For example, we can query for all books that have a genre of novel. Recall from before that all books do not have a genre attribute defined.
+Note that you can query by attributes that exist only in some of the documents. For example, you can query for all books that have a genre of novel. Recall from before that all books do not have a genre attribute defined.
 
 ```sql
 ycqlsh> SELECT id, details->>'name' as title,
@@ -174,7 +174,7 @@ ycqlsh> SELECT id, details->>'name' as title,
 
 ### Query by attribute values - integer
 
-The year attribute is an integer in the book details JSON document. Let us query the id and name of books written after 1900.
+The year attribute is an integer in the book details JSON document. Run the following to query the ID and name of books written after 1900.
 
 ```sql
 ycqlsh> SELECT id, details->>'name' as title, details->>'year'
@@ -191,7 +191,7 @@ ycqlsh> SELECT id, details->>'name' as title, details->>'year'
 
 ### Query by attribute values - map
 
-The author attribute is a map, which in turn consists of the attributes first_name and last_name. Let us fetch the ids and titles of all books written by the author William Shakespeare.
+The author attribute is a map, which in turn consists of the attributes `first_name` and `last_name`. Let us fetch the IDs and titles of all books written by the author William Shakespeare.
 
 ```sql
 ycqlsh> SELECT id, details->>'name' as title,
@@ -210,7 +210,7 @@ ycqlsh> SELECT id, details->>'name' as title,
 
 ### Query by attribute Values - array
 
-The editors attribute is an array consisting of the first names of the editors of each of the books. We can query for the book titles where Mark is the first entry in the editors list as follows.
+The editors attribute is an array consisting of the first names of the editors of each of the books. You can query for the book titles where `Mark` is the first entry in the editors list as follows.
 
 ```sql
 ycqlsh> SELECT id, details->>'name' as title,
