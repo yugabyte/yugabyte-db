@@ -113,8 +113,16 @@ Connect to “yugabyte-consumer” universe using the YSQL shell (`ysqlsh`) or t
 Repeat the steps above, but pump data into “yugabyte-consumer”. To avoid primary key conflict errors, keep the key space for the two universes separate.
 
 
-{{< note title="How to check replication lag" >}}
-Replication lag is computed at the tablet level by subtracting the `last_read_hybrid_time` from the `hybrid_clock_time`. 
+{{< tip title="How to check replication lag" >}}
+Replication lag is computed at the tablet level as:
+
+```
+replication lag = hybrid_clock_time - last_read_hybrid_time
+```
+
+* `hybrid_clock_time`: The hybrid clock timestamp of the latest committed transaction in the master cluster.
+* `last_read_hybrid_time`: The hybrid clock timestamp of the latest pulled transaction in the follower cluster.
+
 An example script [`determine_replication_lag.sh`](/files/determine_replication_lag.sh) calculates replication lag for you. 
 The script requires the [`jq`](https://stedolan.github.io/jq/) package.
 
@@ -138,4 +146,4 @@ Options:
 ./determine_repl_latency.sh -m 10.150.255.114,10.150.255.115,10.150.255.113
 ```
 
-{{< /note >}}
+{{< /tip >}}
