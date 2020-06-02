@@ -118,7 +118,7 @@ Replication lag is computed at the tablet level by subtracting the `last_read_hy
 An example script [`determine_replication_lag.sh`](/files/determine_replication_lag.sh) calculates replication lag for you. 
 The script requires [`jq`](https://stedolan.github.io/jq/) package.
 
-The example below would give you a summary of all tables on a given cluster. You can also request an individual table:
+In the example below, a replication lag summary is generated for all tables on a cluster. You can also request an individual table:
 ```bash
 $ ./determine_repl_latency.sh -h
 determine_repl_latency.sh -m MASTER_IP1:PORT,MASTER_IP2:PORT,MASTER_IP3:PORT [ -c PATH_TO_SSL_CERTIFICATE ] (-k KEYSPACE -t TABLENAME | -a) [ -p PORT ] [ -r report ] [ -o output ] [ -u units ]
