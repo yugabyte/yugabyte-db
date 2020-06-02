@@ -115,7 +115,7 @@ Repeat the steps above, but pump data into “yugabyte-consumer”. To avoid pri
 
 {{< note title="How to check replication lag" >}}
 Replication lag is computed at the tablet level by subtracting the `last_read_hybrid_time` from the `hybrid_clock_time`. 
-[Here](/files/determine_replication_lag.sh) is an example script that does it for you. 
+An example script [`determine_replication_lag.sh`](/files/determine_replication_lag.sh) calculates replication lag for you. 
 The script requires [`jq`](https://stedolan.github.io/jq/) package.
 
 The example below would give you a summary of all tables on a given cluster. You can also request an individual table:
