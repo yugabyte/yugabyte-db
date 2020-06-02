@@ -40,15 +40,14 @@ YugabyteDB supports a number of standard aggregation functions. Let us go throug
 | 4 | Chef Anton's Cajun Seasoning | 2 | 2 | 48 - 6 oz jars      | 22    | 9
 | 5 | Chef Anton's Gumbo Mix       | 2 | 2 | 36 boxes            | 21.35 | 40
 
-
 Let us create this table with `ProductID` as the primary hash key.
 
 ```sql
-cqlsh> CREATE KEYSPACE store;
+ycqlsh> CREATE KEYSPACE store;
 ```
 
 ```sql
-cqlsh> CREATE TABLE store.products (ProductID BIGINT PRIMARY KEY, ProductName VARCHAR, SupplierID INT, CategoryID INT, Unit TEXT, Price FLOAT, Quantity INT);
+ycqlsh> CREATE TABLE store.products (ProductID BIGINT PRIMARY KEY, ProductName VARCHAR, SupplierID INT, CategoryID INT, Unit TEXT, Price FLOAT, Quantity INT);
 ```
 
 Now let us populate the sample data.
@@ -66,7 +65,7 @@ INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit
 - Finding the number of item types in the store can be done as follows.
 
 ```sql
-cqlsh> SELECT COUNT(ProductID) FROM store.products;
+ycqlsh> SELECT COUNT(ProductID) FROM store.products;
 ```
 
 ```
@@ -80,7 +79,7 @@ cqlsh> SELECT COUNT(ProductID) FROM store.products;
 - We can give an alias name to the count column as follows.
 
 ```sql
-cqlsh> SELECT COUNT(ProductID) as num_products FROM store.products;
+ycqlsh> SELECT COUNT(ProductID) as num_products FROM store.products;
 ```
 
 ```
@@ -91,13 +90,12 @@ cqlsh> SELECT COUNT(ProductID) as num_products FROM store.products;
 (1 rows)
 ```
 
-
 - Finding the number of item types for supplier 1 can be done as follows.
 
 You can do this as shown below.
 
 ```sql
-cqlsh> SELECT COUNT(ProductID) as supplier1_num_products FROM store.products WHERE SupplierID=1;
+ycqlsh> SELECT COUNT(ProductID) as supplier1_num_products FROM store.products WHERE SupplierID=1;
 ```
 
 ```
@@ -108,7 +106,6 @@ cqlsh> SELECT COUNT(ProductID) as supplier1_num_products FROM store.products WHE
 (1 rows)
 ```
 
-
 ## Numeric aggregation functions
 
 The standard aggregate functions of `min`, `max`, `sum`, `avg` and `count` are built-in functions.
@@ -116,7 +113,7 @@ The standard aggregate functions of `min`, `max`, `sum`, `avg` and `count` are b
 - To find the total number of items in the store, run the following query.
 
 ```sql
-cqlsh> SELECT SUM(Quantity) FROM store.products;
+ycqlsh> SELECT SUM(Quantity) FROM store.products;
 ```
 
 ```
@@ -130,7 +127,7 @@ cqlsh> SELECT SUM(Quantity) FROM store.products;
 - To find the price of the cheapest and the most expensive item, run the following.
 
 ```sql
-cqlsh> SELECT MIN(Price), MAX(Price) FROM store.products;
+ycqlsh> SELECT MIN(Price), MAX(Price) FROM store.products;
 ```
 
 ```
@@ -144,7 +141,7 @@ cqlsh> SELECT MIN(Price), MAX(Price) FROM store.products;
 - To find the average price of all the items in the store, run the following.
 
 ```sql
-cqlsh> SELECT AVG(price) FROM store.products;
+ycqlsh> SELECT AVG(price) FROM store.products;
 ```
 
 ```

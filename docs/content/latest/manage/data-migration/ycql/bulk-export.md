@@ -96,7 +96,7 @@ python ./gen_csv.py file04.csv 5120 &
 
 ## Load Sample Data
 
-[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general purpose bulk loader for CQL that supports various types of delimited files (particularly csv files). For more details, review the README of the [YugabyteDB cassandra-loader fork](https://github.com/yugabyte/cassandra-loader/). Note that cassandra-loader requires quotes for collection types (e.g. “[1,2,3]” rather than [1,2,3] for lists).
+[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general purpose bulk loader for CQL that supports various types of delimited files (particularly CSV files). For more details, review the README of the [YugabyteDB cassandra-loader fork](https://github.com/yugabyte/cassandra-loader/). Note that cassandra-loader requires quotes for collection types (for example, “[1,2,3]” rather than [1,2,3] for lists).
 
 ### Install cassandra-loader
 
@@ -109,7 +109,6 @@ $ wget https://github.com/yugabyte/cassandra-loader/releases/download/v0.0.27-yb
 ```sh
 $ chmod a+x cassandra-loader
 ```
-
 
 ### Run cassandra-loader
 

@@ -70,9 +70,10 @@ $ tar -zxvf ycsb.tar.gz
 $ cd YCSB
 ```
 
-Make sure you have the YCQL shell `cqlsh` exported to the `PATH` variable. You can download [`cqlsh`](https://download.yugabyte.com/) if you do not have it.
+Make sure you have the YCQL shell `ycqlsh` exported to the `PATH` variable. You can download [`ycqlsh`](https://download.yugabyte.com/) if you do not have it.
+
 ```sh
-$ export PATH=$PATH:/path/to/cqlsh
+$ export PATH=$PATH:/path/to/ycqlsh
 ```
 
 ### 2. Start YugabyteDB
@@ -80,7 +81,9 @@ $ export PATH=$PATH:/path/to/cqlsh
 Start your YugabyteDB cluster by following the steps [here](../../deploy/manual-deployment/).
 
 {{< tip title="Tip" >}}
+
 You will need the IP addresses of the nodes in the cluster for the next step.
+
 {{< /tip>}}
 
 ### 3. Configure `db.properties`
@@ -96,6 +99,7 @@ cassandra.username=yugabyte
 For details on other configuration parameters, like username, password, connection parameters, etc., see [YugabyteCQL binding](https://github.com/yugabyte/YCSB/tree/master/yugabyteCQL).
 
 ### 4. Run the benchmark
+
 There is a handy script `run_ycql.sh` that loads and runs all the workloads.
 
 ```sh
@@ -103,38 +107,46 @@ $ ./run_ycql.sh --ip <ip>
 ```
 
 The above command workload will run the workload on a table with 1 million rows. If you want to run the benchmark on a table with a different row count:
+
 ```sh
 $ ./run_ycql.sh --ip <ip> --recordcount <number of rows>
 ```
 
 {{< note title="Note" >}}
-To get the maximum performance out of the system, you would have to tune the threadcount parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, we used a threadcount of 32 for the loading phase and 256 for the execution phase.
+
+To get the maximum performance out of the system, you would have to tune the `threadcount` parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32 GB RAM, we used a `threadcount` of `32` for the loading phase and `256` for the execution phase.
+
 {{< /note >}}
 
 ### 5. Verify results
 
 The script creates 2 result files per workload, one for the loading and one for the execution phase with the details of throughput and latency.
-For example for workloada it creates `workloada-ycql-load.dat` and `workloada-ycql-transaction.dat`
+For example, for workloada, it creates `workloada-ycql-load.dat` and `workloada-ycql-transaction.dat`
 
 ## 6. Run individual workloads (optional)
 
-Connect to the database using `cqlsh`.
+Connect to the database using `ycqlsh`.
+
 ```sh
-$ ./bin/cqlsh <ip>
+$ ./bin/ycqlsh <ip>
 ```
+
 Create the `ycsb` keyspace.
+
 ```postgres
-cqlsh> CREATE KEYSPACE ycsb;
+ycqlsh> CREATE KEYSPACE ycsb;
 ```
 
 Connect to the created keyspace.
+
 ```postgres
-cqlsh> USE ycsb;
+ycqlsh> USE ycsb;
 ```
 
 Create the table.
+
 ```postgres
-cqlsh:ycsb> create table usertable (
+ycqlsh:ycsb> create table usertable (
                 y_id varchar primary key,
                 field0 varchar, field1 varchar, field2 varchar, field3 varchar,
                 field4 varchar, field5 varchar, field6 varchar, field7 varchar,
@@ -176,11 +188,12 @@ $ ./bin/ycsb run yugabyteCQL -s  \
       -p threadcount=256         \
       -p maxexecutiontime=180
 ```
+
 ## Expected results
 
 ### Setup
 
-When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
+When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32 GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
 
 ### 1 Million Rows
 

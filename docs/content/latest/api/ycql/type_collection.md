@@ -1,5 +1,5 @@
 ---
-title: Collection data types (MAP, LIST, and SET) [YSQL]
+title: Collection data types (MAP, LIST, and SET) [YCQL]
 headerTitle: Collection data types (MAP, LIST, and SET)
 linkTitle: Collection
 summary: MAP, SET and LIST types
@@ -51,7 +51,7 @@ Where
 - `type` must be a [non-parametric data type](../#data-types) or a [frozen](../type_frozen) data type.
 - `key_type` must be any data type that is allowed in a primary key (Currently `FROZEN` and all non-parametric data types except `BOOL`).
 - For `map_literal` the left-side `expression` represents the key and the right-side one represents the value.
-- `expression` is any well formed CQL expression. See [Expression](..#expressions) for more information on syntax rules.
+- `expression` is any well formed YCQL expression. See [Expression](..#expressions) for more information on syntax rules.
 
 ## Semantics
 
@@ -75,7 +75,7 @@ In particular, some list operations (insert at an index and remove elements) req
 - Collection types are used like simple types (except they are not allowed in primary key).
 
 ```sql
-cqlsh:example> CREATE TABLE users(username TEXT PRIMARY KEY, 
+ycqlsh:example> CREATE TABLE users(username TEXT PRIMARY KEY, 
                                   emails SET<TEXT>,
                                   phones MAP<TEXT,TEXT>,
                                   top_cities LIST<TEXT>);
@@ -86,7 +86,7 @@ cqlsh:example> CREATE TABLE users(username TEXT PRIMARY KEY,
 - Collection values are inserted by setting all their elements at once.
 
 ```sql
-cqlsh:example> INSERT INTO users(username, emails, phones, top_cities) 
+ycqlsh:example> INSERT INTO users(username, emails, phones, top_cities) 
                VALUES ('foo', 
                        {'c@example.com', 'a@example.com'}, 
                        {'home' : '999-9999', 'mobile' : '000-0000'}, 
@@ -96,11 +96,11 @@ cqlsh:example> INSERT INTO users(username, emails, phones, top_cities)
 Empty collections are the same as nulls.
 
 ```sql
-cqlsh:example> INSERT INTO users(username, emails, phones, top_cities) VALUES ('bar', { }, { }, [ ]);
+ycqlsh:example> INSERT INTO users(username, emails, phones, top_cities) VALUES ('bar', { }, { }, [ ]);
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM users;
+ycqlsh:example> SELECT * FROM users;
 ```
 
 ```
@@ -115,19 +115,19 @@ cqlsh:example> SELECT * FROM users;
 - Collection values can be updated by setting all their elements at once.
 
 ```sql
-cqlsh:example> UPDATE users SET emails = {'bar@example.com'} WHERE username = 'bar';
+ycqlsh:example> UPDATE users SET emails = {'bar@example.com'} WHERE username = 'bar';
 ```
 
 ```sql
-cqlsh:example> UPDATE users SET phones = {'home' : '123-45678'} WHERE username = 'bar';
+ycqlsh:example> UPDATE users SET phones = {'home' : '123-45678'} WHERE username = 'bar';
 ```
 
 ```sql
-cqlsh:example> UPDATE users SET top_cities = ['London', 'Tokyo'] WHERE username = 'bar';
+ycqlsh:example> UPDATE users SET top_cities = ['London', 'Tokyo'] WHERE username = 'bar';
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM users;
+ycqlsh:example> SELECT * FROM users;
 ```
 
 ```
@@ -142,19 +142,19 @@ cqlsh:example> SELECT * FROM users;
 - Collection elements can be added with `+` or removed with `-`.
 
 ```sql
-cqlsh:example> UPDATE users SET emails = emails + {'foo@example.com'} WHERE username = 'foo';
+ycqlsh:example> UPDATE users SET emails = emails + {'foo@example.com'} WHERE username = 'foo';
 ```
 
 ```sql
-cqlsh:example> UPDATE users SET emails = emails - {'a@example.com', 'c.example.com'} WHERE username = 'foo';
+ycqlsh:example> UPDATE users SET emails = emails - {'a@example.com', 'c.example.com'} WHERE username = 'foo';
 ```
 
 ```sql
-cqlsh:example> UPDATE users SET phones = phones + {'office' : '333-3333'} WHERE username = 'foo';
+ycqlsh:example> UPDATE users SET phones = phones + {'office' : '333-3333'} WHERE username = 'foo';
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM users;
+ycqlsh:example> SELECT * FROM users;
 ```
 
 ```
@@ -167,11 +167,11 @@ cqlsh:example> SELECT * FROM users;
 - To remove map elements only the relevant keys need to be given (as a set).
 
 ```sql
-cqlsh:example> UPDATE users SET phones = phones - {'home'} WHERE username = 'foo';
+ycqlsh:example> UPDATE users SET phones = phones - {'home'} WHERE username = 'foo';
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM users;
+ycqlsh:example> SELECT * FROM users;
 ```
 
 ```
@@ -184,19 +184,19 @@ cqlsh:example> SELECT * FROM users;
 - List elements can be either prepended or appended. 
 
 ```sql
-cqlsh:example> UPDATE users SET top_cities = top_cities + ['Delhi'] WHERE username = 'foo';
+ycqlsh:example> UPDATE users SET top_cities = top_cities + ['Delhi'] WHERE username = 'foo';
 ```
 
 ```sql
-cqlsh:example> UPDATE users SET top_cities = ['Sunnyvale'] + top_cities WHERE username = 'foo';
+ycqlsh:example> UPDATE users SET top_cities = ['Sunnyvale'] + top_cities WHERE username = 'foo';
 ```
 
 ```sql
-cqlsh:example> UPDATE users SET top_cities = top_cities - ['Paris', 'New York'] WHERE username = 'foo';
+ycqlsh:example> UPDATE users SET top_cities = top_cities - ['Paris', 'New York'] WHERE username = 'foo';
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM users;
+ycqlsh:example> SELECT * FROM users;
 ```
 
 ```
@@ -211,15 +211,15 @@ cqlsh:example> SELECT * FROM users;
 - Maps allow referencing elements by key.
 
 ```sql
-cqlsh:example> UPDATE users SET phones['mobile'] = '111-1111' WHERE username = 'foo';
+ycqlsh:example> UPDATE users SET phones['mobile'] = '111-1111' WHERE username = 'foo';
 ```
 
 ```sql
-cqlsh:example> UPDATE users SET phones['mobile'] = '345-6789' WHERE username = 'bar' IF phones['mobile'] = null;
+ycqlsh:example> UPDATE users SET phones['mobile'] = '345-6789' WHERE username = 'bar' IF phones['mobile'] = null;
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM users;
+ycqlsh:example> SELECT * FROM users;
 ```
 
 ```
@@ -232,15 +232,15 @@ cqlsh:example> SELECT * FROM users;
 - Lists allow referencing elements by index (numbering starts from 0).
 
 ```sql
-cqlsh:example> UPDATE users SET top_cities[0] = 'San Francisco' WHERE username = 'bar';
+ycqlsh:example> UPDATE users SET top_cities[0] = 'San Francisco' WHERE username = 'bar';
 ```
 
 ```sql
-cqlsh:example> UPDATE users SET top_cities[1] = 'Mumbai' WHERE username = 'bar' IF top_cities[1] = 'Tokyo';
+ycqlsh:example> UPDATE users SET top_cities[1] = 'Mumbai' WHERE username = 'bar' IF top_cities[1] = 'Tokyo';
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM users;
+ycqlsh:example> SELECT * FROM users;
 ```
 
 ```

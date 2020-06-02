@@ -313,10 +313,10 @@ To connect and use the YSQL Shell `ysqlsh`, run the following command.
 $ kubectl exec -n yb-demo -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
-To connect and use the YCQL Shell `cqlsh`, run the following command.
+To connect and use the YCQL Shell `ycqlsh`, run the following command.
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0.yb-tservers.yb-demo
+$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ycqlsh yb-tserver-0.yb-tservers.yb-demo
 ```
 
 ## Connect using external clients

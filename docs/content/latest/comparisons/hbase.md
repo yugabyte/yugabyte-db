@@ -26,13 +26,13 @@ on the server can be in the order of 60 seconds or more. This is because the HBa
 needs to wait for the server’s ephemeral node in Zookeeper to expire, followed by time take to split
 the transaction logs into per-shard recovery logs, and the time taken to replay the edits from the
 transaction log by a new server before the shard is available to take IO. In contrast, in Yugabyte,
-the tablet-peers are hot standbys, and within a matter of few heartbeats (about few seconds) detect
+the tablet-peers are hot standbys, and within a matter of few heartbeats (a few seconds) detect
 failure of the leader, and initiate leader election.
 
 ## C++ implementation
 
 Avoids GC tuning; can run better on large memory machines.
-Richer data model: YugabyteDB offers a multi-model/multi-API through CQL & Redis (and SQL in future).
+Richer data model: YugabyteDB offers a multi-model/multi-API using YSQL, YCQL, and YEDIS.
 Rather than deal with just byte keys and values, YugabyteDB offers a rich set of scalar (int, text,
 decimal, binary, timestamp, etc.) and composite types (such as collections, UDTs, etc.).
 

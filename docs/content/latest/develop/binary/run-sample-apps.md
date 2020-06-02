@@ -25,44 +25,53 @@ $ mvn -DskipTests package
 ```
 
 Create the app's schema in YugabyteDB.
+
 ```sh
 $ cd resources
 ```
+
 ```sh
 $ $YUGABYTE_HOME/bin/ysqlsh -f schema.sql
 ```
+
 ```sh
-$ $YUGABYTE_HOME/bin/cqlsh -f schema.cql
+$ $YUGABYTE_HOME/bin/ycqlsh -f schema.cql
 ```
 
 Load the initial data.
+
 ```sh
 $ ./dataload.sh
 ```
 
 ## 3. Start the app
 
-Start the Eureka discovery service. After starting, verify that the service is running at http://localhost:8761/.
+Start the Eureka discovery service. After starting, verify that the service is running at `http://localhost:8761/`.
+
 ```sh
 $ cd eureka-server-local/ && mvn spring-boot:run
 ```
 
 Start the API gateway microservice.
+
 ```sh
 $ cd api-gateway-microservice/ && mvn spring-boot:run
 ```
 
 Start the products microservice.
+
 ```sh
 $ cd products-microservice/ && mvn spring-boot:run
 ```
 
 Start the checkout microservice.
+
 ```sh
 $ cd checkout-microservice/ && mvn spring-boot:run
 ```
 
 Start the UI service. After starting, browse the app at http://localhost:8080/.
+
 ```sh
 $ cd react-ui/ && mvn spring-boot:run
 ```
@@ -75,13 +84,14 @@ Add two items to the cart as shown below.
 
 Verify that your cart is now stored inside the YSQL `shopping_cart` table. From your YugabyteDB local cluster home, run the following.
 
-
 ```sh
 $ ./bin/ysqlsh
 ```
+
 ```sh
 yugabyte=# select * from shopping_cart;
 ```
+
 ```
  cart_key     | user_id |    asin    |       time_added        | quantity 
 ------------------+---------+------------+-------------------------+----------
@@ -96,14 +106,16 @@ Now complete the checkout and observe the order number generated.
 
 ![yugastore-java order confirmation](/images/quick_start/binary-yugastore-java-orderconfirmation.png)
 
-
 Verify that this order number is now in the YCQL `orders` table.
+
 ```sh
-$ ./bin/cqlsh localhost
+$ ./bin/ycqlsh localhost
 ```
+
 ```sh
-cqlsh> select * from cronos.orders;
+ycqlsh> select * from cronos.orders;
 ```
+
 ```
 order_id                             | user_id | order_details                                                                                                                                                                           | order_time              | order_total
 --------------------------------------+---------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------------+-------------
@@ -112,9 +124,11 @@ order_id                             | user_id | order_details                  
 ```
 
 Verify that there are no active shopping carts in YSQL at this point.
+
 ```sh
 yugabyte=# select * from shopping_cart;
 ```
+
 ```
 cart_key | user_id | asin | time_added | quantity 
 ----------+---------+------+------------+----------

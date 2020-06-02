@@ -696,15 +696,15 @@ Output should be the following:
 
 ## 9. Test Cassandra-compatible YCQL API
 
-### Using cqlsh
+### Using ycqlsh
 
-Connect to the cluster using the YCQL shell (`cqlsh`) that comes installed in the `bin` directory. If you want to use `cqlsh` from a different node, follow the steps found on the [cqlsh](../../../../admin/cqlsh/) page.
+Connect to the cluster using the YCQL shell (`ycqlsh`) that comes installed in the `bin` directory. If you want to use `ycqlsh` from a different node, follow the steps found on the [ycqlsh](../../../../admin/cqlsh/) page.
 
 From any node, execute the following command.
 
 ```sh
 $ cd ~/tserver
-$ ./bin/cqlsh <any-node-ip>
+$ ./bin/ycqlsh <any-node-ip>
 ```
 
 ```sql

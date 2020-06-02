@@ -1,14 +1,15 @@
 ---
-title: cqlsh - YCQL shell for YugabyteDB
-headerTitle: cqlsh
-linkTitle: cqlsh
+title: ycqlsh - YCQL shell for YugabyteDB
+headerTitle: ycqlsh
+linkTitle: ycqlsh
 description: Use the YCQL shell (cqlsh) to interact with YugabyteDB.
 aliases:
   - /develop/tools/cqlsh/
   - /latest/develop/tools/cqlsh/
+  - /latest/admin/cqlsh/
 menu:
   latest:
-    identifier: cqlsh
+    identifier: ycqlsh
     parent: admin
     weight: 2460
 isTocNested: true
@@ -17,16 +18,22 @@ showAsideToc: true
 
 ## Overview
 
-The YugabyteDB CQL shell (`cqlsh`) provides a CLI for interacting with YugabyteDB using [YCQL](../../api/ycql/).
+The YCQL shell (`ycqlsh`) provides a CLI for interacting with YugabyteDB using [YCQL](../../api/ycql/).
+
+{{< note title="Note" >}}
+
+Previously named `cqlsh`, the YCQL shell is now named `ycqlsh`. Although the `cqlsh` binary is available in the `bin` directory, it is deprecated and will be removed in a future release.
+
+{{< /note >}}
 
 ## Download
 
-The `cqlsh` shell is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. It is also available for download and install from YugabyteDB's [GitHub repository](https://github.com/yugabyte/cqlsh/releases).
+The YCQL shell (`ycqlsh`) is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. It is also available for download and install from YugabyteDB's [GitHub repository](https://github.com/yugabyte/cqlsh/releases).
 
 ## Example
 
 ```sh
-$ ./bin/cqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
+$ ./bin/ycqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
 
  cluster_name  | data_center | rack
 ---------------+-------------+-------
@@ -35,12 +42,12 @@ $ ./bin/cqlsh --execute "select cluster_name, data_center, rack from system.loca
 
 ## Online help
 
-Run `cqlsh --help` to display the online help.
+Run `ycqlsh --help` to display the online help.
 
 ## Syntax
 
 ```sh
-cqlsh [flags] [host [port]]
+ycqlsh [flags] [host [port]]
 ```
 
 Where
@@ -52,7 +59,7 @@ Where
 | ------------------- | ---------- | ------- | ------------------------------------------------------------ |
 | `--color`           | `-C`       |         | Force color output                                           |
 | `--no-color`        |            |         | Disable color output                                         |
-| `--browser`         |            |         | Specify the browser to use for displaying `cqlsh` help. This can be one of the [supported browser names](https://docs.python.org/2/library/webbrowser.html) (e.g. firefox) or a browser path followed by `%s` (e.g. `/usr/bin/google-chrome-stable %s`). |
+| `--browser`         |            |         | Specify the browser to use for displaying `ycqlsh` help. This can be one of the [supported browser names](https://docs.python.org/2/library/webbrowser.html) (e.g. firefox) or a browser path followed by `%s` (e.g. `/usr/bin/google-chrome-stable %s`). |
 | `--ssl`             |            |         | Use SSL when connecting to YugabyteDB                       |
 | `--user`            | `-u`       |         | Username to authenticate against YugabyteDB with            |
 | `--password`        | `-p`       |         | Password to authenticate against YugabyteDB with, should be used in conjunction with `--user` |
@@ -60,7 +67,7 @@ Where
 | `--file`            | `-f`       |         | Execute commands from the given file, then exit              |
 | `--debug`           |            |         | Print additional debugging information                       |
 | `--encoding`        |            | UTF-8   | Specify a non-default encoding for output.                   |
-| `--cqlshrc`         |            |         | Specify the location for the `cqlshrc` file. The `cqlshrc` file holds configuration options for `cqlsh`. By default this is in the user’s home directory at `~/.cassandra/cqlsh`. |
+| `--cqlshrc`         |            |         | Specify the location for the `cqlshrc` file. The `cqlshrc` file holds configuration options for `ycqlsh`. By default this is in the user’s home directory at `~/.cassandra/cqlsh`. |
 | `--execute`         | `-e`       |         | Execute the given statement, then exit                       |
 | `--connect-timeout` |            | 2       | Specify the connection timeout in seconds                    |
 | `--request-timeout` |            | 10      | Specify the request timeout in seconds                       |
@@ -68,7 +75,7 @@ Where
 
 ## Special commands
 
-In addition to supporting regular YCQL statements, `cqlsh` also supports the following special commands.
+In addition to supporting regular YCQL statements, `ycqlsh` also supports the following special commands.
 
 ### CONSISTENCY
 
@@ -87,22 +94,22 @@ To inspect the current consistency level, use `CONSISTENCY` with no arguments.
 
 ### SHOW VERSION
 
-Prints the `cqlsh`, Cassandra, CQL, and native protocol versions in use. Example:
+Prints the `ycqlsh`, Cassandra, CQL, and native protocol versions in use. Example:
 
 ```sql
-cqlsh> SHOW VERSION
+ycqlsh> SHOW VERSION
 ```
 
 ```
-[cqlsh 5.0.1 | Cassandra 3.8 | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 ```
 
 ### SHOW HOST
 
-Prints the IP address and port of the YB-TServer server that `cqlsh` is connected to in addition to the cluster name. Example:
+Prints the IP address and port of the YB-TServer server that `ycqlsh` is connected to in addition to the cluster name. Example:
 
 ```sql
-cqlsh> SHOW HOST
+ycqlsh> SHOW HOST
 ```
 
 ```
@@ -111,7 +118,7 @@ Connected to local cluster at 127.0.0.1:9042.
 
 ### SOURCE
 
-Reads the contents of a file and executes each line as a YCQL statement or special `cqlsh` command.
+Reads the contents of a file and executes each line as a YCQL statement or special `ycqlsh` command.
 
 ```
 SOURCE '<file>'
@@ -120,7 +127,7 @@ SOURCE '<file>'
 Example usage:
 
 ```sql
-cqlsh> SOURCE '/home/yugabyte/commands.cql'
+ycqlsh> SOURCE '/home/yugabyte/commands.cql'
 
 ```
 
@@ -136,13 +143,13 @@ CAPTURE
 ```
 
 - The path to the file to be appended to must be given inside a string literal. The path is interpreted relative to the current working directory. The tilde shorthand notation (`~/mydir`) is supported for referring to `$HOME`.
-- Only query result output is captured. Errors and output from cqlsh-only commands will still be shown in the `cqlsh` session.
-- To stop capturing output and show it in the `cqlsh` session again, use `CAPTURE OFF`.
+- Only query result output is captured. Errors and output from ycqlsh-only commands will still be shown in the `ycqlsh` session.
+- To stop capturing output and show it in the `ycqlsh` session again, use `CAPTURE OFF`.
 - To inspect the current capture configuration, use `CAPTURE` with no arguments.
 
 ### HELP
 
-Gives information about `cqlsh` commands. To see available topics, enter `HELP` without any arguments. To see help on a topic, use `HELP <topic>`. Also see the `--browser` argument for controlling what browser is used to display help.
+Gives information about `ycqlsh` commands. To see available topics, enter `HELP` without any arguments. To see help on a topic, use `HELP <topic>`. Also see the `--browser` argument for controlling what browser is used to display help.
 
 ```sql
 HELP <topic>
@@ -185,7 +192,7 @@ LOGIN <username> [<password>]
 
 ### EXIT
 
-Ends the current session and terminates the `cqlsh` process.
+Ends the current session and terminates the `ycqlsh` process.
 
 ```sql
 EXIT
@@ -225,7 +232,7 @@ In any of the commands, `DESC` may be used in place of `DESCRIBE`.
 The `DESCRIBE CLUSTER` command prints the cluster namer:
 
 ```sql
-cqlsh> DESCRIBE CLUSTER
+ycqlsh> DESCRIBE CLUSTER
 
 ```
 

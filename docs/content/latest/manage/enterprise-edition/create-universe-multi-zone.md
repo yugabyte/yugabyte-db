@@ -201,13 +201,13 @@ Stop the sample app.
 You can connect to the YCQL service by running the following command.
 
 ```sh
-$ /home/yugabyte/tserver/bin/cqlsh <ip address of the node>
+$ /home/yugabyte/tserver/bin/ycqlsh <ip address of the node>
 ```
 
 You can view the table schema as well as the data entered as shown below.
 
 ```
-cqlsh> DESCRIBE ybdemo_keyspace.cassandrakeyvalue;
+ycqlsh> DESCRIBE ybdemo_keyspace.cassandrakeyvalue;
 
 CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
     k text PRIMARY KEY,
@@ -216,8 +216,9 @@ CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
 ```
 
 ```sql
-cqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
+ycqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
 ```
+
 ```
  k          | v
 ------------+-----------------------------------------
@@ -229,7 +230,6 @@ cqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
 
 (5 rows)
 ```
-
 
 You can connect to the YEDIS service by running the following command.
 

@@ -93,7 +93,7 @@ kubectl exec -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0 --ech
 You can also connect to the YCQL API as shown below.
 
 ```sh
-kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0
+kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ycqlsh yb-tserver-0
 ```
 
 ## Configuration flags

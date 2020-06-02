@@ -1,27 +1,27 @@
 
-* Run `cqlsh` to connect to the service.
+* Run `ycqlsh` to connect to the service.
 
 You can do this as shown below.
 
 ```sh
-$ ./bin/cqlsh localhost
+$ ./bin/ycqlsh localhost
 ```
 
 ```
 Connected to local cluster at 127.0.0.1:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh>
+ycqlsh>
 ```
 
-* Run a CQL command to verify it is working.
+* Run a YCQL command to verify it is working.
 
 ```sql
-cqlsh> describe keyspaces;
+ycqlsh> describe keyspaces;
 ```
 
 ```
 system_schema  system_auth  system
 
-cqlsh>
+ycqlsh>
 ```

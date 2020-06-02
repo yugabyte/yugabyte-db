@@ -15,31 +15,31 @@ isTocNested: false
 showAsideToc: true
 ---
 
-This section covers the set of CQL built-in functions that work on the date and time data types: [`DATE`, `TIME`, `TIMESTAMP`](../type_datetime), or [`TIMEUUID`](../type_uuid).
+This section covers the set of YCQL built-in functions that work on the date and time data types: [`DATE`, `TIME`, `TIMESTAMP`](../type_datetime), or [`TIMEUUID`](../type_uuid).
 
 ## currentdate(), currenttime(), and currenttimestamp()
 
 Use these functions to return the current system date and time in UTC time zone.
 
 - They take in no arguments.
-- The return value is a `DATE`, `TIME` or `TIMESTAMP` respectively.
+- The return value is a `DATE`, `TIME`, or `TIMESTAMP` respectively.
 
 ### Examples
 
 #### Insert values using currentdate(), currenttime(), and currenttimestamp()
 
 ```sql
-cqlsh:example> CREATE TABLE test_current (k INT PRIMARY KEY, d DATE, t TIME, ts TIMESTAMP);
+ycqlsh:example> CREATE TABLE test_current (k INT PRIMARY KEY, d DATE, t TIME, ts TIMESTAMP);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO test_current (k, d, t, ts) VALUES (1, currentdate(), currenttime(), currenttimestamp());
+ycqlsh:example> INSERT INTO test_current (k, d, t, ts) VALUES (1, currentdate(), currenttime(), currenttimestamp());
 ```
 
 #### Comparison using currentdate() and currenttime()
 
 ```sql
-cqlsh:example> SELECT * FROM test_current WHERE d = currentdate() and t < currenttime();
+ycqlsh:example> SELECT * FROM test_current WHERE d = currentdate() and t < currenttime();
 ```
 
 ```
@@ -60,17 +60,17 @@ This function generates a new unique version 1 UUID (`TIMEUUID`).
 #### Insert values using now()
 
 ```sql
-cqlsh:example> CREATE TABLE test_now (k INT PRIMARY KEY, v TIMEUUID);
+ycqlsh:example> CREATE TABLE test_now (k INT PRIMARY KEY, v TIMEUUID);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO test_now (k, v) VALUES (1, now());
+ycqlsh:example> INSERT INTO test_now (k, v) VALUES (1, now());
 ```
 
 #### Select using now()
 
 ```sql
-cqlsh:example> SELECT now() FROM test_now;
+ycqlsh:example> SELECT now() FROM test_now;
 ```
 
 ```
@@ -82,7 +82,7 @@ cqlsh:example> SELECT now() FROM test_now;
 #### Comparison using now()
 
 ```sql
-cqlsh:example> SELECT v FROM test_now WHERE v < now();
+ycqlsh:example> SELECT v FROM test_now WHERE v < now();
 ```
 
 ```
@@ -99,15 +99,15 @@ This function converts a timestamp or TIMEUUID to the corresponding date.
 - The return value is a `DATE`.
 
 ```sql
-cqlsh:example> CREATE TABLE test_todate (k INT PRIMARY KEY, ts TIMESTAMP);
+ycqlsh:example> CREATE TABLE test_todate (k INT PRIMARY KEY, ts TIMESTAMP);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO test_todate (k, ts) VALUES (1, currenttimestamp());
+ycqlsh:example> INSERT INTO test_todate (k, ts) VALUES (1, currenttimestamp());
 ```
 
 ```sql
-cqlsh:example> SELECT todate(ts) FROM test_todate;
+ycqlsh:example> SELECT todate(ts) FROM test_todate;
 ```
 
 ```
@@ -128,17 +128,17 @@ This function converts a date or TIMEUUID to the corresponding timestamp.
 #### Insert values using totimestamp()
 
 ```sql
-cqlsh:example> CREATE TABLE test_totimestamp (k INT PRIMARY KEY, v TIMESTAMP);
+ycqlsh:example> CREATE TABLE test_totimestamp (k INT PRIMARY KEY, v TIMESTAMP);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO test_totimestamp (k, v) VALUES (1, totimestamp(now()));
+ycqlsh:example> INSERT INTO test_totimestamp (k, v) VALUES (1, totimestamp(now()));
 ```
 
 #### Select using totimestamp()
 
 ```sql
-cqlsh:example> SELECT totimestamp(now()) FROM test_totimestamp;
+ycqlsh:example> SELECT totimestamp(now()) FROM test_totimestamp;
 ```
 
 ```
@@ -150,7 +150,7 @@ cqlsh:example> SELECT totimestamp(now()) FROM test_totimestamp;
 #### Comparison using totimestamp()
 
 ```sql
-cqlsh:example> SELECT v FROM test_totimestamp WHERE v < totimestamp(now());
+ycqlsh:example> SELECT v FROM test_totimestamp WHERE v < totimestamp(now());
 ```
 
 ```
@@ -171,17 +171,17 @@ This function converts a TIMEUUID to the corresponding timestamp.
 #### Insert values using dateof()
 
 ```sql
-cqlsh:example> CREATE TABLE test_dateof (k INT PRIMARY KEY, v TIMESTAMP);
+ycqlsh:example> CREATE TABLE test_dateof (k INT PRIMARY KEY, v TIMESTAMP);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO test_dateof (k, v) VALUES (1, dateof(now()));
+ycqlsh:example> INSERT INTO test_dateof (k, v) VALUES (1, dateof(now()));
 ```
 
 #### Select using dateof()
 
 ```sql
-cqlsh:example> SELECT dateof(now()) FROM test_dateof;
+ycqlsh:example> SELECT dateof(now()) FROM test_dateof;
 ```
 
 ```
@@ -193,7 +193,7 @@ cqlsh:example> SELECT dateof(now()) FROM test_dateof;
 #### Comparison using dateof()
 
 ```sql
-cqlsh:example> SELECT v FROM test_dateof WHERE v < dateof(now());
+ycqlsh:example> SELECT v FROM test_dateof WHERE v < dateof(now());
 ```
 
 ```
@@ -215,17 +215,17 @@ equal to the number of millisecond since epoch Thursday, 1 January 1970).
 #### Insert values using tounixtimestamp()
 
 ```sql
-cqlsh:example> CREATE TABLE test_tounixtimestamp (k INT PRIMARY KEY, v BIGINT);
+ycqlsh:example> CREATE TABLE test_tounixtimestamp (k INT PRIMARY KEY, v BIGINT);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO test_tounixtimestamp (k, v) VALUES (1, tounixtimestamp(now()));
+ycqlsh:example> INSERT INTO test_tounixtimestamp (k, v) VALUES (1, tounixtimestamp(now()));
 ```
 
 #### Select using tounixtimestamp()
 
 ```sql
-cqlsh:example> SELECT tounixtimestamp(now()) FROM test_tounixtimestamp;
+ycqlsh:example> SELECT tounixtimestamp(now()) FROM test_tounixtimestamp;
 ```
 
 ```
@@ -239,7 +239,7 @@ cqlsh:example> SELECT tounixtimestamp(now()) FROM test_tounixtimestamp;
 You can do this as shown below.
 
 ```sql
-cqlsh:example> SELECT v from test_tounixtimestamp WHERE v < tounixtimestamp(now());
+ycqlsh:example> SELECT v from test_tounixtimestamp WHERE v < tounixtimestamp(now());
 ```
 
 ```
@@ -261,17 +261,17 @@ equal to the number of millisecond since epoch Thursday, 1 January 1970).
 #### Insert values using unixtimestampof()
 
 ```sql
-cqlsh:example> CREATE TABLE test_unixtimestampof (k INT PRIMARY KEY, v BIGINT);
+ycqlsh:example> CREATE TABLE test_unixtimestampof (k INT PRIMARY KEY, v BIGINT);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO test_unixtimestampof (k, v) VALUES (1, unixtimestampof(now()));
+ycqlsh:example> INSERT INTO test_unixtimestampof (k, v) VALUES (1, unixtimestampof(now()));
 ```
 
 #### Select using unixtimestampof()
 
 ```sql
-cqlsh:example> SELECT unixtimestampof(now()) FROM test_unixtimestampof;
+ycqlsh:example> SELECT unixtimestampof(now()) FROM test_unixtimestampof;
 ```
 
 ```
@@ -283,7 +283,7 @@ cqlsh:example> SELECT unixtimestampof(now()) FROM test_unixtimestampof;
 #### Comparison using unixtimestampof()
 
 ```sql
-cqlsh:example> SELECT v from test_unixtimestampof WHERE v < unixtimestampof(now());
+ycqlsh:example> SELECT v from test_unixtimestampof WHERE v < unixtimestampof(now());
 ```
 
 ```
@@ -304,17 +304,17 @@ This function generates a new unique version 4 UUID (`UUID`).
 #### Insert values using uuid()
 
 ```sql
-cqlsh:example> CREATE TABLE test_uuid (k INT PRIMARY KEY, v UUID);
+ycqlsh:example> CREATE TABLE test_uuid (k INT PRIMARY KEY, v UUID);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO test_uuid (k, v) VALUES (1, uuid());
+ycqlsh:example> INSERT INTO test_uuid (k, v) VALUES (1, uuid());
 ```
 
 #### Selecting the inserted uuid value
 
 ```sql
-cqlsh:example> SELECT v FROM test_uuid WHERE k = 1;
+ycqlsh:example> SELECT v FROM test_uuid WHERE k = 1;
 ```
 
 ```
@@ -326,7 +326,7 @@ cqlsh:example> SELECT v FROM test_uuid WHERE k = 1;
 #### Select using uuid()
 
 ```sql
-cqlsh:example> SELECT uuid() FROM test_uuid;
+ycqlsh:example> SELECT uuid() FROM test_uuid;
 ```
 
 ```

@@ -55,14 +55,14 @@ $ auditctl -e 1
 
 ## YugabyteDB processes state
 
-YugabyteDB provides web endpoints where the current state of each process is aggregated. This includes logs, flags as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for CQL and, respectively, Redis requests.
+YugabyteDB provides web endpoints where the current state of each process is aggregated. This includes logs, flags as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for YCQL and, respectively, Redis requests.
 
 | Description | URL |
 |-------------|-----|
 | Master Web Page | `<node-ip>:7000` |
 | TServer Web Page | `<node-ip>:9000` |
 | Redis Metrics | `<node-ip>:11000/metrics` |
-| CQL Metrics | `<node-ip>:12000/metrics` |
+| YCQL Metrics | `<node-ip>:12000/metrics` |
 
 {{< note title="Note" >}}
 

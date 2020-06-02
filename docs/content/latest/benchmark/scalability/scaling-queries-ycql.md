@@ -67,7 +67,7 @@ YugabyteDB performs strongly consistent reads by default. For details, see [Read
 
 The graphs below were captured for one hour of the run. The operations per second is the sum across all the nodes while the latency is the average. Note that the throughput and latency metrics are very steady over the entire time window.
 
-![Total CQL operations per second and CQL operations latency](/images/benchmark/scalability/total-cql-ops-per-sec-reads.png)
+![Total YCQL operations per second and YCQL operations latency](/images/benchmark/scalability/total-cql-ops-per-sec-reads.png)
 
 #### 50-node cluster   CPU and memory during the read benchmark
 
@@ -89,7 +89,7 @@ The graphs below are for twelve hours of the run. Note that this is a much longe
 
 The two graphs below are the corresponding CPU and RAM usage for those twelve hours, and are the average across all the YugaByte nodes.
 
-![Total CQL operations per second and CQL operation latency](/images/benchmark/scalability/total-cql-ops-per-sec-writes-ycql.png)
+![Total YCQL operations per second and YCQL operation latency](/images/benchmark/scalability/total-cql-ops-per-sec-writes-ycql.png)
 
 #### 50-node cluster — CPU and memory during the write benchmark
 

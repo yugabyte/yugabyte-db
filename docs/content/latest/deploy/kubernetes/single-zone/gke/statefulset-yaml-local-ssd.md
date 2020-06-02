@@ -264,17 +264,17 @@ Filesystem      Size  Used Avail Use% Mounted on
 ...
 ```
 
-You can connect to the `cqlsh` shell on this universe by running the following command.
+You can connect to the `ycqlsh` shell on this universe by running the following command.
 
 ```sh
-$ kubectl exec -it yb-tserver-0 bin/cqlsh
+$ kubectl exec -it yb-tserver-0 bin/ycqlsh
 ```
 
 ```sh
 Connected to local cluster at 127.0.0.1:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh> DESCRIBE KEYSPACES;
+ycqlsh> DESCRIBE KEYSPACES;
 
 system_schema  system_auth  system
 ```

@@ -59,7 +59,6 @@ String create_stmt =
                 tablename);
 ```
 
-
 ## Inserting or updating data
 
 You can insert data by performing the sequence of commands inside a `BEGIN TRANSACTION` and `END TRANSACTION` block.
@@ -70,7 +69,6 @@ BEGIN TRANSACTION
   statement 2
 END TRANSACTION;
 ```
-
 
 ### Java example
 
@@ -134,24 +132,22 @@ Usage:
       [ --num_threads_write 2 ]
 ```
 
-
 Browse the [Java source code for the batch application](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraTransactionalKeyValue.java) to see how everything fits together.
 
-
-## Example with cqlsh
+## Example with ycqlsh
 
 ### Create keyspace and table
 
 Create a keyspace.
 
 ```sql
-cqlsh> CREATE KEYSPACE banking;
+ycqlsh> CREATE KEYSPACE banking;
 ```
 
-Create a table with the `transactions` property set to enabled.
+Create a table with the `transactions` property set enabled.
 
 ```sql
-cqlsh> CREATE TABLE banking.accounts (
+ycqlsh> CREATE TABLE banking.accounts (
   account_name varchar,
   account_type varchar,
   balance float,
@@ -159,10 +155,10 @@ cqlsh> CREATE TABLE banking.accounts (
 ) with transactions = { 'enabled' : true };
 ```
 
-You can verify that this table has transactions enabled on it by querying the 
+You can verify that this table has transactions enabled on it by running the following query.
 
 ```sql
-cqlsh> select keyspace_name, table_name, transactions from system_schema.tables
+ycqlsh> select keyspace_name, table_name, transactions from system_schema.tables
 where keyspace_name='banking' AND table_name = 'accounts';
 ```
 
@@ -188,7 +184,7 @@ INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('Smit
 Here are the balances for John and Smith.
 
 ```sql
-cqlsh> select * from banking.accounts;
+ycqlsh> select * from banking.accounts;
 ```
 
 ```
@@ -199,10 +195,11 @@ cqlsh> select * from banking.accounts;
         Smith |     checking |      50
         Smith |      savings |    2000
 ```
+
 Check John's balance.
 
 ```sql
-cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
+ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 
 ```
@@ -210,10 +207,11 @@ cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_
 ---------------
           1100
 ```
+
 Check Smith's balance.
 
 ```sql
-cqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
+ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
 ```
 
 ```
@@ -239,7 +237,7 @@ END TRANSACTION;
 If we now selected the value of John's account, we should see the amounts reflected. The total balance should be the same $1100 as before.
 
 ```sql
-cqlsh> select * from banking.accounts where account_name='John';
+ycqlsh> select * from banking.accounts where account_name='John';
 ```
 
 ```
@@ -248,10 +246,11 @@ cqlsh> select * from banking.accounts where account_name='John';
          John |     checking |     300
          John |      savings |     800
 ```
+
 Check John's balance.
 
 ```sql
-cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
+ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 
 ```
@@ -263,7 +262,7 @@ cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_
 Further, the checking and savings account balances for John should have been written at the same write timestamp.
 
 ```sql
-cqlsh> select account_name, account_type, balance, writetime(balance) 
+ycqlsh> select account_name, account_type, balance, writetime(balance) 
 from banking.accounts where account_name='John';
 ```
 
@@ -274,7 +273,6 @@ from banking.accounts where account_name='John';
          John |      savings |     800 |   1517898028890171
 ```
 
-
 Now let us say John transfers the $200 from his checking account to Smith's checking account. We can accomplish that with the following transaction.
 
 ```sql
@@ -284,11 +282,10 @@ BEGIN TRANSACTION
 END TRANSACTION;
 ```
 
-
 We can verify the transfer was made as we intended, and also verify that the time at which the two accounts were updated are identical by performing the following query.
 
 ```sql
-cqlsh> select account_name, account_type, balance, writetime(balance) from banking.accounts;
+ycqlsh> select account_name, account_type, balance, writetime(balance) from banking.accounts;
 ```
 
 ```
@@ -303,7 +300,7 @@ cqlsh> select account_name, account_type, balance, writetime(balance) from banki
 The net balance for John should have decreased by $200 which that of Smith should have increased by $200.
 
 ```sql
-cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
+ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 
 ```
@@ -311,10 +308,11 @@ cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_
 ---------------
            900
 ```
+
 Check Smith's balance.
 
 ```sql
-cqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
+ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
 ```
 
 ```

@@ -18,7 +18,7 @@ You can connect to YugabyteDB clusters in Yugabyte Cloud with YugabyteDB clients
 You can use the following YugabyteDB clients (locally installed) to connect to your remote clusters in Yugabyte Cloud:
 
 - [YSQL shell (`ysqlsh`)](../../../admin/ysqlsh/)
-- [YCQL shell (`cqlsh`)](../../../admin/cqlsh/)
+- [YCQL shell (`ycqlsh`)](../../../admin/cqlsh/)
 
 {{< note title="Note" >}}
 
@@ -59,9 +59,9 @@ Follow these steps to connect to your remote cluster using the [YSQL shell (`ysq
 
 The local [YSQL shell (`ysqlsh`)](../../../admin/ysqlsh/) opens connected to the remote cluster.
 
-## Connect using the YCQL shell (cqlsh)
+## Connect using the YCQL shell (ycqlsh)
 
-Follow these steps to connect to your remote cluster using the [YCQL shell (`cqlsh`)](../../../admin/cqlsh/):
+Follow these steps to connect to your remote cluster using the [YCQL shell (`ycqlsh`)](../../../admin/cqlsh/):
 
 1. Log into Yugabyte Cloud and click **Cluster** in the navigation bar. The list of available clusters appears.
 2. Click **Go to cluster** for your cluster. The Yugabyte Cloud Console appears.
@@ -72,24 +72,24 @@ Follow these steps to connect to your remote cluster using the [YCQL shell (`cql
     Here's an example of the generated command:
 
     ```sh
-    ./bin/cqlsh 35.236.85.97 12200 -u admin -p sx73qlpc
+    ./bin/ycqlsh 35.236.85.97 12200 -u admin -p sx73qlpc
     ```
 
 4. Change directories to the Yugabyte home directory.
 5. Paste and run the generated command you copied in step 3.
 
     ```sh
-    $ ./bin/cqlsh 35.236.85.97 12200 -u admin -p sx73qlpc
+    $ ./bin/ycqlsh 35.236.85.97 12200 -u admin -p sx73qlpc
     ```
 
     ```
     Connected to local cluster at 35.236.85.97:12200.
-    [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+    [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
     Use HELP for help.
-    admin@cqlsh>
+    admin@ycqlsh>
     ```
 
-The local [YCQL shell (`cqlsh`)](../../../admin/cqlsh/) opens connected to the remote cluster.
+The local [YCQL shell (`ycqlsh`)](../../../admin/cqlsh/) opens connected to the remote cluster.
 
 ## Connect using third party clients
 
