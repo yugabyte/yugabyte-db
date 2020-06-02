@@ -140,9 +140,9 @@ ybRedisClient.zadd("allproducts:num_views", numViews, e.id);
 
 ### Product catalog display
 
-Here we will examine the various display components of the product catalog in detail.
+Here you will examine the various display components of the product catalog in detail.
 
-#### 1. Homepage
+#### Homepage
 
 The homepage is rendered by the `App` react component. The React route is the following:
 
@@ -162,13 +162,13 @@ Internally, the following query is executed against the database and the results
 SELECT * FROM yugastore.products;
 ```
 
-#### 2. Top-level category pages
+#### Top-level category pages
 
-List products that have a given value for the category attribute. This is used to compose views of products grouped by the common categories such as "business books", "mystery books", etc.  The links to these pages are displayed on the homepage. The screenshot below shows the links that are the top-level category pages. They form the top nav in the web app.
+List products that have a given value for the category attribute. This is used to compose views of products grouped by the common categories such as "business books", "mystery books", etc.  The links to these pages are displayed on the homepage. The screenshot below shows the links that are the top-level category pages. They form the top navigation in the web app.
 
 ![View by categories](/images/develop/realworld-apps/ecommerce-app/yugastore-by-categories.png)
 
-Let us take the example of the *business* category page.
+Take the example of the *business* category page.
 
 This is rendered by the `Products` react component. Here is the react route:
 
@@ -193,15 +193,15 @@ The following query is executed against the database:
 SELECT * FROM yugastore.products WHERE category='business';
 ```
 
-#### 3. Sorted list views based on dynamic attributes
+#### Sorted list views based on dynamic attributes
 
-List products in the descending (or ascending) order of certain frequently updated attributes. Used to build the top navigation bar with entries such as "most reviewed", "highest rated", etc).
+List products in the descending (or ascending) order of certain frequently updated attributes. Used to build the top navigation bar with entries such as "most reviewed", "highest rated", etc.
 
 ![View by dynamic attributes](/images/develop/realworld-apps/ecommerce-app/yugastore-by-dynamic-attrs.png)
 
 Let us take the example of books with the *highest rating* as an example.
 
-These product lists are also rendered by the `Products` react component.
+These product lists are also rendered by the `Products` React component.
 
 ```js
 <Route path="/sort/num_stars"
@@ -212,25 +212,25 @@ These product lists are also rendered by the `Products` react component.
   )} />
 ```
 
-The component internally uses the following Rest API:
+The component internally uses the following REST API:
 
 ```
 /products/sort/num_stars
 ```
 
-The top 10 product ids sorted in a descending order by their rating is fetched from Redis with the following:
+The top 10 product IDs sorted in a descending order by their rating is fetched from Redis with the following:
 
 ```js
 ybRedis.zrevrange("allproducts:num_stars", 0, 10, 'withscores', ...)
 ```
 
-Then, a select is issued against each of those product ids with the following query `IN` query:
+Then, a `SELECT` is issued against each of those product IDs with the following `IN` query:
 
 ```sql
 SELECT * FROM yugastore.products WHERE id IN ?;
 ```
 
-#### 4. Product details view
+#### Product details view
 
 This view shows all the details of a product. An example product details page for item with `id=5` is shown below:
 
@@ -242,7 +242,7 @@ The React route for this view is `ShowProduct`:
 <Route exact path="/item/:id" component={ShowProduct} />
 ```
 
-The component internally uses the following Rest API:
+The component internally uses the following REST API:
 
 ```
 /products/details/5
@@ -254,7 +254,7 @@ The following query is executed against the database to fetch all the product de
 SELECT * FROM yugastore.products WHERE id=5;
 ```
 
-If we had another table with extended product info, we could fetch data from that table as well and add it into the result. Finally, each time this page is hit, we increment a counter in order to track how many times the current product was viewed.
+If you had another table with extended product information, you could fetch data from that table as well and add it into the result. Finally, each time this page is hit, increment a counter in order to track how many times the current product was viewed.
 
 ```
 ybRedis.incrby("pageviews:product:5:count", 1);
@@ -262,4 +262,4 @@ ybRedis.incrby("pageviews:product:5:count", 1);
 
 ## Summary
 
-This application is a blue print for building eCommerce and other similar web applications. The instructions to build and run the application, as well as the source code can be found in [the Yugastore github repo](https://github.com/yugabyte/yugastore).
+This application is a blueprint for building eCommerce and other similar web applications. The instructions to build and run the application, as well as the source code, can be found in the [Yugastore GitHub repository](https://github.com/yugabyte/yugastore).
