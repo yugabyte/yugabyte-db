@@ -120,8 +120,8 @@ Replication lag is computed at the tablet level as:
 replication lag = hybrid_clock_time - last_read_hybrid_time
 ```
 
-* `hybrid_clock_time`: The hybrid clock timestamp of the latest committed transaction in the master cluster.
-* `last_read_hybrid_time`: The hybrid clock timestamp of the latest pulled transaction in the follower cluster.
+* `hybrid_clock_time`: The hybrid clock timestamp on the producer's tablet-server.
+* `last_read_hybrid_time`: The hybrid clock timestamp of the latest transaction pulled from the producer.
 
 An example script [`determine_replication_lag.sh`](/files/determine_replication_lag.sh) calculates replication lag for you. 
 The script requires the [`jq`](https://stedolan.github.io/jq/) package.
