@@ -392,7 +392,7 @@ You can also bring up an internal LoadBalancer (for either YB-Master or YB-TServ
 In case you want to use a storage class other than the standard class for your deployment, provision the storage class and then pass in the name of the class while running the helm install command.
 
 ```sh
-$ helm install yugabyte --namespace yb-demo --name yb-demo --set persistentVolume.storageClass=<name of provisioned storage> --wait
+$ helm install yugabyte --namespace yb-demo --name yb-demo --set storage.master.storageClass=<desired storage class>,storage.tserver.storageClass=<desired storage class> --wait
 ```
 
 ## Upgrade cluster
