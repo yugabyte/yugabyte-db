@@ -1,6 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import "../../_style/mixins.scss";
+@import "_style/mixins.scss";
+@import "_style/colors.scss";
 
 .form-section-title {
   font-size: 1.2em;
@@ -456,4 +457,91 @@
       padding-bottom: 6px;
     }
   }
+}
+
+.yb-form-radio {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  width: fit-content;
+
+  li {
+    position: relative;
+  }
+
+  li input[type=radio]{
+    position: absolute;
+    visibility: hidden;
+    top: 0;
+    left: 0;
+    z-index: 600;
+  }
+
+  label {
+    display: block;
+    position: relative;
+    padding: 25px;
+    margin: 10px auto;
+    height: 30px;
+    z-index: 9;
+    cursor: pointer;
+    -webkit-transition: all 0.25s linear;
+  }
+
+  li:hover {
+    label {
+      color: $YB_ORANGE;
+    }
+
+    .check {
+      border: 2px solid $YB_ORANGE;
+    }
+  }
+
+  .check {
+    position: absolute;
+    left: 45%;
+    margin: 0 auto;
+    border: 2px solid $YB_DARK_GRAY;
+    background: #ffffff;
+    border-radius: 100%;
+    height: 20px;
+    width: 20px;
+    z-index: 5;
+    transition: border .25s linear;
+    -webkit-transition: border .25s linear;
+  }
+
+
+  li .check::before {
+    display: block;
+    position: absolute;
+    content: '';
+    border-radius: 100%;
+    height: 10px;
+    width: 10px;
+    top: 3px;
+    left: 3px;
+    margin: auto;
+    transition: background 0.25s linear;
+    -webkit-transition: background 0.25s linear;
+  }
+
+  input[type=radio]:checked ~ .check::before{
+    background: $YB_ORANGE;
+  }
+}
+
+.connecting-line {
+  height: 1px;
+  background: #aaa;
+  position: absolute;
+  top: 10px;
+  z-index: 1;
+}
+
+.radio-bar.form-group {
+  display: flex;
 }
