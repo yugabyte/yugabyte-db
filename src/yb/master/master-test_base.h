@@ -178,7 +178,7 @@ class MasterTestBase : public YBTest {
   Status CreateNamespaceAsync(const NamespaceName& ns_name,
                               const boost::optional<YQLDatabase>& database_type,
                               CreateNamespaceResponsePB* resp);
-  Status CreateNamespaceWait(const NamespaceName& ns_name,
+  Status CreateNamespaceWait(const NamespaceId& ns_id,
                              const boost::optional<YQLDatabase>& database_type);
 
   Status AlterNamespace(const NamespaceName& ns_name,

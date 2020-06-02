@@ -756,6 +756,7 @@ Status YBClient::Data::IsCreateNamespaceInProgress(
     YBClient* client,
     const std::string& namespace_name,
     const boost::optional<YQLDatabase>& database_type,
+    const std::string& namespace_id,
     CoarseTimePoint deadline,
     bool *create_in_progress) {
   DCHECK_ONLY_NOTNULL(create_in_progress);
@@ -766,7 +767,13 @@ Status YBClient::Data::IsCreateNamespaceInProgress(
   if (database_type) {
     req.mutable_namespace_()->set_database_type(*database_type);
   }
+  if (!namespace_id.empty()) {
+    req.mutable_namespace_()->set_id(namespace_id);
+  }
 
+  // RETURN_NOT_OK macro can't take templated function call as param,
+  // and SyncLeaderMasterRpc must be explicitly instantiated, else the
+  // compiler complains.
   const Status s =
       SyncLeaderMasterRpc<IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB>(
           deadline,
@@ -775,15 +782,17 @@ Status YBClient::Data::IsCreateNamespaceInProgress(
           nullptr /* num_attempts */,
           "IsCreateNamespaceDone",
           &MasterServiceProxy::IsCreateNamespaceDone);
-  // RETURN_NOT_OK macro can't take templated function call as param,
-  // and SyncLeaderMasterRpc must be explicitly instantiated, else the
-  // compiler complains.
+
+  // IsCreate could return a terminal/done state as FAILED. This would result in an error'd Status.
+  if (resp.has_done()) {
+    *create_in_progress = !resp.done();
+  }
+
   RETURN_NOT_OK(s);
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
 
-  *create_in_progress = !resp.done();
   return Status::OK();
 }
 
@@ -791,18 +800,20 @@ Status YBClient::Data::WaitForCreateNamespaceToFinish(
     YBClient* client,
     const std::string& namespace_name,
     const boost::optional<YQLDatabase>& database_type,
+    const std::string& namespace_id,
     CoarseTimePoint deadline) {
   return RetryFunc(
       deadline,
       "Waiting on Create Namespace to be completed",
       "Timed out waiting for Namespace Creation",
       std::bind(&YBClient::Data::IsCreateNamespaceInProgress, this, client,
-          namespace_name, database_type, _1, _2));
+          namespace_name, database_type, namespace_id, _1, _2));
 }
 
 Status YBClient::Data::IsDeleteNamespaceInProgress(YBClient* client,
     const std::string& namespace_name,
     const boost::optional<YQLDatabase>& database_type,
+    const std::string& namespace_id,
     CoarseTimePoint deadline,
     bool* delete_in_progress) {
   DCHECK_ONLY_NOTNULL(delete_in_progress);
@@ -812,6 +823,9 @@ Status YBClient::Data::IsDeleteNamespaceInProgress(YBClient* client,
   req.mutable_namespace_()->set_name(namespace_name);
   if (database_type) {
     req.mutable_namespace_()->set_database_type(*database_type);
+  }
+  if (!namespace_id.empty()) {
+    req.mutable_namespace_()->set_id(namespace_id);
   }
 
   const Status s =
@@ -841,13 +855,14 @@ Status YBClient::Data::IsDeleteNamespaceInProgress(YBClient* client,
 Status YBClient::Data::WaitForDeleteNamespaceToFinish(YBClient* client,
     const std::string& namespace_name,
     const boost::optional<YQLDatabase>& database_type,
+    const std::string& namespace_id,
     CoarseTimePoint deadline) {
   return RetryFunc(
       deadline,
       "Waiting on Delete Namespace to be completed",
       "Timed out waiting for Namespace Deletion",
       std::bind(&YBClient::Data::IsDeleteNamespaceInProgress, this,
-          client, namespace_name, database_type, _1, _2));
+          client, namespace_name, database_type, namespace_id, _1, _2));
 }
 
 Status YBClient::Data::AlterTable(YBClient* client,

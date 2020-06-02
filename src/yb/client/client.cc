@@ -641,10 +641,11 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
     s = StatusFromPB(resp.error().status());
   }
   RETURN_NOT_OK(s);
+  std::string cur_id = resp.has_id() ? resp.id() : namespace_id;
 
   // Verify that the namespace we found is running so that, once this request returns,
   // the client can send operations without receiving a "namespace not found" error.
-  RETURN_NOT_OK(data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type,
+  RETURN_NOT_OK(data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type, cur_id,
       CoarseMonoClock::Now() + default_admin_operation_timeout()));
 
   return Status::OK();
@@ -662,7 +663,7 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
   if (VERIFY_RESULT(namespace_exists)) {
     // Verify that the namespace we found is running so that, once this request returns,
     // the client can send operations without receiving a "namespace not found" error.
-    return data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type,
+    return data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type, namespace_id,
         CoarseMonoClock::Now() + default_admin_operation_timeout());
   }
 
@@ -676,10 +677,11 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
 
 Status YBClient::IsCreateNamespaceInProgress(const std::string& namespace_name,
                                              const boost::optional<YQLDatabase>& database_type,
+                                             const std::string& namespace_id,
                                              bool *create_in_progress) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->IsCreateNamespaceInProgress(this, namespace_name, database_type, deadline,
-      create_in_progress);
+  return data_->IsCreateNamespaceInProgress(this, namespace_name, database_type, namespace_id,
+                                            deadline, create_in_progress);
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name,
@@ -705,17 +707,18 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
 
   // Verify that, once this request returns, the namespace has been successfully marked as deleted.
   RETURN_NOT_OK(data_->WaitForDeleteNamespaceToFinish(this, namespace_name, database_type,
-      CoarseMonoClock::Now() + default_admin_operation_timeout()));
+      namespace_id, CoarseMonoClock::Now() + default_admin_operation_timeout()));
 
   return Status::OK();
 }
 
 Status YBClient::IsDeleteNamespaceInProgress(const std::string& namespace_name,
                                              const boost::optional<YQLDatabase>& database_type,
+                                             const std::string& namespace_id,
                                              bool *delete_in_progress) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->IsDeleteNamespaceInProgress(this, namespace_name, database_type, deadline,
-                                            delete_in_progress);
+  return data_->IsDeleteNamespaceInProgress(this, namespace_name, database_type, namespace_id,
+                                            deadline, delete_in_progress);
 }
 
 YBNamespaceAlterer* YBClient::NewNamespaceAlterer(
