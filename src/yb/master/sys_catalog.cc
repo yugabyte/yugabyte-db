@@ -33,6 +33,7 @@
 #include "yb/master/sys_catalog.h"
 
 #include <cmath>
+#include <memory>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>

@@ -420,7 +420,9 @@ Status PgCreateIndex::Exec() {
   if (!ybbasectid_added_) {
     RETURN_NOT_OK(AddYBbasectidColumn());
   }
-  return PgCreateTable::Exec();
+  Status s = PgCreateTable::Exec();
+  pg_session_->InvalidateTableCache(base_table_id_);
+  return s;
 }
 
 //--------------------------------------------------------------------------------------------------

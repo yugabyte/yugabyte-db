@@ -14,6 +14,7 @@
 
 #include <cds/init.h> // NOLINT
 
+#include "yb/common/common_flags.h"
 #include "yb/common/ybc-internal.h"
 #include "yb/util/atomic.h"
 
@@ -759,6 +760,10 @@ int32_t YBCGetMaxReadRestartAttempts() {
 
 int32_t YBCGetOutputBufferSize() {
   return FLAGS_ysql_output_buffer_size;
+}
+
+bool YBCGetDisableIndexBackfill() {
+  return FLAGS_ysql_disable_index_backfill;
 }
 
 bool YBCPgIsYugaByteEnabled() {

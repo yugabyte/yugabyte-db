@@ -347,7 +347,6 @@ DefineIndex(Oid relationId,
 	List	   *indexColNames;
 	List	   *allIndexParams;
 	Relation	rel;
-	Relation	indexRelation;
 	HeapTuple	tuple;
 	Form_pg_am	accessMethodForm;
 	IndexAmRoutine *amRoutine;
@@ -361,15 +360,11 @@ DefineIndex(Oid relationId,
 	bits16		constr_flags;
 	int			numberOfAttributes;
 	int			numberOfKeyAttributes;
-	TransactionId limitXmin;
-	VirtualTransactionId *old_snapshots;
 	ObjectAddress address;
-	int			n_old_snapshots;
 	LockRelId	heaprelid;
-	LOCKTAG		heaplocktag;
 	LOCKMODE	lockmode;
-	Snapshot	snapshot;
 	int			i;
+	YBIndexPermissions actual_index_permissions;
 
 	/*
 	 * count key attributes in index
@@ -397,6 +392,24 @@ DefineIndex(Oid relationId,
 				(errcode(ERRCODE_TOO_MANY_COLUMNS),
 				 errmsg("cannot use more than %d columns in an index",
 						INDEX_MAX_KEYS)));
+
+	/*
+	 * An index build should be concurent when
+	 * - index backfill is enabled
+	 * - the index is secondary
+	 * - the indexed table is not temporary
+	 * Otherwise, it should not be concurrent.  This logic works because
+	 * - primary keys can't be altered after `CREATE TABLE`, so there is no
+	 *   need for index backfill.
+	 * - temporary tables cannot have concurrency issues when building indexes.
+	 */
+	stmt->concurrent = (!YBCGetDisableIndexBackfill()
+						&& !stmt->primary
+						&& IsYBRelationById(relationId));
+	if (stmt->concurrent)
+		ereport(LOG,
+				(errmsg("creating index concurrently for table with oid %d",
+						relationId)));
 
 	/*
 	 * Only SELECT ... FOR UPDATE/SHARE are allowed while doing a standard
@@ -1118,9 +1131,8 @@ DefineIndex(Oid relationId,
 		return address;
 	}
 
-	/* save lockrelid and locktag for below, then close rel */
+	/* save lockrelid for below, then close rel */
 	heaprelid = rel->rd_lockInfo.lockRelId;
-	SET_LOCKTAG_RELATION(heaplocktag, heaprelid.dbId, heaprelid.relId);
 	heap_close(rel, NoLock);
 
 	/*
@@ -1147,212 +1159,78 @@ DefineIndex(Oid relationId,
 	LockRelationIdForSession(&heaprelid, ShareUpdateExclusiveLock);
 
 	PopActiveSnapshot();
+
+	/*
+	 * TODO(jason): retry backfill or revert schema changes instead of failing
+	 * through HandleYBStatus.
+	 */
+	elog(LOG, "waiting for YB_INDEX_PERM_DELETE_ONLY");
+	HandleYBStatus(YBCPgWaitUntilIndexPermissionsAtLeast(MyDatabaseId,
+														 relationId,
+														 indexRelationId,
+														 YB_INDEX_PERM_DELETE_ONLY,
+														 &actual_index_permissions));
+	/*
+	 * TODO(jason): handle bad actual_index_permissions.
+	 */
+
+	elog(LOG, "committing pg_index tuple with indislive=true");
 	CommitTransactionCommand();
+	/* TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
+	 * level 1). */
+	YBDecrementDdlNestingLevel(true /* success */);
+	YBIncrementDdlNestingLevel();
 	StartTransactionCommand();
 
 	/*
-	 * Phase 2 of concurrent index build (see comments for validate_index()
-	 * for an overview of how this works)
-	 *
-	 * Now we must wait until no running transaction could have the table open
-	 * with the old list of indexes.  Use ShareLock to consider running
-	 * transactions that hold locks that permit writing to the table.  Note we
-	 * do not need to worry about xacts that open the table for writing after
-	 * this point; they will see the new index when they open it.
-	 *
-	 * Note: the reason we use actual lock acquisition here, rather than just
-	 * checking the ProcArray and sleeping, is that deadlock is possible if
-	 * one of the transactions in question is blocked trying to acquire an
-	 * exclusive lock on our table.  The lock code will detect deadlock and
-	 * error out properly.
+	 * TODO(jason): retry backfill or revert schema changes instead of failing
+	 * through HandleYBStatus.
 	 */
-	WaitForLockers(heaplocktag, ShareLock);
-
+	elog(LOG, "waiting for YB_INDEX_PERM_WRITE_AND_DELETE");
+	HandleYBStatus(YBCPgWaitUntilIndexPermissionsAtLeast(MyDatabaseId,
+														 relationId,
+														 indexRelationId,
+														 YB_INDEX_PERM_WRITE_AND_DELETE,
+														 &actual_index_permissions));
 	/*
-	 * At this moment we are sure that there are no transactions with the
-	 * table open for write that don't have this new index in their list of
-	 * indexes.  We have waited out all the existing transactions and any new
-	 * transaction will have the new index in its list, but the index is still
-	 * marked as "not-ready-for-inserts".  The index is consulted while
-	 * deciding HOT-safety though.  This arrangement ensures that no new HOT
-	 * chains can be created where the new tuple and the old tuple in the
-	 * chain have different index keys.
-	 *
-	 * We now take a new snapshot, and build the index using all tuples that
-	 * are visible in this snapshot.  We can be sure that any HOT updates to
-	 * these tuples will be compatible with the index, since any updates made
-	 * by transactions that didn't know about the index are now committed or
-	 * rolled back.  Thus, each visible tuple is either the end of its
-	 * HOT-chain or the extension of the chain is HOT-safe for this index.
+	 * TODO(jason): handle bad actual_index_permissions.
 	 */
 
-	/* Open and lock the parent heap relation */
-	rel = heap_openrv(stmt->relation, ShareUpdateExclusiveLock);
-
-	/* And the target index relation */
-	indexRelation = index_open(indexRelationId, RowExclusiveLock);
-
-	/* Set ActiveSnapshot since functions in the indexes may need it */
-	PushActiveSnapshot(GetTransactionSnapshot());
-
-	/* We have to re-build the IndexInfo struct, since it was lost in commit */
-	indexInfo = BuildIndexInfo(indexRelation);
-	Assert(!indexInfo->ii_ReadyForInserts);
-	indexInfo->ii_Concurrent = true;
-	indexInfo->ii_BrokenHotChain = false;
-
-	/* Now build the index */
-	index_build(rel, indexRelation, indexInfo, stmt->primary, false, true);
-
-	/* Close both the relations, but keep the locks */
-	heap_close(rel, NoLock);
-	index_close(indexRelation, NoLock);
-
 	/*
-	 * Update the pg_index row to mark the index as ready for inserts. Once we
-	 * commit this transaction, any new transactions that open the table must
-	 * insert new entries into the index for insertions and non-HOT updates.
+	 * Update the pg_index row to mark the index as ready for inserts.  This
+	 * allows writes, but Yugabyte would only accept deletes until the index
+	 * permission changes to INDEX_PERM_WRITE_AND_DELETE.
 	 */
 	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_READY);
-
-	/* we can do away with our snapshot */
-	PopActiveSnapshot();
 
 	/*
 	 * Commit this transaction to make the indisready update visible.
 	 */
+	elog(LOG, "committing pg_index tuple with indisready=true");
 	CommitTransactionCommand();
+	/* TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
+	 * level 1). */
+	YBDecrementDdlNestingLevel(true /* success */);
+	YBIncrementDdlNestingLevel();
 	StartTransactionCommand();
 
 	/*
-	 * Phase 3 of concurrent index build
-	 *
-	 * We once again wait until no transaction can have the table open with
-	 * the index marked as read-only for updates.
+	 * TODO(jason): retry backfill or revert schema changes instead of failing
+	 * through HandleYBStatus.
 	 */
-	WaitForLockers(heaplocktag, ShareLock);
-
+	elog(LOG, "waiting for Yugabyte index read permission");
+	HandleYBStatus(YBCPgWaitUntilIndexPermissionsAtLeast(MyDatabaseId,
+														 relationId,
+														 indexRelationId,
+														 YB_INDEX_PERM_READ_WRITE_AND_DELETE,
+														 &actual_index_permissions));
 	/*
-	 * Now take the "reference snapshot" that will be used by validate_index()
-	 * to filter candidate tuples.  Beware!  There might still be snapshots in
-	 * use that treat some transaction as in-progress that our reference
-	 * snapshot treats as committed.  If such a recently-committed transaction
-	 * deleted tuples in the table, we will not include them in the index; yet
-	 * those transactions which see the deleting one as still-in-progress will
-	 * expect such tuples to be there once we mark the index as valid.
-	 *
-	 * We solve this by waiting for all endangered transactions to exit before
-	 * we mark the index as valid.
-	 *
-	 * We also set ActiveSnapshot to this snap, since functions in indexes may
-	 * need a snapshot.
+	 * TODO(jason): handle bad actual_index_permissions, like
+	 * YB_INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING.
 	 */
-	snapshot = RegisterSnapshot(GetTransactionSnapshot());
-	PushActiveSnapshot(snapshot);
-
-	/*
-	 * Scan the index and the heap, insert any missing index entries.
-	 */
-	validate_index(relationId, indexRelationId, snapshot);
-
-	/*
-	 * Drop the reference snapshot.  We must do this before waiting out other
-	 * snapshot holders, else we will deadlock against other processes also
-	 * doing CREATE INDEX CONCURRENTLY, which would see our snapshot as one
-	 * they must wait for.  But first, save the snapshot's xmin to use as
-	 * limitXmin for GetCurrentVirtualXIDs().
-	 */
-	limitXmin = snapshot->xmin;
-
-	PopActiveSnapshot();
-	UnregisterSnapshot(snapshot);
-
-	/*
-	 * The snapshot subsystem could still contain registered snapshots that
-	 * are holding back our process's advertised xmin; in particular, if
-	 * default_transaction_isolation = serializable, there is a transaction
-	 * snapshot that is still active.  The CatalogSnapshot is likewise a
-	 * hazard.  To ensure no deadlocks, we must commit and start yet another
-	 * transaction, and do our wait before any snapshot has been taken in it.
-	 */
-	CommitTransactionCommand();
-	StartTransactionCommand();
 
 	/* We should now definitely not be advertising any xmin. */
 	Assert(MyPgXact->xmin == InvalidTransactionId);
-
-	/*
-	 * The index is now valid in the sense that it contains all currently
-	 * interesting tuples.  But since it might not contain tuples deleted just
-	 * before the reference snap was taken, we have to wait out any
-	 * transactions that might have older snapshots.  Obtain a list of VXIDs
-	 * of such transactions, and wait for them individually.
-	 *
-	 * We can exclude any running transactions that have xmin > the xmin of
-	 * our reference snapshot; their oldest snapshot must be newer than ours.
-	 * We can also exclude any transactions that have xmin = zero, since they
-	 * evidently have no live snapshot at all (and any one they might be in
-	 * process of taking is certainly newer than ours).  Transactions in other
-	 * DBs can be ignored too, since they'll never even be able to see this
-	 * index.
-	 *
-	 * We can also exclude autovacuum processes and processes running manual
-	 * lazy VACUUMs, because they won't be fazed by missing index entries
-	 * either.  (Manual ANALYZEs, however, can't be excluded because they
-	 * might be within transactions that are going to do arbitrary operations
-	 * later.)
-	 *
-	 * Also, GetCurrentVirtualXIDs never reports our own vxid, so we need not
-	 * check for that.
-	 *
-	 * If a process goes idle-in-transaction with xmin zero, we do not need to
-	 * wait for it anymore, per the above argument.  We do not have the
-	 * infrastructure right now to stop waiting if that happens, but we can at
-	 * least avoid the folly of waiting when it is idle at the time we would
-	 * begin to wait.  We do this by repeatedly rechecking the output of
-	 * GetCurrentVirtualXIDs.  If, during any iteration, a particular vxid
-	 * doesn't show up in the output, we know we can forget about it.
-	 */
-	old_snapshots = GetCurrentVirtualXIDs(limitXmin, true, false,
-										  PROC_IS_AUTOVACUUM | PROC_IN_VACUUM,
-										  &n_old_snapshots);
-
-	for (i = 0; i < n_old_snapshots; i++)
-	{
-		if (!VirtualTransactionIdIsValid(old_snapshots[i]))
-			continue;			/* found uninteresting in previous cycle */
-
-		if (i > 0)
-		{
-			/* see if anything's changed ... */
-			VirtualTransactionId *newer_snapshots;
-			int			n_newer_snapshots;
-			int			j;
-			int			k;
-
-			newer_snapshots = GetCurrentVirtualXIDs(limitXmin,
-													true, false,
-													PROC_IS_AUTOVACUUM | PROC_IN_VACUUM,
-													&n_newer_snapshots);
-			for (j = i; j < n_old_snapshots; j++)
-			{
-				if (!VirtualTransactionIdIsValid(old_snapshots[j]))
-					continue;	/* found uninteresting in previous cycle */
-				for (k = 0; k < n_newer_snapshots; k++)
-				{
-					if (VirtualTransactionIdEquals(old_snapshots[j],
-												   newer_snapshots[k]))
-						break;
-				}
-				if (k >= n_newer_snapshots) /* not there anymore */
-					SetInvalidVirtualTransactionId(old_snapshots[j]);
-			}
-			pfree(newer_snapshots);
-		}
-
-		if (VirtualTransactionIdIsValid(old_snapshots[i]))
-			VirtualXactLock(old_snapshots[i], true);
-	}
 
 	/*
 	 * Index can now be marked valid -- update its pg_index entry

@@ -321,6 +321,8 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 			continue;
 
 		indexInfo = indexInfoArray[i];
+		Assert(indexInfo->ii_ReadyForInserts ==
+			   indexRelation->rd_index->indisready);
 
 		/*
 		 * No need to update YugaByte primary key which is intrinic part of
@@ -530,9 +532,18 @@ ExecDeleteIndexTuples(Datum ybctid, HeapTuple tuple, EState *estate)
 			continue;
 
 		indexInfo = indexInfoArray[i];
+		Assert(indexInfo->ii_ReadyForInserts ==
+			   indexRelation->rd_index->indisready);
 
+		/*
+		 * If the index is not ready for deletes and index backfill is enabled,
+		 * ignore it
+		 */
+		if (YBCGetDisableIndexBackfill()
+				&& !indexRelation->rd_index->indislive)
+			continue;
 		/* If the index is marked as read-only, ignore it */
-		if (!indexInfo->ii_ReadyForInserts)
+		if (!indexRelation->rd_index->indislive)
 			continue;
 
 		/* Check for partial index */
@@ -648,6 +659,8 @@ ExecCheckIndexConstraints(TupleTableSlot *slot,
 			continue;
 
 		indexInfo = indexInfoArray[i];
+		Assert(indexInfo->ii_ReadyForInserts ==
+			   indexRelation->rd_index->indisready);
 
 		if (!indexInfo->ii_Unique && !indexInfo->ii_ExclusionOps)
 			continue;

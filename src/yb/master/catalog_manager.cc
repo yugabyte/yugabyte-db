@@ -255,7 +255,7 @@ DEFINE_uint64(metrics_snapshots_table_num_tablets, 0,
     "0 to use the same default num tablets as for regular tables.");
 
 DEFINE_bool(disable_index_backfill, true,  // Temporarily disabled until all diffs land.
-    "A kill switch to disable multi-stage backfill for the created indexes.");
+    "A kill switch to disable multi-stage backfill for YCQL indexes.");
 TAG_FLAG(disable_index_backfill, runtime);
 TAG_FLAG(disable_index_backfill, hidden);
 
@@ -2142,7 +2142,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   IndexInfoPB index_info;
 
   // Fetch the runtime flag to prevent any issues from the updates to flag while processing.
-  const bool disable_index_backfill = GetAtomicFlag(&FLAGS_disable_index_backfill);
+  const bool disable_index_backfill = (
+      is_pg_table ? GetAtomicFlag(&FLAGS_ysql_disable_index_backfill)
+                  : GetAtomicFlag(&FLAGS_disable_index_backfill));
   if (req.has_index_info()) {
     // Current message format.
     index_info.CopyFrom(req.index_info());
@@ -2302,8 +2304,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   TRACE("Wrote table to system table");
 
-  // For index table, insert index info in the indexed table.
-  if ((req.has_index_info() || req.has_indexed_table_id()) && !is_pg_table) {
+  // For index table, insert index info in the indexed table.  However, for backwards compatibility,
+  // don't insert index info for YSQL tables.
+  if ((req.has_index_info() || req.has_indexed_table_id()) &&
+      !(is_pg_table && disable_index_backfill)) {
     if (!disable_index_backfill) {
       index_info.set_index_permissions(INDEX_PERM_DELETE_ONLY);
     }
@@ -3062,9 +3066,11 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     indexed_table_name->mutable_namespace_()->set_name(nsInfo->name());
     indexed_table_name->set_table_name(indexed_table->name());
   }
-  const bool disable_index_backfill = GetAtomicFlag(&FLAGS_disable_index_backfill);
   const bool is_pg_table = indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
-  if (disable_index_backfill || is_pg_table) {
+  const bool disable_index_backfill = (
+      is_pg_table ? GetAtomicFlag(&FLAGS_ysql_disable_index_backfill)
+                  : GetAtomicFlag(&FLAGS_disable_index_backfill));
+  if (disable_index_backfill) {
     return DeleteIndexInfoFromTable(indexed_table_id, index_table_id);
   }
 
