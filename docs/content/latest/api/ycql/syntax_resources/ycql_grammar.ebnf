@@ -140,4 +140,4 @@ resource ::=   'ALL' ('KEYSPACES' | 'ROLES')
 
 alter_keyspace ::= 'ALTER' ('KEYSPACE' | 'SCHEMA') keyspae_name keyspace_properties;
 
-explain ::= 'EXPLAIN' select;
+explain ::= 'EXPLAIN' (select | update | insert | delete);
