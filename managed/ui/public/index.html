@@ -2,11 +2,11 @@
 <html>
   <head>
     <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
-    <meta name="build-commit" content="%REACT_APP_GIT_COMMIT%">
     <title>YugabyteDB Admin Console</title>
     <link href="<% if (process.env.NODE_ENV === 'development') { %>http://localhost:9000<% } %>/api/v1/ui_theme" rel="stylesheet" type="text/css" />
   </head>
   <body>
     <div id="root" class="full-height"></div>
+    <!-- commit: <%= htmlWebpackPlugin.options.version %> -->
   </body>
 </html>
