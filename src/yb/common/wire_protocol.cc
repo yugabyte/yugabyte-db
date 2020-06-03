@@ -63,7 +63,6 @@ DEFINE_string(use_private_ip, "never",
               "zone - would use private IP if destination node is located in the same cloud, "
                   "region and zone."
               "never - would never use private IP if broadcast address is specified.");
-
 namespace yb {
 
 namespace {
@@ -284,10 +283,12 @@ Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
     HostPortPB* pb = pbs->Add();
     pb->set_port(addr.port());
     if (addr.address().is_unspecified()) {
+      VLOG(4) << " Asked to add unspecified address: " << addr.address();
       auto status = GetFQDN(pb->mutable_host());
       if (!status.ok()) {
         std::vector<IpAddress> locals;
-        if (!GetLocalAddresses(&locals, AddressFilter::EXTERNAL).ok() || locals.empty()) {
+        if (!GetLocalAddresses(FLAGS_net_address_filter, &locals).ok() ||
+            locals.empty()) {
           return status;
         }
         for (auto& address : locals) {
@@ -296,11 +297,15 @@ Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
             pb->set_port(addr.port());
           }
           pb->set_host(address.to_string());
+          VLOG(4) << "Adding local address: " << pb->host();
           pb = nullptr;
         }
+      } else {
+        VLOG(4) << "Adding FQDN " << pb->host();
       }
     } else {
       pb->set_host(addr.address().to_string());
+      VLOG(4) << "Adding specific address: " << pb->host();
     }
   }
   return Status::OK();

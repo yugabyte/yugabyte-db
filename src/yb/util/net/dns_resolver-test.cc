@@ -62,7 +62,11 @@ TEST_F(DnsResolverTest, TestResolution) {
   ASSERT_TRUE(!addrs.empty());
   for (const auto& addr : addrs) {
     LOG(INFO) << "Address: " << addr;
-    EXPECT_TRUE(HasPrefixString(ToString(addr), "127."));
+    if (addr.address().is_v4()) {
+      EXPECT_TRUE(HasPrefixString(ToString(addr), "127."));
+    } else if (addr.address().is_v6()) {
+      EXPECT_TRUE(HasPrefixString(ToString(addr), "[::1]"));
+    }
     EXPECT_TRUE(HasSuffixString(ToString(addr), ":12345"));
   }
 }
