@@ -586,6 +586,36 @@ SELECT * FROM test_include ORDER BY c2;
   1 |    |  1
 (2 rows)
 
+-- Test SPLIT INTO
+CREATE TABLE test_split (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY ((h1, h2) HASH, r1, r2));
+CREATE INDEX ON test_split (h2 HASH, r2, r1) SPLIT INTO 20 TABLETS;
+CREATE INDEX ON test_split ((r1,r2) HASH) SPLIT INTO 20 TABLETS;
+CREATE INDEX ON test_split (h2) SPLIT INTO 20 TABLETS;
+\d test_split
+             Table "public.test_split"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ h1     | integer |           | not null | 
+ h2     | integer |           | not null | 
+ r1     | integer |           | not null | 
+ r2     | integer |           | not null | 
+ v1     | integer |           |          | 
+ v2     | integer |           |          | 
+Indexes:
+    "test_split_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1, r2)
+    "test_split_h2_idx" lsm (h2 HASH)
+    "test_split_h2_r2_r1_idx" lsm (h2 HASH, r2, r1)
+    "test_split_r1_r2_idx" lsm ((r1, r2) HASH)
+
+-- These should fail
+CREATE INDEX ON test_split (r1 ASC) SPLIT INTO 20 TABLETS;
+ERROR:  HASH columns must be present to split by number of tablets
+CREATE INDEX ON test_split (h2 ASC, r1) SPLIT INTO 20 TABLETS;
+ERROR:  HASH columns must be present to split by number of tablets
+CREATE INDEX ON test_split (h1 HASH) SPLIT INTO 10000 TABLETS;
+ERROR:  Invalid argument: num_tablets exceeds system limit
 -- Test hash methods
 CREATE TABLE test_method (
   h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,

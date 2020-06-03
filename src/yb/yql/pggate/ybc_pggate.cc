@@ -416,6 +416,10 @@ YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name
                                                  is_hash, is_range, is_desc, is_nulls_first));
 }
 
+YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_tablets) {
+  return ToYBCStatus(pgapi->CreateIndexSetNumTablets(handle, num_tablets));
+}
+
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateIndex(handle));
 }
