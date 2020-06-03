@@ -190,7 +190,7 @@ export default function(state = INITIAL_STATE, action) {
     case FETCH_UNIVERSE_BACKUPS_RESPONSE:
       return setPromiseResponse(state, "universeBackupList", action);
     case RESET_UNIVERSE_BACKUPS:
-      return { ...state, error: null, "universeBackupList": setInitialState({})};
+      return setInitialState(state, 'universeBackupList', []);
 
     case CREATE_UNIVERSE_BACKUP:
       return setLoadingState(state, "createUniverseBackup", {});
