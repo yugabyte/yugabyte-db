@@ -224,6 +224,7 @@ set(UTIL_SRCS
   rw_mutex.cc
   rwc_lock.cc
   shared_mem.cc
+  signal_util.cc
   slice.cc
   spinlock_profiling.cc
   split.cc

@@ -18,6 +18,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/common/ybc-internal.h"
 #include "yb/util/metrics.h"
+#include "yb/util/signal_util.h"
 
 DECLARE_string(metric_node_name);
 
@@ -258,6 +259,9 @@ extern "C" {
     yb::WebserverOptions opts;
     opts.bind_interface = listen_addresses;
     opts.port = port;
+    // Important! Since postgres functions aren't generally thread-safe,
+    // we shouldn't allow more than one worker thread at a time.
+    opts.num_worker_threads = 1;
     return reinterpret_cast<WebserverWrapper *> (new Webserver(opts, "Postgres webserver"));
   }
 
@@ -296,6 +300,8 @@ extern "C" {
         false, false);
     webserver->RegisterPathHandler("/statements-reset", "Reset PG Stat Statements",
         PgStatStatementsResetHandler, false, false);
-    return ToYBCStatus(webserver->Start());
+    return ToYBCStatus(yb::WithMaskedYsqlSignals([webserver]() {
+      return webserver->Start();
+    }));
   }
 };
