@@ -15,6 +15,7 @@
 
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 
@@ -106,6 +107,61 @@ TEST_F(InetAddressTest, TestHostName) {
   ASSERT_EQ("0.0.3.232", addr.ToString());
   ASSERT_OK(addr.FromString("0xC00002EB"));
   ASSERT_EQ("192.0.2.235", addr.ToString());
+}
+
+TEST_F(InetAddressTest, FilterAddresses) {
+
+  // Create a list of ipv6 and ipv4 addresses
+  const vector<string> address_strs = {
+    "::1",                                    "10.150.0.148",
+    "2600:1f18:1094:c832:36e6:43b9:e6c8:f02", "127.0.0.1",
+    "127.0.0.2",                              "0.0.0.0",
+    "::",                                     "fe80::4001:aff:fe96:94",
+    "fe80::2%lo"
+  };
+  vector<IpAddress> addresses;
+  for (const auto &address_str : address_strs) {
+    LOG(INFO) << address_str;
+    addresses.push_back(IpAddress::from_string(address_str));
+  }
+  LOG(INFO) << "Starting test";
+  auto test_addresses = addresses;
+  FilterAddresses("ipv4_all", &test_addresses);
+  ASSERT_EQ(test_addresses.size(), 4);
+
+  test_addresses = addresses;
+  FilterAddresses("ipv6_all", &test_addresses);
+  ASSERT_EQ(test_addresses.size(), 5);
+
+  test_addresses = addresses;
+  FilterAddresses("ipv6_all,ipv4_all", &test_addresses);
+  ASSERT_EQ(test_addresses.size(), 9);
+  ASSERT_TRUE(test_addresses[0].is_v6());
+  ASSERT_TRUE(test_addresses[test_addresses.size() - 1].is_v4());
+
+  test_addresses = addresses;
+  FilterAddresses("ipv6_external", &test_addresses);
+  ASSERT_EQ(test_addresses.size(), 1);
+
+  test_addresses = addresses;
+  FilterAddresses("ipv6_non_link_local", &test_addresses);
+  ASSERT_EQ(test_addresses.size(), 2);
+
+  test_addresses = addresses;
+  FilterAddresses("ipv4_external", &test_addresses);
+  ASSERT_EQ(test_addresses.size(), 1);
+
+  test_addresses = addresses;
+  FilterAddresses("ipv4_external,ipv6_external", &test_addresses);
+  ASSERT_EQ(test_addresses.size(), 2);
+  ASSERT_TRUE(test_addresses[0].is_v4());
+  ASSERT_TRUE(test_addresses[test_addresses.size() - 1].is_v6());
+
+  test_addresses = addresses;
+  FilterAddresses("ipv6_external,ipv4_external", &test_addresses);
+  ASSERT_EQ(test_addresses.size(), 2);
+  ASSERT_TRUE(test_addresses[0].is_v6());
+  ASSERT_TRUE(test_addresses[test_addresses.size() - 1].is_v4());
 }
 
 } // namespace yb

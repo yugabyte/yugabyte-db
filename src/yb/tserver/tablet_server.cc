@@ -416,9 +416,8 @@ TabletServiceImpl* TabletServer::tablet_server_service() {
 
 string GetDynamicUrlTile(const string path, const string host, const int port) {
 
-  vector<std::string> parsed_hostname = strings::Split(host, ":");
-  std::string link = strings::Substitute("http://$0:$1$2",
-                                         parsed_hostname[0], yb::ToString(port), path);
+  std::string link =
+      strings::Substitute("http://$0$1", HostPortToString(host, port), path);
   return link;
 }
 

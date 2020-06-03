@@ -1431,9 +1431,10 @@ Status YBClient::GetMasterUUID(const string& host,
       data_->proxy_cache_.get(), {hp}, default_rpc_timeout(), &server));
 
   if (server.has_error()) {
-    return STATUS(RuntimeError,
-        strings::Substitute("Error $0 while getting uuid of $1:$2.",
-                            "", host, port));
+    return STATUS_FORMAT(
+      RuntimeError,
+      "Error while getting uuid of $0.",
+      HostPortToString(host, port));
   }
 
   *uuid = server.instance_id().permanent_uuid();

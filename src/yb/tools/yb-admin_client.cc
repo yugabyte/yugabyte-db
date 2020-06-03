@@ -130,16 +130,12 @@ static constexpr const char* kDBTypePrefixYsql = "ysql";
 static constexpr const char* kDBTypePrefixRedis = "yedis";
 static constexpr const char* kTableIDPrefix = "tableid";
 
-string FormatHostPort(const HostPortPB& host_port) {
-  return Format("$0:$1", host_port.host(), host_port.port());
-}
-
 string FormatFirstHostPort(
     const RepeatedPtrField<HostPortPB>& rpc_addresses) {
   if (rpc_addresses.empty()) {
     return "N/A";
   } else {
-    return FormatHostPort(rpc_addresses.Get(0));
+    return HostPortPBToString(rpc_addresses.Get(0));
   }
 }
 
@@ -1166,7 +1162,7 @@ Status ClusterAdminClient::ListTablets(const YBTableName& table_name, int max_ta
     for (const auto& replica : locations_of_this_tablet.replicas()) {
       if (replica.role() == RaftPeerPB::Role::RaftPeerPB_Role_LEADER) {
         if (leader_host_port.empty()) {
-          leader_host_port = FormatHostPort(replica.ts_info().private_rpc_addresses(0));
+          leader_host_port = HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
           leader_uuid = replica.ts_info().permanent_uuid();
         } else {
           LOG(ERROR) << "Multiple leader replicas found for tablet " << tablet_uuid
@@ -1210,7 +1206,7 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const TabletId& tablet_id)
   }
   for (const auto& replica : locs.replicas()) {
     cout << replica.ts_info().permanent_uuid() << kColumnSep
-         << RightPadToWidth(FormatHostPort(replica.ts_info().private_rpc_addresses(0)),
+         << RightPadToWidth(HostPortPBToString(replica.ts_info().private_rpc_addresses(0)),
                             kHostPortColWidth) << kColumnSep
          << PBEnumToString(replica.role()) << endl;
   }
