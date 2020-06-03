@@ -142,6 +142,7 @@ typedef struct ExprState
  *		Am					Oid of index AM
  *		AmCache				private cache area for index AM
  *		Context				memory context holding this IndexInfo
+ *		SplitOptions		Options to split index into tablets. 
  *
  * ii_Concurrent, ii_BrokenHotChain, and ii_ParallelWorkers are used only
  * during index build; they're conventionally zeroed otherwise.

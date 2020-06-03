@@ -217,6 +217,20 @@ DELETE FROM test_include WHERE c1 = 2;
 SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
 SELECT * FROM test_include ORDER BY c2;
 
+-- Test SPLIT INTO
+CREATE TABLE test_split (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY ((h1, h2) HASH, r1, r2));
+CREATE INDEX ON test_split (h2 HASH, r2, r1) SPLIT INTO 20 TABLETS;
+CREATE INDEX ON test_split ((r1,r2) HASH) SPLIT INTO 20 TABLETS;
+CREATE INDEX ON test_split (h2) SPLIT INTO 20 TABLETS;
+\d test_split
+
+-- These should fail
+CREATE INDEX ON test_split (r1 ASC) SPLIT INTO 20 TABLETS;
+CREATE INDEX ON test_split (h2 ASC, r1) SPLIT INTO 20 TABLETS;
+CREATE INDEX ON test_split (h1 HASH) SPLIT INTO 10000 TABLETS;
+
 -- Test hash methods
 CREATE TABLE test_method (
   h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,

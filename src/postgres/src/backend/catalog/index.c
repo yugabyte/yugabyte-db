@@ -769,7 +769,8 @@ index_create(Relation heapRelation,
 			 bits16 constr_flags,
 			 bool allow_system_table_mods,
 			 bool is_internal,
-			 Oid *constraintId)
+			 Oid *constraintId,
+			 OptSplit *split_options)
 {
 	Oid			heapRelationId = RelationGetRelid(heapRelation);
 	Relation	pg_class;
@@ -969,7 +970,8 @@ index_create(Relation heapRelation,
 					   coloptions,
 					   reloptions,
 					   indexRelationId,
-					   heapRelation);
+					   heapRelation,
+					   split_options);
 	}
 
 	/*

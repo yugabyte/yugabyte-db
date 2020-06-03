@@ -60,7 +60,8 @@ extern void YBCCreateIndex(const char *indexName,
 						   int16 *coloptions,
 						   Datum reloptions,
 						   Oid indexId,
-						   Relation rel);
+						   Relation rel,
+						   OptSplit *split_options);
 
 extern void YBCDropIndex(Oid relationId);
 

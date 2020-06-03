@@ -7818,13 +7818,13 @@ defacl_privilege_target:
  *
  *		QUERY: CREATE INDEX
  *
- * Note: we cannot put TABLESPACE clause after WHERE clause unless we are
- * willing to make TABLESPACE a fully reserved word.
+ * Note: we cannot put TABLESPACE or SPLIT clause after WHERE clause unless we
+ * are willing to make TABLESPACE or SPLIT fully reserved words.
  *****************************************************************************/
 
 IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
-			opt_include opt_reloptions OptTableSpace where_clause
+			opt_include opt_reloptions OptTableSpace OptSplit where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
 					n->unique = $2;
@@ -7837,7 +7837,8 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 					n->indexIncludingParams = $12;
 					n->options = $13;
 					n->tableSpace = $14;
-					n->whereClause = $15;
+					n->split_options = $15;
+					n->whereClause = $16;
 					n->excludeOpNames = NIL;
 					n->idxcomment = NULL;
 					n->indexOid = InvalidOid;
@@ -7852,7 +7853,7 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 				}
 			| CREATE opt_unique INDEX opt_concurrently IF_P NOT EXISTS index_name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
-			opt_include opt_reloptions OptTableSpace where_clause
+			opt_include opt_reloptions OptTableSpace OptSplit where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
 					n->unique = $2;
@@ -7865,7 +7866,8 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 					n->indexIncludingParams = $15;
 					n->options = $16;
 					n->tableSpace = $17;
-					n->whereClause = $18;
+					n->split_options = $18;
+					n->whereClause = $19;
 					n->excludeOpNames = NIL;
 					n->idxcomment = NULL;
 					n->indexOid = InvalidOid;

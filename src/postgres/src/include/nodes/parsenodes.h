@@ -2784,6 +2784,8 @@ typedef struct IndexStmt
 	bool		transformed;	/* true when transformIndexStmt is finished */
 	bool		concurrent;		/* should this be a concurrent index build? */
 	bool		if_not_exists;	/* just do nothing if index already exists? */
+
+	OptSplit *split_options; /* SPLIT statement options */
 } IndexStmt;
 
 /* ----------------------

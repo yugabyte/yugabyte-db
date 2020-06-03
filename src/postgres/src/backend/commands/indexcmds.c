@@ -906,7 +906,7 @@ DefineIndex(Oid relationId,
 					 coloptions, reloptions,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
-					 &createdConstraintId);
+					 &createdConstraintId, stmt->split_options);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
