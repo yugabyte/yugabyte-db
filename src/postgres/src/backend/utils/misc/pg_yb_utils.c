@@ -747,18 +747,20 @@ YBIsInitDbAlreadyDone()
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static int ddl_nesting_level = 0;
 
-static void YBIncrementDdlNestingLevel() {
-	if (ddl_nesting_level == 0) {
+void
+YBIncrementDdlNestingLevel()
+{
+	if (ddl_nesting_level == 0)
 		YBCPgEnterSeparateDdlTxnMode();
-	}
 	ddl_nesting_level++;
 }
 
-static void YBDecrementDdlNestingLevel(bool success) {
+void
+YBDecrementDdlNestingLevel(bool success)
+{
 	ddl_nesting_level--;
-	if (ddl_nesting_level == 0) {
+	if (ddl_nesting_level == 0)
 		YBCPgExitSeparateDdlTxnMode(success);
-	}
 }
 
 static bool IsTransactionalDdlStatement(NodeTag node_tag) {

@@ -294,6 +294,9 @@ extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
  */
 bool YBIsInitDbAlreadyDone();
 
+void YBIncrementDdlNestingLevel();
+void YBDecrementDdlNestingLevel(bool success);
+
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();

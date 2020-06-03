@@ -431,6 +431,9 @@ int32_t YBCGetMaxReadRestartAttempts();
 // Retrieves value of ysql_output_buffer_size gflag
 int32_t YBCGetOutputBufferSize();
 
+// Retrieve value of ysql_disable_index_backfill gflag.
+bool YBCGetDisableIndexBackfill();
+
 bool YBCPgIsYugaByteEnabled();
 
 // Sets the specified timeout in the rpc service.
