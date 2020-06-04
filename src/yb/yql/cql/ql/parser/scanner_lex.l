@@ -579,7 +579,7 @@ other                     .
   addlitchar('\'');
 }
 
-<xq,xus>{xqinside} {
+<xus>{xqinside} {
   addlit(yytext, yyleng);
 }
 
@@ -666,6 +666,10 @@ other                     .
 }
 
 <xq,xe,xus><<EOF>> { yyerror("unterminated quoted string"); }
+
+<xq>. {
+  addlitchar(yytext[0]);
+}
 
 {dolqdelim} {
   SET_YYLLOC();
