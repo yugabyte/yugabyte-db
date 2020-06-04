@@ -157,11 +157,11 @@ static Oid ybc_get_atttypid(TupleDesc bind_desc, AttrNumber attnum)
 /*
  * Bind a scan key.
  */
-static void ybcBindColumn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum, Datum value)
+static void ybcBindColumn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum, Datum value, bool is_null)
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
 
-	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, value, false /* isnull */);
+	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, value, is_null);
 
 	HandleYBStatusWithOwner(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr),
 													ybScan->handle,
@@ -205,18 +205,23 @@ static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc, Att
  * Bind an array of scan keys for a column.
  */
 static void ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum,
-																int nvalues, Datum *values)
+                                int nvalues, Datum *values)
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
 
-  YBCPgExpr ybc_exprs[nvalues]; /* VLA - scratch space */
-  for (int i = 0; i < nvalues; i++) {
-    ybc_exprs[i] = YBCNewConstant(ybScan->handle, atttypid, values[i], false /* isnull */);
-  }
+	YBCPgExpr ybc_exprs[nvalues]; /* VLA - scratch space */
+	for (int i = 0; i < nvalues; i++) {
+		/*
+		 * For IN we are removing all null values in ybcBindScanKeys before
+		 * getting here (relying on btree/lsm operators being strict).
+		 * So we can safely set is_null to false for all options left here.
+		 */
+		ybc_exprs[i] = YBCNewConstant(ybScan->handle, atttypid, values[i], false /* is_null */);
+	}
 
-  HandleYBStatusWithOwner(YBCPgDmlBindColumnCondIn(ybScan->handle, attnum, nvalues, ybc_exprs),
-													ybScan->handle,
-													ybScan->stmt_owner);
+	HandleYBStatusWithOwner(YBCPgDmlBindColumnCondIn(ybScan->handle, attnum, nvalues, ybc_exprs),
+	                                                 ybScan->handle,
+	                                                 ybScan->stmt_owner);
 }
 
 /*
@@ -657,7 +662,7 @@ static void	ybcSetupScanKeys(Relation relation,
 
 		int idx = YBAttnumToBmsIndex(scan_plan->target_relation, scan_plan->bind_key_attnums[i]);
 		/*
-		 * TODO: Can we have bound keys on non-pkey columsn here?
+		 * TODO: Can we have bound keys on non-pkey columns here?
 		 *       If not we do not need the is_primary_key below.
 		 */
 		bool is_primary_key = bms_is_member(idx, scan_plan->primary_key);
@@ -745,8 +750,12 @@ static void ybcBindScanKeys(Relation relation,
 		{
 			int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
 			if (bms_is_member(idx, scan_plan->sk_cols))
+			{
+				bool is_null = (ybScan->key[i].sk_flags & SK_ISNULL) == SK_ISNULL;
+
 				ybcBindColumn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
-							  ybScan->key[i].sk_argument);
+							  ybScan->key[i].sk_argument, is_null);
+			}
 		}
 	}
 	else
