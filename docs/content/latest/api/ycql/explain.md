@@ -20,20 +20,15 @@ Use the `EXPLAIN` statement to show the execution plan for a statement.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
+### Diagram
+
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="213" height="125" viewbox="0 0 213 125"><path class="connector" d="M0 22h15m72 0h30m54 0h27m-91 25q0 5 5 5h5m61 0h5q5 0 5-5m-81 30q0 5 5 5h5m54 0h12q5 0 5-5m-86-55q5 0 5 5v80q0 5 5 5h5m56 0h10q5 0 5-5v-80q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="72" height="25" rx="7"/><text class="text" x="25" y="22">EXPLAIN</text><a xlink:href="../grammar_diagrams#select"><rect class="rule" x="117" y="5" width="54" height="25"/><text class="text" x="127" y="22">select</text></a><a xlink:href="../grammar_diagrams#update"><rect class="rule" x="117" y="35" width="61" height="25"/><text class="text" x="127" y="52">update</text></a><a xlink:href="../grammar_diagrams#insert"><rect class="rule" x="117" y="65" width="54" height="25"/><text class="text" x="127" y="82">insert</text></a><a xlink:href="../grammar_diagrams#delete"><rect class="rule" x="117" y="95" width="56" height="25"/><text class="text" x="127" y="112">delete</text></a><polygon points="209,29 213,29 213,15 209,15" style="fill:black;stroke-width:0"/></svg>
+
+### Grammar
+
+```
+explain ::= EXPLAIN { select | update | insert | delete }
+```
 
 
 ## Semantics
