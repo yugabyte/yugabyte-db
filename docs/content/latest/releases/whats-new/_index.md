@@ -24,12 +24,12 @@ menu:
 
 ### Binaries
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.7.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.8.0-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
-&nbsp; &nbsp; &nbsp; 
+&nbsp; &nbsp; &nbsp;
 <a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.7.0-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
@@ -40,7 +40,7 @@ menu:
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.1.7.0-b17 ???
+docker pull yugabytedb/yugabyte:2.1.8.0-b2
 ```
 
 ## YSQL
@@ -51,12 +51,14 @@ docker pull yugabytedb/yugabyte:2.1.7.0-b17 ???
 - Fix operation buffering in stored procedures to handle transactions correctly. [#4268](https://github.com/yugabyte/yugabyte-db/issues/4268)
 - [DocDB] Ensure that fast path (pushed down) single row writes honor higher priority transactions and get aborted or retired instead. [#4316](https://github.com/yugabyte/yugabyte-db/issues/4316)
 - [DocDB] Split copy table operations into smaller chunks (using byte size instead of count) for CREATE DATABASE statement. [#3743](https://github.com/yugabyte/yugabyte-db/issues/3743)
+- Correctly push down `IS NULL` condition to DocDB. [#4499](https://github.com/yugabyte/yugabyte-db/issues/4499)
 - Avoid ASAN failures after a large data set is uploaded by rearranging files and test functionalities. [#4488]((https://github.com/yugabyte/yugabyte-db/issues/4488)
 - Fix memory leaks by using memory context to manage object alloc and free. [#4490](https://github.com/yugabyte/yugabyte-db/issues/4316)
 - Fix multi-touch cache and improve caching logic for read/write operations. [#4379](https://github.com/yugabyte/yugabyte-db/issues/4379)
 - Improve index cost estimates by considering index uniqueness, included columns (index scan vs. index only scan), scan direction, and partial indexes. Also, disable merge joins for unsupported cases. [#4494](https://github.com/yugabyte/yugabyte-db/issues/4494) and [#4496](https://github.com/yugabyte/yugabyte-db/issues/4496)
-- Support deferrable for foreign key constraints. [#3995](https://github.com/yugabyte/yugabyte-db/issues/3995)
+- Add support for deferrable foreign key constraints. [#3995](https://github.com/yugabyte/yugabyte-db/issues/3995)
 - Prevent dropping primary key constraint. [#3163](https://github.com/yugabyte/yugabyte-db/issues/3163)
+- Push down `SELECT <aggregate>(<const>)` to DocDB. [#4276](https://github.com/yugabyte/yugabyte-db/issues/4276)
 
 ## YCQL
 
@@ -67,10 +69,11 @@ docker pull yugabytedb/yugabyte:2.1.7.0-b17 ???
 - Add `yb-admin import_snapshot` support for renaming a few tables (not all), but the specified name is equal to the old table name: `yb-admin import_snapshot <meta-file> ks old_table_name`. [#4280](https://github.com/yugabyte/yugabyte-db/issues/4280)
 - For DDL creation with Spring Data Cassandra, change the Enum value from JSON to JSONB to allow schema creation to succeed programmatically involving JSON column types and update the cassandra-java-driver to 3.8.0-yb-5. [#4481](https://github.com/yugabyte/yugabyte-db/issues/4481)
 - Use the same timestamp for current time to compute multiple runtimes in output of `<tserver-ip>:13000/rpcz`. [#4418](https://github.com/yugabyte/yugabyte-db/issues/4418)
+- Correctly push down `= NULL` condition to DocDB. [#4499](https://github.com/yugabyte/yugabyte-db/issues/4499)
 
 ## YEDIS
 
-- Do not start `redis` server by default in `yugabyted`. Resolves port conflict during startup. [#4057](https://github.com/yugabyte/yugabyte-db/issues/4057)
+- For `yugabyted`, do not start `redis` server by default. Resolves port conflict during startup. [#4057](https://github.com/yugabyte/yugabyte-db/issues/4057)
 
 ## System improvements
 
@@ -89,7 +92,6 @@ docker pull yugabytedb/yugabyte:2.1.7.0-b17 ???
 - [DocDB] Remove applied intent doc hybrid time during compaction. [#4535](https://github.com/yugabyte/yugabyte-db/issues/4535)
 - [DocDB] Fixed BoundedRocksDbIterator::SeekToLast works incorrectly for 2nd post-split tablet. [#4542](https://github.com/yugabyte/yugabyte-db/issues/4542)
 - [DocDb] Abort snapshot if table was deleted. [#4610](https://github.com/yugabyte/yugabyte-db/issues/4610)
-- [DocDB] Fix TestRpcSecure.CantAllocateReadBuffer for TSAN. [#4556](https://github.com/yugabyte/yugabyte-db/commit/440c38be1603c7fe7d99a3bf8313909348ff62c9)
 - [Colocation] During load balancing operations, load balance each colocated tablet once. This fix removes unnecessary load balancing for every user table sharing that table and the parent table.
 - Fix YB-Master hangs due to transaction status resolution. [#4410](https://github.com/yugabyte/yugabyte-db/issues/4410)
 - Redirect the master UI to the master leader UI without failing when one master is down. [#4442](https://github.com/yugabyte/yugabyte-db/issues/4442) and [#3869](https://github.com/yugabyte/yugabyte-db/issues/3869)
@@ -115,6 +117,7 @@ docker pull yugabytedb/yugabyte:2.1.7.0-b17 ???
 - Update to support Helm 3 deployments. [#4416]((https://github.com/yugabyte/yugabyte-db/issues/4416))
 - Change QLTableRow representation. [#4427](https://github.com/yugabyte/yugabyte-db/issues/4427)
 - Fix CDC-related race conditions using `CDCServiceTxnTest.TestGetChangesForPendingTransaction`. [#4544](https://github.com/yugabyte/yugabyte-db/issues/4427)
+- Revert validation on alerting email field to allow comma-separated emails in the form. [#4639](https://github.com/yugabyte/yugabyte-db/issues/4639)
 
 {{< note title="Note" >}}
 

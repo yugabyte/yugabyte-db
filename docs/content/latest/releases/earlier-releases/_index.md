@@ -12,7 +12,7 @@ menu:
 ---
 
 Download earlier YugabyteDB releases from the listing below. Information on the latest release is available
-in [What's new in 2.1.7](../whats-new/).
+in [What's new in 2.1.8](../whats-new/).
 
 Release | Date | Binary | Docker Image Tag
 --------|------|-------------------------------|-----------------
