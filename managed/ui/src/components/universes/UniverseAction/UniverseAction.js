@@ -35,7 +35,7 @@ class UniverseAction extends Component {
       };
     });
   }
-  UNSAFE_componentWillReceiveProps = (nextProps) => {
+  UNSAFE_componentWillReceiveProps(nextProps) {
     if (getPromiseState(nextProps.backupState).isSuccess() ||
         getPromiseState(nextProps.alertsConfig).isSuccess()) {
       this.closeModal();

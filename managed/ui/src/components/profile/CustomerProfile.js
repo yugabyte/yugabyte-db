@@ -83,8 +83,9 @@ export default class CustomerProfile extends Component {
               disabled={isDisabled(customer.data.features, "main.profile")}>
               <UserProfileForm customer={this.props.customer}
                 customerProfile={customerProfile}
-                apiToken={apiToken} {...this.props}
-                handleProfileUpdate={this.handleProfileUpdate} />
+                apiToken={apiToken}
+                handleProfileUpdate={this.handleProfileUpdate}
+                {...this.props} />
             </Tab.Pane>,
             <Tab.Pane
               eventKey={"health-alerting"}
@@ -95,8 +96,9 @@ export default class CustomerProfile extends Component {
               disabled={isDisabled(customer.data.features, "main.profile")}>
               <AlertProfileForm customer={this.props.customer}
                 customerProfile={customerProfile}
-                apiToken={apiToken}  {...this.props}
-                handleProfileUpdate={this.handleProfileUpdate} />
+                apiToken={apiToken}
+                handleProfileUpdate={this.handleProfileUpdate}
+                {...this.props} />
             </Tab.Pane>,
             <Tab.Pane
               eventKey={"manage-users"}
@@ -107,8 +109,9 @@ export default class CustomerProfile extends Component {
               disabled={isDisabled(customer.data.features, "main.profile")}>
               <UserList customer={this.props.customer}
                 customerProfile={customerProfile}
-                apiToken={apiToken}  {...this.props}
-                handleProfileUpdate={this.handleProfileUpdate} />
+                apiToken={apiToken}
+                handleProfileUpdate={this.handleProfileUpdate}
+                {...this.props} />
             </Tab.Pane>
           ]}
         </YBTabsWithLinksPanel>
