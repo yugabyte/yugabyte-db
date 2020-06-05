@@ -214,3 +214,5 @@ cqlsh:imdb> EXPLAIN UPDATE movie_stats SET user_rank = 1 WHERE movie_name = 'm1'
 
 - [`INSERT`](../dml_insert)
 - [`SELECT`](../dml_select)
+- [`UPDATE`](../dml_update)
+- [`DELETE`](../dml_delete)
