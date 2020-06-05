@@ -1,7 +1,7 @@
 ---
-title: What's new in 2.1.6
-headerTitle: What's new in 2.1.6
-linkTitle: What's new in 2.1.6
+title: What's new in 2.2
+headerTitle: What's new in 2.2
+linkTitle: What's new in 2.2
 description: Enhancements, changes, and resolved issues in the latest YugabyteDB release.
 headcontent: Features, enhancements, and resolved issues in the latest release.
 image: /images/section_icons/quick_start/install.png
@@ -14,7 +14,7 @@ menu:
     weight: 2589 
 ---
 
-**Released:** May 8, 2020 (2.1.6.0-b17).
+**Released:** June ??, 2020 (2.2.0.0-b??).
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
