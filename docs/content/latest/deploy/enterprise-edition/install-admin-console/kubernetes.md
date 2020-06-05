@@ -4,9 +4,9 @@ You must have a Kubernetes cluster that has [Helm](https://helm.sh/) configured.
 
 The YugaWare Helm chart documented here has been tested with the following software versions:
 
-- Kubernetes 1.10+
-- Helm 2.8.0+
-- YugaWare Docker Images 1.1.0+
+- Kubernetes 1.10 or later.
+- Helm 3.0 or later.
+- YugaWare Docker Images 1.1.0 or later.
 - Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to YugaWare.
 
 Confirm that your `helm` is configured correctly.
@@ -16,24 +16,10 @@ $ helm version
 ```
 
 ```
-Client: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"}
-Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"}
+version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
 ```
 
 ## Create a cluster
-
-### Create a service account with cluster-admin role privileges
-
-For deploying a YugaWare Helm (v2.x) chart, you need to have a service account with `cluster-admin` role privileges — if the user in context already has that access, you can skip this step.
-
-```sh
-$ kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
-```
-
-```sh
-serviceaccount/yugabyte-helm created
-clusterrolebinding.rbac.authorization.k8s.io/yugabyte-helm created
-```
 
 ### Initialize Helm
 
@@ -44,7 +30,7 @@ $ helm init --service-account yugabyte-helm --upgrade --wait
 ```
 
 ```sh
-$HELM_HOME has been configured at /Users/<user>/.helm.
+$HELM_HOME has been configured at `/Users/<user>/.helm`.
 
 Tiller (the Helm server-side component) has been upgraded to the current version.
 Happy Helming!
