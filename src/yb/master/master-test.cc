@@ -116,7 +116,7 @@ TEST_F(MasterTest, TestCallHome) {
   ASSERT_EQ(addrs.size(), 1);
   auto addr = addrs[0];
 
-  auto handler = [&json, &latch] (const Webserver::WebRequest& req, std::stringstream* output) {
+  auto handler = [&json, &latch] (const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
     ASSERT_EQ(req.request_method, "POST");
     ASSERT_EQ(json, req.post_data);
     latch.CountDown();

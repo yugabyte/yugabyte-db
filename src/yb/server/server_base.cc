@@ -571,7 +571,8 @@ void RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
 }
 
 Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
-                                            stringstream* output) {
+                                            Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   *output << "<h1>Debug Utilities</h1>\n";
 
   *output << "<div class='row debug-tiles'>\n";

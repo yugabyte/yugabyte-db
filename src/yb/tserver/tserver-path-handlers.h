@@ -63,17 +63,17 @@ class TabletServerPathHandlers {
 
  private:
   void HandleTablesPage(const Webserver::WebRequest& req,
-                        std::stringstream* output);
+                        Webserver::WebResponse* resp);
   void HandleTabletsPage(const Webserver::WebRequest& req,
-                         std::stringstream* output);
+                         Webserver::WebResponse* resp);
   void HandleOperationsPage(const Webserver::WebRequest& req,
-                            std::stringstream* output);
+                            Webserver::WebResponse* resp);
   void HandleDashboardsPage(const Webserver::WebRequest& req,
-                            std::stringstream* output);
+                            Webserver::WebResponse* resp);
   void HandleMaintenanceManagerPage(const Webserver::WebRequest& req,
-                                    std::stringstream* output);
+                                    Webserver::WebResponse* resp);
   void HandleHealthCheck(const Webserver::WebRequest& req,
-                         std::stringstream* output);
+                         Webserver::WebResponse* resp);
   std::string ConsensusStatePBToHtml(const consensus::ConsensusStatePB& cstate) const;
   std::string GetDashboardLine(const std::string& link,
                                const std::string& text, const std::string& desc);
