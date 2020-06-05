@@ -163,7 +163,7 @@ Status MultiStageAlterTable::ClearAlteringState(
       SysTablesEntryPB::RUNNING, Substitute("Current schema version=$0", current_version));
 
   Status s =
-      catalog_manager->sys_catalog_->UpdateItem(table.get(), catalog_manager->leader_ready_term_);
+      catalog_manager->sys_catalog_->UpdateItem(table.get(), catalog_manager->leader_ready_term());
   if (!s.ok()) {
     LOG(WARNING) << "An error occurred while updating sys-tables: " << s.ToString()
                  << ". This master may not be the leader anymore.";
