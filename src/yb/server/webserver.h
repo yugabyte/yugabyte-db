@@ -157,7 +157,7 @@ class Webserver : public WebCallbackRegistry {
                                       const char* message);
 
   // Registered to handle "/", and prints a list of available URIs
-  void RootHandler(const WebRequest& args, std::stringstream* output);
+  void RootHandler(const WebRequest& args, Webserver::WebResponse* resp);
 
   // Builds a map of argument name to argument value from a typical URL argument
   // string (that is, "key1=value1&key2=value2.."). If no value is given for a

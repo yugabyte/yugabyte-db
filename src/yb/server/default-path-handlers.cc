@@ -117,7 +117,8 @@ struct Tags {
 
 // Writes the last FLAGS_web_log_bytes of the INFO logfile to a webpage
 // Note to get best performance, set GLOG_logbuflevel=-1 to prevent log buffering
-static void LogsHandler(const Webserver::WebRequest& req, std::stringstream* output) {
+static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
   Tags tags(as_text);
   string logfile;
@@ -145,7 +146,8 @@ static void LogsHandler(const Webserver::WebRequest& req, std::stringstream* out
 }
 
 // Registered to handle "/flags", and prints out all command-line flags and their values
-static void FlagsHandler(const Webserver::WebRequest& req, std::stringstream* output) {
+static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
   Tags tags(as_text);
   (*output) << tags.header << "Command-line Flags" << tags.end_header;
@@ -153,12 +155,14 @@ static void FlagsHandler(const Webserver::WebRequest& req, std::stringstream* ou
 }
 
 // Registered to handle "/status", and simply returns empty JSON.
-static void StatusHandler(const Webserver::WebRequest& req, std::stringstream* output) {
+static void StatusHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   (*output) << "{}";
 }
 
 // Registered to handle "/memz", and prints out memory allocation statistics.
-static void MemUsageHandler(const Webserver::WebRequest& req, std::stringstream* output) {
+static void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
   Tags tags(as_text);
 
@@ -174,7 +178,8 @@ static void MemUsageHandler(const Webserver::WebRequest& req, std::stringstream*
 }
 
 // Registered to handle "/mem-trackers", and prints out to handle memory tracker information.
-static void MemTrackersHandler(const Webserver::WebRequest& req, std::stringstream* output) {
+static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   *output << "<h1>Memory usage by subsystem</h1>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Id</th><th>Current Consumption</th>"
@@ -209,7 +214,8 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, std::stringstre
 }
 
 static void WriteMetricsAsJson(const MetricRegistry* const metrics,
-                               const Webserver::WebRequest& req, std::stringstream* output) {
+                               const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   const string* requested_metrics_param = FindOrNull(req.parsed_args, "metrics");
   vector<string> requested_metrics;
   MetricJsonOptions opts;
@@ -243,13 +249,15 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
 }
 
 static void WriteForPrometheus(const MetricRegistry* const metrics,
-                               const Webserver::WebRequest& req, std::stringstream* output) {
+                               const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   PrometheusWriter writer(output);
   WARN_NOT_OK(metrics->WriteForPrometheus(&writer), "Couldn't write text metrics for Prometheus");
 }
 
 static void HandleGetVersionInfo(
-    const Webserver::WebRequest& req, std::stringstream* output) {
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
 
   VersionInfoPB version_info;
   VersionInfo::GetVersionInfoPB(&version_info);

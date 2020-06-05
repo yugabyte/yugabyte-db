@@ -37,7 +37,9 @@ static rpczEntry **rpczResultPointer;
 
 static postgresCallbacks pgCallbacks;
 
-static void PgMetricsHandler(const Webserver::WebRequest& req, std::stringstream* output) {
+static void PgMetricsHandler(const Webserver::WebRequest& req,
+                                    Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
   json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
@@ -98,7 +100,9 @@ static void DoWriteStatArrayElemToJson(JsonWriter* writer, YsqlStatementStat* st
   writer->Int64(stat->rows);
 }
 
-static void PgStatStatementsHandler(const Webserver::WebRequest& req, std::stringstream* output) {
+static void PgStatStatementsHandler(const Webserver::WebRequest& req,
+                                    Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
   json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
@@ -120,7 +124,8 @@ static void PgStatStatementsHandler(const Webserver::WebRequest& req, std::strin
 }
 
 static void PgStatStatementsResetHandler(const Webserver::WebRequest& req,
-                                         std::stringstream* output) {
+                                         Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
   json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
@@ -154,7 +159,9 @@ static void WriteAsJsonTimestampAndRunningForMs(JsonWriter *writer, const std::s
   writer->Int64(pgCallbacks.getTimestampTzDiffMs(start_timestamp, snapshot_timestamp));
 }
 
-static void PgRpczHandler(const Webserver::WebRequest& req, std::stringstream* output) {
+static void PgRpczHandler(const Webserver::WebRequest& req,
+                                Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   pgCallbacks.pullRpczEntries();
   int64 snapshot_timestamp = pgCallbacks.getTimestampTz();
 
@@ -225,8 +232,8 @@ static void PgRpczHandler(const Webserver::WebRequest& req, std::stringstream* o
 }
 
 static void PgPrometheusMetricsHandler(const Webserver::WebRequest& req,
-                                       std::stringstream* output) {
-
+                                       Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   PrometheusWriter writer(output);
 
   // Max size of ybpgm_table name (100 incl \0 char) + max size of "_count"/"_sum" (6 excl \0).

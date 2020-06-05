@@ -131,7 +131,9 @@ void MasterPathHandlers::ZoneTabletCounts::operator+=(const ZoneTabletCounts& ot
 }
 
 // Retrieve the specified URL response from the leader master
-void MasterPathHandlers::RedirectToLeader(const Webserver::WebRequest& req, stringstream* output) {
+void MasterPathHandlers::RedirectToLeader(const Webserver::WebRequest& req,
+                                          Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   vector<ServerEntryPB> masters;
   Status s = master_->ListMasters(&masters);
   if (!s.ok()) {
@@ -181,7 +183,7 @@ void MasterPathHandlers::RedirectToLeader(const Webserver::WebRequest& req, stri
 }
 
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
-    const Webserver::WebRequest& req, stringstream* output,
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp,
     const Webserver::PathHandlerCallback& callback) {
   string redirect;
   // Lock the CatalogManager in a self-contained block, to prevent double-locking on callbacks.
@@ -190,12 +192,12 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
 
     // If we are not the master leader, redirect the URL.
     if (!l.first_failed_status().ok()) {
-      RedirectToLeader(req, output);
+      RedirectToLeader(req, resp);
       return;
     }
 
     // Handle the request as a leader master.
-    callback(req, output);
+    callback(req, resp);
     return;
   }
 }
@@ -412,7 +414,8 @@ MasterPathHandlers::ZoneTabletCounts::CloudTree MasterPathHandlers::CalculateTab
 }
 
 void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
-                                             stringstream* output) {
+                                             Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   SysClusterConfigEntryPB config;
@@ -462,7 +465,8 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
 }
 
 void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req,
-                                             stringstream* output) {
+                                             Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   JsonWriter jw(output, JsonWriter::COMPACT);
@@ -588,9 +592,9 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 }
 
 void MasterPathHandlers::HandleHealthCheck(
-    const Webserver::WebRequest& req, stringstream* output) {
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   // TODO: Lock not needed since other APIs handle it.  Refactor other functions accordingly
-
+  std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
 
   SysClusterConfigEntryPB config;
@@ -720,8 +724,9 @@ void MasterPathHandlers::HandleHealthCheck(
 }
 
 void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
-                                              stringstream* output,
+                                              Webserver::WebResponse* resp,
                                               bool only_user_tables) {
+  std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   vector<scoped_refptr<TableInfo> > tables;
@@ -830,7 +835,8 @@ bool CompareByRole(const TabletReplica& a, const TabletReplica& b) {
 
 
 void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
-                                         stringstream* output) {
+                                         Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   // True if table_id, false if (keyspace, table).
@@ -943,7 +949,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 }
 
 void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
-                                         stringstream* output) {
+                                         Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables);
   *output << "<h3>Active Tasks</h3>\n";
@@ -997,14 +1004,14 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
 }
 
 void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
-                                     stringstream* output) {
-
+                                     Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   // First check if we are the master leader. If not, make a curl call to the master leader and
   // return that as the UI payload.
   CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
   if (!l.first_failed_status().ok()) {
     // We are not the leader master, retrieve the response from the leader master.
-    RedirectToLeader(req, output);
+    RedirectToLeader(req, resp);
     return;
   }
 
@@ -1117,17 +1124,18 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
 
   // Display the master info.
   (*output) << "<div class='col-xs-12 col-md-8 col-lg-6'>\n";
-  HandleMasters(req, output);
+  HandleMasters(req, resp);
   (*output) << "</div> <!-- col-xs-12 col-md-8 col-lg-6 -->\n";
 
   // Display the user tables if any.
   (*output) << "<div class='col-md-12 col-lg-12'>\n";
-  HandleCatalogManager(req, output, true /* only_user_tables */);
+  HandleCatalogManager(req, resp, true /* only_user_tables */);
   (*output) << "</div> <!-- col-md-12 col-lg-12 -->\n";
 }
 
 void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
-                                       stringstream* output) {
+                                       Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   vector<ServerEntryPB> masters;
   Status s = master_->ListMasters(&masters);
   if (!s.ok()) {
@@ -1356,7 +1364,8 @@ Status JsonDumpCollection(JsonWriter* jw, Master* master, stringstream* output) 
 } // anonymous namespace
 
 void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
-                                            stringstream* output) {
+                                            Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   JsonWriter jw(output, JsonWriter::COMPACT);
@@ -1370,8 +1379,47 @@ void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
   }
 }
 
+void MasterPathHandlers::HandleCheckIfLeader(const Webserver::WebRequest& req,
+                                              Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  jw.StartObject();
+  {
+    CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+
+    // If we are not the master leader.
+    if (!l.first_failed_status().ok()) {
+      resp->code = 503;
+      return;
+    }
+
+    jw.String("STATUS");
+    jw.String(l.leader_status().CodeAsString());
+    jw.EndObject();
+    return;
+  }
+}
+
+void MasterPathHandlers::HandleGetMastersStatus(const Webserver::WebRequest& req,
+                                                    Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  vector<ServerEntryPB> masters;
+  Status s = master_->ListMasters(&masters);
+  ListMastersResponsePB pb_resp;
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  if (!s.ok()) {
+    jw.Protobuf(pb_resp);
+    return;
+  }
+  for (const ServerEntryPB& master : masters) {
+    pb_resp.add_masters()->CopyFrom(master);
+  }
+  jw.Protobuf(pb_resp);
+}
+
 void MasterPathHandlers::HandleGetClusterConfig(
-  const Webserver::WebRequest& req, stringstream* output) {
+  const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   *output << "<h1>Current Cluster Config</h1>\n";
@@ -1439,6 +1487,12 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/dump-entities", "Dump Entities",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  server->RegisterPathHandler(
+      "/api/v1/is-leader", "Leader Check",
+      std::bind(&MasterPathHandlers::HandleCheckIfLeader, this, _1, _2), false, false);
+  server->RegisterPathHandler(
+      "/api/v1/masters", "Master Statuses",
+      std::bind(&MasterPathHandlers::HandleGetMastersStatus, this, _1, _2), false, false);
   return Status::OK();
 }
 

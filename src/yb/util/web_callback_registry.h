@@ -60,7 +60,15 @@ class WebCallbackRegistry {
     std::string redirect_uri;
   };
 
-  typedef std::function<void(const WebRequest& args, std::stringstream* output)>
+  struct WebResponse {
+    // The output stream.
+    std::stringstream output;
+
+    // Response code for HTTP requests.
+    int code;
+  };
+
+  typedef std::function<void(const WebRequest& args, WebResponse* resp)>
       PathHandlerCallback;
 
   virtual ~WebCallbackRegistry() {}
