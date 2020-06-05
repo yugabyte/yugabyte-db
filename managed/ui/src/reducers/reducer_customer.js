@@ -129,7 +129,7 @@ export default function(state = INITIAL_STATE, action) {
       return {...state, hostInfo: action.payload.data};
     case FETCH_HOST_INFO_FAILURE:
       return {...state, hostInfo: null };
-
+    
     case UPDATE_PROFILE:
       return setLoadingState(state, "profile");
     case UPDATE_PROFILE_SUCCESS:

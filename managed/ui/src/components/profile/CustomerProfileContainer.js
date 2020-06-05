@@ -4,7 +4,8 @@ import { connect } from 'react-redux';
 import { CustomerProfile } from '../profile';
 import { updateProfile, updateProfileSuccess, updateProfileFailure,
   getApiToken, getApiTokenResponse, getApiTokenLoading,
-  getCustomerUsers, getCustomerUsersSuccess, getCustomerUsersFailure } from '../../actions/customers';
+  getCustomerUsers, getCustomerUsersSuccess, getCustomerUsersFailure,
+  updatePassword, updatePasswordSuccess, updatePasswordFailure } from '../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -27,6 +28,15 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(updateProfileFailure(response.payload));
         } else {
           dispatch(updateProfileSuccess(response.payload));
+        }
+      });
+    },
+    changeUserPassword: (userUUID, values) => {
+      dispatch(updatePassword(userUUID, values)).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(updatePasswordFailure(response.payload));
+        } else {
+          dispatch(updatePasswordSuccess(response.payload));
         }
       });
     },

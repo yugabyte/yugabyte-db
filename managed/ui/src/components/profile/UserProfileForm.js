@@ -2,6 +2,7 @@
 
 import React, { Component } from 'react';
 import Cookies from 'js-cookie';
+import { isEqual } from 'lodash';
 import { Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBButton } from '../common/forms/fields';
 import { Formik, Form, Field } from 'formik';
@@ -35,22 +36,26 @@ export default class UserProfileForm extends Component {
     refreshApiToken({"X-AUTH-TOKEN": authToken});
   }
 
+  UNSAFE_componentWillReceiveProps(nextProps) {
+    const { customerProfile, handleProfileUpdate } = this.props;
+    const hasProfileChanged = getPromiseState(customerProfile) !== getPromiseState(nextProps.customerProfile) &&
+                              (getPromiseState(nextProps.customerProfile).isSuccess() || getPromiseState(nextProps.customerProfile).isError());
+    if (this.state.statusUpdated && hasProfileChanged) {
+        handleProfileUpdate(nextProps.customerProfile.data);
+        this.setState({statusUpdated: false});
+    }
+  }
+
   render() {
     const {
       customer = {},
       users = [],
-      apiToken,
-      customerProfile,
-      updateCustomerDetails
+      apiToken,      
+      updateCustomerDetails,
+      changeUserPassword
     } = this.props;
 
     showOrRedirect(customer.data.features, "main.profile");
-    if (this.state.statusUpdated &&
-        (getPromiseState(customerProfile).isSuccess() ||
-         getPromiseState(customerProfile).isError())) {
-      this.props.handleProfileUpdate(customerProfile.data);
-      this.setState({statusUpdated: false});
-    }
 
     const validationSchema = Yup.object().shape({
       name: Yup.string()
@@ -94,8 +99,34 @@ export default class UserProfileForm extends Component {
           validationSchema={validationSchema}
           initialValues={initialValues}
           enableReinitialize
-          onSubmit={(values, { setSubmitting }) => {
-            updateCustomerDetails(values);
+          onSubmit={(values,  { setSubmitting }) => {
+            // Compare values to initial values to see if changes were made
+            let hasPasswordChanged = false, hasProfileInfoChanged = false;
+            Object.entries(values).forEach(([key, value]) => {
+              if (key in initialValues) {
+                if (typeof value !== 'object' && value !== initialValues[key]) {
+                  if (['password', 'confirmPassword'].includes(key)) {
+                    hasPasswordChanged = true;
+                  } else {
+                    hasProfileInfoChanged = true;
+                  }
+                } else if (typeof value === 'object' && !isEqual(value, initialValues[key])) {
+                  // Value is an array or object
+                  hasProfileInfoChanged = true;
+                }
+              } else {
+                // In the event that Formik field was not added to initialValues,
+                // we still want to update the profile
+                hasProfileInfoChanged = true;
+              }
+            });
+            
+            if (hasPasswordChanged) {
+              changeUserPassword(getCurrentUser[0], values);
+            }
+            if (hasProfileInfoChanged) {
+              updateCustomerDetails(values);
+            }           
             setSubmitting(false);
             this.setState({statusUpdated: true});
           }}
