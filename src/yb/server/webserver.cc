@@ -71,6 +71,8 @@
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/shared_lock.h"
@@ -254,25 +256,48 @@ Status Webserver::GetBoundAddresses(std::vector<Endpoint>* addrs_ptr) const {
     return STATUS(IllegalState, "Not started");
   }
 
-  struct sockaddr_in** sockaddrs;
+  struct sockaddr_storage** sockaddrs = nullptr;
   int num_addrs;
 
   if (sq_get_bound_addresses(context_, &sockaddrs, &num_addrs)) {
     return STATUS(NetworkError, "Unable to get bound addresses from Mongoose");
   }
-
+  auto cleanup = ScopeExit([sockaddrs, num_addrs] {
+    if (!sockaddrs) {
+      return;
+    }
+    for (int i = 0; i < num_addrs; ++i) {
+      free(sockaddrs[i]);
+    }
+    free(sockaddrs);
+  });
   auto& addrs = *addrs_ptr;
   addrs.resize(num_addrs);
 
   for (int i = 0; i < num_addrs; i++) {
-    memcpy(addrs[i].data(), sockaddrs[i], sizeof(*sockaddrs[i]));
-    free(sockaddrs[i]);
+    switch (sockaddrs[i]->ss_family) {
+      case AF_INET: {
+        sockaddr_in* addr = reinterpret_cast<struct sockaddr_in*>(sockaddrs[i]);
+        DSCHECK(addrs[i].capacity() >= sizeof(*addr), IllegalState, "Unexpected size of struct");
+        memcpy(addrs[i].data(), addr, sizeof(*addr));
+        break;
+      }
+      case AF_INET6: {
+        sockaddr_in6* addr6 = reinterpret_cast<struct sockaddr_in6*>(sockaddrs[i]);
+        DSCHECK(addrs[i].capacity() >= sizeof(*addr6), IllegalState, "Unexpected size of struct");
+        memcpy(addrs[i].data(), addr6, sizeof(*addr6));
+        break;
+      }
+      default: {
+        LOG(ERROR) << "Unexpected address family: " << sockaddrs[i]->ss_family;
+        DSCHECK(false, IllegalState, "Unexpected address family");
+        break;
+      }
+    }
   }
-  free(sockaddrs);
 
   return Status::OK();
 }
-
 int Webserver::LogMessageCallbackStatic(const struct sq_connection* connection,
                                         const char* message) {
   if (message != nullptr) {
