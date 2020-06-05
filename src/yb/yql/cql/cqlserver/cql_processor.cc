@@ -23,8 +23,6 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
 
-#include "yb/util/crypt.h"
-
 #include "yb/yql/cql/cqlserver/cql_service.h"
 
 METRIC_DEFINE_histogram_with_percentiles(
@@ -505,7 +503,7 @@ CQLResponse* CQLProcessor::ProcessResult(const ExecutedResult::SharedPtr& result
                   "Provided username " + params.username + " and/or password are incorrect");
             }
             const auto& saved_hash = salted_hash_value.string_value();
-            if (bcrypt_checkpw(params.password.c_str(), saved_hash.c_str())) {
+            if (!service_impl_->CheckPassword(params.password, saved_hash)) {
               return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
                   "Provided username " + params.username + " and/or password are incorrect");
             } else if (!can_login) {
