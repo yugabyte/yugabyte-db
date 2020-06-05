@@ -260,6 +260,34 @@ export function updateProfileFailure(error) {
   };
 }
 
+export function updatePassword(user, values) {
+  const cUUID = localStorage.getItem("customerId");
+  const userUUID = user.uuid;
+  const data = {
+    ...values,
+    role: user.role
+  }
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/users/${userUUID}/change_password`, data);
+  return {
+    type: UPDATE_PROFILE,
+    payload: request
+  };
+}
+
+export function updatePasswordSuccess(response) {
+  return {
+    type: UPDATE_PROFILE_SUCCESS,
+    payload: response
+  };
+}
+
+export function updatePasswordFailure(error) {
+  return {
+    type: UPDATE_PROFILE_FAILURE,
+    payload: error
+  };
+}
+
 export function fetchSoftwareVersions() {
   const cUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases`);
