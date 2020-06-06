@@ -495,6 +495,3 @@ SELECT (NULL::compositetable).a;
 SELECT (NULL::compositetable).oid;
 
 DROP TABLE compositetable;
-
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;

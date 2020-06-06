@@ -2381,5 +2381,3 @@ select json_strip_nulls('{"a": {"b": null, "c": null}, "d": {} }');
 -- select ts_headline('{}'::json, tsquery('aaa & bbb'));
 -- select ts_headline('[]'::json, tsquery('aaa & bbb'));
 --
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;

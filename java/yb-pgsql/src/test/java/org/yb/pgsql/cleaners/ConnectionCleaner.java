@@ -65,7 +65,19 @@ public class ConnectionCleaner implements ClusterCleaner {
           if (connection == null) {
             LOG.error("connectionsToClose contains a null connection!");
           } else {
+            // TODO(dmitry): Workaround for #1721, remove after fix.
+            try (Statement statement = connection.createStatement()) {
+              statement.execute("DISCARD TEMP");
+            } catch (SQLException ex) {
+              // Exception is acceptable only in case connection was already closed.
+              // Connection state is not checked prior to execute statement
+              // due to possible race condition in case connection is closed by server side.
+              if (!connection.isClosed()) {
+                throw ex;
+              }
+            }
             connection.close();
+
           }
         } catch (SQLException ex) {
           LOG.error("Exception while trying to close connection");

@@ -1101,5 +1101,3 @@ ERROR:  column "oid" not found in data type compositetable
 LINE 1: SELECT (NULL::compositetable).oid;
                 ^
 DROP TABLE compositetable;
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;

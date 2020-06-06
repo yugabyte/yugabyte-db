@@ -42,6 +42,11 @@ def main():
     skipping = False
     just_stopped_skipping = False
     while i < len(lines):
+        if lines[i] == '-- YB_DATA_END':
+            # Line indicates end of data. All further statements designed for maintenance
+            # and must be removed from in result output.
+            break
+
         just_started_skipping = False
         if (lines[i] == SANITIZER_SEPARATOR_LINE and
                 i + 1 < len(lines) and

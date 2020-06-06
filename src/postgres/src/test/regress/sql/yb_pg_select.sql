@@ -93,6 +93,3 @@ SELECT * FROM foo ORDER BY f1;
 SELECT * FROM foo ORDER BY f1 NULLS FIRST;
 SELECT * FROM foo ORDER BY f1 DESC;
 SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
-
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;

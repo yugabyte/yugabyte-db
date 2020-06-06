@@ -4584,6 +4584,3 @@ BEGIN
   GET DIAGNOSTICS x = ROW_COUNT;
   RETURN;
 END; $$ LANGUAGE plpgsql;
-
--- Workaround for #1721
-DISCARD TEMP;

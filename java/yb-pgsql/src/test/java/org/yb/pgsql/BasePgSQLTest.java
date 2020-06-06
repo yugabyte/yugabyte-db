@@ -417,8 +417,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
    */
   protected TreeMap<Integer, ClusterCleaner> getCleaners() {
     TreeMap<Integer, ClusterCleaner> cleaners = new TreeMap<>();
-    cleaners.put(99, new UserObjectCleaner());
-    cleaners.put(100, new ConnectionCleaner());
+    cleaners.put(99, new ConnectionCleaner());
+    cleaners.put(100, new UserObjectCleaner());
     return cleaners;
   }
 

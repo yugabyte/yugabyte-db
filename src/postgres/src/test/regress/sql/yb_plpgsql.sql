@@ -103,6 +103,3 @@ begin
 end $$;
 
 select * from test order by k;
-
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;
