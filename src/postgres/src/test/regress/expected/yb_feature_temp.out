@@ -363,5 +363,3 @@ SELECT * FROM temptest WHERE k IN (1, 4) ORDER BY k;
 (1 row)
 
 DROP TABLE temptest;
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;

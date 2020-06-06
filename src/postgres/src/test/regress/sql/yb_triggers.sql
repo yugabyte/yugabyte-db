@@ -250,6 +250,3 @@ select * from self_ref_trigger;
 drop table self_ref_trigger;
 drop function self_ref_trigger_ins_func();
 drop function self_ref_trigger_del_func();
-
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;

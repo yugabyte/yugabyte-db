@@ -1382,5 +1382,3 @@ alter table fkpart2.fk_part_1_1 drop constraint my_fkey;	-- doesn't exist
 drop schema fkpart0, fkpart1, fkpart2 cascade;
 \set VERBOSITY default
 */
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;

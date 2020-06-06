@@ -356,7 +356,6 @@ select (select max(min(unique1)) from int8_tbl) from tenk1;
 
 create temp table t1 (a int, b int, c int, d int, primary key (a, b));
 create temp table t2 (x int, y int, z int, primary key (x, y));
--- Don't yet support deferrable.
 create temp table t3 (a int, b int, c int, primary key(a, b) deferrable);
 
 -- Non-primary-key columns can be removed from GROUP BY

@@ -5514,5 +5514,3 @@ END; $$ LANGUAGE plpgsql;
 ERROR:  "x" is not a scalar variable
 LINE 3:   GET DIAGNOSTICS x = ROW_COUNT;
                           ^
--- Workaround for #1721
-DISCARD TEMP;

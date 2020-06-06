@@ -481,6 +481,3 @@ CREATE TABLE tbl19(
   b int,
   primary key(a asc, b desc nulls last)
 ) SPLIT AT VALUES((100), (200, 5), (200, 5));
-
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;
