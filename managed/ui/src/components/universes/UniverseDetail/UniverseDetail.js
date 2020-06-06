@@ -369,7 +369,7 @@ class UniverseDetail extends Component {
                 }
                 <YBMenuItem eventKey="4" onClick={showGFlagsModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.editGFlags")}>
                   <YBLabelWithIcon icon="fa fa-flag fa-fw">
-                    Edit GFlags
+                    Edit Flags
                   </YBLabelWithIcon>
                 </YBMenuItem>
                 <YBMenuItem eventKey="4" onClick={showManageKeyModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.manageEncryption")}>

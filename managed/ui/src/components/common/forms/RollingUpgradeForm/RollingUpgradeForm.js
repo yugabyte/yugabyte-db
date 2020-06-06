@@ -18,7 +18,7 @@ class FlagInput extends Component {
     return (
       <Row>
         <Col lg={5}>
-          <Field name={`${item}.name`} component={YBInputField} className="input-sm" placeHolder="GFlag Name"/>
+          <Field name={`${item}.name`} component={YBInputField} className="input-sm" placeHolder="Flag Name"/>
         </Col>
         <Col lg={5}>
           <Field name={`${item}.value`} component={YBInputField} className="input-sm" placeHolder="Value"/>
@@ -233,7 +233,7 @@ export default class RollingUpgradeForm extends Component {
         </span>
       );
     } else {
-      title = "GFlags";
+      title = "Flags";
       formBody = (
         <div>
           <Tabs defaultActiveKey={1} className="gflag-display-container" id="gflag-container" >
