@@ -314,9 +314,9 @@ void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
   vector<string> tablets, partitions;
   vector<master::TabletLocationsPB> locations;
   const auto table_name = RedisServiceData::GetYBTableNameForRedisDatabase(
-                              data.call()->connection_context().redis_db_to_use());
-  auto s = data.client()->GetTablets(table_name, 0, &tablets, &partitions, &locations,
-                                     true /* update tablets cache */);
+      data.call()->connection_context().redis_db_to_use());
+  auto s = data.client()->GetTabletsAndUpdateCache(
+      table_name, 0, &tablets, &partitions, &locations);
   if (!s.ok()) {
     LOG(ERROR) << "Error getting tablets: " << s.message();
     return;
