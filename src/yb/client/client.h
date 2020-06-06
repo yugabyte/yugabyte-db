@@ -81,6 +81,7 @@
 template<class T> class scoped_refptr;
 
 YB_DEFINE_ENUM(GrantRevokeStatementType, (GRANT)(REVOKE));
+YB_STRONGLY_TYPED_BOOL(RequireTabletsRunning);
 
 namespace yb {
 
@@ -513,23 +514,30 @@ class YBClient {
 
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.
-  CHECKED_STATUS GetTablets(const YBTableName& table_name,
-                            const int32_t max_tablets,
-                            std::vector<TabletId>* tablet_uuids,
-                            std::vector<std::string>* ranges,
-                            std::vector<master::TabletLocationsPB>* locations = nullptr,
-                            bool update_tablets_cache = false,
-                            bool require_tablets_running = false);
+  CHECKED_STATUS GetTablets(
+      const YBTableName& table_name,
+      const int32_t max_tablets,
+      std::vector<TabletId>* tablet_uuids,
+      std::vector<std::string>* ranges,
+      std::vector<master::TabletLocationsPB>* locations = nullptr,
+      RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse);
 
+  CHECKED_STATUS GetTabletsAndUpdateCache(
+      const YBTableName& table_name,
+      const int32_t max_tablets,
+      std::vector<TabletId>* tablet_uuids,
+      std::vector<std::string>* ranges,
+      std::vector<master::TabletLocationsPB>* locations);
 
   Status GetTabletsFromTableId(
       const std::string& table_id, const int32_t max_tablets,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
 
-  CHECKED_STATUS GetTablets(const YBTableName& table_name,
-                            const int32_t max_tablets,
-                            google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets,
-                            bool require_tablets_running = false);
+  CHECKED_STATUS GetTablets(
+      const YBTableName& table_name,
+      const int32_t max_tablets,
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets,
+      RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse);
 
   CHECKED_STATUS GetTabletLocation(const TabletId& tablet_id,
                                    master::TabletLocationsPB* tablet_location);

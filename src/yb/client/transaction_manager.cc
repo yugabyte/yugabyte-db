@@ -124,8 +124,7 @@ class PickStatusTabletTask {
                                tablets,
                                nullptr /* ranges */,
                                nullptr /* locations */,
-                               false /* update_tablets_cache */,
-                               true /* require_tablets_running */);
+                               RequireTabletsRunning::kTrue);
   }
 
   YBClient* client_;

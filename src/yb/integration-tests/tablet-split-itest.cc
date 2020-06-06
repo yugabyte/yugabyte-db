@@ -446,9 +446,6 @@ TEST_P(TabletSplitITestWithIsolationLevel, SplitSingleTablet) {
   rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table_));
   ASSERT_EQ(rows_count, kNumRows);
 
-  // TODO(tsplit): remove client recreation after required support for post-split tablets is
-  // implemented.
-  ASSERT_OK(CreateClient());
   ASSERT_OK(WriteRows(kNumRows));
 
   ASSERT_OK(cluster_->RestartSync());
