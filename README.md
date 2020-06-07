@@ -86,7 +86,7 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | YSQL cluster administration features | PROGRESS  | v2.2  | [Track](https://github.com/yugabyte/yugabyte-db/issues/4194) |  |
 | [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) GA | PROGRESS  | v2.2  |  |  |
 | IPV6 support for YugabyteDB | PROGRESS  |  v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/3644) |  |
-| [`DEFERRED` constraints support in YSQL](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS  |  v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |
+| [`DEFERRED` constraints support in YSQL](https://github.com/yugabyte/yugabyte-db/issues/4700) | PROGRESS  |  v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4700) |  |
 | Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) | PROGRESS  |  v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1808) |  |
 | Audit logging support | PLANNING  | v2.3  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1331) |  |
 | Improving day 2 operations of Yugabyte Platform | PROGRESS  |  v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4420) |  |
