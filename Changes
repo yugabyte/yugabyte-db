@@ -16,6 +16,8 @@ Revision history for pgTAP
   the report (#247).
 * Fixed a test failure where the current username was not being quoted as an
   identifier. Thanks to Matt DeLuco for the report (#216)!
+* Fixed the `col_not_null()` drop statements in the uninstall script. Thanks
+  to Kyle L. Jensen for the report (#252).
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------

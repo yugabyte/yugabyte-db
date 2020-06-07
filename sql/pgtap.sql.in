@@ -1382,33 +1382,29 @@ $$ LANGUAGE plpgsql;
 
 -- col_not_null( schema, table, column, description )
 -- col_not_null( schema, table, column )
-CREATE OR REPLACE FUNCTION col_not_null (
-    schema_name NAME, table_name NAME, column_name NAME, description TEXT DEFAULT NULL
-) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION col_not_null ( schema_name NAME, table_name NAME, column_name NAME, description TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, $3, $4, true );
 $$ LANGUAGE SQL;
 
 -- col_not_null( table, column, description )
 -- col_not_null( table, column )
-CREATE OR REPLACE FUNCTION col_not_null (
-    table_name NAME, column_name NAME, description TEXT DEFAULT NULL
-) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION col_not_null ( table_name NAME, column_name NAME, description TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, $3, true );
 $$ LANGUAGE SQL;
 
 -- col_is_null( schema, table, column, description )
 -- col_is_null( schema, table, column )
-CREATE OR REPLACE FUNCTION col_is_null (
-    schema_name NAME, table_name NAME, column_name NAME, description TEXT DEFAULT NULL
-) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION col_is_null ( schema_name NAME, table_name NAME, column_name NAME, description TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, $3, $4, false );
 $$ LANGUAGE SQL;
 
 -- col_is_null( table, column, description )
 -- col_is_null( table, column )
-CREATE OR REPLACE FUNCTION col_is_null (
-    table_name NAME, column_name NAME, description TEXT DEFAULT NULL
-) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION col_is_null ( table_name NAME, column_name NAME, description TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, $3, false );
 $$ LANGUAGE SQL;
 
