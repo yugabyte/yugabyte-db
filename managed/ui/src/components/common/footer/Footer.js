@@ -7,7 +7,7 @@ import githubLogo from './images/github-light-small.png';
 import ybLogoImage from '../YBLogo/images/yb_ybsymbol_dark.png';
 import YBLogo from '../YBLogo/YBLogo';
 import * as moment from 'moment';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 
 class Footer extends PureComponent {
   render() {

@@ -5,7 +5,7 @@ import { CreateBackup } from '../';
 import { createTableBackup, createTableBackupResponse } from '../../../actions/tables';
 import { createUniverseBackup, createUniverseBackupResponse,
   fetchUniverseBackups, fetchUniverseBackupsResponse } from '../../../actions/universe';
-import { isNonEmptyArray, isNonEmptyObject } from "utils/ObjectUtils";
+import { isNonEmptyArray, isNonEmptyObject } from "../../../utils/ObjectUtils";
 
 const mapDispatchToProps = (dispatch) => {
   return {

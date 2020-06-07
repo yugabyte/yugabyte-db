@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { FormControl } from 'react-bootstrap';
 import { isFunction } from 'lodash';
-import { YBLabel } from 'components/common/descriptors';
+import { YBLabel } from '../../../../components/common/descriptors';
 import { isDefinedNotNull } from "../../../../utils/ObjectUtils";
 
 // TODO: Make default export after checking all corresponding imports.

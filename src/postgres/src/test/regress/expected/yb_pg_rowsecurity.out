@@ -1455,14 +1455,14 @@ EXPLAIN (COSTS OFF) DELETE FROM t1 WHERE f_leak(b);
 DELETE FROM only t1 WHERE f_leak(b) RETURNING *, t1;
 NOTICE:  f_leak => bbbbbb_updt
 NOTICE:  f_leak => daddad_updt
- a |      b      | k |        t1         
+ a |      b      | k |        t1
 ---+-------------+---+-------------------
  2 | bbbbbb_updt | 2 | (2,bbbbbb_updt,2)
  4 | daddad_updt | 4 | (4,daddad_updt,4)
 (2 rows)
 
 DELETE FROM t1 WHERE f_leak(b) RETURNING *, t1;
- a | b | k | t1 
+ a | b | k | t1
 ---+---+---+----
 (0 rows)
 
@@ -2271,19 +2271,16 @@ NOTICE:  f_leak => def
 (0 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(abc);
-                               QUERY PLAN
--------------------------------------------------------------------------
- Merge Join
-   Merge Cond: (y2.b = test_qual_pushdown.abc)
-   ->  Sort
-         Sort Key: y2.b
-         ->  Foreign Scan on y2
-               Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
-   ->  Sort
-         Sort Key: test_qual_pushdown.abc
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (y2.b = test_qual_pushdown.abc)
+   ->  Foreign Scan on y2
+         Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
+   ->  Hash
          ->  Foreign Scan on test_qual_pushdown
                Filter: f_leak(abc)
-(10 rows)
+(7 rows)
 
 SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(b);
 NOTICE:  f_leak => cfcd208495d565ef66e7dff9f98764da
@@ -2305,18 +2302,15 @@ NOTICE:  f_leak => 98f13708210194c475687be6106a3b84
 (0 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(b);
-                                       QUERY PLAN
------------------------------------------------------------------------------------------
- Merge Join
-   Merge Cond: (y2.b = test_qual_pushdown.abc)
-   ->  Sort
-         Sort Key: y2.b
-         ->  Foreign Scan on y2
-               Filter: ((((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0)) AND f_leak(b))
-   ->  Sort
-         Sort Key: test_qual_pushdown.abc
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (y2.b = test_qual_pushdown.abc)
+   ->  Foreign Scan on y2
+         Filter: ((((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0)) AND f_leak(b))
+   ->  Hash
          ->  Foreign Scan on test_qual_pushdown
-(9 rows)
+(6 rows)
 
 DROP TABLE test_qual_pushdown;
 --

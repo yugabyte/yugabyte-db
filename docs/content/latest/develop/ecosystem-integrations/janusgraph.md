@@ -17,21 +17,21 @@ In this tutorial, we are first going to setup [JanusGraph](https://janusgraph.or
 
 ## 1. Start local cluster
 
-Start a cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to YugabyteDB using `cqlsh` by doing the following.
+Start a cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to YugabyteDB using `ycqlsh` by doing the following.
 
 ```sh
-$ cqlsh
+$ ycqlsh
 ```
 
 ```
 Connected to local cluster at 127.0.0.1:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh> DESCRIBE KEYSPACES;
+ycqlsh> DESCRIBE KEYSPACES;
 
 system_schema  system_auth  system
 
-cqlsh>
+ycqlsh>
 ```
 
 ## 2. Download JanusGraph
@@ -62,14 +62,14 @@ plugin activated: tinkerpop.tinkergraph
 gremlin>
 ```
 
-- Now use the CQL config to initialize JanusGraph to talk to Yugabyte.
+- Now use the YCQL config to initialize JanusGraph to talk to Yugabyte.
 
 ```sql
 gremlin> graph = JanusGraphFactory.open('conf/janusgraph-cql.properties')
 ==>standardjanusgraph[cql:[127.0.0.1]]
 ```
 
-- Open the YugabyteDB UI to verify that the `janusgraph` keyspace and the necessary tables were created by opening the following URL in a web browser: `http://localhost:7000/` (replace `localhost` with the ip address of any master node in a remote depoyment). You should see the following.
+- Open the YugabyteDB UI to verify that the `janusgraph` keyspace and the necessary tables were created by opening the following URL in a web browser: `http://localhost:7000/` (replace `localhost` with the IP address of any master node in a remote deployment). You should see the following.
 
 ![List of keyspaces and tables when running JanusGraph on YugabyteDB](/images/develop/ecosystem-integrations/janusgraph/yb-janusgraph-tables.png)
 

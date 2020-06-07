@@ -137,26 +137,27 @@ Status BeginRecording(const Webserver::WebRequest& req,
 
 
 Status EndRecording(const Webserver::WebRequest& req,
-                    stringstream* out) {
+                    Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   TraceLog* tl = TraceLog::GetInstance();
   tl->SetDisabled();
-  *out << TraceResultBuffer::FlushTraceLogToString();
+  *output << TraceResultBuffer::FlushTraceLogToString();
   return Status::OK();
 }
 
-Status CaptureMonitoring(stringstream* out) {
+Status CaptureMonitoring(stringstream* output) {
   TraceLog* tl = TraceLog::GetInstance();
   if (!tl->IsEnabled()) {
     return STATUS(IllegalState, "monitoring not enabled");
   }
-  *out << TraceResultBuffer::FlushTraceLogToStringButLeaveBufferIntact();
+  *output << TraceResultBuffer::FlushTraceLogToStringButLeaveBufferIntact();
   return Status::OK();
 }
 
-void GetCategories(stringstream* out) {
+void GetCategories(stringstream* output) {
   vector<string> groups;
   yb::debug::TraceLog::GetInstance()->GetKnownCategoryGroups(&groups);
-  JsonWriter j(out, JsonWriter::COMPACT);
+  JsonWriter j(output, JsonWriter::COMPACT);
   j.StartArray();
   for (const string& g : groups) {
     j.String(g);
@@ -164,7 +165,7 @@ void GetCategories(stringstream* out) {
   j.EndArray();
 }
 
-void GetMonitoringStatus(stringstream* out) {
+void GetMonitoringStatus(stringstream* output) {
   TraceLog* tl = TraceLog::GetInstance();
   bool is_monitoring = tl->IsEnabled();
   std::string category_filter = tl->GetCurrentCategoryFilter().ToString();
@@ -190,7 +191,7 @@ void GetMonitoringStatus(stringstream* out) {
 
   string encoded;
   strings::Base64Escape(json_out.str(), &encoded);
-  *out << encoded;
+  *output << encoded;
 }
 
 void HandleTraceJsonPage(const Webserver::ArgumentMap &args,
@@ -207,7 +208,8 @@ void HandleTraceJsonPage(const Webserver::ArgumentMap &args,
 
 Status DoHandleRequest(Handler handler,
                        const Webserver::WebRequest& req,
-                       std::stringstream* output) {
+                       Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   VLOG(2) << "Tracing request type=" << handler << ": " << req.query_string;
 
   switch (handler) {
@@ -231,7 +233,7 @@ Status DoHandleRequest(Handler handler,
       break;
     case kEndMonitoring:
     case kEndRecording:
-      RETURN_NOT_OK(EndRecording(req, output));
+      RETURN_NOT_OK(EndRecording(req, resp));
       break;
     case kSimpleDump:
       HandleTraceJsonPage(req.parsed_args, output);
@@ -244,8 +246,9 @@ Status DoHandleRequest(Handler handler,
 
 void HandleRequest(Handler handler,
                    const Webserver::WebRequest& req,
-                   std::stringstream* output) {
-  Status s = DoHandleRequest(handler, req, output);
+                   Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  Status s = DoHandleRequest(handler, req, resp);
   if (!s.ok()) {
     LOG(WARNING) << "Tracing error for handler " << handler << ": "
                  << s.ToString();

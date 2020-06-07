@@ -392,7 +392,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   // Called on the slow LookupTablet path when the master responds. Populates
   // the tablet caches and returns a reference to the first one.
-  RemoteTabletPtr ProcessTabletLocations(
+  // REQUIRES locations to be in order of partitions and without gaps.
+  Result<RemoteTabletPtr> ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
       const std::string* partition_group_start);
 
@@ -466,6 +467,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   struct TableData {
     std::unordered_map<PartitionKey, RemoteTabletPtr> tablets_by_partition;
     std::unordered_map<PartitionGroupKey, PartitionToLookupData> tablet_lookups_by_group;
+    bool stale = false;
   };
 
   std::unordered_map<TableId, TableData> tables_ GUARDED_BY(mutex_);

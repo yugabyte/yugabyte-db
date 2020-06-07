@@ -31,6 +31,7 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 DECLARE_bool(trace_docdb_calls);
+DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 
 DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
@@ -278,7 +279,9 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
   QLTableRow table_row;
   RETURN_NOT_OK(ReadColumns(data, &table_row));
-  if (table_row.IsEmpty()) {
+  // TODO(jason): only ignore empty when dealing with index backfill DELETE permissions, not for
+  // _all_ tables when the flag ysql_disable_index_backfill is set.
+  if (table_row.IsEmpty() && FLAGS_ysql_disable_index_backfill) {
     // Row not found.
     response_->set_skipped(true);
     return Status::OK();

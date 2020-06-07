@@ -1,9 +1,13 @@
 // Copyright YugaByte Inc.
 
 import { connect } from 'react-redux';
-import { ReleaseList } from 'components/releases';
-import { refreshYugaByteReleases, refreshYugaByteReleasesResponse,
-getYugaByteReleases, getYugaByteReleasesResponse  } from 'actions/customers';
+import { ReleaseList } from '../../../components/releases';
+import {
+  refreshYugaByteReleases,
+  refreshYugaByteReleasesResponse,
+  getYugaByteReleases,
+  getYugaByteReleasesResponse
+} from '../../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {

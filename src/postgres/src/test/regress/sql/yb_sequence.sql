@@ -90,6 +90,3 @@ SELECT schemaname, sequencename, start_value, min_value, max_value, increment_by
 FROM pg_sequences
 WHERE sequencename ~ ANY(ARRAY['sequence_test', 'serialtest'])
   ORDER BY sequencename ASC;
-
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;

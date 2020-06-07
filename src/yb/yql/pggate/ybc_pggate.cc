@@ -14,6 +14,7 @@
 
 #include <cds/init.h> // NOLINT
 
+#include "yb/common/common_flags.h"
 #include "yb/common/ybc-internal.h"
 #include "yb/util/atomic.h"
 
@@ -415,6 +416,10 @@ YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name
                                                  is_hash, is_range, is_desc, is_nulls_first));
 }
 
+YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_tablets) {
+  return ToYBCStatus(pgapi->CreateIndexSetNumTablets(handle, num_tablets));
+}
+
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateIndex(handle));
 }
@@ -759,6 +764,10 @@ int32_t YBCGetMaxReadRestartAttempts() {
 
 int32_t YBCGetOutputBufferSize() {
   return FLAGS_ysql_output_buffer_size;
+}
+
+bool YBCGetDisableIndexBackfill() {
+  return FLAGS_ysql_disable_index_backfill;
 }
 
 bool YBCPgIsYugaByteEnabled() {

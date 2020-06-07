@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 
-import { ReleaseListContainer } from 'components/releases';
+import { ReleaseListContainer } from '../components/releases';
 
 class Releases extends Component {
   render() {

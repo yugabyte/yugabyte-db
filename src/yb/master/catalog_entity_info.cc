@@ -529,6 +529,8 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 }
 
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
+  VLOG(2) << __PRETTY_FUNCTION__ << " setting state for " << name() << " to "
+          << SysTablesEntryPB::State_Name(state) << " reason: " << msg;
   pb.set_state(state);
   pb.set_state_msg(msg);
 }

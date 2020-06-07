@@ -417,8 +417,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
    */
   protected TreeMap<Integer, ClusterCleaner> getCleaners() {
     TreeMap<Integer, ClusterCleaner> cleaners = new TreeMap<>();
-    cleaners.put(99, new UserObjectCleaner());
-    cleaners.put(100, new ConnectionCleaner());
+    cleaners.put(99, new ConnectionCleaner());
+    cleaners.put(100, new UserObjectCleaner());
     return cleaners;
   }
 
@@ -609,17 +609,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /** Time execution of a query. */
-  protected long verifyStatementMetric(Statement statement, String stmt, String metricName,
-                                       int stmtMetricDelta, int txnMetricDelta,
+  protected long verifyStatementMetric(Statement statement, String query, String metricName,
+                                       int queryMetricDelta, int txnMetricDelta,
                                        boolean validStmt) throws Exception {
-    long oldValue = metricName == null ? 0 : getMetricCounter(metricName);
-    long oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    long oldQueryMetricValue = metricName == null ? 0 : getMetricCounter(metricName);
+    long oldTxnMetricValue = getMetricCounter(TRANSACTIONS_METRIC);
 
     final long startTimeMillis = System.currentTimeMillis();
     if (validStmt) {
-      statement.execute(stmt);
+      statement.execute(query);
     } else {
-      runInvalidQuery(statement, stmt);
+      runInvalidQuery(statement, query);
     }
 
     // Check the elapsed time.
@@ -628,15 +628,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     long newValue = metricName == null ? 0 : getMetricCounter(metricName);
     long newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
 
-    assertEquals(oldValue + stmtMetricDelta, newValue);
-    assertEquals(oldTxnValue + txnMetricDelta, newTxnValue);
+    assertEquals("Metric '" + metricName + "' assertion failed for query '" + query + "'",
+        oldQueryMetricValue + queryMetricDelta, newValue);
+    assertEquals("Metric '" + TRANSACTIONS_METRIC + "' assertion failed for query '" + query + "'",
+        oldTxnMetricValue + txnMetricDelta, newTxnValue);
 
     return result;
   }
 
-  protected void verifyStatementTxnMetric(Statement statement, String stmt,
+  protected void verifyStatementTxnMetric(Statement statement, String query,
                                           int txnMetricDelta) throws Exception {
-    verifyStatementMetric(statement, stmt, null, 0, txnMetricDelta, true);
+    verifyStatementMetric(statement, query, null, 0, txnMetricDelta, true);
   }
 
   protected void executeWithTimeout(Statement statement, String sql)
@@ -954,20 +956,32 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected void assertOneRow(Statement statement,
+                              String query,
+                              Object... values) throws SQLException {
+    try (ResultSet rs = statement.executeQuery(query)) {
+      assertNextRow(rs, values);
+      assertFalse(rs.next());
+    }
+  }
+
   protected void assertOneRow(String stmt, Object... values) throws SQLException {
     try (Statement statement = connection.createStatement()) {
-      try (ResultSet rs = statement.executeQuery(stmt)) {
-        assertNextRow(rs, values);
-        assertFalse(rs.next());
-      }
+     assertOneRow(statement, stmt, values);
+    }
+  }
+
+  protected void assertRowSet(Statement statement,
+                              String query,
+                              Set<Row> expectedRows) throws SQLException {
+    try (ResultSet rs = statement.executeQuery(query)) {
+      assertEquals(expectedRows, getRowSet(rs));
     }
   }
 
   protected void assertRowSet(String stmt, Set<Row> expectedRows) throws SQLException {
     try (Statement statement = connection.createStatement()) {
-      try (ResultSet rs = statement.executeQuery(stmt)) {
-        assertEquals(expectedRows, getRowSet(rs));
-      }
+      assertRowSet(statement, stmt, expectedRows);
     }
   }
 
@@ -1258,19 +1272,21 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /** Time execution of a query. */
-  protected void assertQueryRuntimeWithRowCount(
+  protected long assertQueryRuntimeWithRowCount(
       String stmt,
       int expectedRowCount,
       int numberOfRuns,
       long maxTotalMillis) throws Exception {
     long elapsedMillis = timeQueryWithRowCount(stmt, expectedRowCount, numberOfRuns);
     assertTrue(
-        String.format("Query took %d ms! Expected %d ms at most", elapsedMillis, maxTotalMillis),
+        String.format("Query '%s' took %d ms! Expected %d ms at most", stmt, elapsedMillis,
+            maxTotalMillis),
         elapsedMillis <= maxTotalMillis);
+    return elapsedMillis;
   }
 
   /** Time execution of a query. */
-  protected void assertQueryRuntimeWithRowCount(
+  protected long assertQueryRuntimeWithRowCount(
       PreparedStatement pstmt,
       int expectedRowCount,
       int numberOfRuns,
@@ -1279,22 +1295,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     assertTrue(
         String.format("Query took %d ms! Expected %d ms at most", elapsedMillis, maxTotalMillis),
         elapsedMillis <= maxTotalMillis);
+    return elapsedMillis;
   }
 
   /** Time execution of a statement. */
-  protected void assertStatementRuntime(
+  protected long assertStatementRuntime(
       String stmt,
       int numberOfRuns,
       long maxTotalMillis) throws Exception {
     long elapsedMillis = timeStatement(stmt, numberOfRuns);
     assertTrue(
-        String.format("Statement took %d ms! Expected %d ms at most", elapsedMillis,
+        String.format("Statement '%s' took %d ms! Expected %d ms at most", stmt, elapsedMillis,
             maxTotalMillis),
         elapsedMillis <= maxTotalMillis);
+    return elapsedMillis;
   }
 
   /** Time execution of a statement. */
-  protected void assertStatementRuntime(
+  protected long assertStatementRuntime(
       PreparedStatement pstmt,
       int numberOfRuns,
       long maxTotalMillis) throws Exception {
@@ -1303,6 +1321,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         String.format("Statement took %d ms! Expected %d ms at most", elapsedMillis,
             maxTotalMillis),
         elapsedMillis <= maxTotalMillis);
+    return elapsedMillis;
   }
 
   /** UUID of the first table with specified name. **/
@@ -1325,6 +1344,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return getTableCounterMetricByTableUUID(getTableUUID(tableName), metricName);
   }
 
+  protected String getExplainAnalyzeOutput(Statement stmt, String query) throws Exception {
+    try (ResultSet rs = stmt.executeQuery("EXPLAIN ANALYZE " + query)) {
+      StringBuilder sb = new StringBuilder();
+      while (rs.next()) {
+        sb.append(rs.getString(1)).append("\n");
+      }
+      return sb.toString().trim();
+    }
+  }
 
   // TODO(alex): This should be reworked and made immutable.
   public static class ConnectionBuilder implements Cloneable {

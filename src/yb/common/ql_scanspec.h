@@ -56,15 +56,12 @@ class QLScanRange {
 
   // Value range of a column
   struct QLRange {
-    QLValuePB min_value;
-    QLValuePB max_value;
+    boost::optional<QLValuePB> min_value;
+    boost::optional<QLValuePB> max_value;
   };
 
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
   QLScanRange(const Schema& schema, const PgsqlConditionPB& condition);
-
-  // Return the inclusive lower and upper range values to scan.
-  std::vector<QLValuePB> range_values(bool lower_bound) const;
 
   QLRange RangeFor(ColumnId col_id) const {
     const auto& iter = ranges_.find(col_id);

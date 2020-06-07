@@ -3,9 +3,11 @@
 import { connect } from 'react-redux';
 import CreateKubernetesConfiguration from './CreateKubernetesConfiguration';
 
-import { createProviderResponse,
-         createMultiRegionKubernetesProvider,
-         fetchCloudMetadata } from 'actions/cloud';
+import {
+  createProviderResponse,
+  createMultiRegionKubernetesProvider,
+  fetchCloudMetadata
+} from '../../../../actions/cloud';
 import { openDialog, closeDialog } from '../../../../actions/modal';
 
 const mapStateToProps = (state) => {

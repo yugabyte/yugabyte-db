@@ -5,7 +5,7 @@ import { NodeDetailsTable } from '../../universes';
 import { isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { getPrimaryCluster, getReadOnlyCluster, nodeComparisonFunction } from '../../../utils/UniverseUtils';
-import { hasLiveNodes } from 'utils/UniverseUtils';
+import { hasLiveNodes } from '../../../utils/UniverseUtils';
 import { YBLoading } from '../../common/indicators';
 
 export default class NodeDetails extends Component {

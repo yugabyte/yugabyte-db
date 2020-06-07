@@ -42,26 +42,27 @@ Where
 - `role_name` is a text identifier.
 
 ## Semantics
-- An error is raised if `role_name` does not exist.
+
+An error is raised if `role_name` does not exist.
 
 ## Examples
 
 You can do this as shown below.
 
 ```sql
-cqlsh:example> CREATE ROLE finance;
+ycqlsh:example> CREATE ROLE finance;
 ```
 
 ```sql
-cqlsh:example> ALTER ROLE finance with LOGIN = true;
+ycqlsh:example> ALTER ROLE finance with LOGIN = true;
 ```
 
 ```sql
-cqlsh:example> ALTER ROLE finance with SUPERUSER = true;
+ycqlsh:example> ALTER ROLE finance with SUPERUSER = true;
 ```
 
 ```sql
-cqlsh:example> ALTER ROLE finance with PASSWORD = 'jsfp9ajhufans2' AND SUPERUSER = false;
+ycqlsh:example> ALTER ROLE finance with PASSWORD = 'jsfp9ajhufans2' AND SUPERUSER = false;
 ```
 
 ## See also

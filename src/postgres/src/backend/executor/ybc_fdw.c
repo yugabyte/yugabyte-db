@@ -90,8 +90,16 @@ ybcGetForeignRelSize(PlannerInfo *root,
 
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
-	/* Save the output-rows estimate for the planner */
-	baserel->rows = YBC_DEFAULT_NUM_ROWS;
+	/* Set the estimate for the total number of rows (tuples) in this table. */
+	baserel->tuples = YBC_DEFAULT_NUM_ROWS;
+
+	/*
+	 * Initialize the estimate for the number of rows returned by this query.
+	 * This does not yet take into account the restriction clauses, but it will
+	 * be updated later by ybcIndexCostEstimate once it inspects the clauses.
+	 */
+	baserel->rows = baserel->tuples;
+
 	baserel->fdw_private = ybc_plan;
 
 	/*
@@ -115,7 +123,10 @@ ybcGetForeignPaths(PlannerInfo *root,
 	Cost total_cost;
 
 	/* Estimate costs */
-	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY, &startup_cost, &total_cost);
+	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY,
+	                false /* is_backwards scan */,
+	                false /* is_uncovered_idx_scan */,
+	                &startup_cost, &total_cost);
 
 	/* Create a ForeignPath node and it as the scan path */
 	add_path(baserel,
@@ -284,9 +295,9 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	/* Set the current syscatalog version (will check that we are up to date) */
 	HandleYBStatusWithOwner(YBCPgSetCatalogCacheVersion(ybc_state->handle,
-																											yb_catalog_cache_version),
-													ybc_state->handle,
-													ybc_state->stmt_owner);
+														yb_catalog_cache_version),
+														ybc_state->handle,
+														ybc_state->stmt_owner);
 }
 
 /*
@@ -389,56 +400,82 @@ ybcSetupScanTargets(ForeignScanState *node)
 
 			/* Create operator. */
 			HandleYBStatusWithOwner(YBCPgNewOperator(ybc_state->handle,
-														 func_name,
-														 type_entity,
-														 &op_handle),
-										ybc_state->handle,
-										ybc_state->stmt_owner);
+													 func_name,
+													 type_entity,
+													 &op_handle),
+									ybc_state->handle,
+									ybc_state->stmt_owner);
 
 			/* Handle arguments. */
 			if (aggref->aggstar) {
 				/*
-				 * Add dummy argument for COUNT(*) case. We don't use a column reference
-				 * as we want to count rows even if all column values are NULL.
+				 * Add dummy argument for COUNT(*) case, turning it into COUNT(0).
+				 * We don't use a column reference as we want to count rows
+				 * even if all column values are NULL.
 				 */
 				YBCPgExpr const_handle;
 				YBCPgNewConstant(ybc_state->handle,
 								 type_entity,
 								 0 /* datum */,
-								 true /* is_null */,
+								 false /* is_null */,
 								 &const_handle);
-				HandleYBStatusWithOwner(YBCPgOperatorAppendArg(op_handle,
-																   const_handle),
-											ybc_state->handle,
-											ybc_state->stmt_owner);
+				HandleYBStatusWithOwner(YBCPgOperatorAppendArg(op_handle, const_handle),
+										ybc_state->handle,
+										ybc_state->stmt_owner);
 			} else {
 				/* Add aggregate arguments to operator. */
 				foreach(lc_arg, aggref->args)
 				{
 					TargetEntry *tle = lfirst_node(TargetEntry, lc_arg);
-					/*
-					 * Use original attribute number (varoattno) instead of projected one (varattno)
-					 * as projection is disabled for tuples produced by pushed down operators.
-					 */
-					int attno = castNode(Var, tle->expr)->varoattno;
-					Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
-					YBCPgTypeAttrs type_attrs = {attr->atttypmod};
+					if (IsA(tle->expr, Const))
+					{
+						Const* const_node = castNode(Const, tle->expr);
+						/* Already checked by yb_agg_pushdown_supported */
+						Assert(const_node->constisnull || const_node->constbyval);
 
-					YBCPgExpr arg = YBCNewColumnRef(ybc_state->handle,
-													attno,
-													attr->atttypid,
-													&type_attrs);
-					HandleYBStatusWithOwner(YBCPgOperatorAppendArg(op_handle, arg),
+						YBCPgExpr const_handle;
+						YBCPgNewConstant(ybc_state->handle,
+										 type_entity,
+										 const_node->constvalue,
+										 const_node->constisnull,
+										 &const_handle);
+						HandleYBStatusWithOwner(YBCPgOperatorAppendArg(op_handle, const_handle),
 												ybc_state->handle,
 												ybc_state->stmt_owner);
+					}
+					else if (IsA(tle->expr, Var))
+					{
+						/*
+						 * Use original attribute number (varoattno) instead of projected one (varattno)
+						 * as projection is disabled for tuples produced by pushed down operators.
+						 */
+						int attno = castNode(Var, tle->expr)->varoattno;
+						Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
+						YBCPgTypeAttrs type_attrs = {attr->atttypmod};
+
+						YBCPgExpr arg = YBCNewColumnRef(ybc_state->handle,
+														attno,
+														attr->atttypid,
+														&type_attrs);
+						HandleYBStatusWithOwner(YBCPgOperatorAppendArg(op_handle, arg),
+												ybc_state->handle,
+												ybc_state->stmt_owner);
+					}
+					else
+					{
+						/* Should never happen. */
+						ereport(ERROR,
+								(errcode(ERRCODE_INTERNAL_ERROR),
+								 errmsg("unsupported aggregate function argument type")));
+					}
 				}
 			}
 
 			/* Add aggregate operator as scan target. */
 			HandleYBStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
-															 op_handle),
-										ybc_state->handle,
-										ybc_state->stmt_owner);
+														 op_handle),
+														 ybc_state->handle,
+														 ybc_state->stmt_owner);
 		}
 
 		/*
@@ -474,8 +511,8 @@ ybcIterateForeignScan(ForeignScanState *node)
 	if (!ybc_state->is_exec_done) {
 		ybcSetupScanTargets(node);
 		HandleYBStatusWithOwner(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params),
-									ybc_state->handle,
-									ybc_state->stmt_owner);
+								ybc_state->handle,
+								ybc_state->stmt_owner);
 		ybc_state->is_exec_done = true;
 	}
 
@@ -490,13 +527,13 @@ ybcIterateForeignScan(ForeignScanState *node)
 
 	/* Fetch one row. */
 	HandleYBStatusWithOwner(YBCPgDmlFetch(ybc_state->handle,
-	                                          tupdesc->natts,
-	                                          (uint64_t *) values,
-	                                          isnull,
-	                                          &syscols,
-	                                          &has_data),
-	                            ybc_state->handle,
-	                            ybc_state->stmt_owner);
+	                                      tupdesc->natts,
+	                                      (uint64_t *) values,
+	                                      isnull,
+	                                      &syscols,
+	                                      &has_data),
+	                        ybc_state->handle,
+	                        ybc_state->stmt_owner);
 
 	/* If we have result(s) update the tuple slot. */
 	if (has_data)

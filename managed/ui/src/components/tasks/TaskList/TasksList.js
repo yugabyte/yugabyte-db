@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { TaskListTable } from '../../tasks';
-import { showOrRedirect } from 'utils/LayoutUtils';
+import { showOrRedirect } from '../../../utils/LayoutUtils';
 
 export default class TasksList extends Component {
 

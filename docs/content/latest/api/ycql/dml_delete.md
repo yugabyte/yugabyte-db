@@ -67,33 +67,33 @@ Where
 
 ### `USING` Clause
 
- - `timestamp_expression` must be an integer value (or a bind variable marker for prepared statements).
+The `timestamp_expression` must be an integer value (or a bind variable marker for prepared statements).
 
 ## Examples
 
 ### Delete a row from a table
 
 ```sql
-cqlsh:example> CREATE TABLE employees(department_id INT, 
+ycqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       PRIMARY KEY(department_id, employee_id));
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -105,17 +105,19 @@ cqlsh:example> SELECT * FROM employees;
 ```
 
 Delete statements identify rows by the primary key columns.
+
 ```sql
-cqlsh:example> DELETE FROM employees WHERE department_id = 1 AND employee_id = 1;
+ycqlsh:example> DELETE FROM employees WHERE department_id = 1 AND employee_id = 1;
 ```
 
 Deletes on non-existent rows are no-ops.
+
 ```sql
-cqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1;
+ycqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1;
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -130,7 +132,7 @@ cqlsh:example> SELECT * FROM employees;
 'IF' clause conditions will return whether they were applied or not.
 
 ```sql
-cqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id = 1 IF name = 'Joe';
+ycqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id = 1 IF name = 'Joe';
 ```
 
 ```
@@ -140,7 +142,7 @@ cqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id = 1
 ```
 
 ```sql
-cqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1 IF EXISTS;
+ycqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1 IF EXISTS;
 ```
 
 ```
@@ -150,7 +152,7 @@ cqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -162,19 +164,19 @@ cqlsh:example> SELECT * FROM employees;
 ### Delete several rows with the same partition key
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack');
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack');
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -189,11 +191,11 @@ cqlsh:example> SELECT * FROM employees;
 Delete all entries for a partition key.
 
 ```sql
-cqlsh:example> DELETE FROM employees WHERE department_id = 1;
+ycqlsh:example> DELETE FROM employees WHERE department_id = 1;
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -202,14 +204,15 @@ cqlsh:example> SELECT * FROM employees;
              2 |           1 |  Joe
              2 |           2 | Jack
 ```
+
 Delete a range of entries within a partition key.
 
 ```sql
-cqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id >= 2 AND employee_id < 4;
+ycqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id >= 2 AND employee_id < 4;
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -223,11 +226,11 @@ cqlsh:example> SELECT * FROM employees;
 You can do this as shown below.
 
 ```sql
-cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (4, 4, 'Ted') USING TIMESTAMP 1000;
+ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (4, 4, 'Ted') USING TIMESTAMP 1000;
 ```
 
 ```sql
-cqlsh:foo> SELECT * FROM employees;
+ycqlsh:foo> SELECT * FROM employees;
 ```
 
 ```
@@ -240,12 +243,13 @@ cqlsh:foo> SELECT * FROM employees;
 ```
 
 ```sql
-cqlsh:foo> DELETE FROM employees USING TIMESTAMP 500 WHERE department_id = 4 AND employee_id = 4; 
+ycqlsh:foo> DELETE FROM employees USING TIMESTAMP 500 WHERE department_id = 4 AND employee_id = 4;
 ```
+
 Not applied since timestamp is lower than 1000
 
 ```sql
-cqlsh:foo> SELECT * FROM employees;
+ycqlsh:foo> SELECT * FROM employees;
 ```
 
 ```
@@ -258,12 +262,13 @@ cqlsh:foo> SELECT * FROM employees;
 ```
 
 ```sql
-cqlsh:foo> DELETE FROM employees USING TIMESTAMP 1500 WHERE department_id = 4 AND employee_id = 4; 
+ycqlsh:foo> DELETE FROM employees USING TIMESTAMP 1500 WHERE department_id = 4 AND employee_id = 4;
 ```
+
 Applied since timestamp is higher than 1000.
 
 ```sql
-cqlsh:foo> SELECT * FROM employees;
+ycqlsh:foo> SELECT * FROM employees;
 ```
 
 ```

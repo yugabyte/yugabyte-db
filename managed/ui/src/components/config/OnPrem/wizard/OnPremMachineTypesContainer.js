@@ -5,7 +5,7 @@ import { reduxForm } from 'redux-form';
 import {OnPremMachineTypes} from '../../../config';
 import {setOnPremConfigData} from '../../../../actions/cloud';
 import _ from 'lodash';
-import {isNonEmptyArray, isDefinedNotNull} from 'utils/ObjectUtils';
+import {isNonEmptyArray, isDefinedNotNull} from '../../../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {

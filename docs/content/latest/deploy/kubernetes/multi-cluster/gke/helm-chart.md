@@ -492,11 +492,11 @@ $ kubectl exec -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabyted
  -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yb-demo-us-west1-b
 ```
 
-To connect and use the YCQL Shell (`cqlsh`), run the following command.
+To connect and use the YCQL Shell (`ycqlsh`), run the following command.
 
 ```sh
 $ kubectl exec -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1 \
--it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0.yb-tservers.yb-demo-us-west1-b
+-it yb-tserver-0 /home/yugabyte/bin/ycqlsh yb-tserver-0.yb-tservers.yb-demo-us-west1-b
 ```
 
 You can follow the [Explore YSQL](../../../../../quick-start/explore-ysql) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.

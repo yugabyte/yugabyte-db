@@ -27,9 +27,11 @@ class ClusterLoadBalancer : public yb::master::ClusterLoadBalancer {
   }
 
   Result<bool> HandleLeaderMoves(
-      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) override;
+      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) override
+      NO_THREAD_SAFETY_ANALYSIS; // llvm bug: can't analyze super class friend access rights.
 
-  CHECKED_STATUS AnalyzeTablets(const TableId& table_uuid) override;
+  CHECKED_STATUS AnalyzeTabletsUnlocked(const TableId& table_uuid) override
+      NO_THREAD_SAFETY_ANALYSIS; // llvm bug: can't analyze super class friend access rights.
 
   virtual void GetAllAffinitizedZones(AffinitizedZonesSet* affinitized_zones) const;
 

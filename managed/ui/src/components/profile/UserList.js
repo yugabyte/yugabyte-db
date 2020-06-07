@@ -5,13 +5,13 @@ import { Row, Col, ButtonGroup, DropdownButton, MenuItem } from 'react-bootstrap
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../panels';
 import { connect } from 'react-redux';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../utils/PromiseUtils';
 import { YBLoading } from '../common/indicators';
-import { YBButton } from 'components/common/forms/fields';
+import { YBButton } from '../../components/common/forms/fields';
 import { openDialog, closeDialog } from '../../actions/modal';
 import { AddUserModal } from '../profile';
 import {YBConfirmModal} from '../modals';
-import { isNotHidden, isDisabled } from 'utils/LayoutUtils';
+import { isNotHidden, isDisabled } from '../../utils/LayoutUtils';
 import { getCustomerUsers, getCustomerUsersSuccess, getCustomerUsersFailure,
          deleteUser, deleteUserResponse } from '../../actions/customers';
 

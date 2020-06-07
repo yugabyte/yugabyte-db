@@ -3,7 +3,7 @@
 import { connect } from 'react-redux';
 import { RestoreBackup } from '../';
 import { restoreTableBackup, restoreTableBackupResponse } from '../../../actions/tables';
-import { isNonEmptyArray, isNonEmptyObject } from "utils/ObjectUtils";
+import { isNonEmptyArray, isNonEmptyObject } from "../../../utils/ObjectUtils";
 import { getPromiseState } from '../../../utils/PromiseUtils';
 
 const mapDispatchToProps = (dispatch) => {

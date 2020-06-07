@@ -2,10 +2,12 @@
 
 import { connect } from 'react-redux';
 import { KubernetesProviderConfiguration } from '../../../config';
-
-import { deleteProvider, deleteProviderFailure,
-  deleteProviderSuccess, fetchCloudMetadata } from 'actions/cloud';
-
+import {
+  deleteProvider,
+  deleteProviderFailure,
+  deleteProviderSuccess,
+  fetchCloudMetadata
+} from '../../../../actions/cloud';
 import { openDialog, closeDialog } from '../../../../actions/modal';
 
 const mapDispatchToProps = (dispatch) => {

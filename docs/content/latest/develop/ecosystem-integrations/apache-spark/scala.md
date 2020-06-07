@@ -54,7 +54,7 @@ libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`cqlsh`). If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`ycqlsh`). If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
 
 - installed Scala version 2.12 or later and sbt 1.3.8 or later/
 
@@ -243,7 +243,7 @@ object CassandraSparkWordCount {
     //---------------------- Save to Cassandra table -----------------------\\
 
     // -----------------------------------------------------------------------
-    // Save the output to the CQL table, using RDD as the source.
+    // Save the output to the YCQL table, using RDD as the source.
     // This has been tested to be fungible with the DataFrame->CQL code block.
 
     /* Comment this line out to enable this code block.
@@ -261,7 +261,7 @@ object CassandraSparkWordCount {
     // */
 
     // ----------------------------------------------------------------------
-    // Save the output to the CQL table, using DataFrame as the source.
+    // Save the output to the YCQL table, using DataFrame as the source.
 
     // /* Uncomment this line out to disable this code block.
     wordCountDf

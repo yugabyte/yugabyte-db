@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-import { isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { reset } from 'redux-form';
 import  OnPremNodesList from './OnPremNodesList';
 import {

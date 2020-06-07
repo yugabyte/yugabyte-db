@@ -513,5 +513,3 @@ CREATE TABLE tbl19(
   primary key(a asc, b desc nulls last)
 ) SPLIT AT VALUES((100), (200, 5), (200, 5));
 ERROR:  Invalid argument: Cannot have duplicate split rows
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;

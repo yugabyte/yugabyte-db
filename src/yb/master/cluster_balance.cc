@@ -209,10 +209,10 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     const TableId& table_id = table.first;
     ResetTableStatePtr(table_id, options);
 
-    CountPendingTasks(table_id,
-                      &pending_add_replica_tasks,
-                      &pending_remove_replica_tasks,
-                      &pending_stepdown_leader_tasks);
+    CountPendingTasksUnlocked(table_id,
+                              &pending_add_replica_tasks,
+                              &pending_remove_replica_tasks,
+                              &pending_stepdown_leader_tasks);
   }
 
   if (pending_add_replica_tasks + pending_remove_replica_tasks + pending_stepdown_leader_tasks> 0) {
@@ -242,7 +242,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     state_ = it->second.get();
 
     // Prepare the in-memory structures.
-    auto handle_analyze_tablets = AnalyzeTablets(table.first);
+    auto handle_analyze_tablets = AnalyzeTabletsUnlocked(table.first);
     if (!handle_analyze_tablets.ok()) {
       LOG(WARNING) << "Skipping load balancing " << table.first << ": "
                    << StatusToString(handle_analyze_tablets);
@@ -405,7 +405,7 @@ void ClusterLoadBalancer::ResetTableStatePtr(const TableId& table_id, Options* o
   state_->table_id_ = table_id;
 }
 
-Status ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
+Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
   // Set the blacklist so we can also mark the tablet servers as we add them up.
   state_->SetBlacklist(GetServerBlacklist());
 
@@ -1079,7 +1079,7 @@ bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
           catalog_manager_->IsColocatedUserTable(table));
 }
 
-void ClusterLoadBalancer::CountPendingTasks(const TableId& table_uuid,
+void ClusterLoadBalancer::CountPendingTasksUnlocked(const TableId& table_uuid,
                                             int* pending_add_replica_tasks,
                                             int* pending_remove_replica_tasks,
                                             int* pending_stepdown_leader_tasks) {

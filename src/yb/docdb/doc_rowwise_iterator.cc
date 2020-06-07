@@ -21,6 +21,7 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_scanspec_util.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb-internal.h"
@@ -305,17 +306,10 @@ class RangeBasedScanChoices : public ScanChoices {
       const ColumnId col_idx = schema.column_id(idx);
       const auto col_sort_type = schema.column(idx).sorting_type();
       const common::QLScanRange::QLRange range = doc_spec.range_bounds()->RangeFor(col_idx);
-      const bool desc_col = col_sort_type == ColumnSchema::kDescending;
-      // for ASC col: lower -> min_value; upper -> max_value
-      // for DESC   :       -> max_value;       -> min_value
-      const auto& lower = (desc_col ? range.max_value : range.min_value);
-      lower_.emplace_back(
-          IsNull(lower) ? PrimitiveValue(ValueType::kLowest)
-                        : PrimitiveValue::FromQLValuePB(lower, col_sort_type));
-      const auto& upper = (desc_col ? range.min_value : range.max_value);
-      upper_.emplace_back(
-          IsNull(upper) ? PrimitiveValue(ValueType::kHighest)
-                        : PrimitiveValue::FromQLValuePB(upper, schema.column(idx).sorting_type()));
+      const auto lower = GetQLRangeBoundAsPVal(range, col_sort_type, true /* lower_bound */);
+      const auto upper = GetQLRangeBoundAsPVal(range, col_sort_type, false /* upper_bound */);
+      lower_.emplace_back(lower);
+      upper_.emplace_back(upper);
     }
   }
 
@@ -329,18 +323,10 @@ class RangeBasedScanChoices : public ScanChoices {
       const ColumnId col_idx = schema.column_id(idx);
       const auto col_sort_type = schema.column(idx).sorting_type();
       const common::QLScanRange::QLRange range = doc_spec.range_bounds()->RangeFor(col_idx);
-      const bool desc_col = (col_sort_type == ColumnSchema::kDescending ||
-          col_sort_type == ColumnSchema::kDescendingNullsLast);
-      // for ASC col: lower -> min_value; upper -> max_value
-      // for DESC   :       -> max_value;       -> min_value
-      const auto& lower = (desc_col ? range.max_value : range.min_value);
-      lower_.emplace_back(
-          IsNull(lower) ? PrimitiveValue(ValueType::kLowest)
-                        : PrimitiveValue::FromQLValuePB(lower, col_sort_type));
-      const auto& upper = (desc_col ? range.min_value : range.max_value);
-      upper_.emplace_back(
-          IsNull(upper) ? PrimitiveValue(ValueType::kHighest)
-                        : PrimitiveValue::FromQLValuePB(upper, schema.column(idx).sorting_type()));
+      const auto lower = GetQLRangeBoundAsPVal(range, col_sort_type, true /* lower_bound */);
+      const auto upper = GetQLRangeBoundAsPVal(range, col_sort_type, false /* upper_bound */);
+      lower_.emplace_back(lower);
+      upper_.emplace_back(upper);
     }
   }
 

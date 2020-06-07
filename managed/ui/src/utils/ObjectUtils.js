@@ -1,8 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { getClusterByType } from "./UniverseUtils";
-
-const _ = require('lodash');
+import _ from 'lodash';
 
 export function isDefinedNotNull(obj) {
   return (typeof obj !== "undefined" && obj !== null);

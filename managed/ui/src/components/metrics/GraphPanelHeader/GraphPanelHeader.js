@@ -12,8 +12,8 @@ import _ from 'lodash';
 import { YBButton } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
-import { getPromiseState } from 'utils/PromiseUtils';
-import { isValidObject, isNonEmptyObject } from 'utils/ObjectUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import './GraphPanelHeader.scss';
 

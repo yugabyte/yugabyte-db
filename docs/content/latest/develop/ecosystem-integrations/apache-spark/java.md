@@ -134,7 +134,7 @@ The output is written to the `outTable` table.
 session.execute("CREATE TABLE IF NOT EXISTS " + outTable +
                 " (word VARCHAR PRIMARY KEY, count INT);");
 
-// Save the output to the CQL table.
+// Save the output to the YCQL table.
 javaFunctions(counts).writerBuilder(keyspace, outputTable, mapTupleToRow(String.class, Integer.class))
                      .withColumnSelector(someColumns("word", "count"))
                      .saveToCassandra();

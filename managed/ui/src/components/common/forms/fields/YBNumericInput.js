@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import NumericInput from 'react-numeric-input';
 import { isFunction } from 'lodash';
-import { YBLabel } from 'components/common/descriptors';
+import { YBLabel } from '../../../../components/common/descriptors';
 
 // TODO: Rename to YBNumericInput after changing prior YBNumericInput references.
 // TODO: Make default export after checking all corresponding imports.

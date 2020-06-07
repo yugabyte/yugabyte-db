@@ -2,8 +2,8 @@
 
 import React, { Component, Fragment } from 'react';
 import { Graph } from '../';
-import {isNonEmptyArray} from 'utils/ObjectUtils';
-import { YBResourceCount } from 'components/common/descriptors';
+import {isNonEmptyArray} from '../../../utils/ObjectUtils';
+import { YBResourceCount } from '../../../components/common/descriptors';
 import './MetricsPanel.scss';
 
 export default class DiskUsagePanel extends Component {

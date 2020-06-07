@@ -13,7 +13,7 @@ import azureLogo from './images/azure.png';
 import k8sLogo from './images/k8s.png';
 import pksLogo from './images/pks.png';
 import gcpLogo from './images/gcp.png';
-import { isAvailable, showOrRedirect } from 'utils/LayoutUtils';
+import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
 
 
 class DataCenterConfiguration extends Component {

@@ -37,7 +37,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   virtual ~CatalogManager();
   void Shutdown();
 
-  CHECKED_STATUS RunLoaders(int64_t term) override;
+  CHECKED_STATUS RunLoaders(int64_t term) override REQUIRES(lock_);
 
   // API to start a snapshot creation.
   CHECKED_STATUS CreateSnapshot(const CreateSnapshotRequestPB* req,
@@ -164,7 +164,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   friend class CDCStreamLoader;
   friend class UniverseReplicationLoader;
 
-  CHECKED_STATUS RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id);
+  CHECKED_STATUS RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id)
+      REQUIRES(lock_);
 
   // Per table structure for external cluster snapshot importing to this cluster.
   // Old IDs mean IDs on external cluster, new IDs - IDs on this cluster.
@@ -276,14 +277,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& cluster_config,
                                           const TSHeartbeatRequestPB* req,
                                           TSHeartbeatResponsePB* resp);
-
-  template <class Collection>
-  typename Collection::value_type::second_type LockAndFindPtrOrNull(
-      const Collection& collection, const typename Collection::value_type::first_type& key) {
-    std::lock_guard<LockType> l(lock_);
-    TRACE("Acquired catalog manager lock");
-    return FindPtrOrNull(collection, key);
-  }
 
   scoped_refptr<ClusterConfigInfo> GetClusterConfigInfo() const {
     return cluster_config_;

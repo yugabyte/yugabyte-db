@@ -54,7 +54,7 @@ $ ./bin/yb-master \
   >& /home/centos/disk1/yb-master.out &
 ```
 
-Note that we also set the [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-master/#leader-failure-max-missed-heartbeat-periods) flag to `10`. This flag specifies the maximum heartbeat periods that the leader can fail to heartbeat before the leader is considered to be failed. Since the data is geo-replicated across data centers, RPC latencies are expected to be higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. Note that the total failure timeout is now 5 seconds since it is computed by multiplying [`--raft_heartbeat_interval_ms`](../../../reference/configuration/yb-master/#raft-heartbeat-interval-ms) (default of 500ms) with [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-master/#leader-failure-max-missed-heartbeat-periods)(current value of `10`).
+Note that we also set the [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-master/#leader-failure-max-missed-heartbeat-periods) flag to `10`. This flag specifies the maximum heartbeat periods that the leader can fail to heartbeat before the leader is considered to be failed. Since the data is geo-replicated across data centers, RPC latencies are expected to be higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. Note that the total failure timeout is now 5 seconds since it is computed by multiplying [`--raft_heartbeat_interval_ms`](../../../reference/configuration/yb-master/#raft-heartbeat-interval-ms) (default of `500ms`) with [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-master/#leader-failure-max-missed-heartbeat-periods)(current value of `10`).
 
 For the full list of configuration flags, see the [YB-Master reference](../../../reference/configuration/yb-master/).
 
@@ -77,7 +77,7 @@ $ ./bin/yb-tserver \
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-Note that we also set the [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-tserver/#leader-failure-max-missed-heartbeat-periods) flag to `10`. This flag specifies the maximum heartbeat periods that the leader can fail to heartbeat before the leader is considered to be failed. Since the data is geo-replicated across data centers, RPC latencies are expected to be higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. Note that the total failure timeout is now 5 seconds since it is computed by multiplying [--raft_heartbeat_interval_ms](../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (default of 500ms) with leader_failure_max_missed_heartbeat_periods (current value of `10`).
+Note that we also set the [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-tserver/#leader-failure-max-missed-heartbeat-periods) flag to `10`. This flag specifies the maximum heartbeat periods that the leader can fail to heartbeat before the leader is considered to be failed. Since the data is geo-replicated across data centers, RPC latencies are expected to be higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. Note that the total failure timeout is now 5 seconds since it is computed by multiplying [--raft_heartbeat_interval_ms](../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (default of `500ms`) with leader_failure_max_missed_heartbeat_periods (current value of `10`).
 
 For the full list of configuration flags, see the [YB-TServer reference](../../../reference/configuration/yb-tserver/).
 
@@ -136,4 +136,4 @@ replication_info {
 
 ## 5. Verify deployment
 
-Use the [ysqlsh](../../../admin/ysqlsh/) (for YSQL API) or [cqlsh](../../../admin/cqlsh/) (for YCQL API) shells to test connectivity to the cluster.
+Use [`ysqlsh`](../../../admin/ysqlsh/) (for YSQL API) or [`ycqlsh`](../../../admin/cqlsh/) (for YCQL API) shells to test connectivity to the cluster.

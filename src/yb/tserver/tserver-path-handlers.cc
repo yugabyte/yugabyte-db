@@ -190,7 +190,8 @@ bool LoadTablet(TabletServer* tserver,
 
 void HandleTabletPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
-    const Webserver::WebRequest& req, std::stringstream* output) {
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   string table_name = peer->tablet_metadata()->table_name();
 
   *output << "<h1>Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>\n";
@@ -223,7 +224,8 @@ void HandleTabletPage(
 
 void HandleLogAnchorsPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
-    const Webserver::WebRequest& req, std::stringstream* output) {
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   *output << "<h1>Log Anchors for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>"
           << std::endl;
 
@@ -242,7 +244,8 @@ void HandleLogAnchorsPage(
 
 void HandleConsensusStatusPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
-    const Webserver::WebRequest& req, std::stringstream* output) {
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
   if (!consensus) {
     *output << "Tablet " << EscapeForHtmlToString(tablet_id) << " not running";
@@ -253,7 +256,8 @@ void HandleConsensusStatusPage(
 
 void HandleTransactionsPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
-    const Webserver::WebRequest& req, std::stringstream* output) {
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   auto tablet = peer->shared_tablet();
   if (!tablet) {
     *output << "Tablet " << EscapeForHtmlToString(tablet_id) << " not running";
@@ -305,7 +309,8 @@ void DumpRocksDB(const char* title, rocksdb::DB* db, std::ostream* out) {
 
 void HandleRocksDBPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
-    const Webserver::WebRequest& req, std::stringstream* output) {
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   *output << "<h1>RocksDB for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
   auto doc_db = peer->tablet()->doc_db();
@@ -316,12 +321,13 @@ void HandleRocksDBPage(
 template<class F>
 void RegisterTabletPathHandler(
     Webserver* web_server, TabletServer* tserver, const std::string& path, const F& f) {
-  auto handler = [tserver, f](const Webserver::WebRequest& req, std::stringstream* output) {
+  auto handler = [tserver, f](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+    std::stringstream *output = &resp->output;
     string tablet_id;
     tablet::TabletPeerPtr peer;
     if (!LoadTablet(tserver, req, &tablet_id, &peer, output)) return;
 
-    f(tablet_id, peer, req, output);
+    f(tablet_id, peer, req, resp);
   };
   web_server->RegisterPathHandler(path, "", handler, true /* styled */, false /* is_on_nav_bar */);
 }
@@ -365,7 +371,8 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
 }
 
 void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest& req,
-                                                    std::stringstream* output) {
+                                                    Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   bool as_text = ContainsKey(req.parsed_args, "raw");
 
   vector<std::shared_ptr<TabletPeer> > peers;
@@ -491,7 +498,8 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
 }  // anonymous namespace
 
 void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req,
-                                                std::stringstream *output) {
+                                                Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   vector<std::shared_ptr<TabletPeer>> peers;
   tserver_->tablet_manager()->GetTabletPeers(&peers);
   auto table_map = GetTablesInfo(peers);
@@ -541,7 +549,8 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
 }
 
 void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& req,
-                                                 std::stringstream *output) {
+                                                 Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   vector<std::shared_ptr<TabletPeer> > peers;
   tserver_->tablet_manager()->GetTabletPeers(&peers);
   std::sort(peers.begin(), peers.end(), &CompareByTabletId);
@@ -631,7 +640,8 @@ string TabletServerPathHandlers::ConsensusStatePBToHtml(const ConsensusStatePB& 
 }
 
 void TabletServerPathHandlers::HandleDashboardsPage(const Webserver::WebRequest& req,
-                                                    std::stringstream* output) {
+                                                    Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   *output << "<h3>Dashboards</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Dashboard</th><th>Description</th></tr>\n";
@@ -652,7 +662,8 @@ string TabletServerPathHandlers::GetDashboardLine(const std::string& link,
 }
 
 void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::WebRequest& req,
-                                                            std::stringstream* output) {
+                                                            Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   MaintenanceManager* manager = tserver_->maintenance_manager();
   MaintenanceManagerStatusPB pb;
   manager->GetMaintenanceManagerStatusDump(&pb);
@@ -710,7 +721,8 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
 }
 
 void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& req,
-                                                 std::stringstream* output) {
+                                                 Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
   vector<std::shared_ptr<TabletPeer> > tablet_peers;
   tserver_->tablet_manager()->GetTabletPeers(&tablet_peers);

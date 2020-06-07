@@ -66,7 +66,8 @@ SELECT * FROM airports WHERE
 
 SELECT * FROM airports WHERE
 			 iso_region = 'US-MN' AND
-			 type = 'heliport';
+			 type = 'heliport'
+			 ORDER BY ident;
 
 SELECT * FROM airports WHERE
 			 iso_region = 'US-MN' AND
@@ -99,7 +100,8 @@ SELECT * FROM airports WHERE
 			 name = 'Daniel Emergency Response Team Heliport';
 
 SELECT * FROM airports WHERE
-			 iso_region = 'US-MS' AND type = 'heliport';
+			 iso_region = 'US-MS' AND type = 'heliport'
+			 ORDER BY ident;
 
 SELECT * FROM airports WHERE
 			 iso_region = 'US-MS' AND type = 'heliport' AND

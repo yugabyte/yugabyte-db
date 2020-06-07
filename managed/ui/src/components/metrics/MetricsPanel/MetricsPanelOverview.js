@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import './MetricsPanel.scss';
 import Measure from 'react-measure';
 import _ from 'lodash';

@@ -95,6 +95,10 @@ extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
 
+extern int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum);
+
+extern AttrNumber YBBmsIndexToAttnum(Relation rel, int idx);
+
 /*
  * Check if a relation has row triggers that may reference the old row.
  * Specifically for an update/delete DML (where there actually is an old row).
@@ -162,24 +166,14 @@ extern void YBOnPostgresBackendShutdown();
 extern void YBCRestartTransaction();
 
 /*
- * Commits the current YugaByte-level transaction. Returns true in case of
- * successful commit and false in case of failure. If there is no transaction in
- * progress, also returns true.
+ * Commits the current YugaByte-level transaction (if any).
  */
-extern bool YBCCommitTransaction();
+extern void YBCCommitTransaction();
 
 /*
  * Aborts the current YugaByte-level transaction.
  */
 extern void YBCAbortTransaction();
-
-/*
- * Handle a commit error if it happened during a previous call to
- * YBCCommitTransaction. We allow deferring this handling in order to be able
- * to make PostgreSQL transaction block state transitions before calling
- * ereport.
- */
-extern void YBCHandleCommitError();
 
 /*
  * Return true if we want to allow PostgreSQL's own locking. This is needed
@@ -299,6 +293,9 @@ extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
  * Checks if the master thinks initdb has already been done.
  */
 bool YBIsInitDbAlreadyDone();
+
+void YBIncrementDdlNestingLevel();
+void YBDecrementDdlNestingLevel(bool success);
 
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();

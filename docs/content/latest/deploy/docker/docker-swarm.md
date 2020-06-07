@@ -162,12 +162,14 @@ Docker Swarm lacks an equivalent of [Kubernetes StatefulSets](https://kubernetes
 $ docker service create \
 --replicas 1 \
 --name yb-master1 \
+--hostname yb-master1 \
 --network yugabytedb \
 --mount type=volume,source=yb-master1,target=/mnt/data0 \
 --publish 7000:7000 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
 --master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
+--rpc_bind_addresses=yb-master1:7100 \
 --replication_factor=3
 ```
 
@@ -175,11 +177,13 @@ yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 $ docker service create \
 --replicas 1 \
 --name yb-master2 \
+--hostname yb-master2 \
 --network yugabytedb \
 --mount type=volume,source=yb-master2,target=/mnt/data0 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
 --master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
+--rpc_bind_addresses=yb-master2:7100 \
 --replication_factor=3
 ```
 
@@ -187,11 +191,13 @@ yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 $ docker service create \
 --replicas 1 \
 --name yb-master3 \
+--hostname yb-master3 \
 --network yugabytedb \
 --mount type=volume,source=yb-master3,target=/mnt/data0 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
 --master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
+--rpc_bind_addresses=yb-master3:7100 \
 --replication_factor=3
 ```
 
@@ -227,6 +233,7 @@ $ docker service create \
 --publish 9000:9000 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-tserver \
 --fs_data_dirs=/mnt/data0 \
+--rpc_bind_addresses=0.0.0.0:9100 \
 --tserver_master_addrs=yb-master1:7100,yb-master2:7100,yb-master3:7100
 ```
 
@@ -272,19 +279,19 @@ yugabyte=#
 
 ### YCQL API
 
-- Find the container ID of the yb-tserver running on worker1. Use the first param of `docker ps` output.
+- Find the container ID of the yb-tserver running on `worker1`. Use the first parameter of `docker ps` output.
 
 - Connect to that container using that container ID.
 
 ```sh
-$ docker exec -it <ybtserver_container_id> /home/yugabyte/bin/cqlsh
+$ docker exec -it <ybtserver_container_id> /home/yugabyte/bin/ycqlsh
 ```
 
 ```sh
 Connected to local cluster at 127.0.0.1:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh>
+ycqlsh>
 ```
 
 - Follow the test instructions as noted in [Quick Start](../../../api/ycql/quick-start/).
@@ -296,7 +303,7 @@ cqlsh>
 - Initialize the YEDIS API.
 
 ```sh
-$ docker exec -it <ybmaster_container_id> /home/yugabyte/bin/yb-admin -- --master_addresses yb-master1:7100,yb-master2:7100,yb-master3:7100 setup_redis_table
+$ docker exec -it <ybmaster_container_id> /home/yugabyte/bin/yb-admin --master_addresses yb-master1:7100,yb-master2:7100,yb-master3:7100 setup_redis_table
 ```
 
 ```sh

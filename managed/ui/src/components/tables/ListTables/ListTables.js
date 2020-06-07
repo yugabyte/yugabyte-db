@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 import { Image, ProgressBar, ButtonGroup, DropdownButton } from 'react-bootstrap';
 import tableIcon from '../images/table.png';
 import './ListTables.scss';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { TableAction } from '../../tables';
 
 import { UniverseAction } from '../../universes';

@@ -45,14 +45,21 @@ class MultiStageAlterTable {
   // Returns true if the next version of table schema/info was kicked off.
   // Returns false otherwise -- so that the alter table operation can be
   // considered to have completed.
-  static bool LaunchNextTableInfoVersionIfNecessary(
-      CatalogManager* mgr, const scoped_refptr<TableInfo>& Info);
+  static Status LaunchNextTableInfoVersionIfNecessary(
+      CatalogManager* mgr, const scoped_refptr<TableInfo>& Info, uint32_t current_version);
+
+  // Clears the ALTERING state for the given table and updates it to RUNNING.
+  // If the version has changed and does not match the expected version no
+  // change is made.
+  static Status ClearAlteringState(
+      CatalogManager* mgr, const scoped_refptr<TableInfo>& table, uint32_t expected_version);
 
   // Updates and persists the IndexPermission corresponding to the index_table_id for
   // the indexed_table's TableInfo.
   static Status UpdateIndexPermission(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& indexed_table,
-      const TableId& index_table_id, IndexPermissions new_perm);
+      const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
+      boost::optional<uint32_t> current_version = boost::none);
 
  private:
   // Start Index Backfill process/step for the specified table/index.

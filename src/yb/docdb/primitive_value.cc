@@ -1504,6 +1504,15 @@ PrimitiveValue::PrimitiveValue(ValueType value_type)
   }
 }
 
+PrimitiveValue PrimitiveValue::NullValue(ColumnSchema::SortingType sorting) {
+  using SortingType = ColumnSchema::SortingType;
+
+  return PrimitiveValue(
+      sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
+      ? ValueType::kNullHigh
+      : ValueType::kNullLow);
+}
+
 SortOrder PrimitiveValue::SortOrderFromColumnSchemaSortingType(
     ColumnSchema::SortingType sorting_type) {
   if (sorting_type == ColumnSchema::SortingType::kDescending ||

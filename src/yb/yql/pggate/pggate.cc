@@ -658,6 +658,14 @@ Status PgApiImpl::CreateIndexAddColumn(PgStatement *handle, const char *attr_nam
       is_hash, is_range, is_desc, is_nulls_first);
 }
 
+Status PgApiImpl::CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tablets) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgCreateIndex*>(handle)->SetNumTablets(num_tablets);
+}
+
 Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
     // Invalid handle.

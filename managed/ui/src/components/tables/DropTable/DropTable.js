@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { YBModal } from '../../common/forms/fields';
 import { browserHistory } from 'react-router';
 import PropTypes from 'prop-types';
-import { isNonEmptyObject } from 'utils/ObjectUtils';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 
 export default class DropTable extends Component {
   static propTypes = {

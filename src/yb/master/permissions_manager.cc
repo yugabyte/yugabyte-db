@@ -144,7 +144,7 @@ Status PermissionsManager::GrantPermissions(
       current_resource->add_permissions(permission);
     }
     Status s = catalog_manager_->sys_catalog_->UpdateItem(rp.get(),
-        catalog_manager_->leader_ready_term_);
+        catalog_manager_->leader_ready_term());
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute(
           "An error occurred while updating permissions in sys-catalog: $0", s.ToString()));
@@ -196,7 +196,7 @@ Status PermissionsManager::IncrementRolesVersionUnlocked() {
 
   // Write to sys_catalog and in memory.
   RETURN_NOT_OK(catalog_manager_->sys_catalog_->UpdateItem(
-      security_config_.get(), catalog_manager_->leader_ready_term_));
+      security_config_.get(), catalog_manager_->leader_ready_term()));
 
   l->Commit();
   return Status::OK();
@@ -332,7 +332,7 @@ Status PermissionsManager::CreateRole(
     }
     s = CreateRoleUnlocked(
         req->name(), req->salted_hash(), req->login(), req->superuser(),
-        catalog_manager_->leader_ready_term_);
+        catalog_manager_->leader_ready_term());
   }
   if (PREDICT_TRUE(s.ok())) {
     LOG(INFO) << "Created role: " << req->name();
@@ -415,7 +415,7 @@ Status PermissionsManager::AlterRole(
   }
 
   s = catalog_manager_->sys_catalog_->UpdateItem(role.get(),
-                                                 catalog_manager_->leader_ready_term_);
+                                                 catalog_manager_->leader_ready_term());
   if (!s.ok()) {
     LOG(ERROR) << "Unable to alter role " << req->name() << ": " << s;
     return s;
@@ -483,7 +483,7 @@ Status PermissionsManager::DeleteRole(
 
     // Update sys-catalog with the new member_of list for this role.
     s = catalog_manager_->sys_catalog_->UpdateItem(role.get(),
-        catalog_manager_->leader_ready_term_);
+        catalog_manager_->leader_ready_term());
     if (!s.ok()) {
       LOG(ERROR) << "Unable to remove role " << req->name()
                  << " from member_of list for role " << role_name;
@@ -514,7 +514,7 @@ Status PermissionsManager::DeleteRole(
 
   // Write to sys_catalog and in memory.
   RETURN_NOT_OK(catalog_manager_->sys_catalog_->DeleteItem(role.get(),
-      catalog_manager_->leader_ready_term_));
+      catalog_manager_->leader_ready_term()));
   // Remove it from the maps.
   if (roles_map_.erase(role->id()) < 1) {
     PANIC_RPC(rpc, "Could not remove role from map, role name=" + role->id());
@@ -614,7 +614,7 @@ Status PermissionsManager::GrantRevokeRole(
           metadata->add_member_of(std::move(member_of));
         }
         s = catalog_manager_->sys_catalog_->UpdateItem(recipient_role.get(),
-            catalog_manager_->leader_ready_term_);
+            catalog_manager_->leader_ready_term());
       } else {
         // Let's make sure that we don't have circular dependencies.
         if (IsMemberOf(req->granted_role(), req->recipient_role()) ||
@@ -626,7 +626,7 @@ Status PermissionsManager::GrantRevokeRole(
         }
         metadata->add_member_of(req->granted_role());
         s = catalog_manager_->sys_catalog_->UpdateItem(recipient_role.get(),
-            catalog_manager_->leader_ready_term_);
+            catalog_manager_->leader_ready_term());
       }
       if (!s.ok()) {
         s = s.CloneAndPrepend(Substitute(
@@ -942,7 +942,7 @@ Status PermissionsManager::GrantRevokePermission(
     }
 
     s = catalog_manager_->sys_catalog_->UpdateItem(rp.get(),
-        catalog_manager_->leader_ready_term_);
+        catalog_manager_->leader_ready_term());
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute(
           "An error occurred while updating permissions in sys-catalog: $0", s.ToString()));

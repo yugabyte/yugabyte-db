@@ -60,8 +60,6 @@ uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 int ybc_pg_double_write = -1;
 int ybc_disable_pg_locking = -1;
 
-YBCStatus ybc_commit_status = NULL;
-
 /* Forward declarations */
 static void YBCInstallTxnDdlHook();
 
@@ -143,6 +141,17 @@ AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
 	RelationClose(relation);
 	return attr_num;
 }
+
+int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum)
+{
+	return attnum - YBGetFirstLowInvalidAttributeNumber(rel);
+}
+
+AttrNumber YBBmsIndexToAttnum(Relation rel, int idx)
+{
+	return idx + YBGetFirstLowInvalidAttributeNumber(rel);
+}
+
 
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 {
@@ -373,32 +382,14 @@ YBCRestartTransaction()
 	HandleYBStatus(YBCPgRestartTransaction());
 }
 
-static void
-YBCResetCommitStatus()
-{
-	if (ybc_commit_status)
-	{
-		YBCFreeStatus(ybc_commit_status);
-		ybc_commit_status = NULL;
-	}
-}
-
-bool
+void
 YBCCommitTransaction()
 {
 	if (!IsYugaByteEnabled())
-		return true;
+		return;
 
-	YBCStatus status = YBCPgFlushBufferedOperations();
-	if (status == NULL)
-		status = YBCPgCommitTransaction();
-	if (status != NULL) {
-		YBCResetCommitStatus();
-		ybc_commit_status = status;
-		return false;
-	}
-
-	return true;
+	HandleYBStatus(YBCPgFlushBufferedOperations());
+	HandleYBStatus(YBCPgCommitTransaction());
 }
 
 void
@@ -411,19 +402,6 @@ YBCAbortTransaction()
 
 	if (YBTransactionsEnabled())
 		HandleYBStatus(YBCPgAbortTransaction());
-}
-
-void
-YBCHandleCommitError()
-{
-	YBCStatus status = ybc_commit_status;
-	if (status != NULL) {
-		char* msg = DupYBStatusMessage(status, false /* message_only */);
-		YBCResetCommitStatus();
-		ereport(ERROR,
-				(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-				 errmsg("Error during commit: %s", msg)));
-	}
 }
 
 bool
@@ -769,18 +747,20 @@ YBIsInitDbAlreadyDone()
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static int ddl_nesting_level = 0;
 
-static void YBIncrementDdlNestingLevel() {
-	if (ddl_nesting_level == 0) {
+void
+YBIncrementDdlNestingLevel()
+{
+	if (ddl_nesting_level == 0)
 		YBCPgEnterSeparateDdlTxnMode();
-	}
 	ddl_nesting_level++;
 }
 
-static void YBDecrementDdlNestingLevel(bool success) {
+void
+YBDecrementDdlNestingLevel(bool success)
+{
 	ddl_nesting_level--;
-	if (ddl_nesting_level == 0) {
+	if (ddl_nesting_level == 0)
 		YBCPgExitSeparateDdlTxnMode(success);
-	}
 }
 
 static bool IsTransactionalDdlStatement(NodeTag node_tag) {

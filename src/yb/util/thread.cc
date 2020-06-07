@@ -264,7 +264,8 @@ class ThreadMgr {
   uint64_t ReadThreadsRunning();
 
   // Webpage callback; prints all threads by category
-  void ThreadPathHandler(const WebCallbackRegistry::WebRequest& args, stringstream* output);
+  void ThreadPathHandler(const WebCallbackRegistry::WebRequest& args,
+                                WebCallbackRegistry::WebResponse* resp);
   void PrintThreadCategoryRows(const ThreadCategory& category, stringstream* output);
 };
 
@@ -467,7 +468,8 @@ void ThreadMgr::PrintThreadCategoryRows(const ThreadCategory& category, stringst
 }
 
 void ThreadMgr::ThreadPathHandler(const WebCallbackRegistry::WebRequest& req,
-    stringstream* output) {
+    WebCallbackRegistry::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   MutexLock l(lock_);
   vector<const ThreadCategory*> categories_to_print;
   auto category_name = req.parsed_args.find("group");

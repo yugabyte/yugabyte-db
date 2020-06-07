@@ -17,11 +17,11 @@ showAsideToc: true
 
 ## 1. Start local cluster
 
-Follow [Quick start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra API as [documented](../../../quick-start/test-cassandra/) so that you can confirm that you have a Cassandra service running on `localhost:9042`.
+Follow [Quick start](../../../quick-start/) to run a local YugabyteDB cluster and test YugabyteDB's YCQL API to confirm that you have a YCQL service running on `localhost:9042`.
 
 ## 2. Download KairosDB
 
-Download KairosDB as stated below. Latest releases are available [here](https://github.com/kairosdb/kairosdb/releases).
+Download KairosDB as stated below. Latest releases are available in [releases](https://github.com/kairosdb/kairosdb/releases) of the KairosDB repository.
 
 ```sh
 $ wget https://github.com/kairosdb/kairosdb/releases/download/v1.2.0-beta3/kairosdb-1.2.0-0.3beta.tar.gz
@@ -57,27 +57,27 @@ You should see the following lines if KairosDB starts up successfully.
 18:34:01.145 [main] INFO  [Main.java:380] - ------------------------------------------
 ```
 
-## 4. Verify Cassandra integration with cqlsh
+## 4. Verify Cassandra integration with ycqlsh
 
-- Run cqlsh to connect to the YugabyteDB's YCQL API.
+Run `ycqlsh` to connect and use YugabyteDB's YCQL API.
 
 Assuming you are using the macOS or Linux binary
 
 ```sh
-$ ./bin/cqlsh localhost
+$ ./bin/ycqlsh localhost
 ```
 
 ```
 Connected to local cluster at 127.0.0.1:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh> 
+ycqlsh>
 ```
 
 - Run a cql command to verify it is working.
 
 ```sql
-cqlsh> describe keyspaces;
+ycqlsh> describe keyspaces;
 ```
 
 ```
@@ -85,12 +85,12 @@ kairosdb  system_schema  system_auth  system
 ```
 
 ```sql
-cqlsh> use kairosdb;
-cqlsh:kairosdb> describe tables;
+ycqlsh> use kairosdb;
+ycqlsh:kairosdb> describe tables;
 ```
 
 ```
-row_keys       data_points    string_index      
+row_keys       data_points    string_index
 row_key_index  service_index  row_key_time_index
 ```
 

@@ -2,12 +2,18 @@
 
 import React, { Component } from 'react';
 import _ from 'lodash';
-import { isValidObject, isDefinedNotNull, isNonEmptyArray, isEmptyObject, isNonEmptyObject } from 'utils/ObjectUtils';
+import {
+  isValidObject,
+  isDefinedNotNull,
+  isNonEmptyArray,
+  isEmptyObject,
+  isNonEmptyObject
+} from '../../../utils/ObjectUtils';
 import { OnPremConfigWizardContainer, OnPremConfigJSONContainer, OnPremSuccessContainer } from '../../config';
 import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
 import './OnPremConfiguration.scss';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 
 const PROVIDER_TYPE = "onprem";
@@ -39,7 +45,7 @@ export default class OnPremConfiguration extends Component {
     this.state = _.clone(initialState, true);
   }
 
-  componentWillMount() {
+  UNSAFE_componentWillMount() {
     this.props.resetConfigForm();
   }
 
@@ -67,7 +73,7 @@ export default class OnPremConfiguration extends Component {
     this.setState({isEditingProvider: true});
   };
 
-  componentWillReceiveProps(nextProps) {
+  UNSAFE_componentWillReceiveProps(nextProps) {
     const { cloudBootstrap: {data: { response, type }, error, promiseState}, accessKeys, cloud: {providers}} = nextProps;
     let onPremAccessKey = {};
     if (isNonEmptyArray(accessKeys.data) && isNonEmptyArray(providers.data)) {

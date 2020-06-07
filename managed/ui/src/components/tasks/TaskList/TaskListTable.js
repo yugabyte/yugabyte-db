@@ -5,7 +5,7 @@ import PropTypes from 'prop-types';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
 import { YBPanelItem } from '../../panels';
-import { timeFormatter, successStringFormatter } from 'utils/TableFormatters';
+import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 
 import './TasksList.scss';
 

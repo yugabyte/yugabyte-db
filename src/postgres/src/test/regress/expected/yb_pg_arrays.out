@@ -1826,5 +1826,3 @@ SELECT width_bucket(5, ARRAY[3, 4, NULL]);
 ERROR:  thresholds array must not contain NULLs
 SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]]);
 ERROR:  thresholds must be one-dimensional array
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;

@@ -2,7 +2,7 @@
 
 import React, { Fragment, Component } from 'react';
 import Dropzone from 'react-dropzone';
-import { YBLabel } from 'components/common/descriptors';
+import { YBLabel } from '../../../../components/common/descriptors';
 
 import './stylesheets/YBDropZone.scss';
 

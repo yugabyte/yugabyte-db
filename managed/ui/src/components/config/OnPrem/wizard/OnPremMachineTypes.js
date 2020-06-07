@@ -4,10 +4,10 @@ import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, FieldArray } from 'redux-form';
 import { YBInputField, YBButton } from '../../../common/forms/fields';
-import {isDefinedNotNull} from 'utils/ObjectUtils';
+import {isDefinedNotNull} from '../../../../utils/ObjectUtils';
 
 class OnPremListMachineTypes extends Component {
-  componentWillMount() {
+  UNSAFE_componentWillMount() {
     const {fields} = this.props;
     if (fields.length === 0) {
       this.props.fields.push({});

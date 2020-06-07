@@ -340,10 +340,15 @@ Status ExternalMiniClusterFsInspector::WaitForTabletDataStateOnTS(int index,
     if (deadline.ComesBefore(MonoTime::Now())) break;
     SleepFor(MonoDelta::FromMilliseconds(5));
   }
-  return STATUS(TimedOut, Substitute("Timed out after $0 waiting for tablet data state $1: $2",
-                                     MonoTime::Now().GetDeltaSince(start).ToString(),
-                                     TabletDataState_Name(expected), s.ToString()));
+  return STATUS(TimedOut, Substitute(
+      "Timed out after $0 waiting for tablet $1 on TS-$2 to be in data state $3: $4",
+      MonoTime::Now().GetDeltaSince(start).ToString(),
+      tablet_id,
+      index + 1,
+      TabletDataState_Name(expected),
+      s.ToString()));
 }
+
 
 Status ExternalMiniClusterFsInspector::WaitForFilePatternInTabletWalDirOnTs(
     int ts_index, const string& tablet_id,

@@ -3,9 +3,9 @@
 import React, { PureComponent, Fragment } from 'react';
 import { Button } from 'react-bootstrap';
 import { YBLoadingLinearIcon } from '../../indicators';
-import { isDefinedNotNull } from 'utils/ObjectUtils';
-export default class YBButton extends PureComponent {
+import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 
+export default class YBButton extends PureComponent {
   render() {
     const {btnClass, btnText, btnIcon, btnSize, btnType, btnStyle, disabled, loading, ...otherProps} = this.props;
     const className = isDefinedNotNull(btnText)

@@ -1137,8 +1137,9 @@ void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback call
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
-  if (use_cache && tserver_count_cached_ > 0) {
-    *tserver_count = tserver_count_cached_;
+  int tserver_count_cached = data_->tserver_count_cached_.load(std::memory_order_acquire);
+  if (use_cache && tserver_count_cached > 0) {
+    *tserver_count = tserver_count_cached;
     return Status::OK();
   }
 
@@ -1146,7 +1147,8 @@ Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool u
   ListTabletServersResponsePB resp;
   req.set_primary_only(primary_only);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTabletServers);
-  *tserver_count = tserver_count_cached_ = resp.servers_size();
+  data_->tserver_count_cached_.store(resp.servers_size(), std::memory_order_release);
+  *tserver_count = resp.servers_size();
   return Status::OK();
 }
 
@@ -1222,7 +1224,7 @@ Status YBClient::GetTabletsFromTableId(const string& table_id,
 Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             RepeatedPtrField<TabletLocationsPB>* tablets,
-                            bool require_tablets_running) {
+                            const RequireTabletsRunning require_tablets_running) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   if (table_name.has_table()) {
@@ -1258,15 +1260,13 @@ Status YBClient::GetTabletLocation(const TabletId& tablet_id,
   return Status::OK();
 }
 
-Status YBClient::GetTablets(const YBTableName& table_name,
-                            const int32_t max_tablets,
-                            vector<TabletId>* tablet_uuids,
-                            vector<string>* ranges,
-                            std::vector<master::TabletLocationsPB>* locations,
-                            bool update_tablets_cache,
-                            bool require_tablets_running) {
-  RepeatedPtrField<TabletLocationsPB> tablets;
-  RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets, require_tablets_running));
+namespace {
+
+void FillFromRepeatedTabletLocations(
+    const RepeatedPtrField<TabletLocationsPB>& tablets,
+    vector<TabletId>* tablet_uuids,
+    vector<string>* ranges,
+    std::vector<master::TabletLocationsPB>* locations) {
   tablet_uuids->reserve(tablets.size());
   if (ranges != nullptr) {
     ranges->reserve(tablets.size());
@@ -1281,10 +1281,36 @@ Status YBClient::GetTablets(const YBTableName& table_name,
       ranges->push_back(partition.ShortDebugString());
     }
   }
+}
 
-  if (update_tablets_cache) {
-    data_->meta_cache_->ProcessTabletLocations(tablets, nullptr /* partition_group_start */);
-  }
+} // namespace
+
+Status YBClient::GetTablets(const YBTableName& table_name,
+                            const int32_t max_tablets,
+                            vector<TabletId>* tablet_uuids,
+                            vector<string>* ranges,
+                            std::vector<master::TabletLocationsPB>* locations,
+                            const RequireTabletsRunning require_tablets_running) {
+  RepeatedPtrField<TabletLocationsPB> tablets;
+  RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets, require_tablets_running));
+  FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
+  return Status::OK();
+}
+
+Status YBClient::GetTabletsAndUpdateCache(
+    const YBTableName& table_name,
+    const int32_t max_tablets,
+    vector<TabletId>* tablet_uuids,
+    vector<string>* ranges,
+    std::vector<master::TabletLocationsPB>* locations) {
+  RepeatedPtrField<TabletLocationsPB> tablets;
+  RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets, RequireTabletsRunning::kFalse));
+  FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
+
+  // RequireTabletsRunning::kFalse guarantees that we don't have gaps in tablets partitions as
+  // ProcessTabletLocations expects.
+  RETURN_NOT_OK(
+      data_->meta_cache_->ProcessTabletLocations(tablets, nullptr /* partition_group_start */));
 
   return Status::OK();
 }

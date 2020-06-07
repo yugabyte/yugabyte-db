@@ -426,6 +426,8 @@ class YBClient::Data {
   simple_spinlock tablet_requests_mutex_;
   std::unordered_map<TabletId, TabletRequests> tablet_requests_;
 
+  std::atomic<int> tserver_count_cached_{0};
+
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);
 };

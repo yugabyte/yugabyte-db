@@ -81,7 +81,7 @@ Any latest version can be used — this is an example.
 2. Install YugabyteDB and create the database table.
 
     [Install YugabyteDB and start a local cluster](https://docs.yugabyte.com/quick-start/install/).
-    Create a database and table by running the following command. You can find `cqlsh` in the `bin`  subdirectory located inside the YugabyteDB installation folder.
+    Create a database and table by running the following command. You can find `ycqlsh` in the `bin`  subdirectory located inside the YugabyteDB installation folder.
 
     ```postgresql
     yugabyte=# CREATE DATABASE IF NOT EXISTS demo;

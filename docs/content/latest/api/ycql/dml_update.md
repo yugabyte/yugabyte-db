@@ -94,7 +94,7 @@ Where
 ### Update a value in a table
 
 ```sql
-cqlsh:example> CREATE TABLE employees(department_id INT, 
+ycqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       age INT, 
@@ -102,23 +102,23 @@ cqlsh:example> CREATE TABLE employees(department_id INT,
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 1, 'John', 30);
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 1, 'John', 30);
 ```
 
 Update the value of a non primary-key column.
 
 ```sql
-cqlsh:example> UPDATE employees SET name = 'Jack' WHERE department_id = 1 AND employee_id = 1;
+ycqlsh:example> UPDATE employees SET name = 'Jack' WHERE department_id = 1 AND employee_id = 1;
 ```
 
 Using upsert semantics to update a non-existent row (i.e. insert the row).
 
 ```sql
-cqlsh:example> UPDATE employees SET name = 'Jane', age = 40 WHERE department_id = 1 AND employee_id = 2;
+ycqlsh:example> UPDATE employees SET name = 'Jane', age = 40 WHERE department_id = 1 AND employee_id = 2;
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -133,7 +133,7 @@ cqlsh:example> SELECT * FROM employees;
 The supported expressions are allowed in the 'SET' assignment targets.
 
 ```sql
-cqlsh:example> UPDATE employees SET age = age + 1 WHERE department_id = 1 AND employee_id = 1 IF name = 'Jack';
+ycqlsh:example> UPDATE employees SET age = age + 1 WHERE department_id = 1 AND employee_id = 1 IF name = 'Jack';
 ```
 
 ```
@@ -145,7 +145,7 @@ cqlsh:example> UPDATE employees SET age = age + 1 WHERE department_id = 1 AND em
 Using upsert semantics to add a row, age is not set so will be 'null'.
 
 ```sql
-cqlsh:example> UPDATE employees SET name = 'Joe' WHERE department_id = 2 AND employee_id = 1 IF NOT EXISTS;
+ycqlsh:example> UPDATE employees SET name = 'Joe' WHERE department_id = 2 AND employee_id = 1 IF NOT EXISTS;
 ```
 
 ```
@@ -155,7 +155,7 @@ cqlsh:example> UPDATE employees SET name = 'Joe' WHERE department_id = 2 AND emp
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -168,14 +168,14 @@ cqlsh:example> SELECT * FROM employees;
 
 ### Update with expiration time using the `USING TTL` clause.
 
-The updated value(s) will persist for the TTL duration.
+The updated values will persist for the TTL duration.
 
 ```sql
-cqlsh:example> UPDATE employees USING TTL 10 SET age = 32 WHERE department_id = 1 AND employee_id = 1;
+ycqlsh:example> UPDATE employees USING TTL 10 SET age = 32 WHERE department_id = 1 AND employee_id = 1;
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
+ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
 ```
 
 ```
@@ -187,7 +187,7 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id =
 11 seconds after the update (value will have expired).
 
 ```sql
-cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
+ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
 ```
 
 ```
@@ -201,11 +201,11 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id =
 You can do this as shown below.
 
 ```sql
-cqlsh:foo> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 4, 'Jeff', 20) USING TIMESTAMP 1000;
+ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 4, 'Jeff', 20) USING TIMESTAMP 1000;
 ```
 
 ```sql
-cqlsh:foo> SELECT * FROM employees;
+ycqlsh:foo> SELECT * FROM employees;
 ```
 
 ```
@@ -222,13 +222,13 @@ cqlsh:foo> SELECT * FROM employees;
 Now update the employees table.
 
 ```sql
-cqlsh:foo> UPDATE employees USING TIMESTAMP 500 SET age = 30 WHERE department_id = 1 AND employee_id = 4;
+ycqlsh:foo> UPDATE employees USING TIMESTAMP 500 SET age = 30 WHERE department_id = 1 AND employee_id = 4;
 ```
 
 Not applied since timestamp is lower than 1000.
 
 ```sql
-cqlsh:foo> SELECT * FROM employees;
+ycqlsh:foo> SELECT * FROM employees;
 ```
 
 ```
@@ -243,13 +243,13 @@ cqlsh:foo> SELECT * FROM employees;
 ```
 
 ```sql
-cqlsh:foo> UPDATE employees USING TIMESTAMP 1500 SET age = 30 WHERE department_id = 1 AND employee_id = 4;
+ycqlsh:foo> UPDATE employees USING TIMESTAMP 1500 SET age = 30 WHERE department_id = 1 AND employee_id = 4;
 ```
 
 Applied since timestamp is higher than 1000.
 
 ```sql
-cqlsh:foo> SELECT * FROM employees;
+ycqlsh:foo> SELECT * FROM employees;
 ```
 
 ```

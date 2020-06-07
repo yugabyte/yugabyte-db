@@ -49,25 +49,25 @@ Where
 ### Using the date and type types
 
 ```sql
-cqlsh:example> CREATE TABLE orders(customer_id INT, order_date DATE, order_time TIME, amount DECIMAL, PRIMARY KEY ((customer_id), order_date, order_time));
+ycqlsh:example> CREATE TABLE orders(customer_id INT, order_date DATE, order_time TIME, amount DECIMAL, PRIMARY KEY ((customer_id), order_date, order_time));
 ```
 
 Date and time values can be inserted using currentdate and currenttime standard functions.
 
 ```sql
-cqlsh:example> INSERT INTO orders(customer_id, order_date, order_time, amount) VALUES (1, currentdate(), currenttime(), 85.99);
+ycqlsh:example> INSERT INTO orders(customer_id, order_date, order_time, amount) VALUES (1, currentdate(), currenttime(), 85.99);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO orders(customer_id, order_date, order_time, amount) VALUES (1, currentdate(), currenttime(), 34.15);
+ycqlsh:example> INSERT INTO orders(customer_id, order_date, order_time, amount) VALUES (1, currentdate(), currenttime(), 34.15);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO orders(customer_id, order_date, order_time, amount) VALUES (2, currentdate(), currenttime(), 55.45);
+ycqlsh:example> INSERT INTO orders(customer_id, order_date, order_time, amount) VALUES (2, currentdate(), currenttime(), 55.45);
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM orders;
+ycqlsh:example> SELECT * FROM orders;
 ```
 
 ```
@@ -81,7 +81,7 @@ cqlsh:example> SELECT * FROM orders;
 Date values can be given using date-time literals.
 
 ```sql
-cqlsh:example> SELECT sum(amount) FROM orders WHERE customer_id = 1 AND order_date = '2018-10-09';
+ycqlsh:example> SELECT sum(amount) FROM orders WHERE customer_id = 1 AND order_date = '2018-10-09';
 ```
 
 ```
@@ -95,27 +95,27 @@ cqlsh:example> SELECT sum(amount) FROM orders WHERE customer_id = 1 AND order_da
 You can do this as shown below.
 
 ```sql
-cqlsh:example> CREATE TABLE sensor_data(sensor_id INT, ts TIMESTAMP, value FLOAT, PRIMARY KEY(sensor_id, ts));
+ycqlsh:example> CREATE TABLE sensor_data(sensor_id INT, ts TIMESTAMP, value FLOAT, PRIMARY KEY(sensor_id, ts));
 ```
 
 Timestamp values can be given using date-time literals.
 
 ```sql
-cqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (1, '2017-07-04 12:30:30 UTC', 12.5);
+ycqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (1, '2017-07-04 12:30:30 UTC', 12.5);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (1, '2017-07-04 12:31 UTC', 13.5);
+ycqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (1, '2017-07-04 12:31 UTC', 13.5);
 ```
 
 Timestamp values can also be given as integers (milliseconds from epoch).
 
 ```sql
-cqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (2, 1499171430000, 20);
+ycqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (2, 1499171430000, 20);
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM sensor_data;
+ycqlsh:example> SELECT * FROM sensor_data;
 ```
 
 ```

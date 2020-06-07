@@ -99,6 +99,12 @@ public class PgRegressRunner {
           scheduleWriter.println(line);
         }
       }
+      // TODO(dmitry): Workaround for #1721, remove after fix.
+      for (File f : (new File(pgRegressOutputDir, "sql")).listFiles()) {
+        try (FileWriter fr = new FileWriter(f, true)) {
+          fr.write("\n-- YB_DATA_END\nDISCARD TEMP;");
+        }
+      }
     } catch (IOException ex) {
       LOG.error("Failed to copy pgregress data from " + pgRegressDir + " to " + pgRegressOutputDir);
       throw new RuntimeException(ex);

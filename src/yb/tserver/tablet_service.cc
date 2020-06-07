@@ -182,6 +182,16 @@ DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 5000,
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, runtime);
 
+DEFINE_int32(index_backfill_wait_for_old_txns_ms, 10000,
+             "Index backfill needs to wait for transactions that started before the "
+             "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
+             "backfilling the index. This is the max time that the GetSafeTime call will "
+             "wait for, before it resorts to attempt aborting old transactions. This is "
+             "necessary to guard against the pathological active transaction that never "
+             "commits, from blocking the index backfill forever.");
+TAG_FLAG(index_backfill_wait_for_old_txns_ms, evolving);
+TAG_FLAG(index_backfill_wait_for_old_txns_ms, runtime);
+
 DEFINE_test_flag(int32, TEST_write_rejection_percentage, 0,
                  "Reject specified percentage of writes.");
 
@@ -561,41 +571,42 @@ void TabletServiceAdminImpl::GetSafeTime(
           FLAGS_index_backfill_additional_delay_before_backfilling_ms));
 
       auto txn_particpant = tablet.peer->tablet()->transaction_participant();
+      auto wait_until = CoarseMonoClock::Now() + FLAGS_index_backfill_wait_for_old_txns_ms * 1ms;
       HybridTime min_running_ht;
       for (;;) {
         min_running_ht = txn_particpant->MinRunningHybridTime();
-        if (min_running_ht && min_running_ht >= min_hybrid_time) {
+        if ((min_running_ht && min_running_ht >= min_hybrid_time) ||
+            CoarseMonoClock::Now() > wait_until) {
           break;
         }
         VLOG(2) << "MinRunningHybridTime is " << min_running_ht
                 << " need to wait for " << min_hybrid_time;
-        if (CoarseMonoClock::Now() > deadline) {
-          // A long running pending transaction that started before the index
-          // backfill can effectively block us from choosing a safe time to
-          // perform the backfill read.
-          // For now, we only wait for pending transactions; and can therefore
-          // block if a transaction does not complete in a timely manner.
-          // TODO(#3471): abort/restart such transactions so that the backfill process
-          // does not wait forever.
+        SleepFor(MonoDelta::FromMilliseconds(FLAGS_transaction_min_running_check_interval_ms));
+      }
+
+      VLOG(2) << "Finally MinRunningHybridTime is " << min_running_ht;
+      if (min_running_ht < min_hybrid_time) {
+        VLOG(2) << "Aborting Txns that started prior to " << min_hybrid_time;
+        auto s = txn_particpant->StopActiveTxnsPriorTo(min_hybrid_time, deadline);
+        if (!s.ok()) {
           SetupErrorAndRespond(
-              resp->mutable_error(),
-              STATUS_FORMAT(TimedOut,
-                            "TimedOut waiting on running transactions. "
-                                "Oldest started at $0 (before $1)",
-                            min_running_ht, min_hybrid_time),
-              TabletServerErrorPB::UNKNOWN_ERROR, &context);
+              resp->mutable_error(), s, TabletServerErrorPB::UNKNOWN_ERROR, &context);
           return;
         }
-        SleepFor(MonoDelta::FromMilliseconds(
-            FLAGS_transaction_min_running_check_interval_ms));
       }
-      VLOG(2) << "Finally MinRunningHybridTime is " << min_running_ht
-              << " waited for " << min_hybrid_time;
     }
   }
 
   HybridTime safe_time = tablet.peer->tablet()->SafeTime(
-      tablet::RequireLease::kTrue, min_hybrid_time);
+      tablet::RequireLease::kTrue, min_hybrid_time, deadline);
+  if (!safe_time.is_valid()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(TimedOut, "Timed out waiting for safe time."),
+        TabletServerErrorPB::UNKNOWN_ERROR, &context);
+    return;
+  }
+
   resp->set_safe_time(safe_time.ToUint64());
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   VLOG(1) << "Tablet " << tablet.peer->tablet_id()
@@ -617,26 +628,6 @@ void TabletServiceAdminImpl::BackfillIndex(
   auto tablet =
       LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
   if (!tablet) {
-    return;
-  }
-
-  uint32_t schema_version = tablet.peer->tablet_metadata()->schema_version();
-  // If the current schema is newer than the one in the request reject the request.
-  if (schema_version != req->schema_version()) {
-    if (schema_version == 1 + req->schema_version()) {
-      LOG(WARNING) << "Received BackfillIndex RPC: " << req->DebugString()
-                   << " after we have moved to schema_version = " << schema_version;
-      // This is possible if this tablet completed the backfill. But the master failed over before
-      // other tablets could complete.
-      // The new master is redoing the backfill. We are safe to ignore this request.
-      context.RespondSuccess();
-    } else {
-      SetupErrorAndRespond(
-          resp->mutable_error(), STATUS_SUBSTITUTE(
-                                     InvalidArgument, "Tablet has a different schema $0 vs $1",
-                                     schema_version, req->schema_version()),
-          TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-    }
     return;
   }
 
@@ -694,12 +685,45 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
+  bool all_past_backfill = true;
+  bool all_at_backfill = true;
   const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map();
   std::vector<IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
-    indexes_to_backfill.push_back(index_map->at(idx.table_id()));
+    const IndexInfo& idx_info = index_map->at(idx.table_id());
+    indexes_to_backfill.push_back(idx_info);
     index_ids.push_back(index_map->at(idx.table_id()).table_id());
+
+    IndexInfoPB idx_info_pb;
+    idx_info.ToPB(&idx_info_pb);
+    all_at_backfill &= idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
+    all_past_backfill &= idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
+  }
+
+  if (!all_at_backfill) {
+    if (all_past_backfill) {
+      // Change this to see if for all indexes: IndexPermission > DO_BACKFILL.
+      LOG(WARNING) << "Received BackfillIndex RPC: " << req->DebugString()
+                   << " after all indexes moved past DO_BACKFILL. IndexMap is "
+                   << ToString(index_map);
+      // This is possible if this tablet completed the backfill. But the master failed over before
+      // other tablets could complete.
+      // The new master is redoing the backfill. We are safe to ignore this request.
+      context.RespondSuccess();
+      return;
+    }
+
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_SUBSTITUTE(
+            InvalidArgument,
+            "Tablet has a different schema $0 vs $1. "
+            "Requested index is not ready to backfill. IndexMap: $2",
+            tablet.peer->tablet_metadata()->schema_version(), req->schema_version(),
+            ToString(index_map)),
+        TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+    return;
   }
 
   Result<string> resume_from = tablet.peer->tablet()->BackfillIndexes(

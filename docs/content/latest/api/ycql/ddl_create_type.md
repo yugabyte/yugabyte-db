@@ -48,11 +48,11 @@ Where
 Collection types must be frozen to be used inside a user-defined type.
 
 ```sql
-cqlsh:example> CREATE TYPE person(first_name TEXT, last_name TEXT, emails FROZEN<LIST<TEXT>>);
+ycqlsh:example> CREATE TYPE person(first_name TEXT, last_name TEXT, emails FROZEN<LIST<TEXT>>);
 ```
 
 ```sql
-cqlsh:example> DESCRIBE TYPE person;
+ycqlsh:example> DESCRIBE TYPE person;
 ```
 
 ```
@@ -64,16 +64,16 @@ CREATE TYPE example.person (
 ```
 
 ```sql
-cqlsh:example> CREATE TABLE employees(employee_id INT PRIMARY KEY, employee person);
+ycqlsh:example> CREATE TABLE employees(employee_id INT PRIMARY KEY, employee person);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(employee_id, employee)
+ycqlsh:example> INSERT INTO employees(employee_id, employee)
                    VALUES (1, {first_name : 'John', last_name : 'Doe', emails : ['jdoe@example.com']});
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```

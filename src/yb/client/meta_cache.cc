@@ -54,6 +54,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 
 using std::string;
@@ -472,7 +473,7 @@ std::string RemoteTablet::ReplicasAsStringUnlocked() const {
 }
 
 std::string RemoteTablet::ToString() const {
-  return Format("{ tablet_id: $0 }", tablet_id_);
+  return YB_CLASS_TO_STRING(tablet_id, split_depth);
 }
 
 ////////////////////////////////////////////////////////////
@@ -533,7 +534,7 @@ class LookupRpc : public Rpc {
 
   void ResetMasterLeaderAndRetry();
 
-  virtual void Notify(const Status& status, const RemoteTabletPtr& result = nullptr) = 0;
+  virtual void Notify(const Result<RemoteTabletPtr>& result) = 0;
 
   std::shared_ptr<MasterServiceProxy> master_proxy() const {
     return client()->data_->master_proxy();
@@ -681,8 +682,7 @@ void LookupRpc::DoFinished(
   auto retained_self = meta_cache_->rpcs_.Unregister(&retained_self_);
 
   if (new_status.ok()) {
-    Notify(Status::OK(),
-           meta_cache_->ProcessTabletLocations(resp.tablet_locations(), partition_group_start));
+    Notify(meta_cache_->ProcessTabletLocations(resp.tablet_locations(), partition_group_start));
   } else {
     LOG_WITH_PREFIX(WARNING) << new_status;
     new_status = new_status.CloneAndPrepend(Substitute("$0 failed", ToString()));
@@ -690,10 +690,56 @@ void LookupRpc::DoFinished(
   }
 }
 
-RemoteTabletPtr MetaCache::ProcessTabletLocations(
+namespace {
+
+Status CheckTabletLocationsGaps(
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations) {
+  const std::string* prev_partition_end = nullptr;
+  for (const TabletLocationsPB& loc : locations) {
+    if (prev_partition_end && *prev_partition_end != loc.partition().partition_key_start()) {
+      LOG(DFATAL)
+          << "There should be no gaps and overlaps in tablet partitions and they should be sorted "
+          << "by partition_key_start. Prev partition end: "
+          << Slice(*prev_partition_end).ToDebugHexString() << ", current partition start: "
+          << Slice(loc.partition().partition_key_start()).ToDebugHexString()
+          << ". Tablet locations: " << AsString(locations);
+      return STATUS(IllegalState, "Wrong order or gaps in partitions");
+    }
+    prev_partition_end = &loc.partition().partition_key_end();
+  }
+  return Status::OK();
+}
+
+Status CheckColocatedTabletSplit(const TabletLocationsPB& location) {
+  if (location.table_ids_size() == 1) {
+    return Status::OK();
+  }
+  const auto error_msg = Format(
+      "Tablet splitting is not supported for colocated tables, tablet_id: $0",
+      location.tablet_id());
+  LOG(DFATAL) << error_msg;
+  return STATUS(IllegalState, error_msg);
+}
+
+Status PreSplitTabletNotCoveredError(
+    const RemoteTabletPtr& pre_split_tablet,
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations) {
+  const auto error_msg = Format(
+      "Pre-split tablet $0 partition: $1 is not exactly covered with post-split tablets "
+      "partitions: $2", pre_split_tablet->tablet_id(), pre_split_tablet->partition(),
+      AsString(locations));
+  LOG(DFATAL) << error_msg;
+  return STATUS(IllegalState, error_msg);
+}
+
+} // namespace
+
+Result<RemoteTabletPtr> MetaCache::ProcessTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
     const std::string* partition_group_start) {
   VLOG(2) << "Processing master response " << ToString(locations);
+
+  RETURN_NOT_OK(CheckTabletLocationsGaps(locations));
 
   RemoteTabletPtr result;
   bool first = true;
@@ -701,8 +747,21 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
 
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
+
+    std::unordered_set<TableId> table_ids_to_reset;
+    auto se = ScopeExit([this, &table_ids_to_reset]() NO_THREAD_SAFETY_ANALYSIS {
+      // Reset the cache for partially updated tables to avoid inconsistent state.
+      for (const auto& table_id : table_ids_to_reset) {
+        tables_.erase(table_id);
+      }
+    });
+
+    RemoteTabletPtr current_pre_split_tablet;
+
     for (const TabletLocationsPB& loc : locations) {
       for (const std::string& table_id : loc.table_ids()) {
+        table_ids_to_reset.insert(table_id);
+
         auto& table_data = tables_[table_id];
         auto& tablets_by_key = table_data.tablets_by_partition;
         // First, update the tserver cache, needed for the Refresh calls below.
@@ -731,20 +790,43 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
 
           Partition partition;
           Partition::FromPB(loc.partition(), &partition);
-          remote = new RemoteTablet(
-              tablet_id, partition, loc.split_depth());
+          remote = new RemoteTablet(tablet_id, partition, loc.split_depth());
 
           CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
           // TODO(tsplit): cover this functionality with test.
           auto emplace_result = tablets_by_key.emplace(partition.partition_key_start(), remote);
           if (!emplace_result.second) {
-            if (emplace_result.first->second->split_depth() < remote->split_depth()) {
+            const auto& old_tablet = emplace_result.first->second;
+            if (old_tablet->split_depth() < remote->split_depth()) {
               // Only replace with tablet of higher split_depth.
+              current_pre_split_tablet = old_tablet;
               emplace_result.first->second = remote;
             } else {
               // If split_depth is the same - it should be the same tablet.
-              CHECK(emplace_result.first->second->split_depth() != remote->split_depth() ||
-                    emplace_result.first->second->tablet_id() == tablet_id);
+              if (old_tablet->split_depth() == loc.split_depth()
+                  && old_tablet->tablet_id() != tablet_id) {
+                const auto error_msg = Format(
+                    "Can't replace tablet $0 with $1 at partition_key_start $2, split_depth $3",
+                    old_tablet->tablet_id(), tablet_id, loc.partition().partition_key_start(),
+                    old_tablet->split_depth());
+                LOG(DFATAL) << error_msg;
+                return STATUS(IllegalState, error_msg);
+              }
+            }
+          }
+          if (current_pre_split_tablet) {
+            RETURN_NOT_OK(CheckColocatedTabletSplit(loc));
+            if (!current_pre_split_tablet->partition().ContainsPartition(partition)) {
+              return PreSplitTabletNotCoveredError(current_pre_split_tablet, locations);
+            }
+            client_->data_->tablet_requests_[remote->tablet_id()].request_id_seq =
+                client_->data_->tablet_requests_[current_pre_split_tablet->tablet_id()]
+                    .request_id_seq;
+            if (current_pre_split_tablet->partition().partition_key_end() ==
+                partition.partition_key_end()) {
+              // `remote` is the last part of pre_split_tablet split, so we should finish pre-split
+              // tablet replacement.
+              current_pre_split_tablet = nullptr;
             }
           }
         }
@@ -775,6 +857,12 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
         }
       }
     }
+
+    if (current_pre_split_tablet) {
+      return PreSplitTabletNotCoveredError(current_pre_split_tablet, locations);
+    }
+
+    table_ids_to_reset.clear();
   }
 
   for (const auto& callback_and_remote_tablet : to_notify) {
@@ -787,11 +875,15 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
 
 void MetaCache::InvalidateTableCache(const TableId& table_id) {
   std::lock_guard<decltype(mutex_)> lock(mutex_);
-  tables_.erase(table_id);
-  // TODO(tsplit): Instead of silently removing callbacks for lookups in progress - handle
-  // this case appropriately.
-  // TODO(tsplit): Optimize to retry only necessary lookups inside ProcessTabletLocations,
-  // detect which need to be retried by GetTableLocationsResponsePB.partition_version.
+  auto it = tables_.find(table_id);
+  if (it != tables_.end()) {
+    it->second.stale = true;
+    // TODO(tsplit): Instead of silently removing callbacks for lookups in progress - handle
+    // this case appropriately.
+    // TODO(tsplit): Optimize to retry only necessary lookups inside ProcessTabletLocations,
+    // detect which need to be retried by GetTableLocationsResponsePB.partition_version.
+    it->second.tablet_lookups_by_group.clear();
+  }
 }
 
 void MetaCache::LookupFailed(
@@ -878,6 +970,7 @@ class LookupByIdRpc : public LookupRpc {
 
   void DoSendRpc() override {
     // Fill out the request.
+    req_.clear_tablet_ids();
     req_.add_tablet_ids(tablet_id_);
 
     master_proxy()->GetTabletLocationsAsync(
@@ -890,12 +983,8 @@ class LookupByIdRpc : public LookupRpc {
     DoFinished(status, resp_, nullptr /* partition_group_start */);
   }
 
-  void Notify(const Status& status, const RemoteTabletPtr& remote_tablet) override {
-    if (status.ok()) {
-      user_cb_(remote_tablet);
-    } else {
-      user_cb_(status);
-    }
+  void Notify(const Result<RemoteTabletPtr>& remote_tablet) override {
+    user_cb_(remote_tablet);
   }
 
 
@@ -957,11 +1046,11 @@ class LookupByKeyRpc : public LookupRpc {
     DoFinished(status, resp_, &partition_group_start_);
   }
 
-  void Notify(const Status& status, const RemoteTabletPtr& result) override {
-    if (status.ok()) {
+  void Notify(const Result<RemoteTabletPtr>& result) override {
+    if (result.ok()) {
       return; // This case is handled by LookupTabletByKeyFastPathUnlocked.
     }
-    meta_cache()->LookupFailed(table_.get(), partition_group_start_, status);
+    meta_cache()->LookupFailed(table_.get(), partition_group_start_, result.status());
   }
 
   // Table to lookup.
@@ -980,8 +1069,8 @@ class LookupByKeyRpc : public LookupRpc {
 RemoteTabletPtr MetaCache::LookupTabletByKeyFastPathUnlocked(const YBTable* table,
                                                              const std::string& partition_key) {
   auto it = tables_.find(table->id());
-  if (PREDICT_FALSE(it == tables_.end())) {
-    // No cache available for this table.
+  if (PREDICT_FALSE(it == tables_.end() || it->second.stale)) {
+    // No cache available for this table or it is stale.
     return nullptr;
   }
 

@@ -25,7 +25,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.yb.AssertionWrappers.*;
@@ -443,4 +446,286 @@ public class TestPgSelect extends BasePgSQLTest {
       assertFalse(rs.next());
     }
   }
+
+  public void testNullPushdownUtil(String colOrder) throws Exception {
+    String createTable = "CREATE TABLE %s(a int, b int, PRIMARY KEY(a %s))";
+    String createIndex = "CREATE INDEX ON %s(b %s)";
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(String.format(createTable, "t1", colOrder));
+      statement.execute(String.format(createTable, "t2", colOrder));
+      statement.execute("insert into t1 values (1,1), (2,2), (3,3)");
+      statement.execute("insert into t2 values (1,1), (2,2), (3,null)");
+
+      //--------------------------------------------------------------------------------------------
+      // Test join where one join column is null.
+
+      // Inner join, expect no rows.
+      String query = "select * from t2 inner join t1 on t2.b = t1.a where t2.a = 3";
+      assertNoRows(statement, query);
+      String explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for t1 pkey",
+                 explainOutput.contains("Index Cond: (a = 3)"));
+      assertTrue("Expect pushdown for t2 pkey",
+                 explainOutput.contains("Index Cond: (a = t2.b)"));
+      assertFalse("Expect DocDB to filter fully",
+                  explainOutput.contains("Rows Removed by"));
+
+      // Outer join, expect one row.
+      query = "select * from t2 full outer join t1 on t2.b = t1.a where t2.a = 3";
+      assertOneRow(statement, query, 3, null, null, null);
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for t1 pkey",
+                 explainOutput.contains("Index Cond: (a = 3)"));
+      assertTrue("Expect pushdown for t2 pkey",
+                 explainOutput.contains("Index Cond: (t2.b = a)"));
+      assertFalse("Expect DocDB to filter fully",
+                  explainOutput.contains("Rows Removed by"));
+
+      // -------------------------------------------------------------------------------------------
+      // Test IS NULL and IS NOT NULL.
+
+      // Add an index on t1.b that contains null value in its key.
+      statement.execute("insert into t1 values (4,null), (5,null)");
+      statement.execute(String.format(createIndex, "t1", colOrder));
+
+      // Test IS NULL on pkey column.
+      query = "select * from t1 where a IS NULL";
+      assertNoRows(statement, query);
+
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for IS NULL",
+                 explainOutput.contains("Index Cond: (a IS NULL)"));
+      assertFalse("Expect DocDB to filter fully",
+                  explainOutput.contains("Rows Removed by"));
+
+      // Test IS NULL on index column.
+      query = "select * from t1 where b IS NULL";
+      Set<Row> expectedRows = new HashSet<>();
+      expectedRows.add(new Row(4, null));
+      expectedRows.add(new Row(5, null));
+      assertRowSet(statement, query, expectedRows);
+
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for IS NULL",
+                 explainOutput.contains("Index Cond: (b IS NULL)"));
+      assertFalse("Expect DocDB to filter fully",
+                  explainOutput.contains("Rows Removed by"));
+
+      // Test IS NOT NULL.
+      query = "select * from t1 where b IS NOT NULL";
+      expectedRows.clear();
+      expectedRows.add(new Row(1, 1));
+      expectedRows.add(new Row(2, 2));
+      expectedRows.add(new Row(3, 3));
+      assertRowSet(statement, query, expectedRows);
+
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect no pushdown for IS NOT NULL",
+                 explainOutput.contains("Filter: (b IS NOT NULL)"));
+      assertTrue("Expect YSQL-level filter",
+                  explainOutput.contains("Rows Removed by Filter: 2"));
+
+      // Test IN with NULL (should not match null row because null == null is not true).
+      query = "select * from t1 where b IN (NULL, 2, 3)";
+      expectedRows.clear();
+      expectedRows.add(new Row(2, 2));
+      expectedRows.add(new Row(3, 3));
+      assertRowSet(statement, query, expectedRows);
+
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for IN condition",
+                 explainOutput.contains("Index Cond: (b = ANY ('{NULL,2,3}'::integer[]))"));
+      assertFalse("Expect DocDB to filter fully",
+                 explainOutput.contains("Rows Removed by"));
+
+      // Test NOT IN with NULL (should not match anything because v1 != null is never true).
+      query = "select * from t1 where b NOT IN (NULL, 2)";
+      expectedRows.clear();
+      assertRowSet(statement, query, expectedRows);
+
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect no pushdown for NOT IN condition",
+                 explainOutput.contains("Filter: (b <> ALL ('{NULL,2}'::integer[]))"));
+      assertTrue("Expect YSQL-level filtering",
+                 explainOutput.contains("Rows Removed by Filter: 5"));
+
+      // Test BETWEEN.
+      query = "select * from t1 where b between 1 and 3";
+      expectedRows.clear();
+      expectedRows.add(new Row(1, 1));
+      expectedRows.add(new Row(2, 2));
+      expectedRows.add(new Row(3, 3));
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertRowSet(statement, query, expectedRows);
+
+      if (colOrder.equals("HASH")) {
+        assertTrue("Expect no pushdown for BETWEEN condition on HASH",
+                   explainOutput.contains("Filter: ((b >= 1) AND (b <= 3))"));
+        assertTrue("Expect YSQL-level filtering for HASH",
+                    explainOutput.contains("Rows Removed by Filter: 2"));
+      } else {
+        assertTrue("Expect pushdown for BETWEEN condition on ASC/DESC",
+                   explainOutput.contains("Index Cond: ((b >= 1) AND (b <= 3))"));
+        assertFalse("Expect no YSQL-level filtering for ASC/DESC",
+                    explainOutput.contains("Rows Removed by"));
+      }
+
+      // Test BETWEEN with NULL.
+      query = "select * from t1 where b BETWEEN 1 AND NULL";
+      expectedRows.clear();
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertRowSet(statement, query, expectedRows);
+      assertTrue("YSQL will auto-eval condition to false",
+                 explainOutput.contains("One-Time Filter: false"));
+      assertFalse("Expect no YSQL-level filtering",
+                  explainOutput.contains("Rows Removed by"));
+
+      //--------------------------------------------------------------------------------------------
+      // Test join where one join column is null *and* the other table has null rows for it.
+      // TODO This should not matter because null == null is false per SQL semantics, but in DocDB
+      //      null == null is true, so we still require filtering here (but only for rows where the
+      //      respective column is null, not for the rest.
+
+      // Inner join (on t1.b this time), expect no rows.
+      query = "select * from t2 inner join t1 on t2.b = t1.b where t2.a = 3";
+      assertNoRows(statement, query);
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for t1 pkey",
+                 explainOutput.contains("Index Cond: (a = 3)"));
+      assertTrue("Expect pushdown for t2 pkey",
+                 explainOutput.contains("Index Cond: (b = t2.b)"));
+      assertTrue("Expect to filter only the 2 null rows",
+                 explainOutput.contains("Rows Removed by Index Recheck: 2"));
+
+      // Outer join (on t1.b this time), expect one row.
+      query = "select * from t2 full outer join t1 on t2.b = t1.b where t2.a = 3";
+      assertOneRow(statement, query, 3, null, null, null);
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for t1 pkey",
+                 explainOutput.contains("Index Cond: (a = 3)"));
+      assertTrue("Expect pushdown for t2 pkey",
+                 explainOutput.contains("Index Cond: (t2.b = b)"));
+      assertTrue("Expect to filter only the 2 null rows",
+                  explainOutput.contains("Rows Removed by Index Recheck: 2"));
+
+      statement.execute("DROP TABLE t1");
+      statement.execute("DROP TABLE t2");
+    }
+  }
+
+  @Test
+  public void testNullPushdown() throws Exception {
+    testNullPushdownUtil("ASC");
+    testNullPushdownUtil("HASH");
+    testNullPushdownUtil("DESC");
+  }
+
+  @Test
+  public void testMulticolumnNullPushdown() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+
+      statement.execute("CREATE TABLE test(h int, r int, vh1 int, vh2 int, vr1 int, vr2 int)");
+      statement.execute("CREATE INDEX on test((vh1, vh2) HASH, vr1 ASC, vr2 ASC)");
+      statement.execute("INSERT INTO test values (1,1,1,1,1,1)");
+      statement.execute("INSERT INTO test values (2,2,null,2,2,2)");
+      statement.execute("INSERT INTO test values (3,3,3,null,3,3)");
+      statement.execute("INSERT INTO test values (4,4,4,4,null,4)");
+      statement.execute("INSERT INTO test values (5,5,5,5,5,null)");
+      statement.execute("INSERT INTO test values (6,6,null,null,6,6)");
+      statement.execute("INSERT INTO test values (7,7,7,7,null,null)");
+      statement.execute("INSERT INTO test values (8,8,null,8,8,null)");
+      statement.execute("INSERT INTO test values (9,9,null,null,null,null)");
+      statement.execute("INSERT INTO test values (10,10,10,10,10,10)");
+
+      Set<Row> allRows = new HashSet<>();
+      allRows.add(new Row(1, 1, 1, 1, 1, 1));
+      allRows.add(new Row(2, 2, null, 2, 2, 2));
+      allRows.add(new Row(3, 3, 3, null, 3, 3));
+      allRows.add(new Row(4, 4, 4, 4, null, 4));
+      allRows.add(new Row(5, 5, 5, 5, 5, null));
+      allRows.add(new Row(6, 6, null, null, 6, 6));
+      allRows.add(new Row(7, 7, 7, 7, null, null));
+      allRows.add(new Row(8, 8, null, 8, 8, null));
+      allRows.add(new Row(9, 9, null, null, null, null));
+      allRows.add(new Row(10, 10, 10, 10, 10, 10));
+
+      // Test null conditions on both hash columns.
+      String query = "SELECT * FROM test WHERE vh1 IS NULL AND vh2 IS NULL";
+      Set<Row> expectedRows = allRows.stream()
+                                     .filter(r -> r.get(2) == null && r.get(3) == null)
+                                     .collect(Collectors.toSet());
+      assertRowSet(statement, query, expectedRows);
+
+      String explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for IS NULL" + explainOutput,
+                 explainOutput.contains("Index Cond: ((vh1 IS NULL) AND (vh2 IS NULL))"));
+      assertFalse("Expect DocDB to filter fully",
+                  explainOutput.contains("Rows Removed by"));
+
+      // Test null conditions on all hash+range columns.
+      query = "SELECT * FROM test WHERE vh1 IS NULL AND vh2 IS NULL" +
+              " AND vr1 IS NULL and vr2 IS NULL";
+      expectedRows = allRows.stream()
+                                       .filter(r -> r.get(2) == null && r.get(3) == null &&
+                                               r.get(4) == null && r.get(5) == null)
+                                       .collect(Collectors.toSet());
+      assertRowSet(statement, query, expectedRows);
+
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for IS NULL" + explainOutput,
+                 explainOutput.contains("Index Cond: ((vh1 IS NULL) AND (vh2 IS NULL)" +
+                                                " AND (vr1 IS NULL) AND (vr2 IS NULL))"));
+      assertFalse("Expect DocDB to filter fully",
+                  explainOutput.contains("Rows Removed by"));
+
+      // Test null/value condition mix columns.
+      query = "SELECT * FROM test WHERE vh1 IS NULL AND vh2 = 8" +
+              " AND vr1 = 8 and vr2 IS NULL";
+      expectedRows = allRows.stream()
+                              .filter(r -> r.get(2) == null && Objects.equals(r.get(3), 8) &&
+                                      Objects.equals(r.get(3), 8) && r.get(5) == null)
+                              .collect(Collectors.toSet());
+      assertRowSet(statement, query, expectedRows);
+
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for IS NULL" + explainOutput,
+                 explainOutput.contains("Index Cond: ((vh1 IS NULL) AND (vh2 = 8)" +
+                                                " AND (vr1 = 8) AND (vr2 IS NULL))"));
+      assertFalse("Expect DocDB to filter fully",
+                  explainOutput.contains("Rows Removed by"));
+
+      // Test partly set hash key (should not push down).
+      query = "SELECT * FROM test WHERE vh1 IS NULL AND vr1 IS NULL and vr2 IS NULL";
+      expectedRows = allRows.stream()
+                              .filter(r -> r.get(2) == null &&
+                                      r.get(4) == null && r.get(5) == null)
+                              .collect(Collectors.toSet());
+      assertRowSet(statement, query, expectedRows);
+
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for IS NULL" + explainOutput,
+                 explainOutput.contains("Filter: ((vh1 IS NULL) AND (vr1 IS NULL) " +
+                                                "AND (vr2 IS NULL))"));
+      assertTrue("Expect YSQL-layer filtering",
+                  explainOutput.contains("Rows Removed by Filter: 9"));
+
+      // Test hash key + partly set range key (should push down).
+      query = "SELECT * FROM test WHERE vh1 IS NULL AND vh2 IS NULL" +
+              " AND vr1 IS NULL";
+      expectedRows = allRows.stream()
+                              .filter(r -> r.get(2) == null && r.get(3) == null &&
+                                      r.get(4) == null)
+                              .collect(Collectors.toSet());
+      assertRowSet(statement, query, expectedRows);
+
+      explainOutput = getExplainAnalyzeOutput(statement, query);
+      assertTrue("Expect pushdown for IS NULL" + explainOutput,
+                 explainOutput.contains("Index Cond: ((vh1 IS NULL) AND (vh2 IS NULL)" +
+                                                " AND (vr1 IS NULL))"));
+      assertFalse("Expect DocDB to filter fully",
+                  explainOutput.contains("Rows Removed by"));
+    }
+  }
+
 }

@@ -9,7 +9,7 @@ import { createInstanceType, createInstanceTypeResponse,
   resetProviderBootstrap, fetchCloudMetadata, getProviderList, getProviderListResponse,
   resetOnPremConfigData, setOnPremConfigData, createOnPremProvider,
   createOnPremProviderResponse } from '../../../actions/cloud';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import {destroy} from 'redux-form';
 
 const mapStateToProps = (state) => {

@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { FormattedDate } from 'react-intl';
-import { getUniverseEndpoint } from 'actions/common';
+import { getUniverseEndpoint } from '../../../actions/common';
 import { DescriptionList, YBCopyButton } from '../../common/descriptors';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { getPrimaryCluster } from "../../../utils/UniverseUtils";

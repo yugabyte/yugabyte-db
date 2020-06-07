@@ -21,6 +21,7 @@ if test "$uname" = "linux"; then
 fi
 
 echo "ysqlsh is at ${PKG_PREFIX}-${VERSION}/bin/ysqlsh                                      "
-echo "csqlsh is at ${PKG_PREFIX}-${VERSION}/bin/cqlsh"
+echo "ycqlsh is at ${PKG_PREFIX}-${VERSION}/bin/ycqlsh"
 echo You may want to run
 echo " sudo mv ${PKG_PREFIX}-${VERSION}/bin/ysqlsh /usr/local/bin/"
+echo " sudo mv ${PKG_PREFIX}-${VERSION}/bin/ycqlsh /usr/local/bin/"

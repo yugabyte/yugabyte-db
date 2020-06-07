@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { isNonEmptyObject } from 'utils/ObjectUtils';
-import { YBResourceCount, YBCost } from 'components/common/descriptors';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { YBResourceCount, YBCost } from '../../../components/common/descriptors';
 import PropTypes from 'prop-types';
 import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import './UniverseResources.scss';

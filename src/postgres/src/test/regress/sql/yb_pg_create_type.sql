@@ -156,6 +156,3 @@ select format_type('varchar'::regtype, 42);
 select format_type('bpchar'::regtype, null);
 -- this behavior difference is intentional
 select format_type('bpchar'::regtype, -1);
-
--- TODO(jason): remove when issue #1721 is closed or closing.
-DISCARD TEMP;

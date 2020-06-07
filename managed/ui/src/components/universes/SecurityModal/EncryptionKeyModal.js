@@ -6,7 +6,7 @@ import { Field, Formik } from 'formik';
 import * as Yup from "yup";
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { YBModal, YBFormToggle, YBFormSelect } from '../../common/forms/fields';
-import { isNonEmptyObject } from 'utils/ObjectUtils';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 
 export default class EncryptionKeyModal extends Component {
   componentDidMount() {

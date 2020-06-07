@@ -5,7 +5,7 @@ import { PageHeader } from 'react-bootstrap';
 import { YBButton, YBFormInput, YBSegmentedButtonGroup } from '../fields';
 import YBLogo from '../../YBLogo/YBLogo';
 import { browserHistory } from 'react-router';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { Field, Form, Formik } from 'formik';
 import * as Yup from "yup";
 

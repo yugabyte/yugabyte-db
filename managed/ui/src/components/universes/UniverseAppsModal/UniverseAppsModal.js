@@ -5,9 +5,9 @@ import PropTypes from 'prop-types';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBModal, YBButton } from '../../common/forms/fields';
 import { YBCodeBlock } from '../../common/descriptors';
-import { isValidObject, isEmptyObject } from 'utils/ObjectUtils';
+import { isValidObject, isEmptyObject } from '../../../utils/ObjectUtils';
 import { Tab, Tabs } from 'react-bootstrap';
-import { isKubernetesUniverse } from 'utils/UniverseUtils';
+import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 
 import './UniverseAppsModal.scss';
 

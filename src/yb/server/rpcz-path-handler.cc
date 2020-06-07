@@ -66,7 +66,8 @@ bool GetBool(const Map& map, const typename Map::key_type& key, bool default_val
 }
 
 void RpczPathHandler(Messenger* messenger,
-                     const Webserver::WebRequest& req, stringstream* output) {
+                     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
   DumpRunningRpcsRequestPB dump_req;
   DumpRunningRpcsResponsePB dump_resp;
 

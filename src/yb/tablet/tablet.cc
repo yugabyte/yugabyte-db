@@ -1519,6 +1519,11 @@ Status Tablet::HandlePgsqlReadRequest(
   DCHECK_EQ(table_info->table_type, TableType::PGSQL_TABLE_TYPE);
   if (table_info->schema_version != pgsql_read_request.schema_version()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
+    result->response.set_error_message(
+        Format("schema version mismatch for table $0: $1 != $2",
+               table_info->table_id,
+               table_info->schema_version,
+               pgsql_read_request.schema_version()));
     return Status::OK();
   }
 
@@ -1982,6 +1987,11 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
                                             const std::string& backfill_from,
                                             const CoarseTimePoint deadline,
                                             const HybridTime read_time) {
+  if (table_type_ == PGSQL_TABLE_TYPE) {
+    // TODO(jason): handle YSQL backfill.
+    // For now, mark the backfill as done.
+    return "";
+  }
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
     TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));

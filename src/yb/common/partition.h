@@ -110,6 +110,21 @@ class Partition {
         (partition_key_end().empty() || partition_key < partition_key_end());
   }
 
+  template <class T>
+  bool ContainsPartition(const T& other) const {
+    return other.partition_key_start() >= partition_key_start() &&
+           (partition_key_end().empty() || (!other.partition_key_end().empty() &&
+                                            other.partition_key_end() < partition_key_end()));
+  }
+
+  std::string ToString() const {
+    return Format(
+        "{ partition_key_start: $0 partition_key_end: $1 hash_buckets: $2 }",
+        Slice(partition_key_start_).ToDebugString(),
+        Slice(partition_key_end_).ToDebugString(),
+        hash_buckets_);
+  }
+
  private:
   friend class PartitionSchema;
 

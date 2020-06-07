@@ -2,11 +2,18 @@
 
 import React, { Component, Fragment } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { YBFormSelect, YBFormInput, YBAddRowButton, YBModal, YBFormDropZone, YBTextInputWithLabel } from '../../../common/forms/fields';
+import {
+  YBFormSelect,
+  YBFormInput,
+  YBAddRowButton,
+  YBModal,
+  YBFormDropZone,
+  YBTextInputWithLabel
+} from '../../../common/forms/fields';
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { connect as formikConnect, getIn, Field, ErrorMessage, FieldArray } from 'formik';
-import { REGION_METADATA, REGION_DICT } from 'config';
+import { REGION_METADATA, REGION_DICT } from '../../../../config';
 import _ from 'lodash';
 
 class AddRegionList extends Component {

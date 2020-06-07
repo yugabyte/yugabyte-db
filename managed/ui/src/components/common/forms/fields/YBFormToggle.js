@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import Toggle from 'react-toggle';
-import { YBLabel, DescriptionItem } from 'components/common/descriptors';
+import { YBLabel, DescriptionItem } from '../../../../components/common/descriptors';
 import 'react-toggle/style.css';
 import './stylesheets/YBToggle.scss';
 

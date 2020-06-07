@@ -12,7 +12,10 @@ export default class YBLabel extends Component {
   };
 
   render() {
-    const { label, insetError, meta, form, field, onLabelClick, infoContent, infoTitle, infoPlacement
+    const {
+      label, insetError, meta, form, field,
+      onLabelClick, infoContent, infoTitle,
+      infoPlacement, classOverrides
     } = this.props;
 
     let infoTip = <span />;
@@ -35,9 +38,12 @@ export default class YBLabel extends Component {
       touched = (_.get(form.touched, field.name) || form.submitCount > 0);
       hasError = touched && isNonEmptyString(errorMsg);
     }
+    let containerClassList = `form-group ${ hasError ? 'has-error' : ''} ${ this.props.type === "hidden" ? 'form-group-hidden' : ''}`;
+    if (classOverrides) {
+      containerClassList = `${containerClassList.trim()} ${classOverrides}`
+    }
     return (
-      <div className={`form-group ${ hasError ? 'has-error' : ''} ${ this.props.type === "hidden" ? 'form-group-hidden' : ''}`}
-        data-yb-label={label} onClick={onLabelClick}>
+      <div className={containerClassList} data-yb-label={label} onClick={onLabelClick}>
         {label &&
           <label className="form-item-label">
             {label}

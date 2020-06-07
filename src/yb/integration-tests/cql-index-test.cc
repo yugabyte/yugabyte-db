@@ -27,6 +27,7 @@
 
 using namespace std::literals;
 
+DECLARE_bool(disable_index_backfill);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_uint64(transaction_manager_workers_limit);
@@ -102,6 +103,32 @@ TEST_F(CqlIndexTest, Simple) {
   ASSERT_EQ(row.Value(0).As<cass_int32_t>(), kKey);
   ASSERT_EQ(row.Value(1).As<cass_int32_t>(), kValue);
   ASSERT_FALSE(iter.Next());
+}
+
+TEST_F(CqlIndexTest, MultipleIndex) {
+  FLAGS_disable_index_backfill = false;
+  auto session1 = ASSERT_RESULT(EstablishSession(driver_.get()));
+  auto session2 = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  WARN_NOT_OK(session1.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, value INT) WITH transactions = { 'enabled' : true }"),
+          "Create table failed.");
+  auto future1 = session1.ExecuteGetFuture("CREATE INDEX idx1 ON T (value)");
+  auto future2 = session2.ExecuteGetFuture("CREATE INDEX idx2 ON T (value)");
+
+  constexpr auto kNamespace = "test";
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "t");
+  const client::YBTableName index_table_name1(YQL_DATABASE_CQL, kNamespace, "idx1");
+  const client::YBTableName index_table_name2(YQL_DATABASE_CQL, kNamespace, "idx2");
+
+  LOG(INFO) << "Waiting for idx1 got " << future1.Wait();
+  auto perm1 = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name1, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  CHECK_EQ(perm1, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  LOG(INFO) << "Waiting for idx2 got " << future2.Wait();
+  auto perm2 = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name2, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  CHECK_EQ(perm2, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 }
 
 class CqlIndexSmallWorkersTest : public CqlIndexTest {

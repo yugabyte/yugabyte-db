@@ -3,14 +3,14 @@
 import React, { Component } from 'react';
 import { Tab } from 'react-bootstrap';
 import { browserHistory} from 'react-router';
-import { isNonAvailable, isDisabled, showOrRedirect, isNotHidden } from 'utils/LayoutUtils';
+import { isNonAvailable, isDisabled, showOrRedirect, isNotHidden } from '../../utils/LayoutUtils';
 import { YBTabsWithLinksPanel } from '../panels';
-import { isDefinedNotNull } from 'utils/ObjectUtils';
+import { isDefinedNotNull } from '../../utils/ObjectUtils';
 import UserProfileForm from './UserProfileForm';
 import AlertProfileForm from './AlertProfileForm';
 import UserList from './UserList';
 import { YBLoading } from '../common/indicators';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../utils/PromiseUtils';
 
 export default class CustomerProfile extends Component {
   constructor(props) {
@@ -83,8 +83,9 @@ export default class CustomerProfile extends Component {
               disabled={isDisabled(customer.data.features, "main.profile")}>
               <UserProfileForm customer={this.props.customer}
                 customerProfile={customerProfile}
-                apiToken={apiToken} {...this.props}
-                handleProfileUpdate={this.handleProfileUpdate} />
+                apiToken={apiToken}
+                handleProfileUpdate={this.handleProfileUpdate}
+                {...this.props} />
             </Tab.Pane>,
             <Tab.Pane
               eventKey={"health-alerting"}
@@ -95,8 +96,9 @@ export default class CustomerProfile extends Component {
               disabled={isDisabled(customer.data.features, "main.profile")}>
               <AlertProfileForm customer={this.props.customer}
                 customerProfile={customerProfile}
-                apiToken={apiToken}  {...this.props}
-                handleProfileUpdate={this.handleProfileUpdate} />
+                apiToken={apiToken}
+                handleProfileUpdate={this.handleProfileUpdate}
+                {...this.props} />
             </Tab.Pane>,
             <Tab.Pane
               eventKey={"manage-users"}
@@ -107,8 +109,9 @@ export default class CustomerProfile extends Component {
               disabled={isDisabled(customer.data.features, "main.profile")}>
               <UserList customer={this.props.customer}
                 customerProfile={customerProfile}
-                apiToken={apiToken}  {...this.props}
-                handleProfileUpdate={this.handleProfileUpdate} />
+                apiToken={apiToken}
+                handleProfileUpdate={this.handleProfileUpdate}
+                {...this.props} />
             </Tab.Pane>
           ]}
         </YBTabsWithLinksPanel>

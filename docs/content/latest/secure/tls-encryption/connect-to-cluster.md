@@ -88,9 +88,9 @@ UUID_2		node2:7100     	ALIVE 	LEADER
 UUID_3 		node3:7100     	ALIVE 	FOLLOWER
 ```
 
-## cqlsh
+## ycqlsh
 
-To enable `cqlsh` to connect to a YugabyteDB cluster with encryption enabled, you need to set the following environment variables:
+To enable `ycqlsh` to connect to a YugabyteDB cluster with encryption enabled, you need to set the following environment variables:
 
 Variable       | Description                  |
 ---------------|------------------------------|
@@ -111,28 +111,28 @@ Next connect using the `--ssl` flag.
 ### Local cluster
 
 ```sh
-$ ./bin/cqlsh --ssl
+$ ./bin/ycqlsh --ssl
 ```
 
 You should see the following output:
 
 ```sql
 Connected to local cluster at X.X.X.X:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh> DESCRIBE KEYSPACES;
+ycqlsh> DESCRIBE KEYSPACES;
 
 system_schema  system_auth  system
 ```
 
 ### Remote cluster
 
-To connect to a remote YugabyteDB cluster, you need to have a local copy of `cqlsh` available. You can use the `cqlsh` CLI available on a locally installed YugabyteDB.
+To connect to a remote YugabyteDB cluster, you need to have a local copy of `ycqlsh` available. You can use the `ycqlsh` CLI available on a locally installed YugabyteDB.
 
-To open the local `cqlsh` CLI and access the remote cluster, run `cqlsh` with flags set for the host and port of the remote cluster. You must also add the `--ssl` flag to enable the use of the client-to-server encryption using TLS (successor to SSL).
+To open the local `ycqlsh` CLI and access the remote cluster, run `ycqlsh` with flags set for the host and port of the remote cluster. You must also add the `--ssl` flag to enable the use of the client-to-server encryption using TLS (successor to SSL).
 
 ```sh
-$ ./bin/cqlsh <node-ip-address> <port> --ssl
+$ ./bin/ycqlsh <node-ip-address> <port> --ssl
 ```
 
 - *node-ip-address*: the IP address of the remote node.
@@ -141,16 +141,16 @@ $ ./bin/cqlsh <node-ip-address> <port> --ssl
 For example, if the host is `127.0.0.2`, the port is `9042`, and the user is `yugabyte`, run the following command to connect:
 
 ```sh
-$ ./bin/cqlsh 127.0.0.2 9042 --ssl
+$ ./bin/ycqlsh 127.0.0.2 9042 --ssl
 ```
 
 You should see the following output:
 
 ```sql
 Connected to local cluster at X.X.X.X:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh> DESCRIBE KEYSPACES;
+ycqlsh> DESCRIBE KEYSPACES;
 
 system_schema  system_auth  system
 ```

@@ -29,10 +29,10 @@ CREATE INDEX airport_type_region_idx ON airports((type, iso_region) HASH, ident 
 --
 
 -- The following select use batches of ybctid that are selected from "airport_type_hash_idx"
-EXPLAIN SELECT * FROM airports WHERE type = 'large_airport' AND iso_country > '0';
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'large_airport' AND iso_country > '0';
 
 -- The following select use one ybctid at a time to query data.
-EXPLAIN SELECT * FROM airports WHERE ident IN
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE ident IN
   (SELECT ident FROM airports WHERE type = 'large_airport' AND iso_country > '0');
 
 --
@@ -40,8 +40,8 @@ EXPLAIN SELECT * FROM airports WHERE ident IN
 --
 
 -- The following select use batches of ybctid that are selected from "airport_type_range_idx"
-EXPLAIN SELECT elevation_ft FROM airports WHERE type = 'large_airport' AND name > '0';
+EXPLAIN (COSTS OFF) SELECT elevation_ft FROM airports WHERE type = 'large_airport' AND name > '0';
 
 -- The following select use one ybctid at a time to query data.
-EXPLAIN SELECT elevation_ft FROM airports WHERE ident IN
+EXPLAIN (COSTS OFF) SELECT elevation_ft FROM airports WHERE ident IN
   (SELECT ident FROM airports WHERE type = 'large_airport' AND name > '0');

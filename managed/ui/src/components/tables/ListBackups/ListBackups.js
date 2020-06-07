@@ -5,9 +5,9 @@ import PropTypes from 'prop-types';
 import { DropdownButton } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
-import { getPromiseState } from 'utils/PromiseUtils';
-import { isAvailable } from 'utils/LayoutUtils';
-import { timeFormatter, successStringFormatter } from 'utils/TableFormatters';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { isAvailable } from '../../../utils/LayoutUtils';
+import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { TableAction } from '../../tables';
 import SchedulesContainer from '../../schedules/SchedulesContainer';
@@ -29,7 +29,7 @@ export default class ListBackups extends Component {
     this.props.fetchUniverseList();
   }
 
-  componentWillUnMount() {
+  componentWillUnmount() {
     this.props.resetUniverseBackups();
   }
 

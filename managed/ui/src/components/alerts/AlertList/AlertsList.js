@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
-import { showOrRedirect } from 'utils/LayoutUtils';
+import { showOrRedirect } from '../../../utils/LayoutUtils';
 import { alertTypeFormatter } from '../../../utils/TableFormatters';
 
 export default class AlertsList extends Component {

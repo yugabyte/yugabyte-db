@@ -3,8 +3,8 @@
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 
-import { isNonEmptyObject } from 'utils/ObjectUtils';
-import { YBModalForm } from 'components/common/forms';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { YBModalForm } from '../../../components/common/forms';
 
 export default class UpdateRelease extends Component {
   updateRelease = () => {

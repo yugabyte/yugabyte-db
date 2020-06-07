@@ -4,7 +4,7 @@ import { connect } from 'react-redux';
 import { reduxForm } from 'redux-form';
 import {OnPremProviderAndAccessKey} from '../../../config';
 import {setOnPremConfigData} from '../../../../actions/cloud';
-import {isDefinedNotNull, isNonEmptyObject, isNonEmptyArray} from 'utils/ObjectUtils';
+import {isDefinedNotNull, isNonEmptyObject, isNonEmptyArray} from '../../../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {

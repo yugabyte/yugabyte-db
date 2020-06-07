@@ -60,7 +60,7 @@ CREATE TABLE tab_range_nonkey2 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range ON tab_range_nonkey2 (a);
 \d tab_range_nonkey2
 INSERT INTO tab_range_nonkey2 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM tab_range_nonkey2 WHERE a = 1;
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey2 WHERE a = 1;
 SELECT * FROM tab_range_nonkey2 WHERE a = 1;
 UPDATE tab_range_nonkey2 SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey2;
@@ -79,7 +79,7 @@ CREATE INDEX idx_range_noco ON tab_range_nonkey4 (a) WITH (colocated = false);
 CREATE TABLE tab_range_nonkey_noco (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocated = false);
 CREATE INDEX idx_range2 ON tab_range_nonkey_noco (a);
 INSERT INTO tab_range_nonkey_noco (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
 SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
 UPDATE tab_range_nonkey_noco SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey_noco;

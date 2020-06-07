@@ -72,27 +72,27 @@ Start a new local universe with replication factor of `5`.
 $ ./yb-docker-ctl create --rf 5
 ```
 
-Connect to `cqlsh` on node `1`.
+Connect to `ycqlsh` on node `1`.
 
 ```sh
-$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/cqlsh
+$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/ycqlsh
 ```
 
 ```sh
 Connected to local cluster at 127.0.0.1:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh>
+ycqlsh>
 ```
 
 Create a keyspace and a table.
 
 ```sql
-cqlsh> CREATE KEYSPACE users;
+ycqlsh> CREATE KEYSPACE users;
 ```
 
 ```sql
-cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
+ycqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 	                               email text,
 	                               password text,
 	                               profile frozen<map<text, text>>);
@@ -100,17 +100,17 @@ cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 
 ## 2. Insert data through a node
 
-Now insert some data by typing the following into `cqlsh` shell.
+Now insert some data by typing the following into `ycqlsh` shell.
 
 ```sql
-cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
+ycqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (1000, 'james.bond@yugabyte.com', 'licensed2Kill',
    {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
   );
 ```
 
 ```sql
-cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
+ycqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (2000, 'sherlock.holmes@yugabyte.com', 'itsElementary',
    {'firstname': 'Sherlock', 'lastname': 'Holmes'}
   );
@@ -120,7 +120,7 @@ cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
 Query all the rows.
 
 ```sql
-cqlsh> SELECT email, profile FROM users.profile;
+ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
 ```
@@ -137,11 +137,11 @@ cqlsh> SELECT email, profile FROM users.profile;
 Let us now query the data from node `5`.
 
 ```sh
-$ docker exec -it yb-tserver-n5 /home/yugabyte/bin/cqlsh
+$ docker exec -it yb-tserver-n5 /home/yugabyte/bin/ycqlsh
 ```
 
 ```sql
-cqlsh> SELECT email, profile FROM users.profile;
+ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
 ```
@@ -176,13 +176,13 @@ $ ./yb-docker-ctl status
 Now connect to node 4.
 
 ```sh
-$ docker exec -it yb-tserver-n4 /home/yugabyte/bin/cqlsh
+$ docker exec -it yb-tserver-n4 /home/yugabyte/bin/ycqlsh
 ```
 
 Let us insert some data.
 
 ```sql
-cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES 
+ycqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES 
   (3000, 'austin.powers@yugabyte.com', 'imGroovy',
    {'firstname': 'Austin', 'lastname': 'Powers'});
 ```
@@ -190,7 +190,7 @@ cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
 Now query the data.
 
 ```sql
-cqlsh> SELECT email, profile FROM users.profile;
+ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
 ```
@@ -220,13 +220,13 @@ $ ./yb-docker-ctl status
 Now let us connect to node `2`.
 
 ```sh
-$ docker exec -it yb-tserver-n2 /home/yugabyte/bin/cqlsh
+$ docker exec -it yb-tserver-n2 /home/yugabyte/bin/ycqlsh
 ```
 
 Insert some data.
 
 ```sql
-cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
+ycqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (4000, 'superman@yugabyte.com', 'iCanFly',
    {'firstname': 'Clark', 'lastname': 'Kent'});
 ```
@@ -234,7 +234,7 @@ cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
 Run the query.
 
 ```sql
-cqlsh> SELECT email, profile FROM users.profile;
+ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
 ```

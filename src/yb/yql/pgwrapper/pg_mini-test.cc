@@ -842,7 +842,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   std::array<int, 4> num_tables;
 
   {
-    auto catalog_lock(catalog_manager->lock_);
+    SharedLock<master::CatalogManager::LockType> catalog_lock(catalog_manager->lock_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
   {
@@ -864,7 +864,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   {
     // Refresh stale local variables after RestartSync.
     catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
-    auto catalog_lock(catalog_manager->lock_);
+    SharedLock<master::CatalogManager::LockType> catalog_lock(catalog_manager->lock_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
   {
@@ -913,7 +913,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   scoped_refptr<master::TabletInfo> sys_tablet;
 
   {
-    auto catalog_lock(catalog_manager->lock_);
+    SharedLock<master::CatalogManager::LockType> catalog_lock(catalog_manager->lock_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
   {
@@ -941,7 +941,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   {
     // Refresh stale local variables after RestartSync.
     catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
-    auto catalog_lock(catalog_manager->lock_);
+    SharedLock<master::CatalogManager::LockType> catalog_lock(catalog_manager->lock_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());

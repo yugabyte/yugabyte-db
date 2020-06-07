@@ -1614,7 +1614,24 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			TargetEntry *tle = lfirst_node(TargetEntry, lc_arg);
 
 			/* Only support simple column expressions until DocDB can eval PG exprs. */
-			if (!IsA(tle->expr, Var))
+			Oid type = InvalidOid;
+			if (IsA(tle->expr, Var))
+			{
+				type = castNode(Var, tle->expr)->vartype;
+			}
+			else if (IsA(tle->expr, Const))
+			{
+				Const* const_node = castNode(Const, tle->expr);
+				if (const_node->constisnull)
+					/* NULL has a type UNKNOWNOID which isn't very helpful. */
+					type = aggref->aggtranstype;
+				else if (!const_node->constbyval)
+					/* Do not support pointer-based constants yet. */
+					return;
+				else
+					type = const_node->consttype;
+			}
+			else
 				return;
 
 			/*
@@ -1622,7 +1639,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			 * we can safely perform postgres semantic compatible DocDB aggregate evaluation
 			 * otherwise.
 			 */
-			if (!YBCDataTypeIsValidForKey(castNode(Var, tle->expr)->vartype))
+			if (!YBCDataTypeIsValidForKey(type))
 				return;
 		}
 	}

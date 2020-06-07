@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { isObject } from 'lodash';
-import { isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import YBFormRadioButton from './YBFormRadioButton';
 import { YBLabel } from '../../descriptors';
 import { Field } from 'formik';
@@ -57,5 +57,67 @@ export class YBSegmentedButtonGroup extends Component {
     } else {
       return <YBRadioButtonGroupDefault segmented={true} {...otherProps} />;
     }
+  }
+}
+
+export class YBRadioButtonLine extends Component {
+  constructor(props) {
+    super(props);
+    this.radioList = React.createRef();
+    this.state = {
+      selectedOption: null,
+      lineStyle: {}
+    };
+  }
+
+  handleSelect = (index) => {
+    const { onSelect, options } = this.state;
+    this.setState({
+      selectedOption: index
+    });
+    if (onSelect) {
+      onSelect(options[index]);
+    }
+  }
+
+  render() {
+    const { label, meta, options, ...otherProps } = this.props;
+
+    let lineStyle = {};
+    if (this.radioList.current) {
+      const children = this.radioList.current.children;
+      let width = 0;
+      let left = 10;
+      for (let i = 0; i < children.length; i++) {
+        if (i === 0 && !label) {
+          left = children[i].offsetWidth / 2;
+        }
+        if (i === children.length - 1) {
+          width += children[i].offsetWidth / 2;
+        } else {
+          width += children[i].offsetWidth;
+        }
+      }
+      lineStyle = {
+        left: `${left}px`,
+        width: `${width}px`,
+      };
+    }
+    return (
+      <YBLabel label={label} meta={meta} classOverrides={'radio-bar'} {...otherProps}>
+        <ul className="yb-form-radio" ref={this.radioList}>
+          {options.map((value, index) => (
+            <li key={`option-${index}`}>
+              <input type="radio" id={`radio-option-${index}`} name="selector"
+                checked={this.state.selectedOption == index} onChange={() => this.handleSelect(index)}
+              />
+              <div className="check"></div>
+              <label htmlFor={`radio-options-${index}`} onClick={() => this.handleSelect(index)}>{value}</label>
+          </li>
+          ))}
+        </ul>
+        <div className={"connecting-line"} style={lineStyle}></div>
+      </YBLabel>
+    );
   }
 }

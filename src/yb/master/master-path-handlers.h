@@ -139,28 +139,30 @@ class MasterPathHandlers {
     const TabletCountMap& tablet_count_map
   );
 
-  void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, std::stringstream* output,
+  void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, Webserver::WebResponse* resp,
                                    const Webserver::PathHandlerCallback& callback);
-  void RedirectToLeader(const Webserver::WebRequest& req, std::stringstream* output);
+  void RedirectToLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void RootHandler(const Webserver::WebRequest& req,
-                   std::stringstream* output);
+                   Webserver::WebResponse* resp);
   void HandleTabletServers(const Webserver::WebRequest& req,
-                           std::stringstream* output);
+                           Webserver::WebResponse* resp);
   void HandleCatalogManager(const Webserver::WebRequest& req,
-                            std::stringstream* output,
+                            Webserver::WebResponse* resp,
                             bool only_user_tables = false);
   void HandleTablePage(const Webserver::WebRequest& req,
-                       std::stringstream* output);
+                       Webserver::WebResponse* resp);
   void HandleTasksPage(const Webserver::WebRequest& req,
-                       std::stringstream* output);
+                       Webserver::WebResponse* resp);
   void HandleMasters(const Webserver::WebRequest& req,
-                     std::stringstream* output);
+                     Webserver::WebResponse* resp);
   void HandleDumpEntities(const Webserver::WebRequest& req,
-                          std::stringstream* output);
+                          Webserver::WebResponse* resp);
   void HandleGetTserverStatus(const Webserver::WebRequest& req,
-                          std::stringstream* output);
-  void HandleGetClusterConfig(const Webserver::WebRequest& req, std::stringstream* output);
-  void HandleHealthCheck(const Webserver::WebRequest& req, std::stringstream* output);
+                          Webserver::WebResponse* resp);
+  void HandleGetClusterConfig(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleHealthCheck(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleCheckIfLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleGetMastersStatus(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   // Calcuates number of leaders/followers per table.
   void CalculateTabletMap(TabletCountMap* tablet_map);
@@ -188,7 +190,7 @@ class MasterPathHandlers {
   DISALLOW_COPY_AND_ASSIGN(MasterPathHandlers);
 };
 
-void HandleTabletServersPage(const Webserver::WebRequest& req, std::stringstream* output);
+void HandleTabletServersPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
 } // namespace master
 } // namespace yb

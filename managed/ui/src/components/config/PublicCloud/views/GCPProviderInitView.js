@@ -6,9 +6,9 @@ import { Row, Col } from 'react-bootstrap';
 import { YBButton, YBAddRowButton, YBToggle, YBNumericInput } from '../../../common/forms/fields';
 import { YBTextInputWithLabel, YBSelectWithLabel, YBDropZone, YBInputField } from '../../../common/forms/fields';
 import { change, Field } from 'redux-form';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { YBLoading } from '../../../common/indicators';
-import { isNonEmptyObject, isNonEmptyString } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyString } from '../../../../utils/ObjectUtils';
 import { reduxForm, FieldArray } from 'redux-form';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 

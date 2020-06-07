@@ -6,10 +6,10 @@ import { YBTabsPanel } from '../../panels';
 import { YBTextInput, YBButton } from '../../common/forms/fields';
 import { withRouter } from 'react-router';
 import { Field } from 'redux-form';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
-import { isDefinedNotNull } from "utils/ObjectUtils";
+import { isDefinedNotNull } from "../../../utils/ObjectUtils";
 import AwsStorageConfiguration from './AwsStorageConfiguration';
 
 import awss3Logo from './images/aws-s3.png';

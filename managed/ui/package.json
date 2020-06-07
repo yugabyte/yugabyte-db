@@ -12,10 +12,6 @@
     "eject": "react-app-rewired eject",
     "test": "react-app-rewired test --env=jsdom"
   },
-  "engines": {
-    "node": "5.2.0",
-    "npm": "3.3.12"
-  },
   "devDependencies": {
     "@babel/runtime": "^7.0.0-beta.3",
     "array-union": "^1.0.2",

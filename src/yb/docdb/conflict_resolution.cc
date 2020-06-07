@@ -368,7 +368,8 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
           [self, &transaction](Result<TransactionStatusResult> result) {
         if (result.ok()) {
           transaction.ProcessStatus(*result);
-        } else if (result.status().IsRemoteError()) {
+        } else if (result.status().IsRemoteError() || result.status().IsAborted()) {
+          // Non retryable errors. Aborted could be caused by shutdown.
           transaction.failure = result.status();
         } else {
           LOG(INFO) << self->LogPrefix() << "Abort failed, would retry: " << result.status();

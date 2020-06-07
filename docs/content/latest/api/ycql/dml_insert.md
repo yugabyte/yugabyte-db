@@ -88,22 +88,22 @@ Where
 ### Insert a row into a table
 
 ```sql
-cqlsh:example> CREATE TABLE employees(department_id INT, 
-                                      employee_id INT, 
-                                      name TEXT, 
+ycqlsh:example> CREATE TABLE employees(department_id INT,
+                                      employee_id INT,
+                                      name TEXT,
                                       PRIMARY KEY(department_id, employee_id));
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
 ```
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -118,7 +118,7 @@ cqlsh:example> SELECT * FROM employees;
 Example 1
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe') IF name = null;
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe') IF name = null;
 ```
 
 ```
@@ -130,10 +130,10 @@ cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2
 Example 2
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Jack') IF NOT EXISTS;
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Jack') IF NOT EXISTS;
 ```
 
-``` 
+```
  [applied]
 -----------
      False
@@ -142,7 +142,7 @@ cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2
 Example 3
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -158,13 +158,13 @@ cqlsh:example> SELECT * FROM employees;
 You can do this as shown below.
 
 ```sql
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack') USING TTL 10;
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack') USING TTL 10;
 ```
 
 Now query the employees table.
 
 ```sql
-cqlsh:example> SELECT * FROM employees;
+ycqlsh:example> SELECT * FROM employees;
 ```
 
 ```
@@ -179,10 +179,10 @@ cqlsh:example> SELECT * FROM employees;
 Again query the employees table after 11 seconds or more.
 
 ```sql
-cqlsh:example> SELECT * FROM employees; -- 11 seconds after the insert. 
+ycqlsh:example> SELECT * FROM employees; -- 11 seconds after the insert.
 ```
 
-``` 
+```
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
@@ -190,18 +190,18 @@ cqlsh:example> SELECT * FROM employees; -- 11 seconds after the insert.
              1 |           2 | Jane
 ```
 
-### Insert a row with `USING TIMESTAMP` clause.
+### Insert a row with `USING TIMESTAMP` clause
 
-#### Insert a row with a low timestamp.
+#### Insert a row with a low timestamp
 
 ```sql
-cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'Jeff') USING TIMESTAMP 1000;
+ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'Jeff') USING TIMESTAMP 1000;
 ```
 
 Now query the employees table.
 
 ```sql
-cqlsh:foo> SELECT * FROM employees;
+ycqlsh:foo> SELECT * FROM employees;
 ```
 
 ```
@@ -215,14 +215,14 @@ cqlsh:foo> SELECT * FROM employees;
 (4 rows)
 ```
 
-#### Overwrite the row with a higher timestamp.
+#### Overwrite the row with a higher timestamp
 
 ```sql
-cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'Jerry') USING TIMESTAMP 2000;
+ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'Jerry') USING TIMESTAMP 2000;
 ```
 
 ```sql
-cqlsh:foo> SELECT * FROM employees;
+ycqlsh:foo> SELECT * FROM employees;
 ```
 
 ```
@@ -236,14 +236,14 @@ cqlsh:foo> SELECT * FROM employees;
 (4 rows)
 ```
 
-#### Try to overwrite the row with a lower timestamp.
+#### Try to overwrite the row with a lower timestamp
 
 ```sql
-cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'James') USING TIMESTAMP 1500;
+ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'James') USING TIMESTAMP 1500;
 ```
 
 ```sql
-cqlsh:foo> SELECT * FROM employees;
+ycqlsh:foo> SELECT * FROM employees;
 ```
 
 ```
@@ -264,4 +264,3 @@ cqlsh:foo> SELECT * FROM employees;
 - [`SELECT`](../dml_select)
 - [`UPDATE`](../dml_update)
 - [`Expression`](..#expressions)
-

@@ -246,7 +246,7 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 			}
 
 			/* Tell pggate about it */
-			YBCPgCreateTableSetNumTablets(handle, split_options->num_tablets);
+			HandleYBStatus(YBCPgCreateTableSetNumTablets(handle, split_options->num_tablets));
 			break;
 		case SPLIT_POINTS: ;
 			/* Number of columns used in the primary key */
@@ -368,7 +368,8 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 					split_num++;
 				}
 
-				YBCPgCreateTableAddSplitRow(handle, split_columns, type_entities, (uint64_t *)datums);
+				HandleYBStatus(YBCPgCreateTableAddSplitRow(handle, split_columns,
+					type_entities, (uint64_t *)datums));
 			}
 
 			break;
@@ -602,6 +603,29 @@ YBCTruncateTable(Relation rel) {
 	list_free(indexlist);
 }
 
+static void CreateIndexHandleSplitOptions(YBCPgStatement handle,
+										OptSplit *split_options,
+										TupleDesc desc,
+										int16 * coloptions)
+{
+	/* Address both types of split options */
+	switch (split_options->split_type)
+	{
+		case NUM_TABLETS:
+			/* Make sure we have HASH columns */
+			if (!(coloptions[0] & INDOPTION_HASH)) {
+				ereport(ERROR, (errmsg("HASH columns must be present to "
+									   "split by number of tablets")));
+			}
+			/* Tell pggate about it */
+			HandleYBStatus(YBCPgCreateIndexSetNumTablets(handle, split_options->num_tablets));
+			break;
+		default:
+			ereport(ERROR, (errmsg("Illegal memory state for SPLIT options")));
+			break;
+	}
+}
+
 void
 YBCCreateIndex(const char *indexName,
 			   IndexInfo *indexInfo,
@@ -609,7 +633,8 @@ YBCCreateIndex(const char *indexName,
 			   int16 *coloptions,
 			   Datum reloptions,
 			   Oid indexId,
-			   Relation rel)
+			   Relation rel,
+			   OptSplit *split_options)
 {
 	char *db_name	  = get_database_name(MyDatabaseId);
 	char *schema_name = get_namespace_name(RelationGetNamespace(rel));
@@ -678,6 +703,11 @@ YBCCreateIndex(const char *indexName,
 																						 is_key,
 																						 is_desc,
 																						 is_nulls_first));
+	}
+
+	/* Handle SPLIT statement, if present */
+	if (split_options) {
+		CreateIndexHandleSplitOptions(handle, split_options, indexTupleDesc, coloptions);
 	}
 
 	/* Create the index. */

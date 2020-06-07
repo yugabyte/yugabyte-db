@@ -8,8 +8,8 @@ menu:
     identifier: architecture-docdb-replication-read-replicas
     parent: architecture-docdb-replication
     weight: 1155
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 In addition to the core distributed consensus based replication, DocDB extends Raft to add read replicas (aka observer nodes) that do not participate in writes but get a timeline consistent copy of the data in an asynchronous manner.

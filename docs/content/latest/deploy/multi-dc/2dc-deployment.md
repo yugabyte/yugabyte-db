@@ -72,7 +72,7 @@ setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 \
 
 {{< note title="Note" >}}
 
-There should be three table IDs in the command above — two of those are YSQL for base table and index, and one for CQL table. Also, make sure to specify all master addresses for both producer and consumer universes in the command.
+There should be three table IDs in the command above — two of those are YSQL for base table and index, and one for YCQL table. Also, make sure to specify all master addresses for both producer and consumer universes in the command.
 
 {{< /note >}}
 
@@ -106,7 +106,7 @@ For bidirectional replication, repeat this step in the "yugabyte-consumer" unive
 
 **For unidirectional replication**
 
-Connect to “yugabyte-consumer” universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`cqlsh`), and then confirm that you can see expected records.
+Connect to “yugabyte-consumer” universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and then confirm that you can see expected records.
 
 **For bidirectional replication**
 

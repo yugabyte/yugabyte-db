@@ -5,16 +5,15 @@ import { Row, Col } from 'react-bootstrap';
 import { YBButton } from '../../../common/forms/fields';
 import { YBFormSelect, YBFormInput, YBFormDropZone } from '../../../common/forms/fields';
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
-import { isNonEmptyObject } from 'utils/ObjectUtils';
-import { readUploadedFile } from 'utils/UniverseUtils';
-import { KUBERNETES_PROVIDERS } from 'config';
+import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
+import { readUploadedFile } from '../../../../utils/UniverseUtils';
+import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
 import { withRouter } from 'react-router';
 import { Formik, Field } from 'formik';
 import AddRegionList from './AddRegionList';
 import * as Yup from "yup";
 import JsYaml from "js-yaml";
 import _ from 'lodash';
-import { REGION_DICT } from 'config';
 
 const convertStrToCode = s => s.trim().toLowerCase().replace(/\s/g, '-');
 

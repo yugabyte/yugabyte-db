@@ -24,9 +24,10 @@ Use the `FROZEN` data type to specify columns of binary strings that result from
 ```
 type_specification ::= FROZEN<type>
 ```
+
 Where
 
-- `type` is a well-formed CQL data type (additional restrictions for `type` are covered in the Semantics section below).
+- `type` is a well-formed YCQL data type (additional restrictions for `type` are covered in the Semantics section below).
 
 ## Semantics
 
@@ -38,23 +39,23 @@ Where
 ## Examples
 
 ```sql
-cqlsh:example> CREATE TABLE directory(file FROZEN<LIST<TEXT>> PRIMARY KEY, value BLOB);
+ycqlsh:example> CREATE TABLE directory(file FROZEN<LIST<TEXT>> PRIMARY KEY, value BLOB);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO directory(file, value) VALUES([ 'home', 'documents', 'homework.doc' ], 0x);
+ycqlsh:example> INSERT INTO directory(file, value) VALUES([ 'home', 'documents', 'homework.doc' ], 0x);
 ```
 
 ```sql
-cqlsh:example> INSERT INTO directory(file, value) VALUES([ 'home', 'downloads', 'textbook.pdf' ], 0x12ab21ef);
+ycqlsh:example> INSERT INTO directory(file, value) VALUES([ 'home', 'downloads', 'textbook.pdf' ], 0x12ab21ef);
 ```
 
 ```sql
-cqlsh:example> UPDATE directory SET value = 0xab00ff WHERE file = [ 'home', 'documents', 'homework.doc' ];
+ycqlsh:example> UPDATE directory SET value = 0xab00ff WHERE file = [ 'home', 'documents', 'homework.doc' ];
 ```
 
 ```sql
-cqlsh:example> SELECT * FROM directory;
+ycqlsh:example> SELECT * FROM directory;
 ```
 
 ```

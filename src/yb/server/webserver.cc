@@ -107,7 +107,7 @@ Webserver::~Webserver() {
   STLDeleteValues(&path_handlers_);
 }
 
-void Webserver::RootHandler(const Webserver::WebRequest& args, stringstream* output) {
+void Webserver::RootHandler(const Webserver::WebRequest& args, Webserver::WebResponse* resp) {
 }
 
 void Webserver::BuildArgumentMap(const string& args, ArgumentMap* output) {
@@ -364,14 +364,25 @@ int Webserver::RunPathHandler(const PathHandler& handler,
     use_style = false;
   }
 
-  stringstream output;
-  if (use_style) BootstrapPageHeader(&output);
-  for (const PathHandlerCallback& callback_ : handler.callbacks()) {
-    callback_(req, &output);
+  WebResponse resp;
+  WebResponse* resp_ptr = &resp;
+  // Default response code should be OK.
+  resp_ptr->code = 200;
+  stringstream *output = &resp_ptr->output;
+  if (use_style) {
+    BootstrapPageHeader(output);
   }
-  if (use_style) BootstrapPageFooter(&output);
-
-  string str = output.str();
+  for (const PathHandlerCallback& callback_ : handler.callbacks()) {
+    callback_(req, resp_ptr);
+    if (resp_ptr->code == 503) {
+      sq_printf(connection, "HTTP/1.1 503 Service Unavailable\r\n");
+      return 1;
+    }
+  }
+  if (use_style) {
+    BootstrapPageFooter(output);
+  }
+  string str = output->str();
   // Without styling, render the page as plain text
   if (!use_style) {
     sq_printf(connection, "HTTP/1.1 200 OK\r\n"

@@ -184,7 +184,7 @@ class RpcAndWebServerBase : public RpcServerBase {
       std::shared_ptr<MemTracker> mem_tracker);
   virtual ~RpcAndWebServerBase();
 
-  virtual Status HandleDebugPage(const Webserver::WebRequest& req, std::stringstream* output);
+  virtual Status HandleDebugPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   virtual void DisplayGeneralInfoIcons(std::stringstream* output);
 

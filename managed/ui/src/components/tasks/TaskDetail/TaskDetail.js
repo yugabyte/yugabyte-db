@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Link, withRouter, browserHistory } from 'react-router';
-import {isNonEmptyString, isNonEmptyArray, isNonEmptyObject} from 'utils/ObjectUtils';
+import {isNonEmptyString, isNonEmptyArray, isNonEmptyObject} from '../../../utils/ObjectUtils';
 import './TaskDetail.scss';
 import { StepProgressBar } from '../../common/indicators';
 import { YBResourceCount } from '../../common/descriptors';

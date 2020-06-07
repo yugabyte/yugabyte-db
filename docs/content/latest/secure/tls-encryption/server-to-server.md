@@ -62,7 +62,7 @@ For information on starting YB-TServers for a deployment, see [start YB-TServers
 
 ## Connect to the cluster
 
-Because you have only enabled server-to-server encryption and not [client-to-server encryption](../client-to-server), you can now connect to this cluster using the YSQL shell (`ysqlsh`) or the YCQL shell (`cqlsh`) without enabling encryption as shown here.
+Because you have only enabled server-to-server encryption and not [client-to-server encryption](../client-to-server), you can now connect to this cluster using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`) without enabling encryption as shown here.
 
 ### YSQL
 
@@ -80,13 +80,13 @@ yugabyte=#
 ### YCQL
 
 ```sh
-$ ./bin/cqlsh
+$ ./bin/ycqlsh
 ```
 
 ```
 Connected to local cluster at 127.0.0.1:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
 
-cqlsh>
+ycqlsh>
 ```

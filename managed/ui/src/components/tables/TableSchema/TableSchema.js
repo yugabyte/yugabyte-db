@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import moment from 'moment';
 import 'moment-precise-range-plugin';
 import { Row, Col } from 'react-bootstrap';
-import { isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isValidObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import './TableSchema.scss';
 
 export default class TableSchema extends Component {

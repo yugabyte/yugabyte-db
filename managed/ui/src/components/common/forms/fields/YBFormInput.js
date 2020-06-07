@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { YBLabel } from 'components/common/descriptors';
+import { YBLabel } from '../../../../components/common/descriptors';
 import { FormControl } from 'react-bootstrap';
-import { isDefinedNotNull } from 'utils/ObjectUtils';
+import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 
 export default class YBFormInput extends Component {
   handleChange = event => {
