@@ -1540,19 +1540,27 @@ string MasterPathHandlers::RegistrationToHtml(
 }
 
 void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
+  set<TabletId> setOfTablets;
   vector<scoped_refptr<TableInfo>> tables;
   master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
   for (const auto& table : tables) {
     TabletInfos tablets;
     table->GetAllTablets(&tablets);
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
+    bool colocated = table->colocated();
 
     for (const auto& tablet : tablets) {
+      auto tabletId = Substitute("$0", tablet->id());
+      auto it = setOfTablets.emplace(tabletId);
+      if (!(it.second)) { // already taken care of
+        continue;
+      }
+
       TabletInfo::ReplicaMap replication_locations;
       tablet->GetReplicaLocations(&replication_locations);
 
       for (const auto& replica : replication_locations) {
-        if (is_user_table) {
+        if (colocated || is_user_table) {
           if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
             (*tablet_map)[replica.first].user_tablet_leaders++;
           } else {
