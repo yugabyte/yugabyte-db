@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Each node in a universe has a **Status** column indicating its current logical state based on the Yugabyte Platform layer. This section first describes what each of them means and gives information on when and how these can be modified by the user. The nodes tab on the universe page shows them. When you create a universe, the **Nodes** tab on the universe page provides the physical (such as IP, cloud) and the logical state information (master, status, etc.) about that node. Note that the `STATUS` for each node is **Live**. This is the steady state value for a normally functioning node.
+Each node in a universe has a **Status** column indicating its current logical state based on the Yugabyte Platform layer. This section first describes what each of them means and gives information on when and how these can be modified by the user. The nodes tab on the universe page shows them. When we create a universe, the **Nodes** tab on the universe page provides the physical (such as ip, cloud) and the logical state information (master, status, etc.) about that node. Note that the `STATUS` for each node is **Live**. This is the steady state value for a normally functioning node.
 
 ![Node Actions](/images/ee/node-actions-live.png)
 
@@ -32,9 +32,9 @@ Decommissioned | The underlying instance has been released to the IaaS. This can
 Provisioned | During universe creation, this indicates the instance is being setup with the required OS packages (for example, `ntp` and `chronyd`).
 Software Installed | During universe creation, this indicates YugabyteDB software is being deployed on this node.
 Upgrade Software | The software version is being updated on this node and the master/tserver processes will be restarted.
-Upgrade GFlags | A server (`master` or `tserver`) process configuration file is being updated and the corresponding server will be restarted.
+Upgrade Flags | A server (`master` or `tserver`) process configuration file is being updated and the corresponding server will be restarted.
 Unreachable | Yugabyte Platform is not able to get information from the `node_exporter` process on that node.
-Destroyed | Very transient, while the universe is being deleted.
+Destroyed | Very transient, while the universe (or cluster) is being deleted.
 
 ## Node actions
 
@@ -84,7 +84,7 @@ Since we know that the instance is dead, we can go ahead and release the ip as w
 
 ### Add node
 
-The node can brought back to life on a new backing instance using the **Add Node** option from the dropdown for the `Decomissioned` node. For IaaS, like AWS and GCP, YugaWare will spawn with the existing instance type in the correct/existing region and zone of that node. After the end of this operation, the node will have `yb-master` and `yb-tserver` processes running along with some data that is load balanced onto this node and status will be marked `Live`. Note that the node name is reused and is part of the healthy cluster now.
+The node can brought back to life on a new backing instance using the **Add Node** option from the dropdown for the `Decomissioned` node. For IaaS, like AWS and GCP, the Yugabyte Platform application will spawn with the existing instance type in the correct/existing region and zone of that node. After the end of this operation, the node will have `yb-master` and `yb-tserver` processes running along with some data that is load balanced onto this node and status will be marked `Live`. Note that the node name is reused and is part of the healthy cluster now.
 
 ![Add Node Actions](/images/ee/node-actions-add-node.png)
 

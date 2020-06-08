@@ -9,7 +9,7 @@ Give the project a suitable name (eg: `yugabyte-gcp`) and note the project ID (e
 
 ## 2. Set up a new service account
 
-YugaWare admin console requires a service account with the appropriate permissions to provision and manage compute instances. Go to the `IAM & admin` -> `Service accounts` and click on `Create Service Account`. You can follow these instructions to [create a service account](https://cloud.google.com/iam/docs/creating-managing-service-accounts).
+YugabyteDB Admin Console requires a service account with the appropriate permissions to provision and manage compute instances. Go to the `IAM & admin` -> `Service accounts` and click on `Create Service Account`. You can follow these instructions to [create a service account](https://cloud.google.com/iam/docs/creating-managing-service-accounts).
 
 Fill the form with the following values:
 
@@ -35,11 +35,11 @@ Here is a screenshot with the above values in the form, click create once the va
 
 ## 4. Creating a firewall rule
 
-In order to access YugaWare from outside the GCP environment, you would need to enable firewall rules. You will at minimum need to:
+In order to access the Yugabyte Platform from outside the GCP environment, you would need to enable firewall rules. You will at minimum need to:
 
-- Access the YugaWare instance over ssh (port tcp:22)
-- Check, manage and upgrade YugaWare (port tcp:8800)
-- View the YugaWare console ui (port tcp:80)
+- Access the Yugabyte Platform instance over SSH (port tcp:22)
+- Check, manage, and upgrade Yugabyte Platform (port tcp:8800)
+- View the YugabyteDB Admin Console (port tcp:80)
 
 Let us create a firewall entry enabling all of that!
 
@@ -97,16 +97,15 @@ Note on boot disk customization:
 
 ![VM instances -- pick boot disk](/images/ee/gcp-setup/vm-pick-boot-disk.png)
 
-
 Note on networking customization:
 
 ![VM instances -- networking tweaks](/images/ee/gcp-setup/vm-networking.png)
 
-Finally, click `Create` to launch the YugaWare server.
+Finally, click `Create` to launch the Yugabyte Platform server.
 
-## 6. Connect to the YugaWare machine
+## 6. Connect to the Yugabyte Platform machine
 
-From the GCP web management console, find the public ip address of the instance we just launched.
+From the GCP web management console, find the public IP address of the instance we just launched.
 
 You can connect to this machine by running the following command (remember to replace `XX.XX.XX.XX` below with the ip address, and also to enter the appropriate ssh key instead of `yugaware-1-gcp`).
 

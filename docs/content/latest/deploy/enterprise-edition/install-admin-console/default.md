@@ -37,11 +37,11 @@ showAsideToc: true
   </li>
 </ul>
 
-YugabyteDB clusters are created and managed from YugaWare. The default option to install YugaWare on a host machine that is connected to the Internet.
+YugabyteDB universes and clusters are created and managed using the Yugabyte Platform. The default option to install Yugabyte Platform on a host machine that is connected to the Internet.
 
 ## Step 1. Install Replicated
 
-Connect to the YugaWare instance and do the following.
+Connect to the Yugabyte Platform instance and do the following.
 
 - Install Replicated.
 
@@ -69,7 +69,7 @@ You should see an output similar to the following.
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-## Step 2. Install YugaWare
+## Step 2. Install Yugabyte Platform
 
 ### Set up HTTPS for Replicated
 
@@ -99,16 +99,16 @@ If you are asked to choose an installation type, choose `Online`.
 
 ### Secure Replicated
 
-The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from YugaWare, the Admin Console for YugabyteDB).
+The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from Yugabyte Platform, the Admin Console for YugabyteDB).
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
 ### Pre-flight checks
 
-Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the YugaWare application.
+Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the Yugabyte Platform application.
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 
-Clicking Continue above will bring us to YugaWare configuration.
+Clicking Continue above will bring us to Yugabyte Platform configuration.
 
 In case the pre-flight check fails, see [Troubleshoot Yugabyte Platform](../../../troubleshoot/enterprise-edition/) to identify the resolution.

@@ -1,8 +1,8 @@
 ---
-title: Prepare cloud environments for Yugabyte Platform and YugaWare
+title: Prepare cloud environments for Yugabyte Platform
 headerTitle: Prepare cloud environment
 linkTitle: 1. Prepare cloud environment
-description: Prepare your cloud environment for the Yugabyte Platform
+description: Prepare your cloud environment for the Yugabyte Platform.
 aliases:
   - /deploy/enterprise-edition/prepare-cloud-environment/
 menu:
