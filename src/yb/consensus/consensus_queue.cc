@@ -67,6 +67,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/url-coding.h"
@@ -1438,6 +1439,38 @@ bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
         OpIdToString(peer->last_received));
   }
   return peer_can_be_leader;
+}
+
+string PeerMessageQueue::GetUpToDatePeer() const {
+  OpId highest_op_id = MinimumOpId();
+  std::vector<std::string> candidates;
+
+  {
+    std::lock_guard<simple_spinlock> lock(queue_lock_);
+    for (const PeersMap::value_type& entry : peers_map_) {
+      if (local_peer_uuid_ == entry.first) {
+        continue;
+      }
+      if (OpIdBiggerThan(highest_op_id, entry.second->last_received)) {
+        continue;
+      } else if (OpIdEquals(highest_op_id, entry.second->last_received)) {
+        candidates.push_back(entry.first);
+      } else {
+        candidates = {entry.first};
+        highest_op_id = entry.second->last_received;
+      }
+    }
+  }
+
+  if (candidates.empty()) {
+    return string();
+  }
+  size_t index = 0;
+  if (candidates.size() > 1) {
+    // choose randomly among candidates at the same opid
+    index = RandomUniformInt<size_t>(0, candidates.size() - 1);
+  }
+  return candidates[index];
 }
 
 PeerMessageQueue::~PeerMessageQueue() {

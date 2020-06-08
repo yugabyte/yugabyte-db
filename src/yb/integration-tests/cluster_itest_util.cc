@@ -780,14 +780,19 @@ Status StartElection(const TServerDetails* replica,
   return Status::OK();
 }
 
-Status LeaderStepDown(const TServerDetails* replica,
-                      const string& tablet_id,
-                      const TServerDetails* new_leader,
-                      const MonoDelta& timeout,
-                      TabletServerErrorPB* error) {
+Status LeaderStepDown(
+    const TServerDetails* replica,
+    const string& tablet_id,
+    const TServerDetails* new_leader,
+    const MonoDelta& timeout,
+    const bool disable_graceful_transition,
+    TabletServerErrorPB* error) {
   LeaderStepDownRequestPB req;
   req.set_dest_uuid(replica->uuid());
   req.set_tablet_id(tablet_id);
+  if (disable_graceful_transition) {
+    req.set_disable_graceful_transition(disable_graceful_transition);
+  }
   if (new_leader) {
     req.set_new_leader_uuid(new_leader->uuid());
   }
