@@ -509,7 +509,8 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
       }
       auto sum = ReadSumBalance(&conn, kAccounts, isolation, &counter);
       if (!sum.ok()) {
-        ++failures_in_row;
+        // Do not overflow long when doing bitshift above.
+        failures_in_row = std::min(failures_in_row + 1, 63);
         ASSERT_TRUE(TransactionalFailure(sum.status())) << sum.status();
       } else {
         failures_in_row = 0;
