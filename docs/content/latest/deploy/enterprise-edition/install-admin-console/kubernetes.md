@@ -6,7 +6,7 @@ The YugaWare Helm chart documented here has been tested with the following softw
 
 - Kubernetes 1.10 or later.
 - Helm 3.0 or later.
-- YugaWare Docker Images 1.1.0 or later.
+- YugaWare Docker image 1.1.0 or later.
 - Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to YugaWare.
 
 Confirm that your `helm` is configured correctly.
@@ -19,114 +19,130 @@ $ helm version
 version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
 ```
 
-## Create a cluster
+## Install Yugabyte Platform
 
-### Initialize Helm
+1. [Optional] Create namespace (if not installing in default namespace).
 
-Initialize `helm` with the service account but use the `--upgrade` flag to ensure that you can upgrade any previous initializations you may have made.
+    ```sh
+    $ kubectl create namespace yw-test
+    ```
+
+    ```
+    namespace/yw-test created
+    ```
+
+2. Run the following `kubectl apply` command to apply the secret. To get the secret, contact Yugabyte Support.
+
+    ```sh
+    $ kubectl apply -f ~/Desktop/K8s/yugabyte-k8s-secret.yml -n yw-test
+    ```
+
+    You should see a mesage like the following.
+
+    ```
+    secret/yugabyte-k8s-pull-secret created
+    ```
+
+3. Run the following `helm repo add` command to clone the [YugabyteDB charts repository](https://charts.yugabyte.com/).
+
+    ```sh
+    $ helm repo add yugabytedb https://charts.yugabyte.com
+    ```
+
+    A message should appear, similar to this:
+
+    ```
+    "yugabytedb" has been added to your repositories
+    ```
+
+{{< note title="Note" >}}
+
+If you have previously cloned the YugabyteDB charts repository, you can update it instead by running the following command:
 
 ```sh
-$ helm init --service-account yugabyte-helm --upgrade --wait
+$ helm repo update
 ```
 
-```sh
-$HELM_HOME has been configured at `/Users/<user>/.helm`.
+To search for the available chart version, run this command:
 
-Tiller (the Helm server-side component) has been upgraded to the current version.
-Happy Helming!
+    ```sh
+    $ helm search repo yugabytedb/yugabyte
+    ```
+
+The latest Helm Chart version and App version will be displayed.
+
+    ```
+    NAME               	CHART VERSION	APP VERSION	DESCRIPTION                                       
+yugabytedb/yugabyte	2.1.5        	2.1.5.0-b17	YugabyteDB is the high-performance distributed ...
+    ```
+
+{{< /note >}}
+
+4. Run the following `helm install` command to install Yugabyte Platform (YugaWare).
+
+    ```sh
+    $ helm install yw-test yugabytedb/yugaware --version 2.1.5 -n yw-test --wait
+    ```
+
+    ```
+    NAME: yw-test
+    LAST DEPLOYED: Fri Jun  5 02:57:59 2020
+    NAMESPACE: yw-test
+    STATUS: deployed
+    REVISION: 1
+    TEST SUITE: None
+    ```
+
+To check all resources, run the following command:
+
+```sh
+$ kubectl get all -n yw-test
 ```
 
-### Download YugaWare Helm Chart
+Details about the names, ready status, restarts, and age are displayed.
 
-You can do this as shown below.
+```
+NAME                         READY   STATUS   RESTARTS   AGE
+pod/yw-test-yugaware-0   6/6     Running   0                   5m51s
 
-```sh
-$ wget https://downloads.yugabyte.com/kubernetes/yugaware-1.0.0.tgz
+NAME                                     TYPE                CLUSTER-IP   EXTERNAL-IP    PORT(S)                                       AGE
+service/yw-test-yugaware-ui   LoadBalancer   10.112.6.190   35.199.146.194   80:32446/TCP,9090:32018/TCP   5m51s
+
+NAME                                           READY   AGE
+statefulset.apps/yw-test-yugaware   1/1     5m52s
 ```
 
-### Install YugaWare
+## Upgrade Yugabyte Platform (YugaWare)
 
-Install YugaWare in the Kubernetes cluster using the command below.
+To upgrade your installed Yugabyte Platform, run the following `helm upgrade` command.
 
 ```sh
-$ helm install yugaware-1.0.0.tgz --name yb --set=image.tag=1.1.10.0-b3 --wait
+$ helm upgrade yw-test yugabytedb/yugaware --version 2.1.5 --set image.tag=2.1.7.0-b19 -n 
 ```
 
-### Check the cluster status
-
-You can check the status of the cluster using various commands noted below.
-
-```sh
-$ helm status yb
+```
+yw-test --timeout 900s --wait
+Release "yw-test" has been upgraded. Happy Helming!
+NAME: yw-test
+LAST DEPLOYED: Fri Jun  5 03:56:38 2020
+NAMESPACE: yw-test
+STATUS: deployed
+REVISION: 2
+TEST SUITE: None
 ```
 
+## Delete the Yugabyte Platform (YugaWare)
+
+To remove the Yugabyte Platform, run the `helm delete` command:
+
 ```sh
-LAST DEPLOYED: Wed Jan  2 14:12:27 2019
-NAMESPACE: default
-STATUS: DEPLOYED
-
-RESOURCES:
-==> v1/ConfigMap
-NAME                           AGE
-yb-yugaware-global-config      14d
-yb-yugaware-app-config         14d
-yb-yugaware-nginx-config       14d
-yb-yugaware-prometheus-config  14d
-
-==> v1/PersistentVolumeClaim
-yb-yugaware-storage  14d
-
-==> v1/ServiceAccount
-yugaware  14d
-
-==> v1/ClusterRole
-yugaware  14d
-
-==> v1/ClusterRoleBinding
-yugaware  14d
-
-==> v1/Service
-yb-yugaware-ui  14d
-
-==> v1/StatefulSet
-yb-yugaware  14d
-
-==> v1/Pod(related)
-
-NAME           READY  STATUS   RESTARTS  AGE
-yb-yugaware-0  5/5    Running  0         14d
+$ helm del yw-test -n yw-test
 ```
 
-Get service details.
+A message displays that the Yugabyte Platform release and the namespace is deleted.
 
-```sh
-$ kubectl get svc -lapp=yb-yugaware
 ```
-
-```sh
-NAME             TYPE           CLUSTER-IP    EXTERNAL-IP      PORT(S)                       AGE
-yb-yugaware-ui   LoadBalancer   10.102.9.91   10.200.300.400   80:32495/TCP,9090:30087/TCP   15d
-```
-
-You can even check the history of the `yb` helm chart.
-
-```sh
-$ helm history yb
-```
-
-```sh
-REVISION	UPDATED                 	STATUS  	CHART         	DESCRIPTION
-1       	Wed Jan  2 14:12:27 2019	DEPLOYED	yugaware-1.0.0	Install complete
-```
-
-### Upgrade YugaWare
-
-```sh
-$ helm upgrade yb yugaware-1.0.0.tgz --set=image.tag=<new-tag> --wait
-```
-
-### Delete YugaWare
-
-```sh
-$ helm delete yb --purge
+release "yw-test" uninstalled
+04:12 $ kubectl delete namespace yw-test
+namespace "yw-test" deleted
 ```
