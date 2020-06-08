@@ -47,41 +47,45 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/consensus/consensus.proxy.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/env.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/protobuf_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
 
+using std::ostringstream;
+using std::shared_ptr;
+using std::string;
+using std::vector;
 using yb::HostPort;
+using yb::consensus::ConsensusServiceProxy;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 using yb::server::ServerStatusPB;
 using yb::tablet::TabletStatusPB;
-using yb::tserver::DeleteTabletRequestPB;
-using yb::tserver::DeleteTabletResponsePB;
-using yb::tserver::ListTabletsRequestPB;
-using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::CountIntentsRequestPB;
 using yb::tserver::CountIntentsResponsePB;
+using yb::tserver::DeleteTabletRequestPB;
+using yb::tserver::DeleteTabletResponsePB;
 using yb::tserver::FlushTabletsRequestPB;
 using yb::tserver::FlushTabletsResponsePB;
+using yb::tserver::ListTabletsRequestPB;
+using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::TabletServerAdminServiceProxy;
 using yb::tserver::TabletServerServiceProxy;
-using std::ostringstream;
-using std::shared_ptr;
-using std::string;
-using std::vector;
 
 const char* const kListTabletsOp = "list_tablets";
 const char* const kAreTabletsRunningOp = "are_tablets_running";
 const char* const kSetFlagOp = "set_flag";
 const char* const kDumpTabletOp = "dump_tablet";
+const char* const kTabletStateOp = "get_tablet_state";
 const char* const kDeleteTabletOp = "delete_tablet";
 const char* const kCurrentHybridTime = "current_hybrid_time";
 const char* const kStatus = "status";
@@ -101,6 +105,8 @@ DEFINE_bool(force, false, "If true, allows the set_flag command to set a flag "
 
 DEFINE_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
+
+PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 
 // Check that the value of argc matches what's expected, otherwise return a
 // non-zero exit code. Should be used in main().
@@ -162,6 +168,9 @@ class TsAdminClient {
   // Dump the contents of the given tablet, in key order, to the console.
   Status DumpTablet(const std::string& tablet_id);
 
+  // Print the consensus state to the console.
+  Status PrintConsensusState(const std::string& tablet_id);
+
   // Delete a tablet replica from the specified peer.
   // The 'reason' string is passed to the tablet server, used for logging.
   Status DeleteTablet(const std::string& tablet_id,
@@ -189,6 +198,7 @@ class TsAdminClient {
   shared_ptr<server::GenericServiceProxy> generic_proxy_;
   gscoped_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
   gscoped_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
+  gscoped_ptr<consensus::ConsensusServiceProxy> cons_proxy_;
 
   DISALLOW_COPY_AND_ASSIGN(TsAdminClient);
 };
@@ -221,7 +231,7 @@ Status TsAdminClient::Init() {
   generic_proxy_.reset(new server::GenericServiceProxy(&proxy_cache, host_port));
   ts_proxy_.reset(new TabletServerServiceProxy(&proxy_cache, host_port));
   ts_admin_proxy_.reset(new TabletServerAdminServiceProxy(&proxy_cache, host_port));
-
+  cons_proxy_.reset(new ConsensusServiceProxy(&proxy_cache, host_port));
   initted_ = true;
 
   VLOG(1) << "Connected to " << addr_;
@@ -281,6 +291,28 @@ Status TsAdminClient::GetTabletSchema(const std::string& tablet_id,
     }
   }
   return STATUS(NotFound, "Cannot find tablet", tablet_id);
+}
+
+Status TsAdminClient::PrintConsensusState(const std::string& tablet_id) {
+  ServerStatusPB status_pb;
+  RETURN_NOT_OK(GetStatus(&status_pb));
+
+  consensus::GetConsensusStateRequestPB cons_reqpb;
+  cons_reqpb.set_dest_uuid(status_pb.node_instance().permanent_uuid());
+  cons_reqpb.set_tablet_id(tablet_id);
+
+  consensus::GetConsensusStateResponsePB cons_resp_pb;
+  RpcController rpc;
+  RETURN_NOT_OK_PREPEND(
+      cons_proxy_->GetConsensusState(cons_reqpb, &cons_resp_pb, &rpc),
+      "Failed to query tserver for consensus state");
+  std::cout << "Lease-Status"
+            << "\t\t"
+            << " Leader-UUID ";
+  std::cout << PBEnumToString(cons_resp_pb.leader_lease_status()) << "\t\t"
+            << cons_resp_pb.cstate().leader_uuid();
+
+  return Status::OK();
 }
 
 Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
@@ -407,6 +439,7 @@ void SetUsage(const char* argv0) {
       << "  " << kListTabletsOp << "\n"
       << "  " << kAreTabletsRunningOp << "\n"
       << "  " << kSetFlagOp << " [-force] <flag> <value>\n"
+      << "  " << kTabletStateOp << " <tablet_id>\n"
       << "  " << kDumpTabletOp << " <tablet_id>\n"
       << "  " << kDeleteTabletOp << " <tablet_id> <reason string>\n"
       << "  " << kCurrentHybridTime << "\n"
@@ -432,6 +465,7 @@ string GetOp(int argc, char** argv) {
 
 static int TsCliMain(int argc, char** argv) {
   FLAGS_logtostderr = 1;
+  FLAGS_minloglevel = 1;
   SetUsage(argv[0]);
   ParseCommandLineFlags(&argc, &argv, true);
   InitGoogleLoggingSafe(argv[0]);
@@ -502,6 +536,12 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.SetFlag(argv[2], argv[3], FLAGS_force),
                                     "Unable to set flag");
 
+  } else if (op == kTabletStateOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
+
+    string tablet_id = argv[2];
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.PrintConsensusState(tablet_id), "Unable to print tablet state");
   } else if (op == kDumpTabletOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
 

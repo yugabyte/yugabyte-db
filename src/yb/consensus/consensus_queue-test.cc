@@ -454,6 +454,9 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   queue_->raft_pool_observers_token_->Wait();
   ASSERT_OPID_EQ(queue_->GetMajorityReplicatedOpIdForTests(), MakeOpIdForIndex(5));
 
+  string up_to_date_peer = queue_->GetUpToDatePeer();
+  ASSERT_TRUE((up_to_date_peer == "peer-2") || (up_to_date_peer == "peer-1"));
+
   // Ack all operations for peer-3
   response.set_responder_uuid("peer-3");
   last_sent = MakeOpIdForIndex(10);
@@ -463,12 +466,20 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   // notified.
   ASSERT_TRUE(queue_->ResponseFromPeer(response.responder_uuid(), response));
 
+  up_to_date_peer.clear();
+  up_to_date_peer = queue_->GetUpToDatePeer();
+  ASSERT_EQ(up_to_date_peer, "peer-3");
+
   // Majority replicated watermark should be the same
   ASSERT_OPID_EQ(queue_->GetMajorityReplicatedOpIdForTests(), MakeOpIdForIndex(5));
 
   // Ack the remaining operations for peer-4
   response.set_responder_uuid("peer-4");
   ASSERT_TRUE(queue_->ResponseFromPeer(response.responder_uuid(), response));
+
+  up_to_date_peer.clear();
+  up_to_date_peer = queue_->GetUpToDatePeer();
+  ASSERT_TRUE((up_to_date_peer == "peer-3") || (up_to_date_peer == "peer-4"));
 
   // Now that a majority of peers have replicated an operation in the queue's
   // term the committed index should advance.

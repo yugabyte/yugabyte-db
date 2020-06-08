@@ -321,6 +321,8 @@ class PeerMessageQueue {
 
   bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
 
+  std::string GetUpToDatePeer() const;
+
   struct Metrics {
     // Keeps track of the number of ops. that are completed by a majority but still need
     // to be replicated to a minority (IsDone() is true, IsAllDone() is false).

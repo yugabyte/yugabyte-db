@@ -506,6 +506,12 @@ message LeaderStepDownRequestPB {
 
   // Used in tests to ignore check for new leader conditions.
   optional bool force_step_down = 4;
+
+  // If new_leader_uuid is not specified, the current leader will attempt
+  // to gracefully transfer leadership to another peer. Setting this flag
+  // disables that behavior.
+  optional bool disable_graceful_transition = 5;
+
 }
 
 message LeaderStepDownResponsePB {
