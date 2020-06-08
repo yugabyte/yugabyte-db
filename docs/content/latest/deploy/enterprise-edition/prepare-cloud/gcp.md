@@ -21,7 +21,7 @@ Here is a screenshot with the above values in the form, click create once the va
 
 ![Service Account -- filled create form](/images/ee/gcp-setup/service-account-filled-create.png)
 
-**NOTE**: Your browser would have downloaded the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the YugaWare Admin Console.
+**NOTE**: Your browser would have downloaded the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the YugabyteDB Admin Console.
 
 ## 3. Give permissions to the service account
 
@@ -54,7 +54,7 @@ Go to `VPC network` -> `Firewall rules` tab:
 Click on the `CREATE FIREWALL RULE` button and fill in the following.
 
 - Enter `yugaware-firewall-rule` as the name (you can change the name if you want).
-- Add a description (eg: `Firewall setup for YugaWare Admin Console`).
+- Add a description (for example, `Firewall setup for YugabyteDB Admin Console`).
 - Add a tag `yugaware-server` to the `Target tags` field. This will be used later when creating instances.
 - Add the appropriate ip addresses to the `Source IP ranges` field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
 - Add the ports `tcp:22,8800,80` to the `Protocol and ports` field.

@@ -67,7 +67,7 @@ The data node software is packaged into the YugaWare application. YugaWare distr
 
 ## How does the Admin Console interact with the YugabyteDB data nodes?
 
-The YugaWare Admin Console does a password-less ssh to interact with the data nodes. It needs to have the access key file (like a PEM file) uploaded into it via the UI. The setup on each of the data nodes to configure password-less SSH is documented [here](../../deploy/#private-cloud-or-on-premises-data-centers).
+The YugabyteDB Admin Console does a password-less ssh to interact with the data nodes. It needs to have the access key file (like a PEM file) uploaded into it via the UI. The setup on each of the data nodes to configure password-less SSH is documented [here](../../deploy/#private-cloud-or-on-premises-data-centers).
 
 A REST API is also exposed by the admin console to the end users in addition to the UI as another means of interacting with the data platform.
 

@@ -14,15 +14,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Configuring Yugabyte Platform, with its YugabyteDB Admin Console, is simple. A randomly generated password for the YugaWare configuration database is already pre-filled. You can make a note of it for future use or change it to a new password of your choice. Additionally, `/opt/yugabyte` is pre-filled as the location of the directory on the YugaWare host where all the YugaWare data will be stored.  Click **Save** on this page to take you to the Replicated Dashboard.
+Configuring Yugabyte Platform, with its YugabyteDB Admin Console, is simple. A randomly generated password for the YugaWare configuration database is already pre-filled. You can make a note of it for future use or change it to a new password of your choice. Additionally, `/opt/yugabyte` is pre-filled as the location of the directory on the Yugabyte Platform host where all Yugabyte Platform data will be stored.  Click **Save** on this page to take you to the Replicated Dashboard.
 
 ![Replicated YugaWare Config](/images/replicated/replicated-yugaware-config.png)
 
-For air-gapped installations, all the containers powering the YugaWare application are already available with Replicated. For non-air-gapped installations, these containers will be downloaded from the Quay.io Registry when the Dashboard is first launched. Replicated will automatically start the Yugabyte Platform as soon as all the container images are available.
+For air-gapped installations, all the containers powering the Yugabyte Platform application are already available with Replicated. For non-air-gapped installations, these containers will be downloaded from the Quay.io Registry when the Dashboard is first launched. Replicated will automatically start the Yugabyte Platform as soon as all the container images are available.
 
 ![Replicated Dashboard](/images/replicated/replicated-dashboard.png)
 
-To see the release history of the YugaWare application, click **View release history**.
+To see the release history of the Yugabyte Platform (aka YugaWare) application, click **View release history**.
 
 ![Replicated Release History](/images/replicated/replicated-release-history.png)
 
@@ -34,7 +34,7 @@ Go to [http://yugaware-host-public-ip/register](http://yugaware-host-public-ip/r
 
 ![Register](/images/ee/register.png)
 
-After you click **Submit**, you are automatically logged into YugaWare. You can then proceed to [configuring cloud providers using the YugabyteDB Admin Console](../configure-cloud-providers/).
+After you click **Submit**, you are automatically logged into the YugabyteDB Admin Console. You can then proceed to [configuring cloud providers using the YugabyteDB Admin Console](../configure-cloud-providers/).
 
 ## Log in
 
