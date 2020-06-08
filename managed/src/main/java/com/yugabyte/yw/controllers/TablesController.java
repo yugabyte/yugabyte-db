@@ -309,6 +309,10 @@ public class TablesController extends AuthenticatedController {
     }
 
     MultiTableBackup.Params taskParams = formData.get();
+    if (taskParams.storageConfigUUID == null) {
+      String errMsg = "Missing StorageConfig UUID: " + taskParams.storageConfigUUID;
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, taskParams.storageConfigUUID);
     if (storageConfig == null) {
       String errMsg = "Invalid StorageConfig UUID: " + taskParams.storageConfigUUID;

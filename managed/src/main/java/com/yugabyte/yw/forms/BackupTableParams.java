@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import play.data.validation.Constraints;
 
+import java.util.List;
 import java.util.UUID;
 
 public class BackupTableParams extends TableManagerParams {
@@ -22,6 +23,10 @@ public class BackupTableParams extends TableManagerParams {
   @Constraints.Required
   public ActionType actionType;
 
+  public List<String> tableNameList;
+
+  public List<UUID> tableUUIDList;
+
   // Specifies the frequency for running the backup in milliseconds.
   public long schedulingFrequency = 0L;
 
@@ -34,4 +39,7 @@ public class BackupTableParams extends TableManagerParams {
 
   // Should backup script enable verbose logging.
   public boolean enableVerboseLogs = false;
+
+  // Should the backup be transactional across tables
+  public boolean transactionalBackup = false;
 }
