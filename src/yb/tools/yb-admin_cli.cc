@@ -101,11 +101,12 @@ CHECKED_STATUS MasterLeaderStepDown(
 CHECKED_STATUS LeaderStepDown(
     ClusterAdminClientClass* client,
     const ClusterAdminCli::CLIArguments& args) {
-  if (args.size() < 4) {
+  if (args.size() < 3) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  RETURN_NOT_OK_PREPEND(client->LeaderStepDownWithNewLeader(
-        args[2], args[3]), "Unable to step down leader");
+  std::string dest_uuid = (args.size() > 3) ? args[3] : "";
+  RETURN_NOT_OK_PREPEND(
+      client->LeaderStepDownWithNewLeader(args[2], dest_uuid), "Unable to step down leader");
   return Status::OK();
 }
 

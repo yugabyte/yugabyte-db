@@ -1975,10 +1975,24 @@ TEST_F(RaftConsensusITest, TestLeaderStepDown) {
       tservers[0], tablet_id_, kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(10)));
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 2));
 
-  // Step down and test that a 2nd stepdown returns the expected result.
-  ASSERT_OK(LeaderStepDown(tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10)));
+  LOG(INFO) << "Stepping down leader " << tservers[0];
+  // Step down and verify that leadership gracefully transitions to a new leader
+  // despite failure detection being disabled.
+  bool allow_graceful_leader_transfer = true;
+  ASSERT_OK(LeaderStepDown(
+      tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10),
+      !allow_graceful_leader_transfer));
+  TServerDetails* new_leader_ts = nullptr;
+  ASSERT_OK(
+      FindTabletLeader(tablet_servers_, tablet_id_, MonoDelta::FromSeconds(10), &new_leader_ts));
+  ASSERT_TRUE(new_leader_ts != nullptr);
+  LOG(INFO) << "Identified new leader " << new_leader_ts;
+
+  // Verify that further leader stepdowns and writes against the original leader do not succeed.
   TabletServerErrorPB error;
-  s = LeaderStepDown(tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10), &error);
+  s = LeaderStepDown(
+      tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10), !allow_graceful_leader_transfer,
+      &error);
   ASSERT_TRUE(s.IsIllegalState()) << "TS #0 should not be leader anymore: " << s.ToString();
   ASSERT_EQ(TabletServerErrorPB::NOT_THE_LEADER, error.code()) << error.ShortDebugString();
 
@@ -1986,6 +2000,17 @@ TEST_F(RaftConsensusITest, TestLeaderStepDown) {
       tservers[0], tablet_id_, kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(10));
   ASSERT_TRUE(s.IsIllegalState()) << "TS #0 should not accept writes as follower: "
                                   << s.ToString();
+
+  // Stepping down a leader with graceful transition disabled should
+  // result in no leader being elected
+  LOG(INFO) << "Stepping down leader " << new_leader_ts->uuid();
+  allow_graceful_leader_transfer = false;
+  ASSERT_OK(LeaderStepDown(
+      new_leader_ts, tablet_id_, nullptr, MonoDelta::FromSeconds(10),
+      !allow_graceful_leader_transfer));
+  TServerDetails* final_leader_ts = nullptr;
+  ASSERT_NOK(
+      FindTabletLeader(tablet_servers_, tablet_id_, MonoDelta::FromSeconds(10), &final_leader_ts));
 }
 
 // Test for #350: sets the consensus RPC timeout to be long, and freezes both followers before

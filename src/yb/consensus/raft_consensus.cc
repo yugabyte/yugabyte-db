@@ -200,6 +200,11 @@ DEFINE_bool(quick_leader_election_on_create, true, "Do we trigger quick leader e
 TAG_FLAG(quick_leader_election_on_create, advanced);
 TAG_FLAG(quick_leader_election_on_create, hidden);
 
+DEFINE_bool(
+    stepdown_disable_graceful_transition, false,
+    "During a leader stepdown, disable graceful leadership transfer "
+    "to an up to date peer");
+
 namespace yb {
 namespace consensus {
 
@@ -440,10 +445,10 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
   TRACE_EVENT2("consensus", "RaftConsensus::StartElection",
                "peer", peer_uuid(),
                "tablet", tablet_id());
+  VLOG(1) << "RaftConsensus::StartElection for tablet id " << tablet_id() << " " << data.ToString();
   if (FLAGS_TEST_do_not_start_election_test_only) {
     LOG(INFO) << "Election start skipped as TEST_do_not_start_election_test_only flag "
                  "is set to true.";
-    return Status::OK();
   }
 
   // If pre-elections disabled or we already won pre-election then start regular election,
@@ -651,7 +656,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
 
   // The leader needs to be ready to perform a step down. There should be no PRE_VOTER in both
   // active and committed configs - ENG-557.
-  string err_msg = ServersInTransitionMessage();
+  const string err_msg = ServersInTransitionMessage();
   if (!err_msg.empty()) {
     resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
     StatusToPB(STATUS(IllegalState, err_msg), resp->mutable_error()->mutable_status());
@@ -662,9 +667,9 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
   // If a new leader is nominated, find it among peers to send RunLeaderElection request.
   // See https://ramcloud.stanford.edu/~ongaro/thesis.pdf, section 3.10 for this mechanism
   // to transfer the leadership.
+  const bool forced = (req->has_force_step_down() && req->force_step_down());
   if (req->has_new_leader_uuid()) {
     new_leader_uuid = req->new_leader_uuid();
-    auto forced = req->force_step_down();
     if (!forced && !queue_->CanPeerBecomeLeader(new_leader_uuid)) {
       resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
       StatusToPB(
@@ -673,7 +678,19 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
       // We return OK so that the tablet service won't overwrite the error code.
       return Status::OK();
     }
-    const auto& local_peer_uuid = state_->GetPeerUuid();
+  }
+
+  bool graceful_stepdown = false;
+  if (new_leader_uuid.empty() && !FLAGS_stepdown_disable_graceful_transition &&
+      !(req->has_disable_graceful_transition() && req->disable_graceful_transition())) {
+    new_leader_uuid = queue_->GetUpToDatePeer();
+    LOG_WITH_PREFIX(INFO) << "Selected up to date candidate protege leader [" << new_leader_uuid
+                          << "]";
+    graceful_stepdown = true;
+  }
+
+  const auto& local_peer_uuid = state_->GetPeerUuid();
+  if (!new_leader_uuid.empty()) {
     const auto leadership_transfer_description =
         Format("tablet $0 from $1 to $2", tablet_id, local_peer_uuid, new_leader_uuid);
     if (!forced && new_leader_uuid == protege_leader_uuid_ && election_lost_by_protege_at_) {
@@ -681,20 +698,33 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
           MonoTime::Now() - election_lost_by_protege_at_;
       if (time_since_election_loss_by_protege.ToMilliseconds() <
               FLAGS_min_leader_stepdown_retry_interval_ms) {
-        LOG(INFO) << "Rejecting leader stepdown request for " << leadership_transfer_description
-                  << " because the intended leader already lost an election only "
-                  << ToString(time_since_election_loss_by_protege) << " ago (within "
-                  << FLAGS_min_leader_stepdown_retry_interval_ms << " ms).";
-        resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
-        resp->set_time_since_election_failure_ms(
-            time_since_election_loss_by_protege.ToMilliseconds());
-        StatusToPB(STATUS(IllegalState, "Suggested peer lost an election recently"),
-                   resp->mutable_error()->mutable_status());
-        // We return OK so that the tablet service won't overwrite the error code.
-        return Status::OK();
+        LOG_WITH_PREFIX(INFO) << "Unable to execute leadership transfer for "
+                              << leadership_transfer_description
+                              << " because the intended leader already lost an election only "
+                              << ToString(time_since_election_loss_by_protege) << " ago (within "
+                              << FLAGS_min_leader_stepdown_retry_interval_ms << " ms).";
+        if (req->has_new_leader_uuid()) {
+          LOG_WITH_PREFIX(INFO) << "Rejecting leader stepdown request for "
+                                << leadership_transfer_description;
+          resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
+          resp->set_time_since_election_failure_ms(
+              time_since_election_loss_by_protege.ToMilliseconds());
+          StatusToPB(
+              STATUS(IllegalState, "Suggested peer lost an election recently"),
+              resp->mutable_error()->mutable_status());
+          // We return OK so that the tablet service won't overwrite the error code.
+          return Status::OK();
+        } else {
+          // we were attempting a graceful transfer of our own choice
+          // which is no longer possible
+          new_leader_uuid.clear();
+        }
       }
       election_lost_by_protege_at_ = MonoTime();
     }
+  }
+
+  if (!new_leader_uuid.empty()) {
     bool new_leader_found = false;
     const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
     for (const RaftPeerPB& peer : active_config.peers()) {
@@ -714,6 +744,8 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
             std::bind(&RaftConsensus::RunLeaderElectionResponseRpcCallback, this,
                 election_state));
         new_leader_found = true;
+        const auto leadership_transfer_description =
+            Format("tablet $0 from $1 to $2", tablet_id, local_peer_uuid, new_leader_uuid);
         LOG(INFO) << "Transferring leadership of " << leadership_transfer_description;
         break;
       }
@@ -721,15 +753,22 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     if (!new_leader_found) {
       LOG(WARNING) << "New leader " << new_leader_uuid << " not found among " << tablet_id
                    << " tablet peers.";
-      resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
-      StatusToPB(STATUS(IllegalState, "New leader not found among peers"),
-                 resp->mutable_error()->mutable_status());
-      // We return OK so that the tablet service won't overwrite the error code.
-      return Status::OK();
+      if (req->has_new_leader_uuid()) {
+        resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
+        StatusToPB(
+            STATUS(IllegalState, "New leader not found among peers"),
+            resp->mutable_error()->mutable_status());
+        // We return OK so that the tablet service won't overwrite the error code.
+        return Status::OK();
+      } else {
+        // we were attempting a graceful transfer of our own choice
+        // which is no longer possible
+        new_leader_uuid.clear();
+      }
     }
   }
 
-  RETURN_NOT_OK(BecomeReplicaUnlocked(new_leader_uuid));
+  RETURN_NOT_OK(BecomeReplicaUnlocked(new_leader_uuid, MonoDelta(), graceful_stepdown));
 
   return Status::OK();
 }
@@ -743,6 +782,9 @@ Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_
   {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForConfigChange(&lock));
+    if (graceful_stepdown_) {
+      return Status::OK();
+    }
     if (election_lost_by_uuid == protege_leader_uuid_) {
       LOG_WITH_PREFIX(INFO) << "Our protege " << election_lost_by_uuid
                             << ", lost election. Has leader: "
@@ -761,9 +803,11 @@ Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_
   return Status::OK();
 }
 
-void RaftConsensus::WithholdElectionAfterStepDown(const std::string& protege_uuid) {
+void RaftConsensus::WithholdElectionAfterStepDown(
+    const std::string& protege_uuid, bool graceful_stepdown) {
   DCHECK(state_->IsLocked());
   protege_leader_uuid_ = protege_uuid;
+  graceful_stepdown_ = graceful_stepdown;
   auto timeout = MonoDelta::FromMilliseconds(
       FLAGS_leader_failure_max_missed_heartbeat_periods *
       FLAGS_raft_heartbeat_interval_ms);
@@ -775,6 +819,7 @@ void RaftConsensus::WithholdElectionAfterStepDown(const std::string& protege_uui
     timeout *= FLAGS_after_stepdown_delay_election_multiplier;
   }
   auto deadline = MonoTime::Now() + timeout;
+  VLOG(2) << "Withholding election for " << timeout;
   withhold_election_start_until_.store(deadline, std::memory_order_release);
   election_lost_by_protege_at_ = MonoTime();
 }
@@ -809,7 +854,7 @@ void RaftConsensus::ReportFailureDetectedTask() {
     }
 
     if (now < old_value) {
-      LOG(INFO) << "Skipping election due to delayed timeout.";
+      VLOG(1) << "Skipping election due to delayed timeout for " << (old_value - now);
       return;
     }
 
@@ -881,14 +926,14 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   return Status::OK();
 }
 
-Status RaftConsensus::BecomeReplicaUnlocked(const std::string& new_leader_uuid,
-                                            MonoDelta initial_fd_wait) {
+Status RaftConsensus::BecomeReplicaUnlocked(
+    const std::string& new_leader_uuid, MonoDelta initial_fd_wait, bool graceful_stepdown) {
   LOG_WITH_PREFIX(INFO)
       << "Becoming Follower/Learner. State: " << state_->ToStringUnlocked()
       << ", new leader: " << new_leader_uuid << ", initial_fd_wait: " << initial_fd_wait;
 
   if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
-    WithholdElectionAfterStepDown(new_leader_uuid);
+    WithholdElectionAfterStepDown(new_leader_uuid, graceful_stepdown);
   }
 
   state_->ClearLeaderUnlocked();

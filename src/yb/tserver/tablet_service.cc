@@ -2179,7 +2179,7 @@ class RpcScope {
 void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* req,
                                              RunLeaderElectionResponsePB* resp,
                                              rpc::RpcContext context) {
-  DVLOG(3) << "Received Run Leader Election RPC: " << req->DebugString();
+  VLOG(1) << "Received Run Leader Election RPC: " << req->DebugString();
   RpcScope scope(tablet_manager_, "RunLeaderElection", req, resp, &context);
   if (!scope) {
     return;

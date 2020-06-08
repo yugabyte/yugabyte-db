@@ -33,6 +33,7 @@
 #define YB_CONSENSUS_CONSENSUS_H_
 
 #include <iosfwd>
+#include <ostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -145,6 +146,8 @@ struct LeaderElectionData {
   std::string originator_uuid = std::string();
 
   TEST_SuppressVoteRequest suppress_vote_request = TEST_SuppressVoteRequest::kFalse;
+
+  std::string ToString() const;
 };
 
 // The external interface for a consensus peer.

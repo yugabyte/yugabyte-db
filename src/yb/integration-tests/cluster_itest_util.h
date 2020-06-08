@@ -302,11 +302,13 @@ Status StartElection(
 // other nodes at this time, this call is rather quick.
 // 'new_leader', if not null, is the replica that should start the election to
 // become the new leader.
-Status LeaderStepDown(const TServerDetails* replica,
-                      const TabletId& tablet_id,
-                      const TServerDetails* new_leader,
-                      const MonoDelta& timeout,
-                      tserver::TabletServerErrorPB* error = nullptr);
+Status LeaderStepDown(
+    const TServerDetails* replica,
+    const TabletId& tablet_id,
+    const TServerDetails* new_leader,
+    const MonoDelta& timeout,
+    const bool disable_graceful_transition = false,
+    tserver::TabletServerErrorPB* error = nullptr);
 
 // Write a "simple test schema" row to the specified tablet on the given
 // replica. This schema is commonly used by tests and is defined in
