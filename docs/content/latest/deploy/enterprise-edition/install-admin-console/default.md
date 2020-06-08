@@ -1,3 +1,41 @@
+---
+title: Install Yugabyte Platform using Replicated
+headerTitle: Install Yugabyte Platform
+linkTitle: 2. Install Yugabyte Platform
+description: Use Replicated to install Yugabyte Platform (aka YugaWare).
+aliases:
+  - deploy/enterprise-edition/admin-console/
+  - deploy/enterprise-edition/install-admin-console/
+menu:
+  latest:
+    identifier: install-yp-1-default
+    parent: deploy-enterprise-edition
+    weight: 670
+isTocNested: true
+showAsideToc: true
+---
+
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/default" class="nav-link active">
+      <i class="fas fa-cloud"></i>
+      Default
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/airgapped" class="nav-link">
+      <i class="fas fa-unlink"></i>
+      Airgapped
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/kubernetes" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
 
 YugabyteDB clusters are created and managed from YugaWare. The default option to install YugaWare on a host machine that is connected to the Internet.
 
