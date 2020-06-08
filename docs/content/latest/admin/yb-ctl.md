@@ -444,7 +444,7 @@ You can pass the placement information for nodes in a cluster from the command l
 $ ./bin/yb-ctl --rf 3 create --placement_info "cloud1.region1.zone1,cloud2.region2.zone2"
 ```
 
-The total number of placement information entries cannot be more than the replication factor (this is because we would not be able to satisfy the data placement constraints for this replication factor). If the total number of placement information entries is lesser than the replication factor, the placement information is passed down to the node in a round robin approach.
+The total number of placement information entries cannot be more than the replication factor (this is because you would not be able to satisfy the data placement constraints for this replication factor). If the total number of placement information entries is lesser than the replication factor, the placement information is passed down to the node in a round robin approach.
 
 To add a node:
 

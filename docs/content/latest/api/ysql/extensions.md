@@ -304,11 +304,13 @@ HyperLogLog is a fixed-size, set-like structure used for distinct value counting
 
 The first step is to install postgres-hll [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in Postgresql. 
 It is best to use the same Postgresql version as YugabyteDB. We can easilty get the version with ysqlsh:
+
 ```sh
 $ ./bin/ysqlsh --version
 psql (PostgreSQL) 11.2-YB-2.1.2.0-b0
 ```
-Above we use Postgresl 11.2. After installing the extension we copy the files to YugabyteDB:
+
+Above you use Postgresl 11.2. After installing the extension you copy the files to YugabyteDB:
 
 ```sh
 $ cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" && 

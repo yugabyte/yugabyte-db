@@ -104,7 +104,7 @@ Yugabyte works diligently to ensure that distributed transactions in YugabyteDB 
 
 ### Robust to clock skews
 
-From the Jepsen report: "Whatever the case, this is a good thing for operators: nobody wants to worry about clock safety unless they have to, and YugabyteDB appears to be mostly robust to clock skew. Keep in mind that we cannot robustly test YugabyteDB’s use of `CLOCK_MONOTONIC_RAW` for leader leases, but we suspect skew there is less of an issue than `CLOCK_REALTIME` synchronization."
+From the Jepsen report: "Whatever the case, this is a good thing for operators: nobody wants to worry about clock safety unless they have to, and YugabyteDB appears to be mostly robust to clock skew. Keep in mind that you cannot robustly test YugabyteDB’s use of `CLOCK_MONOTONIC_RAW` for leader leases, but you suspect skew there is less of an issue than `CLOCK_REALTIME` synchronization."
 
 YugabyteDB relies on the `CLOCK_MONOTONIC_RAW` for leader leases instead of `CLOCK_REALTIME`. In simple terms, this means that YugabyteDB uses the underlying hardware clock and not the clock that displays the current time on a node. As a result, YugabyteDB is resistant to clock skews.
 

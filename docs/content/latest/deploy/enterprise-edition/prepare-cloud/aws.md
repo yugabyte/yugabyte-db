@@ -22,7 +22,7 @@ You should see something like the screenshot below, click `Create` next.
 
 ## 2. [Optional] Create a new IAM role
 
-In order for Yugabyte Platform to manage YugabyteDB nodes, it will require some limited access to your AWS infrastructure. This can be accomplished through directly providing a set of credentials, when configuring the AWS provider, which you can read more later on [here](../configure-cloud-providers/). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. Below we provide a sample of such a role:
+In order for Yugabyte Platform to manage YugabyteDB nodes, it will require some limited access to your AWS infrastructure. This can be accomplished through directly providing a set of credentials, when configuring the AWS provider, which you can read more later on [here](../configure-cloud-providers/). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. Here is a sample of such a role:
 
 ```sh
 {
@@ -91,9 +91,9 @@ Create an instance to run the Yugabyte Platform server. In order to do so, go to
 
 - Add a tag to name the machine. You can set key to `Name` and value to `yugaware-1`. Continue to the next step.
 
-- Select the `yugaware-sg` security group we created in the previous step (or the custom name you chose when setting up the security groups). Launch the instance.
+- Select the `yugaware-sg` security group created in the previous step (or the custom name you chose when setting up the security groups). Launch the instance.
 
-- Pick an existing key pair (or create a new one) in order to access the machine. Make sure you have the ssh access key. This is important to enable `ssh` access to this machine. In this example, we will assume the key pair is `~/.ssh/yugaware.pem`.
+- Pick an existing key pair (or create a new one) in order to access the machine. Make sure you have the ssh access key. This is important to enable `ssh` access to this machine. In this example, assume that the key pair is `~/.ssh/yugaware.pem`.
 
 Finally, click `Launch` to launch the Yugabyte Platform server. You should see a machine being created as shown in the image below.
 

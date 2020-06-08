@@ -575,7 +575,7 @@ yb-admin -master_addresses <master-addresses> set_preferred_zones <cloud.region.
 - *cloud.region.zone*: Specifies the cloud, region, and zone. Default value is `cloud1.datacenter1.rack1`.
 
 
-Suppose we have a deployment with regions: `gcp.us-east4.us-east4-b`, `gcp.asia-northeast1.asia-northeast1-c`,
+Suppose you have a deployment with regions: `gcp.us-east4.us-east4-b`, `gcp.asia-northeast1.asia-northeast1-c`,
  `gcp.us-west1.us-west1-c`. Looking at the cluster config:
 
 ```sh

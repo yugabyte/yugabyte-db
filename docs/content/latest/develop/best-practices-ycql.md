@@ -89,9 +89,9 @@ Use batching for writing a set of operations. This will send all operations in a
 
 ### Column and row sizes
 
-For consistent latency/performance, we suggest keeping columns in the `2MB` range or less even though we support an individual column being about `32MB`.
+For consistent latency/performance, you suggest keeping columns in the `2MB` range or less even though you support an individual column being about `32MB`.
 
-Big columns add up when selecting full rows or multiple of them. For consistent latency/performance, we suggest keeping the size of rows in the `32MB` range or less.
+Big columns add up when selecting full rows or multiple of them. For consistent latency/performance, you suggest keeping the size of rows in the `32MB` range or less.
 
 ## Miscellaneous
 

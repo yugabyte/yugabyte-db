@@ -44,7 +44,7 @@ While waiting for the universe to get created, it should look like this:
 
 ![Universe Waiting to Create](/images/ee/universe-waiting.png)
 
-Once the universe is created, you should see something like this in the universe overview.
+Once the universe is created, you should see something like this in the **Universe Overview** tab.
 
 ![Universe Overview](/images/ee/universe-overview.png)
 

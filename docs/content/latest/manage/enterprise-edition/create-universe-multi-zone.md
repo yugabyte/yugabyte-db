@@ -56,7 +56,7 @@ The tasks tab shows the state of tasks currently running, as well as the tasks t
 
 ### Nodes underlying a universe
 
-You can browse to the nodes tab for the universe to see a list of nodes - in the screenshot below the cloud provider instances are still being created.
+You can browse to the **Nodes** tab for the universe to see a list of nodes - in the screenshot below the cloud provider instances are still being created.
 
 ![Nodes for a Pending Universe](/images/ee/pending-univ-nodes.png)
 
@@ -72,7 +72,7 @@ Once the universe is ready, the overview tab should look as follows.
 
 ![Multi-zone universe ready](/images/ee/multi-zone-universe-ready.png)
 
-Browse to the nodes tab to find the nodes. This lists the ip addresses of the nodes once they are created and configured. Click on the `Connect` button as shown below.
+Browse to the **Nodes** tab to find the nodes. This lists the ip addresses of the nodes once they are created and configured. Click on the `Connect` button as shown below.
 
 ![Multi-zone universe nodes](/images/ee/multi-zone-universe-nodes.png)
 

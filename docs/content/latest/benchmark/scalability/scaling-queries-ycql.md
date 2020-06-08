@@ -31,7 +31,7 @@ isTocNested: true
 
 </ul>
 
-As a part of our efforts to push the limits of the systems we build, Yugabyte ran some large cluster benchmarks to scale YugabyteDB to million of reads and writes per second while retaining low latencies. This topic covers the details about our 50-node cluster benchmarks. [Results of the earlier benchmark tests performed on a 25-node cluster](https://forum.yugabyte.com/t/large-cluster-perf-1-25-nodes/58) are available in the Yugabyte Community forum.
+As a part of our efforts to push the limits of the systems you build, Yugabyte ran some large cluster benchmarks to scale YugabyteDB to million of reads and writes per second while retaining low latencies. This topic covers the details about our 50-node cluster benchmarks. [Results of the earlier benchmark tests performed on a 25-node cluster](https://forum.yugabyte.com/t/large-cluster-perf-1-25-nodes/58) are available in the Yugabyte Community forum.
 
 ![YCQL key-value workload](/images/benchmark/scalability/key-value-workload-ycql.png)
 Writes are RF of `3` with strong consistency, reads are leader-only data strongly consistent reads.

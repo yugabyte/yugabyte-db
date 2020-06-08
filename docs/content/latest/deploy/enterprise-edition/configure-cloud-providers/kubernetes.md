@@ -89,7 +89,7 @@ the cluster, refer to [Create cluster](../../../kubernetes/single-zone/oss/helm-
 
 - **Image Registry** specifies where to pull YugabyteDB image from leave this to default, unless you are hosting the registry on your end.
 
-- **Pull Secret**, Our Enterprise YugabyteDB image is in a private repo and we need to upload the pull secret to download the image, your sales representative should have provided this secret.
+- **Pull Secret**, the Enterprise YugabyteDB image is in a private repo and you need to upload the pull secret to download the image, your sales representative should have provided this secret.
 
 A filled in form looks something like this:
 

@@ -44,7 +44,7 @@ Once the universe is created, you should see something like the screenshot below
 
 ### Universe nodes
 
-You can browse to the nodes tab of the universe to see a list of nodes. Note that the nodes are across the different geographic regions.
+You can browse to the **Nodes** tab of the universe to see a list of nodes. Note that the nodes are across the different geographic regions.
 
 ![Nodes for a Pending Universe](/images/ee/multi-region-universe-nodes.png)
 

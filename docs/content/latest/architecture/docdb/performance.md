@@ -38,7 +38,7 @@ suppress expired data. Expired values within the subdocument are cleaned up/garb
 
 ### Raft vs RocksDB WAL logs
 
-DocDB uses Raft for replication. Changes to the distributed system are already recorded or journaled as part of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s DocDB, but the additional WAL mechanism in RocksDB (under DocDB) is unnecessary and adds overhead. For correctness, in addition to disabling the WAL mechanism in RocksDB, YugabyteDB tracks the Raft “sequence id” up to which data has been flushed from RocksDB’s memtables to SSTable files. This ensures that we can correctly garbage collect the Raft WAL logs as well as replay the minimal number of records from Raft WAL logs on a server crash or restart.
+DocDB uses Raft for replication. Changes to the distributed system are already recorded or journaled as part of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s DocDB, but the additional WAL mechanism in RocksDB (under DocDB) is unnecessary and adds overhead. For correctness, in addition to disabling the WAL mechanism in RocksDB, YugabyteDB tracks the Raft “sequence id” up to which data has been flushed from RocksDB’s memtables to SSTable files. This ensures that you can correctly garbage collect the Raft WAL logs as well as replay the minimal number of records from Raft WAL logs on a server crash or restart.
 
 ### MVCC at a higher layer
 
@@ -56,7 +56,7 @@ The keys stored by DocDB in RocksDB consist of a number of components, where the
 
 The bloom filter needs to be aware of what components of the key need be added to the bloom so that only the relevant SSTable files in the LSM store are looked up during a read operation.
 
-In a traditional KV store, range scans do not make use of bloom filters because exact keys that fall in the range are unknown. However, we have implemented a data-model aware bloom filter, where range scans within keys that share the same hash component can also benefit from Bloom filters. For example, a scan to get all the columns within row or all the elements of a collection can also benefit from bloom filters.
+In a traditional KV store, range scans do not make use of bloom filters because exact keys that fall in the range are unknown. However, you have implemented a data-model aware bloom filter, where range scans within keys that share the same hash component can also benefit from Bloom filters. For example, a scan to get all the columns within row or all the elements of a collection can also benefit from bloom filters.
 
 ## Range query optimizations
 
@@ -90,7 +90,7 @@ A shared block cache is used across the DocDB/RocksDB instances of all the table
 
 ### Server-global memstore limits
 
-While per-memstore flush sizes can be configured, in practice, because the number of memstores may change over time as users create new tables, or tablets of a table move between servers, we have enhanced the storage engine to enforce a global memstore threshold. When such a threshold is reached, selection of which memstore to flush takes into account what memstores carry the oldest records (determined using hybrid timestamps) and therefore are holding up Raft logs and preventing them from being garbage collected.
+While per-memstore flush sizes can be configured, in practice, because the number of memstores may change over time as users create new tables, or tablets of a table move between servers, you have enhanced the storage engine to enforce a global memstore threshold. When such a threshold is reached, selection of which memstore to flush takes into account what memstores carry the oldest records (determined using hybrid timestamps) and therefore are holding up Raft logs and preventing them from being garbage collected.
 
 ## Scan-resistant block cache
 

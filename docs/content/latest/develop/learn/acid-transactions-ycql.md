@@ -234,7 +234,7 @@ BEGIN TRANSACTION
 END TRANSACTION;
 ```
 
-If we now selected the value of John's account, we should see the amounts reflected. The total balance should be the same $1100 as before.
+If you now selected the value of John's account, you should see the amounts reflected. The total balance should be the same $1100 as before.
 
 ```sql
 ycqlsh> select * from banking.accounts where account_name='John';
@@ -282,7 +282,11 @@ BEGIN TRANSACTION
 END TRANSACTION;
 ```
 
+<<<<<<< HEAD
 We can verify the transfer was made as we intended, and also verify that the time at which the two accounts were updated are identical by performing the following query.
+=======
+You can verify the transfer was made as intended, and also verify that the time at which the two accounts were updated are identical by performing the following query.
+>>>>>>> 456c332e4... Update wording for examples
 
 ```sql
 ycqlsh> select account_name, account_type, balance, writetime(balance) from banking.accounts;
@@ -321,8 +325,7 @@ ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE accoun
            2250
 ```
 
-
-## Note on Linearizability
+## Note on linearizability
 
 By default, the original Cassandra Java driver and the YugabyteDB Cassandra Java driver use `com.datastax.driver.core.policies.DefaultRetryPolicy` which can retry requests upon timeout on client side.
 

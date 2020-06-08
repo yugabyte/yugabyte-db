@@ -41,7 +41,7 @@ Use this benchmark to test the performance of YugabyteDB using a key-value workl
 
 ### Cluster configuration
 
-For this benchmark, we will setup a three-node YugabyteDB cluster with a replication factor of `3`.
+For this benchmark, you will set up a three-node YugabyteDB cluster with a replication factor of `3`.
 
 ### Machine configuration
 

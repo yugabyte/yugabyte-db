@@ -183,7 +183,7 @@ $ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] set_flag [ --force ] <flag>
 
 The `set_flag` command changes the in-memory value of the specified flag, atomically, for a running server and can alter its behavior.  **The change does NOT persist across restarts.**
 
-In practice, there are some flags that are runtime safe to change (runtime-settable) and some that are not. For example, the bind address of the server cannot be changed at runtime, since the server binds just once at startup. While most of the flags are probably runtime-settable, we need to review the flags and note in the configuration pages which flags are not runtime-settable. (See GitHub issue [#3534](https://github.com/yugabyte/yugabyte-db/issues/3534)).
+In practice, there are some flags that are runtime safe to change (runtime-settable) and some that are not. For example, the bind address of the server cannot be changed at runtime, since the server binds just once at startup. While most of the flags are probably runtime-settable, you need to review the flags and note in the configuration pages which flags are not runtime-settable. (See GitHub issue [#3534](https://github.com/yugabyte/yugabyte-db/issues/3534)).
 
 One typical operational flow is that you can use this to modify runtime flags in memory and then out of band also modify the configuration file that the server uses to start. This allows for flags to be changed on running servers, without executing a restart of the server.
 

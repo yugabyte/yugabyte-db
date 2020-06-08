@@ -105,7 +105,7 @@ Finally, click `Create` to launch the Yugabyte Platform server.
 
 ## 6. Connect to the Yugabyte Platform machine
 
-From the GCP web management console, find the public IP address of the instance we just launched.
+From the GCP web management console, find the public IP address of the instance you just launched.
 
 You can connect to this machine by running the following command (remember to replace `XX.XX.XX.XX` below with the ip address, and also to enter the appropriate ssh key instead of `yugaware-1-gcp`).
 
