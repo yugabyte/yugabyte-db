@@ -79,7 +79,7 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
 | [Online rebuild of indexes](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)  | PROGRESS  | v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/448) | Available in beta for YCQL (docs coming soon), in progress for YSQL |
-| Online schema migrations  | PROGRESS  | v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) | YCQL already supports online schema changes |
+| (Online schema migrations)[https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md]  | PROGRESS  | v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) | YCQL already supports online schema changes |
 | [Distributed backups for transactional tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md)    | PROGRESS  | v2.2  | [Track](https://github.com/yugabyte/yugabyte-db/issues/2620) | Distributed backups for non-transactional tables in YCQL is already GA |
 | [Automatic tablet splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PROGRESS  | v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |  |
 | Improve YSQL performance and support for benchmarks | PROGRESS  | v2.2  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3226) |  |
