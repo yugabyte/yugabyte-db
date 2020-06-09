@@ -128,7 +128,7 @@ cqlsh:imdb> EXPLAIN SELECT *
 
 {{< note title="Note" >}}
 
-**INDEX SCAN** filters rows using the index and then fetches the columns from the main table.
+**INDEX SCAN**: Filters rows using the index and then fetches the columns from the main table.
 
 **INDEX ONLY SCAN**: Returns results by only consulting the index.
 
