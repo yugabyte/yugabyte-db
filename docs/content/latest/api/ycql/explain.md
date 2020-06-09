@@ -167,7 +167,7 @@ cqlsh:imdb> EXPLAIN SELECT * FROM movie_stats  WHERE movie_genre = 'g2' and user
    ->  Index Only Scan using imdb.best_rated on imdb.movie_stats
          Key Conditions: (user_rank = '5') AND (movie_genre = 'g2')
 ```
-### Insert Example
+### INSERT example
 
 ```CQL
 cqlsh:imdb> EXPLAIN INSERT INTO movie_stats(movie_name, movie_genre, user_name, user_rank, last_watched)
