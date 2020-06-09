@@ -726,6 +726,7 @@ void RaftConsensusITest::WriteOpsToLeader(int num_writes, size_t size_bytes) {
 TEST_F(RaftConsensusITest, TestCatchupAfterOpsEvicted) {
   vector<string> extra_flags;
   extra_flags.push_back("--log_cache_size_limit_mb=1");
+  extra_flags.push_back("--rpc_throttle_threshold_bytes=-1");
   extra_flags.push_back("--consensus_max_batch_size_bytes=500000");
   ASSERT_NO_FATALS(BuildAndStart(extra_flags));
   TServerDetails* replica = (*tablet_replicas_.begin()).second;
@@ -802,6 +803,7 @@ TEST_F(RaftConsensusITest, TestCatchupOpsReadFromDisk) {
 TEST_F(RaftConsensusITest, TestLaggingFollowerRestart) {
   vector<string> extra_flags = {
       "--consensus_inject_latency_ms_in_notifications=10"s,
+      "--rpc_throttle_threshold_bytes=-1"s,
       "--consensus_max_batch_size_bytes=1024"s
   };
   ASSERT_NO_FATALS(BuildAndStart(extra_flags));
@@ -866,6 +868,7 @@ TEST_F(RaftConsensusITest, TestLaggingFollowerLogCacheEviction) {
 
   vector<string> extra_flags = {
       "--consensus_inject_latency_ms_in_notifications=10"s,
+      "--rpc_throttle_threshold_bytes=-1"s,
       "--consensus_max_batch_size_bytes=1024"s,
       Format("--consensus_lagging_follower_threshold=$0", kConsensusLaggingFollowerThreshold),
       Format("--raft_heartbeat_interval_ms=$0", ToMilliseconds(kHeartBeatInterval))
