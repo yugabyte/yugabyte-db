@@ -147,7 +147,7 @@ $ ./bin/yb-admin \
     aws.us-west.us-west-2a
 ```
 
-Looking again at the cluster config you should see `affinitized_leaders` added:
+Looking again at the cluster configuration, you should see `affinitized_leaders` added:
 
 
 ```
