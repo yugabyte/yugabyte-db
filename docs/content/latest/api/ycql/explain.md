@@ -177,7 +177,7 @@ cqlsh:imdb> EXPLAIN INSERT INTO movie_stats(movie_name, movie_genre, user_name, 
 ----------------------------
  Insert on imdb.movie_stats
 ```
-### Delete Examples
+### DELETE examples
 
 ```CQL
 cqlsh:imdb> explain delete from movie_stats  where movie_genre = 'g1' and movie_name = 'm1';
