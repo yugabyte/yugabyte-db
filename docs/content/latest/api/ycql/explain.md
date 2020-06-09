@@ -33,7 +33,7 @@ explain ::= EXPLAIN { select | update | insert | delete }
 
 ## Semantics
 
-Where statement is the target statement (see more [here](../dml_select)).
+Where the target statement is one of the following: [SELECT](../dml_select), [UPDATE](../dml_update), [INSERT](../dml_insert), or [DELETE](../dml_delete).
 
 ## Examples
 Create the keyspace, tables and indexes.
