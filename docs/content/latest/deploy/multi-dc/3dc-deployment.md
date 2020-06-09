@@ -134,6 +134,61 @@ replication_info {
 }
 ```
 
+One additional option to consider is to set a preferred location for all the tablet leaders using the [yb-admin set_preferred_zones](../../../admin/yb-admin#set-preferred-zones) command. 
+For multi-row or multi-table transactional operations, colocating the leaders within a single zone or region can help reduce the number 
+of cross-region network hops involved in executing a transaction and, as a result, improve performance.
+
+The following command sets the preferred zone to `aws.us-west.us-west-2a`:
+
+```sh
+$ ./bin/yb-admin \
+    --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+    set_preferred_zones  \
+    aws.us-west.us-west-2a
+```
+
+Looking again at the cluster configuration, you should see `affinitized_leaders` added:
+
+
+```
+replication_info {
+  live_replicas {
+    num_replicas: 3
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-west"
+        placement_zone: "us-west-2a"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "us-east-1"
+        placement_zone: "us-east-1a"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "aws"
+        placement_region: "ap-northeast-1"
+        placement_zone: "ap-northeast-1a"
+      }
+      min_num_replicas: 1
+    }
+  affinitized_leaders {
+    placement_cloud: "aws"
+    placement_region: "us-west"
+    placement_zone: "us-west-2a"
+  }
+  }
+}
+```
+
+
+
 ## 5. Verify deployment
 
 Use [`ysqlsh`](../../../admin/ysqlsh/) (for YSQL API) or [`ycqlsh`](../../../admin/cqlsh/) (for YCQL API) shells to test connectivity to the cluster.
