@@ -198,7 +198,7 @@ cqlsh:imdb> explain delete from movie_stats  where movie_genre = 'g1';
    ->  Range Scan on imdb.movie_stats
          Key Conditions: (movie_genre = 'g1')
 ```
-### Update Example
+### UPDATE example
 
 ```CQL
 cqlsh:imdb> EXPLAIN UPDATE movie_stats SET user_rank = 1 WHERE movie_name = 'm1' and movie_genre = 'g1' and user_name = 'u1';
