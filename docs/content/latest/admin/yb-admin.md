@@ -998,6 +998,16 @@ yb-admin -master_addresses <master-addresses> set_load_balancer_enabled [ 0 | 1 
 ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 set_load_balancer_enabled 0
 ```
 
+#### get_load_balancer_state
+
+Returns the cluster load balancer state.
+
+```sh
+yb-admin -master_addresses <master-addresses> get_load_balancer_state
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+
 #### get_load_move_completion
 
 Checks the percentage completion of the data move.

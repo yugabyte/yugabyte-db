@@ -77,7 +77,7 @@ docker pull yugabytedb/yugabyte:2.1.8.0-b2
 
 ## System improvements
 
-- New `yb-admin` command `get_load_balancer_state` to get the cluster load balancer state. [#4509](https://github.com/yugabyte/yugabyte-installation/pull/4509)
+- New `yb-admin` command [`get_load_balancer_state`](../../admin/yb-admin/#get-load-balancer-state) to get the cluster load balancer state. [#4509](https://github.com/yugabyte/yugabyte-installation/pull/4509)
 - Avoid creating intent iterator when no transactions are running. [#4500](https://github.com/yugabyte/yugabyte-installation/pull/4500)
 - Increase default memory limit for `yb-master` for running in low-memory setups (<=4 GB). [#3742](https://github.com/yugabyte/yugabyte-installation/pull/3742)
 - Improve RocksDB checkpoint directory cleanup if a tserver crashes or is restarted while performing a snapshot operation. [#4352](https://github.com/yugabyte/yugabyte-db/issues/4352)
