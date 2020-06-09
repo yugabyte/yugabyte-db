@@ -86,6 +86,18 @@ Specify one or more columns of the table and must be surrounded by parentheses.
 - `NULLS FIRST` - Specifies that nulls sort before non-nulls. This is the default when DESC is specified.
 - `NULLS LAST` - Specifies that nulls sort after non-nulls. This is the default when DESC is not specified.
 
+### SPLIT INTO
+
+For hash-sharded tables, you can use the `SPLIT INTO` clause to specify the number of indexes to be created for the table. The hash range is then evenly split across those indexes.
+
+Pre-splitting indexes, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 indexes can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
+
+{{< note title="Note" >}}
+
+By default, YugabyteDB pre-splits a table in `ysql_num_shards_per_tserver * num_of_tserver` shards. The `SPLIT INTO` clause can be used to override that setting on a per-table basis.
+
+{{< /note >}}
+
 ## Examples
 
 ### Unique index with HASH column ordering

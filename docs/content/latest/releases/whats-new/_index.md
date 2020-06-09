@@ -18,19 +18,19 @@ menu:
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
-**Looking for earlier releases?** History of earlier releases is available [here](../earlier-releases/).  
+**Looking for earlier releases?** History of earlier releases is available in [Earlier releases](../earlier-releases/) section.  
 
 ## Downloads
 
 ### Binaries
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.8.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.8.1-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.7.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.8.1-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -40,11 +40,12 @@ menu:
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.1.8.0-b2
+docker pull yugabytedb/yugabyte:2.1.8.1-b??
 ```
 
 ## YSQL
 
+- Add support for [`SPLIT INTO` clause for `CREATE INDEX`](../../api/ysql/commands/ddl_create_index/#split-into) statement. [#3047](https://github.com/yugabyte/yugabyte-db/issues/3047)
 - Fix aggregate functions pushdown for columns with default values added after table creation. [#4376](https://github.com/yugabyte/yugabyte-db/issues/4376)
 - Resolve timeout frequently encountered whe batch-loading data in YSQL by using client-specified timeouts for RPCs instead of hardcoded values. [#4045](https://github.com/yugabyte/yugabyte-db/issues/4045)
 - Fix incorrect cross-component dependency in DocDB found in builds using `ninja`. [#4474](https://github.com/yugabyte/yugabyte-db/issues/4474)
@@ -59,6 +60,7 @@ docker pull yugabytedb/yugabyte:2.1.8.0-b2
 - Add support for deferrable foreign key constraints. [#3995](https://github.com/yugabyte/yugabyte-db/issues/3995)
 - Prevent dropping primary key constraint. [#3163](https://github.com/yugabyte/yugabyte-db/issues/3163)
 - Push down `SELECT <aggregate>(<const>)` to DocDB. [#4276](https://github.com/yugabyte/yugabyte-db/issues/4276)
+- Fix rare core dumps due to concurrency issues in metrics webserver during shutdown. [#4092](https://github.com/yugabyte/yugabyte-db/issues/4276)
 
 ## YCQL
 
@@ -70,6 +72,8 @@ docker pull yugabytedb/yugabyte:2.1.8.0-b2
 - For DDL creation with Spring Data Cassandra, change the Enum value from JSON to JSONB to allow schema creation to succeed programmatically involving JSON column types and update the cassandra-java-driver to 3.8.0-yb-5. [#4481](https://github.com/yugabyte/yugabyte-db/issues/4481)
 - Use the same timestamp for current time to compute multiple runtimes in output of `<tserver-ip>:13000/rpcz`. [#4418](https://github.com/yugabyte/yugabyte-db/issues/4418)
 - Correctly push down `= NULL` condition to DocDB. [#4499](https://github.com/yugabyte/yugabyte-db/issues/4499)
+- YCQL statement execution takes exponential time on unprepared statement. [#4397]
+  - Special thanks to [@ouvai59]() for your contribution!
 
 ## YEDIS
 
@@ -92,6 +96,7 @@ docker pull yugabytedb/yugabyte:2.1.8.0-b2
 - [DocDB] Remove applied intent doc hybrid time during compaction. [#4535](https://github.com/yugabyte/yugabyte-db/issues/4535)
 - [DocDB] Fixed BoundedRocksDbIterator::SeekToLast works incorrectly for 2nd post-split tablet. [#4542](https://github.com/yugabyte/yugabyte-db/issues/4542)
 - [DocDb] Abort snapshot if table was deleted. [#4610](https://github.com/yugabyte/yugabyte-db/issues/4610)
+- [DocDB] Backfill index without waiting indefinitely for pending transactions. [#3471](https://github.com/yugabyte/yugabyte-db/issues/3471)
 - [Colocation] During load balancing operations, load balance each colocated tablet once. This fix removes unnecessary load balancing for every user table sharing that table and the parent table.
 - Fix YB-Master hangs due to transaction status resolution. [#4410](https://github.com/yugabyte/yugabyte-db/issues/4410)
 - Redirect the master UI to the master leader UI without failing when one master is down. [#4442](https://github.com/yugabyte/yugabyte-db/issues/4442) and [#3869](https://github.com/yugabyte/yugabyte-db/issues/3869)
@@ -118,6 +123,9 @@ docker pull yugabytedb/yugabyte:2.1.8.0-b2
 - Change QLTableRow representation. [#4427](https://github.com/yugabyte/yugabyte-db/issues/4427)
 - Fix CDC-related race conditions using `CDCServiceTxnTest.TestGetChangesForPendingTransaction`. [#4544](https://github.com/yugabyte/yugabyte-db/issues/4427)
 - Revert validation on alerting email field to allow comma-separated emails in the form. [#4639](https://github.com/yugabyte/yugabyte-db/issues/4639)
+- Add **Custom SMTP Configuration** section to **Health & Alerting** tab on customer profile page. [#4443](https://github.com/yugabyte/yugabyte-db/issues/4443)
+- Fix Kubernetes pod container metrics not displaying in **Metrics** panel. [#4652](https://github.com/yugabyte/yugabyte-db/issues/4652)
+- Fix **Backups** tab not rendering when there are no backups. [#4661](https://github.com/yugabyte/yugabyte-db/issues/4661)
 
 {{< note title="Note" >}}
 
