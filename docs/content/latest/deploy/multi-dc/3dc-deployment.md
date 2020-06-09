@@ -19,7 +19,7 @@ showAsideToc: true
 
 {{< /tip >}}
 
-Three data center deployments of YugabyteDB are essentially a natural extension of the three availability zone (AZ) deployments documented in the [Manual deployment](../../../deploy/manual-deployment/) section. Equal number of nodes are now placed in each data center of the three data centers. Inside a single data center, a multi-AZ deployment is recommended to ensure resilience against zone failures. This approach works fine for any odd number of AZs or data centers. Given YugabyteDB's distributed consensus-based replication which requires majority quorum for continuous availability of write requests, deploying a single cluster across an even number of AZs or data centers is not recommended. 
+Three data center deployments of YugabyteDB are essentially a natural extension of the three availability zone (AZ) deployments documented in the [Manual deployment](../../manual-deployment/) section. Equal number of nodes are now placed in each data center of the three data centers. Inside a single data center, a multi-AZ deployment is recommended to ensure resilience against zone failures. This approach works fine for any odd number of AZs or data centers. Given YugabyteDB's distributed consensus-based replication which requires majority quorum for continuous availability of write requests, deploying a single cluster across an even number of AZs or data centers is not recommended. 
 
 ## Example scenario
 
@@ -40,7 +40,7 @@ Follow the [installation instructions](../../../deploy/manual-deployment/install
 
 ## 2. Start YB-Masters
 
-Run the `yb-master` server on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `--placement_cloud`,`--placement_region` and `--placement_zone` values appropriately.
+Run the [yb-master](../../../reference/configuration/yb-master/) server on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `--placement_cloud`,`--placement_region` and `--placement_zone` values appropriately.
 
 ```sh
 $ ./bin/yb-master \
@@ -60,7 +60,7 @@ For the full list of configuration flags, see the [YB-Master reference](../../..
 
 ## 3. Start YB-TServers
 
-Run the `yb-tserver` server on each node as shown below . Note that all of the master addresses have to be provided using the [`--tserver_master_addrs`](../../../reference/configuration/yb-master/#tserver-master-addrs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately.
+Run the [yb-tserver](../../../reference/configuration/yb-tserver/) server on each node as shown below . Note that all of the master addresses have to be provided using the [`--tserver_master_addrs`](../../../reference/configuration/yb-master/#tserver-master-addrs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately.
 
 ```sh
 $ ./bin/yb-tserver \

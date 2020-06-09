@@ -33,10 +33,11 @@ YugabyteDB is developed and distributed as an [Apache 2.0 open source project](h
 
 ## What makes YugabyteDB unique?
 
-YugabyteDB is a transactional database that brings together three must-have needs of cloud-native microservices, namely SQL as a flexible query language, low-latency read performance and globally-distributed write scalability.
+YugabyteDB is a transactional database that brings together 4 must-have needs of cloud native apps, namely SQL as a flexible query language, low-latency performance, continuous availability and globally-distributed scalability. Other databases do not serve all 4 of these needs simultaneously.
 
-- Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions.
-- Distributed NoSQL databases offer performance and write scalability but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.
+- Monolithic SQL databases offer SQL and low-latency reads but neither have ability to tolerate failures nor can scale writes across multiple nodes, zones, regions and clouds.
+
+- Distributed NoSQL databases offer read performance, high availability and write scalability but give up on SQL features such as relational data modeling and ACID transactions.
 
 YugabyteDB feature highlights are listed below.
 
