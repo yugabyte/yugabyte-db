@@ -242,18 +242,20 @@ yb-admin -master_addresses <master-addresses> list_tablets_for_tablet_server <ts
 
 #### master_leader_stepdown
 
-Forces the master leader to step down. A new leader will take its place.
+Forces the master leader to step down. The specified YB-Master node will take its place as leader.
 
 {{< note title="Note" >}}
 
-Use this command only if recommended by Yugabyte support.
+- Use this command only if recommended by Yugabyte support.
+
+- There is a possibility of downtime.
 
 {{< /note >}}
 
 **Syntax**
 
 ```sh
-yb-admin -master_addresses <master-addresses> master_leader_stepdown [ <new_leader_id> ]
+yb-admin -master_addresses <master-addresses> master_leader_stepdown <new_leader_id>
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -957,11 +959,13 @@ yb-admin -master_addresses <master-addresses> change_leader_blacklist ADD | REMO
 
 #### leader_stepdown
 
-Forces a tablet to step down.
+Forces the YB-TServer leader of the specified tablet to step down.
 
 {{< note title="Note" >}}
 
 Use this command only if recommended by Yugabyte support.
+
+There is a possibility of downtime.
 
 {{< /note >}}
 
@@ -973,7 +977,13 @@ yb-admin -master_addresses <master-addresses> leader_stepdown <tablet_id> <dest_
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *tablet_id*: The identifier (ID) of the tablet.
-- *dest_ts_uuid*: The destination identifier (UUID) for the YB-TServer node.
+- *dest_ts_uuid*: The destination identifier (UUID) for the new YB-TServer leader. To move leadership **from** the current leader, when you do not need to specify a new leader, use `""` for the value. If you want to transfer leadership intentionally **to** a specific new leader, then specify the new leader.
+
+{{< note title="Note" >}}
+
+If specified, `des_ts_uuid` becomes the new leader. If the argument is empty (`""`), then a new leader will be elected automatically. In a future release, this argument will be optional. See GitHub issue [#4722](https://github.com/yugabyte/yugabyte-db/issues/4722)
+
+{{< /note >}}
 
 ---
 
