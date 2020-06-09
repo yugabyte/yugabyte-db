@@ -23,7 +23,7 @@ user-generated key.
 
 ### Step 1. Create encryption key
 
-First, we will generate the universe key data. This data can have length 32, 40, or 48. Larger keys
+First, you will generate the universe key data. This data can have length 32, 40, or 48. Larger keys
 are slightly more secure with slightly worse performance. Run the following on your local
 filesystem.
 
@@ -34,7 +34,7 @@ $ openssl rand -out universe_key [ 32 | 40 | 48 ]
 
 ### Step 2. Copy key to master nodes
 
-In this example, we assume a 3 node RF=3 cluster with addresses ip1, ip2, ip3.
+In this example, assume a 3 node RF=3 cluster with addresses ip1, ip2, ip3.
 Copy the universe key onto each master filesystem, in the same location on every node.
 
 ```sh
@@ -80,7 +80,7 @@ Encryption status: ENABLED with key id <key_id>
 
 ### Step 1. Creating a new key
 
-First we create the key to be rotated.
+First you create the key to be rotated.
 
 ```sh
 $ openssl rand -out universe_key_2 [ 32 | 40 | 48 ]

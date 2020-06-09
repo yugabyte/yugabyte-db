@@ -77,7 +77,7 @@ find the **Configure Read Replica** selection - click on that.
 
 ![Configure Read Replica Dropdown](/images/ee/configure-read-replica-dropdown.png)
 
-You will see a page to configure the read replica cluster. Enter the same intent we used for the
+You will see a page to configure the read replica cluster. Enter the same intent you used for the
 read replica cluster in `helloworld3` and click **Add Read Replica**.
 
 ![Configure Read Replica Page](/images/ee/configure-read-replica-page.png)

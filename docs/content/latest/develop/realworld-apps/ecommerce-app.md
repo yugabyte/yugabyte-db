@@ -254,8 +254,12 @@ The following query is executed against the database to fetch all the product de
 SELECT * FROM yugastore.products WHERE id=5;
 ```
 
+<<<<<<< HEAD
 If you had another table with extended product information, you could fetch data from that table as well and add it into the result. Finally, each time this page is hit, increment a counter in order to track how many times the current product was viewed.
 
+=======
+If you had another table with extended product info, you could fetch data from that table as well and add it into the result. Finally, each time this page is hit, you increment a counter in order to track how many times the current product was viewed.
+>>>>>>> f4307fea8... Update wording for examples
 ```
 ybRedis.incrby("pageviews:product:5:count", 1);
 ```

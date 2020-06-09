@@ -329,7 +329,7 @@ ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE accoun
 
 By default, the original Cassandra Java driver and the YugabyteDB Cassandra Java driver use `com.datastax.driver.core.policies.DefaultRetryPolicy` which can retry requests upon timeout on client side.
 
-Automatic retries can break linearizability of operations from the client point of view. Therefore we have added `com.yugabyte.driver.core.policies.NoRetryOnClientTimeoutPolicy` which inherits behavior from DefaultRetryPolicy with one exception - it results in an error in case the operation times out (with the `OperationTimedOutException`).
+Automatic retries can break linearizability of operations from the client point of view. Therefore you have added `com.yugabyte.driver.core.policies.NoRetryOnClientTimeoutPolicy` which inherits behavior from DefaultRetryPolicy with one exception - it results in an error in case the operation times out (with the `OperationTimedOutException`).
 
 Under network partitions, this can lead to the case when client gets a successful response to retried request and treats the operation as completed, but the value might get overwritten by an older operation due to retries.
 

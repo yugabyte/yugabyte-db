@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Each node in a universe has a **Status** column indicating its current logical state based on the Yugabyte Platform layer. This section first describes what each of them means and gives information on when and how these can be modified by the user. The **Nodes** tab on the universe page shows them. When we create a universe, the **Nodes** tab on the universe page provides the physical (such as ip, cloud) and the logical state information (master, status, etc.) about that node. Note that the `STATUS` for each node is **Live**. This is the steady state value for a normally functioning node.
+Each node in a universe has a **Status** column indicating its current logical state based on the Yugabyte Platform layer. This section first describes what each of them means and gives information on when and how these can be modified by the user. The **Nodes** tab on the universe page shows them. When you create a universe, the **Nodes** tab on the universe page provides the physical (such as ip, cloud) and the logical state information (master, status, etc.) about that node. Note that the `STATUS` for each node is **Live**. This is the steady state value for a normally functioning node.
 
 ![Node Actions](/images/ee/node-actions-live.png)
 
@@ -78,7 +78,7 @@ Note that there is no `MASTER/TSERVER` shown for that node. If that node was the
 
 ### Release instance
 
-Since we know that the instance is dead, we can go ahead and release the ip as well using the 'Release Instance' dropdown option at the end of the Removed node. It will show up as a `Decommissioned` node.
+Since you know that the instance is dead, you can go ahead and release the ip as well using the 'Release Instance' dropdown option at the end of the Removed node. It will show up as a `Decommissioned` node.
 
 ![Release Node Actions](/images/ee/node-actions-released.png)
 
@@ -146,4 +146,4 @@ In any universe, one cannot have more than (RF - 1)/2 `Master` nodes in `Stop` o
 
 ## Interaction with other operations
 
-If there is a node in any of the in-transit states of `Stopped`, `Removed` or `Decommissioned` in the universe, we disallow [edit operations](../edit-universe/) and [rolling upgrade operations](../upgrade-universe/). These operations are allowed once such a node comes out of that in-transit state.
+If there is a node in any of the in-transit states of `Stopped`, `Removed` or `Decommissioned` in the universe, you disallow [edit operations](../edit-universe/) and [rolling upgrade operations](../upgrade-universe/). These operations are allowed once such a node comes out of that in-transit state.

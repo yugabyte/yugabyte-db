@@ -62,7 +62,7 @@ You can browse to the **Nodes** tab for the universe to see a list of nodes - in
 
 ### Cloud provider instances for the universe
 
-Browse to the cloud provider's instances page. In this example, since we are using Google Cloud Platform as the cloud provider, browse to `Compute Engine` -> `VM Instances` and search for instances that have `helloworld1` in their name. You should see something as follows.
+Browse to the cloud provider's instances page. In this example, since you are using Google Cloud Platform as the cloud provider, browse to `Compute Engine` -> `VM Instances` and search for instances that have `helloworld1` in their name. You should see something as follows.
 
 ![Instances for a Pending Universe](/images/ee/multi-zone-universe-gcp-instances.png)
 
@@ -114,7 +114,7 @@ Export an environment variable telling the IP addresses for nodes in the cluster
 
 ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
 
-Export this into a shell variable on the database node `yb-dev-helloworld1-n1` we had connected to. Remember to replace the IP addresses below with those shown by the YugabyteDB Admin Console.
+Export this into a shell variable on the database node `yb-dev-helloworld1-n1` you had connected to. Remember to replace the IP addresses below with those shown by the YugabyteDB Admin Console.
 
 ```sh
 $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"

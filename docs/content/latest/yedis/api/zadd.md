@@ -45,7 +45,7 @@ $ ZADD z_key 1.0 v1 2.0 v2
 (integer) 2
 ```
 
-Update an element in the set. Note the return value is 0, since we do not add a new member.
+Update an element in the set. Note the return value is 0, since you do not add a new member.
 
 ```sh
 $ ZADD z_key 3.0 v1
@@ -65,7 +65,7 @@ $ ZADD z_key 3.0 v3
 (integer) 1
 ```
 
-Now, see the members in the sorted set. Note the sort order by score. Since both v1 and v3 have the same score, we use comparison on the members themselves to determine order.
+Now, see the members in the sorted set. Note the sort order by score. Since both v1 and v3 have the same score, you use comparison on the members themselves to determine order.
 
 ```sh
 $ ZRANGEBYSCORE z_key -inf +inf WITHSCORES
