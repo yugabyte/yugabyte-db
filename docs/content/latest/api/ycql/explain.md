@@ -135,7 +135,7 @@ cqlsh:imdb> EXPLAIN SELECT *
 {{< /note >}}
 
 
-### Other explain select types
+### Other EXPLAIN SELECT types
 `QLName()` for these expressions is not supported.
 ```CQL
 cqlsh:imdb> EXPLAIN SELECT * FROM movie_stats where movie_genre in ('g1', 'g2');
