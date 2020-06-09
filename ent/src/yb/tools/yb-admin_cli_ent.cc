@@ -36,23 +36,29 @@ using strings::Substitute;
 void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
-  Register(
-      "list_snapshots", " [SHOW_DETAILS]",
+    Register(
+      "list_snapshots", " [SHOW_DETAILS] [NOT_SHOW_RESTORED]",
       [client](const CLIArguments& args) -> Status {
         bool show_details = false;
+        bool show_restored = true;
 
-        if (args.size() >= 3) {
+        if (args.size() > 4) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        for (int i = 2; i < args.size(); ++i) {
           string uppercase_flag;
-          ToUpperCase(args[2], &uppercase_flag);
+          ToUpperCase(args[i], &uppercase_flag);
 
           if (uppercase_flag == "SHOW_DETAILS") {
             show_details = true;
+          } else if (uppercase_flag == "NOT_SHOW_RESTORED") {
+            show_restored = false;
           } else {
             return ClusterAdminCli::kInvalidArguments;
           }
         }
 
-        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details),
+        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details, show_restored),
                               "Unable to list snapshots");
         return Status::OK();
       });
