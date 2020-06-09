@@ -136,7 +136,7 @@ cqlsh:imdb> EXPLAIN SELECT *
 
 
 ### Other explain select types
-We don’t support QLName() for these expressions yet
+`QLName()` for these expressions is not supported.
 ```CQL
 cqlsh:imdb> EXPLAIN SELECT * FROM movie_stats where movie_genre in ('g1', 'g2');
 
