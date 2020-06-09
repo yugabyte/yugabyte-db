@@ -72,6 +72,7 @@ DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_int32(num_connections_to_server);
 DECLARE_bool(enable_rpc_keepalive);
 DECLARE_int64(memory_limit_hard_bytes);
+DECLARE_int32(rpc_throttle_threshold_bytes);
 DECLARE_bool(TEST_pause_calculator_echo_request);
 DECLARE_bool(binary_call_parser_reject_on_mem_tracker_hard_limit);
 DECLARE_string(vmodule);
@@ -903,6 +904,7 @@ constexpr auto kMemoryLimitHardBytes = 100_MB;
 TestServerOptions SetupServerForTestCantAllocateReadBuffer() {
   FLAGS_binary_call_parser_reject_on_mem_tracker_hard_limit = true;
   FLAGS_memory_limit_hard_bytes = kMemoryLimitHardBytes;
+  FLAGS_rpc_throttle_threshold_bytes = -1;
   TestServerOptions options;
   options.messenger_options.n_reactors = 1;
   options.messenger_options.num_connections_to_server = 1;
