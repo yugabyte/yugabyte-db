@@ -79,10 +79,11 @@ using master::SnapshotInfoPB;
 using master::SysNamespaceEntryPB;
 using master::SysRowEntry;
 using master::SysTablesEntryPB;
+using master::SysSnapshotEntryPB;
 
 PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 
-Status ClusterAdminClient::ListSnapshots(bool show_details) {
+Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored) {
   RpcController rpc;
   rpc.set_timeout(timeout_);
   ListSnapshotsRequestPB req;
@@ -143,14 +144,21 @@ Status ClusterAdminClient::ListSnapshots(bool show_details) {
   ListSnapshotRestorationsResponsePB rest_resp;
   RETURN_NOT_OK(master_backup_proxy_->ListSnapshotRestorations(rest_req, &rest_resp, &rpc));
 
-  if (rest_resp.restorations_size()) {
-    cout << RightPadToUuidWidth("Restoration UUID") << kColumnSep << "State" << endl;
-  } else {
+  if (rest_resp.restorations_size() == 0) {
     cout << "No snapshot restorations" << endl;
+  } else if (!show_restored) {
+    cout << "Not show fully RESTORED entries" << endl;
   }
 
+  bool title_printed = false;
   for (const SnapshotInfoPB& snapshot : rest_resp.restorations()) {
-    cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
+    if (show_restored || snapshot.entry().state() != SysSnapshotEntryPB::RESTORED) {
+      if (!title_printed) {
+        cout << RightPadToUuidWidth("Restoration UUID") << kColumnSep << "State" << endl;
+        title_printed = true;
+      }
+      cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
+    }
   }
 
   return Status::OK();

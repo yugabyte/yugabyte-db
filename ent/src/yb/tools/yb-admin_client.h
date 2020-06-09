@@ -35,7 +35,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
       : super(init_master_addrs, timeout_millis) {}
 
   // Snapshot operations.
-  CHECKED_STATUS ListSnapshots(bool show_details);
+  CHECKED_STATUS ListSnapshots(bool show_details, bool show_restored);
   CHECKED_STATUS CreateSnapshot(const std::vector<client::YBTableName>& tables);
   CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id);
   CHECKED_STATUS DeleteSnapshot(const std::string& snapshot_id);
