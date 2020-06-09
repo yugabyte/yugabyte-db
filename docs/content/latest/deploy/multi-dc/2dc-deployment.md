@@ -111,3 +111,39 @@ Connect to “yugabyte-consumer” universe using the YSQL shell (`ysqlsh`) or t
 **For bidirectional replication**
 
 Repeat the steps above, but pump data into “yugabyte-consumer”. To avoid primary key conflict errors, keep the key space for the two universes separate.
+
+
+{{< tip title="How to check replication lag" >}}
+Replication lag is computed at the tablet level as:
+
+```
+replication lag = hybrid_clock_time - last_read_hybrid_time
+```
+
+* `hybrid_clock_time`: The hybrid clock timestamp on the producer's tablet-server.
+* `last_read_hybrid_time`: The hybrid clock timestamp of the latest transaction pulled from the producer.
+
+An example script [`determine_replication_lag.sh`](/files/determine_replication_lag.sh) calculates replication lag for you. 
+The script requires the [`jq`](https://stedolan.github.io/jq/) package.
+
+In the example below, a replication lag summary is generated for all tables on a cluster. You can also request an individual table:
+```bash
+$ ./determine_repl_latency.sh -h
+determine_repl_latency.sh -m MASTER_IP1:PORT,MASTER_IP2:PORT,MASTER_IP3:PORT [ -c PATH_TO_SSL_CERTIFICATE ] (-k KEYSPACE -t TABLENAME | -a) [ -p PORT ] [ -r report ] [ -o output ] [ -u units ]
+Options:
+  -m | --master_addresses       Comma separated list of master_server ip addresses with optional port numbers [default 7100]
+  -c | --certs_dir_name         Path to directory containing SSL certificates if TLS node-to-node encryption is enabled
+  -k | --keyspace               Name of keyspace that contains the table that is being queried. YSQL keyspaces must be prefixed with ysql
+  -t | --table_name             Name of table
+  -a | --all_tables             Specify this flag instead of -k and -t if you want all tables in the universe included
+  -p | --port                   Port number of tablet server metrics page [default 9000]
+  -r | --report_type            Possible values: all,detail,summary [default all]
+  -o | --output_type            Possible values: report,csv [default report]
+  -u | --units                  Possible values: us (microseconds), ms (milliseconds) [default ms]
+  -h | --help                   This message
+
+
+./determine_repl_latency.sh -m 10.150.255.114,10.150.255.115,10.150.255.113
+```
+
+{{< /tip >}}
