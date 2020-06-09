@@ -14,7 +14,7 @@ menu:
     weight: 2589 
 ---
 
-**Released:** June 4, 2020 (2.1.8.0-b2).
+**Released:** June 9, 2020 (2.1.8.1-b2).
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
@@ -83,7 +83,7 @@ docker pull yugabytedb/yugabyte:2.1.8.0-b2
 - Improve RocksDB checkpoint directory cleanup if a tserver crashes or is restarted while performing a snapshot operation. [#4352](https://github.com/yugabyte/yugabyte-db/issues/4352)
 - [DocDB] Use bloom filters for range-partitioned tables. The first primary key column is added to the bloom filter. [#4437](https://github.com/yugabyte/yugabyte-installation/pull/4437)
 - [DocDB] Fix snapshots bootstrap order bu altering the load for transaction-aware snapshots. [#4470](https://github.com/yugabyte/yugabyte-db/issues/4470)
-- [DocDB] Add `yb-admin master_leader_stepdown` command. [#4135](https://github.com/yugabyte/yugabyte-db/issues/4135)
+- [DocDB] Add [`yb-admin master_leader_stepdown`](../../admin/yb-admin/#master-leader-stepdown) command. [#4135](https://github.com/yugabyte/yugabyte-db/issues/4135)
 - [DocDB] Reduce impact on CPU and throughput during node failures. [#4042](https://github.com/yugabyte/yugabyte-db/issues/4042)
 - [DocDB] Add `yb-ts-cli` commands, [`flush_all_tablets`](../../admin/yb-ts-cli/#flush-all-tablets) and [`flush_tablet <tablet_id>`](../../admin/yb-ts-cli/#flush-tablet), to flush tablets. When used with rolling restarts, less time is spent applying WAL records to rocksdb. [#2785](https://github.com/yugabyte/yugabyte-db/issues/2785)
   - Special thanks to [mirageyjd](https://github.com/mirageyjd) for your contribution.

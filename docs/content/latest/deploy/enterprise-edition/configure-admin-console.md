@@ -22,7 +22,7 @@ For air-gapped installations, all the containers powering the Yugabyte Platform 
 
 ![Replicated Dashboard](/images/replicated/replicated-dashboard.png)
 
-To see the release history of the Yugabyte Platform (aka Yugabyte Platform) application, click **View release history**.
+To see the release history of the Yugabyte Platform (aka YugaWare) application, click **View release history**.
 
 ![Replicated Release History](/images/replicated/replicated-release-history.png)
 

@@ -38,7 +38,7 @@ Writes are RF of `3` with strong consistency, reads are leader-only data strongl
 
 The graph above shows how you can achieve linear scalability with YugabyteDB. The read and write throughput doubles when the cluster size doubles from 25 to 50 nodes, while the latencies remain low in the order of couple milliseconds. For details about how reads and writes work, see [YugabyteDB architecture](../../../architecture/) and [YugabyteDB IO operations](../../../architecture/core-functions/).
 
-This test was performed in [Google Cloud Platform (GCP)](https://cloud.google.com/gcp/). Since YugabyteDB is a cloud-native database, it can deliver similar performance results on other public clouds and on-premise data centers.
+This test was performed in [Google Cloud Platform (GCP)](https://cloud.google.com/gcp/). Since YugabyteDB is a cloud-native database, it can deliver similar performance results on other public clouds and on-premises data centers.
 
 The sections below cover the experimental setup and the details of the read and write performance metrics.
 

@@ -55,7 +55,7 @@ For this benchmark, you will set up a three-node YugabyteDB cluster with a repli
   - Instance type: n1-standard-16
   - Storage: 2 x 375 GB SSD
 
-- On-premise data center
+- on-premises data center
 
   - Instance: 16 CPU cores
   - Storage: 1 x 200 GB SSD (minimum)

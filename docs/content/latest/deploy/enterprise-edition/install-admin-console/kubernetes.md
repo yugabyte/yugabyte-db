@@ -41,7 +41,7 @@ The Yugabyte Platform (YugaWare) Helm chart documented here has been tested with
 
 - Kubernetes 1.10 or later.
 - Helm 3.0 or later.
-- Yugabyte Platform (YugaWare) Docker image 1.1.0 or later.
+- Yugabyte Platform (`yugaware`) Docker image 1.1.0 or later.
 - Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to Yugabyte Platform.
 
 Confirm that your `helm` is configured correctly.

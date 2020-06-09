@@ -240,6 +240,25 @@ yb-admin -master_addresses <master-addresses> list_tablets_for_tablet_server <ts
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *ts_uuid*: The UUID of the tablet server (YB-TServer).
 
+#### master_leader_stepdown
+
+Forces the master leader to step down. A new leader will take its place.
+
+{{< note title="Note" >}}
+
+Use this command only if recommended by Yugabyte support.
+
+{{< /note >}}
+
+**Syntax**
+
+```sh
+yb-admin -master_addresses <master-addresses> master_leader_stepdown [ <new_leader_id> ]
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *new_leader_id*: The identifier (ID) of the new YB-Master leader.
+
 ---
 
 ### Table commands
@@ -338,7 +357,6 @@ ysql.postgres.sql_languages
 ysql.postgres.sql_packages
 ...
 ```
-
 
 #### compact_table
 
@@ -936,6 +954,26 @@ yb-admin -master_addresses <master-addresses> change_leader_blacklist ADD | REMO
 - ADD | REMOVE: Adds or removes nodes from blacklist.
 - *ip_addr*: The IP address of the node.
 - *port*: The port of the node.
+
+#### leader_stepdown
+
+Forces a tablet to step down.
+
+{{< note title="Note" >}}
+
+Use this command only if recommended by Yugabyte support.
+
+{{< /note >}}
+
+**Syntax**
+
+```sh
+yb-admin -master_addresses <master-addresses> leader_stepdown <tablet_id> <dest_ts_uuid>
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *tablet_id*: The identifier (ID) of the tablet.
+- *dest_ts_uuid*: The destination identifier (UUID) for the YB-TServer node.
 
 ---
 

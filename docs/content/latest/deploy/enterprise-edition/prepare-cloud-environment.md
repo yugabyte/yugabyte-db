@@ -12,7 +12,7 @@ menu:
     weight: 669
 ---
 
-A dedicated host or virtual machine (VM) is required to run the Yugabyte Platform host. For more details, see [this faq](../../../faq/enterprise-edition/#what-are-the-os-requirements-and-permissions-to-run-yugaware-the-yugabyte-admin-console). This page highlights the basic setup needed in order to install Yugabyte Platform.
+A dedicated host or virtual machine (VM) is required to run the Yugabyte Platform server. For more details, see [this faq](../../../faq/enterprise-edition/#what-are-the-os-requirements-and-permissions-to-run-yugaware-the-yugabyte-admin-console). This page highlights the basic setup needed in order to install Yugabyte Platform.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>

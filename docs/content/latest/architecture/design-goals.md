@@ -116,7 +116,7 @@ YugabyteDB is a cloud-native database. It has been designed with the following c
 
 ### Run on commodity hardware
 
-- Run on any public cloud or on-premise data center. This means YugabyteDB should be able to run on commodity hardware on bare metal machines, VMs or containers.
+- Run on any public cloud or on-premises data center. This means YugabyteDB should be able to run on commodity hardware on bare metal machines, VMs or containers.
 - No hard external dependencies. For example, YugabyteDB should not rely on atomic clocks, but should be able to utilize one if available.
 
 ### Kubernetes ready
