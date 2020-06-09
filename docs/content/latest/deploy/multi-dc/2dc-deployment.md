@@ -32,7 +32,7 @@ Follow the steps below to set up a 2DC deployment using either unidirectional (a
 
 To create the producer universe, follow these steps.
 
-1. Create the “yugabyte-producer” universe.
+1. Create the “yugabyte-producer” universe using the [Manual deployment](../../manual-deployment) steps.
 
 2. Create the the tables for the APIs being used.
 
@@ -40,7 +40,7 @@ To create the producer universe, follow these steps.
 
 To create the consumer universe, follow these steps.
 
-1. Create the “yugabyte-consumer” universe.
+1. Create the “yugabyte-consumer” universe using the [Manual deployment](../../manual-deployment) steps.
 
 2. Create the tables for the APIs being used.
 
