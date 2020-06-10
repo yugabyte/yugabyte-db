@@ -59,12 +59,14 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/string_util.h"
 
 #include "yb/gutil/macros.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/atomic.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 
@@ -1047,20 +1049,18 @@ InternalIterator* ReturnErrorIterator(const Status& status, BlockIter* input_ite
   }
 }
 
-InternalIterator* ReturnNoIOErrorIterator(BlockIter* input_iter) {
-  return ReturnErrorIterator(STATUS(Incomplete, "no blocking io"), input_iter);
+Status ReturnNoIOError() {
+  return STATUS(Incomplete, "no blocking io");
 }
 
 } // namespace
 
-InternalIterator* BlockBasedTable::NewIndexIterator(
-    const ReadOptions& read_options, BlockIter* input_iter) {
-  const auto index_iter_state = rep_->data_index_iterator_state.get();
-  IndexReader* index_reader = rep_->data_index_reader.get(std::memory_order_acquire);
+yb::Result<BlockBasedTable::CachableEntry<IndexReader>> BlockBasedTable::GetIndexReader(
+    const ReadOptions& read_options) {
+  auto* index_reader = rep_->data_index_reader.get(std::memory_order_acquire);
   if (index_reader) {
     // Index reader has already been pre-populated.
-    return index_reader->NewIterator(
-        input_iter, index_iter_state, read_options.total_order_seek);
+    return BlockBasedTable::CachableEntry<IndexReader>{index_reader, /* cache_handle =*/ nullptr};
   }
   PERF_TIMER_GUARD(read_index_block_nanos);
 
@@ -1078,62 +1078,63 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
             BLOCK_CACHE_INDEX_HIT, statistics, read_options.query_id);
 
     if (cache_handle == nullptr && no_io) {
-      return ReturnNoIOErrorIterator(input_iter);
+      return ReturnNoIOError();
     }
 
     if (cache_handle != nullptr) {
       index_reader = static_cast<IndexReader*>(block_cache->Value(cache_handle));
     } else {
-    // Create index reader and put it in the cache.
-    std::unique_ptr<IndexReader> index_reader_unique;
-    Status s = CreateDataBlockIndexReader(&index_reader_unique);
-    if (s.ok()) {
-      s = block_cache->Insert(key, read_options.query_id, index_reader_unique.get(),
-                              index_reader_unique->usable_size(),
-                              &DeleteCachedEntry<IndexReader>, &cache_handle, statistics);
-    }
-
-    if (s.ok()) {
-      assert(cache_handle != nullptr);
+      // Create index reader and put it in the cache.
+      std::unique_ptr<IndexReader> index_reader_unique;
+      RETURN_NOT_OK(CreateDataBlockIndexReader(&index_reader_unique));
+      RETURN_NOT_OK(block_cache->Insert(
+          key, read_options.query_id, index_reader_unique.get(), index_reader_unique->usable_size(),
+          &DeleteCachedEntry<IndexReader>, &cache_handle, statistics));
+      assert(cache_handle);
       index_reader = index_reader_unique.release();
-    } else {
-        // make sure if something goes wrong, data_index_reader shall remain intact.
-        return ReturnErrorIterator(s, input_iter);
-      }
     }
 
-    assert(cache_handle);
-    auto new_iter = index_reader->NewIterator(
-        input_iter, index_iter_state, read_options.total_order_seek);
-    auto iter = new_iter ? new_iter : implicit_cast<InternalIterator*>(input_iter);
-    iter->RegisterCleanup(&ReleaseCachedEntry, block_cache, cache_handle);
-    return new_iter;
+    return BlockBasedTable::CachableEntry<IndexReader>{index_reader, cache_handle};
   } else {
     if (no_io) {
-      return ReturnNoIOErrorIterator(input_iter);
-    } else {
-      // Note that we've already performed first check at the beginning of method.
-      std::lock_guard<std::mutex> lock(rep_->data_index_reader_mutex);
-      index_reader = rep_->data_index_reader.get(std::memory_order_relaxed);
-      if (!index_reader) {
-        // preloaded_meta_index_iter is not needed for kBinarySearch data index which DocDB uses,
-        // for kHashSearch data index it will do one more access to file to load it.
-        // TODO: if we need to optimize kHashSearch data index load, we can preload and store in
-        // rep_ meta index with iterator during Open.
-        std::unique_ptr<IndexReader> index_reader_holder;
-        Status s = CreateDataBlockIndexReader(&index_reader_holder,
-            nullptr /* preloaded_meta_index_iter */);
-        if (s.ok()) {
-          index_reader = index_reader_holder.release();
-          rep_->data_index_reader.reset(index_reader, std::memory_order_acq_rel);
-        } else {
-          return ReturnErrorIterator(s, input_iter);
-        }
-      }
-      return index_reader->NewIterator(
-          input_iter, index_iter_state, read_options.total_order_seek);
+      return ReturnNoIOError();
     }
+    // Note that we've already performed first check at the beginning of method.
+    std::lock_guard<std::mutex> lock(rep_->data_index_reader_mutex);
+    index_reader = rep_->data_index_reader.get(std::memory_order_relaxed);
+    if (!index_reader) {
+      // preloaded_meta_index_iter is not needed for kBinarySearch data index which DocDB uses,
+      // for kHashSearch data index it will do one more access to file to load it.
+      // TODO: if we need to optimize kHashSearch data index load, we can preload and store in
+      // rep_ meta index with iterator during Open.
+      std::unique_ptr<IndexReader> index_reader_holder;
+      RETURN_NOT_OK(CreateDataBlockIndexReader(
+          &index_reader_holder, /* preloaded_meta_index_iter =*/ nullptr));
+      index_reader = index_reader_holder.release();
+      rep_->data_index_reader.reset(index_reader, std::memory_order_acq_rel);
+    }
+    return BlockBasedTable::CachableEntry<IndexReader>{index_reader, /* cache_handle =*/ nullptr};
   }
+}
+
+InternalIterator* BlockBasedTable::NewIndexIterator(
+    const ReadOptions& read_options, BlockIter* input_iter) {
+  const auto index_reader_result = GetIndexReader(read_options);
+  if (!index_reader_result.ok()) {
+    return ReturnErrorIterator(index_reader_result.status(), input_iter);
+  }
+
+  auto* new_iter = index_reader_result->value->NewIterator(
+      input_iter, rep_->data_index_iterator_state.get(), read_options.total_order_seek);
+
+  if (index_reader_result->cache_handle) {
+    auto iter = new_iter ? new_iter : input_iter;
+    iter->RegisterCleanup(
+        &ReleaseCachedEntry, rep_->table_options.block_cache.get(),
+        index_reader_result->cache_handle);
+  }
+
+  return new_iter;
 }
 
 // Convert an index iterator value (i.e., an encoded BlockHandle)
@@ -1210,10 +1211,10 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(const ReadOptions& ro,
     if (no_io) {
       // Could not read from block_cache and can't do IO
       if (input_iter != nullptr) {
-        input_iter->SetStatus(STATUS(Incomplete, "no blocking io"));
+        input_iter->SetStatus(ReturnNoIOError());
         return input_iter;
       } else {
-        return NewErrorInternalIterator(STATUS(Incomplete, "no blocking io"));
+        return NewErrorInternalIterator(ReturnNoIOError());
       }
     }
     std::unique_ptr<Block> block_value;
@@ -1882,6 +1883,21 @@ Status BlockBasedTable::DumpDataBlocks(WritableFile* out_file) {
 
 const ImmutableCFOptions& BlockBasedTable::ioptions() {
   return rep_->ioptions;
+}
+
+yb::Result<std::string> BlockBasedTable::GetMiddleKey() {
+  auto index_reader = VERIFY_RESULT(GetIndexReader(ReadOptions::kDefault));
+
+  // TODO: remove this trick after https://github.com/yugabyte/yugabyte-db/issues/4720 is resolved.
+  auto se = yb::ScopeExit([this, &index_reader] {
+    index_reader.Release(rep_->table_options.block_cache.get());
+  });
+
+  const auto index_middle_key = VERIFY_RESULT(index_reader.value->GetMiddleKey());
+  std::unique_ptr<InternalIterator> iter(
+      NewIterator(ReadOptions::kDefault, nullptr, /* skip_filters =*/ true));
+  iter->Seek(index_middle_key);
+  return iter->key().ToBuffer();
 }
 
 }  // namespace rocksdb

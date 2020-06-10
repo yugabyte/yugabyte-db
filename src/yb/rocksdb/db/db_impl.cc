@@ -5654,6 +5654,11 @@ bool DBImpl::NeedsDelay() {
   return write_controller_.NeedsDelay();
 }
 
+Result<std::string> DBImpl::GetMiddleKey() {
+  InstrumentedMutexLock lock(&mutex_);
+  return default_cf_handle_->cfd()->current()->GetMiddleKey();
+}
+
 void DBImpl::TEST_SwitchMemtable() {
   std::lock_guard<InstrumentedMutex> lock(mutex_);
   WriteContext context;

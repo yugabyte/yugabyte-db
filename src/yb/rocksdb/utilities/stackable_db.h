@@ -284,6 +284,10 @@ class StackableDB : public DB {
     return db_->ModifyFlushedFrontier(std::move(values), mode);
   }
 
+  yb::Result<std::string> GetMiddleKey() override {
+    return db_->GetMiddleKey();
+  };
+
   virtual void GetColumnFamilyMetaData(
       ColumnFamilyHandle *column_family,
       ColumnFamilyMetaData* cf_meta) override {

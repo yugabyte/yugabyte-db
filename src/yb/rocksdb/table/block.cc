@@ -40,6 +40,16 @@
 
 namespace rocksdb {
 
+namespace {
+
+// Empty block consists of (see comments inside block_builder.cc for block structure):
+// - 0 data keys
+// - uint32 for single restart point (first restart point is always 0 and present in block)
+// - num_restarts: uint32
+const size_t kMinBlockSize = 2*sizeof(uint32_t);
+
+} // namespace
+
 // Helper routine: decode the next block entry starting at "p",
 // storing the number of shared key bytes, non_shared key bytes,
 // and the length of the value in "*shared", "*non_shared", and
@@ -158,10 +168,23 @@ void BlockIter::SeekToLast() {
   }
 }
 
+
+namespace {
+
+Status BadBlockContentsError() {
+  return STATUS(Corruption, "bad block contents");
+}
+
+Status BadEntryInBlockError() {
+  return STATUS(Corruption, "bad entry in block");
+}
+
+} // namespace
+
 void BlockIter::CorruptionError() {
   current_ = restarts_;
   restart_index_ = num_restarts_;
-  status_ = STATUS(Corruption, "bad entry in block");
+  status_ = BadEntryInBlockError();
   key_.Clear();
   value_.clear();
 }
@@ -333,7 +356,7 @@ bool BlockIter::PrefixSeek(const Slice& target, uint32_t* index) {
 }
 
 uint32_t Block::NumRestarts() const {
-  assert(size_ >= 2*sizeof(uint32_t));
+  assert(size_ >= kMinBlockSize);
   return DecodeFixed32(data_ + size_ - sizeof(uint32_t));
 }
 
@@ -356,12 +379,12 @@ Block::Block(BlockContents&& contents)
 
 InternalIterator* Block::NewIterator(const Comparator* cmp, BlockIter* iter,
                                      bool total_order_seek) {
-  if (size_ < 2*sizeof(uint32_t)) {
+  if (size_ < kMinBlockSize) {
     if (iter != nullptr) {
-      iter->SetStatus(STATUS(Corruption, "bad block contents"));
+      iter->SetStatus(BadBlockContentsError());
       return iter;
     } else {
-      return NewErrorInternalIterator(STATUS(Corruption, "bad block contents"));
+      return NewErrorInternalIterator(BadBlockContentsError());
     }
   }
   const uint32_t num_restarts = NumRestarts();
@@ -407,6 +430,25 @@ size_t Block::ApproximateMemoryUsage() const {
     usage += prefix_index_->ApproximateMemoryUsage();
   }
   return usage;
+}
+
+yb::Result<Slice> Block::GetMiddleKey() const {
+  if (size_ < kMinBlockSize) {
+    return BadBlockContentsError();
+  } else if (size_ == kMinBlockSize) {
+    return STATUS(Incomplete, "Empty block");
+  }
+
+  const auto restart_idx = NumRestarts() / 2;
+
+  const auto entry_offset = DecodeFixed32(data_ + restart_offset_ + restart_idx * sizeof(uint32_t));
+  uint32_t shared, non_shared, value_length;
+  const char* key_ptr = DecodeEntry(
+      data_ + entry_offset, data_ + restart_offset_, &shared, &non_shared, &value_length);
+  if (key_ptr == nullptr || (shared != 0)) {
+    return BadEntryInBlockError();
+  }
+  return Slice(key_ptr, non_shared);
 }
 
 }  // namespace rocksdb

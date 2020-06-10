@@ -3018,6 +3018,15 @@ rocksdb::Env& Tablet::rocksdb_env() const {
   return *tablet_options_.rocksdb_env;
 }
 
+Result<std::string> Tablet::GetEncodedMiddleDocKey() const {
+  // TODO(tsplit): should take key_bounds_ into account.
+  auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey());
+  const auto doc_key_size = VERIFY_RESULT(DocKey::EncodedSize(
+      middle_key, docdb::DocKeyPart::kWholeDocKey));
+  middle_key.resize(doc_key_size);
+  return middle_key;
+}
+
 // ------------------------------------------------------------------------------------------------
 
 Result<ScopedReadOperation> ScopedReadOperation::Create(
