@@ -375,7 +375,7 @@ yb-admin -master_addresses <master-addresses> compact_table <keyspace> <table_na
 - *table_name*: Specifies the table name.
 - *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for compaction to end. Default value is `20`.
 
-**Example YCQL**
+**Example**
 
 ```sh
 $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 compact_table ycql.kong test
@@ -391,43 +391,93 @@ Compaction complete: SUCCESS
 
 #### list_snapshots
 
-Lists the snapshots and current status.
-
-You can use this command to see when snapshot creation is finished.
+Prints a list of all snapshot IDs,  restoration IDs, and states. Optionally, prints details (including keyspaces, tables, and indexes) in JSON format.
 
 **Syntax**
 
 ```sh
-yb-admin -master_addresses <master-addresses> list_snapshots
+yb-admin -master_addresses <master-addresses> list_snapshots [ show_details ] [ not_show_restored ]
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- `show_details`: (Optional) Print snapshot details, including the keyspaces, tables, and indexes.
+- `not_show_restored`: (Optional) Do not show successful "restorations" (that is, `COMPLETE`). Useful to see a list of only uncompleted or failed restore operations.
+
+Possible `state` values for creating and restoring snapshots:
+
+- `create_snapshot`: `CREATING`, `COMPLETE`, `DELETING`, `DELETED`, or `FAILED`.
+- `restore_snapshot`: `COMPLETE`, `DELETING`, `DELETED`, or `FAILED`.
+
+By default, the `list_snapshot` command prints the current state of the following operations:
+
+- `create_snapshot`: `snapshot_id`, `keyspace`, `table`,  `state`
+- `restore_snapshot`: `snapshot_id`, `restoration_id`,  `state`.
+- `delete_snapshot`: `snapshot_id`,  `state`.
+
+When `show_details` is included, the `list_snapshot` command prints the following details in JSON format:
+
+- `type`: `NAMESPACE`
+  - `id`: `<snapshot_id>` or `<restoration_id>`
+  - `data`:
+    - `name`:  `"<namespace_name>"`
+    - `database_type`: `"YQL_DATABASE_CQL"`
+    - `colocated`: `true` or `false`
+    - `state`: `"<state>"`
+- `type`: `TABLE` <== Use for table or index
+  - `id`: `"<table_id>"`  or `"<index_id>"`
+  - `data`:
+    - `name`: `"<table_name>"` or `"<index_id>"` 
+    - `version`: `"<table_version>"`
+    - `state`: `"<state>"`
+    - `state_msg`: `"<state_msg>"`
+    - `next_column_id`: `"<column_id>"`
+    - `table_type`: `"YQL_TABLE_TYPE"`
+    - `namespace_id`: `"<namespace_id>"`
+    - `indexed_table_id` (index only): `<table_id>` 
+    - `is_local_index` (index only): `true` or `false`
+    - `is_unique_index` (index only):  `true` or `false` 
 
 **Example**
 
+In this example, the optional `show_details` flag is added to generate the snapshot details.
+
 ```sh
-$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshots
+$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshots show_details
 ```
 
+Because `show_details` was included, `list_snapshots` prints the details in JSON format, like this:
+
+```json
+f566b03b-b85e-41a0-b903-875cd305c1c5 	COMPLETE
+{"type":"NAMESPACE","id":"8053dd55d478437cba57d9f67caac154","data":{"name":"yugabyte","database_type":"YQL_DATABASE_CQL","colocated":false,"state":"RUNNING"}}
+{"type":"TABLE","id":"a7e940e724ef497ebe94bf69bfe507d9","data":{"name":"tracking1","version":1,"state":"RUNNING","state_msg":"Current schema version=1","next_column_id":13,"table_type":"YQL_TABLE_TYPE","namespace_id":"8053dd55d478437cba57d9f67caac154"}}
+{"type":"NAMESPACE","id":"8053dd55d478437cba57d9f67caac154","data":{"name":"yugabyte","database_type":"YQL_DATABASE_CQL","colocated":false,"state":"RUNNING"}}
+{"type":"TABLE","id":"b48f4d7695f0421e93386f7a97da4bac","data":{"name":"tracking1_v_idx","version":0,"state":"RUNNING","next_column_id":12,"table_type":"YQL_TABLE_TYPE","namespace_id":"8053dd55d478437cba57d9f67caac154","indexed_table_id":"a7e940e724ef497ebe94bf69bfe507d9","is_local_index":false,"is_unique_index":false}}
 ```
-Snapshot UUID                    	State
-4963ed18fc1e4f1ba38c8fcf4058b295 	COMPLETE
+
+If `show_details` is not included, `list_snapshots` prints the `snapshot_id` and `state`:
+
+```
+f566b03b-b85e-41a0-b903-875cd305c1c5 	COMPLETE
 ```
 
 #### create_snapshot
 
-Creates a snapshot.
+Creates a snapshot of the specified tables and their indexes. Prior to v.2.1.8, indexes were not automatically included. You can specify multiple tables, even from different keyspaces.
 
 **Syntax**
 
 ```sh
-yb-admin -master_addresses <master-addresses> create_snapshot <keyspace> <table_name> [<keyspace> <table_name>]... [flush_timeout_in_seconds]
+yb-admin -master_addresses <master-addresses> create_snapshot <keyspace> <table_name> | <table_id> [<keyspace> <table_name> | <table_id> ]... [flush_timeout_in_seconds]
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *keyspace*: Specifies the database or keyspace.
-- *table_name*: Specifies the table name.
-- *flush_timeout_in_seconds*: Specifies duration, in seconds, before flushing snapshot. Default value is `60`. Set to `0` to skip flushing.
+- *keyspace*: The name of the database or keyspace.
+- *table_name*: The name of the table name.
+- *table_id*: The identifier (ID) of the table.
+- *flush_timeout_in_seconds*: Specifies duration, in seconds, before flushing snapshot. Default value is `60`. To skip flushing, set the value to `0`.
+
+When this command runs, a `snapshot_id` is generated and printed.
 
 **Example**
 
@@ -447,7 +497,7 @@ To see if the snapshot creation has finished, run the [`yb-admin list_snapshots`
 
 #### restore_snapshot
 
-Restores the specified snapshot.
+Restores the specified snapshot, including the tables and indexes. When the operation starts, a `restoration_id` is generated.
 
 **Syntax**
 
@@ -456,6 +506,32 @@ yb-admin -master_addresses <master-addresses> restore_snapshot <snapshot_id>
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *snapshot_id*: The identifier (ID) for the snapshot.
+
+**Example**
+
+```sh
+yb-admin restore_snapshot  72ad2eb1-65a2-4e88-a448-7ef4418bc469
+```
+
+When the restore starts, the `snapshot_id` and the generated `restoration_id` are displayed.
+
+```
+Started restoring snapshot: 72ad2eb1-65a2-4e88-a448-7ef4418bc469
+Restoration id: 5a9bc559-2155-4c38-ac8b-b6d0f7aa1af6
+```
+
+To see if the snapshot was successfully restored, you can run the [`yb-admin list_snapshots`](#list-snapshots) command.
+
+```sh
+$ ./bin/yb-admin list_snapshots
+```
+For the example above, the restore failed, so the following displays:
+
+```
+Restoration UUID                 	State
+5a9bc559-2155-4c38-ac8b-b6d0f7aa1af6 	FAILED
+```
 
 #### export_snapshot
 
