@@ -23,10 +23,9 @@ YugabyteDB provides synchronous replication of data in clusters dispersed across
 
 For details about configuring a 2DC deployment, see [Replicate between two data centers](../../../deploy/multi-dc/2dc-deployment).
 
-
 {{< note title="Note" >}}
 
-Asynchronous replication of data will work across all the APIs (YSQL, YCQL) since the replication across the clusters is done at the DocDB level. 
+Asynchronous replication of data will work across all the APIs (YSQL, YCQL) since the replication across the clusters is done at the DocDB level.
 
 {{</note >}}
 
@@ -54,53 +53,51 @@ The architecture diagram is shown below:
 
 <img src="https://github.com/yugabyte/yugabyte-db/raw/master/architecture/design/images/2DC-multi-master-deployment.png" style="max-width:750px;"/>
 
-
 ## Features and limitations
 
 ### Features
 
-* Updates will be timeline consistent. That is, target data center will receive updates for a row in the same order in which they occurred on the source.
-* Replication of single-key updates as well as multi-key (distributed) transactions are supported. Transactions will be applied atomically on the consumer. That is, either all changes in a transaction should be visible or none.
-* Active-active replication is supported, with both data centers accepting writes and replicating them to the other data center.
-* It is possible to perform replication to multiple target clusters. Similarly, it will be possible to consume replicated data from multiple source clusters.
-
+- Updates will be timeline consistent. That is, target data center will receive updates for a row in the same order in which they occurred on the source.
+- Active-active replication is supported, with both data centers accepting writes and replicating them to the other data center.
+- It is possible to perform replication to multiple target clusters. Similarly, it will be possible to consume replicated data from multiple source clusters.
 
 ### Impact on application design
 
 Since 2DC replication is done asynchronously and by replicating the WAL (and thereby bypassing the query layer), application design needs to follow these patterns:
 
-* **Avoid UNIQUE indexes / constraints (only for active-active mode):** Since replication is done at the WAL level, we don’t have a way to check for unique constraints. It’s possible to have two conflicting writes on separate universes which will violate the unique constraint and will cause the main table to contain both rows but the index to contain just 1 row, resulting in an inconsistent state.
+- **Avoid UNIQUE indexes / constraints (only for active-active mode):** Since replication is done at the WAL level, we don’t have a way to check for unique constraints. It’s possible to have two conflicting writes on separate universes which will violate the unique constraint and will cause the main table to contain both rows but the index to contain just 1 row, resulting in an inconsistent state.
 
-* **Avoid triggers:** Since we bypass the query layer for replicated records, DB triggers will not be fired for those and can result in unexpected behavior.
+- **Avoid triggers:** Since we bypass the query layer for replicated records, DB triggers will not be fired for those and can result in unexpected behavior.
 
-* **Avoid serial columns in primary key (only for active-active mode):** Since both universes will generate the same sequence numbers, this can result in conflicting rows. It is better to use UUIDs instead.
-
+- **Avoid serial columns in primary key (only for active-active mode):** Since both universes will generate the same sequence numbers, this can result in conflicting rows. It is better to use UUIDs instead.
 
 ### Limitations
 
-* Automatically bootstrapping sink clusters:
-    * Currently: it is the responsibility of the end user to ensure that a sink cluster has sufficiently recent updates so that replication can safely resume.
-    * Future: bootstrapping the sink cluster can be automated.
+- Transaction atomicity
+  - Transactions from the producer won't be applied atomically on the consumer. That is, some changes in a transaction may be visible before others.
 
-* Replicating DDL changes:
-    * Currently: DDL changes are not automatically replicated. Applying create table and alter table commands to the sync clusters is the responsibiity of the user.
-    * Future: Allow safe DDL changes to be propagated automatically.
+- Automatically bootstrapping sink clusters
+  - Currently: it is the responsibility of the end user to ensure that a sink cluster has sufficiently recent updates so that replication can safely resume.
+  - Future: bootstrapping the sink cluster can be automated.
 
-* Safety of DDL and DML in active-active:
-    * Currently: Certain potentially unsafe combinations of DDL/DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe since a violation could easily be introduced by inserting different values on the two clusters - each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint. This will cause the two clusters to permanently diverge and the replication to fail.
-    * Future: Detect such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default.
+- Replicating DDL changes
+  - Currently: DDL changes are not automatically replicated. Applying create table and alter table commands to the sync clusters is the responsibility of the user.
+  - Future: Allow safe DDL changes to be propagated automatically.
 
+- Safety of DDL and DML in active-active
+  - Currently: Certain potentially unsafe combinations of DDL/DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe since a violation could easily be introduced by inserting different values on the two clusters - each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint. This will cause the two clusters to permanently diverge and the replication to fail.
+  - Future: Detect such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default.
 
-## Transactional Guarantees
+## Transactional guarantees
 
 ### Atomicity of transactions
+
 This implies one can never read a partial result of a transaction on the sink cluster.
 
 ### Not globally ordered
+
 The transactions (especially those that do not involve overlapping rows) may not be applied in the same order as they occur in the source cluster.
 
 ### Last writer wins
+
 In case of active-active configurations, if there are conflicting writes to the same key, then the update with the larger timestamp is considered the latest update. Thus, the deployment is eventually consistent across the two data centers.
-
-
-
