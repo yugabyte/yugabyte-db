@@ -52,24 +52,25 @@ The design for online schema migration is based on [the Google F1 design for onl
 
 Below is an outline of the various DDL operations that are supported by YSQL and YCQL today (the expectation is that YSQL will end up supporting all the operations eventually even though this is not the case today). The aim is to make all these operations safe for online schema changes. 
 
-| Operation Type | DDL Operation            | YSQL Support | YCQL Support  | Is operation safe (as of v2.1)  |
-| :--------: |-------------------------------------------------- |:--:|:--:|:-------------------------:|
-|`COLUMN`    | Add a column                                      | ✅ | ✅ | ✅ |
-|`COLUMN`    | Drop an existing column                           | ✅ | ✅ | ✅ |
-|`COLUMN`    | Add a column with a default value                 | ✅ | :x:|  |
-|`COLUMN`    | Change default value of a column                  | ✅ | :x:|  |
-|`COLUMN`    | Add a column that is non-nullable                 | ✅ | :x:|  |
-|`COLUMN`    | Change the type of a column                       | :x:| :x:|  |
-|`CONSTRAINT`| Add a unique constraint                           | ✅ | ✅ |  |
-|`CONSTRAINT`| Add non-unique constraints (CHECK, NOT NULL, etc) | ✅ | :x:|  |
-|`CONSTRAINT`| Drop constraint                                   | ✅ | ✅ |  |
-|`INDEX`     | Add index (not primary key)                       | ✅ | ✅ | v2.2 |
-|`INDEX`     | Add primary key                                   | ✅ | ✅ |  |
-|`INDEX`     | Alter primary key                                 | ✅ | ✅ |  |
-|`INDEX`     | Drop index                                        | ✅ | ✅ | v2.2 |
-|`TABLE`     | Create table                                      | ✅ | ✅ | v2.2 |
-|`TABLE`     | Rename table                                      | :x:| :x:|  |
-|`TABLE`     | Drop table                                        | ✅ | ✅ | v2.2 |
+| Operation Type | DDL Operation            | YSQL Support | YCQL Support  | Is operation safe (YSQL) | Is operation safe (YCQL) |
+| :--------: |-------------------------------------------------- |:--:|:--:|:------------------------:|:------------------------:|
+|`COLUMN`    | Add a column                                      | ✅ | ✅ | v2.3 | ✅ |
+|`COLUMN`    | Drop an existing column                           | ✅ | ✅ | v2.3 | ✅ |
+|`COLUMN`    | Add a column with a default value                 | ✅ | :x:| :x:|  |
+|`COLUMN`    | Change default value of a column                  | ✅ | :x:| ✅ |  |
+|`COLUMN`    | Add a column that is non-nullable                 | ✅ | :x:| v2.3|  |
+|`COLUMN`    | Change the type of a column                       | :x:| :x:|  |  |
+|`CONSTRAINT`| Add a unique constraint                           | ✅ | ✅ | v2.3| ✅ |
+|`CONSTRAINT`| Add non-unique constraints (CHECK, NOT NULL, etc) | ✅ | :x:| v2.3|  |
+|`CONSTRAINT`| Drop constraint                                   | ✅ | ✅ | v2.3|  |
+|`INDEX`     | Add index (not primary key)                       | ✅ | ✅ | v2.2 | ✅ |
+|`INDEX`     | Add unique index                                  | ✅ | ✅ | v2.3 | ✅ |
+|`INDEX`     | Add primary key                                   | :x: | :x: |  |  |
+|`INDEX`     | Alter primary key                                 | :x: | :x: |  |  |
+|`INDEX`     | Drop index                                        | ✅ | ✅ | v2.3 | ✅ |
+|`TABLE`     | Create table                                      | ✅ | ✅ | v2.3 | ✅  |
+|`TABLE`     | Rename table                                      | ✅ | :x:| v2.3 |   |
+|`TABLE`     | Drop table                                        | ✅ | ✅ | v2.3 | ✅ |
 
 This section first introduces a the generalized framework for performing online schema changes. The subsequent sections will discuss how this framework is used to carry out the specific operations.
 
