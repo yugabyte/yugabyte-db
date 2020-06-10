@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_TABLE_TABLE_READER_H
-#define ROCKSDB_TABLE_TABLE_READER_H
+#ifndef YB_ROCKSDB_TABLE_TABLE_READER_H
+#define YB_ROCKSDB_TABLE_TABLE_READER_H
 
 #include <memory>
 
@@ -114,8 +114,14 @@ class TableReader {
   virtual Status DumpTable(WritableFile* out_file) {
     return STATUS(NotSupported, "DumpTable() not supported");
   }
+
+  // Returns approximate middle key which divides SST file into two parts containing roughly the
+  // same amount of keys.
+  virtual yb::Result<std::string> GetMiddleKey() {
+    return STATUS(NotSupported, "GetMiddleKey() not supported");
+  }
 };
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_TABLE_TABLE_READER_H
+#endif  // YB_ROCKSDB_TABLE_TABLE_READER_H

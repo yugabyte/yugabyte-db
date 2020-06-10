@@ -474,6 +474,8 @@ class DBImpl : public DB {
   bool AreWritesStopped();
   bool NeedsDelay() override;
 
+  Result<std::string> GetMiddleKey() override;
+
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
 

@@ -4805,7 +4805,7 @@ class ModelDB: public DB {
       rocksdb::SequenceNumber, unique_ptr<rocksdb::TransactionLogIterator>*,
       const TransactionLogIterator::ReadOptions&
           read_options = TransactionLogIterator::ReadOptions()) override {
-    return STATUS(NotSupported, "Not supported in Model DB");
+    return NotSupported();
   }
 
   virtual void GetColumnFamilyMetaData(
@@ -4823,7 +4823,15 @@ class ModelDB: public DB {
     return nullptr;
   }
 
+  Result<std::string> GetMiddleKey() override {
+    return NotSupported();
+  }
+
  private:
+  CHECKED_STATUS NotSupported() const {
+    return STATUS(NotSupported, "Not supported in Model DB");
+  }
+
   class ModelIter: public Iterator {
    public:
     ModelIter(const KVMap* map, bool owned)

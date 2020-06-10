@@ -38,6 +38,9 @@ Status BinarySearchIndexReader::Create(
 
   return s;
 }
+Result<Slice> BinarySearchIndexReader::GetMiddleKey() {
+  return index_block_->GetMiddleKey();
+}
 
 Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                        const Footer& footer, RandomAccessFileReader* file,
@@ -122,6 +125,10 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
   }
 
   return Status::OK();
+}
+
+Result<Slice> HashIndexReader::GetMiddleKey() {
+  return index_block_->GetMiddleKey();
 }
 
 class MultiLevelIterator : public InternalIterator {
@@ -296,6 +303,10 @@ InternalIterator* MultiLevelIndexReader::NewIterator(
       top_level_index_block_->NewIterator(comparator_.get(), iter, true /* total_order_seek */);
   return new MultiLevelIterator(
       index_iterator_state, top_level_iter, num_levels_, top_level_iter != iter);
+}
+
+Result<Slice> MultiLevelIndexReader::GetMiddleKey() {
+  return top_level_index_block_->GetMiddleKey();
 }
 
 } // namespace rocksdb
