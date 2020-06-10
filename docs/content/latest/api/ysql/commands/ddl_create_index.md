@@ -88,13 +88,12 @@ Specify one or more columns of the table and must be surrounded by parentheses.
 
 ### SPLIT INTO
 
-For hash-sharded tables, you can use the `SPLIT INTO` clause to specify the number of indexes to be created for the table. The hash range is then evenly split across those indexes.
-
-Pre-splitting indexes, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 indexes can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
+For hash-sharded indexes, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the index. The hash range is then evenly split across those tablets.
+Pre-splitting indexes, using `SPLIT INTO`, distributes index workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 tablets can provide higher write throughput on the index. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 
-By default, YugabyteDB pre-splits a table in `ysql_num_shards_per_tserver * num_of_tserver` shards. The `SPLIT INTO` clause can be used to override that setting on a per-table basis.
+By default, YugabyteDB pre-splits an index into `ysql_num_shards_per_tserver * num_of_tserver` tablets. The `SPLIT INTO` clause can be used to override that setting on a per-index basis.
 
 {{< /note >}}
 
@@ -150,6 +149,13 @@ yugabyte=# \d products_name_code;
 lsm, for table "public.products"
 ```
 
+### Create an index specifying the number of tablets
+
+To specify the number of tablets for an index, you can use the `CREATE INDEX` statement with the [`SPLIT INTO`](#split-into) clause.
+
+```postgresql
+yugabyte=# CREATE INDEX tracking (id int PRIMARY KEY) SPLIT INTO 10 TABLETS;
+```
 
 ### Partial indexes
 
