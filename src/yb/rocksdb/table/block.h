@@ -91,6 +91,10 @@ class Block {
   // Report an approximation of how much memory has been used.
   size_t ApproximateMemoryUsage() const;
 
+  // Returns middle restart key from this data block (see block_builder.cc comments for restart
+  // points description).
+  yb::Result<Slice> GetMiddleKey() const;
+
  private:
   BlockContents contents_;
   const char* data_;            // contents_.data.data()

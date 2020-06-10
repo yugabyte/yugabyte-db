@@ -132,7 +132,7 @@ Status NewFileReader(const ImmutableCFOptions& ioptions, const EnvOptions& env_o
 
 } // anonymous namespace
 
-Status TableCache::GetTableReader(
+Status TableCache::DoGetTableReader(
     const EnvOptions& env_options,
     const InternalKeyComparatorPtr& internal_comparator, const FileDescriptor& fd,
     bool sequential_mode, bool record_read_stats, HistogramImpl* file_read_hist,
@@ -187,7 +187,7 @@ Status TableCache::FindTable(const EnvOptions& env_options,
       return STATUS(Incomplete, "Table not found in table_cache, no_io is set");
     }
     unique_ptr<TableReader> table_reader;
-    s = GetTableReader(env_options, internal_comparator, fd,
+    s = DoGetTableReader(env_options, internal_comparator, fd,
         false /* sequential mode */, record_read_stats,
         file_read_hist, &table_reader, skip_filters);
     if (!s.ok()) {
@@ -206,6 +206,25 @@ Status TableCache::FindTable(const EnvOptions& env_options,
   return s;
 }
 
+TableCache::TableReaderWithHandle::TableReaderWithHandle(TableReaderWithHandle&& rhs)
+    : table_reader(rhs.table_reader), handle(rhs.handle), cache(rhs.cache),
+      created_new(rhs.created_new) {
+  rhs.Release();
+}
+
+TableCache::TableReaderWithHandle& TableCache::TableReaderWithHandle::operator=(
+    TableReaderWithHandle&& rhs) {
+  if (&rhs != this) {
+    Reset();
+    table_reader = rhs.table_reader;
+    handle = rhs.handle;
+    cache = rhs.cache;
+    created_new = rhs.created_new;
+    rhs.Release();
+  }
+  return *this;
+}
+
 void TableCache::TableReaderWithHandle::Release() {
   table_reader = nullptr;
   handle = nullptr;
@@ -213,7 +232,8 @@ void TableCache::TableReaderWithHandle::Release() {
   created_new = false;
 }
 
-TableCache::TableReaderWithHandle::~TableReaderWithHandle() {
+void TableCache::TableReaderWithHandle::Reset() {
+  // TODO: can we remove created_new and check !handle instead?
   if (created_new) {
     DCHECK(handle == nullptr);
     delete table_reader;
@@ -221,6 +241,10 @@ TableCache::TableReaderWithHandle::~TableReaderWithHandle() {
     DCHECK_ONLY_NOTNULL(cache);
     cache->Release(handle);
   }
+}
+
+TableCache::TableReaderWithHandle::~TableReaderWithHandle() {
+  Reset();
 }
 
 Status TableCache::DoGetTableReaderForIterator(
@@ -235,7 +259,7 @@ Status TableCache::DoGetTableReaderForIterator(
       (for_compaction && ioptions_.new_table_reader_for_compaction_inputs);
   if (create_new_table_reader) {
     unique_ptr<TableReader> table_reader_unique_ptr;
-    Status s = GetTableReader(
+    Status s = DoGetTableReader(
         env_options, icomparator, fd, /* sequential mode */ true,
         /* record stats */ false, nullptr, &table_reader_unique_ptr);
     if (!s.ok()) {
@@ -243,17 +267,9 @@ Status TableCache::DoGetTableReaderForIterator(
     }
     trwh->table_reader = table_reader_unique_ptr.release();
   } else {
-    trwh->table_reader = fd.table_reader;
-    if (trwh->table_reader == nullptr) {
-      Status s = FindTable(env_options, icomparator, fd, &trwh->handle,
-                           options.query_id, options.read_tier == kBlockCacheTier /* no_io */,
-                           !for_compaction /* record read_stats */, file_read_hist, skip_filters);
-      if (!s.ok()) {
-        return s;
-      }
-      trwh->table_reader = GetTableReaderFromHandle(trwh->handle);
-      trwh->cache = cache_;
-    }
+    *trwh = VERIFY_RESULT(GetTableReader(
+        env_options, icomparator, fd, options.query_id,
+        /* no_io =*/ options.read_tier == kBlockCacheTier, file_read_hist, skip_filters));
   }
   trwh->created_new = create_new_table_reader;
   return Status::OK();
@@ -415,6 +431,22 @@ Status TableCache::Get(const ReadOptions& options,
 #endif  // ROCKSDB_LITE
 
   return s;
+}
+
+yb::Result<TableCache::TableReaderWithHandle> TableCache::GetTableReader(
+    const EnvOptions& env_options, const InternalKeyComparatorPtr& internal_comparator,
+    const FileDescriptor& fd, const QueryId query_id, const bool no_io,
+    HistogramImpl* file_read_hist, const bool skip_filters) {
+  TableReaderWithHandle trwh;
+  trwh.table_reader = fd.table_reader;
+  if (trwh.table_reader == nullptr) {
+    RETURN_NOT_OK(FindTable(
+        env_options, internal_comparator, fd, &trwh.handle, query_id, no_io,
+        /* record_read_stats =*/ true, file_read_hist, skip_filters));
+    trwh.table_reader = GetTableReaderFromHandle(trwh.handle);
+    trwh.cache = cache_;
+  }
+  return trwh;
 }
 
 Status TableCache::GetTableProperties(

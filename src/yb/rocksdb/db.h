@@ -902,6 +902,9 @@ class DB {
 
   virtual bool NeedsDelay() { return false; }
 
+  // Returns approximate middle key (see Version::GetMiddleKey).
+  virtual yb::Result<std::string> GetMiddleKey() = 0;
+
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}
 
