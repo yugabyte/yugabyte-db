@@ -101,7 +101,7 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b??
 - [DocDB] Fixed BoundedRocksDbIterator::SeekToLast works incorrectly for 2nd post-split tablet. [#4542](https://github.com/yugabyte/yugabyte-db/issues/4542)
 - [DocDb] Abort snapshot if table was deleted. [#4610](https://github.com/yugabyte/yugabyte-db/issues/4610)
 - [DocDB] Backfill index without waiting indefinitely for pending transactions. [#3471](https://github.com/yugabyte/yugabyte-db/issues/3471)
-- [DocDB] Add HTTP endpoint for determining master leadership. [#2606](https://github.com/yugabyte/yugabyte-db/issues/2606)
+- [DocDB] Transition to new leader gracefully during a leader stepdown. When a leader stepdown happens with no new leader candidate specified in the stepdown request, the peer simply steps down leaving the group with no leader until regular heartbeat timeouts are triggered. This change makes it so that the leader attempts to transition to the most up-to-date peer, if possible. [#4298](https://github.com/yugabyte/yugabyte-db/issues/4298)
 - [Colocation] During load balancing operations, load balance each colocated tablet once. This fix removes unnecessary load balancing for every user table sharing that table and the parent table.
 - Fix YB-Master hangs due to transaction status resolution. [#4410](https://github.com/yugabyte/yugabyte-db/issues/4410)
 - Redirect the master UI to the master leader UI without failing when one master is down. [#4442](https://github.com/yugabyte/yugabyte-db/issues/4442) and [#3869](https://github.com/yugabyte/yugabyte-db/issues/3869)
@@ -132,6 +132,7 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b??
 - Fix Kubernetes pod container metrics not displaying in **Metrics** panel. [#4652](https://github.com/yugabyte/yugabyte-db/issues/4652)
 - Fix **Backups** tab not rendering when there are no backups. [#4661](https://github.com/yugabyte/yugabyte-db/issues/4661)
 - Fix password reset in customer profile page. [#4666](https://github.com/yugabyte/yugabyte-db/issues/4666) and [#3909](https://github.com/yugabyte/yugabyte-db/issues/3909)
+- Change UI text displaying "GFlag" to "Flag" in the YugabyteDB Admin Console. [#4659](https://github.com/yugabyte/yugabyte-db/issues/4659)
 
 {{< note title="Note" >}}
 
