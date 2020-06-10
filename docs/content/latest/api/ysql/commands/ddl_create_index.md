@@ -154,7 +154,8 @@ lsm, for table "public.products"
 To specify the number of tablets for an index, you can use the `CREATE INDEX` statement with the [`SPLIT INTO`](#split-into) clause.
 
 ```postgresql
-yugabyte=# CREATE INDEX tracking (id int PRIMARY KEY) SPLIT INTO 10 TABLETS;
+CREATE TABLE employees (id int PRIMARY KEY, first_name TEXT, last_name TEXT) SPLIT INTO 10 TABLETS;
+CREATE INDEX ON employees(first_name, last_name) SPLIT INTO 10 TABLETS;
 ```
 
 ### Partial indexes
