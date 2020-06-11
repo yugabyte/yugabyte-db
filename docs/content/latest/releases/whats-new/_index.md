@@ -14,7 +14,7 @@ menu:
     weight: 2589 
 ---
 
-**Released:** June 9, 2020 (2.1.8.1-b2).
+**Released:** June 11, 2020 (2.1.8.1-b26).
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
@@ -40,7 +40,7 @@ menu:
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.1.8.1-b??
+docker pull yugabytedb/yugabyte:2.1.8.1-b26
 ```
 
 ## YSQL
@@ -53,9 +53,9 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b??
 - [DocDB] Ensure that fast path (pushed down) single row writes honor higher priority transactions and get aborted or retired instead. [#4316](https://github.com/yugabyte/yugabyte-db/issues/4316)
 - [DocDB] Split copy table operations into smaller chunks (using byte size instead of count) for CREATE DATABASE statement. [#3743](https://github.com/yugabyte/yugabyte-db/issues/3743)
 - Correctly push down `IS NULL` condition to DocDB. [#4499](https://github.com/yugabyte/yugabyte-db/issues/4499)
-- Avoid ASAN failures after a large data set is uploaded by rearranging files and test functionalities. [#4488]((https://github.com/yugabyte/yugabyte-db/issues/4488)
+- Avoid ASAN failures after a large data set is uploaded by rearranging files and test functionalities. [#4488](https://github.com/yugabyte/yugabyte-db/issues/4488)
 - Fix memory leaks by using memory context to manage object alloc and free. [#4490](https://github.com/yugabyte/yugabyte-db/issues/4316)
-- Fix multi-touch cache and improve caching logic for read/write operations. [#4379](https://github.com/yugabyte/yugabyte-db/issues/4379)
+- Fix multi-touch cache and improve caching logic for read and write operations. [#4379](https://github.com/yugabyte/yugabyte-db/issues/4379)
 - Improve index cost estimates by considering index uniqueness, included columns (index scan vs. index only scan), scan direction, and partial indexes. Also, disable merge joins for unsupported cases. [#4494](https://github.com/yugabyte/yugabyte-db/issues/4494) and [#4496](https://github.com/yugabyte/yugabyte-db/issues/4496)
 - Add support for deferrable foreign key constraints. [#3995](https://github.com/yugabyte/yugabyte-db/issues/3995)
 - Prevent dropping primary key constraint. [#3163](https://github.com/yugabyte/yugabyte-db/issues/3163)
@@ -69,7 +69,7 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b??
 - Update Cassandra Java driver version to `3.8.0-yb-4` and adds support for [`guava`](https://github.com/google/guava) 26 or later. The latest release of the driver is available in the [Yugabyte `cassandra-java-driver` repository](https://github.com/yugabyte/cassandra-java-driver/releases). [#3897](https://github.com/yugabyte/yugabyte-db/issues/3897)
 - YB-TServers should not crash when attempting to log in using YCQL authentication without a password. [#4459](https://github.com/yugabyte/yugabyte-db/issues/4459)
 - Performance degradation in `CassandraSecondaryIndex` workload resolved. [#4401](https://github.com/yugabyte/yugabyte-db/issues/4401)
-- Add `yb-admin import_snapshot` support for renaming a few tables (not all), but the specified name is equal to the old table name: `yb-admin import_snapshot <meta-file> ks old_table_name`. [#4280](https://github.com/yugabyte/yugabyte-db/issues/4280)
+- Add [`yb-admin import_snapshot`](../../admin/yb-admin/#import-snapshot) support for renaming a few tables (not all), but the specified name is equal to the old table name: `yb-admin import_snapshot <meta-file> ks old_table_name`. [#4280](https://github.com/yugabyte/yugabyte-db/issues/4280)
 - For DDL creation with Spring Data Cassandra, change the Enum value from JSON to JSONB to allow schema creation to succeed programmatically involving JSON column types and update the cassandra-java-driver to 3.8.0-yb-5. [#4481](https://github.com/yugabyte/yugabyte-db/issues/4481)
 - Use the same timestamp for current time to compute multiple runtimes in output of `<tserver-ip>:13000/rpcz`. [#4418](https://github.com/yugabyte/yugabyte-db/issues/4418)
 - Correctly push down `= NULL` condition to DocDB. [#4499](https://github.com/yugabyte/yugabyte-db/issues/4499)
@@ -87,7 +87,7 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b??
   - `<web>/api/v1/is-leader`: Returns `200 OK` response status code when the master is a leader and `503 Service Unavailable` when the master is not a leader.
 - New `yb-admin` command [`get_load_balancer_state`](../../admin/yb-admin/#get-load-balancer-state) to get the cluster load balancer state. [#4509](https://github.com/yugabyte/yugabyte-installation/pull/4509)
 - Avoid creating intent iterator when no transactions are running. [#4500](https://github.com/yugabyte/yugabyte-installation/pull/4500)
-- Increase default memory limit for `yb-master` for running in low-memory setups (<=4 GB). [#3742](https://github.com/yugabyte/yugabyte-installation/pull/3742)
+- Increase default memory limit for `yb-master` for running in low-memory setups (`<=4 GB`). [#3742](https://github.com/yugabyte/yugabyte-installation/pull/3742)
 - Improve RocksDB checkpoint directory cleanup if a tserver crashes or is restarted while performing a snapshot operation. [#4352](https://github.com/yugabyte/yugabyte-db/issues/4352)
 - [DocDB] Use bloom filters for range-partitioned tables. The first primary key column is added to the bloom filter. [#4437](https://github.com/yugabyte/yugabyte-installation/pull/4437)
 - [DocDB] Fix snapshots bootstrap order bu altering the load for transaction-aware snapshots. [#4470](https://github.com/yugabyte/yugabyte-db/issues/4470)
@@ -119,13 +119,13 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b??
   - YCQL and YEDIS metrics include `ops`, `avg latency`, and `P99 latency`.
   - YSQL metrics include only `ops` and `avg latency`.
 - Add metrics for RPC queue sizes of services, including YB-Master, YB-TServer, YCQL, and YEDIS. [#4294](https://github.com/yugabyte/yugabyte-db/issues/4294)
-- When configuration flags are edited in the YugabyteDB Admin Console, 
-- When configuration flags are deleted using the YugabyteDB Admin Console, they are also removed from `server.conf` file and the server restarts. [#4341](https://github.com/yugabyte/yugabyte-db/issues/4341)
+- Add option to edit configuration flags without requiring server restart. [#4433](https://github.com/yugabyte/yugabyte-db/issues/4433)
+- When configuration flags are deleted in the YugabyteDB Admin Console, remove the flags from `server.conf` file. [#4341](https://github.com/yugabyte/yugabyte-db/issues/4341)
 - When creating GCP instances, only use host project when specifying network.
-- When creating a cloud provider configuration, display provider-level (non-k8s) settings for SSH ports and enabling airgap installs. [#3615](https://github.com/yugabyte/yugabyte-db/issues/3615), [#4243](https://github.com/yugabyte/yugabyte-db/issues/4243), and [#4240](https://github.com/yugabyte/yugabyte-db/issues/4240).
+- When creating a cloud provider configuration, display provider-level (non-k8s) settings for SSH ports and enabling airgapped installations. [#3615](https://github.com/yugabyte/yugabyte-db/issues/3615), [#4243](https://github.com/yugabyte/yugabyte-db/issues/4243), and [#4240](https://github.com/yugabyte/yugabyte-db/issues/4240).
 - After removing a node and then adding a node, check for certificate and key files and create the files if needed. [#4551](https://github.com/yugabyte/yugabyte-db/issues/4551)
 - Update to support Helm 3 deployments. [#4416]((https://github.com/yugabyte/yugabyte-db/issues/4416))
-- Change QLTableRow representation. [#4427](https://github.com/yugabyte/yugabyte-db/issues/4427)
+- Change `QLTable`Row` representation. [#4427](https://github.com/yugabyte/yugabyte-db/issues/4427)
 - Fix CDC-related race conditions using `CDCServiceTxnTest.TestGetChangesForPendingTransaction`. [#4544](https://github.com/yugabyte/yugabyte-db/issues/4427)
 - Revert validation on alerting email field to allow comma-separated emails in the form. [#4639](https://github.com/yugabyte/yugabyte-db/issues/4639)
 - Add **Custom SMTP Configuration** section to **Health & Alerting** tab on customer profile page. [#4443](https://github.com/yugabyte/yugabyte-db/issues/4443)
