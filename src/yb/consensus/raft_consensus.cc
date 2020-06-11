@@ -449,6 +449,7 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
   if (FLAGS_TEST_do_not_start_election_test_only) {
     LOG(INFO) << "Election start skipped as TEST_do_not_start_election_test_only flag "
                  "is set to true.";
+    return Status::OK();
   }
 
   // If pre-elections disabled or we already won pre-election then start regular election,

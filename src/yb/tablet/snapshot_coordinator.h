@@ -32,7 +32,7 @@ class SnapshotCoordinator {
 
   virtual CHECKED_STATUS Load(Tablet* tablet) = 0;
 
-  virtual CHECKED_STATUS BootstrapWritePair(const Slice& key, const Slice& value) = 0;
+  virtual CHECKED_STATUS ApplyWritePair(const Slice& key, const Slice& value) = 0;
 
   virtual ~SnapshotCoordinator() = default;
 };

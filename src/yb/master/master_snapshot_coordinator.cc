@@ -338,7 +338,7 @@ class SnapshotState : public StateWithTablets {
       SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
       const tserver::TabletSnapshotOpRequestPB& request)
       : StateWithTablets(context, SysSnapshotEntryPB::CREATING),
-        id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()) {
+        id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()), version_(1) {
     InitTabletIds(request.tablet_id(),
                   request.imported() ? SysSnapshotEntryPB::COMPLETE : SysSnapshotEntryPB::CREATING);
     request.extra_data().UnpackTo(&entries_);
@@ -348,7 +348,7 @@ class SnapshotState : public StateWithTablets {
       SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
       const SysSnapshotEntryPB& entry)
       : StateWithTablets(context, entry.state()),
-        id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()) {
+        id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()), version_(entry.version()) {
     InitTablets(entry.tablet_snapshots());
     *entries_.mutable_entries() = entry.entries();
   }
@@ -374,10 +374,13 @@ class SnapshotState : public StateWithTablets {
 
     *out->mutable_entries() = entries_.entries();
 
+    out->set_version(version_);
+
     return Status::OK();
   }
 
   CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) {
+    ++version_;
     docdb::DocKey doc_key({ docdb::PrimitiveValue::Int32(SysRowEntry::SNAPSHOT),
                             docdb::PrimitiveValue(id_.AsSlice().ToBuffer()) });
     docdb::SubDocKey sub_doc_key(
@@ -418,6 +421,10 @@ class SnapshotState : public StateWithTablets {
     });
   }
 
+  int version() const {
+    return version_;
+  }
+
  private:
   bool IsTerminalFailure(const Status& status) override {
     // Table was removed.
@@ -434,6 +441,7 @@ class SnapshotState : public StateWithTablets {
   TxnSnapshotId id_;
   HybridTime snapshot_hybrid_time_;
   SysRowEntries entries_;
+  int version_;
 };
 
 class RestorationState : public StateWithTablets {
@@ -633,7 +641,7 @@ class MasterSnapshotCoordinator::Impl {
     });
   }
 
-  CHECKED_STATUS BootstrapWritePair(Slice key, const Slice& value) {
+  CHECKED_STATUS ApplyWritePair(Slice key, const Slice& value) {
     docdb::SubDocKey sub_doc_key;
     RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
 
@@ -808,7 +816,7 @@ class MasterSnapshotCoordinator::Impl {
     auto it = snapshots_.find(snapshot_id);
     if (it == snapshots_.end()) {
       snapshots_.emplace(snapshot_id, std::move(snapshot));
-    } else {
+    } else if (it->second->version() < snapshot->version() || it->second->version() == 0) {
       // If we have several updates for single snapshot, they are loaded in chronological order.
       // So latest update should be picked.
       it->second = std::move(snapshot);
@@ -950,8 +958,8 @@ void MasterSnapshotCoordinator::Shutdown() {
   impl_->Shutdown();
 }
 
-Status MasterSnapshotCoordinator::BootstrapWritePair(const Slice& key, const Slice& value) {
-  return impl_->BootstrapWritePair(key, value);
+Status MasterSnapshotCoordinator::ApplyWritePair(const Slice& key, const Slice& value) {
+  return impl_->ApplyWritePair(key, value);
 }
 
 } // namespace master

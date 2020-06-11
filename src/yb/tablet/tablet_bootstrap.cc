@@ -1103,15 +1103,6 @@ void TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg) {
   WARN_NOT_OK(tablet_->ApplyRowOperations(&operation_state), "ApplyRowOperations failed");
 
   tablet_->mvcc_manager()->Replicated(hybrid_time);
-
-  if (tablet_->snapshot_coordinator()) {
-    // We should load transaction aware snapshots duuring replaying logs, because we could replay
-    // snapshot operations that would refer them.
-    for (const auto& pair : write->write_batch().write_pairs()) {
-      WARN_NOT_OK(tablet_->snapshot_coordinator()->BootstrapWritePair(pair.key(), pair.value()),
-                  "BootstrapWritePair failed");
-    }
-  }
 }
 
 Status TabletBootstrap::PlayChangeMetadataRequest(ReplicateMsg* replicate_msg) {
