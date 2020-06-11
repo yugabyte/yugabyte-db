@@ -96,6 +96,7 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b26
 - [DocDB] Add `yb-ts-cli` commands, [`flush_all_tablets`](../../admin/yb-ts-cli/#flush-all-tablets) and [`flush_tablet <tablet_id>`](../../admin/yb-ts-cli/#flush-tablet), to flush tablets. When used with rolling restarts, less time is spent applying WAL records to rocksdb. [#2785](https://github.com/yugabyte/yugabyte-db/issues/2785)
   - Special thanks to [mirageyjd](https://github.com/mirageyjd) for your contribution.
 - [DocDB] Fix deadlock during tablet splitting. [#4312](https://github.com/yugabyte/yugabyte-db/issues/4312)
+- [DocDB] Allow multiple indexes to backfill or delete simultaneously. [#2784](https://github.com/yugabyte/yugabyte-db/issues/2784)
 - Introduced load balancing throttle on the total number of tablets being remote bootstrapped, across the cluster. [#4053](https://github.com/yugabyte/yugabyte-db/issues/4053)
 - [DocDB] Remove applied intent doc hybrid time during compaction. [#4535](https://github.com/yugabyte/yugabyte-db/issues/4535)
 - [DocDB] Fixed BoundedRocksDbIterator::SeekToLast works incorrectly for 2nd post-split tablet. [#4542](https://github.com/yugabyte/yugabyte-db/issues/4542)
