@@ -266,7 +266,7 @@ class NodeChecker():
         remote_cmd = (
             'find {} {} -name "*FATAL*" -type f -printf "%T@ %p\\n" | sort -rn'.format(
                 search_dir,
-                '-cmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES)))
+                '-mmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES)))
         output = self._remote_check_output(remote_cmd)
         if has_errors(output):
             return e.fill_and_return_entry([output], True)
@@ -293,7 +293,7 @@ class NodeChecker():
         e = self._new_entry("Core files")
         remote_cmd = 'if [ -d {} ]; then find {} {} -name "core_*"; fi'.format(
             YB_CORES_DIR, YB_CORES_DIR,
-            '-cmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES))
+            '-mmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES))
         output = self._remote_check_output(remote_cmd)
         if has_errors(output):
             return e.fill_and_return_entry([output], True)
