@@ -225,6 +225,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // failures that happened before a certain point in time.
   void GetLeaderStepDownFailureTimes(MonoTime forget_failures_before,
                                      LeaderStepDownFailureTimes* dest);
+
+  CHECKED_STATUS CheckRunning() const;
+
  private:
   friend class RefCountedThreadSafe<TabletInfo>;
 

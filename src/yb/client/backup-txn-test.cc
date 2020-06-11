@@ -53,6 +53,7 @@ class BackupTxnTest : public TransactionTestBase {
   void SetUp() override {
     FLAGS_enable_history_cutoff_propagation = true;
     SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+    mini_cluster_opt_.num_masters = 3;
     TransactionTestBase::SetUp();
   }
 
@@ -263,6 +264,8 @@ class BackupTxnTest : public TransactionTestBase {
 
     return true;
   }
+
+  void TestDeleteTable(bool restart_masters);
 };
 
 TEST_F(BackupTxnTest, Simple) {
@@ -460,6 +463,22 @@ TEST_F(BackupTxnTest, Restart) {
   ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, 1s));
 }
 
+TEST_F(BackupTxnTest, CompleteAndBounceMaster) {
+  ASSERT_NO_FATALS(WriteData());
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+
+  std::this_thread::sleep_for(1s);
+
+  ASSERT_OK(client_->DeleteTable(kTableName));
+
+  auto leader = cluster_->leader_mini_master();
+  leader->Shutdown();
+
+  ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, 1s));
+
+  ASSERT_OK(leader->Start());
+}
+
 TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
   ASSERT_NO_FATALS(WriteData());
   auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
@@ -541,7 +560,7 @@ TEST_F(BackupTxnTest, Consistency) {
   LOG(INFO) << "Value: " << restored_value;
 }
 
-TEST_F(BackupTxnTest, DeleteTable) {
+void BackupTxnTest::TestDeleteTable(bool restart_masters) {
   FLAGS_unresponsive_ts_rpc_timeout_ms = 1000;
   FLAGS_snapshot_coordinator_poll_interval_ms = 2500 * kTimeMultiplier;
 
@@ -556,9 +575,25 @@ TEST_F(BackupTxnTest, DeleteTable) {
 
   ASSERT_OK(client_->DeleteTable(kTableName, false));
 
+  if (restart_masters) {
+    ShutdownAllMasters(cluster_.get());
+  }
+
   ASSERT_OK(StartAllTServers(cluster_.get()));
 
+  if (restart_masters) {
+    ASSERT_OK(StartAllMasters(cluster_.get()));
+  }
+
   ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::FAILED, 5s * kTimeMultiplier));
+}
+
+TEST_F(BackupTxnTest, DeleteTable) {
+  TestDeleteTable(/* restart_masters= */ false);
+}
+
+TEST_F(BackupTxnTest, DeleteTableWithMastersRestart) {
+  TestDeleteTable(/* restart_masters= */ true);
 }
 
 } // namespace client
