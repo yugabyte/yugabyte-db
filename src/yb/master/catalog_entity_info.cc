@@ -120,12 +120,22 @@ void TabletInfo::SetReplicaLocations(ReplicaMap replica_locations) {
   replica_locations_ = std::move(replica_locations);
 }
 
+CHECKED_STATUS TabletInfo::CheckRunning() const {
+  if (!table()->is_running()) {
+    return STATUS_FORMAT(Expired, "Table is not running: $0", table()->ToStringWithState());
+  }
+
+  return Status::OK();
+}
+
 Result<TSDescriptor*> TabletInfo::GetLeader() const {
   std::lock_guard<simple_spinlock> l(lock_);
   auto result = GetLeaderUnlocked();
   if (result) {
     return result;
   }
+
+  RETURN_NOT_OK(CheckRunning());
 
   return STATUS_FORMAT(
       NotFound,

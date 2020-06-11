@@ -1080,6 +1080,12 @@ Status Tablet::ApplyKeyValueRowOperations(int64_t batch_idx,
   } else {
     PrepareNonTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
     WriteToRocksDB(frontiers, &write_batch, StorageDbType::kRegular);
+    if (snapshot_coordinator_) {
+      for (const auto& pair : put_batch.write_pairs()) {
+        WARN_NOT_OK(snapshot_coordinator_->ApplyWritePair(pair.key(), pair.value()),
+                    "ApplyWritePair failed");
+      }
+    }
   }
 
   return Status::OK();

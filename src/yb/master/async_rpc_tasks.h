@@ -117,7 +117,7 @@ class RetryingTSRpcTask : public MonitoredTask {
                     const scoped_refptr<TableInfo>& table);
 
   // Send the subclass RPC request.
-  Status Run();
+  CHECKED_STATUS Run();
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
@@ -233,6 +233,8 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Clean up request and release resources. May call 'delete this'.
   void UnregisterAsyncTask();
+
+  CHECKED_STATUS Failed(const Status& status);
 
   // Only abort this task on reactor if it has been scheduled.
   void AbortIfScheduled();

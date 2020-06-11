@@ -123,32 +123,35 @@ RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
 // Send the subclass RPC request.
 Status RetryingTSRpcTask::Run() {
   VLOG_WITH_PREFIX(1) << "Start Running";
+  ++attempt_;
   auto task_state = state();
   if (task_state == MonitoredTaskState::kAborted) {
-    UnregisterAsyncTask();  // May delete this.
-    return STATUS(IllegalState, "Unable to run task because it has been aborted");
+    // May delete this.
+    return Failed(STATUS(IllegalState, "Unable to run task because it has been aborted"));
   }
   // TODO(bogdan): There is a race between scheduling and running and can cause this to fail.
   // Should look into removing the kScheduling state, if not needed, and simplifying the state
   // transitions!
   DCHECK(task_state == MonitoredTaskState::kWaiting) << "State: " << ToString(task_state);
 
-  const Status s = ResetTSProxy();
+  Status s = ResetTSProxy();
   if (!s.ok()) {
+    s = s.CloneAndPrepend("Failed to reset TS proxy");
+    if (s.IsExpired()) {
+      TransitionToTerminalState(MonitoredTaskState::kWaiting, MonitoredTaskState::kFailed, s);
+      UnregisterAsyncTask();
+      return s;
+    }
     if (RescheduleWithBackoffDelay()) {
       return Status::OK();
     }
-    auto transitioned_to_failed =
-        PerformStateTransition(MonitoredTaskState::kWaiting, MonitoredTaskState::kFailed) ||
-        state() == MonitoredTaskState::kFailed;
-    if (transitioned_to_failed) {
-      UnregisterAsyncTask();  // May delete this.
-      return s.CloneAndPrepend("Failed to reset TS proxy");
-    }
 
     auto state = this->state();
-    if (state == MonitoredTaskState::kAborted) {
-      UnregisterAsyncTask();  // May delete this.
+    UnregisterAsyncTask(); // May delete this.
+
+    if (state == MonitoredTaskState::kFailed) {
+      return s;
+    } else if (state == MonitoredTaskState::kAborted) {
       return STATUS(IllegalState, "Unable to run task because it has been aborted");
     }
 
@@ -164,12 +167,12 @@ Status RetryingTSRpcTask::Run() {
 
   if (!PerformStateTransition(MonitoredTaskState::kWaiting, MonitoredTaskState::kRunning)) {
     if (state() == MonitoredTaskState::kAborted) {
-      UnregisterAsyncTask();  // May delete this.
-      return STATUS(Aborted, "Unable to run task because it has been aborted");
+      // May delete this.
+      return Failed(STATUS(Aborted, "Unable to run task because it has been aborted"));
     } else {
       LOG_WITH_PREFIX(DFATAL) <<
           "Task transition MonitoredTaskState::kWaiting -> MonitoredTaskState::kRunning failed";
-      return STATUS_FORMAT(IllegalState, "Task in invalid state $0", state());
+      return Failed(STATUS_FORMAT(IllegalState, "Task in invalid state $0", state()));
     }
   }
   auto slowdown_flag_val = GetAtomicFlag(&FLAGS_slowdown_master_async_rpc_tasks_by_ms);
@@ -180,7 +183,7 @@ Status RetryingTSRpcTask::Run() {
     ThreadRestrictions::SetWaitAllowed(old_thread_restriction);
     VLOG_WITH_PREFIX(2) << "Slowing down done. Resuming.";
   }
-  if (!SendRequest(++attempt_)) {
+  if (!SendRequest(attempt_)) {
     if (!RescheduleWithBackoffDelay()) {
       UnregisterAsyncTask();  // May call 'delete this'.
     }
@@ -202,8 +205,8 @@ MonitoredTaskState RetryingTSRpcTask::AbortAndReturnPrevState(const Status& stat
     auto expected = prev_state;
     if (state_.compare_exchange_weak(expected, MonitoredTaskState::kAborted)) {
       AbortIfScheduled();
-      UnregisterAsyncTask();
       Finished(status);
+      UnregisterAsyncTask();
       return prev_state;
     }
     prev_state = state();
@@ -345,6 +348,13 @@ void RetryingTSRpcTask::RunDelayedTask(const Status& status) {
 
 void RetryingTSRpcTask::UnregisterAsyncTaskCallback() {}
 
+Status RetryingTSRpcTask::Failed(const Status& status) {
+  LOG_WITH_PREFIX(WARNING) << "Async task failed: " << status;
+  Finished(status);
+  UnregisterAsyncTask();
+  return status;
+}
+
 void RetryingTSRpcTask::UnregisterAsyncTask() {
   std::unique_lock<decltype(unregister_mutex_)> lock(unregister_mutex_);
   UnregisterAsyncTaskCallback();
@@ -393,7 +403,8 @@ void RetryingTSRpcTask::TransitionToTerminalState(MonitoredTaskState expected,
                                << terminal_state << ". Task has been aborted";
     } else {
       LOG_WITH_PREFIX(DFATAL) << "State transition " << expected << " -> "
-                              << terminal_state << " failed. Current task is in an invalid state";
+                              << terminal_state << " failed. Current task is in an invalid state: "
+                              << state();
     }
     return;
   }
