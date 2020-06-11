@@ -106,6 +106,7 @@ The following items are being planned as additions to the roadmap
 | Point in time restores | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/1820) |  |
 | LDAP authentication support | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) |  |
 | Support Kafka as source and sink | PLANNING |  |  | Support source and sink for both YSQL and YSQL |
+| Follower reads with distributed transactions | PLANNING |  |  | Ability to perform follower reads for YSQL and transactional tables in YCQL. Note that this is currently supported for scenarios without distributed transactions.  |
 
 ## Recently released features
 
