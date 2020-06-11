@@ -25,7 +25,11 @@ export default function(state = INITIAL_STATE, action) {
     case FETCH_TABLES_LIST:
       return { ...state, universeTablesList: [], loading: true};
     case FETCH_TABLES_LIST_SUCCESS:
-      return { ...state, universeTablesList: action.payload.data, error: null, loading: false};
+      if (Array.isArray(action.payload.data)) {
+        return { ...state, universeTablesList: action.payload.data, error: null, loading: false};
+      } else {
+        return { ...state, universeTablesList: [], error: null, loading: false};
+      }
     case FETCH_TABLES_LIST_FAILURE:
       error = action.payload.data || {message: action.payload.response.data.error};
       return { ...state, universeTablesList: [], error: error, loading: false};
