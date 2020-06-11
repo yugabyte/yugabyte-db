@@ -448,8 +448,9 @@ void Reactor::ScanIdleConnections() {
       conn->Shutdown(STATUS_FORMAT(
           NetworkError, "Connection timed out after $0", ToSeconds(connection_delta)));
       LOG_WITH_PREFIX(INFO)
-          << "Timing out connection " << conn->ToString() << " - it has been idle for "
-          << ToSeconds(connection_delta) << "s (delta: " << ToSeconds(connection_delta)
+          << "DEBUG: Closing idle connection: " << conn->ToString()
+          << " - it has been idle for " << ToSeconds(connection_delta) << "s";
+      VLOG(1) << "(delta: " << ToSeconds(connection_delta)
           << ", current time: " << ToSeconds(cur_time_.time_since_epoch())
           << ", last activity time: " << ToSeconds(last_activity_time.time_since_epoch()) << ")";
       server_conns_.erase(c++);
