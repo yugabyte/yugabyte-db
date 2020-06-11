@@ -29,20 +29,36 @@ class GenericBackoffWaiter {
   typedef typename Clock::time_point TimePoint;
   typedef typename Clock::duration Duration;
 
+  // deadline - time when waiter decides that it is expired.
+  // max_wait - max duration for single wait.
+  // base_delay - multiplier for wait duration.
   explicit GenericBackoffWaiter(
-      TimePoint deadline, Duration max_wait = Duration::max())
-      : deadline_(deadline), max_wait_(max_wait) {}
+      TimePoint deadline, Duration max_wait = Duration::max(),
+      Duration base_delay = std::chrono::milliseconds(1))
+      : deadline_(deadline), max_wait_(max_wait), base_delay_(base_delay) {}
+
+  bool ExpiredNow() const {
+    return ExpiredAt(Clock::now());
+  }
+
+  bool ExpiredAt(TimePoint time) const {
+    return time >= deadline_;
+  }
 
   bool Wait() {
     auto now = Clock::now();
-    if (now >= deadline_) {
+    if (ExpiredAt(now)) {
       return false;
     }
 
-    ++attempt_;
+    NextAttempt();
 
     std::this_thread::sleep_for(DelayForTime(now));
     return true;
+  }
+
+  void NextAttempt() {
+    ++attempt_;
   }
 
   Duration DelayForNow() const {
@@ -50,13 +66,13 @@ class GenericBackoffWaiter {
   }
 
   Duration DelayForTime(TimePoint now) const {
-    auto max_wait = std::min(deadline_ - now, max_wait_);
-    int64_t base_delay_ms = attempt_ >= 29
-        ? std::numeric_limits<int32_t>::max()
-        : 1LL << (attempt_ + 3); // 1st retry delayed 2^4 ms, 2nd 2^5, etc..
-    int64_t jitter_ms = RandomUniformInt(0, 50);
-    return std::min<decltype(max_wait)>(
-        std::chrono::milliseconds(base_delay_ms + jitter_ms), max_wait);
+    Duration max_wait = std::min(deadline_ - now, max_wait_);
+    // 1st retry delayed 2^4 of base delays, 2nd 2^5 base delays, etc..
+    Duration attempt_delay =
+        base_delay_ *
+        (attempt_ >= 29 ? std::numeric_limits<int32_t>::max() : 1LL << (attempt_ + 3));
+    Duration jitter = std::chrono::milliseconds(RandomUniformInt(0, 50));
+    return std::min(attempt_delay + jitter, max_wait);
   }
 
   size_t attempt() const {
@@ -72,6 +88,7 @@ class GenericBackoffWaiter {
   TimePoint deadline_;
   size_t attempt_ = 0;
   Duration max_wait_;
+  Duration base_delay_;
 };
 
 typedef GenericBackoffWaiter<std::chrono::steady_clock> BackoffWaiter;

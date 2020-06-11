@@ -49,7 +49,7 @@ using yb::tablet::TabletPeer;
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_bool(transaction_allow_rerequest_status_in_tests);
+DECLARE_bool(TEST_transaction_allow_rerequest_status);
 DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
@@ -210,7 +210,7 @@ TEST_F(QLTransactionTest, ReadRestartWithIntents) {
 }
 
 TEST_F(QLTransactionTest, ReadRestartWithPendingIntents) {
-  FLAGS_transaction_allow_rerequest_status_in_tests = false;
+  FLAGS_TEST_transaction_allow_rerequest_status = false;
   DisableApplyingIntents();
   TestReadRestart(false /* commit */);
 }
