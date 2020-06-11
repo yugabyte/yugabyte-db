@@ -49,6 +49,8 @@ message SysSnapshotEntryPB {
   repeated SysRowEntry entries = 3;
 
   optional fixed64 snapshot_hybrid_time = 4;
+
+  optional int64 version = 5;
 }
 
 ////////////////////////////////////////////////////////////

@@ -100,7 +100,7 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // Check whether we have write request for snapshot while replaying write request during
   // bootstrap. And upsert snapshot from it in this case.
   // key and value are entry from the write batch.
-  CHECKED_STATUS BootstrapWritePair(const Slice& key, const Slice& value) override;
+  CHECKED_STATUS ApplyWritePair(const Slice& key, const Slice& value) override;
 
   void Start();
 
