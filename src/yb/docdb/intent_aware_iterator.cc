@@ -31,10 +31,11 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
-DEFINE_bool(transaction_allow_rerequest_status_in_tests, true,
+DEFINE_bool(TEST_transaction_allow_rerequest_status, true,
             "Allow rerequest transaction status when try again is received.");
 
 namespace yb {
@@ -108,6 +109,11 @@ Result<HybridTime> TransactionStatusCache::GetCommitTime(const TransactionId& tr
   return result;
 }
 
+Status StatusWaitTimedOut(const TransactionId& transaction_id) {
+  return STATUS_FORMAT(
+      TimedOut, "Timed out waiting for transaction status: $0", transaction_id);
+}
+
 Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& transaction_id) {
   HybridTime local_commit_time = GetLocalCommitTime(transaction_id);
   if (local_commit_time.is_valid()) {
@@ -116,7 +122,9 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
 
   // Since TransactionStatusResult does not have default ctor we should init it somehow.
   TransactionStatusResult txn_status(TransactionStatus::ABORTED, HybridTime());
-  const auto kMaxWait = 50ms;
+  const auto kMaxWait = 50ms * kTimeMultiplier;
+  const auto kRequestTimeout = kMaxWait;
+  bool retry_allowed = FLAGS_TEST_transaction_allow_rerequest_status;
   CoarseBackoffWaiter waiter(deadline_, kMaxWait);
   static const std::string kRequestReason = "get commit time"s;
   for(;;) {
@@ -130,7 +138,9 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
               &kRequestReason,
               TransactionLoadFlags{TransactionLoadFlag::kCleanup},
               callback});
-    auto future_status = future.wait_for(waiter.DelayForNow());
+    auto wait_start = CoarseMonoClock::now();
+    auto future_status = future.wait_until(
+        retry_allowed ? wait_start + kRequestTimeout : deadline_);
     if (future_status == std::future_status::ready) {
       auto txn_status_result = future.get();
       if (txn_status_result.ok()) {
@@ -143,19 +153,25 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
         return HybridTime::kMin;
       }
       LOG(WARNING)
-          << "Failed to request transaction " << yb::ToString(transaction_id) << " status: "
+          << "Failed to request transaction " << transaction_id << " status: "
           <<  txn_status_result.status();
       if (!txn_status_result.status().IsTryAgain()) {
         return std::move(txn_status_result.status());
       }
+      if (!waiter.Wait()) {
+        return StatusWaitTimedOut(transaction_id);
+      }
     } else {
-      LOG(INFO) << "Timed out waiting txn status, left to deadline: "
-                << MonoDelta(deadline_ - CoarseMonoClock::now());
+      LOG(INFO) << "TXN: " << transaction_id << ": Timed out waiting txn status, waited: "
+                << MonoDelta(CoarseMonoClock::now() - wait_start)
+                << ", future status: " << to_underlying(future_status)
+                << ", left to deadline: " << MonoDelta(deadline_ - CoarseMonoClock::now());
+      if (waiter.ExpiredNow()) {
+        return StatusWaitTimedOut(transaction_id);
+      }
+      waiter.NextAttempt();
     }
-    DCHECK(FLAGS_transaction_allow_rerequest_status_in_tests);
-    if (!waiter.Wait()) {
-      return STATUS(TimedOut, "Timed out waiting for transaction status");
-    }
+    DCHECK(retry_allowed);
   }
   VLOG(4) << "Transaction_id " << transaction_id << " at " << read_time_
           << ": status: " << TransactionStatus_Name(txn_status.status)
