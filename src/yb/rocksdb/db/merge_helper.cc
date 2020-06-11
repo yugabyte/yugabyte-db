@@ -315,7 +315,6 @@ bool MergeHelper::FilterMerge(const Slice& user_key, const Slice& value_slice) {
   }
   bool to_delete =
       compaction_filter_->FilterMergeOperand(level_, user_key, value_slice);
-  total_filter_time_ += filter_timer_.ElapsedNanosSafe();
   return to_delete;
 }
 

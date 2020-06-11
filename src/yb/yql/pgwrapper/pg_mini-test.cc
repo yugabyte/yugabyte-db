@@ -1029,7 +1029,11 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
       FLAGS_timestamp_history_retention_interval_sec = 0;
       FLAGS_history_cutoff_propagation_interval_ms = 1;
       ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+      const auto compaction_start = MonoTime::Now();
       ASSERT_OK(cluster_->CompactTablets());
+      const auto compaction_finish = MonoTime::Now();
+      const double compaction_elapsed_time_sec = (compaction_finish - compaction_start).ToSeconds();
+      LOG(INFO) << "Compaction duration: " << compaction_elapsed_time_sec << " s";
     }
 
     LOG(INFO) << "Perform read";

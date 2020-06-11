@@ -28,7 +28,7 @@ namespace rocksdb {
 CompactionIterator::CompactionIterator(
     InternalIterator* input, const Comparator* cmp, MergeHelper* merge_helper,
     SequenceNumber last_sequence, std::vector<SequenceNumber>* snapshots,
-    SequenceNumber earliest_write_conflict_snapshot, Env* env,
+    SequenceNumber earliest_write_conflict_snapshot,
     bool expect_valid_internal_key, Compaction* compaction,
     CompactionFilter* compaction_filter, LogBuffer* log_buffer)
     : input_(input),
@@ -36,7 +36,6 @@ CompactionIterator::CompactionIterator(
       merge_helper_(merge_helper),
       snapshots_(snapshots),
       earliest_write_conflict_snapshot_(earliest_write_conflict_snapshot),
-      env_(env),
       expect_valid_internal_key_(expect_valid_internal_key),
       compaction_(compaction),
       compaction_filter_(compaction_filter),
@@ -178,14 +177,9 @@ void CompactionIterator::NextFromInput() {
         bool value_changed = false;
         bool to_delete = false;
         compaction_filter_value_.clear();
-        {
-          StopWatchNano timer(env_, true);
-          to_delete = compaction_filter_->Filter(
-              compaction_->level(), ikey_.user_key, value_,
-              &compaction_filter_value_, &value_changed) != FilterDecision::kKeep;
-          iter_stats_.total_filter_time +=
-              env_ != nullptr ? timer.ElapsedNanos() : 0;
-        }
+        to_delete = compaction_filter_->Filter(
+            compaction_->level(), ikey_.user_key, value_,
+            &compaction_filter_value_, &value_changed) != FilterDecision::kKeep;
         if (to_delete) {
           // convert the current key to a delete
           ikey_.type = kTypeDeletion;
