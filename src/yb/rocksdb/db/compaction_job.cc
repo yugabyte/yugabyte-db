@@ -686,7 +686,7 @@ void CompactionJob::ProcessKeyValueCompaction(
   Status status;
   sub_compact->c_iter.reset(new CompactionIterator(
       input.get(), cfd->user_comparator(), &merge, versions_->LastSequence(),
-      &existing_snapshots_, earliest_write_conflict_snapshot_, env_, false,
+      &existing_snapshots_, earliest_write_conflict_snapshot_, false,
       sub_compact->compaction, compaction_filter));
   auto c_iter = sub_compact->c_iter.get();
   c_iter->SeekToFirst();
@@ -765,8 +765,6 @@ void CompactionJob::ProcessKeyValueCompaction(
   sub_compact->compaction_job_stats.total_input_raw_value_bytes +=
       c_iter_stats.total_input_raw_value_bytes;
 
-  RecordTick(stats_, FILTER_OPERATION_TOTAL_TIME,
-             c_iter_stats.total_filter_time);
   RecordDroppedKeys(c_iter_stats, &sub_compact->compaction_job_stats);
   RecordCompactionIOStats();
 

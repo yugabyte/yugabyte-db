@@ -17,8 +17,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef MERGE_HELPER_H
-#define MERGE_HELPER_H
+#ifndef YB_ROCKSDB_DB_MERGE_HELPER_H
+#define YB_ROCKSDB_DB_MERGE_HELPER_H
 
 #include <deque>
 #include <string>
@@ -58,7 +58,6 @@ class MergeHelper {
         keys_(),
         operands_(),
         filter_timer_(env_),
-        total_filter_time_(0U),
         stats_(stats) {
     assert(user_comparator_ != nullptr);
   }
@@ -132,7 +131,6 @@ class MergeHelper {
   // TODO: Re-style this comment to be like the first one
   const std::deque<std::string>& keys() const { return keys_; }
   const std::deque<std::string>& values() const { return operands_; }
-  uint64_t TotalFilterTime() const { return total_filter_time_; }
   bool HasOperator() const { return user_merge_operator_ != nullptr; }
 
  private:
@@ -152,7 +150,6 @@ class MergeHelper {
   std::deque<std::string> operands_;  // Parallel with keys_; stores the values
 
   StopWatchNano filter_timer_;
-  uint64_t total_filter_time_;
   Statistics* stats_;
 };
 
@@ -179,4 +176,4 @@ class MergeOutputIterator {
 
 } // namespace rocksdb
 
-#endif
+#endif  // YB_ROCKSDB_DB_MERGE_HELPER_H
