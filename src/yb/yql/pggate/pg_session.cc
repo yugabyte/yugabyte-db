@@ -169,7 +169,7 @@ Status CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
     return Status(result.code(),
                   __FILE__,
                   __LINE__,
-                  "Multiple homogeneous errors: " + GetStatusStringSet(errors),
+                  GetStatusStringSet(errors),
                   result.ErrorCodesSlice(),
                   DupFileName::kFalse);
   }

@@ -579,6 +579,14 @@ YBPgsqlWriteOp::YBPgsqlWriteOp(const shared_ptr<YBTable>& table)
 
 YBPgsqlWriteOp::~YBPgsqlWriteOp() {}
 
+std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::DeepCopy() {
+  auto op = std::make_unique<YBPgsqlWriteOp>(table_);
+  op->mutable_request()->CopyFrom(request());
+  op->set_is_single_row_txn(is_single_row_txn_);
+  op->SetTablet(tablet());
+  return op;
+}
+
 static std::unique_ptr<YBPgsqlWriteOp> NewYBPgsqlWriteOp(
     const shared_ptr<YBTable>& table,
     PgsqlWriteRequestPB::PgsqlStmtType stmt_type) {
