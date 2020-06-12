@@ -461,6 +461,7 @@ void ThreadMgr::PrintThreadCategoryRows(const ThreadCategory& category, stringst
       } else {
         *output << thread.stack_trace.status().message().ToBuffer();
       }
+      *output << Format("Total number of threads: $0", thread.rowspan);
       *output << "</pre></td>";
     }
     *output << "</tr>\n";
