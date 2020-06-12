@@ -47,8 +47,8 @@ YBCStatus YBCPgInitSession(const YBCPgEnv pg_env, const char *database_name);
 //   Postgres operations are done, associated YugaByte memory context (YBCPgMemCtx) will be
 //   destroyed toghether with Postgres memory context.
 YBCPgMemctx YBCPgCreateMemctx();
-void YBCPgDestroyMemctx(YBCPgMemctx memctx);
-void YBCPgResetMemctx(YBCPgMemctx memctx);
+YBCStatus YBCPgDestroyMemctx(YBCPgMemctx memctx);
+YBCStatus YBCPgResetMemctx(YBCPgMemctx memctx);
 
 // Invalidate the sessions table cache.
 YBCStatus YBCPgInvalidateCache();

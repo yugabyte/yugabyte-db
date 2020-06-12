@@ -40,6 +40,7 @@ set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_ba
    ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(pg_wrapper-test)
 ADD_YB_TEST(pg_libpq-test)
+ADD_YB_TEST(pg_libpq_err-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_mini-test)
 
