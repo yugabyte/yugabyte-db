@@ -301,20 +301,20 @@ YSQL does not yet support GiST indexes. This is tracked in [this GitHub issue](h
 
 {{< /note >}}
 
-### PostgreSQL Hyperloglog
+### postgresql-hll (PostgreSQL extension for HyperLogLog)
 
 The [`postgresql-hll`](https://github.com/citusdata/postgresql-hll) module introduces a new data type `hll`, which is a HyperLogLog data structure.
 HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision.
 
-The first step is to install postgres-hll [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in PostgreSQL.
-It is best to use the same PostgreSQL version that is incorporated into YugabyteDB. You can see the PostgreSQL version incorporated in YugabyteDB by using the following `ysqlsh` command:
+The first step is to install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance.
+It is best to use the same PostgreSQL version that is incorporated into YugabyteDB. You can see the PostgreSQL version incorporated in YugabyteDB installation by using the following `ysqlsh` command:
 
 ```sh
 $ ./bin/ysqlsh --version
 psql (PostgreSQL) 11.2-YB-2.1.2.0-b0
 ```
 
-Above you use PostgreSQL 11.2. After installing the extension you copy the files to YugabyteDB:
+Above you performed the steps in your PostgreSQL 11.2 instance. After installing the extension there, now copy the files to your YugabyteDB instance:
 
 ```sh
 $ cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" && 
