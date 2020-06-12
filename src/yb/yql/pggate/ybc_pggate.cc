@@ -106,12 +106,12 @@ YBCPgMemctx YBCPgCreateMemctx() {
   return pgapi->CreateMemctx();
 }
 
-void YBCPgDestroyMemctx(YBCPgMemctx memctx) {
-  return pgapi->DestroyMemctx(memctx);
+YBCStatus YBCPgDestroyMemctx(YBCPgMemctx memctx) {
+  return ToYBCStatus(pgapi->DestroyMemctx(memctx));
 }
 
-void YBCPgResetMemctx(YBCPgMemctx memctx) {
-  return pgapi->ResetMemctx(memctx);
+YBCStatus YBCPgResetMemctx(YBCPgMemctx memctx) {
+  return ToYBCStatus(pgapi->ResetMemctx(memctx));
 }
 
 YBCStatus YBCPgInvalidateCache() {
