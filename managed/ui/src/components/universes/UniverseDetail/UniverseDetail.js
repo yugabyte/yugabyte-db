@@ -219,49 +219,54 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, "universes.details.overview") &&
           <Tab.Pane
             eventKey={"overview"}
-            title="Overview"
+            tabtitle="Overview"
             key="overview-tab"
             mountOnEnter={true}
             unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, "universes.details.overview")}>
+            disabled={isDisabled(currentCustomer.data.features, "universes.details.overview")}
+          >
             <UniverseOverviewContainerNew
               width={width}
               universe={universe}
               updateAvailable={updateAvailable}
               showSoftwareUpgradesModal={showSoftwareUpgradesModal}
-              tabRef={this.ybTabPanel} />
+              tabRef={this.ybTabPanel}
+            />
           </Tab.Pane>,
 
         isNotHidden(currentCustomer.data.features, "universes.details.tables") &&
           <Tab.Pane
             eventKey={"tables"}
-            title="Tables"
+            tabtitle="Tables"
             key="tables-tab"
             mountOnEnter={true}
             unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, "universes.details.tables")}>
-            <ListTablesContainer/>
+            disabled={isDisabled(currentCustomer.data.features, "universes.details.tables")}
+          >
+            <ListTablesContainer />
           </Tab.Pane>,
 
         isNotHidden(currentCustomer.data.features, "universes.details.nodes") &&
           <Tab.Pane
             eventKey={"nodes"}
-            title={isItKubernetesUniverse ? "Pods" : "Nodes"}
+            tabtitle={isItKubernetesUniverse ? "Pods" : "Nodes"}
             key="nodes-tab"
             mountOnEnter={true}
             unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, "universes.details.nodes")}>
+            disabled={isDisabled(currentCustomer.data.features, "universes.details.nodes")}
+          >
             <NodeDetailsContainer />
           </Tab.Pane>,
 
         isNotHidden(currentCustomer.data.features, "universes.details.metrics") &&
           <Tab.Pane
             eventKey={"metrics"}
-            title="Metrics"
+            tabtitle="Metrics"
             key="metrics-tab"
             mountOnEnter={true}
             unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, "universes.details.metrics")}>
+            disabled={isDisabled(currentCustomer.data.features, "universes.details.metrics")}
+          >
             <div className="universe-detail-content-container">
               <CustomerMetricsPanel
                 customer={customer}
@@ -275,7 +280,7 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, "universes.details.tasks") &&
           <Tab.Pane
             eventKey={"tasks"}
-            title="Tasks"
+            tabtitle="Tasks"
             key="tasks-tab"
             mountOnEnter={true}
             unmountOnExit={true}
@@ -293,22 +298,24 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, "universes.details.backups") &&
           <Tab.Pane
             eventKey={"backups"}
-            title="Backups"
+            tabtitle="Backups"
             key="backups-tab"
             mountOnEnter={true}
             unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, "universes.details.backups")}>
+            disabled={isDisabled(currentCustomer.data.features, "universes.details.backups")}
+          >
             <ListBackupsContainer currentUniverse={currentUniverse.data} />
           </Tab.Pane>,
 
         isNotHidden(currentCustomer.data.features, "universes.details.health") &&
           <Tab.Pane
             eventKey={"health"}
-            title="Health"
+            tabtitle="Health"
             key="health-tab"
             mountOnEnter={true}
             unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, "universes.details.heath")}>
+            disabled={isDisabled(currentCustomer.data.features, "universes.details.heath")}
+          >
             <UniverseHealthCheckList universe={universe} currentCustomer={currentCustomer} />
           </Tab.Pane>
       ]

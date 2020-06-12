@@ -41,9 +41,14 @@ export default class MetricsPanel extends Component {
       }
 
       metric.layout.xaxis.hoverformat = '%H:%M:%S, %b %d, %Y';
+      metric.layout.hovermode = 'closest'; // show single hover tooltip for closest data point
+
       // TODO: send this data from backend.
       let max = 0;
       metric.data.forEach(function (data) {
+        // define custom template for hover tooltip
+        data.hovertemplate = '%{data.name}: %{y} at %{x} <extra></extra>';
+
         if (data.y) {
           data.y.forEach(function (y) {
             y = parseFloat(y) * 1.25;
