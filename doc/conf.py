@@ -19,7 +19,7 @@
 
 # -- Project information -----------------------------------------------------
 
-project = u'AgensGraph Extension'
+project = u'Apache AGE'
 copyright = u'2019, Bitnine Global, Inc.'
 author = u'Bitnine Global, Inc.'
 
@@ -90,10 +90,10 @@ html_theme = 'sphinx_rtd_theme'
 # documentation.
 #
 html_theme_options = {
-    'style_nav_header_background': '#343131'
+    'style_nav_header_background': '#FFFFFF'
 }
 
-html_logo = './_static/AgensGraph_BI.png'
+html_logo = './_static/age_BI.png'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -141,7 +141,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'AgensGraphExtension.tex', u'AgensGraph Extension Documentation',
+    (master_doc, 'ApacheAGE.tex', u'Apache AGE Documentation',
      u'Bitnine Global, Inc.', 'manual'),
 ]
 
@@ -151,7 +151,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'agensgraphextension', u'AgensGraph Extension Documentation',
+    (master_doc, 'apacheage', u'Apache AGE Documentation',
      [author], 1)
 ]
 
@@ -162,8 +162,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'AgensGraphExtension', u'AgensGraph Extension Documentation',
-     author, 'AgensGraphExtension', 'One line description of project.',
+    (master_doc, 'ApacheAGE', u'Apache AGE Documentation',
+     author, 'ApacheAGE', 'One line description of project.',
      'Miscellaneous'),
 ]
 
