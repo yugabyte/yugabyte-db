@@ -57,7 +57,12 @@ static void
 							  bool isTopLevel,
 #endif
 							  DestReceiver *dest,
-							  char *completionTag);
+#if PG_VERSION_NUM < 130000
+							  char *completionTag
+#else
+							  QueryCompletion *qc
+#endif
+							  );
 static ProcessUtility_hook_type prev_utility_hook = NULL;
 
 static void hypo_executorEnd_hook(QueryDesc *queryDesc);
@@ -182,7 +187,12 @@ hypo_utility_hook(
 				  bool isTopLevel,
 #endif
 				  DestReceiver *dest,
-				  char *completionTag)
+#if PG_VERSION_NUM < 130000
+				  char *completionTag
+#else
+				  QueryCompletion *qc
+#endif
+				  )
 {
 	isExplain = query_or_expression_tree_walker(
 #if PG_VERSION_NUM >= 100000
@@ -211,7 +221,13 @@ hypo_utility_hook(
 #if PG_VERSION_NUM < 90300
 						  isTopLevel,
 #endif
-						  dest, completionTag);
+						  dest,
+#if PG_VERSION_NUM < 130000
+						  completionTag
+#else
+						  qc
+#endif
+						  );
 	else
 		standard_ProcessUtility(
 #if PG_VERSION_NUM >= 100000
@@ -230,7 +246,13 @@ hypo_utility_hook(
 #if PG_VERSION_NUM < 90300
 								isTopLevel,
 #endif
-								dest, completionTag);
+								dest,
+#if PG_VERSION_NUM < 130000
+						  completionTag
+#else
+						  qc
+#endif
+						  );
 
 }
 

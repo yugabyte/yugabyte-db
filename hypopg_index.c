@@ -1551,7 +1551,7 @@ hypo_set_indexname(hypoIndex * entry, char *indexname)
 		totalsize = NAMEDATALEN;
 
 	/* eventually truncate the given indexname at NAMEDATALEN-1 if needed */
-	strncpy(entry->indexname, oid, strlen(oid));
+	strcpy(entry->indexname, oid);
 	strncat(entry->indexname, indexname, totalsize - strlen(oid) - 1);
 }
 
