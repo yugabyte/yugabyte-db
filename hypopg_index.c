@@ -361,6 +361,32 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 
 	relid = RangeVarGetRelid(node->relation, AccessShareLock, false);
 
+	/* Some sanity checks */
+	switch (get_rel_relkind(relid))
+	{
+#if PG_VERSION_NUM >= 90300
+		case RELKIND_MATVIEW:
+#endif
+		case RELKIND_RELATION:
+			/* this is supported */
+			break;
+#if PG_VERSION_NUM >= 100000
+#if PG_VERSION_NUM < 110000
+		case RELKIND_PARTITIONED_TABLE:
+			elog(ERROR, "hypopg: cannot create hypothetical index on"
+				 " partitioned table \"%s\"", node->relation->relname);
+#endif			/* pg11- */
+			break;
+#endif			/* pg10- */
+		default:
+			elog(ERROR, "hypopg: \"%s\" is not a table"
+#if PG_VERSION_NUM >= 90300
+				 " or materialized view"
+#endif
+				 ,
+				 node->relation->relname);
+	}
+
 	/* Run parse analysis ... */
 	node = transformIndexStmt(relid, node, queryString);
 

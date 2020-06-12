@@ -14,3 +14,4 @@ People who contributed to hypopg:
   * Godwottery
   * Jan Koßmann
   * Extortioner01
+  * nagaraju11
