@@ -297,7 +297,7 @@ WHERE ST_Intersects(a.geom, b.geom) AND a.name LIKE 'University of Alberta';
 
 {{< note title="Note" >}}
 
-YSQL does not yet support GiST indexes. This is tracked in [this GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/1337).
+YSQL does not yet support GiST indexes. This is tracked in [GitHub issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337).
 
 {{< /note >}}
 
