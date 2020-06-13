@@ -39,6 +39,14 @@ ifneq ($(MAJORVERSION),$(filter $(MAJORVERSION), 9.2 9.3 9.4))
 	REGRESS += hypo_brin
 endif
 
+ifeq ($(MAJORVERSION),10)
+	REGRESS += hypo_index_part_10
+endif
+
+ifneq ($(MAJORVERSION),$(filter $(MAJORVERSION), 9.2 9.3 9.4 9.5 9.6 10))
+	REGRESS += hypo_index_part
+endif
+
 DEBUILD_ROOT = /tmp/$(EXTENSION)
 
 deb: release-zip

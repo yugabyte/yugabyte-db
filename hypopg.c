@@ -17,6 +17,12 @@
 #include "postgres.h"
 #include "fmgr.h"
 
+#if PG_VERSION_NUM >= 110000
+#include "catalog/partition.h"
+#include "nodes/pg_list.h"
+#include "utils/lsyscache.h"
+#endif
+
 #include "include/hypopg.h"
 #include "include/hypopg_import.h"
 #include "include/hypopg_index.h"
@@ -75,6 +81,7 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 										RelOptInfo *rel);
 static get_relation_info_hook_type prev_get_relation_info_hook = NULL;
 
+static bool hypo_index_match_table(hypoIndex *entry, Oid relid);
 static bool hypo_query_walker(Node *node);
 
 void
@@ -256,6 +263,35 @@ hypo_utility_hook(
 
 }
 
+static bool
+hypo_index_match_table(hypoIndex *entry, Oid relid)
+{
+	/* Hypothetical index on the exact same relation, use it. */
+	if (entry->relid == relid)
+		return true;
+#if PG_VERSION_NUM >= 110000
+	/*
+	 * If the table is a partition, see if the hypothetical index belongs to
+	 * one of the partition parent.
+	 */
+	if (get_rel_relispartition(relid))
+	{
+		List *parents = get_partition_ancestors(relid);
+		ListCell *lc;
+
+		foreach(lc, parents)
+		{
+			Oid oid = lfirst_oid(lc);
+
+			if (oid == entry->relid)
+				return true;
+		}
+	}
+#endif
+
+	return false;
+}
+
 /* Detect if the current utility command is compatible with hypothetical indexes
  * i.e. an EXPLAIN, no ANALYZE
  */
@@ -291,6 +327,7 @@ hypo_query_walker(Node *parsetree)
 	}
 	return false;
 }
+
 
 /* Reset the isExplain flag after each query */
 static void
@@ -333,7 +370,7 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 			{
 				hypoIndex  *entry = (hypoIndex *) lfirst(lc);
 
-				if (entry->relid == relationObjectId)
+				if (hypo_index_match_table(entry, RelationGetRelid(relation)))
 				{
 					/*
 					 * hypothetical index found, add it to the relation's

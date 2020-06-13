@@ -367,17 +367,18 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 #if PG_VERSION_NUM >= 90300
 		case RELKIND_MATVIEW:
 #endif
+#if PG_VERSION_NUM >= 110000
+		case RELKIND_PARTITIONED_TABLE:
+#endif
 		case RELKIND_RELATION:
 			/* this is supported */
 			break;
-#if PG_VERSION_NUM >= 100000
-#if PG_VERSION_NUM < 110000
+#if PG_VERSION_NUM >= 100000 && PG_VERSION_NUM < 110000
 		case RELKIND_PARTITIONED_TABLE:
 			elog(ERROR, "hypopg: cannot create hypothetical index on"
 				 " partitioned table \"%s\"", node->relation->relname);
-#endif			/* pg11- */
 			break;
-#endif			/* pg10- */
+#endif
 		default:
 			elog(ERROR, "hypopg: \"%s\" is not a table"
 #if PG_VERSION_NUM >= 90300
