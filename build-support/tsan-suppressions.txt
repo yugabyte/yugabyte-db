@@ -168,3 +168,8 @@ race:cass::RefCounted<cass::*>::dec_ref
 race:uv__io_feed
 race:uv__update_time
 race:uv_timer_start
+
+# protobuf updates size cache at end of ByteSizeLong, and this update is surrounded by
+# GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN and GOOGLE_SAFE_CONCURRENT_WRITES_END.
+# But they are defined to empty, so have to suppress it here.
+race:google::protobuf::Any::ByteSizeLong
