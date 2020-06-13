@@ -87,6 +87,10 @@ tserver::TabletSnapshotOpRequestPB* SnapshotOperationState::AllocateRequest() {
   return request_holder_.get();
 }
 
+tserver::TabletSnapshotOpRequestPB* SnapshotOperationState::ReleaseRequest() {
+  return request_holder_.release();
+}
+
 Result<SnapshotCoordinator&> GetSnapshotCoordinator(SnapshotOperationState* state) {
   auto snapshot_coordinator = state->tablet()->snapshot_coordinator();
   if (!snapshot_coordinator) {
@@ -132,7 +136,12 @@ void SnapshotOperationState::UpdateRequestFromConsensusRound() {
 consensus::ReplicateMsgPtr SnapshotOperation::NewReplicateMsg() {
   auto result = std::make_shared<ReplicateMsg>();
   result->set_op_type(SNAPSHOT_OP);
-  result->mutable_snapshot_request()->CopyFrom(*state()->request());
+  auto request = state()->ReleaseRequest();
+  if (request) {
+    result->set_allocated_snapshot_request(request);
+  } else {
+    *result->mutable_snapshot_request() = *state()->request();
+  }
   return result;
 }
 

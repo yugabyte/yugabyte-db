@@ -150,7 +150,8 @@ Status RetryingTSRpcTask::Run() {
 
     if (state == MonitoredTaskState::kFailed) {
       return s;
-    } else if (state == MonitoredTaskState::kAborted) {
+    }
+    if (state == MonitoredTaskState::kAborted) {
       return STATUS(IllegalState, "Unable to run task because it has been aborted");
     }
 
@@ -168,12 +169,13 @@ Status RetryingTSRpcTask::Run() {
     if (state() == MonitoredTaskState::kAborted) {
       // May delete this.
       return Failed(STATUS(Aborted, "Unable to run task because it has been aborted"));
-    } else {
-      LOG_WITH_PREFIX(DFATAL) <<
-          "Task transition MonitoredTaskState::kWaiting -> MonitoredTaskState::kRunning failed";
-      return Failed(STATUS_FORMAT(IllegalState, "Task in invalid state $0", state()));
     }
+
+    LOG_WITH_PREFIX(DFATAL) <<
+        "Task transition MonitoredTaskState::kWaiting -> MonitoredTaskState::kRunning failed";
+    return Failed(STATUS_FORMAT(IllegalState, "Task in invalid state $0", state()));
   }
+
   auto slowdown_flag_val = GetAtomicFlag(&FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms);
   if (PREDICT_FALSE(slowdown_flag_val> 0)) {
     VLOG_WITH_PREFIX(1) << "Slowing down by " << slowdown_flag_val << " ms.";
@@ -182,10 +184,8 @@ Status RetryingTSRpcTask::Run() {
     ThreadRestrictions::SetWaitAllowed(old_thread_restriction);
     VLOG_WITH_PREFIX(2) << "Slowing down done. Resuming.";
   }
-  if (!SendRequest(attempt_)) {
-    if (!RescheduleWithBackoffDelay()) {
-      UnregisterAsyncTask();  // May call 'delete this'.
-    }
+  if (!SendRequest(attempt_) && !RescheduleWithBackoffDelay()) {
+    UnregisterAsyncTask();  // May call 'delete this'.
   }
   return Status::OK();
 }
