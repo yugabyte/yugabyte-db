@@ -73,7 +73,6 @@ void ChangeMetadataOperationState::AcquireSchemaLock(rw_semaphore* l) {
 }
 
 void ChangeMetadataOperationState::ReleaseSchemaLock() {
-  CHECK(schema_lock_.owns_lock());
   schema_lock_ = std::unique_lock<rw_semaphore>();
   TRACE("Released schema lock");
 }

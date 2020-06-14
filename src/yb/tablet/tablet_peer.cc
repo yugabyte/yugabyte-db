@@ -439,11 +439,13 @@ bool TabletPeer::StartShutdown() {
   // indirectly end up calling into the log, which we are about to shut down.
   UnregisterMaintenanceOps();
 
+  std::shared_ptr<consensus::RaftConsensus> consensus;
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
-    if (consensus_) {
-      consensus_->Shutdown();
-    }
+    consensus = consensus_;
+  }
+  if (consensus) {
+    consensus->Shutdown();
   }
 
   return true;

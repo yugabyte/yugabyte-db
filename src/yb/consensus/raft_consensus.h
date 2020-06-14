@@ -328,16 +328,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Helper struct that contains the messages from the leader that we need to
   // append to our log, after they've been deduplicated.
-  struct LeaderRequest {
-    std::string leader_uuid;
-    yb::OpId preceding_opid;
-    ReplicateMsgs messages;
-    // The positional index of the first message selected to be appended, in the
-    // original leader's request message sequence.
-    int64_t first_message_idx;
-
-    std::string OpsRangeString() const;
-  };
+  struct LeaderRequest;
 
   std::string LogPrefix();
 
@@ -610,8 +601,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                        LeaderRequest* deduped_req,
                                        ConsensusResponsePB* response);
   // Returns last op id received from leader.
-  yb::OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, const yb::OpId& committed_op_id,
-                                 WriteEmpty write_empty);
+  yb::OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, WriteEmpty write_empty);
   CHECKED_STATUS MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB& request,
                                                    const LeaderRequest& deduped_req,
                                                    yb::OpId last_from_leader);

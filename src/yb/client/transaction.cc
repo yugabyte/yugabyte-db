@@ -38,11 +38,13 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_uint64(transaction_heartbeat_usec, 500000, "Interval of transaction heartbeat in usec.");
+DEFINE_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
+              "Interval of transaction heartbeat in usec.");
 DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
 DEFINE_bool(transaction_disable_proactive_cleanup_in_tests, false,
             "Disable cleanup of intents in abort path.");
