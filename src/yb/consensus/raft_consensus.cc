@@ -216,6 +216,18 @@ using std::weak_ptr;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
+struct RaftConsensus::LeaderRequest {
+  std::string leader_uuid;
+  yb::OpId preceding_op_id;
+  yb::OpId committed_op_id;
+  ReplicateMsgs messages;
+  // The positional index of the first message selected to be appended, in the
+  // original leader's request message sequence.
+  int64_t first_message_idx;
+
+  std::string OpsRangeString() const;
+};
+
 shared_ptr<RaftConsensus> RaftConsensus::Create(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
@@ -1336,7 +1348,7 @@ void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req
   const auto& last_committed = state_->GetCommittedOpIdUnlocked();
 
   // The leader's preceding id.
-  deduplicated_req->preceding_opid = yb::OpId::FromPB(rpc_req->preceding_id());
+  deduplicated_req->preceding_op_id = yb::OpId::FromPB(rpc_req->preceding_id());
 
   int64_t dedup_up_to_index = state_->GetLastReceivedOpIdUnlocked().index;
 
@@ -1350,7 +1362,7 @@ void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req
     if (leader_msg->id().index() <= last_committed.index) {
       VLOG_WITH_PREFIX(2) << "Skipping op id " << leader_msg->id()
                           << " (already committed)";
-      deduplicated_req->preceding_opid = yb::OpId::FromPB(leader_msg->id());
+      deduplicated_req->preceding_op_id = yb::OpId::FromPB(leader_msg->id());
       continue;
     }
 
@@ -1366,7 +1378,7 @@ void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req
       if (OpIdEquals(round->replicate_msg()->id(), leader_msg->id())) {
         VLOG_WITH_PREFIX(2) << "Skipping op id " << leader_msg->id()
                             << " (already replicated)";
-        deduplicated_req->preceding_opid = yb::OpId::FromPB(leader_msg->id());
+        deduplicated_req->preceding_op_id = yb::OpId::FromPB(leader_msg->id());
         continue;
       }
 
@@ -1384,7 +1396,7 @@ void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req
   if (deduplicated_req->messages.size() != rpc_req->ops_size()) {
     LOG_WITH_PREFIX(INFO) << "Deduplicated request from leader. Original: "
                           << rpc_req->preceding_id() << "->" << OpsRangeString(*rpc_req)
-                          << "   Dedup: " << deduplicated_req->preceding_opid << "->"
+                          << "   Dedup: " << deduplicated_req->preceding_op_id << "->"
                           << deduplicated_req->OpsRangeString();
   }
 }
@@ -1419,14 +1431,14 @@ Status RaftConsensus::EnforceLogMatchingPropertyMatchesUnlocked(const LeaderRequ
                                                                 ConsensusResponsePB* response) {
 
   bool term_mismatch;
-  if (state_->IsOpCommittedOrPending(req.preceding_opid, &term_mismatch)) {
+  if (state_->IsOpCommittedOrPending(req.preceding_op_id, &term_mismatch)) {
     return Status::OK();
   }
 
   string error_msg = Format(
     "Log matching property violated."
     " Preceding OpId in replica: $0. Preceding OpId from leader: $1. ($2 mismatch)",
-    state_->GetLastReceivedOpIdUnlocked(), req.preceding_opid, term_mismatch ? "term" : "index");
+    state_->GetLastReceivedOpIdUnlocked(), req.preceding_op_id, term_mismatch ? "term" : "index");
 
   FillConsensusResponseError(response,
                              ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH,
@@ -1446,7 +1458,7 @@ Status RaftConsensus::EnforceLogMatchingPropertyMatchesUnlocked(const LeaderRequ
   // why this is actually critical to do here, as opposed to just on requests that
   // append some ops.
   if (term_mismatch) {
-    return state_->AbortOpsAfterUnlocked(req.preceding_opid.index - 1);
+    return state_->AbortOpsAfterUnlocked(req.preceding_op_id.index - 1);
   }
 
   return Status::OK();
@@ -1456,7 +1468,7 @@ Status RaftConsensus::CheckLeaderRequestOpIdSequence(
     const LeaderRequest& deduped_req,
     ConsensusRequestPB* request) {
   Status sequence_check_status;
-  yb::OpId prev = deduped_req.preceding_opid;
+  yb::OpId prev = deduped_req.preceding_op_id;
   for (const auto& message : deduped_req.messages) {
     auto current = yb::OpId::FromPB(message->id());
     sequence_check_status = ReplicaState::CheckOpInSequence(prev, current);
@@ -1528,7 +1540,7 @@ Status RaftConsensus::CheckLeaderRequestUnlocked(ConsensusRequestPB* request,
     // If the index is in our log but the terms are not the same abort down to the leader's
     // preceding id.
     if (term_mismatch) {
-      RETURN_NOT_OK(state_->AbortOpsAfterUnlocked(deduped_req->preceding_opid.index));
+      RETURN_NOT_OK(state_->AbortOpsAfterUnlocked(deduped_req->preceding_op_id.index));
     }
   }
 
@@ -1694,9 +1706,8 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   }
 
   // 3 - Enqueue the writes.
-  auto new_committed_op_id = yb::OpId::FromPB(request->committed_op_id());
   auto last_from_leader = EnqueueWritesUnlocked(
-      deduped_req, new_committed_op_id, WriteEmpty(prev_committed_op_id != new_committed_op_id));
+      deduped_req, WriteEmpty(prev_committed_op_id != deduped_req.committed_op_id));
 
   // 4 - Mark operations as committed
   RETURN_NOT_OK(MarkOperationsAsCommittedUnlocked(*request, deduped_req, last_from_leader));
@@ -1729,8 +1740,8 @@ Status RaftConsensus::EarlyCommitUnlocked(const ConsensusRequestPB& request,
   //    ("Leader doesn't overwrite demoted follower's log properly"), and...
   // 3. ...the leader's committed index is always our upper bound.
   auto early_apply_up_to = yb::OpId::FromPB(state_->GetLastPendingOperationOpIdUnlocked());
-  if (deduped_req.preceding_opid.index < early_apply_up_to.index) {
-    early_apply_up_to = deduped_req.preceding_opid;
+  if (deduped_req.preceding_op_id.index < early_apply_up_to.index) {
+    early_apply_up_to = deduped_req.preceding_op_id;
   }
   if (request.committed_op_id().index() < early_apply_up_to.index) {
     early_apply_up_to = yb::OpId::FromPB(request.committed_op_id());
@@ -1786,7 +1797,8 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
   // to perform cleanup, namely trimming deduped_req.messages to only contain the messages
   // that were actually prepared, and deleting the other ones since we've taken ownership
   // when we first deduped.
-  if (iter != deduped_req.messages.end()) {
+  bool incomplete = iter != deduped_req.messages.end();
+  if (incomplete) {
     {
       const ReplicateMsgPtr msg = *iter;
       LOG_WITH_PREFIX(WARNING)
@@ -1812,11 +1824,24 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
     }
   }
 
+  deduped_req.committed_op_id = yb::OpId::FromPB(request.committed_op_id());
+  if (!deduped_req.messages.empty()) {
+    auto last_op_id = yb::OpId::FromPB(deduped_req.messages.back()->id());
+    if (deduped_req.committed_op_id > last_op_id) {
+      LOG_IF_WITH_PREFIX(DFATAL, !incomplete)
+          << "Received committed op id: " << deduped_req.committed_op_id
+          << ", past last known op id: " << last_op_id;
+
+      // It is possible that we failed to prepare of of messages,
+      // so limit committed op id to avoid having committed op id past last known op it.
+      deduped_req.committed_op_id = last_op_id;
+    }
+  }
+
   return true;
 }
 
 yb::OpId RaftConsensus::EnqueueWritesUnlocked(const LeaderRequest& deduped_req,
-                                              const yb::OpId& committed_op_id,
                                               WriteEmpty write_empty) {
   // Now that we've triggered the prepares enqueue the operations to be written
   // to the WAL.
@@ -1827,11 +1852,11 @@ yb::OpId RaftConsensus::EnqueueWritesUnlocked(const LeaderRequest& deduped_req,
     // Since we've prepared, we need to be able to append (or we risk trying to apply
     // later something that wasn't logged). We crash if we can't.
     CHECK_OK(queue_->AppendOperations(
-        deduped_req.messages, committed_op_id, state_->Clock().Now()));
+        deduped_req.messages, deduped_req.committed_op_id, state_->Clock().Now()));
   }
 
   return !deduped_req.messages.empty() ?
-      yb::OpId::FromPB(deduped_req.messages.back()->id()) : deduped_req.preceding_opid;
+      yb::OpId::FromPB(deduped_req.messages.back()->id()) : deduped_req.preceding_op_id;
 }
 
 Status RaftConsensus::WaitForWrites(const yb::OpId& wait_for_op_id) {
@@ -1890,10 +1915,10 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB
     OpId last_appended = deduped_req.messages.back()->id();
     TRACE(Substitute("Updating last received op as $0", last_appended.ShortDebugString()));
     state_->UpdateLastReceivedOpIdUnlocked(last_appended);
-  } else if (state_->GetLastReceivedOpIdUnlocked().index < deduped_req.preceding_opid.index) {
+  } else if (state_->GetLastReceivedOpIdUnlocked().index < deduped_req.preceding_op_id.index) {
     return STATUS_FORMAT(InvalidArgument,
                          "Bad preceding_opid: $0, last received: $1",
-                         deduped_req.preceding_opid,
+                         deduped_req.preceding_op_id,
                          state_->GetLastReceivedOpIdUnlocked());
   }
 

@@ -45,6 +45,7 @@
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
+#include "yb/consensus/opid_util.h"
 
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/map-util.h"
@@ -73,6 +74,7 @@
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/shared_lock.h"
 
 using namespace yb::size_literals;  // NOLINT.
@@ -144,6 +146,9 @@ DEFINE_int32(taskstream_queue_max_size, 100000,
 
 DEFINE_int32(taskstream_queue_max_wait_ms, 1000,
              "Maximum time in ms to wait for items in the taskstream queue to arrive.");
+
+DEFINE_int32(wait_for_safe_op_id_to_apply_default_timeout_ms, 15000 * yb::kTimeMultiplier,
+             "Timeout used by WaitForSafeOpIdToApply when it was not specified by caller.");
 
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
@@ -834,16 +839,16 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta dura
 
   auto result = last_synced_entry_op_id_.load(boost::memory_order_acquire);
 
-  if (result.index < min_allowed.index || result.term < min_allowed.term) {
+  if (result < min_allowed) {
     auto start = CoarseMonoClock::Now();
     std::unique_lock<std::mutex> lock(last_synced_entry_op_id_mutex_);
-    auto wait_time = duration ? duration.ToSteadyDuration() : 15s;
+    auto wait_time = duration ? duration.ToSteadyDuration()
+                              : FLAGS_wait_for_safe_op_id_to_apply_default_timeout_ms * 1ms;
     for (;;) {
       if (last_synced_entry_op_id_cond_.wait_for(
               lock, wait_time, [this, min_allowed, &result] {
             result = last_synced_entry_op_id_.load(boost::memory_order_acquire);
-            return result.term > min_allowed.term ||
-                   (result.term == min_allowed.term && result.index >= min_allowed.index);
+            return result >= min_allowed;
       })) {
         break;
       }
@@ -852,8 +857,10 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta dura
       }
       // TODO(bogdan): If the log is closed at this point, consider refactoring to return status
       // and fail cleanly.
-      LOG_WITH_PREFIX(DFATAL) << "Long wait for safe op id: " << min_allowed
-                              << ", passed: " << (CoarseMonoClock::Now() - start);
+      LOG_WITH_PREFIX(DFATAL)
+          << "Long wait for safe op id: " << min_allowed
+          << ", current: " << GetLatestEntryOpId()
+          << ", passed: " << (CoarseMonoClock::Now() - start);
     }
   }
 

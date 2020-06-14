@@ -897,8 +897,10 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
     } else if (current_id.index > max_allowed_op_id.index ||
                current_id.term > max_allowed_op_id.term) {
       max_allowed_op_id = safe_op_id_waiter_->WaitForSafeOpIdToApply(current_id);
-      DCHECK_GE(max_allowed_op_id.index, current_id.index);
-      DCHECK_GE(max_allowed_op_id.term, current_id.term);
+      SCHECK(max_allowed_op_id.index >= current_id.index &&
+                 max_allowed_op_id.term >= current_id.term,
+             RuntimeError,
+             Format("Bad max allowed: $0, while current: $1", max_allowed_op_id, current_id));
     }
 
     pending_operations_.pop_front();
@@ -1342,7 +1344,9 @@ consensus::LeaderState ReplicaState::RefreshLeaderStateCacheUnlocked(CoarseTimeP
 }
 
 void ReplicaState::SetLeaderNoOpCommittedUnlocked(bool value) {
-  LOG_WITH_PREFIX(INFO) << __func__ << "(" << value << ")";
+  LOG_WITH_PREFIX(INFO)
+      << __func__ << "(" << value << "), committed: " << GetCommittedOpIdUnlocked()
+      << ", received: " << GetLastReceivedOpIdUnlocked();
 
   leader_no_op_committed_ = value;
   CoarseTimePoint now;

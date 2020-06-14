@@ -1870,10 +1870,10 @@ Status Tablet::CreatePreparedChangeMetadata(ChangeMetadataOperationState *operat
     }
   }
 
-  // Alter schema must run when no reads/writes are in progress.
-  // However, compactions and flushes can continue to run in parallel
-  // with the schema change,
-  operation_state->AcquireSchemaLock(&schema_lock_);
+  if (!operation_state->op_id().IsInitialized()) {
+    // Acquire schema lock only on the leader.
+    operation_state->AcquireSchemaLock(&schema_lock_);
+  }
 
   operation_state->set_schema(schema);
   return Status::OK();
@@ -1933,7 +1933,6 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
                         << " version " << current_table_info->schema_version
                         << " to " << operation_state->schema()->ToString()
                         << " version " << operation_state->schema_version();
-  DCHECK(schema_lock_.is_locked());
 
   // Find out which columns have been deleted in this schema change, and add them to metadata.
   vector<DeletedColumn> deleted_cols;
