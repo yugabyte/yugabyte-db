@@ -121,6 +121,10 @@ HybridTime OperationState::WriteHybridTime() const {
   return hybrid_time();
 }
 
+std::string OperationState::ConsensusRoundAsString() const {
+  return AsString(consensus_round());
+}
+
 OperationCompletionCallback::OperationCompletionCallback()
     : code_(tserver::TabletServerErrorPB::UNKNOWN_ERROR) {
 }

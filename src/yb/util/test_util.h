@@ -297,13 +297,7 @@ class TestThreadHolder {
     yb::WaitStopped(duration, &stop_flag_);
   }
 
-  void JoinAll() {
-    for (auto& thread : threads_) {
-      if (thread.joinable()) {
-        thread.join();
-      }
-    }
-  }
+  void JoinAll();
 
   template <class Cond>
   CHECKED_STATUS WaitCondition(const Cond& cond) {

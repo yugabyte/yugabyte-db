@@ -971,13 +971,17 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   }
 
   yb::OpId last_committed_op_id;
+  yb::OpId last_read_entry_op_id;
   RestartSafeCoarseTimePoint last_entry_time;
   for (; iter != segments.end(); ++iter) {
     const scoped_refptr<ReadableLogSegment>& segment = *iter;
 
     auto read_result = segment->ReadEntries();
     last_committed_op_id = std::max(last_committed_op_id, read_result.committed_op_id);
-    for (int entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
+    if (!read_result.entries.empty()) {
+      last_read_entry_op_id = yb::OpId::FromPB(read_result.entries.back()->replicate().id());
+    }
+    for (size_t entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
       Status s = HandleEntry(
           read_result.entry_metadata[entry_idx], &read_result.entries[entry_idx]);
       if (!s.ok()) {
@@ -1018,7 +1022,8 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     if (read_result.entry_metadata.empty()) {
       status += ", no entries in last segment";
     } else {
-      status += ", last entry metadata: " + read_result.entry_metadata.back().ToString();
+      status += ", last entry metadata: " + read_result.entry_metadata.back().ToString() +
+                ", last read entry op id: " + last_read_entry_op_id.ToString();
     }
     listener_->StatusMessage(status);
   }
@@ -1038,11 +1043,14 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
         RETURN_NOT_OK(replay_state_->ApplyCommittedPendingReplicates(
             std::bind(&TabletBootstrap::HandleEntryPair, this, _1, _2)));
       } else {
+        DumpReplayStateToLog();
         LOG_WITH_PREFIX(DFATAL)
             << "Invalid last committed op id: " << last_committed_op_id
-            << ", record with this index has another term: " << it->second.entry->replicate().id();
+            << ", record with this index has another term: "
+            << it->second.entry->replicate().id();
       }
     } else {
+      DumpReplayStateToLog();
       LOG_WITH_PREFIX(DFATAL)
           << "Does not have an entry for the last committed index: " << last_committed_op_id
           << ", entries: " << yb::ToString(replay_state_->pending_replicates);

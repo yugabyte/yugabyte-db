@@ -349,4 +349,16 @@ void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop) {
   }
 }
 
+void TestThreadHolder::JoinAll() {
+  LOG(INFO) << __func__;
+
+  for (auto& thread : threads_) {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+
+  LOG(INFO) << __func__ << " done";
+}
+
 } // namespace yb
