@@ -18,6 +18,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/status.h"
+
 namespace yb {
 
 class Status;
