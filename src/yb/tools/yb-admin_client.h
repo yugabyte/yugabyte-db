@@ -221,7 +221,7 @@ class ClusterAdminClient {
 
   Result<TableNameResolver> BuildTableNameResolver();
 
-  CHECKED_STATUS GetMasterLeaderInfo(std::string* leader_uuid);
+  Result<std::string> GetMasterLeaderUuid();
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

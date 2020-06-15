@@ -696,17 +696,20 @@ Status ClusterAdminClient::ChangeConfig(
       consensus_proxy.get(), req));
 }
 
-Status ClusterAdminClient::GetMasterLeaderInfo(PeerId* leader_uuid) {
-  const auto list_resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
-      master_proxy_.get(), ListMastersRequestPB()));
+Result<std::string> ClusterAdminClient::GetMasterLeaderUuid() {
+  std::string leader_uuid;
+  const auto list_resp = VERIFY_RESULT_PREPEND(
+      InvokeRpc(&MasterServiceProxy::ListMasters, master_proxy_.get(), ListMastersRequestPB()),
+      "Could not locate master leader");
   for (const auto& master : list_resp.masters()) {
     if (master.role() == RaftPeerPB::LEADER) {
-      CHECK(leader_uuid->empty()) << "Found two LEADER's in the same raft config.";
-      *leader_uuid = master.instance_id().permanent_uuid();
+      SCHECK(
+          leader_uuid.empty(), ConfigurationError, "Found two LEADER's in the same raft config.");
+      leader_uuid = master.instance_id().permanent_uuid();
     }
   }
-
-  return Status::OK();
+  SCHECK(!leader_uuid.empty(), ConfigurationError, "Could not locate master leader!");
+  return std::move(leader_uuid);
 }
 
 Status ClusterAdminClient::DumpMasterState(bool to_console) {
@@ -881,11 +884,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
       RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
   }
 
-  string leader_uuid;
-  RETURN_NOT_OK_PREPEND(GetMasterLeaderInfo(&leader_uuid), "Could not locate master leader");
-  if (leader_uuid.empty()) {
-    return STATUS(ConfigurationError, "Could not locate master leader!");
-  }
+  auto leader_uuid = VERIFY_RESULT(GetMasterLeaderUuid());
 
   // If removing the leader master, then first make it step down and that
   // starts an election and gets a new leader master.
@@ -899,11 +898,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
     // Reget the leader master's socket info to set up the proxy
     leader_addr_ = VERIFY_RESULT(yb_client_->RefreshMasterLeaderAddress());
     master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
-    leader_uuid = "";  // reset so it can be set to new leader in the GetMasterLeaderInfo call below
-    RETURN_NOT_OK_PREPEND(GetMasterLeaderInfo(&leader_uuid), "Could not locate new master leader");
-    if (leader_uuid.empty()) {
-      return STATUS(ConfigurationError, "Could not locate new master leader!");
-    }
+    leader_uuid = VERIFY_RESULT(GetMasterLeaderUuid());
     if (leader_uuid == old_leader_uuid) {
       return STATUS(ConfigurationError,
         Substitute("Old master leader uuid $0 same as new one even after stepdown!", leader_uuid));

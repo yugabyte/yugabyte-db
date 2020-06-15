@@ -188,6 +188,11 @@ TEST_F(YBAdminMultiMasterTest, TestMasterLeaderStepdown) {
   ASSERT_OK(call_admin({"list_all_masters"}));
   ASSERT_EQ(new_leader_id, ASSERT_RESULT(
       regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+\S+\s+LEADER)")));
+
+  ASSERT_OK(call_admin({"master_leader_stepdown"}));
+  ASSERT_OK(call_admin({"list_all_masters"}));
+  ASSERT_NE(new_leader_id, ASSERT_RESULT(
+      regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+\S+\s+LEADER)")));
 }
 
 }  // namespace tools
