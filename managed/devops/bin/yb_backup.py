@@ -792,8 +792,10 @@ class YBBackup:
                 ['list_tablets', self.args.keyspace[i], self.args.table[i], '0'])
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
-                    (tablet_id, partition, tablet_leader_host_port) = split_by_tab(line)
-                    ts_host, ts_port = tablet_leader_host_port.split(":")
+                    fields = split_by_tab(line)
+                    tablet_id = fields[0]
+                    tablet_leader_host_port = fields[2]
+                    (ts_host, ts_port) = tablet_leader_host_port.split(":")
                     tablet_leaders.append((tablet_id, ts_host))
 
         return tablet_leaders
