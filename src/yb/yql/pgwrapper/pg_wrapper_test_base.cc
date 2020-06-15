@@ -18,9 +18,6 @@
 
 using namespace yb::size_literals;
 
-DECLARE_int64(retryable_rpc_single_call_timeout_ms);
-DECLARE_int32(yb_client_admin_operation_timeout_sec);
-
 namespace yb {
 namespace pgwrapper {
 
@@ -36,13 +33,6 @@ void PgWrapperTestBase::SetUp() {
   const string rpc_flag_str =
       "--retryable_rpc_single_call_timeout_ms=" + std::to_string(kSingleCallTimeoutMs);
   opts.extra_master_flags.emplace_back(rpc_flag_str);
-
-  if (IsTsan()) {
-    // Increase timeout for admin ops to account for create database with copying during initdb.
-    // This will be useful when we start enabling PostgreSQL tests under TSAN.
-    opts.extra_master_flags.emplace_back(
-        "--yb_client_admin_operation_timeout_sec=120");
-  }
 
   opts.extra_tserver_flags.emplace_back(rpc_flag_str);
 
