@@ -59,9 +59,9 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b26
 - Improve index cost estimates by considering index uniqueness, included columns (index scan vs. index only scan), scan direction, and partial indexes. Also, disable merge joins for unsupported cases. [#4494](https://github.com/yugabyte/yugabyte-db/issues/4494) and [#4496](https://github.com/yugabyte/yugabyte-db/issues/4496)
 - Add support for deferrable foreign key constraints. [#3995](https://github.com/yugabyte/yugabyte-db/issues/3995)
 - Prevent dropping primary key constraint. [#3163](https://github.com/yugabyte/yugabyte-db/issues/3163)
-- Push down `SELECT <aggregate>(<const>)` to DocDB. [#4276](https://github.com/yugabyte/yugabyte-db/issues/4276)
-- Fix rare core dumps due to concurrency issues in metrics webserver during shutdown. [#4092](https://github.com/yugabyte/yugabyte-db/issues/4276)
-- Fix crash for nested `SELECT` statements that involve null pushdown on system tables. [#4685]()
+- Push down SELECT <aggregate>(<const>), for example, SELECT COUNT(1) , to DocDB. [#4276](https://github.com/yugabyte/yugabyte-db/issues/4276)
+- Fix rare core dumps due to concurrency issues in metrics webserver during shutdown. [#4092](https://github.com/yugabyte/yugabyte-db/issues/4092)
+- Fix crash for nested `SELECT` statements that involve null pushdown on system tables. [#4685](https://github.com/yugabyte/yugabyte-db/issues/4685))
 
 ## YCQL
 
@@ -73,7 +73,7 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b26
 - For DDL creation with Spring Data Cassandra, change the Enum value from JSON to JSONB to allow schema creation to succeed programmatically involving JSON column types and update the cassandra-java-driver to 3.8.0-yb-5. [#4481](https://github.com/yugabyte/yugabyte-db/issues/4481)
 - Use the same timestamp for current time to compute multiple runtimes in output of `<tserver-ip>:13000/rpcz`. [#4418](https://github.com/yugabyte/yugabyte-db/issues/4418)
 - Correctly push down `= NULL` condition to DocDB. [#4499](https://github.com/yugabyte/yugabyte-db/issues/4499)
-- Reduce YCQL unprepared statement execution time by up to 98% (example: reduced time to insert a 5 MB string from 18 seconds to 0.25 seconds). [#4397](https://github.com/yugabyte/yugabyte-db/issues/4499)
+- Reduce YCQL unprepared statement execution time by up to 98% (example: reduced time to insert a 5 MB string from 18 seconds to 0.25 seconds). [#4397](https://github.com/yugabyte/yugabyte-db/issues/4397)
   - Special thanks to [@ouvai59](https://github.com/ouvai59) for your contribution!
 
 ## YEDIS
@@ -100,7 +100,7 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b26
 - Introduced load balancing throttle on the total number of tablets being remote bootstrapped, across the cluster. [#4053](https://github.com/yugabyte/yugabyte-db/issues/4053)
 - [DocDB] Remove applied intent doc hybrid time during compaction. [#4535](https://github.com/yugabyte/yugabyte-db/issues/4535)
 - [DocDB] Fixed BoundedRocksDbIterator::SeekToLast works incorrectly for 2nd post-split tablet. [#4542](https://github.com/yugabyte/yugabyte-db/issues/4542)
-- [DocDb] Abort snapshot if table was deleted. [#4610](https://github.com/yugabyte/yugabyte-db/issues/4610)
+- [DocDB] Abort snapshot if table was deleted. [#4610](https://github.com/yugabyte/yugabyte-db/issues/4610)
 - [DocDB] Backfill index without waiting indefinitely for pending transactions. [#3471](https://github.com/yugabyte/yugabyte-db/issues/3471)
 - [DocDB] Transition to new leader gracefully during a leader stepdown. When a leader stepdown happens with no new leader candidate specified in the stepdown request, the peer simply steps down leaving the group with no leader until regular heartbeat timeouts are triggered. This change makes it so that the leader attempts to transition to the most up-to-date peer, if possible. [#4298](https://github.com/yugabyte/yugabyte-db/issues/4298)
 - [Colocation] During load balancing operations, load balance each colocated tablet once. This fix removes unnecessary load balancing for every user table sharing that table and the parent table.
