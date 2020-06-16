@@ -652,10 +652,11 @@ std::unique_ptr<UpdateTxnOperationState> TabletPeer::CreateUpdateTransactionStat
   return result;
 }
 
-void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) const {
+void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   std::lock_guard<simple_spinlock> lock(lock_);
   DCHECK(status_pb_out != nullptr);
   DCHECK(status_listener_.get() != nullptr);
+  const auto disk_size_info = GetOnDiskSizeInfo();
   status_pb_out->set_tablet_id(status_listener_->tablet_id());
   status_pb_out->set_table_name(status_listener_->table_name());
   status_pb_out->set_table_id(status_listener_->table_id());
@@ -663,7 +664,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) const {
   status_listener_->partition()->ToPB(status_pb_out->mutable_partition());
   status_pb_out->set_state(state_);
   status_pb_out->set_tablet_data_state(meta_->tablet_data_state());
-  status_pb_out->set_estimated_on_disk_size(OnDiskSize());
+  disk_size_info.ToPB(status_pb_out);
 }
 
 Status TabletPeer::RunLogGC() {
@@ -1110,23 +1111,25 @@ void TabletPeer::UnregisterMaintenanceOps() {
   STLDeleteElements(&maintenance_ops_);
 }
 
-uint64_t TabletPeer::OnDiskSize() const {
-  uint64_t ret = 0;
+TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
+  TabletOnDiskSizeInfo info;
 
   if (consensus_) {
-    ret += consensus_->OnDiskSize();
+    info.consensus_metadata_disk_size = consensus_->OnDiskSize();
   }
 
   if (tablet_) {
-    // TODO: consider updating this to include all on-disk SST files.
-    ret += tablet_->GetCurrentVersionSstFilesSize();
+    info.sst_files_disk_size = tablet_->GetCurrentVersionSstFilesSize();
+    info.uncompressed_sst_files_disk_size =
+        tablet_->GetCurrentVersionSstFilesUncompressedSize();
   }
 
   if (log_) {
-    ret += log_->OnDiskSize();
+    info.wal_files_disk_size = log_->OnDiskSize();
   }
 
-  return ret;
+  info.RecomputeTotalSize();
+  return info;
 }
 
 int TabletPeer::GetNumLogSegments() const {
