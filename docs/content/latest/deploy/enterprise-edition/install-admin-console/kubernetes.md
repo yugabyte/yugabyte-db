@@ -35,7 +35,7 @@ showAsideToc: true
 
 ## Prerequisites
 
-You must have a Kubernetes cluster that has [Helm](https://helm.sh/) configured. If you have not installed Helm client and server (aka Tiller) yet, follow the instructions [here](https://docs.helm.sh/using_helm/#installing-helm).
+You must have a Kubernetes cluster that has [Helm](https://helm.sh/) configured.
 
 The Yugabyte Platform (YugaWare) Helm chart documented here has been tested with the following software versions:
 
@@ -106,20 +106,20 @@ The latest Helm Chart version and App version will be displayed.
 
 ```
 NAME               	CHART VERSION	APP VERSION	DESRIPTION                                       
-ugabytedb/yugabyte	2.1.5        	2.1.5.0-b17	YugabyteDB is the high-performance distributed ..
+ugabytedb/yugabyte	2.1.8        	2.1.8.1	YugabyteDB is the high-performance distributed ..
 ```
 
 4. Run the following `helm install` command to install Yugabyte Platform (YugaWare).
 
 ```sh
-$ helm install yw-test yugabytedb/yugaware --version 2.1.5 -n yw-test --wait
+$ helm install yw-test yugabytedb/yugaware --version 2.1.8 -n yw-test --wait
 ```
 
 A message should appear showing that the deployment succeeded.
 
 ```
 NAME: yw-test
-LAST DEPLOYED: Fri Jun  5 02:57:59 2020
+LAST DEPLOYED: Tue Jun  16 02:57:59 2020
 NAMESPACE: yw-test
 STATUS: deployed
 REVISION: 1
@@ -150,14 +150,14 @@ statefulset.apps/yw-test-yugaware   1/1     5m52s
 To upgrade your installed Yugabyte Platform, run the following `helm upgrade` command.
 
 ```sh
-$ helm upgrade yw-test yugabytedb/yugaware --version 2.1.5 --set image.tag=2.1.8.1-b -n 
+$ helm upgrade yw-test yugabytedb/yugaware --version 2.1.8 --set image.tag=2.1.8.1-b7 -n yw-test
 ```
 
 ```
 yw-test --timeout 900s --wait
 Release "yw-test" has been upgraded. Happy Helming!
 NAME: yw-test
-LAST DEPLOYED: Fri Jun  5 03:56:38 2020
+LAST DEPLOYED: Tue Jun  30 03:56:38 2020
 NAMESPACE: yw-test
 STATUS: deployed
 REVISION: 2
