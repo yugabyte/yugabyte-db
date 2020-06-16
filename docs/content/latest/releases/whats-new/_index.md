@@ -61,7 +61,6 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b26
 - Prevent dropping primary key constraint. [#3163](https://github.com/yugabyte/yugabyte-db/issues/3163)
 - Push down SELECT <aggregate>(<const>), for example, SELECT COUNT(1) , to DocDB. [#4276](https://github.com/yugabyte/yugabyte-db/issues/4276)
 - Fix rare core dumps due to concurrency issues in metrics webserver during shutdown. [#4092](https://github.com/yugabyte/yugabyte-db/issues/4092)
-- Fix crash for nested `SELECT` statements that involve null pushdown on system tables. [#4685](https://github.com/yugabyte/yugabyte-db/issues/4685))
 
 ## YCQL
 
@@ -73,7 +72,7 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b26
 - For DDL creation with Spring Data Cassandra, change the `Enum` value from `JSON` to `JSONB` to allow schema creation to succeed programmatically involving JSON column types and update the `cassandra-java-driver` to `3.8.0-yb-5`. [#4481](https://github.com/yugabyte/yugabyte-db/issues/4481)
 - Use the same timestamp for current time to compute multiple runtimes in output of `<tserver-ip>:13000/rpcz`. [#4418](https://github.com/yugabyte/yugabyte-db/issues/4418)
 - Correctly push down `= NULL` condition to DocDB. [#4499](https://github.com/yugabyte/yugabyte-db/issues/4499)
-- Reduce YCQL unprepared statement execution time by up to 98% (example: reduced time to insert a 5 MB string from 18 seconds to 0.25 seconds). [#4397](https://github.com/yugabyte/yugabyte-db/issues/4397)
+- Reduce YCQL unprepared statement execution time by up to 98% (example: reduced time to insert a 5 MB string from 18 seconds to 0.25 seconds). [#4397](https://github.com/yugabyte/yugabyte-db/issues/4397) and [#3586](https://github.com/yugabyte/yugabyte-db/issues/3586)
   - Special thanks to [@ouvai59](https://github.com/ouvai59) for your contribution!
 
 ## YEDIS
@@ -82,9 +81,6 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b26
 
 ## System improvements
 
-- Add HTTP endpoints for determining master leadership and returning information on masters. [#2606](https://github.com/yugabyte/yugabyte-db/issues/2606).
-  - `<web>/api/v1/masters`: Returns all master statuses.
-  - `<web>/api/v1/is-leader`: Returns `200 OK` response status code when the master is a leader and `503 Service Unavailable` when the master is not a leader.
 - New `yb-admin` command [`get_load_balancer_state`](../../admin/yb-admin/#get-load-balancer-state) to get the cluster load balancer state. [#4509](https://github.com/yugabyte/yugabyte-installation/pull/4509)
 - Avoid creating intent iterator when no transactions are running. [#4500](https://github.com/yugabyte/yugabyte-installation/pull/4500)
 - Increase default memory limit for `yb-master` for running in low-memory setups (`<=4 GB`). [#3742](https://github.com/yugabyte/yugabyte-installation/pull/3742)
@@ -96,13 +92,11 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b26
 - [DocDB] Add `yb-ts-cli` commands, [`flush_all_tablets`](../../admin/yb-ts-cli/#flush-all-tablets) and [`flush_tablet <tablet_id>`](../../admin/yb-ts-cli/#flush-tablet), to flush tablets. When used with rolling restarts, less time is spent applying WAL records to rocksdb. [#2785](https://github.com/yugabyte/yugabyte-db/issues/2785)
   - Special thanks to [mirageyjd](https://github.com/mirageyjd) for your contribution.
 - [DocDB] Fix deadlock during tablet splitting. [#4312](https://github.com/yugabyte/yugabyte-db/issues/4312)
-- [DocDB] Allow multiple indexes to backfill or delete simultaneously. [#2784](https://github.com/yugabyte/yugabyte-db/issues/2784)
 - Introduced load balancing throttle on the total number of tablets being remote bootstrapped, across the cluster. [#4053](https://github.com/yugabyte/yugabyte-db/issues/4053) and [#4436](https://github.com/yugabyte/yugabyte-db/issues/4436)
 - [DocDB] Remove applied intent doc hybrid time during compaction. [#4535](https://github.com/yugabyte/yugabyte-db/issues/4535)
 - [DocDB] Fixed BoundedRocksDbIterator::SeekToLast works incorrectly for 2nd post-split tablet. [#4542](https://github.com/yugabyte/yugabyte-db/issues/4542)
 - [DocDB] Abort snapshot if table was deleted. [#4610](https://github.com/yugabyte/yugabyte-db/issues/4610)
 - [DocDB] Backfill index without waiting indefinitely for pending transactions. [#3471](https://github.com/yugabyte/yugabyte-db/issues/3471)
-- [DocDB] Transition to new leader gracefully during a leader stepdown. When a leader stepdown happens with no new leader candidate specified in the stepdown request, the peer simply steps down leaving the group with no leader until regular heartbeat timeouts are triggered. This change makes it so that the leader attempts to transition to the most up-to-date peer, if possible. [#4298](https://github.com/yugabyte/yugabyte-db/issues/4298)
 - [Colocation] During load balancing operations, load balance each colocated tablet once. This fix removes unnecessary load balancing for every user table sharing that table and the parent table.
 - Fix YB-Master hangs due to transaction status resolution. [#4410](https://github.com/yugabyte/yugabyte-db/issues/4410)
 - Redirect the master UI to the master leader UI without failing when one master is down. [#4442](https://github.com/yugabyte/yugabyte-db/issues/4442) and [#3869](https://github.com/yugabyte/yugabyte-db/issues/3869)
@@ -132,8 +126,6 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b26
 - Add **Custom SMTP Configuration** section to **Health & Alerting** tab on customer profile page. [#4443](https://github.com/yugabyte/yugabyte-db/issues/4443)
 - Fix Kubernetes pod container metrics not displaying in **Metrics** panel. [#4652](https://github.com/yugabyte/yugabyte-db/issues/4652)
 - Fix **Backups** tab not rendering when there are no backups. [#4661](https://github.com/yugabyte/yugabyte-db/issues/4661)
-- Fix password reset in customer profile page. [#4666](https://github.com/yugabyte/yugabyte-db/issues/4666) and [#3909](https://github.com/yugabyte/yugabyte-db/issues/3909)
-- Change UI text displaying "GFlag" to "Flag" in the YugabyteDB Admin Console. [#4659](https://github.com/yugabyte/yugabyte-db/issues/4659)
 
 {{< note title="Note" >}}
 
