@@ -48,6 +48,7 @@
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/thread_annotations.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/mvcc.h"
@@ -81,6 +82,49 @@ class MaintenanceOp;
 class ThreadPool;
 
 namespace tablet {
+
+struct TabletOnDiskSizeInfo {
+  int64_t consensus_metadata_disk_size = 0;
+  int64_t wal_files_disk_size = 0;
+  int64_t sst_files_disk_size = 0;
+  int64_t uncompressed_sst_files_disk_size = 0;
+  int64_t sum_on_disk_size = 0;
+
+  template <class PB>
+  static TabletOnDiskSizeInfo FromPB(const PB& pb) {
+    return {
+      .consensus_metadata_disk_size = pb.consensus_metadata_disk_size(),
+      .wal_files_disk_size = pb.wal_files_disk_size(),
+      .sst_files_disk_size = pb.sst_files_disk_size(),
+      .uncompressed_sst_files_disk_size = pb.uncompressed_sst_files_disk_size(),
+      .sum_on_disk_size = pb.estimated_on_disk_size()
+    };
+  }
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_consensus_metadata_disk_size(consensus_metadata_disk_size);
+    pb->set_wal_files_disk_size(wal_files_disk_size);
+    pb->set_sst_files_disk_size(sst_files_disk_size);
+    pb->set_uncompressed_sst_files_disk_size(uncompressed_sst_files_disk_size);
+    pb->set_estimated_on_disk_size(sum_on_disk_size);
+  }
+
+  void operator+=(const TabletOnDiskSizeInfo& other) {
+    consensus_metadata_disk_size += other.consensus_metadata_disk_size;
+    wal_files_disk_size += other.wal_files_disk_size;
+    sst_files_disk_size += other.sst_files_disk_size;
+    uncompressed_sst_files_disk_size += other.uncompressed_sst_files_disk_size;
+    sum_on_disk_size += other.sum_on_disk_size;
+  }
+
+  void RecomputeTotalSize() {
+    sum_on_disk_size =
+        consensus_metadata_disk_size +
+        sst_files_disk_size +
+        wal_files_disk_size;
+  }
+};
 
 // A peer is a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
@@ -170,7 +214,7 @@ class TabletPeer : public consensus::ConsensusContext,
 
   void GetLastReplicatedData(RemoveIntentsData* data) override;
 
-  void GetTabletStatusPB(TabletStatusPB* status_pb_out) const;
+  void GetTabletStatusPB(TabletStatusPB* status_pb_out);
 
   // Used by consensus to create and start a new ReplicaOperation.
   CHECKED_STATUS StartReplicaOperation(
@@ -339,9 +383,8 @@ class TabletPeer : public consensus::ConsensusContext,
 
   TableType table_type();
 
-  // Return the total on-disk size of this tablet replica, in bytes.
-  // Caller should hold the lock_.
-  uint64_t OnDiskSize() const;
+  // Return granular types of on-disk size of this tablet replica, in bytes.
+  TabletOnDiskSizeInfo GetOnDiskSizeInfo() const REQUIRES(lock_);
 
   // Returns the number of segments in log_.
   int GetNumLogSegments() const;

@@ -64,7 +64,7 @@ namespace {
 struct TabletPeerInfo {
   string name;
   uint64_t num_sst_files;
-  int64_t on_disk_size;
+  yb::tablet::TabletOnDiskSizeInfo disk_size_info;
   bool has_on_disk_size;
   yb::consensus::RaftPeerPB::Role raft_role;
 };
@@ -79,14 +79,14 @@ struct TableIdentifier {
 struct TableInfo {
   string name;
   uint64_t num_sst_files;
-  int64_t on_disk_size;
+  yb::tablet::TabletOnDiskSizeInfo disk_size_info;
   bool has_complete_on_disk_size;
   std::map<yb::consensus::RaftPeerPB::Role, size_t> raft_role_counts;
 
   explicit TableInfo(TabletPeerInfo info)
       : name(info.name),
         num_sst_files(info.num_sst_files),
-        on_disk_size(info.on_disk_size),
+        disk_size_info(info.disk_size_info),
         has_complete_on_disk_size(info.has_on_disk_size) {
     raft_role_counts.emplace(info.raft_role, 1);
   }
@@ -101,7 +101,7 @@ struct TableInfo {
     }
 
     num_sst_files += other.num_sst_files;
-    on_disk_size += other.on_disk_size;
+    disk_size_info += other.disk_size_info;
     has_complete_on_disk_size = has_complete_on_disk_size && other.has_on_disk_size;
   }
 };
@@ -444,6 +444,23 @@ bool CompareByTabletId(const std::shared_ptr<TabletPeer>& a,
   return a->tablet_id() < b->tablet_id();
 }
 
+string GetOnDiskSizeInHtml(const yb::tablet::TabletOnDiskSizeInfo& info) {
+  std::ostringstream disk_size_html;
+  disk_size_html << "<ul>"
+                 << "<li>" << "Total: "
+                 << HumanReadableNumBytes::ToString(info.sum_on_disk_size)
+                 << "<li>" << "Consensus Metadata: "
+                 << HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size)
+                 << "<li>" << "WAL Files: "
+                 << HumanReadableNumBytes::ToString(info.wal_files_disk_size)
+                 << "<li>" << "SST Files: "
+                 << HumanReadableNumBytes::ToString(info.sst_files_disk_size)
+                 << "<li>" << "SST Files Uncompressed: "
+                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_files_disk_size)
+                 << "</ul>";
+  return disk_size_html.str();
+}
+
 // Returns information about the tables stored on this tablet server.
 std::map<TableIdentifier, TableInfo> GetTablesInfo(
     const vector<std::shared_ptr<TabletPeer>>& peers) {
@@ -479,9 +496,9 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
     auto info = TabletPeerInfo {
       .name = std::move(status.table_name()),
       .num_sst_files = num_sst_files,
-      .on_disk_size = status.has_estimated_on_disk_size() ? status.estimated_on_disk_size() : 0,
+      .disk_size_info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status),
       .has_on_disk_size = status.has_estimated_on_disk_size(),
-      .raft_role = raft_role,
+      .raft_role = raft_role
     };
 
     auto table_iter = table_map.find(identifer);
@@ -516,9 +533,9 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     const auto& identifier = table_iter.first;
     const auto& info = table_iter.second;
 
-    string disk_size_string = HumanReadableNumBytes::ToString(info.on_disk_size);
+    string tables_disk_size_html = GetOnDiskSizeInHtml(info.disk_size_info);
     if (!info.has_complete_on_disk_size) {
-      disk_size_string += "*";
+      tables_disk_size_html += "*";
       show_missing_size_footer = true;
     }
 
@@ -536,7 +553,7 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
         EscapeForHtmlToString(identifier.uuid),
         EscapeForHtmlToString(identifier.state),
         info.num_sst_files,
-        disk_size_string,
+        tables_disk_size_html,
         role_counts_html.str());
   }
 
@@ -573,10 +590,10 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     } else {
       tablet_id_or_link = EscapeForHtmlToString(id);
     }
-    string n_bytes = "";
-    if (status.has_estimated_on_disk_size()) {
-      n_bytes = HumanReadableNumBytes::ToString(status.estimated_on_disk_size());
-    }
+    string tablets_disk_size_html = GetOnDiskSizeInHtml(
+        yb::tablet::TabletOnDiskSizeInfo::FromPB(status)
+    );
+
     string partition = peer->tablet_metadata()->partition_schema()
                             ->PartitionDebugString(*peer->status_listener()->partition(),
                                                    *peer->tablet_metadata()->schema());
@@ -595,7 +612,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
         EscapeForHtmlToString(table_id),  // $1
         tablet_id_or_link,  // $2
         EscapeForHtmlToString(partition),  // $3
-        EscapeForHtmlToString(peer->HumanReadableState()), n_bytes,  // $4, $5
+        EscapeForHtmlToString(peer->HumanReadableState()), tablets_disk_size_html,  // $4, $5
         consensus ? ConsensusStatePBToHtml(consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
                   : "",  // $6
         EscapeForHtmlToString(status.last_status()),  // $7
