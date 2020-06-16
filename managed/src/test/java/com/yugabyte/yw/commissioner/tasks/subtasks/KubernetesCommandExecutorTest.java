@@ -95,8 +95,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUniverse = updateUniverseDetails("small");
     defaultCert = CertificateInfo.get(CertificateHelper.createRootCA(
         defaultUniverse.getUniverseDetails().nodePrefix,
-        defaultProvider.customerUUID, "/tmp/certs",
-        true));
+        defaultProvider.customerUUID, "/tmp/certs"));
     defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
   }
