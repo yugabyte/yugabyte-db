@@ -59,7 +59,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     for (String cert: test_certs) {
-      test_certs_uuids.add(CertificateHelper.createRootCA(cert, customer.uuid, "/tmp/certs", true));
+      test_certs_uuids.add(CertificateHelper.createRootCA(cert, customer.uuid, "/tmp/certs"));
     }
   }
 
@@ -158,7 +158,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid,
-                                                 "/tmp", false);
+                                                 "/tmp");
     Result result = createClientCertificate(customer.uuid, rootCA, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
