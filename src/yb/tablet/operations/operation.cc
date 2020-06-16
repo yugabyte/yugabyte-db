@@ -40,6 +40,7 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/size_literals.h"
+#include "yb/util/trace.h"
 
 namespace yb {
 namespace tablet {
@@ -119,6 +120,17 @@ std::string OperationState::LogPrefix() const {
 
 HybridTime OperationState::WriteHybridTime() const {
   return hybrid_time();
+}
+
+void ExclusiveSchemaOperationStateBase::AcquireSchemaLock(rw_semaphore* mutex) {
+  TRACE("Acquiring schema lock in exclusive mode");
+  schema_lock_ = std::unique_lock<rw_semaphore>(*mutex);
+  TRACE("Acquired schema lock");
+}
+
+void ExclusiveSchemaOperationStateBase::ReleaseSchemaLock() {
+  schema_lock_ = std::unique_lock<rw_semaphore>();
+  TRACE("Released schema lock");
 }
 
 std::string OperationState::ConsensusRoundAsString() const {

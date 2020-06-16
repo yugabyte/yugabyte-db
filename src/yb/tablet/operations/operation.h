@@ -259,11 +259,11 @@ class OperationState {
   mutable simple_spinlock mutex_;
 };
 
-template <class Request>
-class OperationStateBase : public OperationState {
+template <class Request, class BaseState = OperationState>
+class OperationStateBase : public BaseState {
  public:
   OperationStateBase(Tablet* tablet, const Request* request)
-      : OperationState(tablet), request_(request) {}
+      : BaseState(tablet), request_(request) {}
 
   explicit OperationStateBase(Tablet* tablet)
       : OperationStateBase(tablet, nullptr) {}
@@ -278,6 +278,10 @@ class OperationStateBase : public OperationState {
     return request_holder_.get();
   }
 
+  tserver::TabletSnapshotOpRequestPB* ReleaseRequest() {
+    return request_holder_.release();
+  }
+
   void TakeRequest(Request* request) {
     request_holder_.reset(new Request);
     request_.store(request_holder_.get(), std::memory_order_release);
@@ -286,7 +290,7 @@ class OperationStateBase : public OperationState {
 
   std::string ToString() const override {
     return Format("{ request: $0 consensus_round: $1 }",
-                  request_.load(std::memory_order_acquire), ConsensusRoundAsString());
+                  request_.load(std::memory_order_acquire), BaseState::ConsensusRoundAsString());
   }
 
  protected:
@@ -297,6 +301,40 @@ class OperationStateBase : public OperationState {
  private:
   std::unique_ptr<Request> request_holder_;
   std::atomic<const Request*> request_;
+};
+
+class ExclusiveSchemaOperationStateBase : public OperationState {
+ public:
+  template <class... Args>
+  explicit ExclusiveSchemaOperationStateBase(Args&&... args)
+      : OperationState(std::forward<Args>(args)...) {}
+
+  void AcquireSchemaLock(rw_semaphore* mutex);
+
+  // Release the acquired schema lock.
+  void ReleaseSchemaLock();
+
+ private:
+  // The lock held on the tablet's schema_lock_.
+  std::unique_lock<rw_semaphore> schema_lock_;
+};
+
+template <class Request>
+class ExclusiveSchemaOperationState :
+    public OperationStateBase<Request, ExclusiveSchemaOperationStateBase> {
+ public:
+  template <class... Args>
+  explicit ExclusiveSchemaOperationState(Args&&... args)
+      : OperationStateBase<Request, ExclusiveSchemaOperationStateBase>(
+            std::forward<Args>(args)...) {}
+
+  void Finish() {
+    ExclusiveSchemaOperationStateBase::ReleaseSchemaLock();
+
+    // Make the request NULL since after this operation commits
+    // the request may be deleted at any moment.
+    OperationStateBase<Request, ExclusiveSchemaOperationStateBase>::UseRequest(nullptr);
+  }
 };
 
 // A parent class for the callback that gets called when transactions complete.
