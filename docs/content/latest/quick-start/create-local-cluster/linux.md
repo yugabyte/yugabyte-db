@@ -121,7 +121,7 @@ Node 1's [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-
 
 ### Overview and YB-Master status
 
-Node 1's master Admin UI home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugabyteDB version number is also shown for your reference.
+Node 1's master Admin UI home page shows that you have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugabyteDB version number is also shown for your reference.
 
 ![master-home](/images/admin/master-home-binary-rf1.png)
 
@@ -129,7 +129,7 @@ The Masters section highlights the 1 yb-master along with its corresponding clou
 
 ### YB-TServer status
 
-Clicking on the `See all nodes` takes us to the Tablet Servers page where we can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats. Since there are no user tables created yet, we can see that the `Load (Num Tablets)` is 0. As new tables get added, new tablets (aka shards) will get automatically created and distributed evenly across all the available tablet servers.
+Clicking on the `See all nodes` takes us to the Tablet Servers page where you can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats. Since there are no user tables created yet, you can see that the `Load (Num Tablets)` is 0. As new tables get added, new tablets (aka shards) will get automatically created and distributed evenly across all the available tablet servers.
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 

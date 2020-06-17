@@ -55,7 +55,7 @@ az configure --defaults location=eastus
 
 - Create an Azure resource
 
-An Azure resource group is a logical group in which Azure resources are deployed and managed. You need to specify a default location or pass the location parameter to create the resource. The resources we create for the AKS cluster will live in this Azure resource.
+An Azure resource group is a logical group in which Azure resources are deployed and managed. You need to specify a default location or pass the location parameter to create the resource. The resources you create for the AKS cluster will live in this Azure resource.
 
 ```sh
 $ az group create --name yb-eastus-resource
@@ -191,7 +191,7 @@ $ kubectl delete pvc -l app=yb-tserver
 
 ## 6. Destroy the AKS cluster (optional)
 
-To destroy the resource we created for the AKS cluster, run the following.
+To destroy the resource you created for the AKS cluster, run the following.
 
 ```sh
 $ az group delete --name yb-eastus-resource

@@ -19,7 +19,7 @@ This section will describe how to use the Yugabyte Platform to back up and resto
 ## Create universe
 
 First, create a universe similar to the steps shown in [Create universe](../create-universe-multi-zone).
-For the purposes of this demo we create a one-node cluster that looks something like this.
+For the purposes of this demo you create a one-node cluster that looks something like this.
 
 ![Create universe 1 Node](/images/ee/br-create-universe.png)
 

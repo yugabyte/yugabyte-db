@@ -142,7 +142,7 @@ Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets
 
 ## 5. Analyze key metrics
 
-On the Prometheus Graph UI, you can now plot the read IOPS and write IOPS for the `CassandraKeyValue` sample app. As we can see from the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the app, it uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means we can measure throughput and latency by simply using the metrics corresponding to the SELECT and INSERT statements.
+On the Prometheus Graph UI, you can now plot the read IOPS and write IOPS for the `CassandraKeyValue` sample app. As you can see from the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the app, it uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means you can measure throughput and latency by simply using the metrics corresponding to the SELECT and INSERT statements.
 
 Paste the following expressions into the **Expression** box and click **Execute** followed by **Add Graph**.
 

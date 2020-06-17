@@ -53,4 +53,4 @@ showAsideToc: true
 
 Support for Microsoft Azure in Yugabyte Platform is currently in the works.
 Until support is added, you can configure Microsoft Azure as an
-[on-premise data center](../onprem).
+[on-premises data center](../onprem).

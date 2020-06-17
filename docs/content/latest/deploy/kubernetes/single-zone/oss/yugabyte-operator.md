@@ -54,7 +54,7 @@ Clone [yugabyte-k8s-operator](https://github.com/yugaByte/yugabyte-k8s-operator/
 
 ## Deploy a YugabyteDB cluster with this operator
 
-To create a YugabyteDB cluster, first we need to register the custom resource that would represent YugabyteDB cluster: `ybclusters.yugabyte.com`.
+To create a YugabyteDB cluster, first you need to register the custom resource that would represent YugabyteDB cluster: `ybclusters.yugabyte.com`.
 
 ```sh
 kubectl create -f deploy/crds/yugabyte_v1alpha1_ybcluster_crd.yaml

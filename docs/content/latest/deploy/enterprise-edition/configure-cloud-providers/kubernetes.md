@@ -1,5 +1,5 @@
 ---
-title: Configure Kubernetes for YugabyteDB deployments
+title: Configure Kubernetes for YugabyteDB
 headerTitle: Configure cloud providers
 linkTitle: 4. Configure cloud providers
 description: Configure Kubernetes for YugabyteDB deployments using the YugabyteDB Admin Console
@@ -51,7 +51,7 @@ showAsideToc: true
 
 </ul>
 
-This page details how to configure Kubernetes for YugabyteDB clusters using the YugaWare Admin Console. If no cloud providers are configured in YugaWare yet, the main Dashboard page highlights the need to configure at least one cloud provider.
+This page details how to configure Kubernetes for YugabyteDB universes using the Yugabyte Platform. If no cloud providers are configured in the YugabyteDB Admin Console yet, the main Dashboard page highlights the need to configure at least one cloud provider.
 
 ![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
 
@@ -59,7 +59,7 @@ This page details how to configure Kubernetes for YugabyteDB clusters using the 
 
 ### Kubernetes
 
-If you plan to run YugabyteDB nodes on Kubernetes, all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision instances that run Yugabyte. An 'instance' for YugabyteDB includes a compute instance as well as local or remote disk storage attached to the compute instance.
+If you plan to run YugabyteDB nodes on Kubernetes, all you need to provide in the YugabyteDB Admin Console is your cloud provider credentials. The Yugabyte Platform will use those credentials to automatically provision and de-provision instances that run Yugabyte. An 'instance' for YugabyteDB includes a compute instance as well as local or remote disk storage attached to the compute instance.
 
 ## Configure Kubernetes credentials
 
@@ -89,7 +89,7 @@ the cluster, refer to [Create cluster](../../../kubernetes/single-zone/oss/helm-
 
 - **Image Registry** specifies where to pull YugabyteDB image from leave this to default, unless you are hosting the registry on your end.
 
-- **Pull Secret**, Our Enterprise YugabyteDB image is in a private repo and we need to upload the pull secret to download the image, your sales representative should have provided this secret.
+- **Pull Secret**, the Enterprise YugabyteDB image is in a private repo and you need to upload the pull secret to download the image, your sales representative should have provided this secret.
 
 A filled in form looks something like this:
 

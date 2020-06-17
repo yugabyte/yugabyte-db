@@ -59,11 +59,11 @@ DocumentKey1 = {
 }
 ```
 
-Keys we store in RocksDB consist of a number of components, where the first component is a "document
+Keys stored in RocksDB consist of a number of components, where the first component is a "document
 key", followed by a few scalar components, and finally followed by a MVCC timestamp (sorted in
 reverse order). Each component in the DocumentKey, SubKey, and Value, are PrimitiveValues, which are
-just (type, value) pairs, which can be encoded to and decoded from strings. When we encode primitive
-values in keys, we use a binary-comparable encoding for the value, so that sort order of the
+just (type, value) pairs, which can be encoded to and decoded from strings. When encoding primitive
+values in keys, a binary-comparable encoding is used for the value, so that sort order of the
 encoding is the same as the sort order of the value.
 
 #### Updates and deletes

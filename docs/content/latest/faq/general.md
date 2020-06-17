@@ -280,7 +280,7 @@ Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-
 
 [YugabyteDB](../../quick-start/) is the 100% open source core database. It is the best choice for the startup organizations with strong technical operations expertise looking to deploy to production with traditional DevOps tools.
 
-[Yugabyte Platform](../../deploy/enterprise-edition/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premise data centers).
+[Yugabyte Platform](../../deploy/enterprise-edition/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises data centers).
 
 [Yugabyte Cloud](http://yugabyte.com/cloud) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS) and Google Cloud Platform (GCP). You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
 

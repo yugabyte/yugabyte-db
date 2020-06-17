@@ -15,11 +15,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-For staying aware of potential issues with your deployment, YugaWare has the capability to check on each individual universe for several types of issues and proactively send out email alerts when problems arise.
+For staying aware of potential issues with your deployment, the Yugabyte Platform has the capability to check on each individual universe for several types of issues and proactively send out email alerts when problems arise.
 
 ## How to enable and tweak
 
+<<<<<<< HEAD
 To configure health checking, visit your profile page in the YugabyteDB Admin Console by clicking the top-right dropdown featuring your account email and then clicking on the **Profile** entry.
+=======
+To configure health checking, visit your profile page in the YugabyteDB Admin Console by clicking the top-right dropdown featuring your account email and then clicking on the `Profile` entry.
+>>>>>>> fe934ef89... Update naming for consistency
 
 ![Profile Dropdown](/images/ee/health/profile-button.png)
 
@@ -54,4 +58,8 @@ As you can see, the checks run every 5 minutes, across every node. Currently we 
 - Total number of open file descriptors, which if too great, might end up causing problems in normal operation.
 - Connectivity with either `ycqlsh` or `redis-cli`, which could indicate either network connectivity issues in your deployment or server-side issues processing requests.
 
+<<<<<<< HEAD
 This list is not exhaustive, and we are actively working on expanding this! Furthermore, we are also working on more tightly integrating with the underlying `Prometheus` server that is bundled with Yugabyte Platform to provide significantly more granular, user-configurable, metrics-based alerting enabled.
+=======
+This list is not exhaustive, and we are actively working on expanding this! Furthermore, we are also working on more tightly integrating with the underlying Prometheus server that we bundle with the Yugabyte Platform to have significantly more granular and user-configurable metrics-based alerting enabled in our product!
+>>>>>>> fe934ef89... Update naming for consistency

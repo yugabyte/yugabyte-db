@@ -1,8 +1,8 @@
 ---
-title: Prepare cloud environments for Yugabyte Platform and YugaWare
+title: Prepare cloud environments for Yugabyte Platform
 headerTitle: Prepare cloud environment
 linkTitle: 1. Prepare cloud environment
-description: Prepare your cloud environment for the Yugabyte Platform
+description: Prepare your cloud environment for the Yugabyte Platform.
 aliases:
   - /deploy/enterprise-edition/prepare-cloud-environment/
 menu:
@@ -12,7 +12,7 @@ menu:
     weight: 669
 ---
 
-A dedicated host or virtual machine (VM) is needed to run YugaWare. For more details, see [this faq](../../../faq/enterprise-edition/#what-are-the-os-requirements-and-permissions-to-run-yugaware-the-yugabyte-admin-console). This page highlights the basic setup needed in order to install YugaWare.
+A dedicated host or virtual machine (VM) is required to run the Yugabyte Platform server. For more details, see [this faq](../../../faq/enterprise-edition/#what-are-the-os-requirements-and-permissions-to-run-yugaware-the-yugabyte-admin-console). This page highlights the basic setup needed in order to install Yugabyte Platform.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
