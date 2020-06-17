@@ -961,8 +961,8 @@ ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;
 NOTICE:  AUDIT: SESSION,47,1,DDL,ALTER AGGREGATE,AGGREGATE,public.sum_test2(integer),ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;,<none>
 --
 -- Test conversion
-CREATE CONVERSION public.conversion_test FOR 'SQL_ASCII' TO 'MULE_INTERNAL' FROM pg_catalog.ascii_to_mic;
-NOTICE:  AUDIT: SESSION,48,1,DDL,CREATE CONVERSION,CONVERSION,public.conversion_test,CREATE CONVERSION public.conversion_test FOR 'SQL_ASCII' TO 'MULE_INTERNAL' FROM pg_catalog.ascii_to_mic;,<none>
+CREATE CONVERSION public.conversion_test FOR 'latin1' TO 'utf8' FROM pg_catalog.iso8859_1_to_utf8;
+NOTICE:  AUDIT: SESSION,48,1,DDL,CREATE CONVERSION,CONVERSION,public.conversion_test,CREATE CONVERSION public.conversion_test FOR 'latin1' TO 'utf8' FROM pg_catalog.iso8859_1_to_utf8;,<none>
 ALTER CONVERSION public.conversion_test RENAME TO conversion_test2;
 NOTICE:  AUDIT: SESSION,49,1,DDL,ALTER CONVERSION,CONVERSION,public.conversion_test2,ALTER CONVERSION public.conversion_test RENAME TO conversion_test2;,<none>
 --
