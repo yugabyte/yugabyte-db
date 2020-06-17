@@ -4,8 +4,8 @@ headerTitle: Install Yugabyte Platform
 linkTitle: 2. Install Yugabyte Platform
 description: Use Replicated to install Yugabyte Platform (aka YugaWare).
 aliases:
-  - deploy/enterprise-edition/admin-console/
-  - deploy/enterprise-edition/install-admin-console/
+  - /latest/deploy/enterprise-edition/admin-console/
+  - /latest/deploy/enterprise-edition/install-admin-console/
 menu:
   latest:
     identifier: install-yp-1-default
