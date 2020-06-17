@@ -133,6 +133,9 @@ class ControlScript(object):
         self.set_env_vars()
 
         if self.configs.temp_data.get("daemon"):
+            # In daemon mode, self.daemonize() forks. The child process then executes
+            # normal control flow. The parent process waits for the child process until
+            # a status message can be printed to the terminal and then exits within daemonize.
             self.daemonize()
         self.script.write_pid(os.getpid())
         errors = self.script.set_rlimits(print_info=True)
@@ -401,6 +404,7 @@ class ControlScript(object):
                 "--default_memory_limit_to_ram_ratio=0.35",
                 "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
             ]
+        # if a join ip is specified, bring up a shell mode master
         if not join_ip:
             yb_master_cmd.append("--master_addresses={}".format(master_addresses))
 
@@ -814,20 +818,30 @@ class ControlScript(object):
     # If not, set it up appropriately.
     def setup_master(self, timeout=180):
         Output.log("Waiting for master")
+        join_ip = self.configs.saved_data.get("join")
         try:
             if retry_op(self.wait_master, timeout):
                 return True
+            # If wait_master returns False, it means the master is
+            # not part of the current set of masters. If we have a
+            # join_ip, let's try to add ourselves to it, otherwise
+            # it is a hard failure.
+            if not join_ip:
+                return False
         except RuntimeError:
             Output.log_error_and_exit("Failed to setup master. Exception: {}".format(
                 traceback.format_exc()))
             return False
 
         # The master was not in the current list of masters
-        join_ip = self.configs.saved_data.get("join")
+        # and we have a valid join_ip
         bind_ip = self.configs.saved_data.get("bind_ip")
         master_addrs = "{}:{}".format(join_ip,
                     self.configs.saved_data.get("master_rpc_port"))
         master_uuids = [ m[0] for m in YBAdminProxy.get_masters(master_addrs) ]
+        if len(master_uuids) >= 3:
+            # this is going to be a standalone shell master
+            return True
         if not YBAdminProxy.add_master(master_addrs, bind_ip):
             Output.log_error_and_exit("Unable to add master {} to existing cluster at {}.".format(
                 bind_ip, join_ip))
@@ -954,14 +968,18 @@ class ControlScript(object):
 
         yw_status = "http://{}:{}".format(advertise_ip,
                                           self.configs.saved_data.get("webserver_port"))
+        yb_master_status = "http://{}:{}".format(advertise_ip,
+                                          self.configs.saved_data.get("master_webserver_port"))
 
         status_info = [
             (Output.make_yellow("Status"), status),
         ]
+        console_desc = "Web console"
         if self.configs.temp_data.get("ui"):
-            status_info += [
-            (Output.make_yellow("Webserver UI"), yw_status),
-        ]
+            status_info += [ (Output.make_yellow(console_desc), yw_status), ]
+        else:
+            status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
+
         status_info += [
             (Output.make_yellow("JDBC"),
                "jdbc:postgresql://{}:{}/yugabyte?user=yugabyte&password=yugabyte".format(
@@ -1197,8 +1215,8 @@ class ControlScript(object):
                 help="Enable or disable callhome feature that sends analytics data to Yugabyte. "
                      "Default true.")
             cur_parser.add_argument(
-                "--ui", choices=BOOL_CHOICES, default="true", metavar="BOOL",
-                help="Toggle enabling or disabling webserver UI. Default true.")
+                "--ui", choices=BOOL_CHOICES, default="false", metavar="BOOL",
+                help="Toggle enabling or disabling webserver UI. Default false.")
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -1273,7 +1291,7 @@ class Configs(object):
         self.temp_data = {
             "demo_db": DEFAULT_DEMO_DATABASE,
             "daemon": True,
-            "ui": True,
+            "ui": False,
         }
         self.config_file = config_file
 
@@ -1520,7 +1538,12 @@ class ScriptProcessManager(ProcessManager):
         return
 
     def is_running(self):
-        return self.get_pid() is not None
+        pid = self.get_pid()
+        # In certain scenarios like docker, the pid of a previously crashed docker run
+        # is going to be 1, which is the same as ours and looks like the previous run is
+        # still ongoing. The getpid check below covers that case.
+        # In the long run, the plan is to move to something like flock instead.
+        return pid is not None and pid != os.getpid()
 
 
 class YBProcessManager(ProcessManager):
