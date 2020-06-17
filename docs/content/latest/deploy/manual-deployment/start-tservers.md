@@ -89,7 +89,7 @@ This step is required for only multi-AZ deployments and can be skipped for a sin
 
 {{< /note >}}
 
-The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the `--placement_*` configuration flags.  However, for the current deployment, we want to explicitly place one replica of each tablet in each AZ. The following command sets replication factor of `3` across `us-west-2a`, `us-west-2b`, `us-west-2c` leading to such a placement.
+The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the `--placement_*` configuration flags.  However, for the current deployment, you want to explicitly place one replica of each tablet in each AZ. The following command sets replication factor of `3` across `us-west-2a`, `us-west-2b`, `us-west-2c` leading to such a placement.
 
 On any host running the yb-master, run the following command.
 

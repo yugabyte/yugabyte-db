@@ -76,7 +76,11 @@ end;
 $body$;
 ```
 
+<<<<<<< HEAD
 Notice that the key _"d"_ , specified by _path_, doesn't yet exist. Each function call asks to produce the result that the key _"d"_ should exist with  the value `4`. The `DO` block shows that the effect of each, as written above, is the same.
+=======
+Notice that the specified `path`, the key `"d"` doesn't yet exist. Each function call asks to produce the result that the key `"d"` should exist with  the value `4`. So, as you see, the effect of each, as written above, is the same.
+>>>>>>> 456c332e4... Update wording for examples
 
 If `jsonb_set()` is invoked with _"create_if_missing"_ set to `FALSE`, then its result is the same as the input. But if `jsonb_insert()` is invoked with _"insert_after"_ set to `TRUE`, then its output is the same as when it's invoked with _"insert_after"_ set to `FALSE`. This reflects the fact that the order of key-value pairs in an _object_ is insignificant.
 

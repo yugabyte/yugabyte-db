@@ -1,10 +1,45 @@
+---
+title: Install Yugabyte Platform
+headerTitle: Install Yugabyte Platform on Airgapped
+linkTitle: 2. Install Yugabyte Platform
+description: Install Yugabyte Platform (aka YugaWare).
+menu:
+  latest:
+    identifier: install-yp-2-airgapped
+    parent: deploy-enterprise-edition
+    weight: 670
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/default" class="nav-link">
+      <i class="fas fa-cloud"></i>
+      Default
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/airgapped" class="nav-link active">
+      <i class="fas fa-unlink"></i>
+      Airgapped
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/kubernetes" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
+
 An “air-gapped” host has either no or a restricted path to inbound or outbound Internet traffic at all.
 
 ## Prerequisites
 
 ### 1. Whitelist endpoints
 
-In order to install Replicated and YugaWare on a host with no Internet connectivity at all, you have to first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation.
+In order to install Replicated and the Yugabyte Platform on a host with no Internet connectivity at all, you have to first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation.
 
 ```sh
 https://downloads.yugabyte.com
@@ -13,7 +48,7 @@ https://download.docker.com
 
 ### 2. Install Docker Engine
 
-A supported version of Docker Engine (`docker-engine`) (currently 1.7.1 to 17.03.1-ce) needs to be installed on the host. If you do not have docker-engine installed, follow the instructions [here](https://help.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install Docker Engine on an air-gapped host. After Docker Engine is installed, perform the following steps to install Replicated and then YugaWare.
+A supported version of Docker Engine (`docker-engine`) (currently 1.7.1 to 17.03.1-ce) needs to be installed on the host. If you do not have docker-engine installed, follow the instructions [here](https://help.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install Docker Engine on an air-gapped host. After Docker Engine is installed, perform the following steps to install Replicated and then Yugabyte Platform.
 
 ## Step 1 — Install Replicated
 
@@ -77,9 +112,9 @@ You should see an output similar to the following.
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-Next, install YugaWare as described in step 2.
+Next, install Yugabyte Platform as described in step 2.
 
-## Step 2 — Install YugaWare using Replicated
+## Step 2 — Install Yugabyte Platform using Replicated
 
 ### Set up HTTPS for Replicated
 
@@ -101,7 +136,7 @@ Now, upload the Yugabyte license file received from Yugabyte Support.
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
-Two options to install YugaWare are presented.
+Two options to install Yugabyte Platform are presented.
 
 ![Replicated License Airgapped Install](/images/replicated/replicated-license-airgapped-install-option.png)
 
@@ -111,16 +146,16 @@ Two options to install YugaWare are presented.
 
 ### Secure Replicated
 
-The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from YugaWare, the Admin Console for YugabyteDB).
+The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from Yugabyte Platform, the Admin Console for YugabyteDB).
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
 ### Pre-flight checks
 
-Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the YugaWare application.
+Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the Yugabyte Platform application.
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 
-Clicking **Continue** above will bring you to the YugaWare configuration.
+Clicking **Continue** above will bring you to the Yugabyte Platform configuration.
 
 In case the pre-flight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/enterprise-edition/) to identify the resolution.

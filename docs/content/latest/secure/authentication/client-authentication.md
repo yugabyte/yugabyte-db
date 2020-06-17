@@ -16,7 +16,7 @@ showAsideToc: true
 
 YugabyteDB fine-grained authentication for YSQL manages access control for localhost, remote hosts, and clients. By default, authentication is restricted to localhost connections. Using fine-grained authentication, you can define rules for access to localhost and remote clients based on IP addresses, authentication methods, and use of TLS (aka SSL) certificates.
 
-This client authentication is managed in YugabyteDB by the YB-TServer configuration flag [`--ysql_hba_conf`](../../../reference/configuration/yb-tserver/#ysql-flags), which works similar to the `pg_hb.conf` file in PostgreSQL. The values include records that specify allowed connection types, users, client IP addresses, and the authentication method.
+This client authentication is managed in YugabyteDB by the YB-TServer configuration flag [`--ysql_hba_conf`](../../../reference/configuration/yb-tserver/#ysql-flags), which works similar to the `pg_hba.conf` file in PostgreSQL. The values include records that specify allowed connection types, users, client IP addresses, and the authentication method.
 
 The default setting for `listen_addresses` in YugabyteDB accepts connections only from `localhost`. To allow remote connections, you must add client authentication records to the YB-TServer `--ysql_hba_conf` flag.
 
