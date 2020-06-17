@@ -197,6 +197,7 @@ def sync_changes(host, branch, remote_path, wait_for_ssh):
         # The goal is to use checksums for deciding what files to skip.
         rsync_args = ['rsync', '-rlpcgoDvR']
         rsync_args += files
+        rsync_args += ['--exclude', '.git']
         rsync_args += ["{0}:{1}".format(host, remote_path)]
         proc = subprocess.Popen(rsync_args, shell=False)
         proc.communicate()

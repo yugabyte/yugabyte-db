@@ -48,7 +48,7 @@ using yb::tserver::GenerateTestUniverseKeyManager;
 
 DECLARE_int64(encryption_counter_min);
 DECLARE_int64(encryption_counter_max);
-DECLARE_bool(encryption_use_openssl_compatible_counter_overflow);
+DECLARE_bool(TEST_encryption_use_openssl_compatible_counter_overflow);
 
 namespace yb {
 namespace enterprise {
@@ -78,7 +78,7 @@ void EncryptedSSTableTest::CounterOverflow(
     int num_keys, int64_t initial_counter) {
   FLAGS_encryption_counter_min = initial_counter;
   FLAGS_encryption_counter_max = initial_counter;
-  FLAGS_encryption_use_openssl_compatible_counter_overflow = GetParam();
+  FLAGS_TEST_encryption_use_openssl_compatible_counter_overflow = GetParam();
 
   string test_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&test_dir));

@@ -152,7 +152,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
     // We don't want the tablets to move while we are testing.
     List<String> masterArgs = Arrays.asList("--enable_load_balancing=false");
 
-    String tserverAssertLocalTablet = "--assert_local_tablet_server_selected=true";
+    String tserverAssertLocalTablet = "--TEST_assert_local_tablet_server_selected=true";
     List<List<String>> tserverArgs = new ArrayList<List<String>>();
     tserverArgs.add(Arrays.asList(tserverRedisFollowerFlag, tserverAssertLocalTablet));
     tserverArgs.add(Arrays.asList(tserverRedisFollowerFlag, tserverAssertLocalTablet));
@@ -179,7 +179,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
     // We don't want the tablets to move while we are testing.
     List<String> masterArgs = Arrays.asList("--enable_load_balancing=false");
 
-    String tserverAssertTSInZone = "--assert_tablet_server_select_is_in_zone=testZone0";
+    String tserverAssertTSInZone = "--TEST_assert_tablet_server_select_is_in_zone=testZone0";
     List<List<String>> tserverArgs = new ArrayList<List<String>>();
 
     tserverArgs.add(Arrays.asList(tserverRedisFollowerFlag, tserverAssertTSInZone,
@@ -296,11 +296,11 @@ public class TestReadFromFollowers extends BaseJedisTest {
     // We don't want the tablets to move while we are testing.
     List<String> masterArgs = Arrays.asList("--enable_load_balancing=false");
 
-    String tserverAssertLocalTablet = "--assert_local_tablet_server_selected=true";
+    String tserverAssertLocalTablet = "--TEST_assert_local_tablet_server_selected=true";
     String tserverAssertReadsRejectedBecauseStaleFollower =
-        "--assert_reads_from_follower_rejected_because_of_staleness";
+        "--TEST_assert_reads_from_follower_rejected_because_of_staleness";
     String tserverRejectUpdateReplicaRequests =
-        "--follower_reject_update_consensus_requests_seconds=300";
+        "--TEST_follower_reject_update_consensus_requests_seconds=300";
 
     List<List<String>> tserverArgs = new ArrayList<List<String>>();
 
@@ -360,8 +360,8 @@ public class TestReadFromFollowers extends BaseJedisTest {
     // We don't want the tablets to move while we are testing.
     List<String> masterArgs = Arrays.asList("--enable_load_balancing=false");
 
-    String tserverAssertLocalTablet = "--assert_local_tablet_server_selected=true";
-    String tserverAssertReadsInFollower = "--assert_reads_served_by_follower=true";
+    String tserverAssertLocalTablet = "--TEST_assert_local_tablet_server_selected=true";
+    String tserverAssertReadsInFollower = "--TEST_assert_reads_served_by_follower=true";
 
     List<List<String>> tserverArgs = new ArrayList<List<String>>();
 
@@ -421,14 +421,14 @@ public class TestReadFromFollowers extends BaseJedisTest {
     // We don't want the tablets to move while we are testing.
     List<String> masterArgs = Arrays.asList("--enable_load_balancing=false");
 
-    String simulateTimeOutFailures = "--simulate_time_out_failures=true";
-    String verifyAllReplicasAlive = "--verify_all_replicas_alive=true";
+    String simulateTimeOutFailures = "--TEST_simulate_time_out_failures=true";
+    String verifyAllReplicasAlive = "--TEST_verify_all_replicas_alive=true";
     String forceLookupCacheRefreshSecs = "--force_lookup_cache_refresh_secs=10";
 
     List<List<String>> tserverArgs = new ArrayList<List<String>>();
 
     // Only the first tserver needs to periodically update its cache.
-    // If a requests times out (because of flag --simulate_time_out_failures), then
+    // If a requests times out (because of flag --TEST_simulate_time_out_failures), then
     // TS0 will make sure that the cache is updated either because of the periodic refresh of the
     // lookup cache (the new feature we are testing here), or because the selected TS leader relica
     // was marked as failed after the timeout (we already have code that handles this case, the new
@@ -476,7 +476,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
     // We don't want the tablets to move while we are testing.
     List<String> masterArgs = Arrays.asList("--enable_load_balancing=false");
 
-    String tserverAssertLocalTablet = "--assert_local_tablet_server_selected=false";
+    String tserverAssertLocalTablet = "--TEST_assert_local_tablet_server_selected=false";
     List<List<String>> tserverArgs = new ArrayList<List<String>>();
     tserverArgs.add(Arrays.asList(tserverRedisFollowerFlag, tserverAssertLocalTablet));
     tserverArgs.add(Arrays.asList(tserverRedisFollowerFlag, tserverAssertLocalTablet));

@@ -69,7 +69,7 @@ void TsRecoveryITest::StartCluster(const vector<string>& extra_tserver_flags,
 
 // Test that we replay from the recovery directory, if it exists.
 TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
-  ASSERT_NO_FATALS(StartCluster({ "--fault_crash_during_log_replay=0.05" }));
+  ASSERT_NO_FATALS(StartCluster({ "--TEST_fault_crash_during_log_replay=0.05" }));
 
   TestWorkload work(cluster_.get());
   work.set_num_write_threads(4);

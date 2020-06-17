@@ -421,7 +421,7 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
     }
   }
 
-  if (FLAGS_simulate_fs_create_failure) {
+  if (FLAGS_TEST_simulate_fs_create_failure) {
     return STATUS(IOError, "Simulated fs creation error");
   }
 

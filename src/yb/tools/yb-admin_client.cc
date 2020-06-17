@@ -71,6 +71,11 @@ DEFINE_bool(wait_if_no_leader_master, false,
 DEFINE_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
 
+DEFINE_bool(
+    disable_graceful_transition, false,
+    "During a leader stepdown, disable graceful leadership transfer "
+    "to an up to date peer");
+
 // Maximum number of elements to dump on unexpected errors.
 static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
 
@@ -543,6 +548,10 @@ Status ClusterAdminClient::LeaderStepDown(
   req.set_tablet_id(tablet_id);
   if (!new_leader_uuid.empty()) {
     req.set_new_leader_uuid(new_leader_uuid);
+  } else {
+    if (FLAGS_disable_graceful_transition) {
+      req.set_disable_graceful_transition(true);
+    }
   }
   // The API for InvokeRpcNoResponseCheck requires a raw pointer to a ConsensusServiceProxy, so
   // cache it outside, if we are creating a new proxy to a previously unknown leader.
@@ -558,6 +567,8 @@ Status ClusterAdminClient::LeaderStepDown(
     req.set_dest_uuid(lookup_leader_uuid);
     new_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr);
   }
+  VLOG(2) << "Sending request " << req.DebugString() << " to node with uuid [" << leader_uuid
+          << "]";
   const auto resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(&ConsensusServiceProxy::LeaderStepDown,
       new_proxy ? new_proxy.get() : leader_proxy->get(),
       req));
@@ -685,17 +696,20 @@ Status ClusterAdminClient::ChangeConfig(
       consensus_proxy.get(), req));
 }
 
-Status ClusterAdminClient::GetMasterLeaderInfo(PeerId* leader_uuid) {
-  const auto list_resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
-      master_proxy_.get(), ListMastersRequestPB()));
+Result<std::string> ClusterAdminClient::GetMasterLeaderUuid() {
+  std::string leader_uuid;
+  const auto list_resp = VERIFY_RESULT_PREPEND(
+      InvokeRpc(&MasterServiceProxy::ListMasters, master_proxy_.get(), ListMastersRequestPB()),
+      "Could not locate master leader");
   for (const auto& master : list_resp.masters()) {
     if (master.role() == RaftPeerPB::LEADER) {
-      CHECK(leader_uuid->empty()) << "Found two LEADER's in the same raft config.";
-      *leader_uuid = master.instance_id().permanent_uuid();
+      SCHECK(
+          leader_uuid.empty(), ConfigurationError, "Found two LEADER's in the same raft config.");
+      leader_uuid = master.instance_id().permanent_uuid();
     }
   }
-
-  return Status::OK();
+  SCHECK(!leader_uuid.empty(), ConfigurationError, "Could not locate master leader!");
+  return std::move(leader_uuid);
 }
 
 Status ClusterAdminClient::DumpMasterState(bool to_console) {
@@ -870,11 +884,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
       RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
   }
 
-  string leader_uuid;
-  RETURN_NOT_OK_PREPEND(GetMasterLeaderInfo(&leader_uuid), "Could not locate master leader");
-  if (leader_uuid.empty()) {
-    return STATUS(ConfigurationError, "Could not locate master leader!");
-  }
+  auto leader_uuid = VERIFY_RESULT(GetMasterLeaderUuid());
 
   // If removing the leader master, then first make it step down and that
   // starts an election and gets a new leader master.
@@ -888,11 +898,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
     // Reget the leader master's socket info to set up the proxy
     leader_addr_ = VERIFY_RESULT(yb_client_->RefreshMasterLeaderAddress());
     master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
-    leader_uuid = "";  // reset so it can be set to new leader in the GetMasterLeaderInfo call below
-    RETURN_NOT_OK_PREPEND(GetMasterLeaderInfo(&leader_uuid), "Could not locate new master leader");
-    if (leader_uuid.empty()) {
-      return STATUS(ConfigurationError, "Could not locate new master leader!");
-    }
+    leader_uuid = VERIFY_RESULT(GetMasterLeaderUuid());
     if (leader_uuid == old_leader_uuid) {
       return STATUS(ConfigurationError,
         Substitute("Old master leader uuid $0 same as new one even after stepdown!", leader_uuid));
@@ -1149,26 +1155,28 @@ Status ClusterAdminClient::ListTablets(const YBTableName& table_name, int max_ta
   std::vector<master::TabletLocationsPB> locations;
   RETURN_NOT_OK(yb_client_->GetTablets(
       table_name, max_tablets, &tablet_uuids, &ranges, &locations));
-  cout << RightPadToUuidWidth("Tablet UUID") << kColumnSep
+  cout << RightPadToUuidWidth("Tablet-UUID") << kColumnSep
        << RightPadToWidth("Range", kPartitionRangeColWidth) << kColumnSep
-       << "Leader" << endl;
+       << RightPadToWidth("Leader-IP", kLongColWidth) << kColumnSep << "Leader-UUID" << endl;
   for (int i = 0; i < tablet_uuids.size(); i++) {
     string tablet_uuid = tablet_uuids[i];
     string leader_host_port;
+    string leader_uuid;
     const auto& locations_of_this_tablet = locations[i];
     for (const auto& replica : locations_of_this_tablet.replicas()) {
       if (replica.role() == RaftPeerPB::Role::RaftPeerPB_Role_LEADER) {
         if (leader_host_port.empty()) {
           leader_host_port = FormatHostPort(replica.ts_info().private_rpc_addresses(0));
+          leader_uuid = replica.ts_info().permanent_uuid();
         } else {
           LOG(ERROR) << "Multiple leader replicas found for tablet " << tablet_uuid
                      << ": " << locations_of_this_tablet.ShortDebugString();
         }
       }
     }
-    cout << tablet_uuid << kColumnSep
-         << RightPadToWidth(ranges[i], kPartitionRangeColWidth) << kColumnSep
-         << leader_host_port << endl;
+    cout << tablet_uuid << kColumnSep << RightPadToWidth(ranges[i], kPartitionRangeColWidth)
+         << kColumnSep << RightPadToWidth(leader_host_port, kLongColWidth) << kColumnSep
+         << leader_uuid << endl;
   }
   return Status::OK();
 }

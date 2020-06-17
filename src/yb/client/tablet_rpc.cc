@@ -315,7 +315,7 @@ bool TabletInvoker::Done(Status* status) {
       followers_.insert(current_ts_);
     }
 
-    if (PREDICT_FALSE(FLAGS_assert_local_op) && current_ts_->IsLocal() &&
+    if (PREDICT_FALSE(FLAGS_TEST_assert_local_op) && current_ts_->IsLocal() &&
         status->IsIllegalState()) {
       CHECK(false) << "Operation is not local";
     }

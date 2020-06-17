@@ -191,8 +191,8 @@ Status TabletPeer::InitTabletPeer(
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
-  if (FLAGS_delay_init_tablet_peer_ms > 0) {
-    std::this_thread::sleep_for(FLAGS_delay_init_tablet_peer_ms * 1ms);
+  if (FLAGS_TEST_delay_init_tablet_peer_ms > 0) {
+    std::this_thread::sleep_for(FLAGS_TEST_delay_init_tablet_peer_ms * 1ms);
   }
 
   {
@@ -439,11 +439,13 @@ bool TabletPeer::StartShutdown() {
   // indirectly end up calling into the log, which we are about to shut down.
   UnregisterMaintenanceOps();
 
+  std::shared_ptr<consensus::RaftConsensus> consensus;
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
-    if (consensus_) {
-      consensus_->Shutdown();
-    }
+    consensus = consensus_;
+  }
+  if (consensus) {
+    consensus->Shutdown();
   }
 
   return true;

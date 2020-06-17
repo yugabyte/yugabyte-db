@@ -155,6 +155,12 @@ class OperationState {
     return consensus_round_.get();
   }
 
+  const consensus::ConsensusRound* consensus_round() const {
+    return consensus_round_.get();
+  }
+
+  std::string ConsensusRoundAsString() const;
+
   Tablet* tablet() const {
     return tablet_;
   }
@@ -279,7 +285,8 @@ class OperationStateBase : public OperationState {
   }
 
   std::string ToString() const override {
-    return Format("{ request: $0 }", request_.load(std::memory_order_acquire));
+    return Format("{ request: $0 consensus_round: $1 }",
+                  request_.load(std::memory_order_acquire), ConsensusRoundAsString());
   }
 
  protected:

@@ -1,9 +1,47 @@
+---
+title: Install Yugabyte Platform using Replicated
+headerTitle: Install Yugabyte Platform
+linkTitle: 2. Install Yugabyte Platform
+description: Use Replicated to install Yugabyte Platform (aka YugaWare).
+aliases:
+  - /latest/deploy/enterprise-edition/admin-console/
+  - /latest/deploy/enterprise-edition/install-admin-console/
+menu:
+  latest:
+    identifier: install-yp-1-default
+    parent: deploy-enterprise-edition
+    weight: 670
+isTocNested: true
+showAsideToc: true
+---
 
-YugabyteDB clusters are created and managed from YugaWare. The default option to install YugaWare on a host machine that is connected to the Internet.
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/default" class="nav-link active">
+      <i class="fas fa-cloud"></i>
+      Default
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/airgapped" class="nav-link">
+      <i class="fas fa-unlink"></i>
+      Airgapped
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/kubernetes" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
+
+YugabyteDB universes and clusters are created and managed using the Yugabyte Platform. The default option to install Yugabyte Platform on a host machine that is connected to the Internet.
 
 ## Step 1. Install Replicated
 
-Connect to the YugaWare instance and do the following.
+Connect to the Yugabyte Platform instance and do the following.
 
 - Install Replicated.
 
@@ -31,11 +69,11 @@ You should see an output similar to the following.
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-## Step 2. Install YugaWare
+## Step 2. Install Yugabyte Platform
 
 ### Set up HTTPS for Replicated
 
-Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will address this warning as soon as we setup HTTPS for the Replicated Admin Console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated Admin Console.
+Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). You will address this warning as soon after setting up HTTPS for the Replicated Admin Console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated Admin Console.
 
 ![Replicated SSL warning](/images/replicated/replicated-warning.png)
 
@@ -61,16 +99,16 @@ If you are asked to choose an installation type, choose `Online`.
 
 ### Secure Replicated
 
-The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from YugaWare, the Admin Console for YugabyteDB).
+The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from Yugabyte Platform, the Admin Console for YugabyteDB).
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
 ### Pre-flight checks
 
-Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the YugaWare application.
+Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the Yugabyte Platform application.
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 
-Clicking Continue above will bring us to YugaWare configuration.
+Clicking Continue above will bring us to Yugabyte Platform configuration.
 
 In case the pre-flight check fails, see [Troubleshoot Yugabyte Platform](../../../troubleshoot/enterprise-edition/) to identify the resolution.

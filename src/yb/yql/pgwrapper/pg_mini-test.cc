@@ -41,13 +41,12 @@ DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
-DECLARE_double(respond_write_failed_probability);
-DECLARE_double(transaction_ignore_applying_probability_in_tests);
+DECLARE_double(TEST_respond_write_failed_probability);
+DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
@@ -74,7 +73,6 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
     FLAGS_hide_pg_catalog_table_creation_logs = true;
     FLAGS_master_auto_run_initdb = true;
     FLAGS_retryable_rpc_single_call_timeout_ms = 30000;
-    FLAGS_yb_client_admin_operation_timeout_sec = 120;
     FLAGS_pggate_rpc_timeout_secs = 120;
     FLAGS_ysql_num_shards_per_tserver = 1;
 
@@ -180,7 +178,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(WriteRetry)) {
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
 
-  SetAtomicFlag(0.25, &FLAGS_respond_write_failed_probability);
+  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
 
   LOG(INFO) << "Insert " << kKeys << " keys";
   for (int key = 0; key != kKeys; ++key) {
@@ -190,7 +188,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(WriteRetry)) {
         << status;
   }
 
-  SetAtomicFlag(0, &FLAGS_respond_write_failed_probability);
+  SetAtomicFlag(0, &FLAGS_TEST_respond_write_failed_probability);
 
   auto result = ASSERT_RESULT(conn.FetchMatrix("SELECT * FROM t ORDER BY key", kKeys, 1));
   for (int key = 0; key != kKeys; ++key) {
@@ -1029,7 +1027,11 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
       FLAGS_timestamp_history_retention_interval_sec = 0;
       FLAGS_history_cutoff_propagation_interval_ms = 1;
       ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+      const auto compaction_start = MonoTime::Now();
       ASSERT_OK(cluster_->CompactTablets());
+      const auto compaction_finish = MonoTime::Now();
+      const double compaction_elapsed_time_sec = (compaction_finish - compaction_start).ToSeconds();
+      LOG(INFO) << "Compaction duration: " << compaction_elapsed_time_sec << " s";
     }
 
     LOG(INFO) << "Perform read";
@@ -1075,7 +1077,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest)
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
-  SetAtomicFlag(1.0, &FLAGS_transaction_ignore_applying_probability_in_tests);
+  SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability_in_tests);
   FLAGS_TEST_force_master_leader_resolution = true;
 
   auto conn = ASSERT_RESULT(Connect());

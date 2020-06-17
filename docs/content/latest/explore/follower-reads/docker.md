@@ -54,7 +54,11 @@ $ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugaby
   --value_size 10240
 ```
 
+<<<<<<< HEAD
 In the above command, we have set the value of `num_unique_keys` to `1`, which means we are overwriting a single key `key:0`. We can verify this using ycqlsh:
+=======
+In the above command, you have set the value of `num_unique_keys` to `1`, which means you are overwriting a single key `key:0`. We can verify this using cqlsh:
+>>>>>>> f4307fea8... Update wording for examples
 
 ```sh
 $ docker exec -it yb-tserver-n1 /home/yugabyte/bin/ycqlsh
@@ -80,7 +84,7 @@ ycqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 
 ## 3. Strongly consistent reads from tablet leaders
 
-When performing strongly consistent reads as a part of the above command, all reads will be served by the tablet leader of the tablet that contains the key `key:0`. If we browse to the <a href='http://localhost:7000/tablet-servers' target="_blank">tablet-servers</a> page, we will see that all the requests are indeed being served by one tserver:
+When performing strongly consistent reads as a part of the above command, all reads will be served by the tablet leader of the tablet that contains the key `key:0`. If you browse to the <a href='http://localhost:7000/tablet-servers' target="_blank">tablet-servers</a> page, you will see that all the requests are indeed being served by one tserver:
 
 ![Reads from the tablet leader](/images/ce/tunable-reads-leader-docker.png)
 
@@ -99,7 +103,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --local_reads
 ```
 
-This can be easily seen by refreshing the <a href='http://localhost:7000/tablet-servers' target="_blank">tablet-servers</a> page, where we will see that the writes are served by a single YB-TServer that is the leader of the tablet for the key `key:0` while multiple YB-TServers which are replicas serve the reads.
+This can be easily seen by refreshing the <a href='http://localhost:7000/tablet-servers' target="_blank">tablet-servers</a> page, where you will see that the writes are served by a single YB-TServer that is the leader of the tablet for the key `key:0` while multiple YB-TServers which are replicas serve the reads.
 
 ![Reads from the tablet follower](/images/ce/tunable-reads-followers-docker.png)
 

@@ -181,8 +181,8 @@ class FlagTagger {
 } // namespace yb
 
 #define DEFINE_test_flag(type, name, default_value, description) \
-    BOOST_PP_CAT(DEFINE_, type)(name, default_value, description " (For testing only!)"); \
-    TAG_FLAG(name, unsafe); \
-    TAG_FLAG(name, hidden);
+    BOOST_PP_CAT(DEFINE_, type)(TEST_##name, default_value, description " (For testing only!)"); \
+    TAG_FLAG(TEST_##name, unsafe); \
+    TAG_FLAG(TEST_##name, hidden);
 
 #endif /* YB_UTIL_FLAG_TAGS_H */

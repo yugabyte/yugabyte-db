@@ -358,7 +358,7 @@ bool Batcher::IsAbortedUnlocked() const {
 
 void Batcher::CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Status& status) {
   error_collector_->AddError(in_flight_op->yb_op, status);
-  if (FLAGS_combine_batcher_errors) {
+  if (FLAGS_TEST_combine_batcher_errors) {
     if (combined_error_.ok()) {
       combined_error_ = status.CloneAndPrepend(in_flight_op->ToString());
     } else if (!combined_error_.IsCombined() && combined_error_.code() != status.code()) {

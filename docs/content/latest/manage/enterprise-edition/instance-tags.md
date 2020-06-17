@@ -15,8 +15,13 @@ showAsideToc: true
 ---
 
 The instances created on a cloud provider can be assigned special metadata to help manage, bill or audit the resources. On Amazon Web Services (AQS), they are referred to as
+<<<<<<< HEAD
 [instance tags](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html). You can create and edit these on the **Universe** dashboard of the
 YugabyteDB Admin Console.
+=======
+[instance tags](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html). You can create and edit these from the
+YugabyteDB Admin Console's universe dashboard.
+>>>>>>> fe934ef89... Update naming for consistency
 
 {{< note title="Note" >}}
 
@@ -26,7 +31,11 @@ The option to set instance tags is currently available only for AWS.
 
 ## 1. Create instance tags
 
+<<<<<<< HEAD
 During the universe creation step, with an AWS cloud provider, use the YugabyteDB Admin Console to provide the option to input the instance tags as a map of keys and values as shown below.
+=======
+During the universe creation step, with an AWS cloud provider, the YugabyteDB Admin Console will provide the option to input the instance tags as a map of keys-value pairs as shown below.
+>>>>>>> fe934ef89... Update naming for consistency
 
 ![Create instance tags](/images/ee/inst-tags-1.png)
 
@@ -43,7 +52,7 @@ User can provide these key-value pairs in any order.
 
 *Check Cloud Provider instances*
 
-Browse to the cloud provider's instances page. In this example, since we are using AWS as the cloud provider, browse to **EC2 -> Running Instances**
+Browse to the cloud provider's instances page. In this example, since you are using AWS as the cloud provider, browse to **EC2 -> Running Instances**
 in the correct availability zone and search for instances that have `test-tags` in their name. You should see something as follows in the
 **Tags** tab of those instances.
 

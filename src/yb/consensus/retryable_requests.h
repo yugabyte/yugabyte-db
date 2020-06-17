@@ -17,6 +17,7 @@
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/util/restart_safe_clock.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

@@ -63,7 +63,7 @@ class SystemTableFaultTolerance : public YBTest {
 };
 
 TEST_F(SystemTableFaultTolerance, TestFaultTolerance) {
-  SetupCluster(0, {"--catalog_manager_simulate_system_table_create_failure=true"});
+  SetupCluster(0, {"--TEST_catalog_manager_simulate_system_table_create_failure=true"});
   // Startup should fail due to injected failure.
   ASSERT_NOK(cluster_->Start());
   uint64_t rpc_port = cluster_->master()->bound_rpc_hostport().port();

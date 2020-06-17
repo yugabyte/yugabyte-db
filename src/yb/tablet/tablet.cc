@@ -190,21 +190,18 @@ TAG_FLAG(backfill_index_timeout_grace_margin_ms, runtime);
 DEFINE_bool(cleanup_intents_sst_files, true,
             "Cleanup intents files that are no more relevant to any running transaction.");
 
-DEFINE_test_flag(int32, TEST_slowdown_backfill_by_ms, 0,
+DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
 
-DEFINE_test_flag(
-    int32, TEST_backfill_paging_size, 0,
-    "If set > 0, returns early after processing this number of rows.");
+DEFINE_test_flag(int32, backfill_paging_size, 0,
+                 "If set > 0, returns early after processing this number of rows.");
 
-DEFINE_test_flag(
-    bool, tablet_verify_flushed_frontier_after_modifying, false,
-    "After modifying the flushed frontier in RocksDB, verify that the restored value of it "
-    "is as expected. Used for testing.");
+DEFINE_test_flag(bool, tablet_verify_flushed_frontier_after_modifying, false,
+                 "After modifying the flushed frontier in RocksDB, verify that the restored value "
+                 "of it is as expected. Used for testing.");
 
-DEFINE_test_flag(
-    bool, docdb_log_write_batches, false,
-    "Dump write batches being written to RocksDB");
+DEFINE_test_flag(bool, docdb_log_write_batches, false,
+                 "Dump write batches being written to RocksDB");
 
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
@@ -1080,6 +1077,12 @@ Status Tablet::ApplyKeyValueRowOperations(int64_t batch_idx,
   } else {
     PrepareNonTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
     WriteToRocksDB(frontiers, &write_batch, StorageDbType::kRegular);
+    if (snapshot_coordinator_) {
+      for (const auto& pair : put_batch.write_pairs()) {
+        WARN_NOT_OK(snapshot_coordinator_->ApplyWritePair(pair.key(), pair.value()),
+                    "ApplyWritePair failed");
+      }
+    }
   }
 
   return Status::OK();
@@ -1111,7 +1114,7 @@ void Tablet::WriteToRocksDB(
                            << " operations into RocksDB: " << rocksdb_write_status;
   }
 
-  if (FLAGS_docdb_log_write_batches) {
+  if (FLAGS_TEST_docdb_log_write_batches) {
     LOG_WITH_PREFIX(INFO)
         << "Wrote " << write_batch->Count() << " key/value pairs to " << storage_db_type
         << " RocksDB:\n" << docdb::WriteBatchToString(
@@ -1867,10 +1870,10 @@ Status Tablet::CreatePreparedChangeMetadata(ChangeMetadataOperationState *operat
     }
   }
 
-  // Alter schema must run when no reads/writes are in progress.
-  // However, compactions and flushes can continue to run in parallel
-  // with the schema change,
-  operation_state->AcquireSchemaLock(&schema_lock_);
+  if (!operation_state->op_id().IsInitialized()) {
+    // Acquire schema lock only on the leader.
+    operation_state->AcquireSchemaLock(&schema_lock_);
+  }
 
   operation_state->set_schema(schema);
   return Status::OK();
@@ -1930,7 +1933,6 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
                         << " version " << current_table_info->schema_version
                         << " to " << operation_state->schema()->ToString()
                         << " version " << operation_state->schema_version();
-  DCHECK(schema_lock_.is_locked());
 
   // Find out which columns have been deleted in this schema change, and add them to metadata.
   vector<DeletedColumn> deleted_cols;
@@ -2238,7 +2240,7 @@ Status Tablet::ModifyFlushedFrontier(
     DCHECK_EQ(frontier.hybrid_time(), consensus_flushed_frontier.hybrid_time());
   }
 
-  if (FLAGS_tablet_verify_flushed_frontier_after_modifying &&
+  if (FLAGS_TEST_tablet_verify_flushed_frontier_after_modifying &&
       mode == rocksdb::FrontierModificationMode::kForce) {
     LOG(INFO) << "Verifying that flushed frontier was force-set successfully";
     string test_data_dir = VERIFY_RESULT(Env::Default()->GetTestDirectory());
@@ -3019,6 +3021,15 @@ void Tablet::InitRocksDBOptions(rocksdb::Options* options, const std::string& lo
 
 rocksdb::Env& Tablet::rocksdb_env() const {
   return *tablet_options_.rocksdb_env;
+}
+
+Result<std::string> Tablet::GetEncodedMiddleDocKey() const {
+  // TODO(tsplit): should take key_bounds_ into account.
+  auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey());
+  const auto doc_key_size = VERIFY_RESULT(DocKey::EncodedSize(
+      middle_key, docdb::DocKeyPart::kWholeDocKey));
+  middle_key.resize(doc_key_size);
+  return middle_key;
 }
 
 // ------------------------------------------------------------------------------------------------

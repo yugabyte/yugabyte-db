@@ -57,6 +57,11 @@ class IndexReader {
                                         TwoLevelIteratorState* index_iterator_state = nullptr,
                                         bool total_order_seek = true) = 0;
 
+  // Returns approximate middle key from the index. Key from the index might not match any key
+  // actually written to SST file, because keys could be shortened and substituted before them are
+  // written into the index (see ShortenedIndexBuilder).
+  virtual Result<Slice> GetMiddleKey() = 0;
+
   // The size of the index.
   virtual size_t size() const = 0;
   // Memory usage of the index block
@@ -107,6 +112,8 @@ class BinarySearchIndexReader : public IndexReader {
     return index_block_->ApproximateMemoryUsage();
   }
 
+  Result<Slice> GetMiddleKey() override;
+
  private:
   BinarySearchIndexReader(const ComparatorPtr& comparator,
                           std::unique_ptr<Block>&& index_block)
@@ -116,7 +123,7 @@ class BinarySearchIndexReader : public IndexReader {
 
   ~BinarySearchIndexReader() {}
 
-  std::unique_ptr<Block> index_block_;
+  const std::unique_ptr<Block> index_block_;
 };
 
 // Index that leverages an internal hash table to quicken the lookup for a given
@@ -151,6 +158,8 @@ class HashIndexReader : public IndexReader {
     return index_block_->ApproximateMemoryUsage() + prefixes_contents_.data.size();
   }
 
+  Result<Slice> GetMiddleKey() override;
+
  private:
   HashIndexReader(const ComparatorPtr& comparator, std::unique_ptr<Block>&& index_block)
       : IndexReader(comparator), index_block_(std::move(index_block)) {
@@ -163,7 +172,7 @@ class HashIndexReader : public IndexReader {
     prefixes_contents_ = std::move(prefixes_contents);
   }
 
-  std::unique_ptr<Block> index_block_;
+  const std::unique_ptr<Block> index_block_;
   BlockContents prefixes_contents_;
 };
 
@@ -189,6 +198,8 @@ class MultiLevelIndexReader : public IndexReader {
 
   InternalIterator* NewIterator(
       BlockIter* iter, TwoLevelIteratorState* index_iterator_state, bool) override;
+
+  Result<Slice> GetMiddleKey() override;
 
  private:
   size_t size() const override { return top_level_index_block_->size(); }

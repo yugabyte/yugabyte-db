@@ -32,7 +32,7 @@ DEFINE_int32(cdc_max_apply_batch_size_bytes, 0, "Max CDC write request batch siz
                                                 " default to consensus_max_batch_size_bytes.");
 TAG_FLAG(cdc_max_apply_batch_size_bytes, runtime);
 
-DEFINE_test_flag(bool, TEST_twodc_write_hybrid_time, false,
+DEFINE_test_flag(bool, twodc_write_hybrid_time, false,
                  "Override external_hybrid_time with initialHybridTimeValue for testing.");
 
 DECLARE_int32(consensus_max_batch_size_bytes);

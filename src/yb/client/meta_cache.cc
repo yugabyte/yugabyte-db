@@ -245,7 +245,7 @@ bool RemoteTabletServer::HasCapability(CapabilityId capability) const {
 ////////////////////////////////////////////////////////////
 
 RemoteTablet::~RemoteTablet() {
-  if (PREDICT_FALSE(FLAGS_verify_all_replicas_alive)) {
+  if (PREDICT_FALSE(FLAGS_TEST_verify_all_replicas_alive)) {
     // Let's verify that none of the replicas are marked as failed. The test should always wait
     // enough time so that the lookup cache can be refreshed after force_lookup_cache_refresh_secs.
     for (const auto& replica : replicas_) {

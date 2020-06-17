@@ -49,18 +49,18 @@ using yb::tablet::TabletPeer;
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_bool(transaction_allow_rerequest_status_in_tests);
-DECLARE_uint64(transaction_delay_status_reply_usec_in_tests);
+DECLARE_bool(TEST_transaction_allow_rerequest_status);
+DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(transaction_disable_proactive_cleanup_in_tests);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
-DECLARE_int32(master_inject_latency_on_transactional_tablet_lookups_ms);
+DECLARE_int32(TEST_master_inject_latency_on_transactional_tablet_lookups_ms);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_bool(rocksdb_disable_compactions);
-DECLARE_int32(delay_init_tablet_peer_ms);
-DECLARE_bool(fail_in_apply_if_no_metadata);
+DECLARE_int32(TEST_delay_init_tablet_peer_ms);
+DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
 DECLARE_bool(delete_intents_sst_files);
 
 namespace yb {
@@ -113,7 +113,7 @@ TEST_F(QLTransactionTest, Simple) {
 }
 
 TEST_F(QLTransactionTest, LookupTabletFailure) {
-  FLAGS_master_inject_latency_on_transactional_tablet_lookups_ms =
+  FLAGS_TEST_master_inject_latency_on_transactional_tablet_lookups_ms =
       TransactionRpcTimeout().ToMilliseconds() + 500;
 
   auto txn = CreateTransaction();
@@ -210,7 +210,7 @@ TEST_F(QLTransactionTest, ReadRestartWithIntents) {
 }
 
 TEST_F(QLTransactionTest, ReadRestartWithPendingIntents) {
-  FLAGS_transaction_allow_rerequest_status_in_tests = false;
+  FLAGS_TEST_transaction_allow_rerequest_status = false;
   DisableApplyingIntents();
   TestReadRestart(false /* commit */);
 }
@@ -599,7 +599,7 @@ void QLTransactionTest::TestReadOnlyTablets(IsolationLevel isolation_level,
 }
 
 TEST_F(QLTransactionTest, ReadOnlyTablets) {
-  FLAGS_fail_in_apply_if_no_metadata = true;
+  FLAGS_TEST_fail_in_apply_if_no_metadata = true;
 
   // In snapshot isolation, tablets only read from will not have metadata written, so applying
   // intents on this tablet would cause the test to fail.
@@ -909,7 +909,7 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
 
   std::this_thread::sleep_for(FLAGS_aborted_intent_cleanup_ms * 1ms);
 
-  FLAGS_delay_init_tablet_peer_ms = 100;
+  FLAGS_TEST_delay_init_tablet_peer_ms = 100;
   FLAGS_rocksdb_disable_compactions = false;
 
   LOG(INFO) << "Start cluster";
@@ -1038,7 +1038,7 @@ TEST_F_EX(QLTransactionTest, CorrectStatusRequestBatching, QLTransactionBigLogSe
   constexpr auto kMinReads = 10;
   constexpr size_t kConcurrentReads = RegularBuildVsSanitizers<size_t>(20, 5);
 
-  FLAGS_transaction_delay_status_reply_usec_in_tests = 200000;
+  FLAGS_TEST_transaction_delay_status_reply_usec_in_tests = 200000;
   SetAtomicFlag(std::chrono::microseconds(kClockSkew).count() * 3, &FLAGS_max_clock_skew_usec);
 
   auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);

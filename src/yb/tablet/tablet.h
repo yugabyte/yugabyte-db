@@ -490,6 +490,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   docdb::DocDB doc_db() const { return { regular_db_.get(), intents_db_.get(), &key_bounds_ }; }
 
+  Result<std::string> GetEncodedMiddleDocKey() const;
+
   std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
 
   template<class T> void TEST_DocDBDumpToContainer(IncludeIntents include_intents, T* out);

@@ -243,6 +243,50 @@ TEST_F(BlockTest, IndexHashWithSharedPrefix) {
   CheckBlockContents(std::move(contents), kMaxKey, keys, values);
 }
 
+namespace {
+
+std::string GetPaddedNum(int i) {
+  return StringPrintf("%010d", i);
+}
+
+yb::Result<std::string> GetMiddleKey(const int num_keys, const int block_restart_interval) {
+  BlockBuilder builder(block_restart_interval);
+
+  for (int i = 1; i <= num_keys; ++i) {
+    const auto padded_num = GetPaddedNum(i);
+    builder.Add("k" + padded_num, "v" + padded_num);
+  }
+
+  BlockContents contents;
+  contents.data = builder.Finish();
+  contents.cachable = false;
+  Block reader(std::move(contents));
+
+  return VERIFY_RESULT(reader.GetMiddleKey()).ToString();
+}
+
+void CheckMiddleKey(
+    const int num_keys, const int block_restart_interval, const int expected_middle_key) {
+  const auto middle_key = ASSERT_RESULT(GetMiddleKey(num_keys, block_restart_interval));
+  ASSERT_EQ(middle_key, "k" + GetPaddedNum(expected_middle_key)) << "For num_keys = " << num_keys;
+}
+
+} // namespace
+
+TEST_F(BlockTest, GetMiddleKey) {
+  const auto block_restart_interval = 1;
+
+  const auto empty_block_middle_key = GetMiddleKey(/* num_keys =*/ 0, block_restart_interval);
+  ASSERT_NOK(empty_block_middle_key) << empty_block_middle_key;
+  ASSERT_TRUE(empty_block_middle_key.status().IsIncomplete()) << empty_block_middle_key;
+
+  CheckMiddleKey(/* num_keys =*/ 1, block_restart_interval, /* expected_middle_key =*/ 1);
+  CheckMiddleKey(/* num_keys =*/ 2, block_restart_interval, /* expected_middle_key =*/ 2);
+  CheckMiddleKey(/* num_keys =*/ 3, block_restart_interval, /* expected_middle_key =*/ 2);
+  CheckMiddleKey(/* num_keys =*/ 15, block_restart_interval, /* expected_middle_key =*/ 8);
+  CheckMiddleKey(/* num_keys =*/ 16, block_restart_interval, /* expected_middle_key =*/ 9);
+}
+
 }  // namespace rocksdb
 
 int main(int argc, char **argv) {

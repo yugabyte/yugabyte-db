@@ -189,7 +189,7 @@ public class TestYBClient extends BaseYBClientTest {
   public void testMasterNotReady() throws Exception {
     destroyMiniCluster();
     List<String> masterArgs = new ArrayList<String>();
-    masterArgs.add("--simulate_slow_system_tablet_bootstrap_secs=20");
+    masterArgs.add("--TEST_simulate_slow_system_tablet_bootstrap_secs=20");
     List<List<String>> tserverArgs = new ArrayList<List<String>>();
     int numServers = 3;
     for (int i = 1; i <= numServers; i++) {

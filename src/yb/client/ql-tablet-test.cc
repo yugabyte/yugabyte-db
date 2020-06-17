@@ -48,9 +48,10 @@
 
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/stopwatch.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
-#include "yb/util/shared_lock.h"
 
 using namespace std::literals; // NOLINT
 
@@ -70,7 +71,7 @@ DECLARE_int32(memstore_size_mb);
 DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_bool(TEST_allow_stop_writes);
 DECLARE_int32(yb_num_shards_per_tserver);
-DECLARE_int32(tablet_inject_latency_on_apply_write_txn_ms);
+DECLARE_int32(TEST_tablet_inject_latency_on_apply_write_txn_ms);
 DECLARE_bool(TEST_log_cache_skip_eviction);
 DECLARE_uint64(sst_files_hard_limit);
 DECLARE_uint64(sst_files_soft_limit);
@@ -965,7 +966,7 @@ TEST_F(QLTabletTest, OperationMemTracking) {
   TableHandle table;
   ASSERT_OK(table.Create(kTable1Name, CalcNumTablets(3), client_.get(), &builder));
 
-  FLAGS_tablet_inject_latency_on_apply_write_txn_ms = 1000;
+  FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms = 1000;
 
   const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = op->mutable_request();
@@ -1125,6 +1126,89 @@ TEST_F(QLTabletTest, HistoryCutoff) {
       FLAGS_timestamp_history_retention_interval_sec * 1s +
       FLAGS_history_cutoff_propagation_interval_ms * 3ms);
   ASSERT_NO_FATALS(VerifyHistoryCutoff(cluster_.get(), &committed_history_cutoff, "Final"));
+}
+
+class QLTabletRf1Test : public QLTabletTest {
+ public:
+  void SetUp() override {
+    mini_cluster_opt_.num_masters = 1;
+    mini_cluster_opt_.num_tablet_servers = 1;
+    QLTabletTest::SetUp();
+  }
+};
+
+// For this test we don't need actually RF3 setup which also makes test flaky because of
+// https://github.com/yugabyte/yugabyte-db/issues/4663.
+TEST_F_EX(QLTabletTest, GetMiddleKey, QLTabletRf1Test) {
+  FLAGS_db_write_buffer_size = 20_KB;
+
+  TestWorkload workload(cluster_.get());
+  workload.set_table_name(kTable1Name);
+  workload.set_write_timeout_millis(30000);
+  workload.set_num_tablets(1);
+  workload.set_num_write_threads(2);
+  workload.set_write_batch_size(1);
+  workload.set_payload_bytes(16);
+  workload.Setup();
+
+  LOG(INFO) << "Starting workload ...";
+  Stopwatch s(Stopwatch::ALL_THREADS);
+  s.start();
+  workload.Start();
+
+  const auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  ASSERT_EQ(peers.size(), 1);
+  const auto& tablet = *ASSERT_NOTNULL(peers[0]->tablet());
+
+  // We want some compactions to happen, so largest SST file will become large enough for its
+  // approximate middle key to roughly split the whole tablet into two parts that are close in size.
+  while (tablet.TEST_db()->GetCurrentVersionDataSstFilesSize() < 20 * FLAGS_db_write_buffer_size) {
+    std::this_thread::sleep_for(100ms);
+  }
+
+  workload.StopAndJoin();
+  s.stop();
+  LOG(INFO) << "Workload stopped, it took: " << AsString(s.elapsed());
+
+  LOG(INFO) << "Rows inserted: " << workload.rows_inserted();
+  LOG(INFO) << "Number of SST files: " << tablet.TEST_db()->GetCurrentVersionNumSSTFiles();
+
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const auto encoded_middle_key = ASSERT_RESULT(tablet.GetEncodedMiddleDocKey());
+
+  docdb::SubDocKey middle_key;
+  ASSERT_OK(middle_key.FullyDecodeFrom(encoded_middle_key, docdb::HybridTimeRequired::kFalse));
+  ASSERT_EQ(middle_key.num_subkeys(), 0) << "Middle doc key should not have sub doc key components";
+
+  LOG(INFO) << "Middle DocKey: " << AsString(middle_key);
+
+  // Checking number of keys less/bigger than the approximate middle key.
+  size_t total_keys = 0;
+  size_t num_keys_less = 0;
+
+  rocksdb::ReadOptions read_opts;
+  read_opts.query_id = rocksdb::kDefaultQueryId;
+  std::unique_ptr<rocksdb::Iterator> iter(tablet.TEST_db()->NewIterator(read_opts));
+
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    Slice key = iter->key();
+    if (key.Less(encoded_middle_key)) {
+      ++num_keys_less;
+    }
+    ++total_keys;
+  }
+
+  LOG(INFO) << "Total keys: " << total_keys;
+  LOG(INFO) << "Number of keys less than approximate middle key: " << num_keys_less;
+  const auto num_keys_less_percent = 100 * num_keys_less / total_keys;
+
+  LOG(INFO) << Format(
+      "Number of keys less than approximate middle key: $0 ($1%)", num_keys_less,
+      num_keys_less_percent);
+
+  ASSERT_GE(num_keys_less_percent, 40);
+  ASSERT_LE(num_keys_less_percent, 60);
 }
 
 } // namespace client

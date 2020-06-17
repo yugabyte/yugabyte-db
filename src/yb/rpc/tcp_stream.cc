@@ -25,7 +25,7 @@
 using namespace std::literals;
 
 DECLARE_uint64(rpc_connection_timeout_ms);
-DEFINE_test_flag(int32, TEST_delay_connect_ms, 0,
+DEFINE_test_flag(int32, delay_connect_ms, 0,
                  "Delay connect in tests for specified amount of milliseconds.");
 
 namespace yb {

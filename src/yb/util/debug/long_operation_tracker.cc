@@ -19,6 +19,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 
@@ -75,7 +76,7 @@ class LongOperationTrackerHelper {
   TrackedOperationPtr Register(const char* message, MonoDelta duration) {
     auto start = CoarseMonoClock::now();
     auto result = std::make_shared<LongOperationTracker::TrackedOperation>(
-        Thread::CurrentThreadIdForStack(), message, start, start + duration);
+        Thread::CurrentThreadIdForStack(), message, start, start + duration * kTimeMultiplier);
     {
       std::lock_guard<std::mutex> lock(mutex_);
       queue_.push(result);

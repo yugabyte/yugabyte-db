@@ -456,7 +456,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         // 2) Failed to notify status tablet that we applied transaction.
         LOG_WITH_PREFIX(WARNING) << Format("Apply of unknown transaction: $0", data);
         NotifyApplied(data);
-        CHECK(!FLAGS_fail_in_apply_if_no_metadata);
+        CHECK(!FLAGS_TEST_fail_in_apply_if_no_metadata);
         return Status::OK();
       }
 
@@ -1039,8 +1039,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         key_bytes.Clear();
         AppendTransactionKeyPrefix(id, &key_bytes);
         if (key.empty()) { // Key fully consists of transaction id - it is metadata record.
-          if (FLAGS_inject_load_transaction_delay_ms > 0) {
-            std::this_thread::sleep_for(FLAGS_inject_load_transaction_delay_ms * 1ms);
+          if (FLAGS_TEST_inject_load_transaction_delay_ms > 0) {
+            std::this_thread::sleep_for(FLAGS_TEST_inject_load_transaction_delay_ms * 1ms);
           }
           LoadTransaction(iterator, id, iterator->value(), &key_bytes);
           ++loaded_transactions;
@@ -1227,7 +1227,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term) {
     if (RandomActWithProbability(GetAtomicFlag(
-        &FLAGS_transaction_ignore_applying_probability_in_tests))) {
+        &FLAGS_TEST_transaction_ignore_applying_probability_in_tests))) {
       VLOG_WITH_PREFIX(2)
           << "TEST: Rejected apply: "
           << FullyDecodeTransactionId(state->request()->transaction_id());

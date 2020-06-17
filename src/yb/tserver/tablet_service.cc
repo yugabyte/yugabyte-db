@@ -192,7 +192,7 @@ DEFINE_int32(index_backfill_wait_for_old_txns_ms, 10000,
 TAG_FLAG(index_backfill_wait_for_old_txns_ms, evolving);
 TAG_FLAG(index_backfill_wait_for_old_txns_ms, runtime);
 
-DEFINE_test_flag(int32, TEST_write_rejection_percentage, 0,
+DEFINE_test_flag(int32, write_rejection_percentage, 0,
                  "Reject specified percentage of writes.");
 
 DEFINE_test_flag(bool, assert_reads_from_follower_rejected_because_of_staleness, false,
@@ -204,9 +204,9 @@ DEFINE_test_flag(bool, assert_reads_served_by_follower, false, "If set, we verif
                  "consistency level is CONSISTENT_PREFIX, and that this server is not the leader "
                  "for the tablet");
 
-DEFINE_test_flag(bool, simulate_time_out_failures, false, "If true, we will randomly mark replicas "
-                 "as failed to simulate time out failures. The periodic refresh of the lookup "
-                 "cache will eventually mark them as available");
+DEFINE_test_flag(bool, simulate_time_out_failures, false,
+                 "If true, we will randomly mark replicas as failed to simulate time out failures."
+                 "The periodic refresh of the lookup cache will eventually mark them as available");
 
 DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
                  "Probability to respond that write request is failed");
@@ -216,7 +216,7 @@ DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC 
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_min_running_check_interval_ms);
 
-DEFINE_test_flag(int32, TEST_txn_status_table_tablet_creation_delay_ms, 0,
+DEFINE_test_flag(int32, txn_status_table_tablet_creation_delay_ms, 0,
                  "Extra delay to slowdown creation of transaction status table tablet.");
 
 namespace yb {
@@ -1053,7 +1053,7 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
 void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
                                           DeleteTabletResponsePB* resp,
                                           rpc::RpcContext context) {
-  if (PREDICT_FALSE(FLAGS_rpc_delete_tablet_fail)) {
+  if (PREDICT_FALSE(FLAGS_TEST_rpc_delete_tablet_fail)) {
     context.RespondFailure(STATUS(NetworkError, "Simulating network partition for test"));
     return;
   }
@@ -1249,7 +1249,7 @@ void TabletServiceAdminImpl::SplitTablet(
 void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
                               rpc::RpcContext context) {
-  if (FLAGS_tserver_noop_read_write) {
+  if (FLAGS_TEST_tserver_noop_read_write) {
     for (int i = 0; i < req->ql_write_batch_size(); ++i) {
       resp->add_ql_response_batch();
     }
@@ -1338,7 +1338,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   auto operation_state = std::make_unique<WriteOperationState>(tablet.peer->tablet(), req, resp);
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
-  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_respond_write_failed_probability))) {
+  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_failed_probability))) {
     operation_state->set_completion_callback(nullptr);
     SetupErrorAndRespond(resp->mutable_error(), STATUS(LeaderHasNoLease, "TEST: Random failure"),
                          TabletServerErrorPB::UNKNOWN_ERROR, context_ptr.get());
@@ -1424,13 +1424,13 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
 
   // Check for leader only in strong consistency level.
   if (req->consistency_level() == YBConsistencyLevel::STRONG) {
-    if (PREDICT_FALSE(FLAGS_assert_reads_served_by_follower) &&
+    if (PREDICT_FALSE(FLAGS_TEST_assert_reads_served_by_follower) &&
         std::is_same<Req, ReadRequestPB>::value) {
-      LOG(FATAL) << "--assert_reads_served_by_follower is true but consistency level is invalid: "
-                 << "YBConsistencyLevel::STRONG";
+      LOG(FATAL) << "--TEST_assert_reads_served_by_follower is true but consistency level is "
+                    "invalid: YBConsistencyLevel::STRONG";
     }
-    if (PREDICT_FALSE(FLAGS_assert_reads_from_follower_rejected_because_of_staleness)) {
-      LOG(FATAL) << "--assert_reads_from_follower_rejected_because_of_staleness is true but "
+    if (PREDICT_FALSE(FLAGS_TEST_assert_reads_from_follower_rejected_because_of_staleness)) {
+      LOG(FATAL) << "--TEST_assert_reads_from_follower_rejected_because_of_staleness is true but "
                     "consistency level is invalid: YBConsistencyLevel::STRONG";
     }
 
@@ -1455,9 +1455,9 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
                                  TabletServerErrorPB::STALE_FOLLOWER, context);
             return false;
           } else if (PREDICT_FALSE(
-              FLAGS_assert_reads_from_follower_rejected_because_of_staleness)) {
-            LOG(FATAL) << "--assert_reads_from_follower_rejected_because_of_staleness is true, but "
-                       << "peer " << tablet_peer->permanent_uuid()
+              FLAGS_TEST_assert_reads_from_follower_rejected_because_of_staleness)) {
+            LOG(FATAL) << "--TEST_assert_reads_from_follower_rejected_because_of_staleness is true,"
+                       << " but peer " << tablet_peer->permanent_uuid()
                        << " for tablet: " << req->tablet_id()
                        << " is not stale. Time since last update from leader: "
                        << MonoTime::Now().GetDeltaSince(
@@ -1474,14 +1474,14 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
       }
     } else {
       // We are here because we are the leader.
-      if (PREDICT_FALSE(FLAGS_assert_reads_from_follower_rejected_because_of_staleness)) {
-        LOG(FATAL) << "--assert_reads_from_follower_rejected_because_of_staleness is true but "
+      if (PREDICT_FALSE(FLAGS_TEST_assert_reads_from_follower_rejected_because_of_staleness)) {
+        LOG(FATAL) << "--TEST_assert_reads_from_follower_rejected_because_of_staleness is true but "
                    << " peer " << tablet_peer->permanent_uuid()
                    << " is the leader for tablet " << req->tablet_id();
       }
-      if (PREDICT_FALSE(FLAGS_assert_reads_served_by_follower) &&
+      if (PREDICT_FALSE(FLAGS_TEST_assert_reads_served_by_follower) &&
                std::is_same<Req, ReadRequestPB>::value) {
-        LOG(FATAL) << "--assert_reads_served_by_follower is true but read is being served by "
+        LOG(FATAL) << "--TEST_assert_reads_served_by_follower is true but read is being served by "
                    << " peer " << tablet_peer->permanent_uuid()
                    << " which is the leader for tablet " << req->tablet_id();
       }
@@ -1617,7 +1617,7 @@ class ReadOperationCompletionCallback : public OperationCompletionCallback {
 void TabletServiceImpl::Read(const ReadRequestPB* req,
                              ReadResponsePB* resp,
                              rpc::RpcContext context) {
-  if (FLAGS_tserver_noop_read_write) {
+  if (FLAGS_TEST_tserver_noop_read_write) {
     context.RespondSuccess();
     return;
   }
@@ -1713,7 +1713,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     leader_peer.leader_term = yb::OpId::kUnknownTerm;
   }
 
-  if (PREDICT_FALSE(FLAGS_simulate_time_out_failures) && RandomUniformInt(0, 10) < 3) {
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_time_out_failures) && RandomUniformInt(0, 10) < 3) {
     LOG(INFO) << "Marking request as timed out for test";
     SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, "timed out for test"),
         TabletServerErrorPB::UNKNOWN_ERROR, &context);
@@ -2179,7 +2179,7 @@ class RpcScope {
 void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* req,
                                              RunLeaderElectionResponsePB* resp,
                                              rpc::RpcContext context) {
-  DVLOG(3) << "Received Run Leader Election RPC: " << req->DebugString();
+  VLOG(1) << "Received Run Leader Election RPC: " << req->DebugString();
   RpcScope scope(tablet_manager_, "RunLeaderElection", req, resp, &context);
   if (!scope) {
     return;

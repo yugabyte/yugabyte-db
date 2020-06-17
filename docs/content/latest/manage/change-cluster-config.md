@@ -20,7 +20,7 @@ Sometimes there might be a need to move a YugabyteDB universe deployed on a set 
 - updating the instance images on a regular basis (for example, AMI rehydration in AWS).
 - moving to a different set of zones, regions, or data centers.
 
-This page provides the steps needed to perform such a data move in an online manner from the initial setup to the final setup as described below. This tutorial assumes that you are familiar with the [YugabyteDB process architecture](../../architecture/concepts/universe/).
+This page provides the steps needed to perform such a data move in an online manner from the initial setup to the final setup as described below. This tutorial assumes that you are familiar with the [YugabyteDB architecture](../../architecture/concepts/universe/).
 
 ## Example scenario
 
@@ -49,8 +49,8 @@ We will transform the universe into the following final setup:
 
 This is to ensure that we do not inadvertently cause any further under replication on top of ongoing failures.
 
-- All YB-Master processes are running and able to talk to each other. This can be verified by checking the master UI (ex., *http://`node1`:7000/*) and ensure the `Masters` tab shows those three with one in the `LEADER` for `RAFT Role`.
-- All of the YB-TServer processes are running and heartbeating to the master leader. This can be verified by checking the master UI (ex., *http://`node1`:7000/tablet-servers*) which lists all the tablet servers in `ALIVE` state.
+- All YB-Master servers are running and able to talk to each other. This can be verified by checking the master UI (ex., *http://`node1`:7000/*) and ensure the `Masters` tab shows those three with one in the `LEADER` for `RAFT Role`.
+- All of the YB-TServer servers are running and heartbeating to the master leader. This can be verified by checking the master UI (ex., *http://`node1`:7000/tablet-servers*) which lists all the tablet servers in `ALIVE` state.
 
 ### Ensure new machines are ready
 
@@ -63,9 +63,9 @@ Use these two steps to configure the six new machines:
 - Follow the [System configuration](../../deploy/manual-deployment/system-config/) instructions for system setup.
 - Install [YugabyteDB Software](../../deploy/manual-deployment/install-software/) on each new machine.
 
-## 2. Start YB-Master processes
+## 2. Start YB-Master servers
 
-Run the command below to bring up the new YB-Master process on the new master nodes `node7`, `node8` and `node9`. When the `master_addresses` parameter is not set, this master process starts running without joining any existing master quorum. These nodes will be added to the master quorum in a later step.
+Run the command below to bring up the new YB-Master server on the new master nodes `node7`, `node8` and `node9`. When the `master_addresses` parameter is not set, this master server starts running without joining any existing master quorum. These nodes will be added to the master quorum in a later step.
 
 ```sh
 ~/master/bin/yb-master                \
@@ -77,11 +77,11 @@ Run the command below to bring up the new YB-Master process on the new master no
 The `master_addresses` parameter should not be set for these new masters.
 {{< /note >}}
 
-Refer to [starting master processes](../../../../deploy/manual-deployment/start-masters/) for further parameters and options.
+Refer to [starting master servers](../../../../deploy/manual-deployment/start-masters/) for further parameters and options.
 
-## 3. Start YB-TServer processes
+## 3. Start YB-TServer servers
 
-Run the following command to bring up the `tserver` processes on all the new nodes `node7`, `node8`, `node9`, `node10`, `node11` and `node12`. 
+Run the following command to bring up the `tserver` servers on all the new nodes `node7`, `node8`, `node9`, `node10`, `node11` and `node12`. 
 
 ```sh
 export MASTERS=node1:7100,node2:7100,node3:7100,node7:7100,node8:7100,node9:7100
@@ -91,13 +91,13 @@ export MASTERS=node1:7100,node2:7100,node3:7100,node7:7100,node8:7100,node9:7100
     >& /mnt/d0/yb-tserver.out &
 ```
 
-Refer to [starting `tserver` processes](../../../../deploy/manual-deployment/start-tservers/) for further parameters and options.
+Refer to [starting `tserver` servers](../../../../deploy/manual-deployment/start-tservers/) for further parameters and options.
 
 {{< note title="Note" >}}
 The `tserver_master_addrs` parameter includes the new master IPs as well, so that they can keep heartbeating/reporting to the new master even after the old masters are removed from master quorum.
 {{< /note >}}
 
-Now that the YB-TServer processes are running, we should verify that all the twelve tservers (six old and six new) are heartbeating to the master leader. Go to *http://`node1`:7000/tablet-servers* and confirm that twelve servers are in `ALIVE` status.
+Now that the YB-TServer servers are running, we should verify that all the twelve tservers (six old and six new) are heartbeating to the master leader. Go to *http://`node1`:7000/tablet-servers* and confirm that twelve servers are in `ALIVE` status.
 
 ## 4. Perform data move
 
@@ -192,16 +192,16 @@ On a new masters’ UI page, ensure that all the new tablet servers are reportin
 
 ## 6. Update master addresses on tservers
 
-The `tserver_master_addrs` parameter for all the new tserver processes needs to be set to the list of three new master IPs `node7:7100,node8:7100,node9:7100` for future use.
+The `tserver_master_addrs` parameter for all the new tserver servers needs to be set to the list of three new master IPs `node7:7100,node8:7100,node9:7100` for future use.
 
 {{< note title="Tip" >}}
-Updating master addresses is needed in case the yb-tserver process is restarted.
+Updating master addresses is needed in case the yb-tserver server is restarted.
 {{< /note >}}
 
 ## 7. Cleanup
 
 The old nodes are not part of the universe any more and can be shutdown.
-Once the old tserver processes are terminated, you can cleanup the blacklist from the master configuration using the command below.
+Once the old tserver servers are terminated, you can cleanup the blacklist from the master configuration using the command below.
 
 ```sh
 ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist REMOVE node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100

@@ -402,10 +402,10 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   }
 
   // We sleep here to simulate the transfer of very large files.
-  if (PREDICT_FALSE(FLAGS_simulate_long_remote_bootstrap_sec > 0)) {
-    LOG_WITH_PREFIX(INFO) << "Sleeping " << FLAGS_simulate_long_remote_bootstrap_sec
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_long_remote_bootstrap_sec > 0)) {
+    LOG_WITH_PREFIX(INFO) << "Sleeping " << FLAGS_TEST_simulate_long_remote_bootstrap_sec
                           << " seconds to simulate the transfer of very large files";
-    SleepFor(MonoDelta::FromSeconds(FLAGS_simulate_long_remote_bootstrap_sec));
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_simulate_long_remote_bootstrap_sec));
   }
   return Status::OK();
 }
@@ -436,7 +436,7 @@ Status RemoteBootstrapClient::Finish() {
 
   succeeded_ = true;
 
-  MAYBE_FAULT(FLAGS_fault_crash_bootstrap_client_before_changing_role);
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_bootstrap_client_before_changing_role);
 
   RETURN_NOT_OK_PREPEND(
       EndRemoteSession(), "Error closing remote bootstrap session " + session_id());

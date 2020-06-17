@@ -4805,7 +4805,7 @@ class ModelDB: public DB {
       rocksdb::SequenceNumber, unique_ptr<rocksdb::TransactionLogIterator>*,
       const TransactionLogIterator::ReadOptions&
           read_options = TransactionLogIterator::ReadOptions()) override {
-    return STATUS(NotSupported, "Not supported in Model DB");
+    return NotSupported();
   }
 
   virtual void GetColumnFamilyMetaData(
@@ -4823,7 +4823,15 @@ class ModelDB: public DB {
     return nullptr;
   }
 
+  Result<std::string> GetMiddleKey() override {
+    return NotSupported();
+  }
+
  private:
+  CHECKED_STATUS NotSupported() const {
+    return STATUS(NotSupported, "Not supported in Model DB");
+  }
+
   class ModelIter: public Iterator {
    public:
     ModelIter(const KVMap* map, bool owned)
@@ -6972,7 +6980,8 @@ TEST_P(DBTestWithParam, FilterCompactionTimeTest) {
 
   Iterator* itr = db_->NewIterator(ReadOptions());
   itr->SeekToFirst();
-  ASSERT_NE(TestGetTickerCount(options, FILTER_OPERATION_TOTAL_TIME), 0);
+  // Stopwatch has been removed from compaction iterator. Disable assert below.
+  // ASSERT_NE(TestGetTickerCount(options, FILTER_OPERATION_TOTAL_TIME), 0);
   delete itr;
 }
 #endif  // ROCKSDB_LITE

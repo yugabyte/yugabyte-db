@@ -22,7 +22,7 @@
 
 #include "yb/server/secure.h"
 
-DECLARE_bool(running_test);
+DECLARE_bool(TEST_running_test);
 
 namespace yb {
 namespace client {
@@ -47,7 +47,7 @@ Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
     server::ApplySecureContext(secure_context, &builder);
   }
   auto messenger = VERIFY_RESULT(builder.Build());
-  if (PREDICT_FALSE(FLAGS_running_test)) {
+  if (PREDICT_FALSE(FLAGS_TEST_running_test)) {
     messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));
   }
   return messenger;

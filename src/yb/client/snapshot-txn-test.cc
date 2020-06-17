@@ -26,6 +26,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/bfql/gen_opcodes.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/enums.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/random_util.h"
@@ -37,8 +38,8 @@ using namespace std::literals;
 
 DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_int32(inject_load_transaction_delay_ms);
-DECLARE_int32(inject_status_resolver_delay_ms);
+DECLARE_int32(TEST_inject_load_transaction_delay_ms);
+DECLARE_int32(TEST_inject_status_resolver_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(max_transactions_in_status_request);
 
@@ -560,9 +561,10 @@ TEST_F(SnapshotTxnTest, HotRow) {
 
 struct KeyToCheck {
   int value;
+  TransactionId txn_id;
   KeyToCheck* next = nullptr;
 
-  explicit KeyToCheck(int value_) : value(value_) {}
+  explicit KeyToCheck(int value_, const TransactionId& txn_id_) : value(value_), txn_id(txn_id_) {}
 
   friend void SetNext(KeyToCheck* key_to_check, KeyToCheck* next) {
     key_to_check->next = next;
@@ -573,21 +575,48 @@ struct KeyToCheck {
   }
 };
 
+bool IntermittentTxnFailure(const Status& status) {
+  static const std::vector<std::string> kAllowedMessages = {
+    "Commit of expired transaction"s,
+    "Leader does not have a valid lease"s,
+    "Network error"s,
+    "Not the leader"s,
+    "Service is shutting down"s,
+    "Timed out"s,
+    "Transaction aborted"s,
+    "Transaction expired"s,
+    "Transaction metadata missing"s,
+    "Unknown transaction, could be recently aborted"s,
+  };
+  auto msg = status.ToString();
+  for (const auto& allowed : kAllowedMessages) {
+    if (msg.find(allowed) != std::string::npos) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // Concurrently execute multiple transaction, each of them writes the same key multiple times.
 // And perform tserver restarts in parallel to it.
 // This test checks that transaction participant state correctly restored after restart.
 TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
   constexpr int kNumWritesPerKey = 10;
 
-  FLAGS_inject_load_transaction_delay_ms = 25;
+  FLAGS_TEST_inject_load_transaction_delay_ms = 25;
 
   TestThreadHolder thread_holder;
 
   thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    auto se = ScopeExit([] {
+      LOG(INFO) << "Restarts done";
+    });
     int ts_idx_to_restart = 0;
     while (!stop.load(std::memory_order_acquire)) {
       std::this_thread::sleep_for(5s);
       ts_idx_to_restart = (ts_idx_to_restart + 1) % cluster_->num_tablet_servers();
+      LongOperationTracker long_operation_tracker("Restart", 20s);
       ASSERT_OK(cluster_->mini_tablet_server(ts_idx_to_restart)->Restart());
     }
   });
@@ -599,6 +628,9 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
   for (int i = 0; i != 25; ++i) {
     thread_holder.AddThreadFunctor(
         [this, &stop = thread_holder.stop_flag(), &pool, &key, &keys_to_check, &good_keys] {
+      auto se = ScopeExit([] {
+        LOG(INFO) << "Write done";
+      });
       auto session = CreateSession();
       while (!stop.load(std::memory_order_acquire)) {
         int k = key.fetch_add(1, std::memory_order_acq_rel);
@@ -609,12 +641,9 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
           if (j > 1) {
             std::this_thread::sleep_for(100ms);
           }
-          auto write_status = WriteRow(&table_, session, k, j);
-          if (!write_status.ok()) {
-            auto msg = write_status.status().ToString();
-            if (msg.find("Service is shutting down") == std::string::npos) {
-              ASSERT_OK(write_status);
-            }
+          auto write_result = WriteRow(&table_, session, k, j);
+          if (!write_result.ok()) {
+            ASSERT_TRUE(IntermittentTxnFailure(write_result.status())) << write_result.status();
             good = false;
             break;
           }
@@ -624,17 +653,9 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
         }
         auto commit_status = txn->CommitFuture().get();
         if (!commit_status.ok()) {
-          auto msg = commit_status.ToString();
-          if (msg.find("Commit of expired transaction") == std::string::npos &&
-              msg.find("Transaction expired") == std::string::npos &&
-              msg.find("Transaction aborted") == std::string::npos &&
-              msg.find("Not the leader") == std::string::npos &&
-              msg.find("Timed out") == std::string::npos &&
-              msg.find("Network error") == std::string::npos) {
-            ASSERT_OK(commit_status);
-          }
+          ASSERT_TRUE(IntermittentTxnFailure(commit_status)) << commit_status;
         } else {
-          keys_to_check.Push(new KeyToCheck(k));
+          keys_to_check.Push(new KeyToCheck(k, txn->id()));
           good_keys.fetch_add(1, std::memory_order_acq_rel);
         }
       }
@@ -643,6 +664,9 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
 
   thread_holder.AddThreadFunctor(
       [this, &stop = thread_holder.stop_flag(), &keys_to_check, kNumWritesPerKey] {
+    auto se = ScopeExit([] {
+      LOG(INFO) << "Read done";
+    });
     auto session = CreateSession();
     for (;;) {
       std::unique_ptr<KeyToCheck> key(keys_to_check.Pop());
@@ -653,6 +677,7 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
         std::this_thread::sleep_for(10ms);
         continue;
       }
+      SCOPED_TRACE(Format("Reading $0, written with: $1", key->value, key->txn_id));
       YBqlReadOpPtr op;
       for (;;) {
         op = ReadRow(session, key->value);
@@ -670,7 +695,10 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
     }
   });
 
+  LOG(INFO) << "Running";
   thread_holder.WaitAndStop(60s);
+
+  LOG(INFO) << "Stopped";
 
   for (;;) {
     std::unique_ptr<KeyToCheck> key(keys_to_check.Pop());
@@ -679,7 +707,9 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
     }
   }
 
-  ASSERT_GE(good_keys.load(std::memory_order_relaxed), key.load(std::memory_order_relaxed) * 0.8);
+  ASSERT_GE(good_keys.load(std::memory_order_relaxed), key.load(std::memory_order_relaxed) * 0.7);
+
+  LOG(INFO) << "Done";
 }
 
 using RemoteBootstrapOnStartBase = TransactionCustomLogSegmentSizeTest<128, SnapshotTxnTest>;
@@ -752,7 +782,7 @@ TEST_F_EX(SnapshotTxnTest, RemoteBootstrapOnStart, RemoteBootstrapOnStartBase) {
 }
 
 TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
-  FLAGS_inject_load_transaction_delay_ms = 50;
+  FLAGS_TEST_inject_load_transaction_delay_ms = 50;
 
   constexpr int kTransactionsCount = RegularBuildVsSanitizers(20, 5);
   FLAGS_log_min_seconds_to_retain = 1;
@@ -841,7 +871,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
 TEST_F(SnapshotTxnTest, DeleteOnLoad) {
   constexpr int kTransactions = 400;
 
-  FLAGS_inject_status_resolver_delay_ms = 150 * kTimeMultiplier;
+  FLAGS_TEST_inject_status_resolver_delay_ms = 150 * kTimeMultiplier;
 
   DisableApplyingIntents();
 

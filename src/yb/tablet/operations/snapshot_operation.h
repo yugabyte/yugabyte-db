@@ -41,6 +41,8 @@ class SnapshotOperationState : public OperationState {
 
   const tserver::TabletSnapshotOpRequestPB* request() const override { return request_; }
 
+  tserver::TabletSnapshotOpRequestPB* ReleaseRequest();
+
   tserver::TabletSnapshotOpRequestPB::Operation operation() const {
     return request_ == nullptr ?
         tserver::TabletSnapshotOpRequestPB::UNKNOWN : request_->operation();

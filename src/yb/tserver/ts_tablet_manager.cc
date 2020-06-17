@@ -155,18 +155,18 @@ DEFINE_test_flag(double, fault_crash_after_rb_files_fetched, 0.0,
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
                  "Always pretend memory has been exceeded to enforce background flush.");
 
-DEFINE_test_flag(int32, TEST_crash_if_remote_bootstrap_sessions_greater_than, 0,
+DEFINE_test_flag(int32, crash_if_remote_bootstrap_sessions_greater_than, 0,
                  "If greater than zero, this process will crash if we detect more than the "
                  "specified number of remote bootstrap sessions.");
 
-DEFINE_test_flag(int32, TEST_crash_if_remote_bootstrap_sessions_per_table_greater_than, 0,
+DEFINE_test_flag(int32, crash_if_remote_bootstrap_sessions_per_table_greater_than, 0,
                  "If greater than zero, this process will crash if for any table we exceed the "
                  "specified number of remote bootstrap sessions");
 
 DEFINE_test_flag(bool, force_single_tablet_failure, false,
                  "Force exactly one tablet to a failed state.");
 
-DEFINE_test_flag(int32, TEST_apply_tablet_split_inject_delay_ms, 0,
+DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
                  "Inject delay into TSTabletManager::ApplyTabletSplit.");
 
 namespace {
@@ -303,7 +303,7 @@ using tablet::TabletStatusPB;
 void TSTabletManager::MaybeFlushTablet() {
   int iteration = 0;
   while (memory_monitor()->Exceeded() ||
-         (iteration++ == 0 && FLAGS_pretend_memory_exceeded_enforce_flush)) {
+         (iteration++ == 0 && FLAGS_TEST_pretend_memory_exceeded_enforce_flush)) {
     YB_LOG_EVERY_N_SECS(INFO, 5) << Format("Memstore global limit of $0 bytes reached, looking for "
                                            "tablet to flush", memory_monitor()->limit());
     auto flush_tick = rocksdb::FlushTick();
@@ -1106,7 +1106,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
                        bootstrap_peer_uuid + " (" + bootstrap_peer_addr.ToString() + ")",
                    this);
 
-  MAYBE_FAULT(FLAGS_fault_crash_after_rb_files_fetched);
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_after_rb_files_fetched);
 
   // Write out the last files to make the new replica visible and update the
   // TabletDataState in the superblock to TABLET_DATA_READY.
@@ -1335,7 +1335,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   yb::OpId split_op_id;
 
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
-  if (CompareAndSetFlag(&FLAGS_force_single_tablet_failure, true /* expected */, false /* val */)) {
+  if (CompareAndSetFlag(&FLAGS_TEST_force_single_tablet_failure,
+                        true /* expected */, false /* val */)) {
     LOG(ERROR) << "Setting the state of a tablet to FAILED";
     tablet_peer->SetFailed(STATUS(InternalError, "Setting tablet to failed state for test",
                                   tablet_id));
@@ -2218,12 +2219,12 @@ Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
   RETURN_NOT_OK(meta->DeleteTabletData(data_state, last_logged_opid));
   LOG(INFO) << kLogPrefix << "Tablet deleted. Last logged OpId: "
             << meta->tombstone_last_logged_opid();
-  MAYBE_FAULT(FLAGS_fault_crash_after_blocks_deleted);
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_after_blocks_deleted);
 
   RETURN_NOT_OK(Log::DeleteOnDiskData(
       meta->fs_manager()->env(), meta->raft_group_id(), meta->wal_dir(),
       meta->fs_manager()->uuid()));
-  MAYBE_FAULT(FLAGS_fault_crash_after_wal_deleted);
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_after_wal_deleted);
 
   // We do not delete the superblock or the consensus metadata when tombstoning
   // a tablet.
@@ -2233,7 +2234,7 @@ Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
 
   // Only TABLET_DATA_DELETED tablets get this far.
   RETURN_NOT_OK(ConsensusMetadata::DeleteOnDiskData(meta->fs_manager(), meta->raft_group_id()));
-  MAYBE_FAULT(FLAGS_fault_crash_after_cmeta_deleted);
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_after_cmeta_deleted);
 
   return Status::OK();
 }
@@ -2255,11 +2256,11 @@ void LogAndTombstone(const RaftGroupMetadataPtr& meta,
                                           yb::OpId(),
                                           ts_manager);
 
-  if (PREDICT_FALSE(FLAGS_sleep_after_tombstoning_tablet_secs > 0)) {
+  if (PREDICT_FALSE(FLAGS_TEST_sleep_after_tombstoning_tablet_secs > 0)) {
     // We sleep here so that the test can verify that the state of the tablet is
     // TABLET_DATA_TOMBSTONED.
     LOG(INFO) << "Sleeping after remote bootstrap failed";
-    SleepFor(MonoDelta::FromSeconds(FLAGS_sleep_after_tombstoning_tablet_secs));
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_sleep_after_tombstoning_tablet_secs));
   }
 
   if (PREDICT_FALSE(!delete_status.ok())) {

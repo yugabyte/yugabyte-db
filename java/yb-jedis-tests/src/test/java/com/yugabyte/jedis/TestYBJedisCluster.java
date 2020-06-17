@@ -55,11 +55,11 @@ public class TestYBJedisCluster extends BaseJedisTest {
     List<List<String>> tserverArgs = new ArrayList<List<String>>();
     // Give more memory to support 2 databases.
     final long MEMORY_LIMIT = 2 * 1024 * 1024 * 1024l;
-    tserverArgs.add(Arrays.asList("--assert_local_op=true",
+    tserverArgs.add(Arrays.asList("--TEST_assert_local_op=true",
                                   "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
-    tserverArgs.add(Arrays.asList("--assert_local_op=true",
+    tserverArgs.add(Arrays.asList("--TEST_assert_local_op=true",
                                   "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
-    tserverArgs.add(Arrays.asList("--assert_local_op=true",
+    tserverArgs.add(Arrays.asList("--TEST_assert_local_op=true",
                                   "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
     createMiniCluster(3, masterArgs, tserverArgs);
 

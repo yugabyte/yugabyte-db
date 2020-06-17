@@ -785,10 +785,10 @@ TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessions + 1));
   ts_flags.push_back("--TEST_crash_if_remote_bootstrap_sessions_per_table_greater_than=" +
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessionsPerTable + 1));
-  ts_flags.push_back("--simulate_long_remote_bootstrap_sec=5");
+  ts_flags.push_back("--TEST_simulate_long_remote_bootstrap_sec=5");
   ts_flags.push_back("--heartbeat_interval_ms=100");
 
-  master_flags.push_back("--load_balancer_handle_under_replicated_tablets_only=true");
+  master_flags.push_back("--TEST_load_balancer_handle_under_replicated_tablets_only=true");
   master_flags.push_back("--load_balancer_max_concurrent_tablet_remote_bootstraps=" +
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessions));
   master_flags.push_back("--load_balancer_max_concurrent_tablet_remote_bootstraps_per_table=" +
@@ -975,7 +975,7 @@ void RemoteBootstrapITest::DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(
   MonoDelta timeout = MonoDelta::FromSeconds(10);
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--enable_remote_bootstrap=false");
+  ts_flags.push_back("--TEST_enable_remote_bootstrap=false");
   ts_flags.push_back("--rpc_slow_query_threshold_ms=10000000");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
@@ -1034,7 +1034,7 @@ void RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType table_type
   CrashTestSetUp(table_type);
 
   // Cause the leader to crash when a follower tries to fetch data from it.
-  const string& fault_flag = "fault_crash_on_handle_rb_fetch_data";
+  const string& fault_flag = "TEST_fault_crash_on_handle_rb_fetch_data";
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_leader_index_), fault_flag,
                               "1.0"));
 
@@ -1055,13 +1055,13 @@ void RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType table_type
 void RemoteBootstrapITest::LeaderCrashesBeforeChangeRole(YBTableType table_type) {
   // Make the tablet server sleep in LogAndTombstone after it has called DeleteTabletData so we can
   // verify that the tablet has been tombstoned (by calling WaitForTabletDataStateOnTs).
-  crash_test_tserver_flags_.push_back("--sleep_after_tombstoning_tablet_secs=5");
+  crash_test_tserver_flags_.push_back("--TEST_sleep_after_tombstoning_tablet_secs=5");
   crash_test_timeout_ = MonoDelta::FromSeconds(40);
   CrashTestSetUp(table_type);
 
   // Cause the leader to crash when the follower ends the remote bootstrap session and just before
   // the leader is about to change the role of the follower.
-  const string& fault_flag = "fault_crash_leader_before_changing_role";
+  const string& fault_flag = "TEST_fault_crash_leader_before_changing_role";
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_leader_index_), fault_flag,
                               "1.0"));
 
@@ -1077,13 +1077,13 @@ void RemoteBootstrapITest::LeaderCrashesBeforeChangeRole(YBTableType table_type)
 void RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType table_type) {
   // Make the tablet server sleep in LogAndTombstone after it has called DeleteTabletData so we can
   // verify that the tablet has been tombstoned (by calling WaitForTabletDataStateOnTs).
-  crash_test_tserver_flags_.push_back("--sleep_after_tombstoning_tablet_secs=5");
+  crash_test_tserver_flags_.push_back("--TEST_sleep_after_tombstoning_tablet_secs=5");
   crash_test_timeout_ = MonoDelta::FromSeconds(40);
   CrashTestSetUp(table_type);
 
   // Cause the leader to crash after it has successfully sent a ChangeConfig CHANGE_ROLE request and
   // before it responds to the EndRemoteBootstrapSession request.
-  const string& fault_flag = "fault_crash_leader_after_changing_role";
+  const string& fault_flag = "TEST_fault_crash_leader_after_changing_role";
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_leader_index_), fault_flag,
                               "1.0"));
 
@@ -1099,7 +1099,7 @@ void RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType table_type) 
 
 void RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType table_type) {
   crash_test_timeout_ = MonoDelta::FromSeconds(40);
-  crash_test_tserver_flags_.push_back("--return_error_on_change_config=0.60");
+  crash_test_tserver_flags_.push_back("--TEST_return_error_on_change_config=0.60");
   CrashTestSetUp(table_type);
 
   // Add our TS 0 to the config and wait for it to crash.
@@ -1107,7 +1107,7 @@ void RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType table_type)
   // Cause the newly added tserver to crash after the transfer of files for remote bootstrap has
   // completed but before ending the session with the leader to avoid triggering a ChangeConfig
   // in the leader.
-  const string& fault_flag = "fault_crash_bootstrap_client_before_changing_role";
+  const string& fault_flag = "TEST_fault_crash_bootstrap_client_before_changing_role";
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_tserver_index_), fault_flag,
                               "1.0"));
 
@@ -1158,7 +1158,7 @@ TEST_F(RemoteBootstrapITest, TestVeryLongRemoteBootstrap) {
 
   // Make the remote bootstrap take longer than follower_unavailable_considered_failed_sec seconds
   // so the peer gets removed from the config while it is being remote bootstrapped.
-  ts_flags.push_back("--simulate_long_remote_bootstrap_sec=5");
+  ts_flags.push_back("--TEST_simulate_long_remote_bootstrap_sec=5");
 
   master_flags.push_back("--enable_load_balancing=false");
 

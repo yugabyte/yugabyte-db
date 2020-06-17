@@ -726,6 +726,7 @@ void RaftConsensusITest::WriteOpsToLeader(int num_writes, size_t size_bytes) {
 TEST_F(RaftConsensusITest, TestCatchupAfterOpsEvicted) {
   vector<string> extra_flags;
   extra_flags.push_back("--log_cache_size_limit_mb=1");
+  extra_flags.push_back("--rpc_throttle_threshold_bytes=-1");
   extra_flags.push_back("--consensus_max_batch_size_bytes=500000");
   ASSERT_NO_FATALS(BuildAndStart(extra_flags));
   TServerDetails* replica = (*tablet_replicas_.begin()).second;
@@ -802,6 +803,7 @@ TEST_F(RaftConsensusITest, TestCatchupOpsReadFromDisk) {
 TEST_F(RaftConsensusITest, TestLaggingFollowerRestart) {
   vector<string> extra_flags = {
       "--consensus_inject_latency_ms_in_notifications=10"s,
+      "--rpc_throttle_threshold_bytes=-1"s,
       "--consensus_max_batch_size_bytes=1024"s
   };
   ASSERT_NO_FATALS(BuildAndStart(extra_flags));
@@ -866,6 +868,7 @@ TEST_F(RaftConsensusITest, TestLaggingFollowerLogCacheEviction) {
 
   vector<string> extra_flags = {
       "--consensus_inject_latency_ms_in_notifications=10"s,
+      "--rpc_throttle_threshold_bytes=-1"s,
       "--consensus_max_batch_size_bytes=1024"s,
       Format("--consensus_lagging_follower_threshold=$0", kConsensusLaggingFollowerThreshold),
       Format("--raft_heartbeat_interval_ms=$0", ToMilliseconds(kHeartBeatInterval))
@@ -944,7 +947,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {
   FLAGS_num_tablet_servers = 3;
   vector<string> ts_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--inject_latency_before_change_role_secs=1");
+  ts_flags.push_back("--TEST_inject_latency_before_change_role_secs=1");
   ts_flags.push_back("--follower_unavailable_considered_failed_sec=5");
   vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
@@ -1115,7 +1118,7 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
   FLAGS_num_tablet_servers = 3;
   vector<string> ts_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--inject_latency_before_change_role_secs=1");
+  ts_flags.push_back("--TEST_inject_latency_before_change_role_secs=1");
   vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
@@ -1237,7 +1240,7 @@ void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(
   FLAGS_num_tablet_servers = 3;
   vector<string> ts_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--inject_latency_before_change_role_secs=10");
+  ts_flags.push_back("--TEST_inject_latency_before_change_role_secs=10");
   vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
@@ -1300,7 +1303,7 @@ void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(RaftPeerPB::Membe
     FLAGS_num_tablet_servers = 3;
     vector<string> ts_flags;
     ts_flags.push_back("--enable_leader_failure_detection=false");
-    ts_flags.push_back("--skip_change_role");
+    ts_flags.push_back("--TEST_skip_change_role");
     vector<string> master_flags;
     master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
     ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
@@ -1336,7 +1339,7 @@ void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(RaftPeerPB::Membe
                            MonoDelta::FromSeconds(30)));
 
     // Now add server 2 back in PRE_VOTER or PRE_OBSERVER mode. This server will never transition to
-    // VOTER or OBSERVER because flag skip_change_role is set.
+    // VOTER or OBSERVER because flag TEST_skip_change_role is set.
     LOG(INFO) << "Adding back Peer " << tserver->uuid();
     ASSERT_OK(AddServer(initial_leader, tablet_id_, tserver, member_type, boost::none,
                         MonoDelta::FromSeconds(10)));
@@ -1442,7 +1445,7 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   // Crash 5% of the time just before sending an RPC. With 7 servers,
   // this means we crash about 30% of the time before we've fully
   // replicated the NO_OP at the start of the term.
-  ts_flags.push_back("--fault_crash_on_leader_request_fraction=0.05");
+  ts_flags.push_back("--TEST_fault_crash_on_leader_request_fraction=0.05");
 
   // Inject latency to encourage the replicas to fall out of sync
   // with each other.
@@ -1485,7 +1488,7 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
     vector<string>* flags = ts->mutable_flags();
     bool removed_flag = false;
     for (auto it = flags->begin(); it != flags->end(); ++it) {
-      if (HasPrefixString(*it, "--fault_crash")) {
+      if (HasPrefixString(*it, "--TEST_fault_crash")) {
         flags->erase(it);
         removed_flag = true;
         break;
@@ -1975,10 +1978,24 @@ TEST_F(RaftConsensusITest, TestLeaderStepDown) {
       tservers[0], tablet_id_, kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(10)));
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 2));
 
-  // Step down and test that a 2nd stepdown returns the expected result.
-  ASSERT_OK(LeaderStepDown(tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10)));
+  LOG(INFO) << "Stepping down leader " << tservers[0];
+  // Step down and verify that leadership gracefully transitions to a new leader
+  // despite failure detection being disabled.
+  bool allow_graceful_leader_transfer = true;
+  ASSERT_OK(LeaderStepDown(
+      tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10),
+      !allow_graceful_leader_transfer));
+  TServerDetails* new_leader_ts = nullptr;
+  ASSERT_OK(
+      FindTabletLeader(tablet_servers_, tablet_id_, MonoDelta::FromSeconds(10), &new_leader_ts));
+  ASSERT_TRUE(new_leader_ts != nullptr);
+  LOG(INFO) << "Identified new leader " << new_leader_ts;
+
+  // Verify that further leader stepdowns and writes against the original leader do not succeed.
   TabletServerErrorPB error;
-  s = LeaderStepDown(tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10), &error);
+  s = LeaderStepDown(
+      tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10), !allow_graceful_leader_transfer,
+      &error);
   ASSERT_TRUE(s.IsIllegalState()) << "TS #0 should not be leader anymore: " << s.ToString();
   ASSERT_EQ(TabletServerErrorPB::NOT_THE_LEADER, error.code()) << error.ShortDebugString();
 
@@ -1986,6 +2003,17 @@ TEST_F(RaftConsensusITest, TestLeaderStepDown) {
       tservers[0], tablet_id_, kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(10));
   ASSERT_TRUE(s.IsIllegalState()) << "TS #0 should not accept writes as follower: "
                                   << s.ToString();
+
+  // Stepping down a leader with graceful transition disabled should
+  // result in no leader being elected
+  LOG(INFO) << "Stepping down leader " << new_leader_ts->uuid();
+  allow_graceful_leader_transfer = false;
+  ASSERT_OK(LeaderStepDown(
+      new_leader_ts, tablet_id_, nullptr, MonoDelta::FromSeconds(10),
+      !allow_graceful_leader_transfer));
+  TServerDetails* final_leader_ts = nullptr;
+  ASSERT_NOK(
+      FindTabletLeader(tablet_servers_, tablet_id_, MonoDelta::FromSeconds(10), &final_leader_ts));
 }
 
 // Test for #350: sets the consensus RPC timeout to be long, and freezes both followers before
@@ -2304,7 +2332,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
   FLAGS_num_replicas = 5;
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--inject_latency_before_change_role_secs=10");
+  ts_flags.push_back("--TEST_inject_latency_before_change_role_secs=10");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   master_flags.push_back("--replication_factor=5");
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
@@ -2923,7 +2951,7 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
   // its own term, making it illegal to accept ChangeConfig() requests.
   for (int i = 1; i <= 2; i++) {
     ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(i),
-              "follower_reject_update_consensus_requests", "true"));
+              "TEST_follower_reject_update_consensus_requests", "true"));
   }
 
   // Elect the leader.
@@ -2950,7 +2978,7 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
 TEST_F(RaftConsensusITest, TestChangeConfigBasedOnJepsen) {
   FLAGS_num_tablet_servers = 4;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false",
-                              "--log_change_config_every_n=3000" };
+                              "--TEST_log_change_config_every_n=3000" };
   vector<string> master_flags = { "--catalog_manager_wait_for_new_tablets_to_elect_leader=false" };
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
   vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
@@ -2985,7 +3013,7 @@ TEST_F(RaftConsensusITest, TestChangeConfigBasedOnJepsen) {
       continue;
     }
     ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(i),
-                                "follower_reject_update_consensus_requests", "true"));
+                                "TEST_follower_reject_update_consensus_requests", "true"));
     tservers_list[ts_idx++] = tablet_servers_[cluster_->tablet_server(i)->uuid()].get();
   }
   tservers_list[ts_idx++] = tablet_servers_[cluster_->tablet_server(new_node_idx)->uuid()].get();
@@ -3048,7 +3076,7 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
   // Configure the first server to fail all on prepare.
   TServerDetails *replica_ts = tservers[0];
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server_by_uuid(replica_ts->uuid()),
-                "follower_fail_all_prepare", "true"));
+                "TEST_follower_fail_all_prepare", "true"));
 
   // Pretend to be the leader and send a request that should return an error.
   ConsensusRequestPB req;

@@ -218,6 +218,21 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     return RunAsync(ops.data(), ops.size(), relation_id, read_time, force_non_bufferable);
   }
 
+  // Run multiple operations.
+  template<class Op>
+  Result<PgSessionAsyncRunResult> RunAsync(const std::shared_ptr<Op>* op,
+                                           size_t ops_count,
+                                           const PgObjectId& relation_id,
+                                           uint64_t* read_time,
+                                           bool force_non_bufferable) {
+    DCHECK_GT(ops_count, 0);
+    RunHelper runner(this, ShouldHandleTransactionally(**op));
+    for (auto end = op + ops_count; op != end; ++op) {
+      RETURN_NOT_OK(runner.Apply(*op, relation_id, read_time, force_non_bufferable));
+    }
+    return runner.Flush();
+  }
+
   //------------------------------------------------------------------------------------------------
   // Access functions.
   // TODO(neil) Need to double check these code later.
@@ -311,21 +326,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     PgsqlOpBuffer& buffered_ops_;
     client::YBSessionPtr yb_session_;
   };
-
-  // Run multiple operations.
-  template<class Op>
-  Result<PgSessionAsyncRunResult> RunAsync(const std::shared_ptr<Op>* op,
-                                           size_t ops_count,
-                                           const PgObjectId& relation_id,
-                                           uint64_t* read_time,
-                                           bool force_non_bufferable) {
-    DCHECK_GT(ops_count, 0);
-    RunHelper runner(this, ShouldHandleTransactionally(**op));
-    for (auto end = op + ops_count; op != end; ++op) {
-      RETURN_NOT_OK(runner.Apply(*op, relation_id, read_time, force_non_bufferable));
-    }
-    return runner.Flush();
-  }
 
   // Returns the appropriate session to use, in most cases the one used by the current transaction.
   // read_only_op - whether this is being done in the context of a read-only operation. For

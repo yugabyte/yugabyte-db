@@ -284,7 +284,7 @@ class ServicePoolImpl final : public InboundCallHandler {
     CoarseTimePoint last_backpressure_at(last_backpressure_at_.load(std::memory_order_acquire));
 
     // For testing purposes.
-    if (GetAtomicFlag(&FLAGS_enable_backpressure_mode_for_testing)) {
+    if (GetAtomicFlag(&FLAGS_TEST_enable_backpressure_mode_for_testing)) {
       last_backpressure_at = CoarseMonoClock::Now();
     }
 

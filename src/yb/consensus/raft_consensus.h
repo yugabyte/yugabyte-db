@@ -328,16 +328,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Helper struct that contains the messages from the leader that we need to
   // append to our log, after they've been deduplicated.
-  struct LeaderRequest {
-    std::string leader_uuid;
-    yb::OpId preceding_opid;
-    ReplicateMsgs messages;
-    // The positional index of the first message selected to be appended, in the
-    // original leader's request message sequence.
-    int64_t first_message_idx;
-
-    std::string OpsRangeString() const;
-  };
+  struct LeaderRequest;
 
   std::string LogPrefix();
 
@@ -368,8 +359,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // leader election.
   //
   // The ReplicaState must be locked for configuration change before calling.
-  CHECKED_STATUS BecomeReplicaUnlocked(const std::string& new_leader_uuid,
-                                       MonoDelta initial_fd_wait = MonoDelta());
+  CHECKED_STATUS BecomeReplicaUnlocked(
+      const std::string& new_leader_uuid,
+      MonoDelta initial_fd_wait = MonoDelta(),
+      bool graceful_stepdown = false);
 
   struct UpdateReplicaResult {
     yb::OpId wait_for_op_id;
@@ -599,7 +592,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Also we could introduce serial number of stepdown and filter using it.
   // That woule be more robust, since it handles also situation when we tried to stepdown
   // to the same node twice, and first retry was delayed, but second procedure is on the way.
-  void WithholdElectionAfterStepDown(const std::string& protege_uuid);
+  void WithholdElectionAfterStepDown(const std::string& protege_uuid, bool graceful_stepdown);
 
   // Steps of UpdateReplica.
   CHECKED_STATUS EarlyCommitUnlocked(const ConsensusRequestPB& request,
@@ -608,8 +601,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                        LeaderRequest* deduped_req,
                                        ConsensusResponsePB* response);
   // Returns last op id received from leader.
-  yb::OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, const yb::OpId& committed_op_id,
-                                 WriteEmpty write_empty);
+  yb::OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, WriteEmpty write_empty);
   CHECKED_STATUS MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB& request,
                                                    const LeaderRequest& deduped_req,
                                                    yb::OpId last_from_leader);
@@ -650,6 +642,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // UUID of new desired leader during stepdown.
   TabletServerId protege_leader_uuid_;
+  bool graceful_stepdown_ = false;
 
   // This is the time (in the MonoTime's uint64 representation) for which election should not start
   // on this peer.
@@ -686,7 +679,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   scoped_refptr<Histogram> update_raft_config_dns_latency_;
 
-  // Used only when follower_reject_update_consensus_requests_seconds is greater than 0.
+  // Used only when TEST_follower_reject_update_consensus_requests_seconds is greater than 0.
   // Any requests to update the replica will be rejected until this time. For testing only.
   MonoTime withold_replica_updates_until_ = MonoTime::kUninitialized;
 

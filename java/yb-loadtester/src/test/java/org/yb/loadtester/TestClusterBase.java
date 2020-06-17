@@ -733,7 +733,7 @@ public class TestClusterBase extends BaseCQLTest {
     int num_tablets_moved_to_new_tserver = 12;
 
     int rbs_delay_sec = 15;
-    addNewTServers(1, Arrays.asList("--simulate_long_remote_bootstrap_sec=" + rbs_delay_sec));
+    addNewTServers(1, Arrays.asList("--TEST_simulate_long_remote_bootstrap_sec=" + rbs_delay_sec));
 
     // Load balancer should not become idle while long RBS is half-way.
     assertFalse(client.waitForLoadBalancerIdle(

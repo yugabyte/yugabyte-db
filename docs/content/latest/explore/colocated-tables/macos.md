@@ -111,7 +111,7 @@ If you go to tables view in [master UI](http://localhost:7000/tables), you'll se
 ## 4. Opt out table from colocation
 
 YugabyteDB has the flexibility to opt a table out of colocation. In this case, the table will use its own set of tablets
-instead of using the same tablet as the colocated database. This is useful for scaling out tables that we know are likely
+instead of using the same tablet as the colocated database. This is useful for scaling out tables that you know are likely
 to be large. You can do this by using `colocated = false` option while creating table.
 
 ```postgresql

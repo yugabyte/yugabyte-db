@@ -187,6 +187,8 @@ class BlockBasedTable : public TableReader {
 
   const ImmutableCFOptions& ioptions();
 
+  yb::Result<std::string> GetMiddleKey() override;
+
   ~BlockBasedTable();
 
   bool TEST_filter_block_preloaded() const;
@@ -224,6 +226,12 @@ class BlockBasedTable : public TableReader {
                                              bool no_io = false,
                                              const Slice* filter_key = nullptr) const;
 
+  // Returns index reader.
+  // If index reader is not stored in either block or internal cache:
+  // - If read_options.read_tier == kBlockCacheTier: Status::Incomplete error will be returned.
+  // - If read_options.read_tier != kBlockCacheTier: new index reader will be created and cached.
+  yb::Result<CachableEntry<IndexReader>> GetIndexReader(const ReadOptions& read_options);
+
   // Get the iterator from the index reader.
   // If input_iter is not set, return new Iterator
   // If input_iter is set, update it and return:
@@ -231,12 +239,7 @@ class BlockBasedTable : public TableReader {
   //    input_iter is an iterator of the top level index, but not the whole index iterator).
   //  - nullptr if input_iter is a data index iterator and no new iterators were created.
   //
-  // Note: ErrorIterator with Status::Incomplete shall be returned if all the
-  // following conditions are met:
-  //  1. We enabled table_options.cache_index_and_filter_blocks.
-  //  2. index is not present in block cache.
-  //  3. We disallowed any io to be performed, that is, read_options ==
-  //     kBlockCacheTier
+  // Note: ErrorIterator with error will be returned if GetIndexReader returned an error.
   InternalIterator* NewIndexIterator(const ReadOptions& read_options,
                                      BlockIter* input_iter = nullptr);
 

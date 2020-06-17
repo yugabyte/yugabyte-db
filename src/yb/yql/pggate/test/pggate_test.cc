@@ -46,7 +46,7 @@ PggateTest::PggateTest() {
 }
 
 PggateTest::~PggateTest() {
-  YBCPgDestroyMemctx(test_memctx);
+  CHECK_YBC_STATUS(YBCPgDestroyMemctx(test_memctx));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   YBCInitPgGate(type_table, count, callbacks);
 
   // Don't try to connect to tserver shared memory in pggate tests.
-  FLAGS_pggate_ignore_tserver_shm = true;
+  FLAGS_TEST_pggate_ignore_tserver_shm = true;
 
   // Setup session.
   CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* pg_env */, nullptr /* database_name */));

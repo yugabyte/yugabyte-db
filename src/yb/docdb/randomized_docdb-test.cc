@@ -20,6 +20,7 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
+#include "yb/util/scope_exit.h"
 
 // Use a lower default number of tests when running on ASAN/TSAN so as not to exceed the test time
 // limit.
@@ -90,12 +91,26 @@ class RandomizedDocDBTest : public DocDBTestBase,
     return resolve_intents_ ? 2 : 1;
   }
 
+  void CompactionWithCleanup(HybridTime cleanup_ht) {
+    const auto start_time = MonoTime::Now();
+    ASSERT_NO_FATALS(FullyCompactHistoryBefore(cleanup_ht));
+    const auto elapsed_time_ms = (MonoTime::Now() - start_time).ToMilliseconds();
+    total_compaction_time_ms_ += elapsed_time_ms;
+    LOG(INFO) << "Compaction with cleanup_ht=" << cleanup_ht << " took "
+              << elapsed_time_ms << " ms, all compactions so far: "
+              << total_compaction_time_ms_ << " ms";
+  }
+
   ResolveIntentsDuringRead resolve_intents_ = ResolveIntentsDuringRead::kTrue;
   bool verify_history_cleanup_;
   std::unique_ptr<DocDBLoadGenerator> load_gen_;
+  int64_t total_compaction_time_ms_ = 0;
 };
 
 void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
+  auto scope_exit = ScopeExit([this]() {
+    LOG(INFO) << "Total compaction time: " << total_compaction_time_ms_ << " ms";
+  });
   // We start doing snapshots every other iterations, but make it less frequent after a number of
   // iterations (kIterationToSwitchToInfrequentSnapshots to be precise, see the loop below).
   int snapshot_frequency = 2;
@@ -140,7 +155,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
         // We are performing cleanup at an old hybrid_time, and don't expect it to have any effect.
         InMemDocDbState snapshot_before_cleanup;
         snapshot_before_cleanup.CaptureAt(doc_db(), HybridTime::kMax);
-        ASSERT_NO_FATALS(FullyCompactHistoryBefore(cleanup_ht));
+        ASSERT_NO_FATALS(CompactionWithCleanup(cleanup_ht));
 
         InMemDocDbState snapshot_after_cleanup;
         snapshot_after_cleanup.CaptureAt(doc_db(), HybridTime::kMax);
@@ -149,7 +164,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
         max_history_cleanup_ht = cleanup_ht;
         cleanup_ht_and_iteration.emplace_back(cleanup_ht.value(),
                                               load_gen_->last_operation_ht().value());
-        ASSERT_NO_FATALS(FullyCompactHistoryBefore(cleanup_ht));
+        ASSERT_NO_FATALS(CompactionWithCleanup(cleanup_ht));
 
         // We expect some snapshots at hybrid_times earlier than cleanup_ht to no longer be
         // recoverable.

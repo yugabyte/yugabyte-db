@@ -34,6 +34,7 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/pgsql_error.h"
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 
@@ -75,7 +76,7 @@ DEFINE_int64(avoid_abort_after_sealing_ms, 20,
              "If transaction was only sealed, we will try to abort it not earlier than this "
                  "period in milliseconds.");
 
-DEFINE_test_flag(uint64, TEST_inject_txn_get_status_delay_ms, 0,
+DEFINE_test_flag(uint64, inject_txn_get_status_delay_ms, 0,
                  "Inject specified delay to transaction get status requests.");
 
 using namespace std::literals;
@@ -217,8 +218,24 @@ class TransactionState {
     VLOG_WITH_PREFIX(4)
         << Format("ProcessReplicated: $0, replicating: $1", data, replicating_);
 
-    DCHECK(replicating_ == nullptr || consensus::OpIdEquals(replicating_->op_id(), data.op_id));
-    replicating_ = nullptr;
+    if (replicating_ != nullptr) {
+      auto replicating_op_id = replicating_->consensus_round()->id();
+      if (replicating_op_id.IsInitialized()) {
+        if (!consensus::OpIdEquals(replicating_->consensus_round()->id(), data.op_id)) {
+          LOG_WITH_PREFIX(DFATAL)
+              << "Replicated unexpected operation, replicating: " << AsString(replicating_)
+              << ", replicated: " << AsString(data);
+        }
+      } else if (data.leader_term != OpId::kUnknownTerm) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Leader replicated operation without op id, replicating: " << AsString(replicating_)
+            << ", replicated: " << AsString(data);
+      } else {
+        LOG_WITH_PREFIX(INFO) << "Cancel replicating without id: " << AsString(replicating_)
+                              << ", because " << AsString(data) << " was replicated";
+      }
+      replicating_ = nullptr;
+    }
 
     auto status = DoProcessReplicated(data);
 
@@ -264,7 +281,7 @@ class TransactionState {
   void ClearRequests(const Status& status) {
     VLOG_WITH_PREFIX(4) << Format("ClearRequests: $0, replicating: $1", status, replicating_);
     if (replicating_ != nullptr) {
-      context_.CompleteWithStatus(std::move(replicating_), status);
+      context_.CompleteWithStatus(replicating_, status);
       replicating_ = nullptr;
     }
 
@@ -691,8 +708,8 @@ class TransactionState {
       return Status::OK();
     }
     if (status_ != TransactionStatus::PENDING) {
-      LOG_WITH_PREFIX(DFATAL) << "Bad status during PendingReplicationFinished: "
-                              << TransactionStatus_Name(status_);
+      LOG_WITH_PREFIX(DFATAL) << "Bad status during " << __func__ << "(" << data.ToString()
+                              << "): " << ToString();
       return Status::OK();
     }
     last_touch_ = data.hybrid_time;

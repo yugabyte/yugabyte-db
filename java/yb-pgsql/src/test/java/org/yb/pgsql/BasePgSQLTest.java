@@ -211,7 +211,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Map<String, String> flagMap = new TreeMap<>();
 
     if (isTSAN() || isASAN()) {
-      flagMap.put("yb_client_admin_operation_timeout_sec", "120");
       flagMap.put("pggate_rpc_timeout_secs", "120");
     }
     flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
