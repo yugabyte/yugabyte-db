@@ -87,7 +87,6 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) GA | PROGRESS  | v2.2  |  |  |
 | IPV6 support for YugabyteDB | PROGRESS  |  v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/3644) |  |
 | [`DEFERRED` constraints support in YSQL](https://github.com/yugabyte/yugabyte-db/issues/4700) | PROGRESS  |  v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4700) |  |
-| Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) | PROGRESS  |  v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1808) |  |
 | Audit logging support | PLANNING  | v2.3  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1331) |  |
 | Improving day 2 operations of Yugabyte Platform | PROGRESS  |  v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4420) |  |
 | [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) | PROGRESS  |  v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1958) | This feature will be done in two phases: supporting PostgreSQL partitions followed by geo-placement support for partitions |
@@ -107,6 +106,7 @@ The following items are being planned as additions to the roadmap
 | LDAP authentication support | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) |  |
 | Support Kafka as source and sink | PLANNING |  |  | Support source and sink for both YSQL and YSQL |
 | Follower reads with distributed transactions | PLANNING |  |  | Ability to perform follower reads for YSQL and transactional tables in YCQL. Note that this is currently supported for scenarios without distributed transactions.  |
+| Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) | PLANNING  |  v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1808) | Apply transactions atomically on consumer cluster. |
 
 ## Recently released features
 
