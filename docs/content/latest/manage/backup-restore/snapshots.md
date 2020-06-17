@@ -33,8 +33,8 @@ You can create a backup for YugabyteDB using snapshots. Here are some points to 
   - Single table snapshots don't work in YSQL [#2083](https://github.com/YugaByte/yugabyte-db/issues/2083).
   - Yugabyte Platform automates these steps for you.
 - Implementation notes:
-  - Once the snapshot command is issued, we will “buffer” newly incoming writes to that tablet without writing them immediately.
-  - For the existing data: we flush it to disk and hardlink the files in a `.snapshots` directory on each tablet.
+  - Once the snapshot command is issued, you will “buffer” newly incoming writes to that tablet without writing them immediately.
+  - For the existing data: you flush it to disk and hardlink the files in a `.snapshots` directory on each tablet.
   - These steps are pretty fast - small flush to disk and hardlinks. Most likely the incoming operations that were buffered will not timeout. 
   - The buffered writes are now opened up for writes.
   - The snapshot operation is done. Because YugabyteDB is an LSM database, these files will never get modified.

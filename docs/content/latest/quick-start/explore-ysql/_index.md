@@ -184,7 +184,7 @@ You should see an output like the following:
 (5 rows)
 ```
 
-To view the next 3 products, we simply add an `OFFSET 5` clause to start from the fifth product.
+To view the next 3 products, you simply add an `OFFSET 5` clause to start from the fifth product.
 
 ```postgresql
 yb_demo=# SELECT id, title, category, price, rating
@@ -207,7 +207,7 @@ You should see an output which looks like the following:
 
 A JOIN clause is used to combine rows from two or more tables, based on a related column between them. Let us do this by combining some orders with the information of the corresponding users that placed the order.
 
-From the `orders` table, we are going to select the `total` column that represents the total amount the user paid. For each of these orders, we are going to fetch the `id`, the `name` and the `email` from the `users` table of the corresponding users that placed those orders. The related column between the two tables is the user's id. This can be expressed as the following join query:
+From the `orders` table, you are going to select the `total` column that represents the total amount the user paid. For each of these orders, you are going to fetch the `id`, the `name` and the `email` from the `users` table of the corresponding users that placed those orders. The related column between the two tables is the user's id. This can be expressed as the following join query:
 
 ```postgresql
 yb_demo=# SELECT users.id, users.name, users.email, orders.id, orders.total
@@ -239,7 +239,7 @@ In order to track the quantities accurately, each product being ordered in some 
 
 Imagine the user with id `1` wants to order for `10` units of the product with id `2`.
 
-Before running the transaction, we can verify that we have `5000` units of product `2` in stock by running the following query:
+Before running the transaction, you can verify that you have `5000` units of product `2` in stock by running the following query:
 
 ```postgresql
 yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
@@ -253,7 +253,7 @@ SELECT id, category, price, quantity FROM products WHERE id=2;
 (1 row)
 ```
 
-Now, to place the order, we can run the following transaction:
+Now, to place the order, you can run the following transaction:
 
 ```postgresql
 yb_demo=# BEGIN TRANSACTION;
@@ -307,11 +307,11 @@ yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 
 ## 5. Built-in functions
 
-YSQL supports a rich set of built-in functions. In this example, we will look at some functions such as `DISTINCT`, `MIN`, `MAX` and `AVG` in the context of the data set.
+YSQL supports a rich set of built-in functions. In this example, you will look at some functions such as `DISTINCT`, `MIN`, `MAX` and `AVG` in the context of the data set.
 
 - How are users signing up for my site?
 
-To answer this question, we should list the unique set of `source` channels present in the database. This can be achieved as follows:
+To answer this question, you should list the unique set of `source` channels present in the database. This can be achieved as follows:
 
 ```postgresql
 yb_demo=# SELECT DISTINCT(source) FROM users;
@@ -400,7 +400,7 @@ yb_demo=# CREATE VIEW channel AS
              ORDER BY total_sales DESC);
 ```
 
-Now that the view is created, we can see it in our list of relations.
+Now that the view is created, you can see it in our list of relations.
 
 ```postgresql
 yb_demo=# \d

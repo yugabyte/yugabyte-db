@@ -44,7 +44,7 @@ Where
 
 - An error is raised if the specified `table_name` does not exist.
 - The `where_expression` and `if_expression` must evaluate to [boolean](../type_bool) values.
-- The `USING TIMESTAMP` clause indicates we would like to perform the DELETE as if it was done at the
+- The `USING TIMESTAMP` clause indicates you would like to perform the DELETE as if it was done at the
   timestamp provided by the user. The timestamp is the number of microseconds since epoch.
 - **NOTE**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
    them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to

@@ -9,7 +9,7 @@ Give the project a suitable name (eg: `yugabyte-gcp`) and note the project ID (e
 
 ## 2. Set up a new service account
 
-YugaWare admin console requires a service account with the appropriate permissions to provision and manage compute instances. Go to the `IAM & admin` -> `Service accounts` and click on `Create Service Account`. You can follow these instructions to [create a service account](https://cloud.google.com/iam/docs/creating-managing-service-accounts).
+YugabyteDB Admin Console requires a service account with the appropriate permissions to provision and manage compute instances. Go to the `IAM & admin` -> `Service accounts` and click on `Create Service Account`. You can follow these instructions to [create a service account](https://cloud.google.com/iam/docs/creating-managing-service-accounts).
 
 Fill the form with the following values:
 
@@ -21,7 +21,7 @@ Here is a screenshot with the above values in the form, click create once the va
 
 ![Service Account -- filled create form](/images/ee/gcp-setup/service-account-filled-create.png)
 
-**NOTE**: Your browser would have downloaded the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the YugaWare Admin Console.
+**NOTE**: Your browser would have downloaded the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the YugabyteDB Admin Console.
 
 ## 3. Give permissions to the service account
 
@@ -35,11 +35,11 @@ Here is a screenshot with the above values in the form, click create once the va
 
 ## 4. Creating a firewall rule
 
-In order to access YugaWare from outside the GCP environment, you would need to enable firewall rules. You will at minimum need to:
+In order to access the Yugabyte Platform from outside the GCP environment, you would need to enable firewall rules. You will at minimum need to:
 
-- Access the YugaWare instance over ssh (port tcp:22)
-- Check, manage and upgrade YugaWare (port tcp:8800)
-- View the YugaWare console ui (port tcp:80)
+- Access the Yugabyte Platform instance over SSH (port tcp:22)
+- Check, manage, and upgrade Yugabyte Platform (port tcp:8800)
+- View the YugabyteDB Admin Console (port tcp:80)
 
 Let us create a firewall entry enabling all of that!
 
@@ -54,7 +54,7 @@ Go to `VPC network` -> `Firewall rules` tab:
 Click on the `CREATE FIREWALL RULE` button and fill in the following.
 
 - Enter `yugaware-firewall-rule` as the name (you can change the name if you want).
-- Add a description (eg: `Firewall setup for YugaWare Admin Console`).
+- Add a description (for example, `Firewall setup for YugabyteDB Admin Console`).
 - Add a tag `yugaware-server` to the `Target tags` field. This will be used later when creating instances.
 - Add the appropriate ip addresses to the `Source IP ranges` field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
 - Add the ports `tcp:22,8800,80` to the `Protocol and ports` field.
@@ -97,16 +97,15 @@ Note on boot disk customization:
 
 ![VM instances -- pick boot disk](/images/ee/gcp-setup/vm-pick-boot-disk.png)
 
-
 Note on networking customization:
 
 ![VM instances -- networking tweaks](/images/ee/gcp-setup/vm-networking.png)
 
-Finally, click `Create` to launch the YugaWare server.
+Finally, click `Create` to launch the Yugabyte Platform server.
 
-## 6. Connect to the YugaWare machine
+## 6. Connect to the Yugabyte Platform machine
 
-From the GCP web management console, find the public ip address of the instance we just launched.
+From the GCP web management console, find the public IP address of the instance you just launched.
 
 You can connect to this machine by running the following command (remember to replace `XX.XX.XX.XX` below with the ip address, and also to enter the appropriate ssh key instead of `yugaware-1-gcp`).
 

@@ -169,7 +169,7 @@ CassError execute_and_log_select(CassSession* session, const char* stmt) {
 }
 
 int main() {
-  // Ensure we log errors.
+  // Ensure you log errors.
   cass_log_set_level(CASS_LOG_ERROR);
 
   CassCluster* cluster = NULL;

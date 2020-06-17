@@ -17,7 +17,7 @@ This page documents how to install and use PostgreSQL extensions that are tested
 
 ## Pre-bundled extensions
 
-These are extensions that are included in the standard YugabyteDB distribution and can be enabled in YSQL by simply running the `CREATE EXTENSION` statement.
+These are extensions that are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [`CREATE EXTENSION`](../commands/ddl_create_extension) statement.
 
 ### fuzzystrmatch
 
@@ -35,7 +35,6 @@ SELECT levenshtein('Yugabyte', 'yugabyte'), metaphone('yugabyte', 8);
 ```
 
 For more information see [`fuzzystrmatch`](https://www.postgresql.org/docs/11/fuzzystrmatch.html) in the PostgreSQL Docs.
-
 
 ### pgcrypto
 
@@ -56,7 +55,6 @@ SELECT * FROM pgcrypto_example;
 
 For more information see [`pgcrypto`](https://www.postgresql.org/docs/current/pgcrypto.html) in the PostgreSQL Docs.
 
-
 ### spi module
 
 The spi module includes several separate extensions using the Server Programming Interface (SPI) and triggers.
@@ -71,6 +69,7 @@ The specific extensions currently supported in YSQL are:
 
 1. Set up a table with triggers for tracking modification time and user (role).
     Connect with `ysqlsh` and run the commands below.
+
 ```postgresql
 CREATE EXTENSION insert_username;
 CREATE EXTENSION moddatetime;
@@ -92,6 +91,7 @@ CREATE TRIGGER update_moddatetime
   FOR EACH ROW
   EXECUTE PROCEDURE moddatetime (moddate);
 ```
+
 2. Insert some rows. Each insert should add the current role as `username` and the current timestamp as `moddate`.
 
 ```postgresql
@@ -116,7 +116,9 @@ SELECT * FROM spi_test ORDER BY id;
 ```
 
 {{< note title="Note" >}}
-YSQL should have users `yugabyte` and (for compatibility) `postgres` created by default. 
+
+YSQL should have users `yugabyte` and (for compatibility) `postgres`, which are created by default.
+
 {{< /note >}}
 
 3. Update some rows. Should update both `username`  and `moddate` accordingly.
@@ -133,39 +135,43 @@ SELECT * FROM spi_test ORDER BY id;
   4 | desc4         | yugabyte | 2019-09-13 16:55:53.991315
 (4 rows)
 ```
-For more information see [`spi module`](https://www.postgresql.org/docs/current/contrib-spi.html) in the PostgreSQL Docs.
+
+For more information, see [`spi module`](https://www.postgresql.org/docs/current/contrib-spi.html) in the PostgreSQL Docs.
 
 ## Extensions requiring installation
 
-Other extensions have to be installed manually before they can be enabled (with `CREATE EXTENSION`).
+Other extensions have to be installed manually before they can be enabled with the [`CREATE EXTENSION`](../commands/ddl_create_extension) statement.
 
 {{< note title="Note" >}}
+
 Currently, in a multi-node setup, the installation instructions below must be done on _every_ node in the cluster.
+
 {{< /note >}}
 
-
-Typically extensions need three types of files:
+Typically, extensions need three types of files:
 
 - Shared library files (`<name>.so`)
 - SQL files (`<name>--<version>.sql`)
 - Control files (`<name>.control`)
 
-In order to install an extension you need to copy these files into the respective directories of your YugabyteDB installation.
+In order to install an extension, you need to copy these files into the respective directories of your YugabyteDB installation.
 
-
-Shared library files will be in the `pkglibdir` directory while SQL and control files should be in the `extension` subdirectory of the `libdir` directory.
-To find these directories on your local installation, you can use Yugabyte's `pg_config` executable.
+Shared library files will be in the `pkglibdir` directory, while SQL and control files should be in the `extension` subdirectory of the `libdir` directory.
+To find these directories on your local installation, you can use the YugabyteDB `pg_config` executable.
 First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your YugabyteDB installation in the command below and then running it.  
+
 ```sh
 $ alias yb_pg_config=/<yugabyte-path>/postgres/bin/pg_config
 ```
 
 Now you can list existing shared libraries with:
+
 ```sh
 $ ls "$(yb_pg_config --pkglibdir)"
 ```
 
 And SQL and control files for already-installed extensions with:
+
 ```sh
 $ ls "$(yb_pg_config --sharedir)"/extension/
 ```
@@ -185,21 +191,19 @@ Copy those files to the YugabyteDB installation.
 Restart the cluster (or the respective node in a multi-node install).
 Finally, connect to the cluster with `ysqlsh` and run the `CREATE EXTENSION` statement to create the extension.
 
-
 {{< note title="Note" >}}
 
 Only some extensions are currently supported.
-If you encounter any problems with installing or using a particular extension please post an issue on our [GitHub](https://github.com/yugabyte/yugabyte-db/issues).
+If you encounter any issues when installing or using a particular extension, file a GitHub issue in the [yugabyte/yugabyte-db](https://github.com/yugabyte/yugabyte-db/issues) repository.
 
 {{< /note >}}
-
 
 ### PostGIS
 
 [PostGIS](https://postgis.net/) is a spatial database extender for PostgreSQL-compatible object-relational databases.
 The simplest way to set it up locally is to install it together with regular PostgreSQL.
 
-For instance, on macOS, you can either
+For instance, on macOS, you can:
 
 - download and install [Postgres.app](https://postgresapp.com/)
 - install with Homebrew:
@@ -208,7 +212,7 @@ For instance, on macOS, you can either
     $ brew install postgres && brew install postgis
     ```
 
-Now follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create 
+Now follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create
 the extension.
 
 ```sh
@@ -229,14 +233,14 @@ $ wget -O edmonton.zip "https://data.edmonton.ca/api/geospatial/jfvj-x253?method
 ```
 
 2. Extract the dataset using the `shp2pgsql` tool.
-    This should come with your PostgreSQL installation, it is not yet packaged with YSQL.
+    This should come with your PostgreSQL installation — it is not yet packaged with YSQL.
 
 ```sh
 $ shp2pgsql geo_export_*.shp > edmonton.sql
 ```
 
 3. Edit the generated `edmonton.sql` for YSQL compatibility.
-    First inline the `PRIMARY KEY` declaration for `gid` as YSQL does not yet support adding primary key contraints after the table creation.
+    First, inline the `PRIMARY KEY` declaration for `gid` as YSQL does not yet support adding primary key constraints after the table creation.
     Additionally, for simplicity, change the table name (and references to it in the associated `INSERT`s) to just `geo_export` (i.e. remove the UUID postfix).
     The `edmonton.sql` file should now start as follows:
 
@@ -293,22 +297,24 @@ WHERE ST_Intersects(a.geom, b.geom) AND a.name LIKE 'University of Alberta';
 
 {{< note title="Note" >}}
 
-YSQL does not yet support GiST indexes. This is tracked in [this GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/1337).
+YSQL does not yet support GiST indexes. This is tracked in [GitHub issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337).
 
 {{< /note >}}
 
-### Postgresql Hyperloglog
+### postgresql-hll (PostgreSQL extension for HyperLogLog)
 
-The [`postgresql-hll`](https://github.com/citusdata/postgresql-hll) module introduces a new data type `hll` which is a HyperLogLog data structure. 
-HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision. 
+The [`postgresql-hll`](https://github.com/citusdata/postgresql-hll) module introduces a new data type `hll`, which is a HyperLogLog data structure.
+HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision.
 
-The first step is to install postgres-hll [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in Postgresql. 
-It is best to use the same Postgresql version as YugabyteDB. We can easilty get the version with ysqlsh:
+The first step is to install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance.
+It is best to use the same PostgreSQL version that is incorporated into YugabyteDB. You can see the PostgreSQL version incorporated in YugabyteDB installation by using the following `ysqlsh` command:
+
 ```sh
 $ ./bin/ysqlsh --version
 psql (PostgreSQL) 11.2-YB-2.1.2.0-b0
 ```
-Above we use Postgresl 11.2. After installing the extension we copy the files to YugabyteDB:
+
+Above you performed the steps in your PostgreSQL 11.2 instance. After installing the extension there, now copy the files to your YugabyteDB instance:
 
 ```sh
 $ cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" && 
@@ -319,8 +325,9 @@ $ cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" &&
 
 #### Example
 
-We can run a quick example for the [postgresql-hll](https://github.com/citusdata/postgresql-hll#usage) repo. 
-Connect with ysqlsh and run:
+You can run a quick example for the [postgresql-hll](https://github.com/citusdata/postgresql-hll#usage) repository.
+Connect with `ysqlsh` and run:
+
 ```postgresql
 yugabyte=# CREATE TABLE helloworld (id integer, set hll);
 CREATE TABLE
@@ -341,10 +348,9 @@ yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
 (1 row)
 ```
 
-
 ### uuid-ossp
 
-The [`uuid-ossp`](https://www.postgresql.org/docs/current/uuid-ossp.html) extension provides functions to generate 
+The [`uuid-ossp`](https://www.postgresql.org/docs/current/uuid-ossp.html) extension provides functions to generate
 universally unique identifiers (UUIDs) and also functions to produce certain special UUID constants.
 
 The easiest way to install it is to copy the files from an existing PostgreSQL installation into Yugabyte, and then create the extension.
@@ -367,4 +373,3 @@ SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
  69975ce4-d827-11e9-b860-bf2e5a7e1380 | 088a9b6c-46d8-4276-852b-64908b06a503 | 00000000-0000-0000-0000-000000000000
 (1 row)
 ```
-

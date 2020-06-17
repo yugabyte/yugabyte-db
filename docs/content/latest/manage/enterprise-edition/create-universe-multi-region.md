@@ -30,13 +30,13 @@ We are going to enter the following values to create a multi-region universe on 
 
 Click **Create**.
 
-![Create Multi-Region Universe on GCP](/images/ee/multi-region-create-universe.png)
+![Create multi-region universe on GCP](/images/ee/multi-region-create-universe.png)
 
 ## 2. Examine the universe
 
-Wait for the universe to get created. Note that YugaWare can manage multiple universes as shown below.
+Wait for the universe to get created. Note that Yugabyte Platform can manage multiple universes as shown below.
 
-![Multiple Universes in YugaWare](/images/ee/multi-region-multiple-universes.png)
+![Multiple universes in YugabyteDB Admin Console](/images/ee/multi-region-multiple-universes.png)
 
 Once the universe is created, you should see something like the screenshot below in the unverse overview.
 
@@ -44,7 +44,7 @@ Once the universe is created, you should see something like the screenshot below
 
 ### Universe nodes
 
-You can browse to the nodes tab of the universe to see a list of nodes. Note that the nodes are across the different geographic regions.
+You can browse to the **Nodes** tab of the universe to see a list of nodes. Note that the nodes are across the different geographic regions.
 
 ![Nodes for a Pending Universe](/images/ee/multi-region-universe-nodes.png)
 
@@ -56,11 +56,11 @@ Browse to the cloud provider's instances page. In this example, since we are usi
 
 In this section, we are going to connect to each node and perform the following:
 
-* Run the CassandraKeyValue workload
-* Write data with global consistency (higher latencies because we chose nodes in far away regions)
-* Read data from the local data center (low latency, timeline-consistent reads)
+- Run the CassandraKeyValue workload
+- Write data with global consistency (higher latencies because we chose nodes in far away regions)
+- Read data from the local data center (low latency, timeline-consistent reads)
 
-Browse to the nodes tab to find the nodes and click on the `Connect` button. This should bring up a dialog showing how to connect to the nodes.
+Browse to the **Nodes** tab to find the nodes and click **Connect**. This should bring up a dialog showing how to connect to the nodes.
 
 ![Multi-region universe nodes](/images/ee/multi-region-universe-nodes-connect.png)
 
@@ -84,13 +84,13 @@ $ sudo yum install java-1.8.0-openjdk.x86_64 -y
 $ sudo su - yugabyte
 ```
 
-3. Export the `YCQL_ENDPOINTS` env variable
+3. Export the `YCQL_ENDPOINTS` env variable.
 
-Export an environment variable telling us the IP addresses for nodes in the cluster. Browse to the universe overview tab in YugaWare and click on the `YCQL Endpoints` link. This should open a new tab with a list of IP addresses. 
+Export an environment variable telling us the IP addresses for nodes in the cluster. Browse to the **Universe Overview** tab in YugabyteDB Admin Console and click on the `YCQL Endpoints` link. This should open a new tab with a list of IP addresses. 
 
 ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
 
-Export this into a shell variable on the database node `yb-dev-helloworld1-n1` we had connected to. Remember to replace the ip addresses below with those shown by YugaWare.
+Export this into a shell variable on the database node `yb-dev-helloworld1-n1` you connected to. Remember to replace the IP addresses below with those shown in the YugabyteDB Admin Console.
 
 ```sh
 $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
@@ -111,7 +111,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --with_local_dc <REGION>
 ```
 
-You can find the region codes for each of the nodes by browsing to the nodes tab for this universe in YugaWare. A screenshot is shown below. In this example, the value for `<REGION>` is:
+You can find the region codes for each of the nodes by browsing to the **Nodes** tab for this universe in the YugabyteDB Admin Console. A screenshot is shown below. In this example, the value for `<REGION>` is:
 
 - `us-east4` for node `yb-dev-helloworld2-n1`
 - `asia-northeast1` for node `yb-dev-helloworld2-n2`
@@ -126,7 +126,7 @@ Recall that we expect the app to have the following characteristics based on its
 * Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
 * Low latency reads from the nearest data center, which offers timeline consistency (similar to async replication).
 
-Let us verify this by browse to the metrics tab of the universe in YugaWare to see the overall performance of the app. It should look similar to the screenshot below.
+Let us verify this by browse to the **Metrics** tab of the universe in the YugabyteDB Admin Console to see the overall performance of the app. It should look similar to the screenshot below.
 
 ![YCQL Load Metrics](/images/ee/multi-region-read-write-metrics.png)
 

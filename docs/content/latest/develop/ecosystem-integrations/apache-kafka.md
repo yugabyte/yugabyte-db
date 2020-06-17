@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-In this tutorial, we are going to use the [Kafka Connect-based Sink Connector for YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) to store events from Apache Kafka into YugabyteDB using the [YCQL](../../../api/ycql) API.
+In this tutorial, you are going to use the [Kafka Connect-based Sink Connector for YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) to store events from Apache Kafka into YugabyteDB using the [YCQL](../../../api/ycql) API.
 
 ## 1. Start local cluster
 
@@ -94,7 +94,7 @@ $ ./bin/zookeeper-server-start.sh config/zookeeper.properties &
 $ ./bin/kafka-server-start.sh config/server.properties &
 ```
 
-Now create the Kafka topic that will be used to persist messages in the YugabyteDB table we created earlier.
+Now, create the Kafka topic that will be used to persist messages in the YugabyteDB table created earlier.
 
 ```sh
 $ ./bin/kafka-topics.sh --create \
@@ -106,7 +106,7 @@ $ ./bin/kafka-topics.sh --create \
 
 ## 5. Start Kafka Sink Connector for YugabyteDB
 
-At this point, we have YugabyteDB's YCQL APU running at 9042 port with the `test_table` table created in the `demo` keyspace. We also have Kafka running at the 9092 port with the `test_topic` topic created. We are ready to start the connector.
+At this point, you have YugabyteDB's YCQL APU running at 9042 port with the `test_table` table created in the `demo` keyspace. We also have Kafka running at the 9092 port with the `test_topic` topic created. We are ready to start the connector.
 
 ```sh
 $ ./bin/connect-standalone.sh \
