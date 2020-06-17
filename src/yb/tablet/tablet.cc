@@ -1219,6 +1219,11 @@ Status Tablet::HandleQLReadRequest(
   if (metadata()->schema_version() != ql_read_request.schema_version()) {
     DVLOG(1) << "Setting status for read as YQL_STATUS_SCHEMA_VERSION_MISMATCH";
     result->response.set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
+    result->response.set_error_message(
+        Format("schema version mismatch for table $0: expected $1, got $2",
+               metadata()->table_id(),
+               metadata()->schema_version(),
+               ql_read_request.schema_version()));
     return Status::OK();
   }
 
@@ -1306,6 +1311,11 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
                << table_info->schema_version << " vs req's : " << req->schema_version()
                << " for " << yb::ToString(req);
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
+      resp->set_error_message(
+          Format("schema version mismatch for table $0: expected $1, got $2",
+                 table_info->table_id,
+                 table_info->schema_version,
+                 req->schema_version()));
     } else {
       DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
                << yb::ToString(req);
@@ -1523,7 +1533,7 @@ Status Tablet::HandlePgsqlReadRequest(
   if (table_info->schema_version != pgsql_read_request.schema_version()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
     result->response.set_error_message(
-        Format("schema version mismatch for table $0: $1 != $2",
+        Format("schema version mismatch for table $0: expected $1, got $2",
                table_info->table_id,
                table_info->schema_version,
                pgsql_read_request.schema_version()));
@@ -1648,6 +1658,11 @@ CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
         VERIFY_RESULT(metadata_->GetTableInfo(req->table_id()));
     if (table_info->schema_version != req->schema_version()) {
       resp->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
+      resp->set_error_message(
+          Format("schema version mismatch for table $0: expected $1, got $2",
+                 table_info->table_id,
+                 table_info->schema_version,
+                 req->schema_version()));
     } else {
       if (doc_ops.empty()) {
         // Use the value of is_ysql_catalog_table from the first operation in the batch.
