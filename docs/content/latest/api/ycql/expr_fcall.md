@@ -152,13 +152,8 @@ For example, suppose you have a table `page_views` with a column named `views`:
 
 ## TTL function
 
-<<<<<<< HEAD
-The TTL function returns the number of seconds until a column or row expires.
-Assuming we have a table `page_views` and a column named `views`:
-=======
 The TTL function returns the number of seconds until a column or row expires. 
 Assuming you have a table `page_views` and a column named `views`:
->>>>>>> 456c332e4... Update wording for examples
 
 ```sql
 SELECT TTL(views) FROM page_views;

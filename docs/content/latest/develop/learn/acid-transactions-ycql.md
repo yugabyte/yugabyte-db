@@ -282,11 +282,7 @@ BEGIN TRANSACTION
 END TRANSACTION;
 ```
 
-<<<<<<< HEAD
 We can verify the transfer was made as we intended, and also verify that the time at which the two accounts were updated are identical by performing the following query.
-=======
-You can verify the transfer was made as intended, and also verify that the time at which the two accounts were updated are identical by performing the following query.
->>>>>>> 456c332e4... Update wording for examples
 
 ```sql
 ycqlsh> select account_name, account_type, balance, writetime(balance) from banking.accounts;

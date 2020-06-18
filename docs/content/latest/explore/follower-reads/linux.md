@@ -80,12 +80,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --value_size 10240
 ```
 
-<<<<<<< HEAD
 In the above command, we have set the value of `num_unique_keys` to `1`, which means we are overwriting a single key `key:0`. We can verify this using ycqlsh:
-=======
-
-In the above command, you have set the value of `num_unique_keys` to `1`, which means you are overwriting a single key `key:0`. We can verify this using cqlsh:
->>>>>>> f4307fea8... Update wording for examples
 
 ```sh
 $ ./bin/ycqlsh 127.0.0.1
