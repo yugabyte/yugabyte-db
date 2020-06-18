@@ -13,8 +13,12 @@
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
 
+#include <openssl/sha.h>
+
 #include <mutex>
 #include <thread>
+
+#include <boost/compute/detail/lru_cache.hpp>
 
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_pool.h"
@@ -31,6 +35,8 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/crypt.h"
+
 #include "yb/util/mem_tracker.h"
 
 using namespace std::placeholders;
@@ -44,6 +50,8 @@ DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 128_MB,
 DEFINE_int32(cql_ybclient_reactor_threads, 24,
              "The number of reactor threads to be used for processing ybclient "
              "requests originating in the cql layer");
+DEFINE_int32(password_hash_cache_size, 64, "Number of password hashes to cache. 0 or "
+             "negative disables caching.");
 
 namespace yb {
 namespace cqlserver {
@@ -65,6 +73,7 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
     : CQLServerServiceIf(server->metric_entity()),
       server_(server),
       next_available_processor_(processors_.end()),
+      password_cache_(FLAGS_password_hash_cache_size),
       messenger_(server->messenger()) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
   cql_metrics_ = std::make_shared<CQLMetrics>(server->metric_entity());
@@ -227,6 +236,45 @@ void CQLServiceImpl::DeletePreparedStatement(const shared_ptr<const CQLStatement
   VLOG(1) << "DeletePreparedStatement: CQL prepared statement cache count = "
           << prepared_stmts_map_.size() << "/" << prepared_stmts_list_.size()
           << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
+}
+
+bool CQLServiceImpl::CheckPassword(
+    const std::string plain,
+    const std::string expected_bcrypt_hash) {
+  if (FLAGS_password_hash_cache_size <= 0) {
+    return util::bcrypt_checkpw(plain.c_str(), expected_bcrypt_hash.c_str()) == 0;
+  }
+
+  std::string sha_hash(SHA256_DIGEST_LENGTH, '\0');
+  {
+    SHA256_CTX ctx;
+    SHA256_Init(&ctx);
+    SHA256_Update(&ctx, plain.c_str(), plain.length());
+    SHA256_Final((unsigned char*) &sha_hash[0], &ctx);
+  }
+  // bcrypt can generate multiple hashes from a single key, since a salt is
+  // randomly generated each time a password is set. Using a compound key allows
+  // the same plaintext to be associated with different hashes.
+  std::string key = sha_hash + ":" + expected_bcrypt_hash;
+
+  {
+    std::lock_guard<std::mutex> guard(password_cache_mutex_);
+    auto entry = password_cache_.get(key);
+    if (entry) {
+      return true;
+    }
+  }
+
+  // bcrypt_checkpw has stringcmp semantics.
+  bool correct = util::bcrypt_checkpw(plain.c_str(), expected_bcrypt_hash.c_str()) == 0;
+  if (correct) {
+    std::lock_guard<std::mutex> guard(password_cache_mutex_);
+    // Boost's LRU cache interprets insertion of a duplicate key as a no-op, so
+    // even if two threads successfully log in to the same account, there should
+    // not be a race condition here.
+    password_cache_.insert(key, true);
+  }
+  return correct;
 }
 
 void CQLServiceImpl::InsertLruPreparedStatementUnlocked(const shared_ptr<CQLStatement>& stmt) {

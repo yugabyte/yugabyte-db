@@ -19,6 +19,8 @@
 
 #include <vector>
 
+#include <boost/compute/detail/lru_cache.hpp>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/yql/cql/cqlserver/cql_message.h"
@@ -72,6 +74,9 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // Delete the prepared statement from the cache.
   void DeletePreparedStatement(const std::shared_ptr<const CQLStatement>& stmt);
+
+  // Check that the password and hash match.  Leverages shared LRU cache.
+  bool CheckPassword(const std::string plain, const std::string expected_bcrypt_hash);
 
   // Return the memory tracker for prepared statements.
   const MemTrackerPtr& prepared_stmts_mem_tracker() const {
@@ -146,6 +151,12 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // Tracker to measure and limit memory usage of prepared statements.
   MemTrackerPtr prepared_stmts_mem_tracker_;
+
+  // Password and hash cache. Stores each password-hash pair as a compound key;
+  // see implementation for rationale.
+  boost::compute::detail::lru_cache<std::string, bool> password_cache_
+    GUARDED_BY(password_cache_mutex_);
+  std::mutex password_cache_mutex_;
 
   // Metrics to be collected and reported.
   yb::rpc::RpcMethodMetrics metrics_;
