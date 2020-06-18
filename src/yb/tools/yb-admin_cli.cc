@@ -121,6 +121,7 @@ using namespace std::placeholders;
 Status ClusterAdminCli::Run(int argc, char** argv) {
   const string prog_name = argv[0];
   FLAGS_logtostderr = 1;
+  FLAGS_minloglevel = 2;
   ParseCommandLineFlags(&argc, &argv, true);
   InitGoogleLoggingSafe(prog_name.c_str());
 
