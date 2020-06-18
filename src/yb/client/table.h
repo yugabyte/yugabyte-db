@@ -161,6 +161,10 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   DISALLOW_COPY_AND_ASSIGN(YBTable);
 };
 
+size_t FindPartitionStartIndex(const std::vector<std::string>& partitions,
+                               const std::string& partition_key,
+                               size_t group_by = 1);
+
 } // namespace client
 } // namespace yb
 
