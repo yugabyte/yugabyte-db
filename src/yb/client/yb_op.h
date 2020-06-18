@@ -561,6 +561,8 @@ class YBNoOp {
   DISALLOW_COPY_AND_ASSIGN(YBNoOp);
 };
 
+CHECKED_STATUS ReviewResponsePagingState(YBPgsqlReadOp* op);
+
 }  // namespace client
 }  // namespace yb
 

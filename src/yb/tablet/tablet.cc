@@ -1616,8 +1616,14 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
       (!pgsql_read_request.has_limit() || row_count < pgsql_read_request.limit() ||
        pgsql_read_request.return_paging_state())) {
 
+    // For backward scans partition_key_start must be used as next_partition_key.
+    // Client level logic will check it and route next request to the preceding tablet.
+    const auto& next_partition_key =
+        pgsql_read_request.has_hash_code() ||
+        pgsql_read_request.is_forward_scan()
+            ? metadata_->partition()->partition_key_end()
+            : metadata_->partition()->partition_key_start();
     // Check we did not reach the last tablet.
-    const string& next_partition_key = metadata_->partition()->partition_key_end();
     const bool end_scan = next_partition_key.empty() ||
         VERIFY_RESULT(HasScanReachedMaxPartitionKey(pgsql_read_request, next_partition_key));
     if (!end_scan) {

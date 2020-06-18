@@ -578,8 +578,9 @@ Status PgDocReadOp::ProcessResponsePagingState() {
 
   for (int op_index = 0; op_index < send_count; op_index++) {
     YBPgsqlReadOp *read_op = GetReadOp(op_index);
-    auto& res = *read_op->mutable_response();
+    RETURN_NOT_OK(ReviewResponsePagingState(read_op));
 
+    auto& res = *read_op->mutable_response();
     // Check for completion.
     bool has_more_arg = false;
     if (res.has_paging_state()) {
