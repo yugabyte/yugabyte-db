@@ -411,6 +411,22 @@ public class TestPgConfiguration extends BasePgSQLTest {
   }
 
   @Test
+  public void testLogMinDurationStatement() throws Exception {
+    int tserver = spawnTServerWithFlags("--ysql_log_min_duration_statement=100");
+
+    try (Connection connection = newConnectionBuilder().setTServer(tserver).connect();
+         Statement statement = connection.createStatement()) {
+      assertQuery(statement, "SHOW log_min_duration_statement", new Row("100ms"));
+    }
+
+    tserver = spawnTServerWithFlags("--ysql_log_min_duration_statement=150");
+    try (Connection connection = newConnectionBuilder().setTServer(tserver).connect();
+         Statement statement = connection.createStatement()) {
+      assertQuery(statement, "SHOW log_min_duration_statement", new Row("150ms"));
+    }
+  }
+
+  @Test
   public void mixedPostgresConfiguration() throws Exception {
     int tserver = spawnTServerWithFlags(
         "--ysql_datestyle=MDY",
