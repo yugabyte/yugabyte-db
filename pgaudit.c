@@ -953,7 +953,7 @@ log_select_dml(Oid auditOid, List *rangeTabls)
     foreach(lr, rangeTabls)
     {
         Oid relOid;
-        Relation rel;
+        Oid relNamespaceOid;
         RangeTblEntry *rte = lfirst(lr);
 
         /* We only care about tables, and can ignore subqueries etc. */
@@ -976,13 +976,10 @@ log_select_dml(Oid auditOid, List *rangeTabls)
          * false) then filter out any system relations here.
          */
         relOid = rte->relid;
-        rel = relation_open(relOid, NoLock);
+        relNamespaceOid = get_rel_namespace(relOid);
 
-        if (!auditLogCatalog && IsCatalogNamespace(RelationGetNamespace(rel)))
-        {
-            relation_close(rel, NoLock);
+        if (!auditLogCatalog && IsCatalogNamespace(relNamespaceOid))
             continue;
-        }
 
         /*
          * Default is that this was not through a grant, to support session
@@ -1079,10 +1076,8 @@ log_select_dml(Oid auditOid, List *rangeTabls)
 
         /* Get a copy of the relation name and assign it to object name */
         auditEventStack->auditEvent.objectName =
-            quote_qualified_identifier(get_namespace_name(
-                                           RelationGetNamespace(rel)),
-                                       RelationGetRelationName(rel));
-        relation_close(rel, NoLock);
+            quote_qualified_identifier(
+                get_namespace_name(relNamespaceOid), get_rel_name(relOid));
 
         /* Perform object auditing only if the audit role is valid */
         if (auditOid != InvalidOid)
