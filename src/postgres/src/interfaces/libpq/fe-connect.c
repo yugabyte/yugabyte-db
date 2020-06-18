@@ -1132,7 +1132,7 @@ connectOptions2(PGconn *conn)
 	{
 		if (conn->dbName)
 			free(conn->dbName);
-		conn->dbName = strdup(conn->pguser);
+		conn->dbName = strdup("yugabyte");
 		if (!conn->dbName)
 			goto oom_error;
 	}
