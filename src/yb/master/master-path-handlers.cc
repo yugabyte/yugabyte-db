@@ -1543,6 +1543,11 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   vector<scoped_refptr<TableInfo>> tables;
   master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
   for (const auto& table : tables) {
+    if (master_->catalog_manager()->IsColocatedUserTable(*table)) {
+      // will be taken care of by colocated parent table
+      continue;
+    }
+
     TabletInfos tablets;
     table->GetAllTablets(&tablets);
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
@@ -1552,7 +1557,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       tablet->GetReplicaLocations(&replication_locations);
 
       for (const auto& replica : replication_locations) {
-        if (is_user_table) {
+        if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)) {
           if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
             (*tablet_map)[replica.first].user_tablet_leaders++;
           } else {
