@@ -106,7 +106,7 @@ The latest Helm Chart version and App version will be displayed.
 
 ```
 NAME               	CHART VERSION	APP VERSION	DESRIPTION                                       
-ugabytedb/yugabyte	2.1.8        	2.1.8.1	YugabyteDB is the high-performance distributed ..
+ugabytedb/yugabyte	2.1.8        	2.1.8.2	YugabyteDB is the high-performance distributed ..
 ```
 
 4. Run the following `helm install` command to install Yugabyte Platform (YugaWare).

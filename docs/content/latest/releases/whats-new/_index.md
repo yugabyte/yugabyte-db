@@ -14,7 +14,7 @@ menu:
     weight: 2589 
 ---
 
-**Released:** June 16, 2020 (2.1.8.1-b7).
+**Released:** June ??, 2020 (2.1.8.2-b??).
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
@@ -24,13 +24,13 @@ menu:
 
 ### Binaries
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.8.1-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.8.2-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.8.1-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.8.2-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -40,7 +40,7 @@ menu:
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.1.8.1-b7
+docker pull yugabytedb/yugabyte:2.1.8.2-b??
 ```
 
 ## YSQL
@@ -97,6 +97,7 @@ docker pull yugabytedb/yugabyte:2.1.8.1-b7
 - [DocDB] Fixed BoundedRocksDbIterator::SeekToLast works incorrectly for 2nd post-split tablet. [#4542](https://github.com/yugabyte/yugabyte-db/issues/4542)
 - [DocDB] Abort snapshot if table was deleted. [#4610](https://github.com/yugabyte/yugabyte-db/issues/4610)
 - [DocDB] Backfill index without waiting indefinitely for pending transactions. [#3471](https://github.com/yugabyte/yugabyte-db/issues/3471)
+- [DocDB] Fix `yb-master` rerunning snapshot operations after upgrade. [#4816](https://github.com/yugabyte/yugabyte-db/issues/4816)
 - [Colocation] During load balancing operations, load balance each colocated tablet once. This fix removes unnecessary load balancing for every user table sharing that table and the parent table.
 - Fix YB-Master hangs due to transaction status resolution. [#4410](https://github.com/yugabyte/yugabyte-db/issues/4410)
 - Redirect the master UI to the master leader UI without failing when one master is down. [#4442](https://github.com/yugabyte/yugabyte-db/issues/4442) and [#3869](https://github.com/yugabyte/yugabyte-db/issues/3869)
