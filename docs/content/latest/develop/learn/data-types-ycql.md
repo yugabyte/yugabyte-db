@@ -68,14 +68,9 @@ ycqlsh> CREATE KEYSPACE store;
 ycqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
 ```
 
-<<<<<<< HEAD
 ### Insert data
 
 Next we insert some sample data for a few books into this store. You can copy and paste the following commands into the YCQL shell (`ycqlsh`) for YugabyteDB to insert the data.
-=======
-### Insert Data
-Next you insert some sample data for a few books into this store. You can copy and paste the following commands into the cqlsh shell for YugabyteDB to insert the data. Note that you would need a cqlsh that has the enhancement to work with YugabyteDB JSON documents, you can download it using the documentation here.
->>>>>>> f4307fea8... Update wording for examples
 
 ```sql
 INSERT INTO store.books (id, details) VALUES (1, 
@@ -128,12 +123,8 @@ Running the following default `SELECT` query will return all attributes of each 
 ycqlsh> SELECT * FROM store.books;
 
 ```
-<<<<<<< HEAD
 
 But a number of times you might want to query just a subset of attributes from YugabyteDB database. Below is an example of a query that retrieves just the id and name for all the books.
-=======
-But a number of times you may want to query just a subset of attributes from YugabyteDB database. Below is an example of a query that retrieves just the id and name for all the books.
->>>>>>> f4307fea8... Update wording for examples
 
 ```sql
 ycqlsh> SELECT id, details->>'name' as book_title FROM store.books;
