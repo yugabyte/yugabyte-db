@@ -110,7 +110,7 @@ public class NodeManager extends DevopsBase {
     return command;
   }
 
-  private List<String> getAccessKeySpecificCommand(NodeTaskParams params) {
+  private List<String> getAccessKeySpecificCommand(NodeTaskParams params, NodeCommandType type) {
     List<String> subCommand = new ArrayList<>();
     if (params.universeUUID == null) {
       throw new RuntimeException("NodeTaskParams missing Universe UUID.");
@@ -146,6 +146,11 @@ public class NodeManager extends DevopsBase {
       }
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
+
+      if (type == NodeCommandType.Provision && keyInfo.sshUser != null) {
+        subCommand.add("--ssh_user");
+        subCommand.add(keyInfo.sshUser);
+      }
 
       if (params instanceof AnsibleSetupServer.Params &&
           accessKey.getKeyInfo().airGapInstall) {
@@ -404,7 +409,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(taskParam.ipArnString);
           }
         }
-        commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
+        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
         if (nodeTaskParam.deviceInfo != null) {
           commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
@@ -432,7 +437,7 @@ public class NodeManager extends DevopsBase {
         }
         AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
         commandArgs.addAll(getConfigureSubCommand(taskParam));
-        commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
+        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
         if (nodeTaskParam.deviceInfo != null) {
           commandArgs.addAll(getDeviceArgs(nodeTaskParam));
         }
@@ -451,7 +456,7 @@ public class NodeManager extends DevopsBase {
         if (nodeTaskParam.deviceInfo != null) {
           commandArgs.addAll(getDeviceArgs(nodeTaskParam));
         }
-        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam));
+        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
         break;
       }
       case Control: {
@@ -461,7 +466,7 @@ public class NodeManager extends DevopsBase {
         AnsibleClusterServerCtl.Params taskParam = (AnsibleClusterServerCtl.Params) nodeTaskParam;
         commandArgs.add(taskParam.process);
         commandArgs.add(taskParam.command);
-        commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
+        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
         break;
       }
       case Tags: {
@@ -488,7 +493,7 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
         }
         InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
-        commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
+        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
         commandArgs.add("--instance_type");
         commandArgs.add(taskParam.instanceType);
         if (taskParam.deviceInfo != null) {
