@@ -140,11 +140,7 @@ Secondary indexes can be used to speed up queries and to enforce uniqueness of v
 
 #### Speed up queries
 
-<<<<<<< HEAD
 The predominant use of a secondary index is to make lookups by some column values efficient. Let us take an example of a users table, where `user_id` is the primary key. Suppose we want to lookup `user_id` by the email of the user efficiently. You can achieve this as follows.
-=======
-The predominant use of a secondary index is to make lookups by some column values efficient. Let us take an example of a users table, where user_id is the primary key. Suppose you want to lookup user_id by the email of the user efficiently. You can achieve this as follows.
->>>>>>> 456c332e4... Update wording for examples
 
 ```sql
 ycqlsh> CREATE KEYSPACE example;
