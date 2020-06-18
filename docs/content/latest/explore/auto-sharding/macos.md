@@ -239,11 +239,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
 2018-02-05 07:33:36,899 [INFO|...] The sample app has finished
 ```
 
-<<<<<<< HEAD
 Let us check what we have inserted using `ycqlsh`.
-=======
-Let us check what you have inserted using `cqlsh`.
->>>>>>> f4307fea8... Update wording for examples
 
 ```sh
 $ ./bin/ycqlsh

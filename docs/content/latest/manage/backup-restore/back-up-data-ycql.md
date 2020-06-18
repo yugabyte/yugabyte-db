@@ -137,11 +137,7 @@ INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
 ```
 
-<<<<<<< HEAD
 You can query all the 6 rows we inserted by running the following command in `ycqlsh`.
-=======
-You can query all the 6 rows you inserted by running the following command in `cqlsh`.
->>>>>>> f4307fea8... Update wording for examples
 
 ```sql
 ycqlsh> SELECT * FROM myapp.stock_market;

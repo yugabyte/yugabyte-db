@@ -106,11 +106,7 @@ ycqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v bl
 
 ## 2. Examine tablets
 
-<<<<<<< HEAD
 For each table, YugabyteDB creates 8 shards per node in the universe by default. In our example, since we have 3 nodes, we expect 24 tablets for each of the tables we created (the Redis and YCQL tables), or 48 tablets total.
-=======
-For each table, YugabyteDB creates 8 shards per node in the universe by default. In our example, since you have 3 nodes, you expect 24 tablets for each of the tables you created (the Redis and CQL tables), or 48 tablets total.
->>>>>>> f4307fea8... Update wording for examples
 
 You can see the number of tablets per node in the Tablet Servers page of the master Admin UI, by going to `http://127.0.0.1:7000/tablet-servers`. The page should look something like the image below:
 
