@@ -169,10 +169,13 @@ class AbstractInstancesMethod(AbstractMethod):
         if args.instance_type:
             updated_args["instance_type"] = args.instance_type
 
+        # Handle all ssh defaults in update. Then use self.extra_vars
         if args.ssh_user:
             updated_args["ssh_user"] = args.ssh_user
         elif self.get_ssh_user():
             updated_args["ssh_user"] = self.get_ssh_user()
+        else:
+            updated_args["ssh_user"] = self.SSH_USER
 
         if args.instance_tags:
             updated_args["instance_tags"] = json.loads(args.instance_tags)
@@ -260,8 +263,8 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.run_ansible_create(args)
 
         if self.can_ssh and not args.disable_custom_ssh:
-            host_info = self.wait_for_host(args)
             self.update_ansible_vars(args)
+            host_info = self.wait_for_host(args)
             self.cloud.setup_ansible(args).run("use_custom_ssh_port.yml",
                                                self.extra_vars, host_info)
 
@@ -301,7 +304,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                     get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
                 if wait_for_ssh(self.extra_vars["ssh_host"],
                                 self.extra_vars["ssh_port"],
-                                self.SSH_USER,
+                                self.extra_vars["ssh_user"],
                                 args.private_key_file):
                     return host_info
             sys.stdout.write('.')
