@@ -1543,15 +1543,16 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   vector<scoped_refptr<TableInfo>> tables;
   master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
   for (const auto& table : tables) {
+    if (master_->catalog_manager()->IsColocatedUserTable(*table)) {
+      // will be taken care of by colocated parent table
+      continue;
+    }
+
     TabletInfos tablets;
     table->GetAllTablets(&tablets);
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
 
     for (const auto& tablet : tablets) {
-      if (master_->catalog_manager()->IsColocatedUserTable(*table)) { // will be taken care of by colocated parent table
-        continue;
-      }
-
       TabletInfo::ReplicaMap replication_locations;
       tablet->GetReplicaLocations(&replication_locations);
 
