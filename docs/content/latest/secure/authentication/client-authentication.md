@@ -193,7 +193,7 @@ Changes to `--pg_hba_conf` should be applied to all `yb-tserver` servers in a ro
 
 {{< /note >}}
 
-The system view `pg_hba_file_rules` can be helpful for pre-testing changes to the `pg_hba.conf` file, or for diagnosing problems if loading of the file did not have the desired effects. Rows in the view with non-null error fields indicate problems in the corresponding lines of the file.
+The system view `pg_hba_file_rules` can be helpful for pre-testing changes to the `ysql_hba_conf` flag, or for diagnosing problems if the flag did not have the desired effects. Rows in the view with non-null error fields indicate problems in the corresponding lines of the file.
 
 {{< note title="Tip" >}}
 
