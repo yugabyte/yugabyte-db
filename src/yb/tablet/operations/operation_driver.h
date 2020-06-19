@@ -231,7 +231,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
     PREPARED
   };
 
-  ~OperationDriver();
+  ~OperationDriver() override {}
 
   // Starts operation, returns false is we should NOT continue processing the operation.
   bool StartOperation();
