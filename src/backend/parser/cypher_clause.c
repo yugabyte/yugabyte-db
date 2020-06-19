@@ -1057,11 +1057,20 @@ static TargetEntry *
 transform_match_create_path_variable(cypher_parsestate *cpstate,
                                      cypher_path *path, List *entities)
 {
+    ParseState *pstate = (ParseState *)cpstate;
     Oid build_path_oid;
     FuncExpr *fexpr;
     int resno;
     List *entity_exprs = NIL;
     ListCell *lc;
+
+    if (list_length(entities) < 3)
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("paths consist of alternating vertices and edges."),
+                 parser_errposition(pstate, path->location),
+                 errhint("paths require at least 2 vertices and 1 edge")));
+
 
     // extract the expr for each entity
     foreach (lc, entities)

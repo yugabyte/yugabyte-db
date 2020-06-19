@@ -448,6 +448,16 @@ SELECT * FROM cypher('cypher_match', $$MATCH (n:vmissing)-[]-() RETURN n$$) AS (
 ERROR:  label vmissing does not exists
 LINE 1: SELECT * FROM cypher('cypher_match', $$MATCH (n:vmissing)-[]...
                                                      ^
+--
+--Errors
+--
+SELECT * FROM cypher('cypher_match', $$
+       MATCH p=() RETURN p
+$$) AS (p agtype);
+ERROR:  paths consist of alternating vertices and edges.
+LINE 2:        MATCH p=() RETURN p
+                       ^
+HINT:  paths require at least 2 vertices and 1 edge
 SELECT drop_graph('cypher_match', true);
 NOTICE:  drop cascades to 9 other objects
 DETAIL:  drop cascades to table cypher_match._ag_label_vertex

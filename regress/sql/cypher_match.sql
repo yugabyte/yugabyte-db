@@ -238,6 +238,12 @@ SELECT * FROM cypher('cypher_match', $$MATCH (n:e1)-[]-() RETURN n$$) AS (n agty
 
 SELECT * FROM cypher('cypher_match', $$MATCH (n:vmissing)-[]-() RETURN n$$) AS (n agtype);
 
+--
+--Errors
+--
+SELECT * FROM cypher('cypher_match', $$
+       MATCH p=() RETURN p
+$$) AS (p agtype);
 
 SELECT drop_graph('cypher_match', true);
 

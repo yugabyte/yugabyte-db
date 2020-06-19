@@ -1637,17 +1637,20 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
     /* build argument values to build the object */
     nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
 
-    if (nargs < 0)
-        PG_RETURN_NULL();
+    if (nargs < 3)
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg("paths consist of alternating vertices and edges"),
+             errhint("paths require at least 2 vertices and 1 edge")));
 
     if (nargs % 2 == 0)
     {
         ereport(
             ERROR,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("argument list must have an odd number of elements"),
-             errhint(
-                 "The arguments of _agtype_build_path() must consist of alternating vertices and edges.")));
+             errmsg("paths consist of alternating vertices and edges"),
+             errhint("paths require an odd number of elements")));
     }
 
     memset(&result, 0, sizeof(agtype_in_state));
@@ -1671,9 +1674,8 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
             ereport(
                 ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("argument %d must be an edge", i + 1),
-                 errhint(
-                     "The arguments of _agtype_build_path() must consist of alternating vertices and edges.")));
+                 errmsg("paths consist of alternating vertices and edges"),
+                 errhint("argument %d must be an edge", i + 1)));
         }
         else if (i % 2 == 0 && (types[i] != AGTYPEOID ||
                                 !AGTE_IS_AGTYPE(agt->root.children[0]) ||
@@ -1682,9 +1684,8 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
             ereport(
                 ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("argument %d must be an vertex", i + 1),
-                 errhint(
-                     "The arguments of _agtype_build_path() must consist of alternating vertices and edges.")));
+                errmsg("paths consist of alternating vertices and edges"),
+                 errhint("argument %d must be an vertex", i + 1)));
         }
 
         add_agtype((Datum)agt, false, &result, types[i], false);

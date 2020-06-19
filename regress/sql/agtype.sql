@@ -440,6 +440,15 @@ SELECT _agtype_build_path(
 );
 
 SELECT _agtype_build_path(
+       _agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+       _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+                         $$label$$, agtype_build_map('id', 2)),
+       _agtype_build_vertex('3'::graphid, $$label_name$$, agtype_build_map()),
+       _agtype_build_edge('1'::graphid, '4'::graphid, '5'::graphid,
+                         $$label$$, agtype_build_map('id', 2))
+);
+
+SELECT _agtype_build_path(
 	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
 	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
 			  $$label$$, agtype_build_map('id', 2)),
