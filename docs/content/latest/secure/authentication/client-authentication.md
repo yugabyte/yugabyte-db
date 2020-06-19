@@ -185,7 +185,14 @@ Files included by `@` constructs are read as lists of names, which can be separa
 
 Because the `--pg_hba_conf` records are examined sequentially for each connection attempt, the order of the records is significant. Typically, earlier records will have tight connection match parameters and weaker authentication methods, while later records will have looser match parameters and stronger authentication methods. For example, one might wish to use trust authentication for local TCP/IP connections but require a password for remote TCP/IP connections. In this case a record specifying `trust` authentication for connections from `127.0.0.1` would appear before a record specifying password authentication for a wider range of allowed client IP addresses.
 
-The `--pg_hba_conf` flag is read on start-up and when the main server process receives a SIGHUP signal. If you edit the file on an active system, you will need to restart your `yb-tserver` processes. The change should be applied to all `yb-tserver` servers in a rolling upgrade and restart, making sure that all YB-TServers are not stopped at the same time.
+The `--pg_hba_conf` flag is read on start-up. If you edit the file on an active cluster, you need to restart your `yb-tserver` processes for changes to take effect.
+
+{{< note title="Important" >}}
+
+Changes to `--pg_hba_conf` should be applied to all `yb-tserver` servers in a rolling upgrade and restart, making sure that all YB-TServers are not stopped at the same time.
+
+{{< /note >}}
+
 
 The system view `pg_hba_file_rules` can be helpful for pre-testing changes to the `pg_hba.conf` file, or for diagnosing problems if loading of the file did not have the desired effects. Rows in the view with non-null error fields indicate problems in the corresponding lines of the file.
 
