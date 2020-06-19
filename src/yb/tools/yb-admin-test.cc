@@ -506,8 +506,11 @@ TEST_F(AdminCliTest, TestLeaderStepdown) {
   ASSERT_OK(call_admin({"list_tablet_servers", tablet_id}));
   const auto tserver_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+FOLLOWER)"));
   ASSERT_OK(call_admin({"leader_stepdown", tablet_id, tserver_id}));
-  ASSERT_OK(call_admin({"list_tablet_servers", tablet_id}));
-  ASSERT_EQ(tserver_id, ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+LEADER)")));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(call_admin({"list_tablet_servers", tablet_id}));
+    return tserver_id == VERIFY_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+LEADER)"));
+  }, 5s, "Leader stepdown"));
 }
 
 TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
