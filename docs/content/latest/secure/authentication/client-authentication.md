@@ -129,17 +129,17 @@ Specifies the client machine addresses that this record matches. This field can 
 
 An IP address range is specified using standard numeric notation for the range's starting address, then a slash (/) and a CIDR mask length. The mask length indicates the number of high-order bits of the client IP address that must match. Bits to the right of this should be zero in the given IP address. There must not be any white space between the IP address, the `/`, and the CIDR mask length.
 
-Typical examples of an IPv4 address range specified this way are `172.20.143.89/32` for a single host, or `172.20.143.0/24` for a small network, or `10.6.0.0/16` for a larger one. An IPv6 address range might look like `::1/128` for a single host (in this case the IPv6 loopback address) or `fe80::7a31:c1ff:0000:0000/96` for a small network. `0.0.0.0/0` represents all IPv4 addresses, and `::0/0` represents all IPv6 addresses. To specify a single host, use a mask length of 32 for IPv4 or 128 for IPv6. In a network address, do not omit trailing zeroes.
+Typical examples of an IPv4 address range specified this way are `172.20.143.89/32` for a single host, or `172.20.143.0/24` for a small network, or `10.6.0.0/16` for a larger one. An IPv6 address range might look like `::1/128` for a single host (in this case, the IPv6 loopback address) or `fe80::7a31:c1ff:0000:0000/96` for a small network. `0.0.0.0/0` represents all IPv4 addresses, and `::0/0` represents all IPv6 addresses. To specify a single host, use a mask length of 32 for IPv4 or 128 for IPv6. In a network address, do not omit trailing zeroes.
 
 An entry given in IPv4 format will match only IPv4 connections, and an entry given in IPv6 format will match only IPv6 connections, even if the represented address is in the IPv4-in-IPv6 range. Note that entries in IPv6 format will be rejected if the system's C library does not have support for IPv6 addresses.
 
 You can also write `all` to match any IP address, `samehost` to match any of the server's own IP addresses, or `samenet` to match any address in any subnet that the server is directly connected to.
 
-If a host name is specified (anything that is not an IP address range or a special key word is treated as a host name), that name is compared with the result of a reverse name resolution of the client's IP address (e.g., reverse DNS lookup, if DNS is used). Host name comparisons are case insensitive. If there is a match, then a forward name resolution (e.g., forward DNS lookup) is performed on the host name to check whether any of the addresses it resolves to are equal to the client's IP address. If both directions match, then the entry is considered to match. (The host name that is specified in the `--pg_hba_conf` flag should be the one that address-to-name resolution of the client's IP address returns, otherwise the line won't be matched. Some host name databases allow associating an IP address with multiple host names, but the operating system will only return one host name when asked to resolve an IP address.)
+If a host name is specified (anything that is not an IP address range or a special key word is treated as a host name), that name is compared with the result of a reverse name resolution of the client's IP address (e.g., reverse DNS lookup, if DNS is used). Host name comparisons are case-insensitive. If there is a match, then a forward name resolution (e.g., forward DNS lookup) is performed on the host name to check whether any of the addresses it resolves to are equal to the client's IP address. If both directions match, then the entry is considered to match. (The host name specified in the `--pg_hba_conf` flag should be the one that address-to-name resolution of the client's IP address returns, otherwise the line won't be matched. Some host name databases allow associating an IP address with multiple host names, but the operating system will only return one host name when asked to resolve an IP address.)
 
 A host name specification that starts with a dot (`.`) matches a suffix of the actual host name. So `.example.com` would match `foo.example.com` (but not just `example.com`).
 
-When host names are specified using the `--pg_hba_conf` flag, you should make sure that name resolution is reasonably fast. It can be of advantage to set up a local name resolution cache such as `nscd`. Also, you may wish to enable the configuration parameter `log_hostname` to see the client's host name instead of the IP address in the log.
+When host names are specified using the `--pg_hba_conf` flag, you should make sure that name resolution is reasonably fast. It can be advantageous to set up a local name resolution cache, such as `nscd`. Also, you may want to enable the configuration parameter `log_hostname` to see the client's host name instead of the IP address in the log.
 
 This field only applies to `host`, `hostssl`, and `hostnossl` records.
 
@@ -149,7 +149,7 @@ These two fields can be used as an alternative to the **IP-address/mask-length**
 
 Applies to `host`, `hostssl`, and `hostnossl` records.
 
-When there is only one host, the netmask is `255.255.255.255`, representing a single IP address. For more information, see [Netmask Quick Reference](http://www.unixwiz.net/techtips/netmask-ref.html).
+When there is only one host, the netmask is `255.255.255.255`, representing a single IP address. For details, see [Netmask Quick Reference](http://www.unixwiz.net/techtips/netmask-ref.html).
 
 #### *auth-method*
 
@@ -183,7 +183,7 @@ In addition to the method-specific options listed below, there is one method-ind
 
 Files included by `@` constructs are read as lists of names, which can be separated by either whitespace or commas. Comments are introduced by `#`, just as in the `--pg_hba_conf` flag, and nested `@` constructs are allowed. Unless the file name following `@` is an absolute path, it is taken to be relative to the directory containing the referencing file.
 
-Because the `--pg_hba_conf` records are examined sequentially for each connection attempt, the order of the records is significant. Typically, earlier records will have tight connection match parameters and weaker authentication methods, while later records will have looser match parameters and stronger authentication methods. For example, one might wish to use trust authentication for local TCP/IP connections but require a password for remote TCP/IP connections. In this case a record specifying `trust` authentication for connections from `127.0.0.1` would appear before a record specifying password authentication for a wider range of allowed client IP addresses.
+Because the `--pg_hba_conf` records are examined sequentially for each connection attempt, the order of the records is significant. Typically, earlier records will have tight connection match parameters and weaker authentication methods, while later records will have looser match parameters and stronger authentication methods. For example, you might want to use trust authentication for local TCP/IP connections, but require a password for remote TCP/IP connections. In this case, a record specifying `trust` authentication for connections from `127.0.0.1` would appear before a record specifying password authentication for a wider range of allowed client IP addresses.
 
 The `--pg_hba_conf` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your `yb-tserver` processes for changes to take effect.
 
@@ -197,7 +197,7 @@ The system view `pg_hba_file_rules` can be helpful for pre-testing changes to th
 
 {{< note title="Tip" >}}
 
-To connect to a particular database, a user must not only pass the `--pg_hba_conf` checks, but must have the `CONNECT` privilege for the database. If you wish to restrict which users can connect to which databases, it's usually easier to control this by granting or revoking `CONNECT` privilege than to put the rules in `pg_hba_conf` entries.
+To connect to a particular database, a user must not only pass the `--pg_hba_conf` checks, but must have the `CONNECT` privilege for the database. If you want to restrict which users can connect to which databases, it's usually easier to control this by granting or revoking `CONNECT` privilege than to put the rules in `pg_hba_conf` entries.
 
 {{< /note >}}
 
