@@ -189,7 +189,7 @@ The `-ysql_hba_conf` flag is read on start-up of your cluster. If you edit the f
 
 {{< note title="Important" >}}
 
-Changes to `--pg_hba_conf` should be applied to all `yb-tserver` servers in a rolling upgrade and restart, making sure that all YB-TServers are not stopped at the same time.
+Changes to `--ysql_hba_conf` should be applied to all `yb-tserver` servers in a rolling upgrade and restart, making sure that all YB-TServers are not stopped at the same time.
 
 {{< /note >}}
 
