@@ -150,7 +150,7 @@ statefulset.apps/yw-test-yugaware   1/1     5m52s
 To upgrade your installed Yugabyte Platform, run the following `helm upgrade` command.
 
 ```sh
-$ helm upgrade yw-test yugabytedb/yugaware --version 2.1.8 --set image.tag=2.1.8.2-b?? -n yw-test
+$ helm upgrade yw-test yugabytedb/yugaware --version 2.1.8 --set image.tag=2.1.8.2-b1 -n yw-test
 ```
 
 ```

@@ -14,7 +14,7 @@ menu:
     weight: 2589 
 ---
 
-**Released:** June ??, 2020 (2.1.8.2-b??).
+**Released:** June 19, 2020 (2.1.8.2-b2).
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
@@ -40,7 +40,7 @@ menu:
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.1.8.2-b??
+docker pull yugabytedb/yugabyte:2.1.8.2-b1
 ```
 
 ## YSQL
