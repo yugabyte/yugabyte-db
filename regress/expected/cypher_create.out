@@ -155,6 +155,98 @@ SELECT * FROM cypher_create.v;
  844424930131988 | {"id": "paths, vertex four"}
 (20 rows)
 
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (:n_var {name: 'Node A'})
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (:n_var {name: 'Node B'})
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (:n_var {name: 'Node C'})
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var), (b:n_var)
+	WHERE a.name <> b.name
+	CREATE (a)-[:e_var {name: a.name + ' -> ' + b.name}]->(b)
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	CREATE (a)-[:e_var {name: a.name + ' -> ' + a.name}]->(a)
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	CREATE (a)-[:e_var {name: a.name + ' -> new node'}]->(:n_other_node)
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	WHERE a.name = 'Node Z'
+	CREATE (a)-[:e_var {name: a.name + ' -> doesn''t exist'}]->(:n_other_node)
+$$) as (a agtype);
+ERROR:  syntax error at or near "'t exist'"
+LINE 4:  CREATE (a)-[:e_var {name: a.name + ' -> doesn''t exist'}]->...
+                                                       ^
+SELECT * FROM cypher_create.n_var;
+        id        |     properties     
+------------------+--------------------
+ 1407374883553281 | {"name": "Node A"}
+ 1407374883553282 | {"name": "Node B"}
+ 1407374883553283 | {"name": "Node C"}
+(3 rows)
+
+SELECT * FROM cypher_create.e_var;
+        id        |     start_id     |      end_id      |           properties           
+------------------+------------------+------------------+--------------------------------
+ 1688849860263937 | 1407374883553281 | 1407374883553282 | {"name": "Node A -> Node B"}
+ 1688849860263938 | 1407374883553281 | 1407374883553283 | {"name": "Node A -> Node C"}
+ 1688849860263939 | 1407374883553282 | 1407374883553281 | {"name": "Node B -> Node A"}
+ 1688849860263940 | 1407374883553282 | 1407374883553283 | {"name": "Node B -> Node C"}
+ 1688849860263941 | 1407374883553283 | 1407374883553281 | {"name": "Node C -> Node A"}
+ 1688849860263942 | 1407374883553283 | 1407374883553282 | {"name": "Node C -> Node B"}
+ 1688849860263943 | 1407374883553281 | 1407374883553281 | {"name": "Node A -> Node A"}
+ 1688849860263944 | 1407374883553282 | 1407374883553282 | {"name": "Node B -> Node B"}
+ 1688849860263945 | 1407374883553283 | 1407374883553283 | {"name": "Node C -> Node C"}
+ 1688849860263946 | 1407374883553281 | 1970324836974593 | {"name": "Node A -> new node"}
+ 1688849860263947 | 1407374883553282 | 1970324836974594 | {"name": "Node B -> new node"}
+ 1688849860263948 | 1407374883553283 | 1970324836974595 | {"name": "Node C -> new node"}
+(12 rows)
+
+--Check every label has been created
+SELECT * FROM ag_label;
+       name       | graph | id | kind |            relation            
+------------------+-------+----+------+--------------------------------
+ _ag_label_vertex | 17003 |  1 | v    | cypher_create._ag_label_vertex
+ _ag_label_edge   | 17003 |  2 | e    | cypher_create._ag_label_edge
+ v                | 17003 |  3 | v    | cypher_create.v
+ e                | 17003 |  4 | e    | cypher_create.e
+ n_var            | 17003 |  5 | v    | cypher_create.n_var
+ e_var            | 17003 |  6 | e    | cypher_create.e_var
+ n_other_node     | 17003 |  7 | v    | cypher_create.n_other_node
+(7 rows)
+
 --Validate every vertex has the correct label
 SELECT * FROM cypher('cypher_create', $$MATCH (n) RETURN n$$) AS (n agtype);
                                                 n                                                
@@ -180,8 +272,43 @@ SELECT * FROM cypher('cypher_create', $$MATCH (n) RETURN n$$) AS (n agtype);
  {"id": 844424930131986, "label": "v", "properties": {"id": "paths, vertex two"}}::vertex
  {"id": 844424930131987, "label": "v", "properties": {"id": "paths, vertex three"}}::vertex
  {"id": 844424930131988, "label": "v", "properties": {"id": "paths, vertex four"}}::vertex
-(21 rows)
+ {"id": 1407374883553281, "label": "n_var", "properties": {"name": "Node A"}}::vertex
+ {"id": 1407374883553282, "label": "n_var", "properties": {"name": "Node B"}}::vertex
+ {"id": 1407374883553283, "label": "n_var", "properties": {"name": "Node C"}}::vertex
+ {"id": 1970324836974593, "label": "n_other_node", "properties": {}}::vertex
+ {"id": 1970324836974594, "label": "n_other_node", "properties": {}}::vertex
+ {"id": 1970324836974595, "label": "n_other_node", "properties": {}}::vertex
+(27 rows)
 
+--
+-- Errors
+--
+-- Var 'a' cannot have properties in the create clause
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	WHERE a.name = 'Node A'
+	CREATE (a {test:1})-[:e_var]->()
+$$) as (a agtype);
+ERROR:  previously declared nodes in a create clause cannot have properties
+LINE 1: SELECT * FROM cypher('cypher_create', $$
+                                               ^
+-- Var 'a' cannot change labels
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	WHERE a.name = 'Node A'
+	CREATE (a:new_label)-[:e_var]->()
+$$) as (a agtype);
+ERROR:  previously declared variables cannot have a label
+LINE 1: SELECT * FROM cypher('cypher_create', $$
+                                               ^
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	WHERE a.name = 'Node A'
+	CREATE (a)-[b:e_var]->()
+$$) as (a agtype);
+ERROR:  edge cannot be declared as a variable in CREATE clause
+LINE 1: SELECT * FROM cypher('cypher_create', $$
+                                               ^
 -- column definition list for CREATE clause must contain a single agtype
 -- attribute
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a int);
@@ -196,11 +323,14 @@ LINE 1: SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a a...
 HINT:  ... cypher($$ ... CREATE ... $$) AS t(c agtype) ...
 -- intial and last vertex point to the middle vertex
 SELECT drop_graph('cypher_create', true);
-NOTICE:  drop cascades to 4 other objects
+NOTICE:  drop cascades to 7 other objects
 DETAIL:  drop cascades to table cypher_create._ag_label_vertex
 drop cascades to table cypher_create._ag_label_edge
 drop cascades to table cypher_create.v
 drop cascades to table cypher_create.e
+drop cascades to table cypher_create.n_var
+drop cascades to table cypher_create.e_var
+drop cascades to table cypher_create.n_other_node
 NOTICE:  graph "cypher_create" has been dropped
  drop_graph 
 ------------

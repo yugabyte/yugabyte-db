@@ -47,7 +47,7 @@ Plan *plan_cypher_create_path(PlannerInfo *root, RelOptInfo *rel,
 
     cs->scan.plan.plan_node_id = 0; // Set later in set_plan_refs
     cs->scan.plan.targetlist = tlist;
-    cs->scan.plan.qual = NIL; // XXX: clauses?
+    cs->scan.plan.qual = NIL;
     cs->scan.plan.lefttree = NULL;
     cs->scan.plan.righttree = NULL;
     cs->scan.plan.initPlan = NIL;
@@ -62,7 +62,7 @@ Plan *plan_cypher_create_path(PlannerInfo *root, RelOptInfo *rel,
     cs->custom_plans = custom_plans;
     cs->custom_exprs = NIL;
     cs->custom_private = best_path->custom_private;
-    cs->custom_scan_tlist = tlist; // XXX: optional?
+    cs->custom_scan_tlist = tlist;
     cs->custom_relids = NULL;
     cs->methods = &cypher_create_plan_methods;
 

@@ -56,7 +56,7 @@ CustomPath *create_cypher_create_path(PlannerInfo *root, RelOptInfo *rel,
     // Disable all custom flags for now
     cp->flags = 0;
 
-    cp->custom_paths = NIL; // Basic CREATE does not have children
+    cp->custom_paths = rel->pathlist;
     cp->custom_private = custom_private;
     cp->methods = &cypher_create_path_methods;
 

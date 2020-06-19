@@ -27,6 +27,7 @@ typedef struct cypher_clause cypher_clause;
 
 struct cypher_clause
 {
+    cypher_clause *next; //next clause
     Node *self;
     cypher_clause *prev; // previous clause
 };

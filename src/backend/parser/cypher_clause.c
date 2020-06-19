@@ -160,16 +160,36 @@ static TargetEntry *findTarget(List *targetList, char *resname);
 static Query *transform_cypher_create(cypher_parsestate *cpstate,
                                       cypher_clause *clause);
 static List *transform_cypher_create_pattern(cypher_parsestate *cpstate,
-                                             List *pattern);
+                                             Query *query, List *pattern);
 static List *transform_cypher_create_path(cypher_parsestate *cpstate,
-                                          cypher_path *cp);
+                                          List **target_list, cypher_path *cp);
 static cypher_target_node *
-transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node);
+transform_create_cypher_node(cypher_parsestate *cpstate, List **target_list,
+                             cypher_node *node);
 static cypher_target_node *
-transform_create_cypher_edge(cypher_parsestate *cpstate,
+transform_create_cypher_new_node(cypher_parsestate *cpstate,
+                                 List **target_list, cypher_node *node);
+static cypher_target_node *transform_create_cypher_existing_node(
+    cypher_parsestate *cpstate, List **target_list, transform_entity *entity,
+    cypher_node *node);
+static cypher_target_node *
+transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
                              cypher_relationship *edge);
-
+static Expr *cypher_create_id_access_function(cypher_parsestate *cpstate,
+                                              RangeTblEntry *rte,
+                                              enum transform_entity_type type,
+                                              char *name);
+static Node *cypher_create_id_default(cypher_parsestate *cpstate,
+                                      Relation label_relation,
+                                      enum transform_entity_type type);
+static Expr *cypher_create_properties(cypher_parsestate *cpstate,
+                                      cypher_target_node *rel,
+                                      Relation label_relation, Node *props,
+                                      enum transform_entity_type type);
+static Expr *add_volatile_wrapper(Expr *node);
+static RangeTblEntry *find_prev_cypher_clause(cypher_parsestate *cpstate);
 // transform
+#define PREV_CYPHER_CLAUSE_ALIAS "_"
 #define transform_prev_cypher_clause(cpstate, prev_clause) \
     transform_cypher_clause_as_subquery(cpstate, transform_cypher_clause, \
                                         prev_clause)
@@ -1447,6 +1467,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
 {
     ParseState *pstate = (ParseState *)cpstate;
     cypher_create *self = (cypher_create *)clause->self;
+    cypher_create_target_nodes *target_nodes;
     Const *pattern_const;
     Const *null_const;
     List *transformed_pattern;
@@ -1455,9 +1476,25 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
     Query *query;
     TargetEntry *tle;
 
+    target_nodes = palloc(sizeof(cypher_create_target_nodes));
+    target_nodes->flags = CYPHER_CREATE_CLAUSE_FLAG_NONE;
+
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
     query->targetList = NIL;
+
+    if (clause->prev)
+    {
+        RangeTblEntry *rte;
+        int rtindex;
+
+        rte = transform_prev_cypher_clause(cpstate, clause->prev);
+        rtindex = list_length(pstate->p_rtable);
+        Assert(rtindex == 1); // rte is the first RangeTblEntry in pstate
+        query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
+
+        target_nodes->flags |= CYPHER_CREATE_CLAUSE_FLAG_PREVIOUS_CLAUSE;
+    }
 
     func_create_oid = get_ag_func_oid("_cypher_create_clause", 1, INTERNALOID);
 
@@ -1471,11 +1508,22 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
      * because we would not be able to control how our pointer to the
      * internal type is copied.
      */
-    transformed_pattern = transform_cypher_create_pattern(cpstate,
+    transformed_pattern = transform_cypher_create_pattern(cpstate, query,
                                                           self->pattern);
+
+    target_nodes->target_nodes = transformed_pattern;
+    if (!clause->next)
+    {
+        target_nodes->flags |= CYPHER_CREATE_CLAUSE_FLAG_TERMINAL;
+    }
+    else
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("CREATE clause must be at the end of cypher statements")));
+
     pattern_const = makeConst(INTERNALOID, -1, InvalidOid, 1,
-                              PointerGetDatum(transformed_pattern), false,
-                              true);
+                              PointerGetDatum(target_nodes), false, true);
 
     /*
      * Create the FuncExpr Node.
@@ -1499,7 +1547,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
 }
 
 static List *transform_cypher_create_pattern(cypher_parsestate *cpstate,
-                                             List *pattern)
+                                             Query *query, List *pattern)
 {
     ListCell *lc;
     List *transformed_pattern = NIL;
@@ -1508,7 +1556,8 @@ static List *transform_cypher_create_pattern(cypher_parsestate *cpstate,
     {
         List *transformed_path;
 
-        transformed_path = transform_cypher_create_path(cpstate, lfirst(lc));
+        transformed_path = transform_cypher_create_path(
+            cpstate, &query->targetList, lfirst(lc));
 
         transformed_pattern = lappend(transformed_pattern, transformed_path);
     }
@@ -1517,6 +1566,7 @@ static List *transform_cypher_create_pattern(cypher_parsestate *cpstate,
 }
 
 static List *transform_cypher_create_path(cypher_parsestate *cpstate,
+                                          List **target_list,
                                           cypher_path *path)
 {
     ListCell *lc;
@@ -1528,8 +1578,8 @@ static List *transform_cypher_create_path(cypher_parsestate *cpstate,
         {
             cypher_node *node = lfirst(lc);
 
-            cypher_target_node *rel = transform_create_cypher_node(cpstate,
-                                                                   node);
+            cypher_target_node *rel = transform_create_cypher_node(
+                cpstate, target_list,node);
 
             transformed_path = lappend(transformed_path, rel);
         }
@@ -1537,8 +1587,8 @@ static List *transform_cypher_create_path(cypher_parsestate *cpstate,
         {
             cypher_relationship *edge = lfirst(lc);
 
-            cypher_target_node *rel = transform_create_cypher_edge(cpstate,
-                                                                   edge);
+            cypher_target_node *rel = transform_create_cypher_edge(
+                cpstate, target_list, edge);
 
             transformed_path = lappend(transformed_path, rel);
         }
@@ -1553,18 +1603,32 @@ static List *transform_cypher_create_path(cypher_parsestate *cpstate,
 }
 
 static cypher_target_node *
-transform_create_cypher_edge(cypher_parsestate *cpstate,
+transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
                              cypher_relationship *edge)
 {
+    ParseState *pstate = (ParseState *)cpstate;
     cypher_target_node *rel = palloc(sizeof(cypher_target_node));
     List *targetList = NIL;
-    Expr *id, *properties;
+    Expr *id, *props;
     Relation label_relation;
     RangeVar *rv;
     RangeTblEntry *rte;
     TargetEntry *te;
+    char *alias;
+    int resno;
 
     rel->type = LABEL_KIND_EDGE;
+    rel->flags = CYPHER_TARGET_NODE_FLAG_INSERT;
+
+    /*
+     *  XXX: Edges can't support previously decared variables and create clause
+     * doesn't support clauses after it yet.
+     */
+    if (edge->name)
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("edge cannot be declared as a variable in CREATE clause")));
+
 
     if (edge->dir == CYPHER_REL_DIR_NONE)
         ereport(ERROR,
@@ -1613,18 +1677,19 @@ transform_create_cypher_edge(cypher_parsestate *cpstate,
     te = makeTargetEntry(id, InvalidAttrNumber, "id", false);
     targetList = lappend(targetList, te);
 
-    // Build properties expression, if no map is given, use the default logic
-    if (edge->props)
-        properties = (Expr *)transform_cypher_expr(cpstate, edge->props,
-                                                   EXPR_KIND_INSERT_TARGET);
-    else
-        properties = (Expr *)build_column_default(
-            label_relation, Anum_ag_label_edge_table_properties);
-
-    te = makeTargetEntry(properties, InvalidAttrNumber, "properties", false);
-
-    targetList = lappend(targetList, te);
     rel->targetList = targetList;
+
+    // Build properties expression, if no map is given, use the default logic
+    alias = get_next_default_alias(cpstate);
+    resno = pstate->p_next_resno++;
+
+    props = cypher_create_properties(cpstate, rel, label_relation, edge->props,
+                                     ENT_EDGE);
+
+    rel->prop_var_no = resno - 1;
+    te = makeTargetEntry(props, resno, alias, false);
+
+    *target_list = lappend(*target_list, te);
 
     // Keep the lock
     heap_close(label_relation, NoLock);
@@ -1634,21 +1699,144 @@ transform_create_cypher_edge(cypher_parsestate *cpstate,
     return rel;
 }
 
+// transform nodes, check to see if the variable name already exists.
 static cypher_target_node *
-transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
+transform_create_cypher_node(cypher_parsestate *cpstate, List **target_list,
+                             cypher_node *node)
 {
+    ParseState *pstate = (ParseState *)cpstate;
+
+    /*
+     *  Check if the variable already exists, if so find the entity and
+     *  setup the target node
+    */
+    if (node->name)
+    {
+        Node *id;
+        RangeTblEntry *rte;
+
+        rte = find_prev_cypher_clause(cpstate);
+        if (rte)
+        {
+            id = scanRTEForColumn(pstate, rte, node->name, -1, 0, NULL);
+
+            if (id)
+            {
+                transform_entity *entity;
+
+                entity = find_variable(cpstate, node->name);
+
+                return transform_create_cypher_existing_node(
+                    cpstate, target_list, entity, node);
+            }
+        }
+    }
+
+    // otherwise transform the target node as a new node
+    return transform_create_cypher_new_node(cpstate, target_list, node);
+}
+
+static Expr *cypher_create_id_access_function(cypher_parsestate *cpstate,
+                                              RangeTblEntry *rte,
+                                              enum transform_entity_type type,
+                                              char *name)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    Node *col;
+    Oid func_oid;
+    FuncExpr *func_expr;
+
+    col = scanRTEForColumn(pstate, rte, name, -1, 0, NULL);
+
+    func_oid = get_ag_func_oid("id", 1, AGTYPEOID);
+
+    func_expr = makeFuncExpr(func_oid, AGTYPEOID, list_make1(col), InvalidOid,
+                             InvalidOid, COERCE_EXPLICIT_CALL);
+
+    return add_volatile_wrapper((Expr *)func_expr);
+}
+
+/*
+ * Transform logic for a previously declared variable in a CREATE clause.
+ * All we need from the variable node is its id. Add an access to the
+ * id and mark where in the target list we can find the id value.
+ */
+static cypher_target_node *transform_create_cypher_existing_node(
+    cypher_parsestate *cpstate, List **target_list, transform_entity *entity,
+    cypher_node *node)
+{
+    ParseState *pstate = (ParseState *)cpstate;
     cypher_target_node *rel = palloc(sizeof(cypher_target_node));
-    List *targetList = NIL;
-    Expr *id, *properties;
+    char *alias = get_next_default_alias(cpstate);
+    int resno = pstate->p_next_resno++;
+    RangeTblEntry *rte = find_prev_cypher_clause(cpstate);
+    TargetEntry *te;
+    Expr *result;
+
+    rel->type = LABEL_KIND_VERTEX;
+    rel->flags = CYPHER_TARGET_NODE_FLAG_NONE;
+
+    if (entity->type != ENT_VERTEX)
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("variable %s already exists", node->name),
+                        parser_errposition(pstate, node->location)));
+
+    if (node->props)
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg(
+                 "previously declared nodes in a create clause cannot have properties")));
+
+    if (node->label)
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("previously declared variables cannot have a label")));
+
+    rel->relid = -1;
+
+    // id
+    result = cypher_create_id_access_function(cpstate, rte, ENT_VERTEX,
+                                              node->name);
+
+    rel->id_var_no = resno - 1;
+    te = makeTargetEntry(result, resno, alias, false);
+
+    rel->expr_states = NIL;
+
+    *target_list = lappend(*target_list, te);
+
+    return rel;
+}
+
+/*
+ * Transform logic for a node in a create clause that was not previously
+ * declared.
+ */
+static cypher_target_node *
+transform_create_cypher_new_node(cypher_parsestate *cpstate,
+                                 List **target_list, cypher_node *node)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    cypher_target_node *rel = palloc(sizeof(cypher_target_node));
+    Node *id;
     Relation label_relation;
     RangeVar *rv;
     RangeTblEntry *rte;
     TargetEntry *te;
+    Expr *props;
+    char *alias;
+    int resno;
 
     rel->type = LABEL_KIND_VERTEX;
 
     if (!node->label)
         node->label = AG_DEFAULT_LABEL_VERTEX;
+
+    if (node->name)
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("variable %s has not been declared", node->name)));
 
     // create the label entry if it does not exist
     if (!label_exists(node->label, cpstate->graph_oid))
@@ -1665,7 +1853,8 @@ transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
                      parent);
     }
 
-    // lock the relation of the label
+    rel->flags = CYPHER_TARGET_NODE_FLAG_INSERT;
+
     rv = makeRangeVar(cpstate->graph_name, node->label, -1);
     label_relation = parserOpenTable(&cpstate->pstate, rv, RowExclusiveLock);
 
@@ -1676,32 +1865,91 @@ transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
                                         NULL, false, false);
     rte->requiredPerms = ACL_INSERT;
 
-    // Build Id expression, always use the default logic
-    id = (Expr *)build_column_default(label_relation,
-                                      Anum_ag_label_vertex_table_id);
+    // id
+    id = cypher_create_id_default(cpstate, label_relation, ENT_VERTEX);
 
-    te = makeTargetEntry(id, InvalidAttrNumber, "id", false);
-    targetList = lappend(targetList, te);
+    te = makeTargetEntry((Expr *)id, InvalidAttrNumber, "id", false);
+    rel->targetList = list_make1(te);
+    rel->id_var_no = -1;
 
-    // Build properties expression, if no map is given, use the default logic
-    if (node->props)
-        properties = (Expr *)transform_cypher_expr(cpstate, node->props,
-                                                   EXPR_KIND_INSERT_TARGET);
-    else
-        properties = (Expr *)build_column_default(
-            label_relation, Anum_ag_label_vertex_table_properties);
+    // properties
+    alias = get_next_default_alias(cpstate);
+    resno = pstate->p_next_resno++;
 
-    te = makeTargetEntry(properties, InvalidAttrNumber, "properties", false);
+    props = cypher_create_properties(cpstate, rel, label_relation, node->props,
+                                     ENT_VERTEX);
 
-    targetList = lappend(targetList, te);
-    rel->targetList = targetList;
+    rel->prop_var_no = resno - 1;
+    te = makeTargetEntry(props, resno, alias, false);
+    *target_list = lappend(*target_list, te);
 
-    // Keep the lock
     heap_close(label_relation, NoLock);
 
     rel->expr_states = NIL;
 
     return rel;
+}
+
+/*
+ * Build the target list for an entity that is not a previously declared
+ * variable.
+ */
+static Expr *cypher_create_properties(cypher_parsestate *cpstate,
+                                      cypher_target_node *rel,
+                                      Relation label_relation, Node *props,
+                                      enum transform_entity_type type)
+{
+    Expr *properties;
+
+    if (type != ENT_VERTEX && type != ENT_EDGE)
+        ereport(ERROR, (errmsg_internal("unreconized entity type")));
+
+    if (props)
+        properties = (Expr *)transform_cypher_expr(cpstate, props,
+                                                   EXPR_KIND_INSERT_TARGET);
+    else if (type == ENT_VERTEX)
+        properties = (Expr *)build_column_default(
+            label_relation, Anum_ag_label_vertex_table_properties);
+    else if (type == ENT_EDGE)
+        properties = (Expr *)build_column_default(
+            label_relation, Anum_ag_label_edge_table_properties);
+
+    // add a volatile wrapper call to prevent the optimizer from removing
+    return (Expr *)add_volatile_wrapper(properties);
+}
+
+static Node *cypher_create_id_default(cypher_parsestate *cpstate,
+                                      Relation label_relation,
+                                      enum transform_entity_type type)
+{
+    Node *id = NULL;
+
+    if (type == ENT_VERTEX)
+        id = build_column_default(label_relation,
+                                  Anum_ag_label_vertex_table_id);
+    else if (type == ENT_EDGE)
+        id = build_column_default(label_relation, Anum_ag_label_edge_table_id);
+    else
+        ereport(ERROR, (errmsg_internal("unreconized entity type")));
+
+    return id;
+}
+
+static RangeTblEntry *find_prev_cypher_clause(cypher_parsestate *cpstate)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    ListCell *lc;
+
+    foreach (lc, pstate->p_rtable)
+    {
+        RangeTblEntry *rte = (RangeTblEntry *)lfirst(lc);
+        Alias *alias = rte->alias;
+
+        if (!strcmp(alias->aliasname, PREV_CYPHER_CLAUSE_ALIAS))
+            return rte;
+    }
+
+    return NULL;
 }
 
 /*
@@ -1717,6 +1965,7 @@ transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
     const bool lateral = false;
     Query *query;
     RangeTblEntry *rte;
+    Alias *alias;
 
     Assert(pstate->p_expr_kind == EXPR_KIND_NONE);
     pstate->p_expr_kind = EXPR_KIND_FROM_SUBSELECT;
@@ -1728,8 +1977,9 @@ transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
     pstate->p_lateral_active = false;
     pstate->p_expr_kind = EXPR_KIND_NONE;
 
-    rte = addRangeTableEntryForSubquery(pstate, query, makeAlias("_", NIL),
-                                        lateral, true);
+    alias = makeAlias(PREV_CYPHER_CLAUSE_ALIAS, NIL);
+
+    rte = addRangeTableEntryForSubquery(pstate, query, alias, lateral, true);
 
     /*
      * NOTE: skip namespace conflicts check since rte will be the only
@@ -1782,4 +2032,18 @@ static TargetEntry *findTarget(List *targetList, char *resname)
     }
 
     return NULL;
+}
+
+/*
+ * Wrap the expression with a volatile function, to prevent the optimer from
+ * elimating the expression.
+ */
+static Expr *add_volatile_wrapper(Expr *node)
+{
+    Oid oid;
+
+    oid = get_ag_func_oid("agtype_volatile_wrapper", 1, AGTYPEOID);
+
+    return (Expr *)makeFuncExpr(oid, AGTYPEOID, list_make1(node), InvalidOid,
+                                InvalidOid, COERCE_EXPLICIT_CALL);
 }

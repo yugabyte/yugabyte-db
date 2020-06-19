@@ -430,9 +430,12 @@ static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
         cypher_clause *next;
 
         next = palloc(sizeof(*next));
+        next->next = NULL;
         next->self = lfirst(lc);
         next->prev = clause;
 
+        if (clause != NULL)
+            clause->next = next;
         clause = next;
     }
 

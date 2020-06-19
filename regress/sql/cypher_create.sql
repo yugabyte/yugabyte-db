@@ -74,8 +74,72 @@ SELECT * FROM cypher_create.e;
 
 SELECT * FROM cypher_create.v;
 
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (:n_var {name: 'Node A'})
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (:n_var {name: 'Node B'})
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (:n_var {name: 'Node C'})
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var), (b:n_var)
+	WHERE a.name <> b.name
+	CREATE (a)-[:e_var {name: a.name + ' -> ' + b.name}]->(b)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	CREATE (a)-[:e_var {name: a.name + ' -> ' + a.name}]->(a)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	CREATE (a)-[:e_var {name: a.name + ' -> new node'}]->(:n_other_node)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	WHERE a.name = 'Node Z'
+	CREATE (a)-[:e_var {name: a.name + ' -> doesn''t exist'}]->(:n_other_node)
+$$) as (a agtype);
+
+SELECT * FROM cypher_create.n_var;
+SELECT * FROM cypher_create.e_var;
+
+--Check every label has been created
+SELECT * FROM ag_label;
+
 --Validate every vertex has the correct label
 SELECT * FROM cypher('cypher_create', $$MATCH (n) RETURN n$$) AS (n agtype);
+
+--
+-- Errors
+--
+-- Var 'a' cannot have properties in the create clause
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	WHERE a.name = 'Node A'
+	CREATE (a {test:1})-[:e_var]->()
+$$) as (a agtype);
+
+-- Var 'a' cannot change labels
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	WHERE a.name = 'Node A'
+	CREATE (a:new_label)-[:e_var]->()
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	WHERE a.name = 'Node A'
+	CREATE (a)-[b:e_var]->()
+$$) as (a agtype);
+
 
 -- column definition list for CREATE clause must contain a single agtype
 -- attribute

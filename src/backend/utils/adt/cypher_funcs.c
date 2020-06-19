@@ -36,8 +36,5 @@ PG_FUNCTION_INFO_V1(_cypher_create_clause);
 
 Datum _cypher_create_clause(PG_FUNCTION_ARGS)
 {
-    ereport(ERROR,
-            (errmsg_internal("unhandled _cypher_create_clause(internal) function call")));
-
     PG_RETURN_NULL();
 }

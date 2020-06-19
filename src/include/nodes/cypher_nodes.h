@@ -180,16 +180,42 @@ typedef struct cypher_string_match
     int location;
 } cypher_string_match;
 
-typedef struct cypher_target_node
+typedef struct cypher_create_target_nodes
 {
-    char type;
-    ResultRelInfo *resultRelInfo;
-    TupleTableSlot *elemTupleSlot;
-    Oid relid;
-    List *targetList;
-    List *expr_states;
-    cypher_rel_dir dir;
+    List *target_nodes;
+    uint32 flags;
+} cypher_create_target_nodes;
+
+#define CYPHER_CREATE_CLAUSE_FLAG_NONE 0x0000
+#define CYPHER_CREATE_CLAUSE_FLAG_TERMINAL 0x0001
+#define CYPHER_CREATE_CLAUSE_FLAG_PREVIOUS_CLAUSE 0x0002
+
+#define CYPHER_CREATE_CLAUSE_IS_TERMINAL(flags) \
+    (flags & CYPHER_CREATE_CLAUSE_FLAG_TERMINAL)
+
+#define CYPHER_CREATE_CLAUSE_HAS_PREVIOUS_CLAUSE(flags) \
+    (flags & CYPHER_CREATE_CLAUSE_FLAG_PREVIOUS_CLAUSE)
+
+ typedef struct cypher_target_node
+ {
+     char type;
+     uint32 flags;
+     cypher_rel_dir dir;
+     int id_var_no;
+     int prop_var_no;
+     List *targetList;
+     List *expr_states;
+     ResultRelInfo *resultRelInfo;
+     TupleTableSlot *elemTupleSlot;
+     Oid relid;
 } cypher_target_node;
+
+
+#define CYPHER_TARGET_NODE_FLAG_NONE 0x0000
+#define CYPHER_TARGET_NODE_FLAG_INSERT 0x0001
+
+#define CYPHER_TARGET_NODE_INSERT_ENTITY(flags) \
+    (flags & CYPHER_TARGET_NODE_FLAG_INSERT)
 
 /* grammar node for typecasts */
 typedef struct cypher_typecast

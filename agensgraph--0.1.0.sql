@@ -629,6 +629,21 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME', 'agtype_build_map_noargs';
 
 --
+-- There are times when the optimizer might eliminate
+-- functions we need. Wrap the function with this to
+-- prevent that from happening
+--
+CREATE FUNCTION agtype_volatile_wrapper(agt agtype)
+RETURNS agtype AS $return_value$
+BEGIN
+	RETURN agt;
+END;
+$return_value$ LANGUAGE plpgsql
+VOLATILE
+CALLED ON NULL INPUT
+PARALLEL SAFE;
+
+--
 -- agtype - list literal (`[expr, ...]`)
 --
 

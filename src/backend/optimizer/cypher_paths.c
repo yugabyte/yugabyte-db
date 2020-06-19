@@ -115,10 +115,11 @@ static void handle_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
     c = linitial(fe->args);
     custom_private = list_make1(DatumGetPointer(c->constvalue));
 
+    cp = create_cypher_create_path(root, rel, custom_private);
+
     // Discard any pre-existing paths
     rel->pathlist = NIL;
     rel->partial_pathlist = NIL;
 
-    cp = create_cypher_create_path(root, rel, custom_private);
     add_path(rel, (Path *)cp);
 }

@@ -29,11 +29,15 @@
 #include "catalog/ag_label.h"
 #include "executor/cypher_executor.h"
 #include "nodes/cypher_nodes.h"
+#include "utils/agtype.h"
+#include "utils/graphid.h"
 
 typedef struct cypher_create_custom_scan_state
 {
     CustomScanState css;
+    CustomScan *cs;
     List *pattern;
+    uint32 flags;
 } cypher_create_custom_scan_state;
 
 static void begin_cypher_create(CustomScanState *node, EState *estate,
@@ -42,13 +46,15 @@ static TupleTableSlot *exec_cypher_create(CustomScanState *node);
 static void end_cypher_create(CustomScanState *node);
 
 static void create_edge(cypher_create_custom_scan_state *css,
-                   cypher_target_node *node, Datum prev_vertex_id, ListCell *next);
+                        cypher_target_node *node, Datum prev_vertex_id,
+                        ListCell *next);
 
 static Datum create_vertex(cypher_create_custom_scan_state *css,
-                   cypher_target_node *node, ListCell *next);
+                           cypher_target_node *node, ListCell *next);
 static void insert_entity_tuple(ResultRelInfo *resultRelInfo,
                                 TupleTableSlot *elemTupleSlot, EState *estate);
-
+static void process_pattern(cypher_create_custom_scan_state *css);
+static void process_all_tuples(CustomScanState *node, EState *estate);
 
 const CustomExecMethods cypher_create_exec_methods = {"Cypher Create",
                                                       begin_cypher_create,
@@ -70,6 +76,12 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
     cypher_create_custom_scan_state *css =
         (cypher_create_custom_scan_state *)node;
     ListCell *lc;
+    Plan *subplan;
+
+    Assert(list_length(css->cs->custom_plans) == 1);
+
+    subplan = linitial(css->cs->custom_plans);
+    node->ss.ps.lefttree = ExecInitNode(subplan, estate, eflags);
 
     ExecAssignExprContext(estate, &node->ss.ps);
 
@@ -77,6 +89,7 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
     {
         ListCell *lc2;
         List *path = lfirst(lc);
+
         foreach (lc2, path)
         {
             cypher_target_node *cypher_node =
@@ -84,7 +97,8 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
             ListCell *lc_expr;
             Relation rel;
 
-            Assert(list_length(cypher_node->targetList) == 2);
+            if (!CYPHER_TARGET_NODE_INSERT_ENTITY(cypher_node->flags))
+                continue;
 
             // Open relation and aquire a row exclusive lock.
             rel = heap_open(cypher_node->relid, RowExclusiveLock);
@@ -116,20 +130,12 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
     }
 }
 
-static TupleTableSlot *exec_cypher_create(CustomScanState *node)
+/*
+ * CREATE the vertices and edges for a CREATE clause pattern.
+ */
+static void process_pattern(cypher_create_custom_scan_state *css)
 {
-    cypher_create_custom_scan_state *css =
-        (cypher_create_custom_scan_state *)node;
     ListCell *lc2;
-    ResultRelInfo *saved_resultRelInfo;
-    TupleTableSlot *slot = node->ss.ps.ps_ResultTupleSlot;
-    ExprContext *econtext = css->css.ss.ps.ps_ExprContext;
-    EState *estate = css->css.ss.ps.state;
-
-    ResetExprContext(econtext);
-
-    // Save estate's active result relation
-    saved_resultRelInfo = estate->es_result_relation_info;
 
     foreach (lc2, css->pattern)
     {
@@ -143,11 +149,64 @@ static TupleTableSlot *exec_cypher_create(CustomScanState *node)
          */
         create_vertex(css, lfirst(lc), lnext(lc));
     }
+}
 
-    // Restore estate's previous result relation
+/*
+ * When the CREATE clause is the last cypher clause, consume all input from the
+ * previous clause(s) in the first call of exec_cypher_create.
+ */
+static void process_all_tuples(CustomScanState *node, EState *estate)
+{
+    cypher_create_custom_scan_state *css =
+        (cypher_create_custom_scan_state *)node;
+    TupleTableSlot *slot;
+
+    do
+    {
+        process_pattern(css);
+
+        slot = ExecProcNode(node->ss.ps.lefttree);
+    } while (!TupIsNull(slot));
+}
+
+static TupleTableSlot *exec_cypher_create(CustomScanState *node)
+{
+    cypher_create_custom_scan_state *css =
+        (cypher_create_custom_scan_state *)node;
+    ResultRelInfo *saved_resultRelInfo;
+    EState *estate = css->css.ss.ps.state;
+    ExprContext *econtext = css->css.ss.ps.ps_ExprContext;
+    TupleTableSlot *slot;
+    MemoryContext old_mcxt;
+
+    saved_resultRelInfo = estate->es_result_relation_info;
+
+    //Process the subtree first
+    slot = ExecProcNode(node->ss.ps.lefttree);
+
+    econtext->ecxt_scantuple =
+        node->ss.ps.lefttree->ps_ProjInfo->pi_exprContext->ecxt_scantuple;
+
+    if (TupIsNull(slot))
+        return NULL;
+
+    old_mcxt = MemoryContextSwitchTo(econtext->ecxt_scantuple->tts_mcxt);
+
+    if (!CYPHER_CREATE_CLAUSE_HAS_PREVIOUS_CLAUSE(css->flags))
+        process_pattern(css);
+    else if (CYPHER_CREATE_CLAUSE_IS_TERMINAL(css->flags))
+        process_all_tuples(node, estate);
+    else
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("CREATE clause must be at the end of cypher statements")));
+
+    MemoryContextSwitchTo(old_mcxt);
+
     estate->es_result_relation_info = saved_resultRelInfo;
 
-    return slot;
+    return NULL;
 }
 
 static void end_cypher_create(CustomScanState *node)
@@ -155,6 +214,8 @@ static void end_cypher_create(CustomScanState *node)
     cypher_create_custom_scan_state *css =
         (cypher_create_custom_scan_state *)node;
     ListCell *lc;
+
+    ExecEndNode(node->ss.ps.lefttree);
 
     foreach (lc, css->pattern)
     {
@@ -164,6 +225,9 @@ static void end_cypher_create(CustomScanState *node)
         {
             cypher_target_node *cypher_node =
                 (cypher_target_node *)lfirst(lc2);
+
+            if (!CYPHER_TARGET_NODE_INSERT_ENTITY(cypher_node->flags))
+                continue;
 
             // close all indices for the node
             ExecCloseIndices(cypher_node->resultRelInfo);
@@ -179,8 +243,14 @@ Node *create_cypher_create_plan_state(CustomScan *cscan)
 {
     cypher_create_custom_scan_state *cypher_css =
         palloc0(sizeof(cypher_create_custom_scan_state));
+    cypher_create_target_nodes *target_nodes;
 
-    cypher_css->pattern = linitial(cscan->custom_private);
+    cypher_css->cs = cscan;
+
+    target_nodes = linitial(cscan->custom_private);
+
+    cypher_css->pattern = target_nodes->target_nodes;
+    cypher_css->flags = target_nodes->flags;
 
     cypher_css->css.ss.ps.type = T_CustomScanState;
     cypher_css->css.methods = &cypher_create_exec_methods;
@@ -192,7 +262,8 @@ Node *create_cypher_create_plan_state(CustomScan *cscan)
  * Create the edge entity.
  */
 static void create_edge(cypher_create_custom_scan_state *css,
-                   cypher_target_node *node, Datum prev_vertex_id, ListCell *next)
+                        cypher_target_node *node, Datum prev_vertex_id,
+                        ListCell *next)
 {
     bool isNull;
     EState *estate = css->css.ss.ps.state;
@@ -200,6 +271,8 @@ static void create_edge(cypher_create_custom_scan_state *css,
     ExprContext *econtext = css->css.ss.ps.ps_ExprContext;
     ResultRelInfo *resultRelInfo = node->resultRelInfo;
     TupleTableSlot *elemTupleSlot = node->elemTupleSlot;
+    TupleTableSlot *scanTupleSlot = econtext->ecxt_scantuple;
+
     Datum start_id, end_id, next_vertex_id;
 
     Assert(node->type == LABEL_KIND_EDGE);
@@ -239,7 +312,8 @@ static void create_edge(cypher_create_custom_scan_state *css,
 
     // Graph Id for the edge
     es = linitial(node->expr_states);
-    elemTupleSlot->tts_values[edge_tuple_id] = ExecEvalExpr(es, econtext, &isNull);
+    elemTupleSlot->tts_values[edge_tuple_id] = ExecEvalExpr(es, econtext,
+                                                            &isNull);
     elemTupleSlot->tts_isnull[edge_tuple_id] = isNull;
 
     // Graph id for the starting vertex
@@ -251,11 +325,12 @@ static void create_edge(cypher_create_custom_scan_state *css,
     elemTupleSlot->tts_isnull[edge_tuple_end_id] = false;
 
     // Edge's properties map
-    es = llast(node->expr_states);
-    elemTupleSlot->tts_values[edge_tuple_properties] = ExecEvalExpr(es, econtext, &isNull);
-    elemTupleSlot->tts_isnull[edge_tuple_properties] = isNull;
+    elemTupleSlot->tts_values[edge_tuple_properties] =
+        scanTupleSlot->tts_values[node->prop_var_no];
+    elemTupleSlot->tts_isnull[edge_tuple_properties] =
+        scanTupleSlot->tts_isnull[node->prop_var_no];
 
-     // Insert the new edge
+    // Insert the new edge
     insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
 }
 
@@ -264,48 +339,59 @@ static void create_edge(cypher_create_custom_scan_state *css,
  * the create_edge function.
  */
 static Datum create_vertex(cypher_create_custom_scan_state *css,
-                   cypher_target_node *node, ListCell *next)
+                           cypher_target_node *node, ListCell *next)
 {
     bool isNull;
     Datum id;
     EState *estate = css->css.ss.ps.state;
     ExprContext *econtext = css->css.ss.ps.ps_ExprContext;
-    int i = 0;
-    ListCell *lc;
     ResultRelInfo *resultRelInfo = node->resultRelInfo;
     TupleTableSlot *elemTupleSlot = node->elemTupleSlot;
+    TupleTableSlot *scanTupleSlot = econtext->ecxt_scantuple;
 
     Assert(node->type == LABEL_KIND_VERTEX);
 
-    /*
-     * Set estate's result relation to the vertex's result
-     * relation.
-     *
-     * Note: This obliterates what was their previously
-     */
-    estate->es_result_relation_info = resultRelInfo;
-
-    ExecClearTuple(elemTupleSlot);
-
-    // Add the values to the elemTupleSlot
-    foreach (lc, node->expr_states)
+    if (CYPHER_TARGET_NODE_INSERT_ENTITY(node->flags))
     {
-        ExprState *es = lfirst(lc);
+        ExprState *id_es = linitial(node->expr_states);
 
-        elemTupleSlot->tts_values[i] = ExecEvalExpr(es, econtext, &isNull);
-        elemTupleSlot->tts_isnull[i] = isNull;
+        /*
+         * Set estate's result relation to the vertex's result
+         * relation.
+         *
+         * Note: This obliterates what was their previously
+         */
+        estate->es_result_relation_info = resultRelInfo;
 
-        i++;
+        ExecClearTuple(elemTupleSlot);
+
+        id = ExecEvalExpr(id_es, econtext, &isNull);
+        elemTupleSlot->tts_values[vertex_tuple_id] = id;
+        elemTupleSlot->tts_isnull[vertex_tuple_id] = isNull;
+
+        elemTupleSlot->tts_values[vertex_tuple_properties] =
+            scanTupleSlot->tts_values[node->prop_var_no];
+        elemTupleSlot->tts_isnull[vertex_tuple_properties] =
+            scanTupleSlot->tts_isnull[node->prop_var_no];
+
+        // Insert the new vertex
+        insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
     }
+    else
+    {
+        agtype *a;
+        agtype_value *v;
 
-    // Insert the new vertex
-    insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
+        a = (agtype *)scanTupleSlot->tts_values[node->id_var_no];
 
-    /*
-     * Get the vertex's id so it can be passed to the next edge and the
-     * previous edge.
-     */
-    id = elemTupleSlot->tts_values[0];
+        v = get_ith_agtype_value_from_container(&a->root, 0);
+
+        if (v->type != AGTV_INTEGER)
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("id agtype must resolve to a graphid")));
+
+        id = GRAPHID_GET_DATUM(v->val.int_value);
+    }
 
     // If the path continues, create the next edge, passing the vertex's id.
     if (next != NULL)
