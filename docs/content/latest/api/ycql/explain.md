@@ -69,6 +69,7 @@ cqlsh:imdb> INSERT INTO movie_stats(movie_name, movie_genre, user_name, user_ran
 cqlsh:imdb> INSERT INTO movie_stats(movie_name, movie_genre, user_name, user_rank, last_watched)
             VALUES ('m4', 'g1', 'u1', 2, '2019-02-27');
 ```
+### Explain query plans
 If movie_genre, or movie_genre & movie_name, or movie_genre & movie_name & user_name are specified, the query should be served efficiently from the primary table.
 
 ```CQL
