@@ -256,15 +256,42 @@ Status OperationDriver::PrepareAndStart() {
     // We can only do this after we've called Start()
     prepare_state_ = PREPARED;
 
-    if (replication_state_ == NOT_REPLICATING) {
-      replication_state_ = REPLICATING;
-    }
+    // On the replica (non-leader) side, the replication state might have been REPLICATING during
+    // our previous acquisition of this lock, but it might have changed to REPLICATED in the
+    // meantime. That would mean ReplicationFinished got called, but ReplicationFinished would not
+    // trigger Apply unless the operation is PREPARED, so we are responsible for doing that.
+    // If we fail to capture the new replication state here, the operation will never be applied.
+    repl_state_copy = replication_state_;
   }
 
-  return Status::OK();
-}
+  switch (repl_state_copy) {
+    case NOT_REPLICATING:
+    {
+      {
+        std::lock_guard<simple_spinlock> lock(lock_);
+        replication_state_ = REPLICATING;
+      }
 
-OperationDriver::~OperationDriver() {
+      // After the batching changes from 07/2017, It is the caller's responsibility to call
+      // Consensus::Replicate. See Preparer for details.
+      return Status::OK();
+    }
+    case REPLICATING:
+    {
+      // Already replicating - nothing to trigger
+      return Status::OK();
+    }
+    case REPLICATION_FAILED:
+      DCHECK(!operation_status_.ok());
+      FALLTHROUGH_INTENDED;
+    case REPLICATED:
+    {
+      // We can move on to apply.  Note that ApplyOperation() will handle the error status in the
+      // REPLICATION_FAILED case.
+      return ApplyOperation(yb::OpId::kUnknownTerm, nullptr /* applied_op_ids */);
+    }
+  }
+  FATAL_INVALID_ENUM_VALUE(ReplicationState, repl_state_copy);
 }
 
 void OperationDriver::ReplicationFailed(const Status& replication_status) {
@@ -346,24 +373,11 @@ void OperationDriver::ReplicationFinished(
   // Note that if we set the state to REPLICATION_FAILED above, ApplyOperation() will actually abort
   // the operation, i.e. ApplyTask() will never be called and the operation will never be applied to
   // the tablet.
-  if (prepare_state_copy != PREPARED) {
-    LOG(DFATAL) << "Replicating an operation that has not been prepared: " << AsString(this);
-
-    LOG(ERROR) << "Attempting to wait for prepared";
-
-    // This case should never happen, but if it happens we are trying to survive.
-    for (;;) {
-      std::this_thread::sleep_for(1ms);
-      std::lock_guard<simple_spinlock> lock(lock_);
-      if (prepare_state_ == PREPARED) {
-        break;
-      }
-    }
+  if (prepare_state_copy == PREPARED) {
+    // We likely need to do cleanup if this fails so for now just
+    // CHECK_OK
+    CHECK_OK(ApplyOperation(leader_term, applied_op_ids));
   }
-
-  // We likely need to do cleanup if this fails so for now just
-  // CHECK_OK
-  CHECK_OK(ApplyOperation(leader_term, applied_op_ids));
 }
 
 void OperationDriver::Abort(const Status& status) {
