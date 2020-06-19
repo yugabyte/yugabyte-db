@@ -185,7 +185,7 @@ Files included by `@` constructs are read as lists of names, which can be separa
 
 Because the `--ysql_hba_conf` records are examined sequentially for each connection attempt, the order of the records is significant. Typically, earlier records will have tight connection match parameters and weaker authentication methods, while later records will have looser match parameters and stronger authentication methods. For example, you might want to use trust authentication for local TCP/IP connections, but require a password for remote TCP/IP connections. In this case, a record specifying `trust` authentication for connections from `127.0.0.1` would appear before a record specifying password authentication for a wider range of allowed client IP addresses.
 
-The `--pg_hba_conf` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your `yb-tserver` processes for changes to take effect.
+The `-ysql_hba_conf` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your `yb-tserver` processes for changes to take effect.
 
 {{< note title="Important" >}}
 
