@@ -138,4 +138,6 @@ resource ::=   'ALL' ('KEYSPACES' | 'ROLES')
              | [ 'TABLE' ] table_name
              | 'ROLE' role_name ;
 
-alter_keyspace ::= 'ALTER' ('KEYSPACE' | 'SCHEMA') keyspae_name keyspace_properties
+alter_keyspace ::= 'ALTER' ('KEYSPACE' | 'SCHEMA') keyspae_name keyspace_properties;
+
+explain ::= 'EXPLAIN' (select | update | insert | delete);
