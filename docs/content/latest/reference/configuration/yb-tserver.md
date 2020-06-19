@@ -406,7 +406,6 @@ To specify fine-grained access control over who can access the server, use [`--y
 
 Default: `0.0.0.0:5433`
 
-
 ##### --pgsql_proxy_webserver_port
 
 Specifies the web server port for YSQL metrics monitoring.
