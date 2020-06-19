@@ -139,7 +139,7 @@ If a host name is specified (anything that is not an IP address range or a speci
 
 A host name specification that starts with a dot (`.`) matches a suffix of the actual host name. So `.example.com` would match `foo.example.com` (but not just `example.com`).
 
-When host names are specified using the `--pg_hba_conf` flag, you should make sure that name resolution is reasonably fast. It can be advantageous to set up a local name resolution cache, such as `nscd`. Also, you may want to enable the configuration parameter `log_hostname` to see the client's host name instead of the IP address in the log.
+When host names are specified using the `--ysql_hba_conf` flag, you should make sure that name resolution is reasonably fast. It can be advantageous to set up a local name resolution cache, such as `nscd`. Also, you may want to enable the configuration parameter `log_hostname` to see the client's host name instead of the IP address in the log.
 
 This field only applies to `host`, `hostssl`, and `hostnossl` records.
 
