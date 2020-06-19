@@ -197,7 +197,7 @@ The system view `pg_hba_file_rules` can be helpful for pre-testing changes to th
 
 {{< note title="Tip" >}}
 
-To connect to a particular database, a user must not only pass the `--pg_hba_conf` checks, but must have the `CONNECT` privilege for the database. If you want to restrict which users can connect to which databases, it's usually easier to control this by granting or revoking `CONNECT` privilege than to put the rules in `pg_hba_conf` entries.
+To connect to a particular database, a user must not only pass the `--ysql_hba_conf` checks, but must have the `CONNECT` privilege for the database. If you want to restrict which users can connect to which databases, it's usually easier to control this by granting or revoking `CONNECT` privilege than to put the rules in `ysql_hba_conf` entries.
 
 {{< /note >}}
 
