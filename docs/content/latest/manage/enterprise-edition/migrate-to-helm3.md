@@ -27,7 +27,7 @@ Starting with YugabyteDB version 2.1.8, Helm 2 is not supported. Following the s
 ```
 $ helm2 ls
 NAME   	REVISION	UPDATED                 STATUS  	CHART         	APP VERSION	NAMESPACE
-yw-test	1       	Tue May 12 22:21:16 2020	DEPLOYED	yugaware-2.1.8.2-b1 	yw-test  
+yw-test	1       	Tue May 12 22:21:16 2020	DEPLOYED	yugaware-2.1.8 2.1.8.2-b1 	yw-test  
 ```
 
 2. Migrate the chart to Helm 3 using the `2to3` plugin by running the following command.
