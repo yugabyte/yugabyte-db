@@ -134,4 +134,19 @@ Result<uint32_t> GetPgsqlTableOid(const TableId& table_id) {
   return STATUS(InvalidArgument, "Invalid PostgreSQL table id", table_id);
 }
 
+Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id) {
+  DCHECK(IsPgsqlId(table_id));
+  try {
+    size_t pos = 0;
+    const uint32_t oid = stoul(table_id.substr(0, sizeof(uint32_t) * 2), &pos, 16);
+    if (pos == sizeof(uint32_t) * 2) {
+      return oid;
+    }
+  } catch(const std::invalid_argument&) {
+  } catch(const std::out_of_range&) {
+  }
+
+  return STATUS(InvalidArgument, "Invalid PostgreSQL table id", table_id);
+}
+
 }  // namespace yb
