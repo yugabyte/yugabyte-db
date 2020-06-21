@@ -3720,7 +3720,12 @@ static void YBPrepareCacheRefreshIfNeeded(MemoryContext oldcontext,
                                           bool consider_retry,
                                           bool *need_retry)
 {
-	bool need_cache_refresh = false;
+	bool		need_global_cache_refresh = false;
+	bool		need_table_cache_refresh = false;
+	char	   *table_to_refresh;
+	const char *table_cache_refresh_search_str =
+		"schema version mismatch for table ";
+
 	*need_retry = false;
 
 	/*
@@ -3734,6 +3739,26 @@ static void YBPrepareCacheRefreshIfNeeded(MemoryContext oldcontext,
 	MemoryContextSwitchTo(oldcontext);
 	edata = CopyErrorData();
 	bool is_retryable_err = YBNeedRetryAfterCacheRefresh(edata);
+	if ((table_to_refresh = strstr(edata->message,
+								   table_cache_refresh_search_str)) != NULL)
+	{
+		int size_of_uuid = 16; /* boost::uuids::uuid::static_size() */
+		int size_of_hex_uuid = size_of_uuid * 2;
+
+		/* Skip to the table id part of the error message. */
+		table_to_refresh += strlen(table_cache_refresh_search_str);
+		if (strlen(table_to_refresh) < size_of_hex_uuid)
+			/* Unexpected table id size; ignore table cache refreshing. */
+			table_to_refresh = NULL;
+		else
+		{
+			/* Trim off the rest of the message. */
+			*(table_to_refresh + size_of_hex_uuid) = '\0';
+			/* Duplicate the string to safely FreeErrorData below. */
+			table_to_refresh = pstrdup(table_to_refresh);
+		}
+	}
+	need_table_cache_refresh = table_to_refresh != NULL;
 
 	/*
 	 * Get the latest syscatalog version from the master to check if we need
@@ -3741,15 +3766,17 @@ static void YBPrepareCacheRefreshIfNeeded(MemoryContext oldcontext,
 	 */
 	uint64_t catalog_master_version = 0;
 	YBCPgGetCatalogMasterVersion(&catalog_master_version);
-	need_cache_refresh = yb_catalog_cache_version != catalog_master_version;
-	if (!need_cache_refresh)
+	need_global_cache_refresh =
+		yb_catalog_cache_version != catalog_master_version;
+	if (!(need_global_cache_refresh || need_table_cache_refresh))
 		return;
 
 	/*
 	 * Reset catalog version so that the cache gets marked as invalid and
 	 * will be refreshed after the txn ends.
 	 */
-	yb_need_cache_refresh = true;
+	if (need_global_cache_refresh)
+		yb_need_cache_refresh = true;
 
 	/*
 	 * Prepare to retry the query if possible.
@@ -3789,18 +3816,40 @@ static void YBPrepareCacheRefreshIfNeeded(MemoryContext oldcontext,
 			xact_started = false;
 
 			/* Refresh cache now so that the retry uses latest version. */
-			YBRefreshCache();
+			if (need_global_cache_refresh)
+				YBRefreshCache();
+			else
+			{
+				/* need_table_cache_refresh */
+				ereport(LOG,
+						(errmsg("invalidating table cache entry %s",
+								table_to_refresh)));
+				HandleYBStatus(YBCPgInvalidateTableCacheByTableId(table_to_refresh));
+			}
 
 			*need_retry = true;
 		}
 		else
 		{
-			ereport(ERROR,
-			        (errcode(ERRCODE_INTERNAL_ERROR),
-					        errmsg("Catalog Version Mismatch: A DDL occurred "
-					               "while processing this query. Try Again.")));
+			if (need_global_cache_refresh)
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Catalog Version Mismatch: A DDL occurred "
+								"while processing this query. Try Again.")));
+			else
+			{
+				/* need_table_cache_refresh */
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("%s", edata->message)));
+			}
 		}
-
+	}
+	else
+	{
+		/* Clear error state */
+		FlushErrorState();
+		FreeErrorData(edata);
 	}
 }
 
