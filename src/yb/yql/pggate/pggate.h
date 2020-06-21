@@ -179,6 +179,9 @@ class PgApiImpl {
   // Load table.
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
 
+  // Invalidate the cache entry corresponding to table_id from the PgSession table cache.
+  void InvalidateTableCache(const PgObjectId& table_id);
+
   //------------------------------------------------------------------------------------------------
   // Create, alter and drop table.
   CHECKED_STATUS NewCreateTable(const char *database_name,
