@@ -85,6 +85,9 @@ message ConsensusErrorPB {
 
     // The local replica was unable to prepare a single transaction.
     CANNOT_PREPARE = 9;
+
+    // Split operation has been added to this Raft group log.
+    TABLET_SPLIT = 10;
   }
 
   // The error code.

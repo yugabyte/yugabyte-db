@@ -35,6 +35,7 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_context.h"
+#include "yb/consensus/consensus_error.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
@@ -657,9 +658,11 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
     // earlier where to retry.
     // TODO(tsplit): test - check that split_op_id_ is correctly aborted.
     // TODO(tsplit): test - check that split_op_id_ is correctly restored during bootstrap.
-    return STATUS(
-        TryAgain,
-        "Tablet split has been added to Raft log, operation should be retried to new tablets.");
+    return STATUS_EC_FORMAT(
+        IllegalState, ConsensusError(ConsensusErrorPB::TABLET_SPLIT),
+        "Tablet split has been added to Raft log, operation $0 $1 should be retried to new "
+        "tablets.",
+        op_type, round->replicate_msg()->id());
   }
 
   // When we do not have a hybrid time leader lease we allow 2 operation types to be added to RAFT.
