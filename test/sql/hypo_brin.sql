@@ -13,6 +13,6 @@ FROM public.hypopg_create_index('CREATE INDEX ON hypo_brin USING brin (id);');
 -- Should use hypothetical index
 SET enable_seqscan = 0;
 SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo_brin WHERE id = 1') e
-WHERE e ~ 'Bitmap Index Scan on <\d+>brin_hypo_brin.*';
+WHERE e ~ 'Bitmap Index Scan.*<\d+>brin_hypo_brin.*';
 
 DROP TABLE hypo_brin;
