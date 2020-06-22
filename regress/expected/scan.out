@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-LOAD 'agensgraph';
+LOAD 'age';
 SET search_path TO ag_catalog;
 SELECT create_graph('scan');
 NOTICE:  graph "scan" has been created
@@ -349,13 +349,13 @@ LINE 2: RETURN "\u0000"
                 ^
 DETAIL:  Unicode code point value 0000 is not allowed in quoted strings.
 -- unsupported Unicode escape value (the server encoding is not UTF8)
-CREATE DATABASE contrib_regression_agensgraph_euc_kr
+CREATE DATABASE contrib_regression_age_euc_kr
   TEMPLATE template0
   ENCODING EUC_KR
   LC_COLLATE 'C' LC_CTYPE 'C';
-\c contrib_regression_agensgraph_euc_kr
-CREATE EXTENSION agensgraph;
-LOAD 'agensgraph';
+\c contrib_regression_age_euc_kr
+CREATE EXTENSION age;
+LOAD 'age';
 SET search_path TO ag_catalog;
 SELECT create_graph('scan');
 NOTICE:  graph "scan" has been created
@@ -382,8 +382,8 @@ NOTICE:  graph "scan" has been dropped
 (1 row)
 
 \c contrib_regression
-DROP DATABASE contrib_regression_agensgraph_euc_kr;
-LOAD 'agensgraph';
+DROP DATABASE contrib_regression_age_euc_kr;
+LOAD 'age';
 SET search_path TO ag_catalog;
 -- invalid Unicode escape sequence (must be \uXXXX or \UXXXXXXXX)
 SELECT * FROM cypher('scan', $$

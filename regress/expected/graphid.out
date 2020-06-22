@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-LOAD 'agensgraph';
+LOAD 'age';
 SET search_path TO ag_catalog;
 -- basic comparisons
 SELECT '0'::graphid = '0'::graphid, '0'::graphid = '1'::graphid;

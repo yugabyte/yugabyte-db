@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-LOAD 'agensgraph';
+LOAD 'age';
 SET search_path TO ag_catalog;
 
 SELECT create_graph('cypher_with');

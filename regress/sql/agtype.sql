@@ -21,7 +21,7 @@
 --
 -- Load extension and set path
 --
-LOAD 'agensgraph';
+LOAD 'age';
 SET search_path TO ag_catalog;
 
 --

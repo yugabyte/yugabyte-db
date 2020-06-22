@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-LOAD 'agensgraph';
+LOAD 'age';
 SET search_path TO ag_catalog;
 
 SELECT create_graph('scan');
@@ -236,15 +236,15 @@ $$) AS t(a text);
 
 -- unsupported Unicode escape value (the server encoding is not UTF8)
 
-CREATE DATABASE contrib_regression_agensgraph_euc_kr
+CREATE DATABASE contrib_regression_age_euc_kr
   TEMPLATE template0
   ENCODING EUC_KR
   LC_COLLATE 'C' LC_CTYPE 'C';
 
-\c contrib_regression_agensgraph_euc_kr
+\c contrib_regression_age_euc_kr
 
-CREATE EXTENSION agensgraph;
-LOAD 'agensgraph';
+CREATE EXTENSION age;
+LOAD 'age';
 SET search_path TO ag_catalog;
 SELECT create_graph('scan');
 
@@ -256,9 +256,9 @@ SELECT drop_graph('scan', true);
 
 \c contrib_regression
 
-DROP DATABASE contrib_regression_agensgraph_euc_kr;
+DROP DATABASE contrib_regression_age_euc_kr;
 
-LOAD 'agensgraph';
+LOAD 'age';
 SET search_path TO ag_catalog;
 
 -- invalid Unicode escape sequence (must be \uXXXX or \UXXXXXXXX)

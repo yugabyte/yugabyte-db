@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-MODULE_big = agensgraph
+MODULE_big = age
 
-OBJS = src/backend/agensgraph.o \
+OBJS = src/backend/age.o \
        src/backend/catalog/ag_catalog.o \
        src/backend/catalog/ag_graph.o \
        src/backend/catalog/ag_label.o \
@@ -47,9 +47,9 @@ OBJS = src/backend/agensgraph.o \
        src/backend/utils/ag_func.o \
        src/backend/utils/cache/ag_cache.o
 
-EXTENSION = agensgraph
+EXTENSION = age
 
-DATA = agensgraph--0.1.0.sql
+DATA = age--0.1.0.sql
 
 # sorted in dependency order
 REGRESS = scan \
@@ -63,7 +63,7 @@ REGRESS = scan \
           cypher_with
 
 ag_regress_dir = $(srcdir)/regress
-REGRESS_OPTS = --load-extension=agensgraph --inputdir=$(ag_regress_dir) --outputdir=$(ag_regress_dir) --temp-instance=$(ag_regress_dir)/instance --port=61958
+REGRESS_OPTS = --load-extension=age --inputdir=$(ag_regress_dir) --outputdir=$(ag_regress_dir) --temp-instance=$(ag_regress_dir)/instance --port=61958
 
 ag_regress_out = instance/ log/ results/ regression.*
 EXTRA_CLEAN = $(addprefix $(ag_regress_dir)/, $(ag_regress_out))

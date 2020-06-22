@@ -13,7 +13,7 @@
 # limitations under the License.
 
 default_version = '0.1.0'
-comment = 'AgensGraph graph database extension'
-module_pathname = '$libdir/agensgraph'
+comment = 'AGE database extension'
+module_pathname = '$libdir/age'
 
 schema = 'ag_catalog'
