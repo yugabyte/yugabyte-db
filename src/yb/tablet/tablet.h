@@ -490,7 +490,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   docdb::DocDB doc_db() const { return { regular_db_.get(), intents_db_.get(), &key_bounds_ }; }
 
-  Result<std::string> GetEncodedMiddleDocKey() const;
+  // Returns approximate middle key for tablet split:
+  // - for hash-based partitions: encoded hash code in order to split by hash code.
+  // - for range-based partitions: encoded doc key in order to split by row.
+  Result<std::string> GetEncodedMiddleSplitKey() const;
 
   std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
 

@@ -15,6 +15,8 @@
 
 #include "yb/client/tablet_rpc.h"
 
+#include "yb/consensus/consensus_error.h"
+
 #include "yb/common/wire_protocol.h"
 
 #include "yb/client/client.h"
@@ -281,8 +283,7 @@ bool TabletInvoker::Done(Status* status) {
     }
   }
 
-  if (status->IsIllegalState() &&
-      ErrorCode(rsp_err) == tserver::TabletServerErrorPB::TABLET_SPLIT) {
+  if (ErrorCode(rsp_err) == tserver::TabletServerErrorPB::TABLET_SPLIT) {
     // Replace status error with TryAgain, so upper layer retry request after refreshing
     // table partitioning metadata.
     *status = STATUS(TryAgain, status->message());

@@ -45,6 +45,7 @@ struct TestWorkloadOptions {
 
   int payload_bytes = 11;
   int num_write_threads = 4;
+  int num_read_threads = 0;
   int write_batch_size = 50;
   int ttl = -1;
   MonoDelta default_rpc_timeout = std::chrono::seconds(60);
@@ -54,6 +55,8 @@ struct TestWorkloadOptions {
   bool pathological_one_row_enabled = false;
   bool sequential_write = false;
   bool insert_failures_allowed = true;
+  bool retry_on_restart_required_error = false;
+  bool read_only_written_keys = false;
   IsolationLevel isolation_level = IsolationLevel::NON_TRANSACTIONAL;
 
   int num_tablets = 1;
@@ -78,6 +81,10 @@ class TestWorkload {
 
   void set_payload_bytes(int n) {
     options_.payload_bytes = n;
+  }
+
+  void set_num_read_threads(int n) {
+    options_.num_read_threads = n;
   }
 
   void set_num_write_threads(int n) {
@@ -147,6 +154,17 @@ class TestWorkload {
     options_.insert_failures_allowed = value;
   }
 
+  void set_retry_on_restart_required_error(const bool value) {
+    options_.retry_on_restart_required_error = value;
+  }
+
+  // Only read keys which have been successfully written.
+  // REQUIRED: works only when sequential_write is set and we have write threads to generate keys
+  // to read.
+  void set_read_only_written_keys(const bool value) {
+    options_.read_only_written_keys = value;
+  }
+
   void set_transactional(IsolationLevel isolation_level, client::TransactionPool* pool);
 
   // Sets up the internal client and creates the table which will be used for
@@ -168,6 +186,16 @@ class TestWorkload {
   // Return the number of rows inserted so far. This may be called either
   // during or after the write workload.
   int64_t rows_inserted() const;
+
+  int64_t rows_insert_failed() const;
+
+  int64_t rows_read_ok() const;
+
+  int64_t rows_read_empty() const;
+
+  int64_t rows_read_error() const;
+
+  int64_t rows_read_try_again() const;
 
   // Return the number of batches in which we have successfully inserted at
   // least one row.

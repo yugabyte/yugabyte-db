@@ -723,11 +723,12 @@ Status CheckColocatedTabletSplit(const TabletLocationsPB& location) {
 
 Status PreSplitTabletNotCoveredError(
     const RemoteTabletPtr& pre_split_tablet,
-    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations) {
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
+    const std::string& clarification) {
   const auto error_msg = Format(
       "Pre-split tablet $0 partition: $1 is not exactly covered with post-split tablets "
-      "partitions: $2", pre_split_tablet->tablet_id(), pre_split_tablet->partition(),
-      AsString(locations));
+      "partitions: $2. $3", pre_split_tablet->tablet_id(), pre_split_tablet->partition(),
+      AsString(locations), clarification);
   LOG(DFATAL) << error_msg;
   return STATUS(IllegalState, error_msg);
 }
@@ -817,11 +818,16 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocations(
           if (current_pre_split_tablet) {
             RETURN_NOT_OK(CheckColocatedTabletSplit(loc));
             if (!current_pre_split_tablet->partition().ContainsPartition(partition)) {
-              return PreSplitTabletNotCoveredError(current_pre_split_tablet, locations);
+              return PreSplitTabletNotCoveredError(
+                  current_pre_split_tablet, locations,
+                  Format("Not contains partition: $0", partition));
             }
-            client_->data_->tablet_requests_[remote->tablet_id()].request_id_seq =
-                client_->data_->tablet_requests_[current_pre_split_tablet->tablet_id()]
-                    .request_id_seq;
+            {
+              std::lock_guard<simple_spinlock> request_lock(client_->data_->tablet_requests_mutex_);
+              client_->data_->tablet_requests_[remote->tablet_id()].request_id_seq =
+                  client_->data_->tablet_requests_[current_pre_split_tablet->tablet_id()]
+                      .request_id_seq;
+            }
             if (current_pre_split_tablet->partition().partition_key_end() ==
                 partition.partition_key_end()) {
               // `remote` is the last part of pre_split_tablet split, so we should finish pre-split
@@ -859,7 +865,8 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocations(
     }
 
     if (current_pre_split_tablet) {
-      return PreSplitTabletNotCoveredError(current_pre_split_tablet, locations);
+      return PreSplitTabletNotCoveredError(
+          current_pre_split_tablet, locations, "No last covering partition.");
     }
 
     table_ids_to_reset.clear();
@@ -874,15 +881,27 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocations(
 }
 
 void MetaCache::InvalidateTableCache(const TableId& table_id) {
-  std::lock_guard<decltype(mutex_)> lock(mutex_);
-  auto it = tables_.find(table_id);
-  if (it != tables_.end()) {
-    it->second.stale = true;
-    // TODO(tsplit): Instead of silently removing callbacks for lookups in progress - handle
-    // this case appropriately.
-    // TODO(tsplit): Optimize to retry only necessary lookups inside ProcessTabletLocations,
-    // detect which need to be retried by GetTableLocationsResponsePB.partition_version.
-    it->second.tablet_lookups_by_group.clear();
+  std::vector<LookupTabletCallback> to_notify;
+
+  {
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    auto it = tables_.find(table_id);
+    if (it != tables_.end()) {
+      it->second.stale = true;
+      // TODO(tsplit): Optimize to retry only necessary lookups inside ProcessTabletLocations,
+      // detect which need to be retried by GetTableLocationsResponsePB.partition_version.
+      for (const auto& group_lookups : it->second.tablet_lookups_by_group) {
+        for (const auto& partition_lookups : group_lookups.second) {
+          for (const auto& lookup : partition_lookups.second) {
+            to_notify.push_back(std::move(lookup.callback));
+          }
+        }
+      }
+      it->second.tablet_lookups_by_group.clear();
+    }
+  }
+  for (const auto& callback : to_notify) {
+    callback(STATUS_FORMAT(TryAgain, "MetaCache for table $0 has been invalidated.", table_id));
   }
 }
 

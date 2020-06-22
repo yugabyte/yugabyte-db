@@ -305,7 +305,7 @@ void PreparerImpl::ReplicateSubBatch(
   rounds_to_replicate_.clear();
 
   if (PREDICT_FALSE(!s.ok())) {
-    VLOG(2) << "ReplicateBatch failed with status " << s.ToString()
+    VLOG(1) << "ReplicateBatch failed with status " << s.ToString()
             << ", treating all " << std::distance(batch_begin, batch_end) << " operations as "
             << "failed with that status";
     // Treat all the operations in the batch as failed.
