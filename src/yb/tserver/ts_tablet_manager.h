@@ -401,7 +401,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       RegisterTabletPeerMode mode);
 
   // Returns either table_data_assignment_map_ or table_wal_assignment_map_ depending on dir_type.
-  TableDiskAssignmentMap* GetTableDiskAssignmentMap(TabletDirType dir_type);
+  TableDiskAssignmentMap* GetTableDiskAssignmentMapUnlocked(TabletDirType dir_type);
 
   // Returns assigned root dir of specified type for specified table and tablet.
   // If root dir is not registered for the specified table_id and tablet_id combination - returns
@@ -476,9 +476,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   TabletMap tablet_map_;
 
   // Map from table ID to count of children in data and wal directories.
-  TableDiskAssignmentMap table_data_assignment_map_;
-  TableDiskAssignmentMap table_wal_assignment_map_;
-  mutable Mutex dir_assignment_lock_;
+  TableDiskAssignmentMap table_data_assignment_map_ GUARDED_BY(dir_assignment_mutex_);
+  TableDiskAssignmentMap table_wal_assignment_map_ GUARDED_BY(dir_assignment_mutex_);
+  mutable std::mutex dir_assignment_mutex_;
 
   // Map of tablet ids -> reason strings where the keys are tablets whose
   // bootstrap, creation, or deletion is in-progress

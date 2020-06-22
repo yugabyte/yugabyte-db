@@ -196,6 +196,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   double RejectionScore(int attempt_num);
 
+  std::string LogPrefix() const;
+
   // This is a status error string used when there are multiple errors that need to be fetched
   // from the error collector.
   static const std::string kErrorReachingOutToTServersMsg;

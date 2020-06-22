@@ -41,6 +41,7 @@ ADD_YB_LIBRARY(yb_pggate_flags
                DEPS yb_util)
 
 set(PGGATE_LIBS
+    consensus_error
     yb_util
     yb_common
     yb_client

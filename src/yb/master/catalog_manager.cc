@@ -1594,9 +1594,8 @@ Status CatalogManager::TEST_SplitTablet(
 }
 
 Status CatalogManager::DoSplitTablet(
-    const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
-  const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
-
+    const scoped_refptr<TabletInfo>& source_tablet_info, const std::string& split_encoded_key,
+    const std::string& split_partition_key) {
   constexpr auto kNumSplitParts = 2;
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = CreateNewTabletsPartition(
@@ -1609,16 +1608,43 @@ Status CatalogManager::DoSplitTablet(
     new_tablet_ids[i] = new_tablet_info->id();
   }
 
+  // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
+  // split? Add unit-test.
+  SendSplitTabletRequest(
+      source_tablet_info, new_tablet_ids, split_encoded_key, split_partition_key);
+
+  return Status::OK();
+}
+
+Status CatalogManager::DoSplitTablet(
+    const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
   docdb::KeyBytes split_encoded_key;
   docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
       .Hash(split_hash_code, std::vector<docdb::PrimitiveValue>());
 
-  // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
-  // split? Add unit-test.
-  SendSplitTabletRequest(
-      source_tablet_info, new_tablet_ids, split_encoded_key.ToStringBuffer(), split_partition_key);
+  const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
 
-  return Status::OK();
+  return DoSplitTablet(source_tablet_info, split_encoded_key.ToStringBuffer(), split_partition_key);
+}
+
+Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& tablet_id) {
+  RETURN_NOT_OK(CheckOnline());
+
+  std::lock_guard<LockType> l(lock_);
+  TRACE("Acquired catalog manager lock");
+
+  const auto tablet_info = FindPtrOrNull(*tablet_map_, tablet_id);
+  SCHECK(tablet_info != nullptr, NotFound, Format("Tablet $0 not found", tablet_id));
+
+  return tablet_info;
+}
+
+Status CatalogManager::SplitTablet(
+    const TabletId& tablet_id, const std::string& split_encoded_key,
+    const std::string& split_partition_key) {
+  const auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
+
+  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key);
 }
 
 Status CatalogManager::SplitTablet(
@@ -1626,17 +1652,7 @@ Status CatalogManager::SplitTablet(
   RETURN_NOT_OK(CheckOnline());
 
   const auto source_tablet_id = req->tablet_id();
-
-  scoped_refptr<TabletInfo> source_tablet_info;
-  {
-    std::lock_guard<LockType> l(lock_);
-    TRACE("Acquired catalog manager lock");
-
-    source_tablet_info = FindPtrOrNull(*tablet_map_, source_tablet_id);
-    SCHECK(
-        source_tablet_info != nullptr, NotFound, Format("Tablet $0 not found", source_tablet_id));
-  }
-
+  const auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(source_tablet_id));
   const auto source_partition = source_tablet_info->LockForRead()->data().pb.partition();
 
   const auto start_hash_code = source_partition.partition_key_start().empty()
@@ -3745,8 +3761,11 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
   }
-  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " to split the tablet "
-            << source_tablet_info.tablet_id() << " for table " << table->ToString();
+  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id()
+            << " (" << AsString(partition) << ") to split the tablet "
+            << source_tablet_info.tablet_id()
+            << " (" << AsString(source_tablet_meta.partition())
+            << ") for table " << table->ToString();
 
   return new_tablet;
 }

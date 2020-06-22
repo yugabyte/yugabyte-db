@@ -1074,7 +1074,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
       << ", commited id: " << replay_state_->committed_op_id;
   CHECK(replay_state_->prev_op_id.term() >= replay_state_->committed_op_id.term() &&
         replay_state_->prev_op_id.index() >= replay_state_->committed_op_id.index())
-      << "Last: " << replay_state_->prev_op_id.ShortDebugString()
+      << LogPrefix() << "Last: " << replay_state_->prev_op_id.ShortDebugString()
       << ", committed: " << replay_state_->committed_op_id;
 
   tablet_->mvcc_manager()->SetLastReplicated(replay_state_->max_committed_hybrid_time);
