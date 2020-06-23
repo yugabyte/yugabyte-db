@@ -60,8 +60,3 @@ Remove the old TS from the blacklist:
 ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist REMOVE node1:9100
 ```
 
-
-## Planned cluster changes
-You might also be interested in how to perform planned cluster changes (such as moving the entire cluster to a brand new set of nodes -- say move from machines of type A to type B). 
-
-For that see [changing cluster config](../../../manage/change-cluster-config).
