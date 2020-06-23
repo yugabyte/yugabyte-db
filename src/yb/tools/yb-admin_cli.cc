@@ -236,15 +236,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   static const auto kIncludeDBType = "include_db_type";
   static const auto kIncludeTableId = "include_table_id";
+  static const auto kIncludeTableType = "include_table_type";
 
   Register(
-      "list_tables", Format(" [$0] [$1]", kIncludeDBType, kIncludeTableId),
+      "list_tables", Format(" [$0] [$1] [$2]", kIncludeDBType, kIncludeTableId, kIncludeTableType),
       [client](const CLIArguments& args) -> Status {
         bool include_db_type = false;
         bool include_table_id = false;
-        const std::array<std::pair<const char*, bool*>, 2> flags{
+        bool include_table_type = false;
+        const std::array<std::pair<const char*, bool*>, 3> flags{
             std::make_pair(kIncludeDBType, &include_db_type),
-            std::make_pair(kIncludeTableId, &include_table_id)
+            std::make_pair(kIncludeTableId, &include_table_id),
+            std::make_pair(kIncludeTableType, &include_table_type)
         };
         for (const auto& arg :  args) {
           for (const auto& flag : flags) {
@@ -253,7 +256,9 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             }
           }
         }
-        RETURN_NOT_OK_PREPEND(client->ListTables(include_db_type, include_table_id),
+        RETURN_NOT_OK_PREPEND(client->ListTables(include_db_type,
+                                                 include_table_id,
+                                                 include_table_type),
                               "Unable to list tables");
         return Status::OK();
       });
@@ -263,7 +268,9 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "list_tables_with_db_types", "",
       [client](const CLIArguments&) -> Status {
         RETURN_NOT_OK_PREPEND(
-            client->ListTables(true /* include_db_type */, false /* include_table_id*/),
+            client->ListTables(true /* include_db_type */,
+                               false /* include_table_id*/,
+                               false /* include_table_type*/),
             "Unable to list tables");
         return Status::OK();
       });
