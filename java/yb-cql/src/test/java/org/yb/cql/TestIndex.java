@@ -49,6 +49,10 @@ public class TestIndex extends BaseCQLTest {
   @BeforeClass
   public static void SetUpBeforeClass() throws Exception {
     BaseMiniClusterTest.tserverArgs.add("--allow_index_table_read_write");
+    BaseMiniClusterTest.tserverArgs.add(
+        "--index_backfill_upperbound_for_user_enforced_txn_duration_ms=1000");
+    BaseMiniClusterTest.tserverArgs.add(
+        "--index_backfill_wait_for_old_txns_ms=100");
     BaseCQLTest.setUpBeforeClass();
   }
 

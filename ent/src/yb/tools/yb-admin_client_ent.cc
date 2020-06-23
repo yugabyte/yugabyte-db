@@ -437,7 +437,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
     // Wait for table creation.
     wait_req.mutable_table()->set_table_id(new_table_id);
 
-    for (int k = 0; k < 20; ++k) {
+    for (int k = 0; k < 30; ++k) {
       rpc.Reset();
       RETURN_NOT_OK(master_proxy_->IsCreateTableDone(wait_req, &wait_resp, &rpc));
 
