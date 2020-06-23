@@ -2129,7 +2129,7 @@ Status ExternalMaster::Start(bool shell_mode) {
   Flags flags;
   flags.Add("fs_data_dirs", data_dir_);
   flags.Add("rpc_bind_addresses", rpc_bind_address_);
-  flags.Add("webserver_interface", "localhost");
+  flags.Add("webserver_interface", "127.0.0.1");
   flags.Add("webserver_port", http_port_);
   // On first start, we need to tell the masters their list of expected peers.
   // For 'shell' master, there is no master addresses.
