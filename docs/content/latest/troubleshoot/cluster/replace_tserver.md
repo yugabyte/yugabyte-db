@@ -33,12 +33,12 @@ Blacklist the old yb-tserver:
 
 Refer to [change_blacklist](../../admin/yb-admin.md#change-blacklist) command for further parameters and options.
 
-## Wait for rebalance
+## Wait for the rebalance to complete
 
-Wait for data to drain from the old yb-tserver and move into the new one:
-```bash
+Wait for the data to drain from the failed YB-TServer and for the data to be loaded into the new one. You can check for the completion of rebalancing by running the following command:
+
+```sh
 ~/master/bin/yb-admin -master_addresses $MASTERS get_load_move_completion 
-```
 
 
 {{< note title="Note" >}}
