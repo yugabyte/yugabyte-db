@@ -54,6 +54,12 @@ class MultiStageAlterTable {
   static Status ClearAlteringState(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& table, uint32_t expected_version);
 
+  // Copies the current schema, schema_version, indexes and index_info
+  // into their fully_applied_* equivalents. This is useful to ensure
+  // that the master returns the fully applied version of the table schema
+  // while the next alter table is in progress.
+  static void CopySchemaDetailsToFullyApplied(SysTablesEntryPB* state);
+
   // Updates and persists the IndexPermission corresponding to the index_table_id for
   // the indexed_table's TableInfo.
   static Status UpdateIndexPermission(

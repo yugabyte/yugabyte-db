@@ -691,14 +691,21 @@ void TabletServiceAdminImpl::BackfillIndex(
   std::vector<IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
-    const IndexInfo& idx_info = index_map->at(idx.table_id());
-    indexes_to_backfill.push_back(idx_info);
-    index_ids.push_back(index_map->at(idx.table_id()).table_id());
+    auto result = index_map->FindIndex(idx.table_id());
+    if (result) {
+      const IndexInfo* index_info = *result;
+      indexes_to_backfill.push_back(*index_info);
+      index_ids.push_back(index_info->table_id());
 
-    IndexInfoPB idx_info_pb;
-    idx_info.ToPB(&idx_info_pb);
-    all_at_backfill &= idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
-    all_past_backfill &= idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
+      IndexInfoPB idx_info_pb;
+      index_info->ToPB(&idx_info_pb);
+      all_at_backfill &=
+          idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
+      all_past_backfill &=
+          idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
+    } else {
+      all_at_backfill = false;
+    }
   }
 
   if (!all_at_backfill) {
