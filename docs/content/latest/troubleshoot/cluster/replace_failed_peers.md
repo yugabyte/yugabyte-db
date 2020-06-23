@@ -1,0 +1,77 @@
+---
+title: Fix 2/3 failed peers
+linkTitle: Fix 2/3 failed peers
+description: Fix 2/3 failed peers
+aliases:
+  - /troubleshoot/cluster/fix-2-3-failed-peers/
+  - /latest/troubleshoot/cluster/fix-2-3-failed-peers/
+menu:
+  latest:
+    parent: troubleshoot-cluster
+    weight: 835
+isTocNested: true
+showAsideToc: true
+---
+
+When a RAFT peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones.
+If 2/3 of RAFT peers fail for a given tablet, we have to manually execute the equivalent of a remote bootstrap. 
+
+
+Assuming we have a cluster where:
+
+- a given tablet with UUID `TABLET1`
+- 3 tablet peers, 1 in good working order, referred to as `NODE_GOOD` and two broken peers, referred as `NODE_BAD1` and `NODE_BAD2`
+- We will be copying some tablet related data from the good peer to each of the bad peers
+
+These are the steps to follow in such scenario:
+
+- stop the bad TS, say `NODE_BAD1`, as we will be changing file system data underneath
+
+- on the `NODE_GOOD` TS, create an archive of the wals (raft data) and rocksdb (regular rocksdb) directories
+
+- copy these archives over to `NODE_BAD1`, on the same drive that `TABLET1` currently has its raft and rocksdb data
+
+- remove the old wals and rocksdb data for `TABLET1` from `NODE_BAD1`
+
+- unpack the data we copied over from `NODE_GOOD` into the corresponding (now empty) directories on `NODE_BAD1`
+
+- restart `NODE_BAD1`, so it can bootstrap `TABLET1` using this new data
+
+- restart `NODE_GOOD` so it can properly observe the changed state and data on `NODE_BAD1`
+
+- These steps need to be followed for both `NODE_BAD1` and `NODE_BAD2`
+
+
+- The same steps need to be followed for both `NODE_BAD2`
+
+
+{{< note title="Note" >}}
+
+Normally when we try to find tablet data, we use a `find` command across the `--fs_data_dir` paths. 
+
+In this example, assume that's set to `/mnt/d0` and our tablet UUID is `c08596d5820a4683a96893e092088c39`:
+
+```bash
+$ find /mnt/d0/ -name '*c08596d5820a4683a96893e092088c39*'
+/mnt/d0/yb-data/tserver/wals/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39
+/mnt/d0/yb-data/tserver/tablet-meta/c08596d5820a4683a96893e092088c39
+/mnt/d0/yb-data/tserver/consensus-meta/c08596d5820a4683a96893e092088c39
+/mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39
+/mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39.intents
+/mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39.snapshots
+```
+
+The data we are interested in here is:
+
+For the raft wals: 
+```bash
+/mnt/d0/yb-data/tserver/wals/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39
+```
+
+For the rocksdb regular DB: 
+```bash
+/mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39
+```
+
+{{< /note >}}
+
