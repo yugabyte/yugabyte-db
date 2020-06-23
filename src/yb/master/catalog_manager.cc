@@ -254,7 +254,7 @@ DEFINE_uint64(metrics_snapshots_table_num_tablets, 0,
     "Number of tablets to use when creating the metrics snapshots table."
     "0 to use the same default num tablets as for regular tables.");
 
-DEFINE_bool(disable_index_backfill, true,  // Temporarily disabled until all diffs land.
+DEFINE_bool(disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YCQL indexes.");
 TAG_FLAG(disable_index_backfill, runtime);
 TAG_FLAG(disable_index_backfill, hidden);

@@ -498,6 +498,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   IndexInfoPB index_info_to_update;
   if (!indexes_to_delete.empty()) {
     index_info_to_update = indexes_to_delete[0];
+    VLOG(3) << "Deleting the index entry for " << yb::ToString(index_info_to_update);
     // TODO(Amit): #4039 Delete the index after ensuring that there is no pending txn.
     Status s;
     WARN_NOT_OK(
