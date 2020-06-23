@@ -42,8 +42,9 @@ Wait for the data to drain from the failed YB-TServer and for the data to be loa
 
 
 {{< note title="Note" >}}
-This will only complete if the data from the old TS has where to go, that's why it is important to start the new TS first, 
-or ensure your remaining TS have enough capacity and are in the correct placement zones.
+
+Loading and rebalancing will complete if only data from the failed YB-TSserver has someplace to be stored. Start the new YB-TServer first, or ensure your remaining YB-TServers have enough capacity and are in the correct placement zones.
+
 {{< /note >}}
 
 Refer to [get_load_move_completion](../../admin/yb-admin.md#get-load-move-completion) command for further parameters and options.
