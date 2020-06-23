@@ -24,15 +24,12 @@ Install and then start a new YB-TServer, making sure it is in the same placement
 
 For details on starting YB-TServers and more options, see [Start YB-TServers](../../../../deploy/manual-deployment/start-tservers/).
 
-## Blacklist the old yb-tserver
+## Blacklist the failed YB-TServer
 
-Blacklist the old yb-tserver: 
-```bash
+To blacklist the failed YB-TServer, run the following command:
+ 
+```sh
 ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist ADD $OLD_IP:9100
-```
-
-Refer to [change_blacklist](../../admin/yb-admin.md#change-blacklist) command for further parameters and options.
-
 ## Wait for the rebalance to complete
 
 Wait for the data to drain from the failed YB-TServer and for the data to be loaded into the new one. You can check for the completion of rebalancing by running the following command:
