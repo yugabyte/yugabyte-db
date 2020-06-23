@@ -125,7 +125,9 @@ class ClusterAdminClient {
   CHECKED_STATUS DumpMasterState(bool to_console);
 
   // List all the tables.
-  CHECKED_STATUS ListTables(bool include_db_type, bool include_table_id);
+  CHECKED_STATUS ListTables(bool include_db_type,
+                            bool include_table_id,
+                            bool include_table_type);
 
   // List all tablets of this table
   CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets);

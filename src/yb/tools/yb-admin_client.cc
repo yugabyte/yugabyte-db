@@ -1120,7 +1120,9 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListTables(bool include_db_type, bool include_table_id) {
+Status ClusterAdminClient::ListTables(bool include_db_type,
+                                      bool include_table_id,
+                                      bool include_table_type) {
   const auto tables = VERIFY_RESULT(yb_client_->ListTables());
   const auto& namespace_metadata = VERIFY_RESULT_REF(GetNamespaceMap());
   vector<string> names;
@@ -1138,6 +1140,22 @@ Status ClusterAdminClient::ListTables(bool include_db_type, bool include_table_i
     str << table.ToString();
     if (include_table_id) {
       str << ' ' << table.table_id();
+    }
+    if (include_table_type) {
+      boost::optional<master::RelationType> relation_type = table.relation_type();
+      switch (relation_type.get()) {
+        case master::SYSTEM_TABLE_RELATION:
+          str << " catalog";
+          break;
+        case master::USER_TABLE_RELATION:
+          str << " table";
+          break;
+        case master::INDEX_TABLE_RELATION:
+          str << " index";
+          break;
+        default:
+          str << " other";
+      }
     }
     names.push_back(str.str());
   }
