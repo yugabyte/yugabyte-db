@@ -47,7 +47,7 @@ Loading and rebalancing will complete if only data from the failed YB-TSserver h
 
 {{< /note >}}
 
-Refer to [get_load_move_completion](../../admin/yb-admin.md#get-load-move-completion) command for further parameters and options.
+For details on using this command, see [`get_load_move_completion`](../../admin/yb-admin.md#get-load-move-completion).
 
 ## Kill old tserver
 Once data move is at 100%, you can kill the old TS (eg: stop the TS process, terminate the VM)
