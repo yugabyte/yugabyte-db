@@ -22,7 +22,7 @@ scenario is:
 
 Install and then start a new YB-TServer, making sure it is in the same placement group as the one you are replacing.
 
-Refer to [starting `tserver` servers](../../../../deploy/manual-deployment/start-tservers/) for further parameters and options.
+For details on starting YB-TServers and more options, see [Start YB-TServers](../../../../deploy/manual-deployment/start-tservers/).
 
 ## Blacklist the old yb-tserver
 
