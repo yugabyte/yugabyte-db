@@ -30,13 +30,14 @@ To blacklist the failed YB-TServer, run the following command:
  
 ```sh
 ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist ADD $OLD_IP:9100
+```
 ## Wait for the rebalance to complete
 
 Wait for the data to drain from the failed YB-TServer and for the data to be loaded into the new one. You can check for the completion of rebalancing by running the following command:
 
 ```sh
 ~/master/bin/yb-admin -master_addresses $MASTERS get_load_move_completion 
-
+```
 
 {{< note title="Note" >}}
 
@@ -60,3 +61,4 @@ Now that the replacement YB-TServer is up and running, and loaded with data, rem
 
 ```sh
 ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist REMOVE node1:9100
+```
