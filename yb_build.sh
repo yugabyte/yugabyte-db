@@ -181,10 +181,12 @@ Options:
     Disable the creation/overwriting of the "latest" symlink in the build directory.
   --static-analyzer
     Enable Clang static analyzer
-  --download-thirdparty, --dltp
+  --download-thirdparty, --dltp  (This is the default.)
     Use prebuilt third-party dependencies, downloadable e.g. from a GitHub release. Also records the
     third-party URL in the build root so that further invocations of yb_build.sh don't reqiure
-    this option (this could be reset by --clean). Only supported on CentOS.
+    this option (this could be reset by --clean). Only supported on Mac and CentOS.
+  --no-download-thirdparty|--ndltp)
+    Disable downloading pre-built third-party dependencies.
   --collect-java-tests
     Collect the set of Java test methods into a file
   --resolve-java-dependencies
@@ -642,6 +644,7 @@ reduce_log_output=""
 
 resolve_java_dependencies=false
 
+export YB_DOWNLOAD_THIRDPARTY=${YB_DOWNLOAD_THIRDPARTY:-1}
 export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
 export YB_EXTRA_GTEST_FLAGS=""
@@ -997,6 +1000,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --download-thirdparty|--dltp)
       export YB_DOWNLOAD_THIRDPARTY=1
+    ;;
+    --no-download-thirdparty|--ndltp)
+      export YB_DOWNLOAD_THIRDPARTY=0
     ;;
     --super-bash-debug)
       # From https://wiki-dev.bash-hackers.org/scripting/debuggingtips
