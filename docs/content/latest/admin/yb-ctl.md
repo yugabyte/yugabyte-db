@@ -178,7 +178,7 @@ Default: `false`
 
 ##### --listen_ip
 
-Allows a 1-node RF1 cluster to listen on an address different than the default of `127.0.0.1`. For example, setting this to `0.0.0.0` enables the external access of the database APIs and admin UIs. This flag is not applicable to multi-node clusters.
+ Specifies the IP address, or port, for a 1-node cluster to listen on. To enable external access of the YugabyteDB APIs and administration ports, set the value to `0.0.0.0`. Note that this flag is not applicable to multi-node clusters.
 
 Default: `127.0.0.1`
 

@@ -58,15 +58,15 @@ To create a 1-node or 3-node local cluster, follow the steps below. For details 
 
 After the cluster is created, clients can connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
 
-### Create a 1-node cluster with RF of 1
+### Create a 1-node cluster
 
-To create a 1-node cluster with a replication factor (RF) of 1, run the following `yb-ctl create` command. 
+To create a 1-node cluster with a replication factor (RF) of `1`, run the following `yb-ctl create` command.
 
 ```sh
 $ ./bin/yb-ctl create
 ```
 
-Note that in this 1-node mode, you can bind IP address for all ports to `0.0.0.0`. This will allow you to have **external access** of the database APIs and admin UIs.
+Optionally, you can enable *external access* to the YugabyteDB APIs and administration ports by setting the [`--listen_ip`](../../../admin/yb-ctl/#listen-ip) flag to `0.0.0.0`. Note that this option is limited to 1-node (with a RF of `1`) clusters.
 
 ```sh
 $ ./bin/yb-ctl create --listen_ip=0.0.0.0
@@ -74,15 +74,15 @@ $ ./bin/yb-ctl create --listen_ip=0.0.0.0
 
 ### Create a 3-node cluster with RF of 3
 
-To run a distributed SQL cluster locally for development and testing, you can create a 3-node cluster with RF of 3 by executing the following command.
+To run a distributed SQL cluster locally for development and testing, you can create a 3-node cluster with RF of `3` by running the following command.
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
 ```
 
-Note that in this 3-node mode, the bind IP address by default for all ports is the individual loopback address (that you setup in the previous step). In this mode you will not be able to externally access the database APIs and admin UIs because `0.0.0.0` remains unbound.
+Note that in this 3-node mode, the bind IP address by default for all ports is the individual loopback address (that you set up in the previous step). In this mode you will not be able to externally access the database APIs and admin UIs because `0.0.0.0` remains unbound.
 
-You can now check `$HOME/yugabyte-data` to see `node-i` directories created where `i` represents the `node_id` of the node. Inside each such directory, there will be two disks, `disk1` and `disk2`, to highlight the fact that YugabyteDB can work with multiple disks at the same time. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
+You can now check `$HOME/yugabyte-data` to see the `node-<id>` directories (where `<id>` represents the `node_id` of the node). Inside each node directory is a subdirectory, named `disk-1`, that simulates a disk. Note that the IP address of `node-<id>` is by default set to `127.0.0.<id>`.
 
 ## 2. Check cluster status with yb-ctl
 
@@ -102,7 +102,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/ycqlsh                                                                  |
+| YCQL Shell          : bin/ycqlsh                                                                 |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | Web UI              : http://127.0.0.1:7000/                                                     |
 | Cluster Data        : /Users/yugabyte/yugabyte-data                                              |
@@ -112,7 +112,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/ycqlsh                                                                  |
+| YCQL Shell          : bin/ycqlsh                                                                 |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | data-dir[0]         : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data                        |
 | yb-tserver Logs     : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/tserver/logs           |
@@ -126,7 +126,7 @@ Node 1's [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-
 
 ### Overview and YB-Master status
 
-Node 1's master Admin UI home page shows that you have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugabyteDB version number is also shown for your reference.
+Node 1's master Admin UI home page shows that you have a cluster  with `Replication Factor` of `1` and `Num Nodes (TServers)` as `1`. The `Num User Tables` is `0` since there are no user tables created yet. The YugabyteDB version number is also shown for your reference.
 
 ![master-home](/images/admin/master-home-binary-rf1.png)
 
