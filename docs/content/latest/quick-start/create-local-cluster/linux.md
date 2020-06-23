@@ -61,7 +61,7 @@ To create a 1-node cluster with a replication factor (RF) of 1, run the followin
 $ ./bin/yb-ctl create
 ```
 
-Note that in this 1-node mode, you can bind IP address for all ports to `0.0.0.0`. This will allow you to have **external access** of the database APIs and admin UIs.
+Optionally, you can enable *external access* to the YugabyteDB APIs and administration ports by setting the [`--listen_ip`](../../../admin/yb-ctl/#listen-ip) flag to `0.0.0.0`. Note that this option is limited to 1-node (with a RF of `1`) clusters.
 
 ```sh
 $ ./bin/yb-ctl create --listen_ip=0.0.0.0
@@ -75,9 +75,9 @@ To run a distributed SQL cluster locally for development and testing, you can cr
 $ ./bin/yb-ctl --rf 3 create
 ```
 
-Note that in this 3-node mode, the bind IP address by default for all ports is the individual loopback address (that you setup in the previous step). In this mode you will not be able to externally access the database APIs and admin UIs because `0.0.0.0` remains unbound. 
+Note that in this 3-node mode, the bind IP address by default for all ports is the individual loopback address (that you setup in the previous step). In this mode you will not be able to externally access the database APIs and admin UIs because `0.0.0.0` remains unbound.
 
-You can now check `$HOME/yugabyte-data` to see `node-i` directories created where `i` represents the `node_id` of the node. Inside each such directory, there will be two disks, `disk1` and `disk2`, to highlight the fact that YugabyteDB can work with multiple disks at the same time. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
+You can now check `$HOME/yugabyte-data` to see the `node-<id>` directories (where `<id>` represents the `node_id` of the node). Inside each node directory is a subdirectory, named `disk-1`, that simulates a disk. Note that the IP address of `node-<id>` is by default set to `127.0.0.<id>`.
 
 ## 2. Check cluster status with yb-ctl
 
