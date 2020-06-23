@@ -1,12 +1,14 @@
 ---
-title: Replace failed tserver
-linkTitle: Replace failed tserver
-description: Replace failed tserver
+title: Replace a failed YB-TServer
+headerTitle: Replace a failed YB-TServer
+linkTitle: Replace a failed YB-TServer
+description: Procedure to replace a failed YB-TServer
 aliases:
-  - /troubleshoot/cluster/reaplace-tserver/
+  - /troubleshoot/cluster/replace-tserver/
   - /latest/troubleshoot/cluster/replace-tserver/
 menu:
   latest:
+    identifier: replace-failed-tserver
     parent: troubleshoot-cluster
     weight: 829
 isTocNested: true
@@ -63,4 +65,3 @@ Remove the old TS from the blacklist:
 You might also be interested in how to perform planned cluster changes (such as moving the entire cluster to a brand new set of nodes -- say move from machines of type A to type B). 
 
 For that see [changing cluster config](../../../manage/change-cluster-config).
-
