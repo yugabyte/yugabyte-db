@@ -49,11 +49,13 @@ Loading and rebalancing will complete if only data from the failed YB-TSserver h
 
 For details on using this command, see [`get_load_move_completion`](../../admin/yb-admin.md#get-load-move-completion).
 
-## Kill old tserver
-Once data move is at 100%, you can kill the old TS (eg: stop the TS process, terminate the VM)
+## Kill the failed YB-TServer
 
-Wait at least `tserver_unresponsive_timeout_ms` (default 60s) for this TS to be marked as dead by the master leader. 
-You can validate this by visiting `$MASTER_LEADER_IP:7000/tablet-servers` and checking for the state of the old TS to say `DEAD`.
+When the data move is complete (100%), kill the failed YB-TServer by stopping the `yb-tserver` process, or terminating the VM.
+
+Now, wait for the YB-TServer to be marked as `DEAD` by the YB-Master leader.  The YB-Master leader will mark the server as `DEAD` after not responding for one minute (based on the `tserver_unresponsive_timeout_ms` (default is `60000`).
+ 
+To verify that the failed YB-TServer is dead, open your web browser to `$MASTER_LEADER_IP:7000/tablet-servers` and check the output.
 
 ## Remove the failed YB-TServer from the blacklist 
 
