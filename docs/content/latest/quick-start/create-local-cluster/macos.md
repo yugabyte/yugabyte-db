@@ -82,7 +82,7 @@ $ ./bin/yb-ctl --rf 3 create
 
 Note that in this 3-node mode, the bind IP address by default for all ports is the individual loopback address (that you set up in the previous step). In this mode you will not be able to externally access the database APIs and admin UIs because `0.0.0.0` remains unbound.
 
-You can now check `$HOME/yugabyte-data` to see the `node-<id>` directories (where `<id>` represents the `node_id` of the node). Inside each node directory, there will be a subdirectory, named `disk-1`. Note that the IP address of `node-<id>` is by default set to `127.0.0.<id>`.
+You can now check `$HOME/yugabyte-data` to see the `node-<id>` directories (where `<id>` represents the `node_id` of the node). Inside each node directory is a subdirectory, named `disk-1`, that simulates a disk. Note that the IP address of `node-<id>` is by default set to `127.0.0.<id>`.
 
 ## 2. Check cluster status with yb-ctl
 
