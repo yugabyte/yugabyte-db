@@ -18,7 +18,7 @@ showAsideToc: true
 Suppose you have a cluster running and now a tserver has failed and needs to be replaced. The procedure to follow in this 
 scenario is:
 
-## Start new yb-tserver
+## Start the new YB-TServer
 
 Start up a new yb-tserver, make sure it is in the same placement group as the one you are replacing!
 
