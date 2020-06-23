@@ -15,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Suppose you have a cluster running and now a tserver has failed and needs to be replaced. The procedure to follow in this 
+If you have a failed YB-TServer in a YugabytDB cluster that needs to be replaced, follow these steps:
 scenario is:
 
 ## Start the new YB-TServer
