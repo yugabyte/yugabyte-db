@@ -259,6 +259,14 @@ DEFINE_bool(disable_index_backfill, true,  // Temporarily disabled until all dif
 TAG_FLAG(disable_index_backfill, runtime);
 TAG_FLAG(disable_index_backfill, hidden);
 
+DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
+    "A kill switch to disable multi-stage backfill for user encorced YCQL indexes. "
+    "Note that setting this to true may cause the create index flow to be slow. "
+    "This is needed to ensure the safety of the index backfill process. See also "
+    "index_backfill_upperbound_for_user_enforced_txn_duration_ms");
+TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
+TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
+
 DEFINE_bool(
     hide_pg_catalog_table_creation_logs, false,
     "Whether to hide detailed log messages for PostgreSQL catalog table creation. "
@@ -2141,9 +2149,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   IndexInfoPB index_info;
 
   // Fetch the runtime flag to prevent any issues from the updates to flag while processing.
-  const bool disable_index_backfill = (
-      is_pg_table ? GetAtomicFlag(&FLAGS_ysql_disable_index_backfill)
-                  : GetAtomicFlag(&FLAGS_disable_index_backfill));
+  const bool disable_index_backfill =
+      (is_pg_table ? GetAtomicFlag(&FLAGS_ysql_disable_index_backfill)
+                   : GetAtomicFlag(&FLAGS_disable_index_backfill) ||
+                         (!is_transactional &&
+                          GetAtomicFlag(&FLAGS_disable_index_backfill_for_non_txn_tables)));
   if (req.has_index_info()) {
     // Current message format.
     index_info.CopyFrom(req.index_info());
@@ -3067,21 +3077,25 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     nsId.set_id(indexed_table->namespace_id());
     scoped_refptr<NamespaceInfo> nsInfo;
     RETURN_NOT_OK(FindNamespace(nsId, &nsInfo));
-    auto* indexed_table_name = resp->mutable_indexed_table();
-    indexed_table_name->mutable_namespace_()->set_name(nsInfo->name());
-    indexed_table_name->set_table_name(indexed_table->name());
+    auto* resp_indexed_table = resp->mutable_indexed_table();
+    resp_indexed_table->mutable_namespace_()->set_name(nsInfo->name());
+    resp_indexed_table->set_table_name(indexed_table->name());
+    resp_indexed_table->set_table_id(indexed_table_id);
   }
   const bool is_pg_table = indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
+  // We don't need to handle user enforced txns separately here because there
+  // is no additional wait.
   const bool disable_index_backfill = (
       is_pg_table ? GetAtomicFlag(&FLAGS_ysql_disable_index_backfill)
                   : GetAtomicFlag(&FLAGS_disable_index_backfill));
   if (disable_index_backfill) {
-    return DeleteIndexInfoFromTable(indexed_table_id, index_table_id);
+    RETURN_NOT_OK(DeleteIndexInfoFromTable(indexed_table_id, index_table_id));
+  } else {
+    RETURN_NOT_OK(MultiStageAlterTable::UpdateIndexPermission(
+        this, indexed_table,
+        {{index_table_id, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING}}));
   }
 
-  RETURN_NOT_OK(MultiStageAlterTable::UpdateIndexPermission(
-      this, indexed_table,
-      {{index_table_id, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING}}));
   // Actual Deletion of the index info will happen asynchronously after all the
   // tablets move to the new IndexPermission of DELETE_ONLY_WHILE_REMOVING.
   SendAlterTableRequest(indexed_table);
@@ -3098,12 +3112,20 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   }
   TRACE("Locking indexed table");
   auto l = indexed_table->LockForWrite();
+  auto &indexed_table_data = *l->mutable_data();
 
-  auto *indexes = l->mutable_data()->pb.mutable_indexes();
+  MultiStageAlterTable::CopySchemaDetailsToFullyApplied(&indexed_table_data.pb);
+  auto *indexes = indexed_table_data.pb.mutable_indexes();
   for (int i = 0; i < indexes->size(); i++) {
     if (indexes->Get(i).table_id() == index_table_id) {
 
       indexes->DeleteSubrange(i, 1);
+
+      indexed_table_data.pb.set_version(indexed_table_data.pb.version() + 1);
+      indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
+                                   Substitute("Alter table version=$0 ts=$1",
+                                              indexed_table_data.pb.version(),
+                                              LocalTimeAsString()));
 
       // Update sys-catalog with the deleted indexed table info.
       TRACE("Updating indexed table metadata on disk");
@@ -3651,17 +3673,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   // Serialize the schema Increment the version number.
   if (new_schema.initialized()) {
     if (!l->data().pb.has_fully_applied_schema()) {
-      table_pb.mutable_fully_applied_schema()->CopyFrom(l->data().pb.schema());
       // The idea here is that if we are in the middle of updating the schema
       // from one state to another, then YBClients will be given the older
       // version until the schema is updated on all the tablets.
       // As of Dec 2019, this may lead to some rejected operations/retries during
       // the index backfill. See #3284 for possible optimizations.
-      table_pb.set_fully_applied_schema_version(l->data().pb.version());
-      table_pb.mutable_fully_applied_indexes()->CopyFrom(l->data().pb.indexes());
-      if (l->data().pb.has_index_info()) {
-        table_pb.mutable_fully_applied_index_info()->CopyFrom(l->data().pb.index_info());
-      }
+      MultiStageAlterTable::CopySchemaDetailsToFullyApplied(&table_pb);
     }
     SchemaToPB(new_schema, table_pb.mutable_schema());
   }
