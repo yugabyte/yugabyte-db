@@ -1056,7 +1056,7 @@ download_and_extract_archive() {
           (
             set -x
             "$YB_SRC_ROOT/python/yb/download_and_extract_archive.py" \
-              --url "$url" --dest-dir-parent "$dest_dir_parent"
+              --url "$url" --dest-dir-parent "${dest_dir_parent}"
           )
         else
           log "[Host $(hostname)] Acquired lock $lock_path but directory $dest_dir already" \
