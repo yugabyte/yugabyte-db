@@ -94,7 +94,13 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
           auto status = conn.ExecuteFormat("INSERT INTO terr VALUES ($0, $1)",
                                       seed * (k + 1), seed);
           if (!status.ok()) {
-            ASSERT_STR_CONTAINS(status.ToString(), kTryAgain);
+            string serr = status.ToString();
+            if (serr.find("aborted") != std::string::npos) {
+              // If DocDB aborted the execution, the transaction cannot be continued.
+              return;
+            }
+            // Run the statement again as "Try again" was reported.
+            ASSERT_STR_CONTAINS(serr, kTryAgain);
             continue;
           }
 
@@ -170,7 +176,13 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
           auto status = conn.ExecuteFormat("INSERT INTO terr VALUES ($0, $1)",
                                            seed * (k + 1), seed);
           if (!status.ok()) {
-            ASSERT_STR_CONTAINS(status.ToString(), kTryAgain);
+            string serr = status.ToString();
+            if (serr.find("aborted") != std::string::npos) {
+              // If DocDB aborted the execution, the transaction cannot be continued.
+              return;
+            }
+            // Run the statement again as "Try again" was reported.
+            ASSERT_STR_CONTAINS(serr, kTryAgain);
             continue;
           }
 
@@ -246,12 +258,18 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
 
       // UPDATE using different seeds.
       for (int k = 0; k != kRowCount; ++k) {
-        auto status = conn.ExecuteFormat("UPDATE terr SET v = $0 WHERE k = $1", seed, k);
-        if (!status.ok()) {
-          // Although "Try again" was reported, DocDB would abort the transaction immediately, so
-          // we cannot retry within one transaction. For now, stop the retry effort.
-          ASSERT_STR_CONTAINS(status.ToString(), kTryAgain);
-          return;
+        for (int rt = 0; rt < kRetryCount; rt++) {
+          auto status = conn.ExecuteFormat("UPDATE terr SET v = $0 WHERE k = $1", seed, k);
+          if (!status.ok()) {
+            string serr = status.ToString();
+            if (serr.find("aborted") != std::string::npos) {
+              // If DocDB aborted the execution, the transaction cannot be continued.
+              return;
+            }
+            // Run the statement again as "Try again" was reported.
+            ASSERT_STR_CONTAINS(serr, kTryAgain);
+            continue;
+          }
         }
       }
 
@@ -336,7 +354,13 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
         for (int rt = 0; rt < kRetryCount; rt++) {
           auto status = conn.ExecuteFormat("DELETE FROM terr WHERE k = $0", k);
           if (!status.ok()) {
-            ASSERT_STR_CONTAINS(status.ToString(), kTryAgain);
+            string serr = status.ToString();
+            if (serr.find("aborted") != std::string::npos) {
+              // If DocDB aborted the execution, the transaction cannot be continued.
+              return;
+            }
+            // Run the statement again as "Try again" was reported.
+            ASSERT_STR_CONTAINS(serr, kTryAgain);
             continue;
           }
 
