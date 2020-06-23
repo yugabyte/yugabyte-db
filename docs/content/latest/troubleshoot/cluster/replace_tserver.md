@@ -55,8 +55,9 @@ Once data move is at 100%, you can kill the old TS (eg: stop the TS process, ter
 Wait at least `tserver_unresponsive_timeout_ms` (default 60s) for this TS to be marked as dead by the master leader. 
 You can validate this by visiting `$MASTER_LEADER_IP:7000/tablet-servers` and checking for the state of the old TS to say `DEAD`.
 
-Remove the old TS from the blacklist: 
+## Remove the failed YB-TServer from the blacklist 
 
-```bash
+Now that the replacement YB-TServer is up and running, and loaded with data, remove the address for the failed YB-TServer from the blacklist.
+
+```sh
 ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist REMOVE node1:9100
-```
