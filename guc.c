@@ -53,6 +53,7 @@ init_guc(void)
 		.guc_max = 0,
 		.guc_restart = false
 	};
+
 	conf[i++] = (GucVariable) { 
 		.guc_name = "pg_stat_monitor.pgsm_normalized_query",
 		.guc_desc = "Selects whether save query in normalized format.",
@@ -112,6 +113,16 @@ init_guc(void)
 		.guc_max = INT_MAX,
 		.guc_restart = true
 	};
+#if PG_VERSION_NUM >= 130000
+	conf[i++] = (GucVariable) { 
+		.guc_name = "pg_stat_monitor.pgsm_track_planning",
+		.guc_desc = "Selects whether planning statistics are tracked.",
+		.guc_default = 1,
+		.guc_min = 0,
+		.guc_max = 0,
+		.guc_restart = false
+	};
+#endif	
 	
 	DefineCustomIntVariable("pg_stat_monitor.max",
 							"Sets the maximum number of statements tracked by pg_stat_monitor.",
@@ -173,7 +184,7 @@ init_guc(void)
 							 NULL,
 							 NULL);
 
-	DefineCustomIntVariable("pg_stat_monitor.PGSM_MAX_buckets ",
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_max_buckets ",
 							"Sets the maximum number of buckets.",
 							NULL,
 							&PGSM_MAX_BUCKETS,
@@ -239,7 +250,7 @@ init_guc(void)
 							NULL,
 							NULL);
 
-	DefineCustomIntVariable("pg_stat_monitor.query_shared_buffer",
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_query_shared_buffer.",
 							"Sets the shared_buffer size",
 							NULL,
 							&PGSM_QUERY_BUF_SIZE,
@@ -251,6 +262,16 @@ init_guc(void)
 							NULL,
 							NULL,
 							NULL);
+	DefineCustomBoolVariable("pg_stat_monitor.pgsm_track_planning",
+							 "Selects whether track planning statistics.",
+							 NULL,
+							 (bool*)&PGSM_TRACK_PLANNING,
+							 true,
+							 PGC_SUSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
 
 }
 

@@ -36,7 +36,7 @@
 #include "utils/lsyscache.h"
 #include "utils/guc.h"
 
-#define IsHashInitialize()	(!pgss || !pgss_hash || !pgss_object_hash || !pgss_agghash || !pgss_buckethash || !pgss_waiteventshash)
+#define IsHashInitialize()	(pgss || pgss_hash || pgss_object_hash || pgss_agghash || pgss_buckethash || pgss_waiteventshash)
 
 #define MAX_BACKEND_PROCESES (MaxBackends + NUM_AUXILIARY_PROCS + max_prepared_xacts)
 
@@ -73,6 +73,21 @@ typedef struct GucVariables
 	int		guc_max;
 	bool 	guc_restart;
 } GucVariable;
+typedef enum pgssStoreKind
+{
+	PGSS_INVALID = -1,
+
+	/*
+	 * PGSS_PLAN and PGSS_EXEC must be respectively 0 and 1 as they're used to
+	 * reference the underlying values in the arrays in the Counters struct,
+	 * and this order is required in pg_stat_statements_internal().
+	 */
+	PGSS_PLAN = 0,
+	PGSS_EXEC,
+
+	PGSS_NUMKIND				/* Must be last value of this enum */
+} pgssStoreKind;
+
 
 /*
  * Type of aggregate keys
@@ -217,9 +232,9 @@ typedef struct SysInfo
 typedef struct Counters
 {
 	uint64		bucket_id;		/* bucket id */
-	Calls		calls;
+	Calls		calls[PGSS_NUMKIND];
 	QueryInfo	info;
-	CallTime	time;
+	CallTime	time[PGSS_NUMKIND];
 	Blocks		blocks;
 	SysInfo		sysinfo;
 } Counters;
@@ -344,6 +359,7 @@ void init_guc(void);
 #define PGSM_OBJECT_CACHE conf[8].guc_variable
 #define PGSM_RESPOSE_TIME_LOWER_BOUND conf[9].guc_variable
 #define PGSM_RESPOSE_TIME_STEP conf[10].guc_variable
+#define PGSM_TRACK_PLANNING conf[11].guc_variable
 
-GucVariable conf[11];
+GucVariable conf[12];
 #endif

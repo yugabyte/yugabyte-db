@@ -99,13 +99,13 @@ SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
                        query                       | calls | rows 
 ---------------------------------------------------+-------+------
  PREPARE pgss_test (int) AS SELECT $1, $2 LIMIT $3 |     1 |    1
+ SELECT $1                                         |     2 |    2
  SELECT $1                                        +|     4 |    4
                                                   +|       | 
    AS "text"                                       |       | 
  SELECT $1 + $2                                    |     2 |    2
  SELECT $1 + $2 + $3 AS "add"                      |     3 |    3
  SELECT $1 AS "float"                              |     1 |    1
- SELECT $1 AS "int"                                |     2 |    2
  SELECT $1 AS i UNION SELECT $2 ORDER BY i         |     1 |    2
  SELECT $1 || $2                                   |     1 |    1
  SELECT pg_stat_monitor_reset()                    |     1 |    1
@@ -232,9 +232,11 @@ SELECT 1 + 1 AS "two";
 (1 row)
 
 SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
- query | calls | rows 
--------+-------+------
-(0 rows)
+     query      | calls | rows 
+----------------+-------+------
+ SELECT $1      |     0 |    0
+ SELECT $1 + $2 |     0 |    0
+(2 rows)
 
 --
 -- pg_stat_monitor.track = top
@@ -288,15 +290,17 @@ SELECT PLUS_ONE(10);
 (1 row)
 
 SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
-             query              | calls | rows 
---------------------------------+-------+------
- SELECT $1                     +|     1 |    1
-                               +|       | 
-   AS "text"                    |       | 
- SELECT PLUS_ONE($1)            |     2 |    2
- SELECT PLUS_TWO($1)            |     2 |    2
- SELECT pg_stat_monitor_reset() |     1 |    1
-(4 rows)
+               query               | calls | rows 
+-----------------------------------+-------+------
+ SELECT $1                        +|     1 |    1
+                                  +|       | 
+   AS "text"                       |       | 
+ SELECT (i + $2 + $3)::INTEGER     |     0 |    0
+ SELECT (i + $2)::INTEGER LIMIT $3 |     0 |    0
+ SELECT PLUS_ONE($1)               |     2 |    2
+ SELECT PLUS_TWO($1)               |     2 |    2
+ SELECT pg_stat_monitor_reset()    |     1 |    1
+(6 rows)
 
 --
 -- pg_stat_monitor.track = all
@@ -393,7 +397,7 @@ SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
  DROP FUNCTION PLUS_TWO(INTEGER)           |     1 |    0
  DROP TABLE IF EXISTS test                 |     3 |    0
  DROP TABLE test                           |     1 |    0
- SELECT $1 AS "int"                        |     1 |    1
+ SELECT $1                                 |     1 |    1
  SELECT pg_stat_monitor_reset()            |     1 |    1
 (8 rows)
 
