@@ -15,8 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-If you have a failed YB-TServer in a YugabytDB cluster that needs to be replaced, follow these steps:
-scenario is:
+If you have a failed YB-TServer in a YugabyteDB cluster that needs to be replaced, follow these steps:
 
 ## Start the new YB-TServer
 
@@ -31,6 +30,9 @@ To blacklist the failed YB-TServer, run the following command:
 ```sh
 ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist ADD $OLD_IP:9100
 ```
+
+For details, see [change_blacklist](../../admin/yb-admin.md#change-blacklist) command in the yb-admin reference page.
+
 ## Wait for the rebalance to complete
 
 Wait for the data to drain from the failed YB-TServer and for the data to be loaded into the new one. You can check for the completion of rebalancing by running the following command:
@@ -41,7 +43,8 @@ Wait for the data to drain from the failed YB-TServer and for the data to be loa
 
 {{< note title="Note" >}}
 
-Loading and rebalancing will complete if only data from the failed YB-TSserver has someplace to be stored. Start the new YB-TServer first, or ensure your remaining YB-TServers have enough capacity and are in the correct placement zones.
+Loading and rebalancing will complete if only data from the failed YB-TSserver has someplace to be stored. 
+Start the new YB-TServer first, or ensure your remaining YB-TServers have enough capacity and are in the correct placement zones.
 
 {{< /note >}}
 
@@ -51,7 +54,8 @@ For details on using this command, see [`get_load_move_completion`](../../admin/
 
 When the data move is complete (100%), kill the failed YB-TServer by stopping the `yb-tserver` process, or terminating the VM.
 
-Now, wait for the YB-TServer to be marked as `DEAD` by the YB-Master leader.  The YB-Master leader will mark the server as `DEAD` after not responding for one minute (based on the `tserver_unresponsive_timeout_ms` (default is `60000`).
+Now, wait for the YB-TServer to be marked as `DEAD` by the YB-Master leader.  
+The YB-Master leader will mark the server as `DEAD` after not responding for one minute (based on the `tserver_unresponsive_timeout_ms` (default is `60000`).
  
 To verify that the failed YB-TServer is dead, open your web browser to `$MASTER_LEADER_IP:7000/tablet-servers` and check the output.
 
