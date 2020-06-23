@@ -20,7 +20,7 @@ scenario is:
 
 ## Start the new YB-TServer
 
-Start up a new yb-tserver, make sure it is in the same placement group as the one you are replacing!
+Install and then start a new YB-TServer, making sure it is in the same placement group as the one you are replacing.
 
 Refer to [starting `tserver` servers](../../../../deploy/manual-deployment/start-tservers/) for further parameters and options.
 
@@ -59,4 +59,3 @@ Remove the old TS from the blacklist:
 ```bash
 ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist REMOVE node1:9100
 ```
-
