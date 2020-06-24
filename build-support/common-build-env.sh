@@ -2277,7 +2277,11 @@ set_prebuilt_thirdparty_url() {
               "From file: $thirdparty_url_file."
       fi
     elif [[ -z ${YB_THIRDPARTY_URL:-} ]]; then
-      fatal "File $thirdparty_url_file not found, cannot set YB_THIRDPARTY_URL"
+      log "$thirdparty_url_file file not found, and YB_THIRDPARTY_URL not set."
+      log "Cannot download pre-built third-party dependencies. Continuing without downloading."
+      export YB_THIRDPARTY_URL=""
+      export YB_DOWNLOAD_THIRDPARTY=0
+      return
     fi
 
     if [[ -z ${YB_THIRDPARTY_URL:-} ]]; then
@@ -2289,9 +2293,6 @@ set_prebuilt_thirdparty_url() {
         log "YB_THIRDPARTY_URL is already set to $YB_THIRDPARTY_URL, not trying to set it to" \
             "the default value of $auto_thirdparty_url"
       fi
-    else
-      fatal "YB_DOWNLOAD_THIRDPARTY is 1 but YB_THIRDPARTY_URL is not set, and could not" \
-            "determine the default value."
     fi
   fi
 }
