@@ -1,6 +1,21 @@
 Changelog
 =========
 
+2020-06-24 version 1.1.4:
+-------------------------
+
+  **New features**:
+
+    - Add support for hypothetical index on partitioned tables
+
+  **Miscellaneous**
+
+  - Fix compatibility with PostgreSQL 13
+
+  **Bug fixes**
+
+  - Check that the target relation is a table or a materialized view
+
 2019-06-16 version 1.1.3:
 -------------------------
 
@@ -12,7 +27,7 @@ Changelog
   - Use a dedicated MemoryContext to store hypothetical objects
   - Fix compatibility on Windows (Godwottery)
 
-  **Bug fixed**
+  **Bug fixes**
 
   - Call previous explain_get_index_name_hook if it was setup
   - add hypopg_reset_index() SQL function
