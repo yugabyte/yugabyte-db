@@ -160,6 +160,7 @@ class MasterPathHandlers {
   void HandleGetTserverStatus(const Webserver::WebRequest& req,
                           Webserver::WebResponse* resp);
   void HandleGetClusterConfig(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleGetClusterConfigJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleHealthCheck(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleCheckIfLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetMastersStatus(const Webserver::WebRequest& req, Webserver::WebResponse* resp);

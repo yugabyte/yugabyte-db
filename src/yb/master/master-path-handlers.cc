@@ -39,6 +39,8 @@
 #include <iomanip>
 #include <unordered_set>
 
+#include <google/protobuf/util/json_util.h>
+
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/consensus.pb.h"
@@ -1428,6 +1430,25 @@ void MasterPathHandlers::HandleGetClusterConfig(
   << "<pre class=\"prettyprint\">" << config.DebugString() << "</pre>";
 }
 
+void MasterPathHandlers::HandleGetClusterConfigJSON(
+  const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::string jsonOutput;
+  std::stringstream *output = &resp->output;
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  SysClusterConfigEntryPB config;
+  Status s = master_->catalog_manager()->GetClusterConfig(&config);
+  if (!s.ok()) {
+    *output << "<div class=\"alert alert-warning\">" << s.ToString() << "</div>";
+    return;
+  }
+
+  google::protobuf::util::MessageToJsonString(config, &jsonOutput);
+  // clear the string stream to remove html to facilitate output parsing 
+  output->str("");
+  *output << jsonOutput;
+}
+
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
@@ -1460,6 +1481,11 @@ Status MasterPathHandlers::Register(Webserver* server) {
   cb = std::bind(&MasterPathHandlers::HandleGetClusterConfig, this, _1, _2);
   server->RegisterPathHandler(
       "/cluster-config", "Cluster Config",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      false);
+  cb = std::bind(&MasterPathHandlers::HandleGetClusterConfigJSON, this, _1, _2);
+  server->RegisterPathHandler(
+      "/api/v1/cluster-config", "Cluster Config JSON",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       false);
   cb = std::bind(&MasterPathHandlers::HandleTasksPage, this, _1, _2);
