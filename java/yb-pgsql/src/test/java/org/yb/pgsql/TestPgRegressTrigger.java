@@ -16,20 +16,18 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
-import java.util.Map;
-
 /**
- * Runs the pg_regress test suite on YB code.
+ * Runs the pg_regress test suite on trigger queries.
  */
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressBetaFeatures extends BasePgSQLTest {
+public class TestPgRegressTrigger extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }
 
   @Test
-  public void testPgRegressBetaFeatures() throws Exception {
-    runPgRegressTest("yb_pg_beta_features_schedule");
+  public void testPgRegressTrigger() throws Exception {
+    runPgRegressTest("yb_triggers_schedule");
   }
 }
