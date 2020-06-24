@@ -135,8 +135,8 @@ orafce_to_char_timestamp(PG_FUNCTION_ARGS)
 	{
 		/* it will return the DATE in nls_date_format*/
 		result = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
-							TimestampGetDatum(ts),
-								CStringGetDatum(cstring_to_text(nls_date_format))));
+												   TimestampGetDatum(ts),
+												   CStringGetTextDatum(nls_date_format)));
 	}
 	else
 	{
