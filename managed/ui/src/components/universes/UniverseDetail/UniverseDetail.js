@@ -389,7 +389,6 @@ class UniverseDetail extends Component {
                     <YBLabelWithIcon icon="fa fa-copy fa-fw">
                       {this.hasReadReplica(universeInfo) ? "Edit" : "Add" } Read Replica
                     </YBLabelWithIcon>
-                    <span className="badge badge-pill badge-blue pull-right">Beta</span>
                   </YBMenuItem>
                 }
                 <UniverseAppsModal currentUniverse={currentUniverse.data} modal={modal} closeModal={closeModal} button={
