@@ -172,7 +172,7 @@ public class TestPgRegressSecondaryIndexScan extends BasePgSQLTest {
   public void testPgRegressSecondaryIndexScan() throws Exception {
     // Run schedule, check time for release build.
     runPgRegressTest("yb_secondary_index_scan_serial_schedule",
-                     getPerfMaxRuntime(60000, 0, 0, 0, 0) /* maxRuntimeMillis */);
+                     getPerfMaxRuntime(0, 0, 0, 0, 0) /* maxRuntimeMillis */);
 
     // Test secondary index scan.
     testScan();
