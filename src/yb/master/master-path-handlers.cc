@@ -39,8 +39,6 @@
 #include <iomanip>
 #include <unordered_set>
 
-#include <google/protobuf/util/json_util.h>
-
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/consensus.pb.h"
@@ -1432,21 +1430,23 @@ void MasterPathHandlers::HandleGetClusterConfig(
 
 void MasterPathHandlers::HandleGetClusterConfigJSON(
   const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::string jsonOutput;
   std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   SysClusterConfigEntryPB config;
   Status s = master_->catalog_manager()->GetClusterConfig(&config);
   if (!s.ok()) {
-    *output << "<div class=\"alert alert-warning\">" << s.ToString() << "</div>";
+    jw.StartObject();
+    jw.String("error");
+    jw.String(s.ToString());
+    jw.EndObject();
     return;
   }
 
-  google::protobuf::util::MessageToJsonString(config, &jsonOutput);
-  // clear the string stream to remove html to facilitate output parsing 
-  output->str("");
-  *output << jsonOutput;
+  // return cluster config in JSON format
+  jw.Protobuf(config);
 }
 
 Status MasterPathHandlers::Register(Webserver* server) {
@@ -1486,7 +1486,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
   cb = std::bind(&MasterPathHandlers::HandleGetClusterConfigJSON, this, _1, _2);
   server->RegisterPathHandler(
       "/api/v1/cluster-config", "Cluster Config JSON",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false,
       false);
   cb = std::bind(&MasterPathHandlers::HandleTasksPage, this, _1, _2);
   server->RegisterPathHandler(
