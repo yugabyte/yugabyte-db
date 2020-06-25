@@ -107,6 +107,7 @@ set(MASTER_SRCS
   yql_types_vtable.cc
   yql_views_vtable.cc
   yql_partitions_vtable.cc
+  ysql_transaction_ddl.cc
   ${MASTER_SRCS_EXTENSIONS})
 
 add_library(master ${MASTER_SRCS})

@@ -40,6 +40,8 @@ DEFINE_bool(master_ignore_deleted_on_load, true,
 namespace yb {
 namespace master {
 
+using namespace std::placeholders;
+
 ////////////////////////////////////////////////////////////
 // Table Loader
 ////////////////////////////////////////////////////////////
@@ -73,6 +75,19 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 
   l->Commit();
   catalog_manager_->HandleNewTableId(table->id());
+
+  // Tables created as part of a Transaction should check transaction status and be deleted
+  // if the transaction is aborted.
+  if (metadata.has_transaction()) {
+    LOG(INFO) << "Enqueuing table for Transaction Verification: " << table->ToString();
+    TransactionMetadata txn = VERIFY_RESULT(TransactionMetadata::FromPB(metadata.transaction()));
+    std::function<Status(bool)> when_done =
+        std::bind(&CatalogManager::VerifyTablePgLayer, catalog_manager_, table, _1);
+    WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
+        std::bind(&YsqlTransactionDdl::VerifyTransaction, &catalog_manager_->ysql_transaction_,
+                  txn, when_done)),
+        "Could not submit VerifyTransaction to thread pool");
+  }
 
   LOG(INFO) << "Loaded metadata for table " << table->ToString();
   VLOG(1) << "Metadata for table " << table->ToString() << ": " << metadata.ShortDebugString();
@@ -254,6 +269,20 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       }
       l->Commit();
       LOG(INFO) << "Loaded metadata for namespace " << ns->ToString();
+
+      // Namespaces created as part of a Transaction should check transaction status and be deleted
+      // if the transaction is aborted.
+      if (metadata.has_transaction()) {
+        LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns->ToString();
+        TransactionMetadata txn = VERIFY_RESULT(
+            TransactionMetadata::FromPB(metadata.transaction()));
+        std::function<Status(bool)> when_done =
+            std::bind(&CatalogManager::VerifyNamespacePgLayer, catalog_manager_, ns, _1);
+        WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
+            std::bind(&YsqlTransactionDdl::VerifyTransaction, &catalog_manager_->ysql_transaction_,
+                      txn, when_done)),
+          "Could not submit VerifyTransaction to thread pool");
+      }
       break;
     case SysNamespaceEntryPB::PREPARING:
       // PREPARING means the server restarted before completing NS creation.
@@ -273,6 +302,7 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       }
       l->Commit();
       LOG(INFO) << "Loaded metadata to DELETE namespace " << ns->ToString();
+      LOG_IF(DFATAL, ns->database_type() != YQL_DATABASE_PGSQL) << "PGSQL Databases only";
       WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
           std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns)),
           "Could not submit DeleteYsqlDatabaseAsync to thread pool");

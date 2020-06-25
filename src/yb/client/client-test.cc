@@ -2229,6 +2229,7 @@ TEST_F(ClientTest, GetNamespaceInfo) {
                                      kPgsqlKeyspaceID,
                                      "" /* source_namespace_id */,
                                      boost::none /* next_pg_oid */,
+                                     boost::none /* txn */,
                                      true /* colocated */));
 
   // CQL non-colocated.

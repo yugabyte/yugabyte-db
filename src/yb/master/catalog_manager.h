@@ -48,6 +48,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
+#include "yb/common/transaction.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -62,6 +63,8 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
+#include "yb/master/ysql_transaction_ddl.h"
+#include "yb/rpc/rpc.h"
 #include "yb/server/monitored_task.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/util/cow_object.h"
@@ -232,6 +235,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // This is called at the end of IsCreateTableDone.
   CHECKED_STATUS IsMetricsSnapshotsTableCreated(IsCreateTableDoneResponsePB* resp);
+
+  // Called when transaction associated with table create finishes. Verifies postgres layer present.
+  CHECKED_STATUS VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool txn_query_succeeded);
 
   // Truncate the specified table.
   //
@@ -809,7 +815,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                   int64_t term) REQUIRES(lock_);
 
   void ProcessPendingNamespace(NamespaceId id,
-                               std::vector<scoped_refptr<TableInfo>> template_tables);
+                               std::vector<scoped_refptr<TableInfo>> template_tables,
+                               TransactionMetadata txn);
+
+  // Called when transaction associated with NS create finishes. Verifies postgres layer present.
+  CHECKED_STATUS VerifyNamespacePgLayer(scoped_refptr<NamespaceInfo> ns, bool txn_query_succeeded);
 
   CHECKED_STATUS ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
                                                  TabletLocationsPB* locs_pb);
@@ -1334,6 +1344,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TasksTracker> jobs_tracker_;
 
   std::unique_ptr<EncryptionManager> encryption_manager_;
+
+  // Handles querying and processing YSQL DDL Transactions as a catalog manager background task.
+  YsqlTransactionDdl ysql_transaction_;
 
   MonoTime time_elected_leader_;
 
