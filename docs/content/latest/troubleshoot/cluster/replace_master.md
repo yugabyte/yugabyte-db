@@ -26,12 +26,21 @@ For the steps below, the examples use the following scenario:
 
 
 
-## Start new master and add to cluster
-Start `M4` with `--master_addresses= (empty string)`, this will put the master in what we refer to as `ShellMode`.
 
-Add the new master into the quorum using:
-```bash
-./yb-admin -master_addresses M1:7100,M2:7100,M3:7100 change_master_config ADD_SERVER M4 7100
+ 1. Start the new (replacement) YB-Master server in standby mode. 
+ 
+ To start `yb-master` in standby mode, set the `--master_addresses` flag to an empty string (`""`).
+ 
+     ```sh
+      $ ./bin/yb-master --master_addresses=""
+    ```
+
+2. Add the new YB-Master server into the existing cluster.
+
+To add the new YB-Master server, run the [`yb-admin change_master_config ADD_SERVER`](../../admin/cli/yb-admin/#change-master-config) command.
+
+```sh
+./bin/yb-admin -master_addresses M1:7100,M2:7100,M3:7100 change_master_config ADD_SERVER M4 7100
 ```
 
 ## Remove old master
