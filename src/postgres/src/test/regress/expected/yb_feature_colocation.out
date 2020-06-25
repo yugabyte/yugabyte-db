@@ -310,6 +310,7 @@ SELECT * FROM tab_range;
  2
 (1 row)
 
+TRUNCATE TABLE tab_range;
 -- truncate non-colocated table without index
 TRUNCATE TABLE tab_nonkey_noco;
 SELECT * FROM tab_nonkey_noco;
@@ -374,6 +375,54 @@ SELECT * FROM tab_range_nonkey_noco2;
  public | tab_range_range_pkey        | index | yugabyte | tab_range_range
 (17 rows)
 
+-- ALTER TABLE
+INSERT INTO tab_range (a) VALUES (0), (1), (2);
+INSERT INTO tab_range_nonkey2 (a, b) VALUES (0, 0), (1, 1);
+SELECT * FROM tab_range;
+ a
+---
+ 0
+ 1
+ 2
+(3 rows)
+
+SELECT * FROM tab_range_nonkey2;
+ a | b
+---+---
+ 0 | 0
+ 1 | 1
+(2 rows)
+
+-- Alter colocated tables
+ALTER TABLE tab_range ADD COLUMN x INT;
+ALTER TABLE tab_range_nonkey2 DROP COLUMN b;
+SELECT * FROM tab_range;
+ a | x
+---+---
+ 0 |
+ 1 |
+ 2 |
+(3 rows)
+
+SELECT * FROM tab_range_nonkey2;
+ a
+---
+ 0
+ 1
+(2 rows)
+
+ALTER TABLE tab_range_nonkey2 RENAME TO tab_range_nonkey2_renamed;
+SELECT * FROM tab_range_nonkey2_renamed;
+ a
+---
+ 0
+ 1
+(2 rows)
+
+SELECT * FROM tab_range_nonkey2;
+ERROR:  relation "tab_range_nonkey2" does not exist
+LINE 1: SELECT * FROM tab_range_nonkey2;
+                      ^
 -- DROP TABLE
 -- drop colocated table with default index
 DROP TABLE tab_range;
@@ -388,10 +437,10 @@ ERROR:  relation "tab_nonkey_noco" does not exist
 LINE 1: SELECT * FROM tab_nonkey_noco;
                       ^
 --- drop colocated table with explicit index
-DROP TABLE tab_range_nonkey2;
-SELECT * FROM tab_range_nonkey2;
-ERROR:  relation "tab_range_nonkey2" does not exist
-LINE 1: SELECT * FROM tab_range_nonkey2;
+DROP TABLE tab_range_nonkey2_renamed;
+SELECT * FROM tab_range_nonkey2_renamed;
+ERROR:  relation "tab_range_nonkey2_renamed" does not exist
+LINE 1: SELECT * FROM tab_range_nonkey2_renamed;
                       ^
 -- drop non-colocated table with explicit index
 DROP TABLE tab_range_nonkey_noco2;

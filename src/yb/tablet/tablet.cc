@@ -1877,12 +1877,14 @@ HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadl
 Status Tablet::CreatePreparedChangeMetadata(ChangeMetadataOperationState *operation_state,
                                             const Schema* schema) {
   if (schema) {
-    if (!key_schema_.KeyEquals(*schema)) {
+    auto key_schema = GetKeySchema(
+        operation_state->has_table_id() ? operation_state->table_id() : "");
+    if (!key_schema.KeyEquals(*schema)) {
       return STATUS_FORMAT(
           InvalidArgument,
           "Schema keys cannot be altered. New schema key: $0. Existing schema key: $1",
           schema->CreateKeyProjection(),
-          key_schema_.CreateKeyProjection());
+          key_schema);
     }
 
     if (!schema->has_column_ids()) {
@@ -1935,13 +1937,17 @@ Status Tablet::MarkBackfillDone() {
 }
 
 Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
-  DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())))
-      << "Schema keys cannot be altered";
+  auto current_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
+        operation_state->request()->has_alter_table_id() ?
+        operation_state->request()->alter_table_id() : ""));
+  auto key_schema = current_table_info->schema.CreateKeyProjection();
+
+  DSCHECK(key_schema.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())), IllegalState,
+      "Schema keys cannot be altered");
 
   auto op_pause = PauseReadWriteOperations();
   RETURN_NOT_OK(op_pause);
 
-  auto current_table_info = metadata_->primary_table_info();
   // If the current version >= new version, there is nothing to do.
   if (current_table_info->schema_version >= operation_state->schema_version()) {
     LOG_WITH_PREFIX(INFO)
@@ -1950,14 +1956,14 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
     return Status::OK();
   }
 
-  LOG_WITH_PREFIX(INFO) << "Alter schema from " << schema()->ToString()
+  LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema.ToString()
                         << " version " << current_table_info->schema_version
                         << " to " << operation_state->schema()->ToString()
                         << " version " << operation_state->schema_version();
 
   // Find out which columns have been deleted in this schema change, and add them to metadata.
   vector<DeletedColumn> deleted_cols;
-  for (const auto& col : schema()->column_ids()) {
+  for (const auto& col : current_table_info->schema.column_ids()) {
     if (operation_state->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
       deleted_cols.emplace_back(col, clock_->Now());
       LOG_WITH_PREFIX(INFO) << "Column " << col << " recorded as deleted.";
@@ -1965,7 +1971,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   }
 
   metadata_->SetSchema(*operation_state->schema(), operation_state->index_map(), deleted_cols,
-                       operation_state->schema_version());
+                       operation_state->schema_version(), current_table_info->table_id);
   if (operation_state->has_new_table_name()) {
     metadata_->SetTableName(operation_state->new_table_name());
     if (metric_entity_) {
@@ -1977,9 +1983,8 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   ResetYBMetaDataCache();
 
   // Create transaction manager and index table metadata cache for secondary index update.
-  auto table_info = metadata_->primary_table_info();
-  if (!table_info->index_map.empty()) {
-    if (table_info->schema.table_properties().is_transactional() && !transaction_manager_) {
+  if (!operation_state->index_map().empty()) {
+    if (current_table_info->schema.table_properties().is_transactional() && !transaction_manager_) {
       transaction_manager_.emplace(client_future_.get(),
                                    scoped_refptr<server::Clock>(clock_),
                                    local_tablet_filter_);

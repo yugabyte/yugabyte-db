@@ -3455,6 +3455,16 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
   if (current_pb.has_next_column_id()) {
     builder.set_next_column_id(ColumnId(current_pb.next_column_id()));
   }
+  if (current_pb.has_colocated() && current_pb.colocated()) {
+    if (current_schema_pb.table_properties().is_ysql_catalog_table()) {
+      Uuid cotable_id;
+      RETURN_NOT_OK(cotable_id.FromHexString(req->table().table_id()));
+      builder.set_cotable_id(cotable_id);
+    } else {
+      uint32_t pgtable_id = VERIFY_RESULT(GetPgsqlTableOid(req->table().table_id()));
+      builder.set_pgtable_id(pgtable_id);
+    }
+  }
 
   for (const AlterTableRequestPB::Step& step : req->alter_schema_steps()) {
     switch (step.type()) {
@@ -6028,8 +6038,7 @@ void CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table
   table->GetAllTablets(&tablets);
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    auto call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet,
-        req && req->has_wal_retention_secs());
+    auto call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table);
     tablet->table()->AddTask(call);
     WARN_NOT_OK(ScheduleTask(call), "Failed to send alter table request");
   }
@@ -6316,13 +6325,20 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
 }
 
 // TODO: we could batch the IO onto a background thread.
-Status CatalogManager::HandleTabletSchemaVersionReport(TabletInfo *tablet, uint32_t version) {
+Status CatalogManager::HandleTabletSchemaVersionReport(
+    TabletInfo *tablet, uint32_t version, const scoped_refptr<TableInfo>& table_info) {
+  scoped_refptr<TableInfo> table;
+  if (table_info) {
+    table = table_info;
+  } else {
+    table = tablet->table();
+  }
+
   // Update the schema version if it's the latest.
-  tablet->set_reported_schema_version(version);
+  tablet->set_reported_schema_version(table->id(), version);
   VLOG(1) << "Tablet " << tablet->tablet_id() << " reported version " << version;
 
   // Verify if it's the last tablet report, and the alter completed.
-  auto table = tablet->table();
   {
     auto l = table->LockForRead();
     if (l->data().pb.state() != SysTablesEntryPB::ALTERING) {

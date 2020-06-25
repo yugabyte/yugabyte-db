@@ -27,6 +27,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/monitored_task.h"
@@ -271,6 +272,10 @@ class AsyncTabletLeaderTask : public RetryingTSRpcTask {
   AsyncTabletLeaderTask(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet);
 
+  AsyncTabletLeaderTask(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const scoped_refptr<TableInfo>& table);
+
   std::string description() const override;
 
  protected:
@@ -358,9 +363,13 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
 class AsyncAlterTable : public AsyncTabletLeaderTask {
  public:
   AsyncAlterTable(
-      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      bool has_wal_retention_secs = false)
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
       : AsyncTabletLeaderTask(master, callback_pool, tablet) {}
+
+  AsyncAlterTable(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const scoped_refptr<TableInfo>& table)
+      : AsyncTabletLeaderTask(master, callback_pool, tablet, table) {}
 
   Type type() const override { return ASYNC_ALTER_TABLE; }
 

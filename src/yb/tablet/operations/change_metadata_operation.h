@@ -101,6 +101,14 @@ class ChangeMetadataOperationState :
     return request()->has_wal_retention_secs();
   }
 
+  bool has_table_id() const {
+    return request()->has_alter_table_id();
+  }
+
+  const std::string& table_id() const {
+    return request()->alter_table_id();
+  }
+
   log::Log* log() const { return log_; }
 
   log::Log* mutable_log() { return log_; }
