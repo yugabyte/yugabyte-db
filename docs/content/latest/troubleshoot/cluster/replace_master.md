@@ -7,6 +7,7 @@ aliases:
   - /latest/troubleshoot/cluster/replace-master/
 menu:
   latest:
+    identifier: replace-failed-master
     parent: troubleshoot-cluster
     weight: 831
 isTocNested: true
