@@ -231,6 +231,9 @@ YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name
 
 YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_tablets);
 
+YBCStatus YBCPgCreateIndexAddSplitRow(YBCPgStatement handle, int num_cols,
+                                      YBCPgTypeEntity **types, uint64_t *data);
+
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
