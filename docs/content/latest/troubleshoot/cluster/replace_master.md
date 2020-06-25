@@ -1,46 +1,54 @@
 ---
-title: Replace failed master
-linkTitle: Replace failed master
-description: Replace failed master
+title: Replace a failed YB-Master
+headerTitle: Replace a failed YB-Master
+linkTitle: Replace a failed YB-Master
+description: Steps to replace a failed YB-Master in a YugabyteDB cluster.
 aliases:
   - /troubleshoot/cluster/replace-master/
   - /latest/troubleshoot/cluster/replace-master/
 menu:
   latest:
+    identifier: replace-failed-master
     parent: troubleshoot-cluster
     weight: 831
 isTocNested: true
 showAsideToc: true
 ---
 
-Suppose you have a cluster running and now a yb-master has failed and needs to be replaced. The procedure to follow in this 
-scenario is:
+To replace a failed YB-Master server in a YugabyteDB cluster, follow these steps:
 
-{{< note title="Note" >}}
-Assumptions:
-- An initial set of masters M1, M2, M3
-- We are removing M1
-- We want to add M4
-- We'll be using the default master RPC port of 7100
-{{< /note >}}
+For the steps below, the examples use the following scenario:
+
+- The cluster includes three `yb-master` servers: `M1`, `M2`, `M3`.
+- YB-Master server `M1` failed and needs to be replaced.
+- A new YB-Master server (`M4`) will replace `M1`.
+- The default master RPC port is `7100`
 
 
 
-## Start new master and add to cluster
-Start `M4` with `--master_addresses= (empty string)`, this will put the master in what we refer to as `ShellMode`.
 
-Add the new master into the quorum using:
-```bash
-./yb-admin -master_addresses M1:7100,M2:7100,M3:7100 change_master_config ADD_SERVER M4 7100
+ 1. Start the new (replacement) YB-Master server in standby mode. 
+ 
+ To start `yb-master` in standby mode, set the `--master_addresses` flag to an empty string (`""`).
+ 
+     ```sh
+      $ ./bin/yb-master --master_addresses=""
+    ```
+
+2. Add the new YB-Master server into the existing cluster.
+
+To add the new YB-Master server, run the [`yb-admin change_master_config ADD_SERVER`](../../admin/cli/yb-admin/#change-master-config) command.
+
+```sh
+./bin/yb-admin -master_addresses M1:7100,M2:7100,M3:7100 change_master_config ADD_SERVER M4 7100
 ```
 
-## Remove old master
-Remove the old master from the quorum using:
-```bash
+3. Remove the old YB-Master server from the cluster.
+
+To remove the failed YB-Master server from the cluster, use the [`yb-admin change_master_config REMOVE_SERVER`](../../admin/yb-admin/#change-master-config`) command.
+
+```sh
 ./yb-admin -master_addresses M1:7100,M2:7100,M3:7100,M4:7100 change_master_config REMOVE_SERVER M1 7100
-```
-
-Note: the master addresses needs to include all 4 masters, in case the new one is suddenly the master leader!)
 
 ## Validate cluster
 
