@@ -108,8 +108,6 @@ using strings::Substitute;
 namespace yb {
 namespace server {
 
-static const string kWildCardHostAddress = "0.0.0.0";
-
 namespace {
 
 // Disambiguates between servers when in a minicluster.
@@ -130,6 +128,9 @@ struct CommonMemTrackers {
 };
 
 std::unique_ptr<CommonMemTrackers> common_mem_trackers;
+
+static const string kWildCardHostAddressV6 = "::";
+static const string kWildCardHostAddressV4 = "0.0.0.0";
 
 } // anonymous namespace
 
@@ -492,13 +493,21 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
   std::vector<HostPort> addrs = CHECK_NOTNULL(rpc_server())->GetRpcHostPort();
 
   // Fall back to hostname resolution if the rpc hostname is a wildcard.
-  if (addrs.size() > 1 || addrs[0].host() == kWildCardHostAddress || addrs[0].port() == 0) {
-    auto addrs = CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
-    RETURN_NOT_OK_PREPEND(AddHostPortPBs(addrs, reg->mutable_private_rpc_addresses()),
-                          "Failed to add RPC endpoints to registration");
+  if (addrs.size() > 1 || addrs[0].host() == kWildCardHostAddressV4 ||
+      addrs[0].host() == kWildCardHostAddressV6 || addrs[0].port() == 0) {
+    vector<Endpoint> endpoints =
+        CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
+    RETURN_NOT_OK_PREPEND(
+        AddHostPortPBs(endpoints, reg->mutable_private_rpc_addresses()),
+        "Failed to add RPC endpoints to registration");
+    for (const auto &addr : reg->private_rpc_addresses()) {
+      LOG(INFO) << " Using private rpc addresses: ( " << addr.ShortDebugString()
+                << " )";
+    }
   } else {
     HostPortsToPBs(addrs, reg->mutable_private_rpc_addresses());
-    LOG(INFO) << "Using private ip address " << reg->private_rpc_addresses(0).host();
+    LOG(INFO) << "Using private rpc address "
+              << reg->private_rpc_addresses(0).host();
   }
 
   HostPortsToPBs(options_.broadcast_addresses, reg->mutable_broadcast_addresses());
@@ -511,6 +520,9 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
     RETURN_NOT_OK_PREPEND(AddHostPortPBs(
         web_addrs, reg->mutable_http_addresses()),
         "Failed to add HTTP addresses to registration");
+    for (const auto &addr : reg->http_addresses()) {
+      LOG(INFO) << "Using http addresses: ( " << addr.ShortDebugString() << " )";
+    }
   }
   reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud());
   reg->mutable_cloud_info()->set_placement_region(options_.placement_region());
@@ -614,7 +626,7 @@ std::string TEST_RpcAddress(int index, Private priv) {
 }
 
 string TEST_RpcBindEndpoint(int index, uint16_t port) {
-  return Format("$0:$1", TEST_RpcAddress(index, Private::kTrue), port);
+  return HostPortToString(TEST_RpcAddress(index, Private::kTrue), port);
 }
 
 constexpr int kMaxServers = 20;

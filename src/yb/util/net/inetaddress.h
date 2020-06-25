@@ -66,12 +66,12 @@ class InetAddress {
   }
 
   bool isV4() const {
-    CHECK(!boost_addr_.is_unspecified());
+    DCHECK(!boost_addr_.is_unspecified());
     return boost_addr_.is_v4();
   }
 
   bool isV6() const {
-    CHECK(!boost_addr_.is_unspecified());
+    DCHECK(!boost_addr_.is_unspecified());
     return boost_addr_.is_v6();
   }
 
@@ -111,6 +111,9 @@ class InetAddress {
  private:
   boost::asio::ip::address boost_addr_;
 };
+
+void FilterAddresses(const string &transform_spec,
+                     vector<boost::asio::ip::address> *addresses);
 
 } // namespace yb
 

@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This tutorial walks through the steps to create service instance of YugabyteDB in PCF.  
+This tutorial walks through the steps to a create service instance of YugabyteDB in PCF.  
 
 ## Prerequisites
 

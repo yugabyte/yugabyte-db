@@ -102,7 +102,7 @@ INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2
 
 ## 4. Query the table
 
-Query all the values we have inserted into the database for the stock symbol `AAPL` as follows.
+Query all the values you have inserted into the database for the stock symbol 'AAPL' as follows.
 
 ```sql
 ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';

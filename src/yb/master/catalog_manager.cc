@@ -1194,8 +1194,9 @@ bool CatalogManager::IsYcqlTable(const TableInfo& table) {
 Status CatalogManager::PrepareNamespace(
     YQLDatabase db_type, const NamespaceName& name, const NamespaceId& id, int64_t term) {
 
-  if (FindPtrOrNull(namespace_names_mapper_[db_type], name) != nullptr) {
-    LOG(INFO) << "Keyspace " << name << " already created, skipping initialization";
+  scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, id);
+  if (ns != nullptr) {
+    LOG(INFO) << "Keyspace " << ns->ToString() << " already created, skipping initialization";
     return Status::OK();
   }
 
@@ -1206,7 +1207,7 @@ Status CatalogManager::PrepareNamespace(
   ns_entry.set_state(SysNamespaceEntryPB::RUNNING);
 
   // Create in memory object.
-  scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(id);
+  ns = new NamespaceInfo(id);
 
   // Prepare write.
   auto l = ns->LockForWrite();
@@ -1417,8 +1418,7 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   }
 
   auto table_ids_map_checkout = table_ids_map_.CheckOut();
-  CHECK_EQ(table_names_map_.erase({table_namespace_id, table_name}), 1)
-      << "Unable to erase table named " << table_name << " from table names map.";
+  table_names_map_.erase({table_namespace_id, table_name}); // Not present if PGSQL table.
   CHECK_EQ(table_ids_map_checkout->erase(table_id), 1)
       << "Unable to erase table with id " << table_id << " from table ids map.";
 
@@ -1594,9 +1594,8 @@ Status CatalogManager::TEST_SplitTablet(
 }
 
 Status CatalogManager::DoSplitTablet(
-    const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
-  const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
-
+    const scoped_refptr<TabletInfo>& source_tablet_info, const std::string& split_encoded_key,
+    const std::string& split_partition_key) {
   constexpr auto kNumSplitParts = 2;
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = CreateNewTabletsPartition(
@@ -1609,16 +1608,43 @@ Status CatalogManager::DoSplitTablet(
     new_tablet_ids[i] = new_tablet_info->id();
   }
 
+  // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
+  // split? Add unit-test.
+  SendSplitTabletRequest(
+      source_tablet_info, new_tablet_ids, split_encoded_key, split_partition_key);
+
+  return Status::OK();
+}
+
+Status CatalogManager::DoSplitTablet(
+    const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
   docdb::KeyBytes split_encoded_key;
   docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
       .Hash(split_hash_code, std::vector<docdb::PrimitiveValue>());
 
-  // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
-  // split? Add unit-test.
-  SendSplitTabletRequest(
-      source_tablet_info, new_tablet_ids, split_encoded_key.ToStringBuffer(), split_partition_key);
+  const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
 
-  return Status::OK();
+  return DoSplitTablet(source_tablet_info, split_encoded_key.ToStringBuffer(), split_partition_key);
+}
+
+Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& tablet_id) {
+  RETURN_NOT_OK(CheckOnline());
+
+  std::lock_guard<LockType> l(lock_);
+  TRACE("Acquired catalog manager lock");
+
+  const auto tablet_info = FindPtrOrNull(*tablet_map_, tablet_id);
+  SCHECK(tablet_info != nullptr, NotFound, Format("Tablet $0 not found", tablet_id));
+
+  return tablet_info;
+}
+
+Status CatalogManager::SplitTablet(
+    const TabletId& tablet_id, const std::string& split_encoded_key,
+    const std::string& split_partition_key) {
+  const auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
+
+  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key);
 }
 
 Status CatalogManager::SplitTablet(
@@ -1626,17 +1652,7 @@ Status CatalogManager::SplitTablet(
   RETURN_NOT_OK(CheckOnline());
 
   const auto source_tablet_id = req->tablet_id();
-
-  scoped_refptr<TabletInfo> source_tablet_info;
-  {
-    std::lock_guard<LockType> l(lock_);
-    TRACE("Acquired catalog manager lock");
-
-    source_tablet_info = FindPtrOrNull(*tablet_map_, source_tablet_id);
-    SCHECK(
-        source_tablet_info != nullptr, NotFound, Format("Tablet $0 not found", source_tablet_id));
-  }
-
+  const auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(source_tablet_id));
   const auto source_partition = source_tablet_info->LockForRead()->data().pb.partition();
 
   const auto start_hash_code = source_partition.partition_key_start().empty()
@@ -3745,8 +3761,11 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
   }
-  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " to split the tablet "
-            << source_tablet_info.tablet_id() << " for table " << table->ToString();
+  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id()
+            << " (" << AsString(partition) << ") to split the tablet "
+            << source_tablet_info.tablet_id()
+            << " (" << AsString(source_tablet_meta.partition())
+            << ") for table " << table->ToString();
 
   return new_tablet;
 }
@@ -4567,8 +4586,12 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Validate the user request.
 
-    // Verify that the namespace does not exist (no matter what state).
-    ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
+    // Verify that the namespace does not already exist.
+    ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id()); // Same ID.
+    if (ns == nullptr && db_type != YQL_DATABASE_PGSQL) {
+      // PGSQL databases have name uniqueness handled at a different layer, so ignore overlaps.
+      ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
+    }
     if (ns != nullptr) {
       resp->set_id(ns->id());
       return_status = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists",
@@ -4782,7 +4805,7 @@ void CatalogManager::ProcessPendingNamespace(
       auto s = sys_catalog_->UpdateItem(ns.get(), leader_ready_term());
       if (s.ok()) {
         TRACE("Done processing keyspace");
-        LOG(INFO) << "Activated keyspace: " << ns->ToString();
+        LOG(INFO) << (success ? "Processed" : "Failed") << " keyspace: " << ns->ToString();
       } else {
         metadata.set_state(SysNamespaceEntryPB::FAILED);
         if (s.IsIllegalState() || s.IsAborted()) {
@@ -4853,6 +4876,9 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
       break;
     // Failure cases.  Done, but we need to give the user an error message.
     case SysNamespaceEntryPB::FAILED:
+      resp->set_done(true);
+      return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, STATUS(InternalError,
+              "Namespace Create Failed: not onlined."));
     default:
       Status s = STATUS_SUBSTITUTE(IllegalState,
           "IsCreateNamespaceDone failure: state=$0", metadata.state());
@@ -4958,10 +4984,9 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   // Remove the namespace from all CatalogManager mappings.
   {
     std::lock_guard<LockType> l_map(lock_);
-    if (namespace_names_mapper_[ns->database_type()].erase(ns->name()) < 1 ||
-        namespace_ids_map_.erase(ns->id()) < 1) {
-      LOG(WARNING) << Format("Could not remove namespace from maps, name=$0, id=$1",
-                             ns->name(), ns->id());
+    namespace_names_mapper_[ns->database_type()].erase(ns->name());
+    if (namespace_ids_map_.erase(ns->id()) < 1) {
+      LOG(WARNING) << Format("Could not remove namespace from maps, id=$1", ns->id());
     }
   }
 
@@ -5250,7 +5275,7 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
         ns->database_type() == req->namespace_().database_type()) {
       Status s = STATUS_SUBSTITUTE(AlreadyPresent,
           "Keyspace '$0' already exists", ns->name());
-      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed alterring keyspace with error: "
+      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed altering keyspace with error: "
                    << s.ToString() << " Request:\n" << req->DebugString();
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
     }

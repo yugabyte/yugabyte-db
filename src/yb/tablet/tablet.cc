@@ -1219,6 +1219,11 @@ Status Tablet::HandleQLReadRequest(
   if (metadata()->schema_version() != ql_read_request.schema_version()) {
     DVLOG(1) << "Setting status for read as YQL_STATUS_SCHEMA_VERSION_MISMATCH";
     result->response.set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
+    result->response.set_error_message(
+        Format("schema version mismatch for table $0: expected $1, got $2",
+               metadata()->table_id(),
+               metadata()->schema_version(),
+               ql_read_request.schema_version()));
     return Status::OK();
   }
 
@@ -1306,6 +1311,11 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
                << table_info->schema_version << " vs req's : " << req->schema_version()
                << " for " << yb::ToString(req);
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
+      resp->set_error_message(
+          Format("schema version mismatch for table $0: expected $1, got $2",
+                 table_info->table_id,
+                 table_info->schema_version,
+                 req->schema_version()));
     } else {
       DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
                << yb::ToString(req);
@@ -1523,7 +1533,7 @@ Status Tablet::HandlePgsqlReadRequest(
   if (table_info->schema_version != pgsql_read_request.schema_version()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
     result->response.set_error_message(
-        Format("schema version mismatch for table $0: $1 != $2",
+        Format("schema version mismatch for table $0: expected $1, got $2",
                table_info->table_id,
                table_info->schema_version,
                pgsql_read_request.schema_version()));
@@ -1606,8 +1616,14 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
       (!pgsql_read_request.has_limit() || row_count < pgsql_read_request.limit() ||
        pgsql_read_request.return_paging_state())) {
 
+    // For backward scans partition_key_start must be used as next_partition_key.
+    // Client level logic will check it and route next request to the preceding tablet.
+    const auto& next_partition_key =
+        pgsql_read_request.has_hash_code() ||
+        pgsql_read_request.is_forward_scan()
+            ? metadata_->partition()->partition_key_end()
+            : metadata_->partition()->partition_key_start();
     // Check we did not reach the last tablet.
-    const string& next_partition_key = metadata_->partition()->partition_key_end();
     const bool end_scan = next_partition_key.empty() ||
         VERIFY_RESULT(HasScanReachedMaxPartitionKey(pgsql_read_request, next_partition_key));
     if (!end_scan) {
@@ -1648,6 +1664,11 @@ CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
         VERIFY_RESULT(metadata_->GetTableInfo(req->table_id()));
     if (table_info->schema_version != req->schema_version()) {
       resp->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
+      resp->set_error_message(
+          Format("schema version mismatch for table $0: expected $1, got $2",
+                 table_info->table_id,
+                 table_info->schema_version,
+                 req->schema_version()));
     } else {
       if (doc_ops.empty()) {
         // Use the value of is_ysql_catalog_table from the first operation in the batch.
@@ -3023,12 +3044,14 @@ rocksdb::Env& Tablet::rocksdb_env() const {
   return *tablet_options_.rocksdb_env;
 }
 
-Result<std::string> Tablet::GetEncodedMiddleDocKey() const {
+Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
   // TODO(tsplit): should take key_bounds_ into account.
   auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey());
-  const auto doc_key_size = VERIFY_RESULT(DocKey::EncodedSize(
-      middle_key, docdb::DocKeyPart::kWholeDocKey));
-  middle_key.resize(doc_key_size);
+  const auto key_part = metadata()->partition_schema()->IsHashPartitioning()
+                            ? docdb::DocKeyPart::kUpToHashCode
+                            : docdb::DocKeyPart::kWholeDocKey;
+  const auto split_key_size = VERIFY_RESULT(DocKey::EncodedSize(middle_key, key_part));
+  middle_key.resize(split_key_size);
   return middle_key;
 }
 

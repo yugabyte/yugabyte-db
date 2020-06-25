@@ -110,11 +110,13 @@ class Partition {
         (partition_key_end().empty() || partition_key < partition_key_end());
   }
 
+  // Checks if this partition contains other in terms of sets (in other words partition contains
+  // itself as well).
   template <class T>
   bool ContainsPartition(const T& other) const {
     return other.partition_key_start() >= partition_key_start() &&
            (partition_key_end().empty() || (!other.partition_key_end().empty() &&
-                                            other.partition_key_end() < partition_key_end()));
+                                            other.partition_key_end() <= partition_key_end()));
   }
 
   std::string ToString() const {

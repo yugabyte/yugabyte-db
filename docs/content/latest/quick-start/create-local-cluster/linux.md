@@ -61,7 +61,7 @@ To create a 1-node cluster with a replication factor (RF) of 1, run the followin
 $ ./bin/yb-ctl create
 ```
 
-Note that in this 1-node mode, you can bind IP address for all ports to `0.0.0.0`. This will allow you to have **external access** of the database APIs and admin UIs.
+Optionally, you can enable *external access* to the YugabyteDB APIs and administration ports by setting the [`--listen_ip`](../../../admin/yb-ctl/#listen-ip) flag to `0.0.0.0`. Note that this option is limited to 1-node (with a RF of `1`) clusters.
 
 ```sh
 $ ./bin/yb-ctl create --listen_ip=0.0.0.0
@@ -75,9 +75,9 @@ To run a distributed SQL cluster locally for development and testing, you can cr
 $ ./bin/yb-ctl --rf 3 create
 ```
 
-Note that in this 3-node mode, the bind IP address by default for all ports is the individual loopback address (that you setup in the previous step). In this mode you will not be able to externally access the database APIs and admin UIs because `0.0.0.0` remains unbound. 
+Note that in this 3-node mode, the bind IP address by default for all ports is the individual loopback address (that you setup in the previous step). In this mode you will not be able to externally access the database APIs and admin UIs because `0.0.0.0` remains unbound.
 
-You can now check `$HOME/yugabyte-data` to see `node-i` directories created where `i` represents the `node_id` of the node. Inside each such directory, there will be two disks, `disk1` and `disk2`, to highlight the fact that YugabyteDB can work with multiple disks at the same time. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
+You can now check `$HOME/yugabyte-data` to see the `node-<id>` directories (where `<id>` represents the `node_id` of the node). Inside each node directory is a subdirectory, named `disk-1`, that simulates a disk. Note that the IP address of `node-<id>` is by default set to `127.0.0.<id>`.
 
 ## 2. Check cluster status with yb-ctl
 
@@ -121,7 +121,7 @@ Node 1's [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-
 
 ### Overview and YB-Master status
 
-Node 1's master Admin UI home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugabyteDB version number is also shown for your reference.
+Node 1's master Admin UI home page shows that you have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugabyteDB version number is also shown for your reference.
 
 ![master-home](/images/admin/master-home-binary-rf1.png)
 
@@ -129,7 +129,7 @@ The Masters section highlights the 1 yb-master along with its corresponding clou
 
 ### YB-TServer status
 
-Clicking on the `See all nodes` takes us to the Tablet Servers page where we can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats. Since there are no user tables created yet, we can see that the `Load (Num Tablets)` is 0. As new tables get added, new tablets (aka shards) will get automatically created and distributed evenly across all the available tablet servers.
+Clicking on the `See all nodes` takes us to the Tablet Servers page where you can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats. Since there are no user tables created yet, you can see that the `Load (Num Tablets)` is 0. As new tables get added, new tablets (aka shards) will get automatically created and distributed evenly across all the available tablet servers.
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 

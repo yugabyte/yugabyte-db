@@ -34,7 +34,7 @@ isTocNested: true
 
 </ul>
 
-Use this benchmark to understand the performance, failure, and scaling characteristics of YugabyteDB with a massive dataset (multiple TB per node). In order to accomplish that, we will do the following:
+Use this benchmark to understand the performance, failure, and scaling characteristics of YugabyteDB with a massive dataset (multiple TB per node). In order to accomplish that, you will do the following:
 
 - Load 30 billion key-value records
 - Each write operation inserts a single record

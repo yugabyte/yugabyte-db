@@ -43,7 +43,7 @@ User can provide these key-value pairs in any order.
 
 *Check Cloud Provider instances*
 
-Browse to the cloud provider's instances page. In this example, since we are using AWS as the cloud provider, browse to **EC2 -> Running Instances**
+Browse to the cloud provider's instances page. In this example, since you are using AWS as the cloud provider, browse to **EC2 -> Running Instances**
 in the correct availability zone and search for instances that have `test-tags` in their name. You should see something as follows in the
 **Tags** tab of those instances.
 

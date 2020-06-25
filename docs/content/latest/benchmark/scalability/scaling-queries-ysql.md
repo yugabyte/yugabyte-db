@@ -33,7 +33,7 @@ isTocNested: true
 
 </ul>
 
-There are a number of well-known experiments where eventually-consistent NoSQL databases were scaled out to perform millions of inserts and queries. Here, we do the same using YSQL, the Yugabyte SQL API that is PostgreSQL-compatible, strongly-consistent, and supports distributed SQL. We created a 100-node YugabyteDB cluster, ran single-row INSERT and SELECT workloads with high concurrency – each for an hour and measured the sustained performance (throughput and latency). This topic details the results of this experiment as well as highlights the key aspects of the YugabyteDB architecture that makes it fit for such high-volume ingest workloads. Although this topic describes the results of benchmark tests performed by Yugabyte, you can follow the steps below to perform your own benchmarks on the scalability of queries in your YugabyteDB clusters.
+There are a number of well-known experiments where eventually-consistent NoSQL databases were scaled out to perform millions of inserts and queries. Here, you do the same using YSQL, the Yugabyte SQL API that is PostgreSQL-compatible, strongly-consistent, and supports distributed SQL. We created a 100-node YugabyteDB cluster, ran single-row INSERT and SELECT workloads with high concurrency – each for an hour and measured the sustained performance (throughput and latency). This topic details the results of this experiment as well as highlights the key aspects of the YugabyteDB architecture that makes it fit for such high-volume ingest workloads. Although this topic describes the results of benchmark tests performed by Yugabyte, you can follow the steps below to perform your own benchmarks on the scalability of queries in your YugabyteDB clusters.
 
 ## Database cluster setup
 

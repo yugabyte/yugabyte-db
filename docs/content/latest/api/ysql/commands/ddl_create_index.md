@@ -86,6 +86,17 @@ Specify one or more columns of the table and must be surrounded by parentheses.
 - `NULLS FIRST` - Specifies that nulls sort before non-nulls. This is the default when DESC is specified.
 - `NULLS LAST` - Specifies that nulls sort after non-nulls. This is the default when DESC is not specified.
 
+### SPLIT INTO
+
+For hash-sharded indexes, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the index. The hash range is then evenly split across those tablets.
+Pre-splitting indexes, using `SPLIT INTO`, distributes index workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 tablets can provide higher write throughput on the index. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
+
+{{< note title="Note" >}}
+
+By default, YugabyteDB pre-splits an index into `ysql_num_shards_per_tserver * num_of_tserver` tablets. The `SPLIT INTO` clause can be used to override that setting on a per-index basis.
+
+{{< /note >}}
+
 ## Examples
 
 ### Unique index with HASH column ordering
@@ -138,6 +149,14 @@ yugabyte=# \d products_name_code;
 lsm, for table "public.products"
 ```
 
+### Create an index specifying the number of tablets
+
+To specify the number of tablets for an index, you can use the `CREATE INDEX` statement with the [`SPLIT INTO`](#split-into) clause.
+
+```postgresql
+CREATE TABLE employees (id int PRIMARY KEY, first_name TEXT, last_name TEXT) SPLIT INTO 10 TABLETS;
+CREATE INDEX ON employees(first_name, last_name) SPLIT INTO 10 TABLETS;
+```
 
 ### Partial indexes
 

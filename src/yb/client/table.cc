@@ -179,15 +179,7 @@ std::unique_ptr<YBqlReadOp> YBTable::NewQLRead() {
 
 size_t YBTable::FindPartitionStartIndex(const std::string& partition_key, size_t group_by) const {
   SharedLock<decltype(mutex_)> lock(mutex_);
-  auto it = std::lower_bound(partitions_.begin(), partitions_.end(), partition_key);
-  if (it == partitions_.end() || *it > partition_key) {
-    DCHECK(it != partitions_.begin());
-    --it;
-  }
-  if (group_by <= 1) {
-    return it - partitions_.begin();
-  }
-  return (it - partitions_.begin()) / group_by * group_by;
+  return client::FindPartitionStartIndex(partitions_, partition_key, group_by);
 }
 
 const std::string& YBTable::FindPartitionStart(
@@ -364,6 +356,18 @@ std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlSelect() {
 
 std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlRead() {
   return std::unique_ptr<YBPgsqlReadOp>(new YBPgsqlReadOp(shared_from_this()));
+}
+
+size_t FindPartitionStartIndex(const std::vector<std::string>& partitions,
+                               const std::string& partition_key,
+                               size_t group_by) {
+  auto it = std::lower_bound(partitions.begin(), partitions.end(), partition_key);
+  if (it == partitions.end() || *it > partition_key) {
+    DCHECK(it != partitions.begin());
+    --it;
+  }
+  return group_by <= 1 ? it - partitions.begin() :
+                         (it - partitions.begin()) / group_by * group_by;
 }
 
 } // namespace client

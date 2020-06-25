@@ -204,22 +204,17 @@ Status PgApiImpl::InvalidateCache() {
 
 PgMemctx *PgApiImpl::CreateMemctx() {
   // Postgres will create YB Memctx when it first use the Memctx to allocate YugaByte object.
-  auto memctx = make_scoped_refptr<PgMemctx>();
-  return memctx.detach();
+  return PgMemctx::Create();
 }
 
-void PgApiImpl::DestroyMemctx(PgMemctx *memctx) {
+Status PgApiImpl::DestroyMemctx(PgMemctx *memctx) {
   // Postgres will destroy YB Memctx by releasing the pointer.
-  if (memctx) {
-    memctx->Release();
-  }
+  return PgMemctx::Destroy(memctx);
 }
 
-void PgApiImpl::ResetMemctx(PgMemctx *memctx) {
+Status PgApiImpl::ResetMemctx(PgMemctx *memctx) {
   // Postgres reset YB Memctx when clearing a context content without clearing its nested context.
-  if (memctx) {
-    memctx->Reset();
-  }
+  return PgMemctx::Reset(memctx);
 }
 
 // TODO(neil) Use Arena in the future.

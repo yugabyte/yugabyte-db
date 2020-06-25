@@ -152,9 +152,8 @@ void MasterPathHandlers::RedirectToLeader(const Webserver::WebRequest& req,
     if (master.role() == consensus::RaftPeerPB::LEADER) {
       // URI already starts with a /, so none is needed between $1 and $2.
       redirect = Substitute(
-          "http://$0:$1$2$3",
-          master.registration().http_addresses(0).host(),
-          master.registration().http_addresses(0).port(),
+          "http://$0$1$2",
+          HostPortPBToString(master.registration().http_addresses(0)),
           req.redirect_uri,
           req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
       break;
@@ -258,9 +257,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
     if (desc->placement_uuid() == current_uuid) {
       const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
       TSRegistrationPB reg = desc->GetRegistration();
-      string host_port = Substitute("$0:$1",
-                                    reg.common().http_addresses(0).host(),
-                                    reg.common().http_addresses(0).port());
+      string host_port = HostPortPBToString(reg.common().http_addresses(0));
       *output << "  <tr>\n";
       *output << "  <td>" << RegistrationToHtml(reg.common(), host_port) << "</br>";
       *output << "  " << desc->permanent_uuid() << "</td>";
@@ -502,9 +499,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
     for (auto desc : descs) {
       if (desc->placement_uuid() == cur_uuid) {
         TSRegistrationPB reg = desc->GetRegistration();
-        string host_port = Substitute("$0:$1",
-                                      reg.common().http_addresses(0).host(),
-                                      reg.common().http_addresses(0).port());
+        string host_port = HostPortPBToString(reg.common().http_addresses(0));
         jw.String(host_port);
 
         jw.StartObject();
@@ -1176,8 +1171,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
       continue;
     }
     auto reg = master.registration();
-    string host_port = Substitute("$0:$1",
-                                  reg.http_addresses(0).host(), reg.http_addresses(0).port());
+    string host_port = HostPortPBToString(reg.http_addresses(0));
     string reg_text = RegistrationToHtml(reg, host_port);
     if (master.instance_id().permanent_uuid() == master_->instance_pb().permanent_uuid()) {
       reg_text = Substitute("<b>$0</b>", reg_text);
@@ -1323,7 +1317,7 @@ class JsonTabletDumper : public Visitor<PersistentTabletInfo>, public JsonDumper
 
         jw_->String("addr");
         const auto& host_port = peer.last_known_private_addr()[0];
-        jw_->String(Format("$0:$1", host_port.host(), host_port.port()));
+        jw_->String(HostPortPBToString(host_port));
 
         jw_->EndObject();
       }
@@ -1520,8 +1514,9 @@ string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
 
   if (reg.common().http_addresses().size() > 0) {
     return Substitute(
-        "<a href=\"http://$0:$1/tablet?id=$2\">$3</a>", reg.common().http_addresses(0).host(),
-        reg.common().http_addresses(0).port(), EscapeForHtmlToString(tablet_id),
+        "<a href=\"http://$0/tablet?id=$1\">$2</a>",
+        HostPortPBToString(reg.common().http_addresses(0)),
+        EscapeForHtmlToString(tablet_id),
         EscapeForHtmlToString(reg.common().http_addresses(0).host()));
   } else {
     return EscapeForHtmlToString(desc.permanent_uuid());
@@ -1532,9 +1527,9 @@ string MasterPathHandlers::RegistrationToHtml(
     const ServerRegistrationPB& reg, const std::string& link_text) const {
   string link_html = EscapeForHtmlToString(link_text);
   if (reg.http_addresses().size() > 0) {
-    link_html = Substitute("<a href=\"http://$0:$1/\">$2</a>",
-                           reg.http_addresses(0).host(),
-                           reg.http_addresses(0).port(), link_html);
+    link_html = Substitute("<a href=\"http://$0/\">$1</a>",
+                           HostPortPBToString(reg.http_addresses(0)),
+                           link_html);
   }
   return link_html;
 }
@@ -1543,6 +1538,11 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   vector<scoped_refptr<TableInfo>> tables;
   master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
   for (const auto& table : tables) {
+    if (master_->catalog_manager()->IsColocatedUserTable(*table)) {
+      // will be taken care of by colocated parent table
+      continue;
+    }
+
     TabletInfos tablets;
     table->GetAllTablets(&tablets);
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
@@ -1552,7 +1552,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       tablet->GetReplicaLocations(&replication_locations);
 
       for (const auto& replica : replication_locations) {
-        if (is_user_table) {
+        if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)) {
           if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
             (*tablet_map)[replica.first].user_tablet_leaders++;
           } else {

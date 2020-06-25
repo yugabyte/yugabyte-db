@@ -178,7 +178,7 @@ Default: `false`
 
 ##### --listen_ip
 
-Allows a 1-node RF1 cluster to listen on an address different than the default of `127.0.0.1`. For example, setting this to `0.0.0.0` enables the external access of the database APIs and admin UIs. This flag is not applicable to multi-node clusters.
+ Specifies the IP address, or port, for a 1-node cluster to listen on. To enable external access of the YugabyteDB APIs and administration ports, set the value to `0.0.0.0`. Note that this flag is not applicable to multi-node clusters.
 
 Default: `127.0.0.1`
 
@@ -444,7 +444,7 @@ You can pass the placement information for nodes in a cluster from the command l
 $ ./bin/yb-ctl --rf 3 create --placement_info "cloud1.region1.zone1,cloud2.region2.zone2"
 ```
 
-The total number of placement information entries cannot be more than the replication factor (this is because we would not be able to satisfy the data placement constraints for this replication factor). If the total number of placement information entries is lesser than the replication factor, the placement information is passed down to the node in a round robin approach.
+The total number of placement information entries cannot be more than the replication factor (this is because you would not be able to satisfy the data placement constraints for this replication factor). If the total number of placement information entries is lesser than the replication factor, the placement information is passed down to the node in a round robin approach.
 
 To add a node:
 

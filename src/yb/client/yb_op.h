@@ -417,15 +417,35 @@ class YBPgsqlOp : public YBOperation {
     return succeeded() && !response_->skipped();
   }
 
+  bool is_active() const {
+    return is_active_;
+  }
+
+  void set_active(bool val) {
+    is_active_ = val;
+  }
+
  protected:
   std::unique_ptr<PgsqlResponsePB> response_;
   std::string rows_data_;
+
+  // This flag is only meaningful in PgGate (proxy / client).
+  // To support parallel processing by partitions or hash-codes, client will create many operators,
+  // one per tablet with a specific partition range. When none of users' input arguments have the
+  // partition value within the ranges that are associated with certain operators, those operators
+  // would be set in-active, and their op->request() would not be sent to tablet server.
+  bool is_active_ = true;
 };
 
 class YBPgsqlWriteOp : public YBPgsqlOp {
  public:
   explicit YBPgsqlWriteOp(const std::shared_ptr<YBTable>& table);
   ~YBPgsqlWriteOp();
+
+  // Copying all member data except for response_ and rows_data_.
+  // - Input (hash_code, bind expresion) of the copy will be modified during execution.
+  // - Output (response_, rows_data_) arguments will be read from DocDB.
+  std::unique_ptr<YBPgsqlWriteOp> DeepCopy();
 
   // Note: to avoid memory copy, this PgsqlWriteRequestPB is moved into tserver WriteRequestPB
   // when the request is sent to tserver. It is restored after response is received from tserver
@@ -540,6 +560,8 @@ class YBNoOp {
 
   DISALLOW_COPY_AND_ASSIGN(YBNoOp);
 };
+
+CHECKED_STATUS ReviewResponsePagingState(YBPgsqlReadOp* op);
 
 }  // namespace client
 }  // namespace yb

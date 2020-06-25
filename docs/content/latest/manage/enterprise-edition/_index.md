@@ -17,6 +17,7 @@ menu:
 Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pods, machines, etc., provided by IaaS), logically grouped together to form one logical distributed database. Each universe includes one or more clusters. A universe is comprised of one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
 
 <div class="row">
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="create-universe-multi-zone/">
       <div class="head">
@@ -44,7 +45,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="edit-universe/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />   
+        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
         <div class="title">Edit a universe</div>
       </div>
       <div class="body">
@@ -56,7 +57,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="edit-config-flags/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />    
+        <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
         <div class="title">Edit configuration flags</div>
       </div>
       <div class="body">
@@ -140,7 +141,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="upgrade-universe/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/upgrade_universe.png" aria-hidden="true" />   
+        <img class="icon" src="/images/section_icons/manage/enterprise/upgrade_universe.png" aria-hidden="true" />
         <div class="title">Upgrade a universe</div>
       </div>
       <div class="body">
@@ -164,7 +165,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="delete-universe/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/delete_universe.png" aria-hidden="true" /> 
+        <img class="icon" src="/images/section_icons/manage/enterprise/delete_universe.png" aria-hidden="true" />
         <div class="title">Delete a universe</div>
       </div>
       <div class="body">
@@ -172,4 +173,17 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="migrate-to-helm3/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
+        <div class="title">Migrate from Helm 2 to Helm 3</div>
+      </div>
+      <div class="body">
+        Migrate YugabyteDB universes and Yugabyte Platform from Helm 2 to Helm 3.
+      </div>
+    </a>
+  </div>
+
 </div>

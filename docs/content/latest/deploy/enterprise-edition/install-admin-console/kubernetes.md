@@ -1,13 +1,48 @@
+---
+title: Install Yugabyte Platform on Kubernetes
+headerTitle: Install Yugabyte Platform
+linkTitle: 2. Install Yugabyte Platform
+description: Install Yugabyte Platform (aka YugaWare) on Kubernetes
+menu:
+  latest:
+    identifier: install-yp-3-kubernetes
+    parent: deploy-enterprise-edition
+    weight: 670
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/default" class="nav-link">
+      <i class="fas fa-cloud"></i>
+      Default
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/airgapped" class="nav-link">
+      <i class="fas fa-unlink"></i>
+      Airgapped
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/enterprise-edition/install-admin-console/kubernetes" class="nav-link active">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
+
 ## Prerequisites
 
-You must have a Kubernetes cluster that has [Helm](https://helm.sh/) configured. If you have not installed Helm client and server (aka Tiller) yet, follow the instructions [here](https://docs.helm.sh/using_helm/#installing-helm).
+You must have a Kubernetes cluster that has [Helm](https://helm.sh/) configured.
 
-The YugaWare Helm chart documented here has been tested with the following software versions:
+The Yugabyte Platform (YugaWare) Helm chart documented here has been tested with the following software versions:
 
-- Kubernetes 1.10+
-- Helm 2.8.0+
-- YugaWare Docker Images 1.1.0+
-- Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to YugaWare.
+- Kubernetes 1.10 or later.
+- Helm 3.0 or later.
+- Yugabyte Platform (`yugaware`) Docker image 1.1.0 or later.
+- Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to Yugabyte Platform.
 
 Confirm that your `helm` is configured correctly.
 
@@ -16,131 +51,131 @@ $ helm version
 ```
 
 ```
-Client: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"}
-Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"}
+version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
 ```
 
-## Create a cluster
+## Install Yugabyte Platform
 
-### Create a service account with cluster-admin role privileges
-
-For deploying a YugaWare Helm (v2.x) chart, you need to have a service account with `cluster-admin` role privileges — if the user in context already has that access, you can skip this step.
+1. [Optional] Create namespace (if not installing in default namespace).
 
 ```sh
-$ kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
+$ kubectl create namespace yw-test
 ```
 
-```sh
-serviceaccount/yugabyte-helm created
-clusterrolebinding.rbac.authorization.k8s.io/yugabyte-helm created
+```
+namespace/yw-test created
 ```
 
-### Initialize Helm
-
-Initialize `helm` with the service account but use the `--upgrade` flag to ensure that you can upgrade any previous initializations you may have made.
+2. Run the following `kubectl apply` command to apply the secret. To get the secret, contact Yugabyte Support.
 
 ```sh
-$ helm init --service-account yugabyte-helm --upgrade --wait
+$ kubectl apply -f ~/Desktop/K8s/yugabyte-k8s-secret.yml -n yw-test
 ```
 
-```sh
-$HELM_HOME has been configured at /Users/<user>/.helm.
+You should see a message saying that the secret was created.
 
-Tiller (the Helm server-side component) has been upgraded to the current version.
-Happy Helming!
+```
+secret/yugabyte-k8s-pull-secret created
 ```
 
-### Download YugaWare Helm Chart
+3. Run the following `helm repo add` command to clone the [YugabyteDB charts repository](https://charts.yugabyte.com/).
 
-You can do this as shown below.
+    ```sh
+    $ helm repo add yugabytedb https://charts.yugabyte.com
+    ```
+
+    A message should appear, similar to this:
+
+    ```
+    "yugabytedb" has been added to your repositories
+    ```
+
+If you have previously cloned the YugabyteDB charts repository, you can update it instead by running the following command:
 
 ```sh
-$ wget https://downloads.yugabyte.com/kubernetes/yugaware-1.0.0.tgz
+$ helm repo update
 ```
 
-### Install YugaWare
-
-Install YugaWare in the Kubernetes cluster using the command below.
+To search for the available chart version, run this command:
 
 ```sh
-$ helm install yugaware-1.0.0.tgz --name yb --set=image.tag=1.1.10.0-b3 --wait
+$ helm search repo yugabytedb/yugabyte
 ```
 
-### Check the cluster status
+The latest Helm Chart version and App version will be displayed.
 
-You can check the status of the cluster using various commands noted below.
-
-```sh
-$ helm status yb
+```
+NAME               	CHART VERSION	APP VERSION	DESRIPTION                                       
+ugabytedb/yugabyte	2.1.8        	2.1.8.2	YugabyteDB is the high-performance distributed ..
 ```
 
+4. Run the following `helm install` command to install Yugabyte Platform (YugaWare).
+
 ```sh
-LAST DEPLOYED: Wed Jan  2 14:12:27 2019
-NAMESPACE: default
-STATUS: DEPLOYED
-
-RESOURCES:
-==> v1/ConfigMap
-NAME                           AGE
-yb-yugaware-global-config      14d
-yb-yugaware-app-config         14d
-yb-yugaware-nginx-config       14d
-yb-yugaware-prometheus-config  14d
-
-==> v1/PersistentVolumeClaim
-yb-yugaware-storage  14d
-
-==> v1/ServiceAccount
-yugaware  14d
-
-==> v1/ClusterRole
-yugaware  14d
-
-==> v1/ClusterRoleBinding
-yugaware  14d
-
-==> v1/Service
-yb-yugaware-ui  14d
-
-==> v1/StatefulSet
-yb-yugaware  14d
-
-==> v1/Pod(related)
-
-NAME           READY  STATUS   RESTARTS  AGE
-yb-yugaware-0  5/5    Running  0         14d
+$ helm install yw-test yugabytedb/yugaware --version 2.1.8 -n yw-test --wait
 ```
 
-Get service details.
+A message should appear showing that the deployment succeeded.
 
-```sh
-$ kubectl get svc -lapp=yb-yugaware
+```
+NAME: yw-test
+LAST DEPLOYED: Tue Jun  16 02:57:59 2020
+NAMESPACE: yw-test
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
 ```
 
+To check all resources, run the following command:
+
 ```sh
-NAME             TYPE           CLUSTER-IP    EXTERNAL-IP      PORT(S)                       AGE
-yb-yugaware-ui   LoadBalancer   10.102.9.91   10.200.300.400   80:32495/TCP,9090:30087/TCP   15d
+$ kubectl get all -n yw-test
 ```
 
-You can even check the history of the `yb` helm chart.
+Details about all of your resources displays.
 
-```sh
-$ helm history yb
+```
+NAME                         READY   STATUS   RESTARTS   AGE
+pod/yw-test-yugaware-0   6/6     Running   0                   5m51s
+
+NAME                                     TYPE                CLUSTER-IP   EXTERNAL-IP    PORT(S)                                       AGE
+service/yw-test-yugaware-ui   LoadBalancer   10.112.6.190   35.199.146.194   80:32446/TCP,9090:32018/TCP   5m51s
+
+NAME                                           READY   AGE
+statefulset.apps/yw-test-yugaware   1/1     5m52s
 ```
 
+## Upgrade Yugabyte Platform (YugaWare)
+
+To upgrade your installed Yugabyte Platform, run the following `helm upgrade` command.
+
 ```sh
-REVISION	UPDATED                 	STATUS  	CHART         	DESCRIPTION
-1       	Wed Jan  2 14:12:27 2019	DEPLOYED	yugaware-1.0.0	Install complete
+$ helm upgrade yw-test yugabytedb/yugaware --version 2.1.8 --set image.tag=2.1.8.2-b1 -n yw-test
 ```
 
-### Upgrade YugaWare
-
-```sh
-$ helm upgrade yb yugaware-1.0.0.tgz --set=image.tag=<new-tag> --wait
+```
+yw-test --timeout 900s --wait
+Release "yw-test" has been upgraded. Happy Helming!
+NAME: yw-test
+LAST DEPLOYED: Tue Jun  30 03:56:38 2020
+NAMESPACE: yw-test
+STATUS: deployed
+REVISION: 2
+TEST SUITE: None
 ```
 
-### Delete YugaWare
+## Delete the Yugabyte Platform (YugaWare)
+
+To remove the Yugabyte Platform, run the `helm delete` command:
 
 ```sh
-$ helm delete yb --purge
+$ helm del yw-test -n yw-test
+```
+
+A message displays that the Yugabyte Platform release and the namespace is deleted.
+
+```
+release "yw-test" uninstalled
+04:12 $ kubectl delete namespace yw-test
+namespace "yw-test" deleted
 ```

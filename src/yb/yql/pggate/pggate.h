@@ -80,9 +80,9 @@ class PgApiImpl {
   // Create YB Memctx. Each memctx will be associated with a Postgres's MemoryContext.
   static PgMemctx *CreateMemctx();
   // Destroy YB Memctx.
-  static void DestroyMemctx(PgMemctx *memctx);
+  static CHECKED_STATUS DestroyMemctx(PgMemctx *memctx);
   // Reset YB Memctx.
-  static void ResetMemctx(PgMemctx *memctx);
+  static CHECKED_STATUS ResetMemctx(PgMemctx *memctx);
   // Cache statements in YB Memctx. When Memctx is destroyed, the statement is destructed.
   CHECKED_STATUS AddToCurrentPgMemctx(const PgStatement::ScopedRefPtr &stmt,
                                       PgStatement **handle);

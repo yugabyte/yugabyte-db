@@ -220,7 +220,7 @@ Status MasterTestBase::CreateNamespace(const NamespaceName& ns_name,
                                        const boost::optional<YQLDatabase>& database_type,
                                        CreateNamespaceResponsePB* resp) {
   RETURN_NOT_OK(CreateNamespaceAsync(ns_name, database_type, resp));
-  return CreateNamespaceWait(ns_name, database_type);
+  return CreateNamespaceWait(resp->id(), database_type);
 }
 
 Status MasterTestBase::CreateNamespaceAsync(const NamespaceName& ns_name,
@@ -239,12 +239,12 @@ Status MasterTestBase::CreateNamespaceAsync(const NamespaceName& ns_name,
   return Status::OK();
 }
 
-Status MasterTestBase::CreateNamespaceWait(const NamespaceName& ns_name,
+Status MasterTestBase::CreateNamespaceWait(const NamespaceId& ns_id,
                                            const boost::optional<YQLDatabase>& database_type) {
   Status status = Status::OK();
 
   IsCreateNamespaceDoneRequestPB is_req;
-  is_req.mutable_namespace_()->set_name(ns_name);
+  is_req.mutable_namespace_()->set_id(ns_id);
   if (database_type) {
     is_req.mutable_namespace_()->set_database_type(*database_type);
   }

@@ -47,11 +47,11 @@ type_specification ::= { JSONB }
 
 We currently support two operators which can be applied to the `JSONB` data type. The `->` operator 
 returns a result of type `JSONB` and further json operations can be applied to the result. The `->>` 
-operator converts `JSONB` to its string representation and returns the same. As a result, we can't
+operator converts `JSONB` to its string representation and returns the same. As a result, you can't
 apply further `JSONB` operators to the result of the `->>` operator. These operators can either have
 a string (for keys in a json object) or integer (for array indices in a json array) as a parameter.
 
-In some cases, we would like to process JSON attributes as numerics. For this purpose, we can use
+In some cases, you would like to process JSON attributes as numerics. For this purpose, you can use
 the `CAST` function to convert text retrieved from the `->>` operator to the appropriate numeric
 type.
 

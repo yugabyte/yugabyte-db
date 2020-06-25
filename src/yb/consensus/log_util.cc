@@ -590,7 +590,9 @@ Result<FirstEntryMetadata> ReadableLogSegment::ReadFirstEntryMetadata() {
   if (offset + kEntryHeaderSize < read_up_to) {
     s = ReadEntryHeaderAndBatch(&offset, &tmp_buf, &current_batch);
   } else {
-    s = STATUS(Corruption, Substitute("Truncated log entry at offset $0", offset));
+    s = STATUS_FORMAT(
+        Corruption, "Truncated log entry at offset $0, read_up_to: $1, file size: $2", offset,
+        read_up_to, file_size());
   }
 
   if (PREDICT_FALSE(!s.ok())) {

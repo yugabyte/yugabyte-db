@@ -14,9 +14,9 @@ menu:
     weight: 638
 ---
 
-The Yugabyte Platform is best fit for mission-critical deployments, such as production or pre-production testing. It starts out by first installing YugaWare, the YugabyteDB Admin Console, in a highly available mode and then spinning up YugabyteDB clusters on one or more regions (across public cloud and private on-premise data centers).
+The Yugabyte Platform is best fit for mission-critical deployments, such as production or pre-production testing. The YugabyteDB Admin Console is used in a highly available mode and orchestrates and manages YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers).
 
-YugaWare is a containerized application that is installed and managed using <a href="https://www.replicated.com/" target="_blank">Replicated</a> for mission-critical environments (such as production or performance or failure mode testing). Replicated is a purpose-built tool for on-premise deployments and life cycle management of containerized applications. For environments that are not mission-critical, such as those needed for local development or simple functional testing, you can also use <a href="../../quick-start/install">YugabyteDB</a>.
+Yugabyte Platform is a containerized application that is installed and managed using <a href="https://www.replicated.com/" target="_blank">Replicated</a> for mission-critical environments (for example, production, performance, or failure mode testing). Replicated is a purpose-built tool for on-premises deployments and life cycle management of containerized applications. For environments that are not mission-critical, such as those needed for local development or simple functional testing, you can also use <a href="../../quick-start/install">YugabyteDB</a>.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -26,7 +26,7 @@ YugaWare is a containerized application that is installed and managed using <a h
         <div class="title">Prepare cloud environment</div>
       </div>
       <div class="body">
-        Prepare your cloud environment before installing our Admin Console.
+        Prepare your cloud environment before installing the Yugabyte Platform.
       </div>
     </a>
   </div>
@@ -35,10 +35,10 @@ YugaWare is a containerized application that is installed and managed using <a h
     <a class="section-link icon-offset" href="install-admin-console/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Install Admin Console</div>
+        <div class="title">Install Yugabyte Platform</div>
       </div>
       <div class="body">
-        Install the Admin Console on any host of your choice.
+        Install the Yugabyte Platform (aka YugaWare) on any host of your choice.
       </div>
     </a>
   </div>
@@ -47,10 +47,10 @@ YugaWare is a containerized application that is installed and managed using <a h
     <a class="section-link icon-offset" href="configure-admin-console/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
-        <div class="title">Configure Admin Console</div>
+        <div class="title">Configure Yugabyte Platform</div>
       </div>
       <div class="body">
-        Configure the Admin Console.
+        Configure your Yugabyte Platform (aka YugaWare) host.
       </div>
     </a>
   </div>
@@ -62,7 +62,7 @@ YugaWare is a containerized application that is installed and managed using <a h
         <div class="title">Configure cloud providers</div>
       </div>
       <div class="body">
-          Configure both public clouds and private on-premise data centers for running YugabyteDB.
+          Configure both public clouds and private on-premises data centers for running YugabyteDB.
       </div>
     </a>
   </div>

@@ -1064,23 +1064,38 @@ Status Log::FlushIndex() {
 Status Log::CopyTo(const std::string& dest_wal_dir) {
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options_.env, dest_wal_dir),
                         Format("Failed to create tablet WAL dir $0", dest_wal_dir));
-  // Make sure log segment we have so far are immutable, so we can hardlink them instead of copying.
-  RETURN_NOT_OK(AllocateSegmentAndRollOver());
+  // Make sure log segments we have so far are immutable, so we can hardlink them instead of
+  // copying.
+  if (footer_builder_.IsInitialized() && footer_builder_.num_entries() > 0) {
+    // If active log segment has entries - close it and rollover to next one, so this one become
+    // immutable. If active log segment empty - we will just skip it.
+    RETURN_NOT_OK(AllocateSegmentAndRollOver());
+  }
   RETURN_NOT_OK(log_index_->Flush());
 
   auto* const env = options_.env;
   const auto files = VERIFY_RESULT(env->GetChildren(wal_dir_, ExcludeDots::kTrue));
 
+  const auto active_segment_filename =
+      FsManager::GetWalSegmentFileName(active_segment_sequence_number_);
+
   for (const auto& file : files) {
     const auto src_path = JoinPathSegments(wal_dir_, file);
     const auto dest_path = JoinPathSegments(dest_wal_dir, file);
 
-    // Segment files are immutable, so we can use hardlinks.
-    if (FsManager::IsWalSegmentFileName(file)) {
+    // Segment files except the active one are immutable, so we can use hardlinks.
+    if (file == active_segment_filename) {
+      // Skip active segment file, because we've just rolled over to it and it is empty and not
+      // closed.
+      continue;
+    } else if (FsManager::IsWalSegmentFileName(file)) {
       RETURN_NOT_OK(env->LinkFile(src_path, dest_path));
+      VLOG_WITH_PREFIX(1) << Format("Hard linked $0 to $1", src_path, dest_path);
     } else {
       RETURN_NOT_OK_PREPEND(
-          CopyFile(env, src_path, dest_path), Format("Failed to copy file: $0", src_path));
+          CopyFile(env, src_path, dest_path),
+          Format("Failed to copy file $0 to $1", src_path, dest_path));
+      VLOG_WITH_PREFIX(1) << Format("Copied $0 to $1", src_path, dest_path);
     }
   }
   return Status::OK();

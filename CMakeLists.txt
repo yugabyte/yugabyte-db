@@ -1349,10 +1349,6 @@ endif()
 # -------------------------------------------------------------------------------------------------
 
 ## OpenSSL
-if(APPLE)
-  set(OPENSSL_ROOT_DIR "${HOMEBREW_OPT_DIR}/openssl")
-  message("Setting OPENSSL_ROOT_DIR to ${OPENSSL_ROOT_DIR}")
-endif()
 
 find_package(OpenSSL REQUIRED)
 include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
@@ -1360,35 +1356,19 @@ ADD_THIRDPARTY_LIB(openssl
   SHARED_LIB "${OPENSSL_CRYPTO_LIBRARY}"
   DEPS ${OPENSSL_LIB_DEPS})
 
-if (USING_CUSTOM_HOMEBREW)
-  # This is a work-around for the FindOpenSSL CMake module not finding OpenSSL inside a custom
-  # Homebrew installation directory. Instead, it finds OpenSSL in /usr/local/
-  if ("${OPENSSL_CRYPTO_LIBRARY}" MATCHES "^/usr/lib/.*")
-    set(OLD_OPENSSL_CRYPTO_LIBRARY "${OPENSSL_CRYPTO_LIBRARY}")
-    string(REGEX REPLACE "^/usr/" "${OPENSSL_ROOT_DIR}/"
-           OPENSSL_CRYPTO_LIBRARY "${OPENSSL_CRYPTO_LIBRARY}")
-    message("Auto-corrected OPENSSL_CRYPTO_LIBRARY from ${OLD_OPENSSL_CRYPTO_LIBRARY} to "
-            "${OPENSSL_CRYPTO_LIBRARY}")
-  endif()
-  if ("${OPENSSL_SSL_LIBRARY}" MATCHES "^/usr/lib/.*")
-    set(OLD_OPENSSL_SSL_LIBRARY "${OPENSSL_SSL_LIBRARY}")
-    string(REGEX REPLACE "^/usr/" "${OPENSSL_ROOT_DIR}/"
-           OPENSSL_SSL_LIBRARY  "${OPENSSL_SSL_LIBRARY}")
-    message("Auto-corrected OPENSSL_SSL_LIBRARY from ${OLD_OPENSSL_SSL_LIBRARY} to "
-            "${OPENSSL_SSL_LIBRARY}")
-  endif()
-  set(OPENSSL_LIBRARIES "${OPENSSL_CRYPTO_LIBRARY}" "${OPENSSL_SSL_LIBRARY}")
-  # Unset OpenSSL version because it might not be correct after we manually modified library
-  # paths. However, we are not using this variable anywhere.
-  unset(OPENSSL_VERSION)
-endif()
-
 message("OPENSSL_CRYPTO_LIBRARY=${OPENSSL_CRYPTO_LIBRARY}")
 message("OPENSSL_SSL_LIBRARY=${OPENSSL_SSL_LIBRARY}")
 message("OPENSSL_FOUND=${OPENSSL_FOUND}")
 message("OPENSSL_INCLUDE_DIR=${OPENSSL_INCLUDE_DIR}")
 message("OPENSSL_LIBRARIES=${OPENSSL_LIBRARIES}")
 message("OPENSSL_VERSION=${OPENSSL_VERSION}")
+
+if (NOT "${OPENSSL_CRYPTO_LIBRARY}" MATCHES "^${YB_THIRDPARTY_DIR}/.*")
+  message(FATAL_ERROR "OPENSSL_CRYPTO_LIBRARY not in ${YB_THIRDPARTY_DIR}.")
+endif()
+if (NOT "${OPENSSL_SSL_LIBRARY}" MATCHES "^${YB_THIRDPARTY_DIR}/.*")
+  message(FATAL_ERROR "OPENSSL_SSL_LIBRARY not in ${YB_THIRDPARTY_DIR}.")
+endif()
 
 ## GLog
 find_package(GLog REQUIRED)

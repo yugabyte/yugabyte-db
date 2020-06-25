@@ -1175,13 +1175,24 @@ TEST_F_EX(QLTabletTest, GetMiddleKey, QLTabletRf1Test) {
 
   ASSERT_OK(cluster_->FlushTablets());
 
-  const auto encoded_middle_key = ASSERT_RESULT(tablet.GetEncodedMiddleDocKey());
+  const auto encoded_split_key = ASSERT_RESULT(tablet.GetEncodedMiddleSplitKey());
+  LOG(INFO) << "Encoded split key: " << Slice(encoded_split_key).ToDebugString();
 
-  docdb::SubDocKey middle_key;
-  ASSERT_OK(middle_key.FullyDecodeFrom(encoded_middle_key, docdb::HybridTimeRequired::kFalse));
-  ASSERT_EQ(middle_key.num_subkeys(), 0) << "Middle doc key should not have sub doc key components";
-
-  LOG(INFO) << "Middle DocKey: " << AsString(middle_key);
+  if (tablet.metadata()->partition_schema()->IsHashPartitioning()) {
+    docdb::DocKey split_key;
+    Slice key_slice = encoded_split_key;
+    ASSERT_OK(split_key.DecodeFrom(&key_slice, docdb::DocKeyPart::kUpToHashCode));
+    ASSERT_TRUE(key_slice.empty()) << "Extra bytes after decoding: " << key_slice.ToDebugString();
+    ASSERT_EQ(split_key.hashed_group().size() + split_key.range_group().size(), 0)
+        << "Hash-based partition: middle key should only have encoded hash code";
+    LOG(INFO) << "Split key: " << AsString(split_key);
+  } else {
+    docdb::SubDocKey split_key;
+    ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, docdb::HybridTimeRequired::kFalse));
+    ASSERT_EQ(split_key.num_subkeys(), 0)
+        << "Range-based partition: middle doc key should not have sub doc key components";
+    LOG(INFO) << "Split key: " << AsString(split_key);
+  }
 
   // Checking number of keys less/bigger than the approximate middle key.
   size_t total_keys = 0;
@@ -1193,7 +1204,7 @@ TEST_F_EX(QLTabletTest, GetMiddleKey, QLTabletRf1Test) {
 
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     Slice key = iter->key();
-    if (key.Less(encoded_middle_key)) {
+    if (key.Less(encoded_split_key)) {
       ++num_keys_less;
     }
     ++total_keys;

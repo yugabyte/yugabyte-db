@@ -183,6 +183,7 @@ class StateWithTablets {
       }
       bool should_run = it->state == initial_state_;
       if (should_run) {
+        VLOG(4) << "Prepare operation for " << it->ToString();
         functor(*it);
 
         // Here we modify indexed value, so iterator could be advanced to the next element.
@@ -302,15 +303,15 @@ class StateWithTablets {
     TabletData(const TabletId& id_, SysSnapshotEntryPB::State state_)
         : id(id_), state(state_) {
     }
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(id, state, last_error, running);
+    }
   };
 
- private:
   const std::string& InitialStateName() const {
     return SysSnapshotEntryPB::State_Name(initial_state_);
   }
-
-  SnapshotCoordinatorContext& context_;
-  SysSnapshotEntryPB::State initial_state_;
 
   class RunningTag;
 
@@ -326,6 +327,14 @@ class StateWithTablets {
       >
     >
   > Tablets;
+
+  const Tablets& tablets() const {
+    return tablets_;
+  }
+
+ private:
+  SnapshotCoordinatorContext& context_;
+  SysSnapshotEntryPB::State initial_state_;
 
   Tablets tablets_;
 
@@ -359,6 +368,11 @@ class SnapshotState : public StateWithTablets {
 
   HybridTime snapshot_hybrid_time() const {
     return snapshot_hybrid_time_;
+  }
+
+  std::string ToString() const {
+    return Format("{ id: $0 snapshot_hybrid_time: $1 version: $2 initial_state: $3 tablets: $4 }",
+                  id_, snapshot_hybrid_time_, version_, InitialStateName(), tablets());
   }
 
   CHECKED_STATUS ToPB(SnapshotInfoPB* out) {
@@ -419,6 +433,10 @@ class SnapshotState : public StateWithTablets {
         .snapshot_hybrid_time = snapshot_hybrid_time_,
       });
     });
+  }
+
+  void SetVersion(int value) {
+    version_ = value;
   }
 
   int version() const {
@@ -816,10 +834,19 @@ class MasterSnapshotCoordinator::Impl {
     auto it = snapshots_.find(snapshot_id);
     if (it == snapshots_.end()) {
       snapshots_.emplace(snapshot_id, std::move(snapshot));
-    } else if (it->second->version() < snapshot->version() || it->second->version() == 0) {
-      // If we have several updates for single snapshot, they are loaded in chronological order.
-      // So latest update should be picked.
-      it->second = std::move(snapshot);
+    } else {
+      // Backward compatibility mode
+      if (snapshot->version() == 0) {
+        snapshot->SetVersion(it->second->version() + 1);
+      }
+      if (it->second->version() < snapshot->version()) {
+        // If we have several updates for single snapshot, they are loaded in chronological order.
+        // So latest update should be picked.
+        it->second = std::move(snapshot);
+      } else {
+        LOG(INFO) << __func__ << " ignore because of version check, existing: "
+                  << it->second->ToString() << ", loaded: " << snapshot->ToString();
+      }
     }
 
     return Status::OK();

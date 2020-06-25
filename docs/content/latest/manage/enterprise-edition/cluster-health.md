@@ -15,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-For staying aware of potential issues with your deployment, YugaWare has the capability to check on each individual universe for several types of issues and proactively send out email alerts when problems arise.
+For staying aware of potential issues with your deployment, the Yugabyte Platform has the capability to check on each individual universe for several types of issues and proactively send out email alerts when problems arise.
 
 ## How to enable and tweak
 

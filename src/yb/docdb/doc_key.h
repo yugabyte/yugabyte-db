@@ -64,6 +64,7 @@ using DocKeyHash = uint16_t;
 //     2. ValueType::kGroupEnd terminates the sequence.
 YB_DEFINE_ENUM(
     DocKeyPart,
+    (kUpToHashCode)
     (kUpToHash)
     (kUpToId)
     // Includes all doc key components up to hashed ones. If there are no hashed components -
@@ -447,6 +448,8 @@ Result<bool> ConsumePrimitiveValueFromKey(Slice* slice);
 // @param result - vector to append decoded values to.
 Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice,
                                      std::vector<PrimitiveValue>* result);
+
+Result<boost::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key);
 
 inline std::ostream& operator <<(std::ostream& out, const DocKey& doc_key) {
   out << doc_key.ToString();
@@ -890,6 +893,10 @@ struct KeyBounds {
   bool IsWithinBounds(const Slice& key) const {
     return (lower.empty() || key.compare(lower) >= 0) &&
            (upper.empty() || key.compare(upper) < 0);
+  }
+
+  bool IsInitialized() const {
+    return !lower.empty() || !upper.empty();
   }
 
   std::string ToString() const {
