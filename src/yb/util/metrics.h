@@ -614,9 +614,17 @@ class PrometheusWriter {
       if (per_table_attributes_.find(it->second) == per_table_attributes_.end()) {
         // If it's the first time we see this table, create the aggregate structures.
         per_table_attributes_[it->second] = attr;
-        per_table_values_[it->second];
+        per_table_values_[it->second][name] = value;
       } else {
-        per_table_values_[it->second][name] += value;
+        auto type_it = attr.find("metric_type");
+        if (type_it != attr.end() && type_it->second == "cdc") {
+          // Todo(Rahul): Tag metrics so we can choose the aggregation function instead of
+          // doing a max for all cdc metrics.
+          per_table_values_[it->second][name] = std::max(per_table_values_[it->second][name],
+                                                         static_cast<double>(value));
+        } else {
+          per_table_values_[it->second][name] += value;
+        }
       }
     } else {
       // For non-tablet level metrics, export them directly.
