@@ -595,14 +595,14 @@ CREATE INDEX ON test_split ((r1,r2) HASH) SPLIT INTO 20 TABLETS;
 CREATE INDEX ON test_split (h2) SPLIT INTO 20 TABLETS;
 \d test_split
              Table "public.test_split"
- Column |  Type   | Collation | Nullable | Default 
+ Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
- h1     | integer |           | not null | 
- h2     | integer |           | not null | 
- r1     | integer |           | not null | 
- r2     | integer |           | not null | 
- v1     | integer |           |          | 
- v2     | integer |           |          | 
+ h1     | integer |           | not null |
+ h2     | integer |           | not null |
+ r1     | integer |           | not null |
+ r2     | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
 Indexes:
     "test_split_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1, r2)
     "test_split_h2_idx" lsm (h2 HASH)
@@ -831,3 +831,203 @@ SELECT * FROM test_method ORDER BY h1, h2;
   1 |  2 |  2 |  1 |  7 | 27
   2 |  1 |  1 |  2 | 10 | 20
 (8 rows)
+
+-- Test ordering on split indexes
+CREATE TABLE tbl(k SERIAL PRIMARY KEY, v INT);
+CREATE INDEX ON tbl(v ASC) SPLIT AT VALUES((10), (20), (30));
+INSERT INTO tbl(v) VALUES
+    (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30), (40), (6), (16), (26);
+EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v ASC;
+            QUERY PLAN
+-----------------------------------
+ Index Scan using tbl_v_idx on tbl
+(1 row)
+
+SELECT * FROM tbl ORDER BY v ASC;
+ k  | v
+----+----
+  1 |  5
+  2 |  6
+ 14 |  6
+ 10 | 10
+  4 | 15
+ 15 | 16
+  3 | 16
+ 11 | 20
+  5 | 25
+ 16 | 26
+  6 | 26
+ 12 | 30
+  8 | 35
+  7 | 36
+ 13 | 40
+  9 | 46
+(16 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v DESC;
+                 QUERY PLAN
+--------------------------------------------
+ Index Scan Backward using tbl_v_idx on tbl
+(1 row)
+
+SELECT * FROM tbl ORDER BY v DESC;
+ k  | v
+----+----
+  9 | 46
+ 13 | 40
+  7 | 36
+  8 | 35
+ 12 | 30
+  6 | 26
+ 16 | 26
+  5 | 25
+ 11 | 20
+  3 | 16
+ 15 | 16
+  4 | 15
+ 10 | 10
+ 14 |  6
+  2 |  6
+  1 |  5
+(16 rows)
+
+EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v DESC;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Only Scan Backward using tbl_v_idx on tbl
+   Index Cond: ((v > 10) AND (v <= 40))
+(2 rows)
+
+SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v DESC;
+ v
+----
+ 40
+ 36
+ 35
+ 30
+ 26
+ 26
+ 25
+ 20
+ 16
+ 16
+ 15
+(11 rows)
+
+EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v ASC;
+               QUERY PLAN
+----------------------------------------
+ Index Only Scan using tbl_v_idx on tbl
+   Index Cond: ((v > 10) AND (v <= 40))
+(2 rows)
+
+SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v ASC;
+ v
+----
+ 15
+ 16
+ 16
+ 20
+ 25
+ 26
+ 26
+ 30
+ 35
+ 36
+ 40
+(11 rows)
+
+DROP TABLE tbl;
+CREATE TABLE tbl(k SERIAL PRIMARY KEY, v INT);
+CREATE UNIQUE INDEX ON tbl(v DESC) SPLIT AT VALUES((30), (20), (10));
+INSERT INTO tbl(v) VALUES
+    (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30), (40);
+EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v ASC;
+                 QUERY PLAN
+--------------------------------------------
+ Index Scan Backward using tbl_v_idx on tbl
+(1 row)
+
+SELECT * FROM tbl ORDER BY v ASC;
+ k  | v
+----+----
+  1 |  5
+  2 |  6
+ 10 | 10
+  4 | 15
+  3 | 16
+ 11 | 20
+  5 | 25
+  6 | 26
+ 12 | 30
+  8 | 35
+  7 | 36
+ 13 | 40
+  9 | 46
+(13 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v DESC;
+            QUERY PLAN
+-----------------------------------
+ Index Scan using tbl_v_idx on tbl
+(1 row)
+
+SELECT * FROM tbl ORDER BY v DESC;
+ k  | v
+----+----
+  9 | 46
+ 13 | 40
+  7 | 36
+  8 | 35
+ 12 | 30
+  6 | 26
+  5 | 25
+ 11 | 20
+  3 | 16
+  4 | 15
+ 10 | 10
+  2 |  6
+  1 |  5
+(13 rows)
+
+EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Only Scan Backward using tbl_v_idx on tbl
+   Index Cond: ((v >= 10) AND (v < 40))
+(2 rows)
+
+SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC;
+ v
+----
+ 10
+ 15
+ 16
+ 20
+ 25
+ 26
+ 30
+ 35
+ 36
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC;
+               QUERY PLAN
+----------------------------------------
+ Index Only Scan using tbl_v_idx on tbl
+   Index Cond: ((v >= 10) AND (v < 40))
+(2 rows)
+
+SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC;
+ v
+----
+ 36
+ 35
+ 30
+ 26
+ 25
+ 20
+ 16
+ 15
+ 10
+(9 rows)

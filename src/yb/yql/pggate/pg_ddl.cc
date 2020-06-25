@@ -138,9 +138,6 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   }
 }
 
-PgCreateTable::~PgCreateTable() {
-}
-
 Status PgCreateTable::AddColumnImpl(const char *attr_name,
                                     int attr_num,
                                     int attr_ybtype,
@@ -174,30 +171,28 @@ Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
   return Status::OK();
 }
 
+size_t PgCreateTable::PrimaryKeyRangeColumnCount() const {
+  return range_columns_.size();
+}
+
 Status PgCreateTable::AddSplitRow(int num_cols, YBCPgTypeEntity **types, uint64_t *data) {
-  if (hash_schema_.is_initialized()) {
-    return STATUS(InvalidArgument, "Hash columns cannot have split points");
-  }
-  if (range_columns_.empty() || num_cols > range_columns_.size()) {
-    return STATUS(
-        InvalidArgument, "Split points cannot be more than number of primary key columns");
-  }
+  SCHECK(!hash_schema_.is_initialized(),
+      InvalidArgument,
+      "Hash columns cannot have split points");
+  const auto key_column_count = PrimaryKeyRangeColumnCount();
+  SCHECK(num_cols && num_cols <= key_column_count,
+      InvalidArgument,
+      "Split points cannot be more than number of primary key columns");
 
   std::vector<QLValuePB> row;
-  row.reserve(range_columns_.size());
-  int i = 0;
-  for (; i < num_cols; i++) {
-    PgConstant point(types[i], data[i], false);
+  row.reserve(key_column_count);
+  for (size_t i = 0; i < key_column_count; ++i) {
     QLValuePB ql_value;
-    RETURN_NOT_OK(point.Eval(&ql_value));
+    if (i < num_cols) {
+      PgConstant point(types[i], data[i], false);
+      RETURN_NOT_OK(point.Eval(&ql_value));
+    }
     row.push_back(std::move(ql_value));
-  }
-
-  // Populate QLValuePB  for the remaining range columns
-  while (i < range_columns_.size()) {
-    QLValuePB ql_value;
-    row.push_back(std::move(ql_value));
-    i++;
   }
 
   split_rows_.push_back(std::move(row));
@@ -206,25 +201,27 @@ Status PgCreateTable::AddSplitRow(int num_cols, YBCPgTypeEntity **types, uint64_
 
 Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBSchema& schema) {
   std::vector<std::string> rows;
-  std::vector<docdb::PrimitiveValue> prev_range_components;
+  rows.reserve(split_rows_.size());
+  docdb::DocKey prev_doc_key;
   for (const auto& row : split_rows_) {
+    SCHECK_EQ(
+        row.size(), PrimaryKeyRangeColumnCount(),
+        IllegalState, "Number of split row values must be equal to number of primary key columns");
     std::vector<docdb::PrimitiveValue> range_components;
-    range_components.reserve(range_columns_.size());
-    int i = 0;
+    range_components.reserve(row.size());
     bool compare_columns = true;
-    for (const auto& column : range_columns_) {
-      const client::YBColumnSchema& column_schema = schema.Column(schema.FindColumn(column));
-
-      if (row[i].value_case() == QLValuePB::VALUE_NOT_SET) {
-        range_components.emplace_back(docdb::ValueType::kLowest);
-      } else {
-        range_components.push_back(docdb::PrimitiveValue::FromQLValuePB(
-            row[i], column_schema.sorting_type()));
-      }
+    for (const auto& row_value : row) {
+      const auto column_index = range_components.size();
+      range_components.push_back(row_value.value_case() == QLValuePB::VALUE_NOT_SET
+        ? docdb::PrimitiveValue(docdb::ValueType::kLowest)
+        : docdb::PrimitiveValue::FromQLValuePB(
+            row_value,
+            schema.Column(schema.FindColumn(range_columns_[column_index])).sorting_type()));
 
       // Validate that split rows honor column ordering.
-      if (compare_columns && !prev_range_components.empty()) {
-        int compare = prev_range_components[i].CompareTo(range_components[i]);
+      if (compare_columns && !prev_doc_key.empty()) {
+        const auto& prev_value = prev_doc_key.range_group()[column_index];
+        const auto compare = prev_value.CompareTo(range_components.back());
         if (compare > 0) {
           return STATUS(InvalidArgument, "Split rows ordering does not match column ordering");
         } else if (compare < 0) {
@@ -232,11 +229,9 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
           compare_columns = false;
         }
       }
-      i++;
     }
-
-    prev_range_components = range_components;
-    const auto& keybytes = docdb::DocKey(std::move(range_components)).Encode();
+    prev_doc_key = docdb::DocKey(std::move(range_components));
+    const auto keybytes = prev_doc_key.Encode();
 
     // Validate that there are no duplicate split rows.
     if (rows.size() > 0 && keybytes.AsSlice() == Slice(rows.back())) {
@@ -373,10 +368,13 @@ PgCreateIndex::PgCreateIndex(PgSession::ScopedRefPtr pg_session,
       is_unique_index_(is_unique_index) {
 }
 
-PgCreateIndex::~PgCreateIndex() {
+size_t PgCreateIndex::PrimaryKeyRangeColumnCount() const {
+  return ybbasectid_added_ ? primary_key_range_column_count_
+                           : PgCreateTable::PrimaryKeyRangeColumnCount();
 }
 
 Status PgCreateIndex::AddYBbasectidColumn() {
+  primary_key_range_column_count_ = PgCreateTable::PrimaryKeyRangeColumnCount();
   // Add YBUniqueIdxKeySuffix column to store key suffix for handling multiple NULL values in column
   // with unique index.
   // Value of this column is set to ybctid (same as ybbasectid) for index row in case index

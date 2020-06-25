@@ -420,6 +420,11 @@ YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_table
   return ToYBCStatus(pgapi->CreateIndexSetNumTablets(handle, num_tablets));
 }
 
+YBCStatus YBCPgCreateIndexAddSplitRow(YBCPgStatement handle, int num_cols,
+                                      YBCPgTypeEntity **types, uint64_t *data) {
+  return ToYBCStatus(pgapi->CreateIndexAddSplitRow(handle, num_cols, types, data));
+}
+
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateIndex(handle));
 }
