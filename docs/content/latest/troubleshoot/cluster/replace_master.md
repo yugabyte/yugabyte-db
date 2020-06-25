@@ -25,15 +25,13 @@ For the steps below, the examples use the following scenario:
 - The default master RPC port is `7100`
 
 
+1. Start the new (replacement) YB-Master server in standby mode. 
 
+To start `yb-master` in standby mode, set the `--master_addresses` flag to an empty string (`""`).
 
- 1. Start the new (replacement) YB-Master server in standby mode. 
- 
- To start `yb-master` in standby mode, set the `--master_addresses` flag to an empty string (`""`).
- 
-     ```sh
-      $ ./bin/yb-master --master_addresses=""
-    ```
+```sh
+./bin/yb-master --master_addresses=""
+```
 
 2. Add the new YB-Master server into the existing cluster.
 
@@ -49,7 +47,12 @@ To remove the failed YB-Master server from the cluster, use the [`yb-admin chang
 
 ```sh
 ./yb-admin -master_addresses M1:7100,M2:7100,M3:7100,M4:7100 change_master_config REMOVE_SERVER M1 7100
+```
+{{< note title="Note" >}}
 
+Make sure to specify all YB-Master addresses which will prevent the new YB-Master server from unexpectedly becoming the leader.
+
+{{< /note >}}
 ## Validate cluster
 
 Validate that your set of masters is now `M2`, `M3` and `M4` using:
