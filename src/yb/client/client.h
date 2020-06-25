@@ -46,6 +46,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/schema.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #ifdef YB_HEADERS_NO_STUBS
@@ -372,6 +373,7 @@ class YBClient {
                                  const std::string& namespace_id = "",
                                  const std::string& source_namespace_id = "",
                                  const boost::optional<uint32_t>& next_pg_oid = boost::none,
+                                 const boost::optional<TransactionMetadata>& txn = boost::none,
                                  const bool colocated = false);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet

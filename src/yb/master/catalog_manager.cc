@@ -282,6 +282,11 @@ DEFINE_int32(ysql_backfill_is_create_table_done_delay_ms, 1000, // 1 min.
 TAG_FLAG(ysql_backfill_is_create_table_done_delay_ms, hidden);
 TAG_FLAG(ysql_backfill_is_create_table_done_delay_ms, runtime);
 
+DEFINE_bool(enable_transactional_ddl_gc, true,
+    "A kill switch for transactional DDL GC. Temporary safety measure.");
+TAG_FLAG(enable_transactional_ddl_gc, runtime);
+TAG_FLAG(enable_transactional_ddl_gc, hidden);
+
 DEFINE_bool(
     hide_pg_catalog_table_creation_logs, false,
     "Whether to hide detailed log messages for PostgreSQL catalog table creation. "
@@ -570,12 +575,14 @@ CatalogManager::CatalogManager(Master* master)
       permissions_manager_(std::make_unique<PermissionsManager>(this)),
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
-      encryption_manager_(new EncryptionManager()) {
+      encryption_manager_(new EncryptionManager()),
+      ysql_transaction_(this, master_) {
   yb::InitCommonFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
            .Build(&leader_initialization_pool_));
   CHECK_OK(ThreadPoolBuilder("CatalogManagerBGTasks").Build(&background_tasks_thread_pool_));
+  ysql_transaction_.set_thread_pool(background_tasks_thread_pool_.get());
   CHECK_OK(ThreadPoolBuilder("async-tasks")
            .Build(&async_task_pool_));
 
@@ -2485,7 +2492,18 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_table_create_secs > 0)) {
+  // Tables with a transaction should be rolled back if the transaction does not get committed.
+  // Store this on the table persistent state until the transaction has been a verified success.
+  TransactionMetadata txn;
+  if (req.has_transaction() && FLAGS_enable_transactional_ddl_gc) {
+    table->mutable_metadata()->mutable_dirty()->pb.mutable_transaction()->
+        CopyFrom(req.transaction());
+    txn = VERIFY_RESULT(TransactionMetadata::FromPB(req.transaction()));
+    RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_table_create_secs > 0) &&
+      req.table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     LOG(INFO) << "Simulating slow table creation";
     SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_simulate_slow_table_create_secs));
   }
@@ -2583,6 +2601,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         resp));
   }
 
+  // Verify Transaction gets committed, which occurs after table create finishes.
+  if (req.has_transaction() && PREDICT_TRUE(FLAGS_enable_transactional_ddl_gc)) {
+    LOG(INFO) << "Enqueuing table for Transaction Verification: " << req.name();
+    std::function<Status(bool)> when_done =
+        std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1);
+    WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+        std::bind(&YsqlTransactionDdl::VerifyTransaction, &ysql_transaction_, txn, when_done)),
+        "Could not submit VerifyTransaction to thread pool");
+  }
+
   LOG(INFO) << "Successfully created " << object_type << " " << table->ToString()
             << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
@@ -2598,6 +2626,51 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   DVLOG(3) << __PRETTY_FUNCTION__ << " Done.";
+  return Status::OK();
+}
+
+Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool rpc_success) {
+  // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
+  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
+  const auto pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
+  auto entry_exists = VERIFY_RESULT(
+      ysql_transaction_.PgEntryExists(pg_table_id, GetPgsqlTableOid(table->id())));
+  auto l = table->LockForWrite();
+  auto& metadata = table->mutable_metadata()->mutable_dirty()->pb;
+
+  SCHECK(metadata.state() == SysTablesEntryPB::RUNNING ||
+         metadata.state() == SysTablesEntryPB::ALTERING, Aborted,
+         Substitute("Unexpected table state ($0), abandoning transaction GC work for $1",
+                    SysTablesEntryPB_State_Name(metadata.state()), table->ToString()));
+
+  // #5981: Mark un-retryable rpc failures as pass to avoid infinite retry of GC'd txns.
+  const bool txn_check_passed = entry_exists || !rpc_success;
+
+  if (txn_check_passed) {
+    // Remove the transaction from the entry since we're done processing it.
+    metadata.clear_transaction();
+    RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
+    if (entry_exists) {
+      LOG(INFO) << "Table transaction succeeded: " << table->ToString();
+    } else {
+      LOG(WARNING) << "Unknown RPC failure, removing transaction on table: " << table->ToString();
+    }
+    // Commit the namespace in-memory state.
+    l->Commit();
+  } else {
+    LOG(INFO) << "Table transaction failed, deleting: " << table->ToString();
+    // Async enqueue delete.
+    DeleteTableRequestPB del_tbl_req;
+    del_tbl_req.mutable_table()->set_table_name(table->name());
+    del_tbl_req.mutable_table()->set_table_id(table->id());
+    del_tbl_req.set_is_index_table(table->is_index());
+
+    RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc( [this, del_tbl_req]() {
+      DeleteTableResponsePB del_tbl_resp;
+      WARN_NOT_OK(DeleteTable(&del_tbl_req, &del_tbl_resp, nullptr),
+          "Failed to Delete Table with failed transaction");
+    }));
+  }
   return Status::OK();
 }
 
@@ -5228,6 +5301,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
   scoped_refptr<NamespaceInfo> ns;
   std::vector<scoped_refptr<TableInfo>> pgsql_tables;
+  TransactionMetadata txn;
   const auto db_type = GetDatabaseType(*req);
   {
     std::lock_guard<LockType> l(lock_);
@@ -5295,6 +5369,14 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
         auto source_ns_lock = source_ns->LockForRead();
         metadata->set_next_pg_oid(source_ns_lock->data().pb.next_pg_oid());
       }
+    }
+
+    // NS with a Transaction should be rolled back if the transaction does not get Committed.
+    // Store this on the NS for now and use it later.
+    if (req->has_transaction() && PREDICT_TRUE(FLAGS_enable_transactional_ddl_gc)) {
+      metadata->mutable_transaction()->CopyFrom(req->transaction());
+      txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+      RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
     }
 
     // Add the namespace to the in-memory map for the assignment.
@@ -5376,7 +5458,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // Process the subsequent work in the background thread (normally PGSQL).
     LOG(INFO) << "Keyspace create enqueued for later processing: " << ns->ToString();
     RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&CatalogManager::ProcessPendingNamespace, this, ns->id(), pgsql_tables)));
+        std::bind(&CatalogManager::ProcessPendingNamespace, this, ns->id(), pgsql_tables, txn)));
     return Status::OK();
   } else {
     // All work is done, it's now safe to online the namespace (normally YQL).
@@ -5404,7 +5486,9 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 }
 
 void CatalogManager::ProcessPendingNamespace(
-    NamespaceId id, std::vector<scoped_refptr<TableInfo>> template_tables) {
+    NamespaceId id,
+    std::vector<scoped_refptr<TableInfo>> template_tables,
+    TransactionMetadata txn) {
   LOG(INFO) << "ProcessPendingNamespace started for " << id;
 
   // Ensure that we are currently the Leader before handling DDL operations.
@@ -5422,7 +5506,7 @@ void CatalogManager::ProcessPendingNamespace(
               << "ms) on namespace creation for " << id;
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms));
     WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&CatalogManager::ProcessPendingNamespace, this, id, template_tables)),
+        std::bind(&CatalogManager::ProcessPendingNamespace, this, id, template_tables, txn)),
         "Could not submit ProcessPendingNamespaces to thread pool");
     return;
   }
@@ -5455,6 +5539,17 @@ void CatalogManager::ProcessPendingNamespace(
       if (s.ok()) {
         TRACE("Done processing keyspace");
         LOG(INFO) << (success ? "Processed" : "Failed") << " keyspace: " << ns->ToString();
+
+        // Verify Transaction gets committed, which occurs after namespace create finishes.
+        if (success && metadata.has_transaction()) {
+          LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns->ToString();
+          std::function<Status(bool)> when_done =
+              std::bind(&CatalogManager::VerifyNamespacePgLayer, this, ns, _1);
+          WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+              std::bind(&YsqlTransactionDdl::VerifyTransaction, &ysql_transaction_,
+                        txn, when_done)),
+              "Could not submit VerifyTransaction to thread pool");
+        }
       } else {
         metadata.set_state(SysNamespaceEntryPB::FAILED);
         if (s.IsIllegalState() || s.IsAborted()) {
@@ -5475,6 +5570,51 @@ void CatalogManager::ProcessPendingNamespace(
                    << "), abandoning creation work for " << ns->ToString();
     }
   }
+}
+
+Status CatalogManager::VerifyNamespacePgLayer(
+    scoped_refptr<NamespaceInfo> ns, bool rpc_success) {
+  // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
+  const auto pg_table_id = GetPgsqlTableId(atoi(kSystemNamespaceId), kPgDatabaseTableOid);
+  auto entry_exists = VERIFY_RESULT(
+      ysql_transaction_.PgEntryExists(pg_table_id, GetPgsqlDatabaseOid(ns->id())));
+  auto l = ns->LockForWrite();
+  SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
+
+  // #5981: Mark un-retryable rpc failures as pass to avoid infinite retry of GC'd txns.
+  bool txn_check_passed = entry_exists || !rpc_success;
+
+  if (txn_check_passed) {
+    // Passed checks.  Remove the transaction from the entry since we're done processing it.
+    SCHECK_EQ(metadata.state(), SysNamespaceEntryPB::RUNNING, Aborted,
+              Substitute("Invalid Namespace state ($0), abandoning transaction GC work for $1",
+                 SysNamespaceEntryPB_State_Name(metadata.state()), ns->ToString()));
+    metadata.clear_transaction();
+    RETURN_NOT_OK(sys_catalog_->UpdateItem(ns.get(), leader_ready_term()));
+    if (entry_exists) {
+      LOG(INFO) << "Namespace transaction succeeded: " << ns->ToString();
+    } else {
+      LOG(WARNING) << "Unknown RPC Failure, removing transaction on namespace: " << ns->ToString();
+    }
+    // Commit the namespace in-memory state.
+    l->Commit();
+  } else {
+    // Transaction failed.  We need to delete this Database now.
+    SCHECK(metadata.state() == SysNamespaceEntryPB::RUNNING ||
+           metadata.state() == SysNamespaceEntryPB::FAILED, Aborted,
+           Substitute("Invalid Namespace state ($0), aborting delete.",
+                      SysNamespaceEntryPB_State_Name(metadata.state()), ns->ToString()));
+    LOG(INFO) << "Namespace transaction failed, deleting: " << ns->ToString();
+    metadata.set_state(SysNamespaceEntryPB::DELETING);
+    metadata.clear_transaction();
+    RETURN_NOT_OK(sys_catalog_->UpdateItem(ns.get(), leader_ready_term()));
+    // Commit the namespace in-memory state.
+    l->Commit();
+    // Async enqueue delete.
+    RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+        std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, this, ns)));
+  }
+  return Status::OK();
 }
 
 // Get the information about an in-progress create operation.
@@ -5529,8 +5669,8 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
       return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, STATUS(InternalError,
               "Namespace Create Failed: not onlined."));
     default:
-      Status s = STATUS_SUBSTITUTE(IllegalState,
-          "IsCreateNamespaceDone failure: state=$0", metadata.state());
+      Status s = STATUS_SUBSTITUTE(IllegalState, "IsCreateNamespaceDone failure: state=$0",
+                                   SysNamespaceEntryPB_State_Name(metadata.state()));
       LOG(WARNING) << s.ToString();
       resp->set_done(true);
       return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
@@ -5538,7 +5678,6 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
 
   return Status::OK();
 }
-
 
 Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                        DeleteNamespaceResponsePB* resp,

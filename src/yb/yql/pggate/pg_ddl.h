@@ -16,6 +16,7 @@
 #define YB_YQL_PGGATE_PG_DDL_H_
 
 #include "yb/yql/pggate/pg_statement.h"
+#include "yb/common/transaction.h"
 
 namespace yb {
 namespace pggate {
@@ -44,6 +45,10 @@ class PgCreateDatabase : public PgDdl {
                    const bool colocated);
   virtual ~PgCreateDatabase();
 
+  void AddTransaction(std::shared_future<Result<TransactionMetadata>> transaction) {
+    txn_future_ = transaction;
+  }
+
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_DATABASE; }
 
   // Execute.
@@ -55,6 +60,7 @@ class PgCreateDatabase : public PgDdl {
   const PgOid source_database_oid_;
   const PgOid next_oid_;
   bool colocated_ = false;
+  boost::optional<std::shared_future<Result<TransactionMetadata>>> txn_future_ = boost::none;
 };
 
 class PgDropDatabase : public PgDdl {
@@ -179,6 +185,10 @@ class PgCreateTable : public PgDdl {
 
   CHECKED_STATUS AddSplitBoundary(PgExpr **exprs, int expr_count);
 
+  void AddTransaction(std::shared_future<Result<TransactionMetadata>> txn) {
+    txn_future_ = txn;
+  }
+
   // Execute.
   virtual CHECKED_STATUS Exec();
 
@@ -208,6 +218,7 @@ class PgCreateTable : public PgDdl {
   std::vector<std::string> range_columns_;
   std::vector<std::vector<QLValuePB>> split_rows_; // Split rows for range tables
   client::YBSchemaBuilder schema_builder_;
+  boost::optional<std::shared_future<Result<TransactionMetadata>>> txn_future_ = boost::none;
 };
 
 class PgDropTable : public PgDdl {

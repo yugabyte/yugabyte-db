@@ -2621,5 +2621,161 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRetryEnabled)) {
   TestCacheRefreshRetry(false /* is_retry_disabled */);
 }
 
+class PgLibPqDatabaseTimeoutTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--TEST_user_ddl_operation_timeout_sec=1");
+    options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=5000");
+  }
+};
+
+TEST_F(PgLibPqDatabaseTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestDatabaseTimeoutGC)) {
+  NamespaceName test_name = "test_pgsql";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NOK(conn.Execute("CREATE DATABASE " + test_name));
+  }
+
+  // Verify DocDB Database creation, even though it failed in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
+    WARN_NOT_OK(ResultToStatus(ret), "" /* prefix */);
+    return ret.ok() && ret.get();
+  }, MonoDelta::FromSeconds(60),
+     "Verify Namespace was created in DocDB"));
+
+  // After bg_task_wait, DocDB will notice the PG layer failure because the transaction aborts.
+  // Confirm that DocDB async deletes the namespace.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
+    WARN_NOT_OK(ResultToStatus(ret), "ret");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(20), "Verify Namespace was removed by Transaction GC"));
+}
+
+TEST_F(PgLibPqDatabaseTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestDatabaseTimeoutAndRestartGC)) {
+  NamespaceName test_name = "test_pgsql";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NOK(conn.Execute("CREATE DATABASE " + test_name));
+  }
+
+  // Verify DocDB Database creation, even though it fails in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == true;
+  }, MonoDelta::FromSeconds(60),
+      "Verify Namespace was created in DocDB"));
+
+  LOG(INFO) << "Restarting Master.";
+
+  // Restart the master before the BG task can kick in and GC the failed transaction.
+  auto master = cluster_->GetLeaderMaster();
+  master->Shutdown();
+  ASSERT_OK(master->Restart());
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto s = cluster_->GetIsMasterLeaderServiceReady(master);
+    return s.ok();
+  }, MonoDelta::FromSeconds(20), "Wait for Master to be ready."));
+
+  // Confirm that Catalog Loader deletes the namespace on master restart.
+  client = ASSERT_RESULT(cluster_->CreateClient()); // Reinit the YBClient after restart.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(20), "Verify Namespace was removed by Transaction GC"));
+}
+
+class PgLibPqTableTimeoutTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Use small clock skew, to decrease number of read restarts.
+    options->extra_tserver_flags.push_back("--TEST_user_ddl_operation_timeout_sec=1");
+    options->extra_master_flags.push_back("--TEST_simulate_slow_table_create_secs=2");
+    options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=3000");
+  }
+};
+
+TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutGC)) {
+  const string kDatabaseName ="yugabyte";
+  NamespaceName test_name = "test_pgsql_table";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
+  }
+
+  // Wait for DocDB Table creation, even though it will fail in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    LOG(INFO) << "Requesting TableExists";
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == true;
+  }, MonoDelta::FromSeconds(20), "Verify Table was created in DocDB"));
+
+  // DocDB will notice the PG layer failure because the transaction aborts.
+  // Confirm that DocDB async deletes the namespace.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(20), "Verify Table was removed by Transaction GC"));
+}
+
+TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndRestartGC)) {
+  const string kDatabaseName ="yugabyte";
+  NamespaceName test_name = "test_pgsql_table";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
+  }
+
+  // Wait for DocDB Table creation, even though it will fail in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    LOG(INFO) << "Requesting TableExists";
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == true;
+  }, MonoDelta::FromSeconds(20), "Verify Table was created in DocDB"));
+
+  LOG(INFO) << "Restarting Master.";
+
+  // Restart the master before the BG task can kick in and GC the failed transaction.
+  auto master = cluster_->GetLeaderMaster();
+  master->Shutdown();
+  ASSERT_OK(master->Restart());
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto s = cluster_->GetIsMasterLeaderServiceReady(master);
+    return s.ok();
+  }, MonoDelta::FromSeconds(20), "Wait for Master to be ready."));
+
+  // Confirm that Catalog Loader deletes the namespace on master restart.
+  client = ASSERT_RESULT(cluster_->CreateClient()); // Reinit the YBClient after restart.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(20), "Verify Table was removed by Transaction GC"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

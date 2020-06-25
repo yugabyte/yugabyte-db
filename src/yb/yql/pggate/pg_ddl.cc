@@ -26,6 +26,10 @@
 #include "yb/common/pg_system_attr.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/util/flag_tags.h"
+
+DEFINE_test_flag(int32, user_ddl_operation_timeout_sec, 0,
+                 "Adjusts the timeout for a DDL operation from the YBClient default, if non-zero.");
 
 namespace yb {
 namespace pggate {
@@ -64,8 +68,12 @@ PgCreateDatabase::~PgCreateDatabase() {
 }
 
 Status PgCreateDatabase::Exec() {
+  boost::optional<TransactionMetadata> txn;
+  if (txn_future_) {
+    txn = VERIFY_RESULT((*txn_future_).get()); // Ensure the future has been executed by this time.
+  }
   return pg_session_->CreateDatabase(database_name_, database_oid_, source_database_oid_,
-                                     next_oid_, colocated_);
+                                     next_oid_, txn, colocated_);
 }
 
 PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
@@ -339,6 +347,16 @@ Status PgCreateTable::Exec() {
     if (skip_index_backfill()) {
       table_creator->skip_index_backfill(true);
     }
+  }
+
+  boost::optional<TransactionMetadata> txn;
+  if (txn_future_) {
+    txn = VERIFY_RESULT((*txn_future_).get());
+    table_creator->part_of_transaction(&*txn);
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_user_ddl_operation_timeout_sec > 0)) {
+    table_creator->timeout(MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec));
   }
 
   const Status s = table_creator->Create();
