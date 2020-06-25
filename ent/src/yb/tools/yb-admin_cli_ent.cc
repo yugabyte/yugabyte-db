@@ -36,7 +36,7 @@ using strings::Substitute;
 void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
-    Register(
+  Register(
       "list_snapshots", " [SHOW_DETAILS] [NOT_SHOW_RESTORED]",
       [client](const CLIArguments& args) -> Status {
         bool show_details = false;
@@ -84,6 +84,42 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables),
                               Substitute("Unable to create snapshot of tables: $0",
                                          yb::ToString(tables)));
+        return Status::OK();
+      });
+
+  Register(
+      "create_keyspace_snapshot", " keyspace",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+
+        const TypedNamespaceName keyspace = VERIFY_RESULT(ParseNamespaceName(args[2]));
+        SCHECK_NE(
+            keyspace.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
+            Format("Wrong keyspace type: $0", YQLDatabase_Name(keyspace.db_type)));
+
+        RETURN_NOT_OK_PREPEND(client->CreateNamespaceSnapshot(keyspace),
+                              Substitute("Unable to create snapshot of keyspace: $0",
+                                         keyspace.name));
+        return Status::OK();
+      });
+
+  Register(
+      "create_database_snapshot", " database",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+
+        const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[2]));
+        SCHECK_EQ(
+            database.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
+            Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));
+
+        RETURN_NOT_OK_PREPEND(client->CreateNamespaceSnapshot(database),
+                              Substitute("Unable to create snapshot of database: $0",
+                                         database.name));
         return Status::OK();
       });
 

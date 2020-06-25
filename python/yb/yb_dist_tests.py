@@ -289,6 +289,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
 ARCHIVED_PATHS_IN_SRC_DIR = [
     'bin',
     'build-support',
+    'managed/devops/bin/yb_backup.py',
     'managed/src/main/resources/version.txt',
     'managed/version.txt',
     'python',

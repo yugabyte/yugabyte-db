@@ -3974,6 +3974,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       auto l = ns->LockForRead();
       table->mutable_namespace_()->set_id(ns->id());
       table->mutable_namespace_()->set_name(ns->name());
+      table->mutable_namespace_()->set_database_type(ns->database_type());
     }
     table->set_id(entry.second->id());
     table->set_name(ltm->data().name());

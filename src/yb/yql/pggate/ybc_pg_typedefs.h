@@ -233,6 +233,12 @@ typedef struct PgCallbacks {
   YBCPgMemctx (*GetCurrentYbMemctx)();
 } YBCPgCallbacks;
 
+typedef struct PgTableProperties {
+  uint32_t num_tablets;
+  uint32_t num_hash_key_columns;
+  bool is_colocated;
+} YBCPgTableProperties;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

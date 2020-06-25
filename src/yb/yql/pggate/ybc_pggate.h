@@ -200,6 +200,9 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              bool *is_primary,
                              bool *is_hash);
 
+YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
+                                  YBCPgTableProperties *properties);
+
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row);
 
 YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle);
