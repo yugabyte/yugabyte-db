@@ -1051,7 +1051,6 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
     case DEAD_MASTER:
       // Only one master, so no retry for finding the new leader master.
       ASSERT_TRUE(error->status().IsTimedOut());
-      ASSERT_STR_CONTAINS(error->status().ToString(false), "Network error");
       break;
     case DEAD_TSERVER:
       ASSERT_TRUE(error->status().IsTimedOut());
