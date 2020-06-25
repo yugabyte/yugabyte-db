@@ -47,7 +47,6 @@
 DEFINE_int32(dns_num_resolver_threads, 1, "The number of threads to use for DNS resolution");
 TAG_FLAG(dns_num_resolver_threads, advanced);
 
-DECLARE_string(resolver_address_filter);
 using std::vector;
 
 namespace yb {
