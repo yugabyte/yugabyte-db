@@ -261,6 +261,9 @@ class PgApiImpl {
 
   CHECKED_STATUS CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tablets);
 
+  CHECKED_STATUS CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
+                                        YBCPgTypeEntity **types, uint64_t *data);
+
   CHECKED_STATUS ExecCreateIndex(PgStatement *handle);
 
   CHECKED_STATUS NewDropIndex(const PgObjectId& index_id,

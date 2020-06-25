@@ -224,6 +224,53 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 	}
 }
 
+static Datum*
+CreateSplitPointDatums(ParseState *pstate,
+                       List *split_point,
+                       Oid *col_attrtypes,
+                       int32 *col_attrtypmods)
+{
+	Datum *datums = palloc(sizeof(Datum) * list_length(split_point));
+	/* Within a split point, go through the splits for each column */
+	int split_num = 0;
+	ListCell *cell;
+	foreach(cell, split_point)
+	{
+		/* Get the column's split */
+		PartitionRangeDatum *split = (PartitionRangeDatum*) lfirst(cell);
+
+		/* If it contains a value, convert that value */
+		if (split->kind == PARTITION_RANGE_DATUM_VALUE)
+		{
+			A_Const *aconst = (A_Const*) split->value;
+			Node *value = (Node *) make_const(pstate, &aconst->val, aconst->location);
+			value = coerce_to_target_type(pstate,
+			                              value,
+			                              exprType(value),
+			                              col_attrtypes[split_num],
+			                              col_attrtypmods[split_num],
+			                              COERCION_ASSIGNMENT,
+			                              COERCE_IMPLICIT_CAST,
+			                              -1);
+			if (value == NULL || ((Const*)value)->consttype == 0)
+				ereport(ERROR, (errmsg("Type mismatch in split point")));
+
+			split->value = value;
+			datums[split_num] = ((Const*)value)->constvalue;
+		}
+		else
+		{
+			/*
+			 * TODO (george): maybe we'll allow MINVALUE/MAXVALUE in the future,
+			 * but for now it is illegal
+			 */
+			ereport(ERROR, (errmsg("Split points must specify finite values")));
+		}
+		++split_num;
+	}
+	return datums;
+}
+
 /* Utility function to handle split points */
 static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 										  TupleDesc desc,
@@ -256,7 +303,6 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 			 * and verify none are HASH columns */
 			Oid *col_attrtypes = palloc(sizeof(Oid) * num_key_cols);
 			int32 *col_attrtypmods = palloc(sizeof(int32) * num_key_cols);
-			ScanKeyData *col_comparators = palloc(sizeof(ScanKeyData) * num_key_cols);
 			YBCPgTypeEntity **type_entities = palloc(sizeof(YBCPgTypeEntity *) * num_key_cols);
 
 			bool *skips = palloc0(sizeof(bool) * desc->natts);
@@ -292,17 +338,6 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 						type_entities[col_num] = (YBCPgTypeEntity*)YBCDataTypeFromOidMod(
 								att->attnum, att->atttypid);
 
-						/* Get the comparator */
-						Oid opclass = GetDefaultOpClass(att->atttypid, BTREE_AM_OID);
-						Oid opfamily = get_opclass_family(opclass);
-						Oid type = att->atttypid;
-						RegProcedure cmp_proc = get_opfamily_proc(opfamily,
-																  type,
-																  type,
-																  BTORDER_PROC);
-						ScanKeyInit(&col_comparators[col_num], 0, BTEqualStrategyNumber,
-									cmp_proc, 0);
-
 						/* Know to skip this in any future searches */
 						skips[i] = true;
 						break;
@@ -330,46 +365,11 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 										   "primary key columns")));
 				}
 
-				/* Within a split point, go through the splits for each column */
-				int split_num = 0;
-				ListCell *cell2;
-			  	Datum *datums = palloc(sizeof(Datum) * split_columns);
-				foreach(cell2, split_point)
-				{
-					/* Get the column's split */
-					PartitionRangeDatum *split = (PartitionRangeDatum*) lfirst(cell2);
+				Datum *datums = CreateSplitPointDatums(
+					pstate, split_point, col_attrtypes, col_attrtypmods);
 
-					/* If it contains a value, convert that value */
-					if (split->kind == PARTITION_RANGE_DATUM_VALUE)
-					{
-						A_Const *aconst = (A_Const*) split->value;
-						Node *value = (Node *) make_const(pstate, &aconst->val, aconst->location);
-						value = coerce_to_target_type(pstate,
-													  value, exprType(value),
-													  col_attrtypes[split_num],
-													  col_attrtypmods[split_num],
-													  COERCION_ASSIGNMENT,
-													  COERCE_IMPLICIT_CAST,
-													  -1);
-						if (value == NULL || ((Const*)value)->consttype == 0)
-						{
-							ereport(ERROR, (errmsg("Type mismatch in split point")));
-						}
-
-						split->value = value;
-						datums[split_num] = ((Const*)value)->constvalue;
-					}
-					/* TODO (george): maybe we'll allow MINVALUE/MAXVALUE in the future,
-					 * but for now it is illegal */
-					else
-					{
-						ereport(ERROR, (errmsg("Split points must specify finite values")));
-					}
-					split_num++;
-				}
-
-				HandleYBStatus(YBCPgCreateTableAddSplitRow(handle, split_columns,
-					type_entities, (uint64_t *)datums));
+				HandleYBStatus(YBCPgCreateTableAddSplitRow(
+					handle, split_columns, type_entities, (uint64_t *)datums));
 			}
 
 			break;
@@ -603,26 +603,71 @@ YBCTruncateTable(Relation rel) {
 	list_free(indexlist);
 }
 
-static void CreateIndexHandleSplitOptions(YBCPgStatement handle,
-										OptSplit *split_options,
-										TupleDesc desc,
-										int16 * coloptions)
+/* Utility function to handle split points */
+static void
+CreateIndexHandleSplitOptions(YBCPgStatement handle,
+                              TupleDesc desc,
+                              OptSplit *split_options,
+                              int16 * coloptions)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
 	{
-		case NUM_TABLETS:
-			/* Make sure we have HASH columns */
-			if (!(coloptions[0] & INDOPTION_HASH)) {
-				ereport(ERROR, (errmsg("HASH columns must be present to "
-									   "split by number of tablets")));
+	case NUM_TABLETS:
+		/* Make sure we have HASH columns */
+		if (!(coloptions[0] & INDOPTION_HASH))
+			ereport(ERROR, (errmsg("HASH columns must be present to split by number of tablets")));
+
+		HandleYBStatus(YBCPgCreateIndexSetNumTablets(handle, split_options->num_tablets));
+		break;
+	case SPLIT_POINTS:
+		{
+			/*
+			 * Get the type information on each column of the index key,
+			 * and verify none are HASH columns
+			 */
+			Oid *col_attrtypes = palloc(sizeof(Oid) * desc->natts);
+			int32 *col_attrtypmods = palloc(sizeof(int32) * desc->natts);
+			YBCPgTypeEntity **type_entities = palloc(sizeof(YBCPgTypeEntity *) * desc->natts);
+
+			for (int col_num = 0; col_num < desc->natts; ++col_num)
+			{
+				Form_pg_attribute att = TupleDescAttr(desc, col_num);
+				/* Prohibit the use of HASH columns */
+				if (coloptions[col_num] & INDOPTION_HASH)
+					ereport(ERROR, (errmsg("HASH columns cannot be used for split points")));
+
+				/* Record information on the attribute */
+				col_attrtypes[col_num] = att->atttypid;
+				col_attrtypmods[col_num] = att->atttypmod;
+				type_entities[col_num] = (YBCPgTypeEntity*)YBCDataTypeFromOidMod(
+					att->attnum, att->atttypid);
 			}
-			/* Tell pggate about it */
-			HandleYBStatus(YBCPgCreateIndexSetNumTablets(handle, split_options->num_tablets));
-			break;
-		default:
-			ereport(ERROR, (errmsg("Illegal memory state for SPLIT options")));
-			break;
+
+			/* Parser state for type conversion and validation */
+			ParseState *pstate = make_parsestate(NULL);
+
+			ListCell *cell1;
+			foreach(cell1, split_options->split_points)
+			{
+				List *split_point = (List *)lfirst(cell1);
+				int split_columns = list_length(split_point);
+
+				if (split_columns > desc->natts)
+					ereport(ERROR, (errmsg("Split points cannot be more than the number of "
+					                       "index columns")));
+
+				Datum *datums = CreateSplitPointDatums(
+					pstate, split_point, col_attrtypes, col_attrtypmods);
+
+				HandleYBStatus(YBCPgCreateIndexAddSplitRow(
+					handle, split_columns, type_entities, (uint64_t *)datums));
+			}
+		}
+		break;
+	default:
+		ereport(ERROR, (errmsg("Illegal memory state for SPLIT options")));
+		break;
 	}
 }
 
@@ -706,9 +751,8 @@ YBCCreateIndex(const char *indexName,
 	}
 
 	/* Handle SPLIT statement, if present */
-	if (split_options) {
-		CreateIndexHandleSplitOptions(handle, split_options, indexTupleDesc, coloptions);
-	}
+	if (split_options)
+		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions);
 
 	/* Create the index. */
 	HandleYBStatus(YBCPgExecCreateIndex(handle));

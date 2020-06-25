@@ -654,11 +654,18 @@ Status PgApiImpl::CreateIndexAddColumn(PgStatement *handle, const char *attr_nam
 }
 
 Status PgApiImpl::CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tablets) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
+  SCHECK(PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX),
+         InvalidArgument,
+         "Invalid statement handle");
   return down_cast<PgCreateIndex*>(handle)->SetNumTablets(num_tablets);
+}
+
+Status PgApiImpl::CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
+                                         YBCPgTypeEntity **types, uint64_t *data) {
+  SCHECK(PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX),
+      InvalidArgument,
+      "Invalid statement handle");
+  return down_cast<PgCreateIndex*>(handle)->AddSplitRow(num_cols, types, data);
 }
 
 Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
