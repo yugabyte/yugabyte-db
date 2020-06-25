@@ -150,13 +150,14 @@ class ControlScript(object):
 
     # Kills currently running yugabyted process if it exists.
     def stop(self, *args):
-        err = self.script.kill()
+        (err, pid) = self.script.kill()
         if err:
             Output.print_out(
                 "Failed to shut down {}: {}. Please check PID in {}".format(
                     SCRIPT_NAME, err, self.script.pidfile))
             sys.exit(1)
         else:
+            self.script.wait_until_stop(pid)
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
         sys.exit(0)
 
@@ -166,6 +167,38 @@ class ControlScript(object):
             Output.print_out(self.get_status_string())
         else:
             Output.print_out("{} is not running.".format(SCRIPT_NAME))
+
+    # Destroy the YugabyteDB cluster.
+    def destroy(self):
+        (err, pid) = self.script.kill()
+        if err:
+            Output.log_error_and_exit(
+                "Failed to shut down {}: {}. Please check PID in {}".format(
+                    SCRIPT_NAME, err, self.script.pidfile))
+        else:
+            self.script.wait_until_stop(pid)
+            Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
+        logpath = self.configs.saved_data.get("log_dir")
+        datapath = self.configs.saved_data.get("data_dir")
+
+        if (self.conf_file == BREW_CONF_FILE):
+            Output.print_out("{} destroy is not supported for brew installations.".format(
+                SCRIPT_NAME))
+            return
+
+        if os.path.isdir(logpath):
+            shutil.rmtree(logpath)
+            Output.print_out("Deleted logs at {}.".format(logpath))
+
+        if os.path.isdir(datapath):
+            shutil.rmtree(datapath)
+            Output.print_out("Deleted data at {}.".format(datapath))
+
+        if os.path.exists(self.conf_file):
+            os.remove(self.conf_file)
+            Output.print_out("Deleted conf file at {}.".format(self.conf_file))
+
+        sys.exit(0)
 
     # Prints YugabyteDB version.
     def version(self):
@@ -1148,6 +1181,7 @@ class ControlScript(object):
         for cmd, description in (
                 ("start", "Start {}.".format(SCRIPT_NAME)),
                 ("stop", "Stop running {}.".format(SCRIPT_NAME)),
+                ("destroy", "Destroy {} cluster and remove data.".format(SCRIPT_NAME)),
                 ("status", "Print status of {}.".format(SCRIPT_NAME)),
                 ("version", "Version of {}.".format(SCRIPT_NAME)),
                 ("collect_logs", "Collect and package logs for troubleshooting.")):
@@ -1431,6 +1465,8 @@ class ProcessManager(object):
 
     # Kills self.process if it exists.
     def kill(self):
+        err = None
+        pid = None
         if self.process:
             self.process.kill()
         else:
@@ -1439,8 +1475,24 @@ class ProcessManager(object):
                 try:
                     os.kill(pid, SIGTERM)
                 except OSError as e:
-                    return e
+                    return (e, pid)
         self.delete_pidfile()
+        return (err, pid)
+
+    # Raise RetryableError if pidfile still exists.
+    def is_proc_running(self, pid):
+        if (os.path.exists(self.pidfile) or ProcessManager.get_command(pid) != ""):
+            raise RetryableError()
+        else:
+            return True
+
+    # Function that waits until pidfile no longer exists.
+    def wait_until_stop(self, pid):
+        def temp_func():
+            return self.is_proc_running(pid)
+        retry_op(temp_func, timeout=60)
+        time.sleep(2)
+        return
 
     # Delete corresponding pidfile for this process.
     def delete_pidfile(self):
