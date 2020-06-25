@@ -14,8 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Suppose you have a cluster running and now a yb-master has failed and needs to be replaced. The procedure to follow in this 
-scenario is:
+To replace a failed YB-Master server in a YugabyteDB cluster, follow these steps:
 
 {{< note title="Note" >}}
 Assumptions:
