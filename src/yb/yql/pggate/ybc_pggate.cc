@@ -390,6 +390,14 @@ YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
   }
 }
 
+YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
+                                  YBCPgTableProperties *properties) {
+  CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
+  properties->num_hash_key_columns = table_desc->num_hash_key_columns();
+  properties->is_colocated = table_desc->IsColocated();
+  return YBCStatusOK();
+}
+
 // Index Operations -------------------------------------------------------------------------------
 
 YBCStatus YBCPgNewCreateIndex(const char *database_name,

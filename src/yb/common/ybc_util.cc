@@ -215,6 +215,27 @@ const char* YBCStatusCodeAsCString(YBCStatus s) {
   return StatusWrapper(s)->CodeAsCString();
 }
 
+char* DupYBStatusMessage(YBCStatus status, bool message_only) {
+  const char* const code_as_cstring = YBCStatusCodeAsCString(status);
+  const size_t code_strlen = strlen(code_as_cstring);
+  const size_t status_len = YBCStatusMessageLen(status);
+  size_t sz = code_strlen + status_len + 3;
+  if (message_only) {
+    sz -= 2 + code_strlen;
+  }
+  char* const msg_buf = reinterpret_cast<char*>(YBCPAlloc(sz));
+  char* pos = msg_buf;
+  if (!message_only) {
+    memcpy(msg_buf, code_as_cstring, code_strlen);
+    pos += code_strlen;
+    *pos++ = ':';
+    *pos++ = ' ';
+  }
+  memcpy(pos, YBCStatusMessageBegin(status), status_len);
+  pos[status_len] = 0;
+  return msg_buf;
+}
+
 bool YBCIsRestartReadError(uint16_t txn_errcode) {
   return txn_errcode == static_cast<uint16_t>(TransactionErrorCode::kReadRestartRequired);
 }
@@ -223,7 +244,9 @@ YBCStatus YBCInit(const char* argv0,
                   YBCPAllocFn palloc_fn,
                   YBCCStringToTextWithLenFn cstring_to_text_with_len_fn) {
   YBCSetPAllocFn(palloc_fn);
-  YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
+  if (cstring_to_text_with_len_fn) {
+    YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
+  }
   auto status = yb::InitInternal(argv0);
   if (status.ok() && !FLAGS_TEST_process_info_dir.empty()) {
     WriteCurrentProcessInfo(FLAGS_TEST_process_info_dir);

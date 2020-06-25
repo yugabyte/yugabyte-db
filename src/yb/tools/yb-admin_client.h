@@ -225,6 +225,8 @@ class ClusterAdminClient {
 
   Result<std::string> GetMasterLeaderUuid();
 
+  CHECKED_STATUS GetYsqlCatalogVersion();
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,

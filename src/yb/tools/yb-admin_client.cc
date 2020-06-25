@@ -1623,6 +1623,13 @@ Status ClusterAdminClient::GetUniverseConfig() {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetYsqlCatalogVersion() {
+  uint64_t version = 0;
+  RETURN_NOT_OK(yb_client_->GetYsqlCatalogMasterVersion(&version));
+  cout << "Version: "  << version << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
     bool blacklist_leader) {
   auto config = VERIFY_RESULT(GetMasterClusterConfig());

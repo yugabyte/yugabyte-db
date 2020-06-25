@@ -118,7 +118,6 @@ static int ldapServiceLookup(const char *purl, PQconninfoOption *options,
  * fall back options if they are not specified by arguments or defined
  * by environment variables
  */
-#define DefaultHost		"localhost"
 #define DefaultTty		""
 #define DefaultOption	""
 #define DefaultAuthtype		  ""
