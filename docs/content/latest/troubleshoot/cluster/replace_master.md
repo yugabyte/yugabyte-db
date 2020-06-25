@@ -43,13 +43,12 @@ To add the new YB-Master server, run the [`yb-admin change_master_config ADD_SER
 ./bin/yb-admin -master_addresses M1:7100,M2:7100,M3:7100 change_master_config ADD_SERVER M4 7100
 ```
 
-## Remove old master
-Remove the old master from the quorum using:
-```bash
-./yb-admin -master_addresses M1:7100,M2:7100,M3:7100,M4:7100 change_master_config REMOVE_SERVER M1 7100
-```
+3. Remove the old YB-Master server from the cluster.
 
-Note: the master addresses needs to include all 4 masters, in case the new one is suddenly the master leader!)
+To remove the failed YB-Master server from the cluster, use the [`yb-admin change_master_config REMOVE_SERVER`](../../admin/yb-admin/#change-master-config`) command.
+
+```sh
+./yb-admin -master_addresses M1:7100,M2:7100,M3:7100,M4:7100 change_master_config REMOVE_SERVER M1 7100
 
 ## Validate cluster
 
