@@ -40,10 +40,26 @@ for (...) {
 ResultSet resultSet = client.execute(batch);
 
 ```
-## Example in Python
+## Example in Python using RETURNS AS STATUS
 
-First create a 
+An example using Python client and RETURNS AS STATUS clause:
 
+```cassandra
+ycqlsh> create keyspace if not exists yb_demo;
+ycqlsh> CREATE TABLE if not exists yb_demo.test_rs_batch(h int, r bigint, v1 int, v2 varchar, primary key (h, r));
+ycqlsh> INSERT INTO yb_demo.test_rs_batch(h,r,v1,v2) VALUES (1,1,1,'a');
+ycqlsh> INSERT INTO yb_demo.test_rs_batch(h,r,v2) VALUES (3,3,'b');
+ycqlsh> select * from yb_demo.test_rs_batch;
+
+ h | r | v1   | v2
+---+---+------+----
+ 1 | 1 |    1 |  a
+ 3 | 3 | null |  b
+
+(2 rows)
+```
+
+Getting status from DML operations in Python:
 
 ```python
 from cassandra.cluster import Cluster, BatchStatement
@@ -57,8 +73,8 @@ b = BatchStatement()
 
 # Add multiple queries
 b.add(f"INSERT INTO test_rs_batch(h, r, v1, v2) VALUES (1, 1, 1 ,'a') RETURNS STATUS AS ROW;")
-b.add(f"INSERT INTO test_rs_batch(h, r, v1, v2) VALUES (1, 1, 1 ,'a') RETURNS STATUS AS ROW;")
-b.add(f"INSERT INTO test_rs_batch(h, r, v1, v2) VALUES (1, 1, 1 ,'a') RETURNS STATUS AS ROW;")
+b.add(f"UPDATE test_rs_batch SET v2='z' WHERE h=3 AND r=3 IF v2='z'  RETURNS STATUS AS ROW;")
+b.add(f"DELETE FROM test_rs_batch WHERE h=2 AND r=2 IF EXISTS RETURNS STATUS AS ROW;")
 
 # Execute the batch operation.
 result = session.execute(b, trace=True)
@@ -66,15 +82,14 @@ result = session.execute(b, trace=True)
 # Print status for each DML operation
 for row in result:
     print(row)
-
 ```
 
 The output generated is:
 
 ```python
 Row(applied=True, message=None, h=None, r=None, v1=None, v2=None)
-Row(applied=True, message=None, h=None, r=None, v1=None, v2=None)
-Row(applied=True, message=None, h=None, r=None, v1=None, v2=None)
+Row(applied=False, message=None, h=3, r=3, v1=None, v2='b')
+Row(applied=False, message=None, h=None, r=None, v1=None, v2=None)
 ```
 
 ## Row Status
