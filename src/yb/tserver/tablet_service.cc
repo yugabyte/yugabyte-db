@@ -751,7 +751,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "ChangeMetadata", req, resp, &context)) {
     return;
   }
-  DVLOG(1) << "Received Change Metadata RPC: " << req->DebugString();
+  VLOG(1) << "Received Change Metadata RPC: " << req->DebugString();
 
   server::UpdateClock(*req, server_->Clock());
 
@@ -761,7 +761,18 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
     return;
   }
 
-  auto table_info = tablet.peer->tablet_metadata()->primary_table_info();
+  tablet::TableInfoPtr table_info;
+  if (req->has_alter_table_id()) {
+    auto result = tablet.peer->tablet_metadata()->GetTableInfo(req->alter_table_id());
+    if (!result.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), result.status(),
+                           TabletServerErrorPB::INVALID_SCHEMA, &context);
+      return;
+    }
+    table_info = *result;
+  } else {
+    table_info = tablet.peer->tablet_metadata()->primary_table_info();
+  }
   const Schema& tablet_schema = table_info->schema;
   uint32_t schema_version = table_info->schema_version;
   // Sanity check, to verify that the tablet should have the same schema
@@ -781,7 +792,8 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
       return;
     }
 
-    schema_version = tablet.peer->tablet_metadata()->schema_version();
+    schema_version = tablet.peer->tablet_metadata()->schema_version(
+        req->has_alter_table_id() ? req->alter_table_id() : "");
     if (schema_version == req->schema_version()) {
       LOG(ERROR) << "The current schema does not match the request schema."
                  << " version=" << schema_version
@@ -813,7 +825,8 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
 
   VLOG(1) << "Tablet updating schema from "
           << " version=" << schema_version << " current-schema=" << tablet_schema.ToString()
-          << " to request-schema=" << req_schema.ToString();
+          << " to request-schema=" << req_schema.ToString()
+          << " for table ID=" << table_info->table_id;
   auto operation_state = std::make_unique<ChangeMetadataOperationState>(
       tablet.peer->tablet(), tablet.peer->log(), req);
 

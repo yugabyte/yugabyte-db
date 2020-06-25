@@ -347,6 +347,10 @@ CHECKED_STATUS MakeTableNotFound(const TableId& table_id, const RaftGroupId& raf
 
 Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(const std::string& table_id) const {
   std::lock_guard<MutexType> lock(data_mutex_);
+  return GetTableInfoUnlocked(table_id);
+}
+
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(const std::string& table_id) const {
   const auto& tables = kv_store_.tables;
   const auto id = !table_id.empty() ? table_id : primary_table_id_;
   const auto iter = tables.find(id);
@@ -645,18 +649,23 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
 void RaftGroupMetadata::SetSchema(const Schema& schema,
                                   const IndexMap& index_map,
                                   const std::vector<DeletedColumn>& deleted_cols,
-                                  const uint32_t version) {
+                                  const uint32_t version,
+                                  const TableId& table_id) {
   DCHECK(schema.has_column_ids());
   std::lock_guard<MutexType> lock(data_mutex_);
-  TableInfoPtr new_table_info = std::make_shared<TableInfo>(*primary_table_info_unlocked(),
-                                                           schema,
-                                                           index_map,
-                                                           deleted_cols,
-                                                           version);
-  VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating to Schema version " << version
-                      << " from \n" << yb::ToString(kv_store_.tables[primary_table_id_])
+  TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
+  auto result = GetTableInfoUnlocked(target_table_id);
+  DCHECK(result.ok());
+  TableInfoPtr new_table_info = std::make_shared<TableInfo>(*result.get(),
+                                                            schema,
+                                                            index_map,
+                                                            deleted_cols,
+                                                            version);
+  VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
+                      << " to Schema version " << version
+                      << " from \n" << yb::ToString(kv_store_.tables[target_table_id])
                       << " to \n" << yb::ToString(new_table_info);
-  kv_store_.tables[primary_table_id_].swap(new_table_info);
+  kv_store_.tables[target_table_id].swap(new_table_info);
 }
 
 void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_schema) {
@@ -666,11 +675,12 @@ void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_sche
   tables[primary_table_id_]->partition_schema = partition_schema;
 }
 
-void RaftGroupMetadata::SetTableName(const string& table_name) {
+void RaftGroupMetadata::SetTableName(const string& table_name, const TableId& table_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
-  DCHECK(tables.find(primary_table_id_) != tables.end());
-  tables[primary_table_id_]->table_name = table_name;
+  auto& id = table_id.empty() ? primary_table_id_ : table_id;
+  DCHECK(tables.find(id) != tables.end());
+  tables[id]->table_name = table_name;
 }
 
 void RaftGroupMetadata::AddTable(const std::string& table_id,
@@ -714,13 +724,13 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
           << new_table_info->ToString() << ", old table info: " << existing_table.ToString();
     }
   }
-  VLOG_WITH_PREFIX(1) << " Updating to Schema version " << schema_version
-                      << " from \n" << yb::ToString(tables[table_id])
-                      << " to \n" << yb::ToString(new_table_info);
+  VLOG_WITH_PREFIX(1) << "Updating to Schema version " << schema_version
+                      << " from\n" << yb::ToString(tables[table_id])
+                      << "\nto\n" << yb::ToString(new_table_info);
   tables[table_id].swap(new_table_info);
 }
 
-void RaftGroupMetadata::RemoveTable(const std::string& table_id) {
+void RaftGroupMetadata::RemoveTable(const TableId& table_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   tables.erase(table_id);

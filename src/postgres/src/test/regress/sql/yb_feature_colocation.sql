@@ -114,6 +114,8 @@ SELECT * FROM tab_range;
 INSERT INTO tab_range VALUES (2);
 SELECT * FROM tab_range;
 
+TRUNCATE TABLE tab_range;
+
 -- truncate non-colocated table without index
 TRUNCATE TABLE tab_nonkey_noco;
 SELECT * FROM tab_nonkey_noco;
@@ -129,6 +131,24 @@ SELECT * FROM tab_range_nonkey_noco2;
 \dt
 \di
 
+-- ALTER TABLE
+INSERT INTO tab_range (a) VALUES (0), (1), (2);
+INSERT INTO tab_range_nonkey2 (a, b) VALUES (0, 0), (1, 1);
+
+SELECT * FROM tab_range;
+SELECT * FROM tab_range_nonkey2;
+
+-- Alter colocated tables
+ALTER TABLE tab_range ADD COLUMN x INT;
+ALTER TABLE tab_range_nonkey2 DROP COLUMN b;
+
+SELECT * FROM tab_range;
+SELECT * FROM tab_range_nonkey2;
+
+ALTER TABLE tab_range_nonkey2 RENAME TO tab_range_nonkey2_renamed;
+SELECT * FROM tab_range_nonkey2_renamed;
+SELECT * FROM tab_range_nonkey2;
+
 -- DROP TABLE
 
 -- drop colocated table with default index
@@ -140,8 +160,8 @@ DROP TABLE tab_nonkey_noco;
 SELECT * FROM tab_nonkey_noco;
 
 --- drop colocated table with explicit index
-DROP TABLE tab_range_nonkey2;
-SELECT * FROM tab_range_nonkey2;
+DROP TABLE tab_range_nonkey2_renamed;
+SELECT * FROM tab_range_nonkey2_renamed;
 
 -- drop non-colocated table with explicit index
 DROP TABLE tab_range_nonkey_noco2;

@@ -206,8 +206,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   MonoTime last_update_time() const;
 
   // Accessors for the last reported schema version.
-  bool set_reported_schema_version(uint32_t version);
-  uint32_t reported_schema_version() const;
+  bool set_reported_schema_version(const TableId& table_id, uint32_t version);
+  uint32_t reported_schema_version(const TableId& table_id);
 
   bool colocated() const;
 
@@ -253,7 +253,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   ReplicaMap replica_locations_;
 
   // Reported schema version (in-memory only).
-  uint32_t reported_schema_version_ = 0;
+  std::unordered_map<TableId, uint32_t> reported_schema_version_ = {};
 
   LeaderStepDownFailureTimes leader_stepdown_failure_times_;
 
