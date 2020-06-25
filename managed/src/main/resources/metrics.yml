@@ -1916,3 +1916,17 @@ tserver_rpc_queue_size_redis:
     yaxis:
       alias:
         "rpcs_in_queue_yb_redisserver_RedisServerService": "YEDIS RPC"
+
+tserver_async_replication_lag_micros:
+  metric: ""
+  function: "max without (table_id, table_name, stream_id)"
+  filters:
+    saved_name: "async_replication_sent_lag_micros|async_replication_committed_lag_micros"
+  layout:
+    title: "Async Replication Lag"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "async_replication_sent_lag_micros": "Sent Lag (Microseconds)"
+        "async_replication_committed_lag_micros": "Committed Lag (Microseconds)"

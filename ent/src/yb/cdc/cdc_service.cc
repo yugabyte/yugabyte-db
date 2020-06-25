@@ -91,6 +91,8 @@ using tserver::TSTabletManager;
 using client::internal::RemoteTabletServer;
 
 constexpr int kMaxDurationForTabletLookup = 50;
+constexpr char kDefaultMetricTableName[] = "DEFAULT_TABLE_NAME";
+constexpr char kDefaultMetricTableId[] = "DEFAULT_TABLE_ID";
 const client::YBTableName kCdcStateTableName(
     YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
 
@@ -406,12 +408,26 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     if (resp->records_size() > 0) {
       auto& last_record = resp->records(resp->records_size()-1);
       tablet_metric->last_read_hybridtime->set_value(last_record.time());
-      tablet_metric->last_read_physicaltime->set_value(
-          HybridTime(last_record.time()).GetPhysicalValueMicros());
+      auto last_record_micros = HybridTime(last_record.time()).GetPhysicalValueMicros();
+      tablet_metric->last_read_physicaltime->set_value(last_record_micros);
       // Only count bytes responded if we are including a response payload.
       tablet_metric->rpc_payload_bytes_responded->Increment(resp->ByteSize());
+      // Get the physical time of the last committed record on producer.
+      yb::tablet::RemoveIntentsData data;
+      tablet_peer->GetLastReplicatedData(&data);
+      auto last_replicated_micros = data.log_ht.GetPhysicalValueMicros();
+
+      tablet_metric->async_replication_sent_lag_micros->set_value(
+          last_replicated_micros - last_record_micros);
+      auto& first_record = resp->records(0);
+      auto first_record_micros = HybridTime(first_record.time()).GetPhysicalValueMicros();
+      tablet_metric->async_replication_committed_lag_micros->set_value(
+          last_replicated_micros - first_record_micros);
     } else {
       tablet_metric->rpc_heartbeats_responded->Increment();
+      // If there are no more entries to be read, that means we're caught up.
+      tablet_metric->async_replication_sent_lag_micros->set_value(0);
+      tablet_metric->async_replication_committed_lag_micros->set_value(0);
     }
   }
 
@@ -1102,8 +1118,16 @@ std::shared_ptr<CDCTabletMetrics> CDCServiceImpl::GetCDCTabletMetrics(
   if (metrics_raw == nullptr) {
     //  Create a new METRIC_ENTITY_cdc here.
     MetricEntity::AttributeMap attrs;
-    attrs["tablet_id"] = producer.tablet_id;
-    attrs["stream_id"] = producer.stream_id;
+    {
+      SharedLock<rw_spinlock> l(mutex_);
+      auto it = stream_metadata_.find(producer.stream_id);
+      attrs["table_id"] = it != stream_metadata_.end() ?
+          it->second->table_id : kDefaultMetricTableId;
+      // Todo(Rahul): Right now, we don't easily expose table name from the producer.
+      // Populate this table name when we expose per table stats.
+      attrs["table_name"] = kDefaultMetricTableName;
+      attrs["stream_id"] = producer.stream_id;
+    }
     auto entity = METRIC_ENTITY_cdc.Instantiate(metric_registry_,
         std::to_string(ProducerTabletInfo::Hash {}(producer)), attrs);
     metrics_raw = std::make_shared<CDCTabletMetrics>(entity);
