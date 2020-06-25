@@ -35,12 +35,18 @@ NEW_OLD_UUID_RE = re.compile(UUID_RE_STR + '[ ]*\t' + UUID_RE_STR)
 LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
 FS_DATA_DIRS_ARG_NAME = '--fs_data_dirs'
 FS_DATA_DIRS_ARG_PREFIX = FS_DATA_DIRS_ARG_NAME + '='
+RPC_BIND_ADDRESSES_ARG_NAME = '--rpc_bind_addresses'
+RPC_BIND_ADDRESSES_ARG_PREFIX = RPC_BIND_ADDRESSES_ARG_NAME + '='
+
 IMPORTED_TABLE_RE = re.compile('Table being imported: ([^\.]*)\.(.*)')
 RESTORATION_RE = re.compile('^Restoration id: (' + UUID_RE_STR + r')\b')
 
 SNAPSHOT_KEYSPACE_RE = re.compile("^[ \t]*Keyspace:.* name='(.*)' type")
 SNAPSHOT_TABLE_RE = re.compile("^[ \t]*Table:.* name='(.*)' type")
 SNAPSHOT_INDEX_RE = re.compile("^[ \t]*Index:.* name='(.*)' type")
+
+STARTED_SNAPSHOT_CREATION_RE = re.compile(r'[\S\s]*Started snapshot creation: (?P<uuid>.*)')
+YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
@@ -56,6 +62,8 @@ TABLET_DIR_GLOB = '*' + TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
 TABLET_DIR_DEPTH = 6
 
 METADATA_FILE_NAME = 'SnapshotInfoPB'
+SQL_DUMP_FILE_NAME = 'YSQLDump'
+CREATE_METAFILES_MAX_RETRIES = 10
 CLOUD_CFG_FILE_NAME = 'cloud_cfg'
 CLOUD_CMD_MAX_RETRIES = 10
 
@@ -67,6 +75,8 @@ YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 TSERVER_CONF_PATH = os.path.join(YB_HOME_DIR, 'tserver/conf/server.conf')
 K8S_DATA_DIRS = ["/mnt/disk0", "/mnt/disk1"]
 DEFAULT_REMOTE_YB_ADMIN_PATH = os.path.join(YB_HOME_DIR, 'master/bin/yb-admin')
+DEFAULT_REMOTE_YSQL_DUMP_PATH = os.path.join(YB_HOME_DIR, 'master/postgres/bin/ysql_dump')
+DEFAULT_REMOTE_YSQL_SHELL_PATH = os.path.join(YB_HOME_DIR, 'master/bin/ysqlsh')
 
 
 class BackupException(Exception):
@@ -76,6 +86,15 @@ class BackupException(Exception):
 
 def split_by_tab(line):
     return [item.replace(' ', '') for item in line.split("\t")]
+
+
+def split_by_space(line):
+    items = []
+    for item in line.split(" "):
+        item = item.strip()
+        if item:
+            items.append(item)
+    return items
 
 
 def quote_cmd_line_for_bash(cmd_line):
@@ -259,6 +278,15 @@ def compare_checksums_cmd(checksum_file1, checksum_file2):
         key_and_file_filter(checksum_file1), key_and_file_filter(checksum_file2))
 
 
+def get_db_name_cmd(dump_file):
+    return "sed -n '/CREATE DATABASE/{s|CREATE DATABASE||;s|WITH.*||;p}' " + pipes.quote(dump_file)
+
+
+def replace_db_name_cmd(dump_file, old_name, new_name):
+    return "sed -i 's|DATABASE {}|DATABASE {}|;s|\\\\connect {}|\\\\connect {}|' {}".format(
+        old_name, new_name, old_name, new_name, pipes.quote(dump_file))
+
+
 def get_table_names_str(keyspaces, tables, delimeter, space):
     if len(keyspaces) != len(tables):
         raise BackupException(
@@ -270,6 +298,14 @@ def get_table_names_str(keyspaces, tables, delimeter, space):
         table_names.append(delimeter.join([keyspaces[i], tables[i]]))
 
     return space.join(table_names)
+
+
+def keyspace_type(keyspace):
+    return 'ysql' if ('.' in keyspace) and (keyspace.split('.')[0].lower() == 'ysql') else 'ycql'
+
+
+def keyspace_name(keyspace):
+    return keyspace.split('.')[1] if ('.' in keyspace) else keyspace
 
 
 class BackupOptions:
@@ -436,6 +472,7 @@ class KubernetesDetails():
 class YBBackup:
     def __init__(self):
         self.leader_master_ip = ''
+        self.ysql_ip = ''
         self.tmp_dir_name = ''
         self.server_ips_with_uploaded_cloud_cfg = {}
         self.k8s_namespace_to_cfg = {}
@@ -490,11 +527,16 @@ class YBBackup:
                    "    export AWS_SECRET_ACCESS_KEY=<your_aws_secret_key>\n"
                    "For GCS:\n"
                    "    export GCS_CREDENTIALS_JSON=<contents_of_gcp_credentials>\n"
-                   "Keys --keyspace, --table and --table_uuid can be repeated several times,\n"
-                   "recommended order for backup creating: --keyspace ks1 --table tbl1 "
-                   "--table_uuid uuid1 --keyspace ks2 --table tbl2 --table_uuid uuid2 ...\n"
-                   "recommended order for backup restoring: --keyspace target_ks --table tbl1 "
-                   "--table tbl2 ...\n",
+                   "For YCQL tables:\n"
+                   "    Keys --keyspace, --table and --table_uuid can be repeated several times.\n"
+                   "    Recommended order for creating backup: --keyspace ks1 --table tbl1 "
+                   "    --table_uuid uuid1 --keyspace ks2 --table tbl2 --table_uuid uuid2 ...\n"
+                   "    Recommended order for restoring backup: --keyspace target_ks --table tbl1 "
+                   "    --table tbl2 ...\n"
+                   "For YSQL DB:\n"
+                   "    Only one key --keyspace is supported. The script processes the whole DB.\n"
+                   "    For creating backup: --keyspace ysql.db1\n"
+                   "    For restoring backup: --keyspace ysql.db1_copy\n",
             formatter_class=RawDescriptionHelpFormatter)
 
         parser.add_argument(
@@ -519,6 +561,18 @@ class YBBackup:
             '--remote_yb_admin_binary', default=DEFAULT_REMOTE_YB_ADMIN_PATH,
             help="Path to the remote yb-admin binary")
         parser.add_argument(
+            '--local_ysql_dump_binary', help="Path to the local ysql_dump binary; "
+                                             "by default remote ysql_dump tool is used")
+        parser.add_argument(
+            '--remote_ysql_dump_binary', default=DEFAULT_REMOTE_YSQL_DUMP_PATH,
+            help="Path to the remote ysql_dump binary")
+        parser.add_argument(
+            '--local_ysql_shell_binary', help="Path to the local ysql shell binary; "
+                                              "by default remote ysql shell tool is used")
+        parser.add_argument(
+            '--remote_ysql_shell_binary', default=DEFAULT_REMOTE_YSQL_SHELL_PATH,
+            help="Path to the remote ysql shell binary")
+        parser.add_argument(
             '--ssh_key_path', required=False, help="Path to the ssh key file")
         parser.add_argument(
             '--ssh_user', default='centos', help="Username to use for the ssh connection.")
@@ -528,6 +582,12 @@ class YBBackup:
             '--no_ssh', action='store_true', default=False, help="Don't use SSH to run commands")
         parser.add_argument(
             '--mac', action='store_true', default=False, help="Use MacOS tooling")
+        parser.add_argument(
+            '--ysql_port', help="Custom YSQL process port. "
+                                "Default port is used if not specified.")
+        parser.add_argument(
+            '--ysql_host', help="Custom YSQL process host. "
+                                "First alive TS host is used if not specified.")
 
         backup_location_group = parser.add_mutually_exclusive_group(required=True)
         backup_location_group.add_argument(
@@ -645,6 +705,9 @@ class YBBackup:
         return self.args.storage_type in [
             GcsBackupStorage.storage_type(), S3BackupStorage.storage_type()]
 
+    def is_ysql_keyspace(self):
+        return self.args.keyspace and keyspace_type(self.args.keyspace[0]) == 'ysql'
+
     def get_leader_master_ip(self):
         if not self.leader_master_ip:
             all_masters = self.args.masters.split(",")
@@ -666,6 +729,48 @@ class YBBackup:
 
         return self.leader_master_ip
 
+    def get_ysql_ip(self):
+        if not self.ysql_ip:
+            if self.args.ysql_host:
+                self.ysql_ip = self.args.ysql_host
+            else:
+                # Get first ALIVE TS.
+                output = self.run_yb_admin(['list_all_tablet_servers'])
+                for line in output.splitlines():
+                    if LEADING_UUID_RE.match(line):
+                        fields = split_by_space(line)
+                        ip_port = fields[1]
+                        state = fields[3]
+                        (ip, port) = ip_port.split(':')
+                        if state == 'ALIVE':
+                            self.ysql_ip = ip
+                            break
+
+            if not self.ysql_ip:
+                raise BackupException("Cannot get alive TS:\n{}".format(output))
+
+        return self.ysql_ip
+
+    def run_tool(self, local_tool, remote_tool, std_args, cmd_line_args):
+        """
+        Runs the utility from the configured location.
+        :param cmd_line_args: command-line arguments to the tool
+        :return: the standard output of the tool
+        """
+
+        # Use local tool if it's specified.
+        if local_tool:
+            if not os.path.exists(local_tool):
+                raise BackupException("Tool binary not found at {}".format(local_tool))
+
+            return self.run_program([local_tool] + std_args + cmd_line_args, num_retry=10)
+        else:
+            # Using remote tool binary on leader master server.
+            return self.run_ssh_cmd(
+                [remote_tool] + std_args + cmd_line_args,
+                self.get_leader_master_ip(),
+                num_ssh_retry=10)
+
     def run_yb_admin(self, cmd_line_args):
         """
         Runs the yb-admin utility from the configured location.
@@ -679,33 +784,52 @@ class YBBackup:
             cert_flag = ["--certs_dir_name", self.args.certs_dir]
             cmd_line_args = cert_flag + cmd_line_args
 
-        # Use local yb-admin tool if it's specified.
-        if self.args.local_yb_admin_binary:
-            if not os.path.exists(self.args.local_yb_admin_binary):
-                raise BackupException(
-                    "yb-admin binary not found at {}".format(self.args.local_yb_admin_binary))
+        return self.run_tool(self.args.local_yb_admin_binary, self.args.remote_yb_admin_binary,
+                             ['--master_addresses', self.args.masters], cmd_line_args)
 
-            return self.run_program(
-                [self.args.local_yb_admin_binary, '--master_addresses', self.args.masters] +
-                cmd_line_args, num_retry=10)
-        else:
-            # Using remote yb-admin binary on leader master server.
-            return self.run_ssh_cmd(
-                [self.args.remote_yb_admin_binary, '--master_addresses', self.args.masters] +
-                cmd_line_args,
-                self.get_leader_master_ip(),
-                num_ssh_retry=10)
+    def get_ysql_dump_std_args(self):
+        args = ['--host=' + self.get_ysql_ip()]
+        if self.args.ysql_port:
+            args += ['--port=' + self.args.ysql_port]
+        return args
+
+    def run_ysql_dump(self, cmd_line_args):
+        """
+        Runs the ysql_dump utility from the configured location.
+        :param cmd_line_args: command-line arguments to ysql_dump
+        :return: the standard output of ysql_dump
+        """
+
+        return self.run_tool(self.args.local_ysql_dump_binary, self.args.remote_ysql_dump_binary,
+                             self.get_ysql_dump_std_args() + ['--masters=' + self.args.masters],
+                             cmd_line_args)
+
+    def run_ysql_shell(self, cmd_line_args):
+        """
+        Runs the ysql shell utility from the configured location.
+        :param cmd_line_args: command-line arguments to ysql shell
+        :return: the standard output of ysql shell
+        """
+
+        return self.run_tool(self.args.local_ysql_shell_binary, self.args.remote_ysql_shell_binary,
+                             self.get_ysql_dump_std_args(), cmd_line_args)
 
     def create_snapshot(self):
         """
         Creates a new snapshot of the configured table.
         :return: snapshot id
         """
-        output = self.run_yb_admin(
-            ['create_snapshot'] + self.table_names_str(' ').split(' '))
+        if self.args.table:
+            yb_admin_args = ['create_snapshot'] + self.table_names_str(' ').split(' ')
+        elif self.is_ysql_keyspace():
+            yb_admin_args = ['create_database_snapshot', self.args.keyspace[0]]
+        else:
+            yb_admin_args = ['create_keyspace_snapshot', self.args.keyspace[0]]
+
+        output = self.run_yb_admin(yb_admin_args)
         # Ignores any string before and after the creation string + uuid.
         # \S\s matches every character including newlines.
-        matched = re.match(r'[\S\s]*Started snapshot creation: (?P<uuid>.*)', output)
+        matched = STARTED_SNAPSHOT_CREATION_RE.match(output)
         if not matched:
             raise BackupException(
                     "Couldn't parse create snapshot output! Expected "
@@ -755,7 +879,10 @@ class YBBackup:
                         loaded_json = json.loads(line)
                         object_type = loaded_json['type']
                         if object_type == 'NAMESPACE':
-                            snapshot_keyspaces.append(loaded_json['data']['name'])
+                            if loaded_json['data']['database_type'] == 'YQL_DATABASE_PGSQL':
+                                snapshot_keyspaces.append('ysql.' + loaded_json['data']['name'])
+                            else:
+                                snapshot_keyspaces.append(loaded_json['data']['name'])
                         elif object_type == 'TABLE':
                             snapshot_tables.append(loaded_json['data']['name'])
                     else:
@@ -937,15 +1064,26 @@ class YBBackup:
         for line in ps_output.split('\n'):
             args = line.split(' ')
             if args[0].endswith('yb-tserver'):
-                fs_data_dirs = None
+                fs_data_dirs = []
                 ip = None
                 for i in range(1, len(args)):
-                    if args[i] == FS_DATA_DIRS_ARG_NAME:
-                        fs_data_dirs = args[i + 1]
-                    elif args[i] == '--rpc_bind_addresses':
+                    if args[i].startswith(FS_DATA_DIRS_ARG_PREFIX):
+                        for data_dir in args[i][len(FS_DATA_DIRS_ARG_PREFIX):].split(','):
+                            data_dir = data_dir.strip()
+                            if data_dir:
+                                fs_data_dirs.append(data_dir)
+                    elif args[i].startswith(RPC_BIND_ADDRESSES_ARG_PREFIX):
+                        ip_port = args[i][len(RPC_BIND_ADDRESSES_ARG_PREFIX):]
+                        ip = ip_port.split(':')[0]
+                    elif args[i] == FS_DATA_DIRS_ARG_NAME:
+                        data_dir = args[i + 1].strip()
+                        if data_dir:
+                            fs_data_dirs.append(data_dir)
+                    elif args[i] == RPC_BIND_ADDRESSES_ARG_NAME:
                         ip = args[i + 1]
+
                 if ip == tserver_ip:
-                    return [fs_data_dirs]
+                    return fs_data_dirs
         raise BackupException("Unable find find data directories for {}".format(tserver_ip))
 
     def generate_snapshot_dirs(self, data_dir_by_tserver, snapshot_id,
@@ -1156,18 +1294,17 @@ class YBBackup:
         target_tablet_filepath = os.path.join(snapshot_filepath, 'tablet-%s' % (tablet_id))
         target_checksum_filepath = checksum_path(target_tablet_filepath)
         snapshot_dir_checksum = checksum_path(strip_dir(snapshot_dir))
-        logging.info('Uploading %s from tablet server %s to %s' % (
-                     snapshot_dir_checksum, tserver_ip, target_checksum_filepath))
+        logging.info('Uploading %s from tablet server %s to %s URL %s' % (
+                     snapshot_dir_checksum, tserver_ip, self.args.storage_type,
+                     target_checksum_filepath))
         upload_checksum_cmd = self.storage.upload_file_cmd(
             snapshot_dir_checksum, target_checksum_filepath)
 
         target_filepath = target_tablet_filepath + '/'
-        logging.info('Uploading %s from tablet server %s to %s' % (
-                     snapshot_dir, tserver_ip, target_filepath))
+        logging.info('Uploading %s from tablet server %s to %s URL %s' % (
+                     snapshot_dir, tserver_ip, self.args.storage_type, target_filepath))
         upload_tablet_cmd = self.storage.upload_dir_cmd(snapshot_dir, target_filepath)
 
-        logging.info('Uploading from %s to %s URL %s on tablet server %s' % (snapshot_dir,
-                     self.args.storage_type, snapshot_filepath, tserver_ip))
         # Commands to be run on TSes over ssh for uploading the tablet backup.
         # 1. Create check-sum file (via sha256sum tool).
         parallel_commands.add_args(create_checksum_cmd, tserver_ip)
@@ -1289,51 +1426,134 @@ class YBBackup:
 
         return self.tmp_dir_name
 
-    def upload_metadata_file(self, snapshot_id, snapshot_filepath):
+    def upload_metadata_and_checksum(self, src_path, dest_path):
         """
-        Generates and uploads a metadata file describing the given snapshot to a file in target
-        backup location.
-        :param snapshot_id: snapshot id
-        :param snapshot_filepath: Backup directory under which to create a path
+        Upload metadata file and checksum file to the target backup location.
+        :param src_path: local metadata file path
+        :param dest_path: destination metadata file path
         """
-        metadata_file_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
+        src_checksum_path = checksum_path(src_path)
+        dest_checksum_path = checksum_path(dest_path)
 
-        dest_path = os.path.join(snapshot_filepath, METADATA_FILE_NAME)
         if self.args.local_yb_admin_binary:
-            self.run_yb_admin(['export_snapshot', snapshot_id, metadata_file_path])
-
-            if not os.path.exists(metadata_file_path):
+            if not os.path.exists(src_path):
                 raise BackupException(
-                    "Could not find metadata file at '{}'".format(metadata_file_path))
+                    "Could not find metadata file at '{}'".format(src_path))
 
+            logging.info('Creating check-sum for %s' % (src_path))
             self.run_program(
-                self.create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)))
+                self.create_checksum_cmd(src_path, src_checksum_path))
 
+            logging.info('Uploading %s to %s' % (src_checksum_path, dest_checksum_path))
             self.run_program(
-                self.storage.upload_file_cmd(checksum_path(metadata_file_path),
-                                             checksum_path(dest_path)))
+                self.storage.upload_file_cmd(src_checksum_path, dest_checksum_path))
+
+            logging.info('Uploading %s to %s' % (src_path, dest_path))
             self.run_program(
-                self.storage.upload_file_cmd(metadata_file_path, dest_path))
+                self.storage.upload_file_cmd(src_path, dest_path))
         else:
             server_ip = self.get_leader_master_ip()
-            self.create_remote_tmp_dir(server_ip)
-            self.run_yb_admin(['export_snapshot', snapshot_id, metadata_file_path])
 
+            logging.info('Creating check-sum for %s on tablet server %s' % (
+                         src_path, server_ip))
             self.run_ssh_cmd(
-                self.create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)),
+                self.create_checksum_cmd(src_path, src_checksum_path),
                 server_ip)
 
+            logging.info('Uploading %s from tablet server %s to %s URL %s' % (
+                         src_checksum_path, server_ip, self.args.storage_type, dest_checksum_path))
             self.run_ssh_cmd(
-                self.storage.upload_file_cmd(checksum_path(metadata_file_path),
-                                             checksum_path(dest_path)),
+                self.storage.upload_file_cmd(src_checksum_path, dest_checksum_path),
                 server_ip)
 
+            logging.info('Uploading %s from tablet server %s to %s URL %s' % (
+                         src_path, server_ip, self.args.storage_type, dest_path))
             self.run_ssh_cmd(
-                self.storage.upload_file_cmd(metadata_file_path, dest_path),
+                self.storage.upload_file_cmd(src_path, dest_path),
                 server_ip)
 
-        logging.info(
-            'Uploaded metadata file %s to %s' % (metadata_file_path, snapshot_filepath))
+    def get_ysql_catalog_version(self):
+        """
+        Get current YSQL Catalog version.
+        :return: YSQL Catalog version
+        """
+        output = self.run_yb_admin(['ysql_catalog_version'])
+        matched = YSQL_CATALOG_VERSION_RE.match(output)
+        if not matched:
+            raise BackupException(
+                    "Couldn't parse ysql_catalog_version output! Expected "
+                    "'Version: <number>' in the end: {}".format(output))
+        return matched.group('version')
+
+    def create_and_upload_metadata_files(self, snapshot_filepath):
+        """
+        Generates and uploads metadata files describing the given snapshot to the target
+        backup location.
+        :param snapshot_filepath: Backup directory under which to create a path
+        :return: snapshot id
+        """
+        if self.args.snapshot_id:
+            logging.info("Using existing snapshot ID: '{}'".format(self.args.snapshot_id))
+            snapshot_id = self.args.snapshot_id
+
+        if self.args.local_yb_admin_binary:
+            self.run_program(['mkdir', '-p', self.get_tmp_dir()])
+        else:
+            self.create_remote_tmp_dir(self.get_leader_master_ip())
+
+        if self.is_ysql_keyspace():
+            sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
+            db_name = keyspace_name(self.args.keyspace[0])
+        else:
+            sql_dump_path = None
+
+        stored_keyspaces = self.args.keyspace
+        stored_tables = self.args.table
+        num_retry = CREATE_METAFILES_MAX_RETRIES
+        start_version = self.get_ysql_catalog_version()
+        while num_retry > 0:
+            num_retry = num_retry - 1
+
+            if not self.args.snapshot_id:
+                snapshot_id = self.create_snapshot()
+                logging.info("Snapshot started with id: %s" % snapshot_id)
+                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC, True)
+
+                if not self.args.no_snapshot_deleting:
+                    logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
+                    atexit.register(self.delete_created_snapshot, snapshot_id)
+
+            if sql_dump_path:
+                logging.info("Creating ysql dump for DB '{}' to {}".format(db_name, sql_dump_path))
+                self.run_ysql_dump(['--include-yb-metadata', '--create', '--schema-only',
+                                    '--dbname=' + db_name, '--file=' + sql_dump_path])
+
+            final_version = self.get_ysql_catalog_version()
+            logging.info('Catalog versions: {} - {}'.format(start_version, final_version))
+            if final_version == start_version:
+                break  # Ok. No table schema changes during meta data creating.
+            else:
+                # wait_for_snapshot() can update the variables - restore them back.
+                self.args.keyspace = stored_keyspaces
+                self.args.table = stored_tables
+
+                start_version = final_version
+                logging.info('Retry creating metafiles ({} retries left)'.format(num_retry))
+
+        if num_retry == 0:
+            raise BackupException("Couldn't create metafiles due to catalog changes")
+
+        metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
+        logging.info('Exporting snapshot {} to {}'.format(snapshot_id, metadata_path))
+        self.run_yb_admin(['export_snapshot', snapshot_id, metadata_path])
+        self.upload_metadata_and_checksum(metadata_path,
+                                          os.path.join(snapshot_filepath, METADATA_FILE_NAME))
+
+        if sql_dump_path:
+            self.upload_metadata_and_checksum(sql_dump_path,
+                                              os.path.join(snapshot_filepath, SQL_DUMP_FILE_NAME))
+
+        return snapshot_id
 
     def backup_table(self):
         """
@@ -1341,38 +1561,34 @@ class YBBackup:
         backup location.
         """
 
-        if not self.args.table:
-            raise BackupException('Need to specify --table')
         if not self.args.keyspace:
             raise BackupException('Need to specify --keyspace')
 
-        logging.info('Backing up tables: {} to {}'.format(self.table_names_str(),
-                                                          self.args.backup_location))
+        if self.args.table:
+            if self.is_ysql_keyspace():
+                raise BackupException(
+                    "Back up for YSQL is only supported at the database level, "
+                    "and not at the table level.")
 
-        if self.args.snapshot_id:
-            logging.info("Using existing snapshot ID: '{}'".format(self.args.snapshot_id))
-            snapshot_id = self.args.snapshot_id
+            logging.info('Backing up tables: {} to {}'.format(self.table_names_str(),
+                                                              self.args.backup_location))
         else:
-            snapshot_id = self.create_snapshot()
-            logging.info("Snapshot started with id: %s" % snapshot_id)
-            try:
-                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC, True)
-            except Exception as ex:
-                logging.info("Ignoring the exception in the compatibility mode: {}".format(ex))
-                # In the compatibility mode repeat the command in old style
-                # (without new command line arguments).
-                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC, False)
+            if len(self.args.keyspace) != 1:
+                raise BackupException(
+                    "Only one keyspace supported. Found {} --keyspace keys.".
+                    format(len(self.args.keyspace)))
 
-        if not self.args.no_snapshot_deleting:
-            logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
-            atexit.register(self.delete_created_snapshot, snapshot_id)
-
-        tablet_leaders = self.find_tablet_leaders()
+            logging.info('Backing up keyspace: {} to {}'.format(self.args.keyspace[0],
+                                                                self.args.backup_location))
 
         if self.args.no_auto_name:
             snapshot_filepath = self.args.backup_location
         else:
-            snapshot_bucket = 'table-{}'.format(self.table_names_str('.', '-'))
+            if self.args.table:
+                snapshot_bucket = 'table-{}'.format(self.table_names_str('.', '-'))
+            else:
+                snapshot_bucket = 'keyspace-{}'.format(self.args.keyspace[0])
+
             if self.args.table_uuid:
                 if len(self.args.table) != len(self.args.table_uuid):
                     raise BackupException(
@@ -1383,63 +1599,109 @@ class YBBackup:
 
             snapshot_filepath = os.path.join(self.args.backup_location, snapshot_bucket)
 
-        self.upload_metadata_file(snapshot_id, snapshot_filepath)
-
+        snapshot_id = self.create_and_upload_metadata_files(snapshot_filepath)
+        tablet_leaders = self.find_tablet_leaders()
         self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
         logging.info(
             'Backed up tables %s to %s successfully!' %
             (self.table_names_str(), snapshot_filepath))
         print(json.dumps({"snapshot_url": snapshot_filepath}))
 
-    def download_metadata_file(self):
+    def download_file(self, src_path, target_path):
         """
-        Download the metadata file for a backup so as to perform a restore based on it.
+        Download the file from the external source to the local temporary folder.
         """
-        metadata_file_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
-        src_path = os.path.join(self.args.backup_location, METADATA_FILE_NAME)
-
         if self.args.local_yb_admin_binary:
-            self.run_program(['mkdir', '-p', self.get_tmp_dir()])
-
-            checksum_downloaded = checksum_path_downloaded(metadata_file_path)
+            checksum_downloaded = checksum_path_downloaded(target_path)
             self.run_program(
                 self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded))
             self.run_program(
-                self.storage.download_file_cmd(src_path, metadata_file_path))
+                self.storage.download_file_cmd(src_path, target_path))
 
             self.run_program(
-                self.create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)))
+                self.create_checksum_cmd(target_path, checksum_path(target_path)))
 
             check_checksum_res = self.run_program(
                 compare_checksums_cmd(checksum_downloaded,
-                                      checksum_path(metadata_file_path))).strip()
+                                      checksum_path(target_path))).strip()
         else:
             server_ip = self.get_leader_master_ip()
-            self.create_remote_tmp_dir(server_ip)
-
-            checksum_downloaded = checksum_path_downloaded(metadata_file_path)
+            checksum_downloaded = checksum_path_downloaded(target_path)
             self.run_ssh_cmd(
                 self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
                 server_ip)
             self.run_ssh_cmd(
-                self.storage.download_file_cmd(src_path, metadata_file_path),
+                self.storage.download_file_cmd(src_path, target_path),
                 server_ip)
 
             self.run_ssh_cmd(
-                self.create_checksum_cmd(metadata_file_path, checksum_path(metadata_file_path)),
+                self.create_checksum_cmd(target_path, checksum_path(target_path)),
                 server_ip)
 
             check_checksum_res = self.run_ssh_cmd(
-                compare_checksums_cmd(checksum_downloaded, checksum_path(metadata_file_path)),
+                compare_checksums_cmd(checksum_downloaded, checksum_path(target_path)),
                 server_ip).strip()
 
         if check_checksum_res != 'correct':
             raise BackupException('Check-sum for {} is {}'.format(
-                metadata_file_path, check_checksum_res))
+                target_path, check_checksum_res))
 
         logging.info(
-            'Downloaded metadata file %s from %s' % (metadata_file_path, self.args.backup_location))
-        return metadata_file_path
+            'Downloaded metadata file %s from %s' % (target_path, src_path))
+
+    def download_metadata_file(self):
+        """
+        Download the metadata file for a backup so as to perform a restore based on it.
+        """
+        if self.args.local_yb_admin_binary:
+            self.run_program(['mkdir', '-p', self.get_tmp_dir()])
+        else:
+            self.create_remote_tmp_dir(self.get_leader_master_ip())
+
+        src_metadata_path = os.path.join(self.args.backup_location, METADATA_FILE_NAME)
+        metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
+        self.download_file(src_metadata_path, metadata_path)
+
+        src_sql_dump_path = os.path.join(self.args.backup_location, SQL_DUMP_FILE_NAME)
+        sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
+
+        try:
+            self.download_file(src_sql_dump_path, sql_dump_path)
+        except subprocess.CalledProcessError as ex:
+            if self.is_ysql_keyspace():
+                raise ex
+            else:
+                # Possibly this is YCQL backup (no way to determite it exactly at this point).
+                # Try to ignore YSQL dump - YSQL table restoring will fail a bit later
+                # on 'import_snapshot' step.
+                logging.info("Ignoring the exception in downloading of {}: {}".
+                             format(src_sql_dump_path, ex))
+                sql_dump_path = None
+
+        return (metadata_path, sql_dump_path)
+
+    def import_ysql_dump(self, dump_file_path):
+        """
+        Import the YSQL dump using the provided file.
+        """
+        if self.args.keyspace:
+            cmd = get_db_name_cmd(dump_file_path)
+
+            if self.args.local_yb_admin_binary:
+                old_db_name = self.run_program(cmd).strip()
+            else:
+                old_db_name = self.run_ssh_cmd(cmd, self.get_leader_master_ip()).strip()
+
+            new_db_name = keyspace_name(self.args.keyspace[0])
+            logging.info("Renaming YSQL DB from '{}' into '{}'".format(old_db_name, new_db_name))
+            cmd = replace_db_name_cmd(dump_file_path, old_db_name, new_db_name)
+
+            if self.args.local_yb_admin_binary:
+                self.run_program(cmd)
+            else:
+                self.run_ssh_cmd(cmd, self.get_leader_master_ip())
+
+        self.run_ysql_shell(['--echo-all', '--file=' + dump_file_path])
 
     def import_snapshot(self, metadata_file_path):
         """
@@ -1457,9 +1719,6 @@ class YBBackup:
             yb_admin_args += [' '.join(self.args.table)]
 
         output = self.run_yb_admin(yb_admin_args)
-
-        if self.args.verbose:
-            logging.info('yb-admin tool output: {}'.format(output))
 
         snapshot_metadata = {}
         snapshot_metadata['keyspace_name'] = []
@@ -1568,7 +1827,10 @@ class YBBackup:
 
         logging.info('Restoring backup from {}'.format(self.args.backup_location))
 
-        metadata_file_path = self.download_metadata_file()
+        (metadata_file_path, dump_file_path) = self.download_metadata_file()
+        if dump_file_path:
+            self.import_ysql_dump(dump_file_path)
+
         snapshot_metadata = self.import_snapshot(metadata_file_path)
         snapshot_id = snapshot_metadata['snapshot_id']['new']
         table_ids = snapshot_metadata['table'].keys()

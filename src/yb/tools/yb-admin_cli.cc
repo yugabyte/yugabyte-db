@@ -681,6 +681,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               Format("Unable to start split of tablet $0", tablet_id));
         return Status::OK();
       });
+
+  Register(
+      "ysql_catalog_version", "",
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->GetYsqlCatalogVersion(),
+                              "Unable to get catalog version");
+        return Status::OK();
+      });
 }
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(ClusterAdminClientClass* client,
