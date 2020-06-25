@@ -66,6 +66,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // Returns the transactional session, starting a new transaction if necessary.
   yb::Result<client::YBSession*> GetTransactionalSession();
 
+  std::shared_future<Result<TransactionMetadata>> GetDdlTxnMetadata() const;
+
   CHECKED_STATUS BeginWriteTransactionIfNecessary(bool read_only_op,
                                                   bool needs_pessimistic_locking = false);
 

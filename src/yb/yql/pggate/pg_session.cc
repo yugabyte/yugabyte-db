@@ -44,6 +44,7 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
 
 #include "yb/master/master.proxy.h"
@@ -53,6 +54,7 @@ DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60
              "from YSQL layer.");
 TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
 TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, runtime);
+DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
 namespace yb {
 namespace pggate {
@@ -580,15 +582,29 @@ Status PgSession::CreateDatabase(const string& database_name,
                                  const PgOid database_oid,
                                  const PgOid source_database_oid,
                                  const PgOid next_oid,
+                                 const boost::optional<TransactionMetadata> transaction,
                                  const bool colocated) {
-  return client_->CreateNamespace(database_name,
-                                  YQL_DATABASE_PGSQL,
-                                  "" /* creator_role_name */,
-                                  GetPgsqlNamespaceId(database_oid),
-                                  source_database_oid != kPgInvalidOid
-                                  ? GetPgsqlNamespaceId(source_database_oid) : "",
-                                  next_oid,
-                                  colocated);
+  auto operation_timeout = client_->default_admin_operation_timeout();
+  if (PREDICT_FALSE(FLAGS_TEST_user_ddl_operation_timeout_sec > 0)) {
+    client_->TEST_set_admin_operation_timeout(
+        MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec));
+  }
+  auto scope_exit = ScopeExit([this, operation_timeout] {
+    // Restore original setting, if altered for tests.
+    if (PREDICT_FALSE(FLAGS_TEST_user_ddl_operation_timeout_sec > 0)) {
+      client_->TEST_set_admin_operation_timeout(operation_timeout);
+    }
+  });
+  auto ret = client_->CreateNamespace(database_name,
+                                      YQL_DATABASE_PGSQL,
+                                      "" /* creator_role_name */,
+                                      GetPgsqlNamespaceId(database_oid),
+                                      source_database_oid != kPgInvalidOid
+                                        ? GetPgsqlNamespaceId(source_database_oid) : "",
+                                      next_oid,
+                                      transaction,
+                                      colocated);
+  return ret;
 }
 
 Status PgSession::DropDatabase(const string& database_name, PgOid database_oid) {

@@ -21,6 +21,8 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/transaction.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -127,6 +129,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                 PgOid database_oid,
                                 PgOid source_database_oid,
                                 PgOid next_oid,
+                                const boost::optional<TransactionMetadata> transaction,
                                 const bool colocated);
   CHECKED_STATUS DropDatabase(const std::string& database_name, PgOid database_oid);
   client::YBNamespaceAlterer *NewNamespaceAlterer(const std::string& namespace_name,

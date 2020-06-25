@@ -378,6 +378,9 @@ Status PgApiImpl::NewCreateDatabase(const char *database_name,
                                     PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateDatabase>(pg_session_, database_name, database_oid,
                                                  source_database_oid, next_oid, colocated);
+  if (pg_txn_manager_->IsDdlMode()) {
+    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+  }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -505,6 +508,9 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid);
+  if (pg_txn_manager_->IsDdlMode()) {
+    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+  }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }

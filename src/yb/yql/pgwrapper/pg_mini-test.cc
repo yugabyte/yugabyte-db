@@ -529,7 +529,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableReadOnly)) {
 
 void AssertAborted(const Status& status) {
   ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "Transaction aborted");
+  ASSERT_STR_CONTAINS(status.ToString(), "aborted");
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SelectModifySelect)) {

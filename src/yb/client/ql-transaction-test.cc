@@ -1126,7 +1126,7 @@ TEST_F_EX(QLTransactionTest, CorrectStatusRequestBatching, QLTransactionBigLogSe
 
 struct TransactionState {
   YBTransactionPtr transaction;
-  std::shared_future<TransactionMetadata> metadata_future;
+  std::shared_future<Result<TransactionMetadata>> metadata_future;
   std::future<Status> commit_future;
   std::future<Result<tserver::GetTransactionStatusResponsePB>> status_future;
   TransactionMetadata metadata;
@@ -1195,7 +1195,7 @@ TEST_F(QLTransactionTest, StatusEvolution) {
         // Insert using different keys to avoid conflicts.
         ASSERT_OK(WriteRow(session, states.size(), states.size()));
       }
-      states.push_back({ txn, txn->TEST_GetMetadata() });
+      states.push_back({ txn, txn->GetMetadata() });
       ++active_transactions;
       --transactions_to_create;
     }
@@ -1221,7 +1221,7 @@ TEST_F(QLTransactionTest, StatusEvolution) {
         if (!IsReady(state.metadata_future)) {
           continue;
         }
-        state.metadata = state.metadata_future.get();
+        state.metadata = ASSERT_RESULT(state.metadata_future.get());
       }
       tserver::GetTransactionStatusRequestPB req;
       req.set_tablet_id(state.metadata.status_tablet);
