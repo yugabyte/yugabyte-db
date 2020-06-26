@@ -15,5 +15,8 @@ CREATE UNIQUE INDEX hints_norm_and_app ON hint_plan.hints (
 	application_name
 );
 
+SELECT pg_catalog.pg_extension_config_dump('hint_plan.hints','');
+SELECT pg_catalog.pg_extension_config_dump('hint_plan.hints_id_seq','');
+
 GRANT SELECT ON hint_plan.hints TO PUBLIC;
 GRANT USAGE ON SCHEMA hint_plan TO PUBLIC;
