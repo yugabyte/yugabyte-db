@@ -1,0 +1,57 @@
+---
+title: API client libraries for YCQL
+headerTitle: API client libraries for YCQL
+linkTitle: API client libraries for YCQL
+description: Lists the API client libraries that you can use to build and access YCQL applications. 
+menu:
+  latest:
+    identifier: ycql-client-libraries
+    parent: drivers
+    weight: 2921
+aliases:
+  - /latest/reference/connectors/yugabytedb-jdbc-driver
+isTocNested: true
+showAsideToc: true
+---
+
+YugabyteDB Cassandra driver
+: 
+
+## NodeJS (`yugabyte/cassandra-nodejs-driver`)
+
+### [YugabyteDB NodeJS driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver)
+
+The YugabyteDB NodeJS driver for YCQL is available as a fork of the Cassandra NodeJS driver. For details, see the [README](https://github.com/datastax/cpp-driver/blob/master/README.md) in our GitHub repository. 
+
+## C++ (`yugabyte/cassandra-cpp-driver`)
+
+### [YugabyteDB C++ Driver for YCQL](https://github.com/yugabyte/cassandra-cpp-driver)
+
+Based on the [DataStax C/C++ driver](https://github.com/datastax/cpp-driver).
+
+## Go
+
+## Yugabyte Go Driver for YCQL (`yugabyte/gocql`)
+
+The [Yugabyte Go Driver for YCQL](https://github.com/yugabyte/gocql) is based on [GoCQL (`gocql/gocql`)](http://gocql.github.io/). For more information, see the [README](https://github.com/yugabyte/gocql/blob/master/README.md) in the `yugabyte/gocql` GitHub repository.
+
+
+## Java
+
+### Yugabyte Java Driver for YCQL
+
+The [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver) is based on the [DataStax Java Driver for Apache Cassandra](https://github.com/datastax/java-driver). 
+
+For details, see the [README](https://github.com/yugabyte/cassandra-java-driver/blob/3.8.0-yb-x/README.md) in our `yugabyte/cassandra-java-driver` GitHub repository.
+
+To build a sample application using this driver, follow the tutorial in [Build a Java application](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ycql/).
+
+## Ruby
+
+### Yugabyte Ruby Driver for YCQL (`yugabyte/cassandra-ruby-driver`)
+
+The [Yugabyte Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-driver) is based on the DataStax Ruby Driver for Apache Cassandra.
+
+For details, see the [README](https://github.com/yugabyte/cassandra-ruby-driver/blob/v3.2.3.x-yb/README.md) in the `yugabyte/cassandra-ruby-driver` GitHub repository.
+
+To build a sample application using this driver, follow the tutorial in [Build a Ruby application](https://docs.yugabyte.com/latest/quick-start/build-apps/ruby/ycql/).
