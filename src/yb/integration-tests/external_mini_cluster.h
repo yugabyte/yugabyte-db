@@ -298,7 +298,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   int tablet_server_index_by_uuid(const std::string& uuid) const;
 
   // Return all masters.
-  std::vector<ExternalDaemon*> master_daemons() const;
+  std::vector<ExternalMaster*> master_daemons() const;
 
   // Return all tablet servers and masters.
   std::vector<ExternalDaemon*> daemons() const;

@@ -402,6 +402,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Get the Status of the last error from the current CreateTable.
   CHECKED_STATUS GetCreateTableErrorStatus() const;
 
+  std::size_t NumLBTasks() const;
   std::size_t NumTasks() const;
   bool HasTasks() const;
   bool HasTasks(MonitoredTask::Type type) const;

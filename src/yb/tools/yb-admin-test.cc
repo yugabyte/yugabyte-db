@@ -450,10 +450,15 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
       .add_master_server_addr(master_address)
       .Build());
 
-  ASSERT_OK(client->DeleteTable(kTableName, false /* wait */));
+  // Load balancer IsIdle() logic has been changed to the following - unless a task was explicitly
+  // triggered by the load balancer (AsyncAddServerTask / AsyncRemoveServerTask / AsyncTryStepDown)
+  // then the task does not count towards determining whether the load balancer is active. If no
+  // pending LB tasks of the aforementioned types exist, the load balancer will report idle.
 
-  // Because of the delete, the load balancer should become active.
-  ASSERT_OK(WaitFor(
+  // Delete table should not activate the load balancer.
+  ASSERT_OK(client->DeleteTable(kTableName, false /* wait */));
+  // This should timeout.
+  Status s = WaitFor(
       [&]() -> Result<bool> {
         RETURN_NOT_OK(Subprocess::Call(
             ToStringVector(
@@ -464,21 +469,9 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
         return output.compare("Idle = 0\n") == 0;
       },
       kWaitTime,
-      "wait for load balancer to become active"));
+      "wait for load balancer to stay idle");
 
-  // Eventually, the load balancer should become idle.
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        RETURN_NOT_OK(Subprocess::Call(
-            ToStringVector(
-                GetAdminToolPath(),
-                "-master_addresses", master_address,
-                "get_is_load_balancer_idle"),
-            &output));
-        return output.compare("Idle = 1\n") == 0;
-      },
-      kWaitTime,
-      "wait for load balancer to become idle"));
+  ASSERT_FALSE(s.ok());
 }
 
 TEST_F(AdminCliTest, TestLeaderStepdown) {

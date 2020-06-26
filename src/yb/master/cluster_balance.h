@@ -330,11 +330,10 @@ class ClusterLoadBalancer {
   // Information representing activity of load balancer.
   struct ActivityInfo {
     uint32_t table_tasks = 0;
-    uint32_t tserver_tasks = 0;
     uint32_t master_errors = 0;
 
     bool IsIdle() const {
-      return table_tasks == 0 && tserver_tasks == 0 && master_errors == 0;
+      return table_tasks == 0 && master_errors == 0;
     }
   };
 
