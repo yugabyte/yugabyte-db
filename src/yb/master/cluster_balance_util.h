@@ -32,6 +32,8 @@ DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 
 DECLARE_bool(enable_load_balancing);
 
+DECLARE_bool(transaction_tables_use_preferred_zones);
+
 DECLARE_int32(leader_balance_threshold);
 
 DECLARE_int32(leader_balance_unresponsive_timeout_ms);
@@ -752,6 +754,9 @@ class PerTableLoadState {
   // Pointer to the cluster global state so that it can be updated when operations like add or
   // remove are executed.
   GlobalLoadState* global_state_;
+
+  // Boolean whether tablets for this table should respect the affinited zones.
+  bool use_preferred_zones_ = true;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(PerTableLoadState);

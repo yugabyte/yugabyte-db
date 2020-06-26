@@ -7389,6 +7389,24 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
   return Status::OK();
 }
 
+Status CatalogManager::AreTransactionLeadersSpread(
+    const AreTransactionLeadersSpreadRequestPB* req,
+    AreTransactionLeadersSpreadResponsePB* resp) {
+
+  TSDescriptorVector ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
+  vector<scoped_refptr<TableInfo>> tables;
+  master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+
+  Status s = CatalogManagerUtil::AreTransactionLeadersSpread(ts_descs, tables);
+  if (!s.ok()) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+  }
+
+  return Status::OK();
+}
+
 void BlacklistState::Reset() {
   tservers_.clear();
   initial_load_ = 0;
