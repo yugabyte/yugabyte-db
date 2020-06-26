@@ -131,9 +131,9 @@ NOTES:
 3. Get information about the load balancer services:
   kubectl get svc --namespace yb-test
 4. Connect to one of the tablet server:
-  kubectl exec --namespace yb-test -it yb-tserver-0 bash
+  kubectl exec --namespace yb-test -it yb-tserver-0 -- bash
 5. Run YSQL shell from inside of a tablet server:
-  kubectl exec --namespace yb-test -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-test
+  kubectl exec --namespace yb-test -it yb-tserver-0 -- ysqlsh -h yb-tserver-0.yb-tservers.yb-test
 6. Cleanup YugabyteDB Pods
   For helm 2:
   helm delete yb-test --purge
