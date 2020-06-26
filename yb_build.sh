@@ -70,9 +70,6 @@ Options:
     Do not use tcmalloc.
   --no-rebuild-thirdparty, --nbtp, --nb3p, --nrtp, --nr3p
     Skip building third-party libraries, even if the thirdparty directory has changed in git.
-  --use-shared-thirdparty, --ustp, --stp, --us3p, --s3p
-    Try to find and use a shared third-party directory (in Yugabyte's build environment these
-    third-party directories are under $NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY)
   --show-compiler-cmd-line, --sccl
     Show compiler command line.
   --{no,skip}-{test-existence-check,check-test-existence}
@@ -288,9 +285,6 @@ print_report() {
       if using_linuxbrew; then
         print_report_line "%s" "Linuxbrew dir" "${YB_LINUXBREW_DIR:-undefined}"
       fi
-      if using_custom_homebrew; then
-        print_report_line "%s" "Custom Homebrew dir" "${YB_CUSTOM_HOMEBREW_DIR:-undefined}"
-      fi
 
       set +u
       local make_targets_str="${make_targets[*]}"
@@ -340,9 +334,6 @@ thirdparty_dir: "${YB_THIRDPARTY_DIR:-$YB_SRC_ROOT/thirdparty}"
 EOT
     if using_linuxbrew; then
       echo "linuxbrew_dir: \"${YB_LINUXBREW_DIR:-}\"" >>"$build_descriptor_path"
-    fi
-    if using_custom_homebrew; then
-      echo "custom_homebrew_dir: \"${YB_CUSTOM_HOMEBREW_DIR:-}\"" >>"$build_descriptor_path"
     fi
     log "Created a build descriptor file at '$build_descriptor_path'"
   fi
@@ -637,8 +628,6 @@ java_lint=false
 collect_java_tests=false
 reinitdb_when_packaging=false
 
-# use_nfs_shared_thirdparty and no_nfs_shared_thirdparty are defined in common-build-env.sh.
-
 # The default value of this parameter will be set based on whether we're running on Jenkins.
 reduce_log_output=""
 
@@ -754,12 +743,6 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-rebuild-thirdparty|--nrtp|--nr3p|--nbtp|--nb3p)
       export NO_REBUILD_THIRDPARTY=1
-    ;;
-    --use-nfs-shared-thirdparty)
-      use_nfs_shared_thirdparty=true
-    ;;
-    --no-nfs-shared-thirdparty)
-      no_nfs_shared_thirdparty=true
     ;;
     --show-compiler-cmd-line|--sccl)
       export YB_SHOW_COMPILER_COMMAND_LINE=1
@@ -1112,11 +1095,6 @@ fi
 if [[ ${YB_SKIP_BUILD:-} == "1" ]]; then
   log "YB_SKIP_BUILD is set, skipping all types of compilation"
   set_flags_to_skip_build
-fi
-
-if "$use_nfs_shared_thirdparty" && "$no_nfs_shared_thirdparty"; then
-  fatal "--use-nfs-shared-thirdparty and --no-nfs-shared-thirdparty cannot be specified" \
-        "at the same time"
 fi
 
 configure_remote_compilation
