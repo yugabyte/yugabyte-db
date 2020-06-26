@@ -576,10 +576,10 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-list-ul", "Threads", "/threadz");
 }
 
-
-void RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
+Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
   // RPCs in Progress.
   DisplayIconTile(output, "fa-tasks", "Server RPCs", "/rpcz");
+  return Status::OK();
 }
 
 Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
@@ -593,7 +593,7 @@ Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
   *output << "</div> <!-- row -->\n";
   *output << "<h2> RPCs In Progress </h2>";
   *output << "<div class='row debug-tiles'>\n";
-  DisplayRpcIcons(output);
+  RETURN_NOT_OK(DisplayRpcIcons(output));
   *output << "</div> <!-- row -->\n";
   return Status::OK();
 }
