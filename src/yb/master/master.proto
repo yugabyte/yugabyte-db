@@ -1286,6 +1286,14 @@ message AreLeadersOnPreferredOnlyResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message AreTransactionLeadersSpreadRequestPB {
+}
+
+message AreTransactionLeadersSpreadResponsePB {
+  // Any error being set implies transaction leaders are incorrectly respecting preferred zones.
+  optional MasterErrorPB error = 1;
+}
+
 // ============================================================================
 //  Namespace  (default namespace = ANY placement)
 // ============================================================================
@@ -1859,6 +1867,8 @@ service MasterService {
       returns (IsLoadBalancerIdleResponsePB);
   rpc AreLeadersOnPreferredOnly(AreLeadersOnPreferredOnlyRequestPB)
       returns (AreLeadersOnPreferredOnlyResponsePB);
+  rpc AreTransactionLeadersSpread(AreTransactionLeadersSpreadRequestPB)
+      returns (AreTransactionLeadersSpreadResponsePB);
 
   rpc FlushTables(FlushTablesRequestPB) returns (FlushTablesResponsePB);
   rpc IsFlushTablesDone(IsFlushTablesDoneRequestPB) returns (IsFlushTablesDoneResponsePB);
