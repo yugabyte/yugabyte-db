@@ -505,6 +505,8 @@ class AsyncAddServerTask : public AsyncChangeConfigTask {
 
   std::string type_name() const override { return "AddServer ChangeConfig"; }
 
+  bool started_by_lb() const override { return true; }
+
  protected:
   CHECKED_STATUS PrepareRequest(int attempt) override;
 
@@ -524,6 +526,8 @@ class AsyncRemoveServerTask : public AsyncChangeConfigTask {
   Type type() const override { return ASYNC_REMOVE_SERVER; }
 
   std::string type_name() const override { return "RemoveServer ChangeConfig"; }
+
+  bool started_by_lb() const override { return true; }
 
  protected:
   CHECKED_STATUS PrepareRequest(int attempt) override;
@@ -554,6 +558,8 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
   }
 
   std::string new_leader_uuid() const { return new_leader_uuid_; }
+
+  bool started_by_lb() const override { return true; }
 
  protected:
   CHECKED_STATUS PrepareRequest(int attempt) override;

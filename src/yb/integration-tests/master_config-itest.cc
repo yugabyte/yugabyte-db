@@ -321,7 +321,7 @@ TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
   SetCurLogIndex();
 
   // This will disable new elections on the old masters.
-  vector<ExternalDaemon*> masters = cluster_->master_daemons();
+  vector<ExternalMaster*> masters = cluster_->master_daemons();
   for (auto master : masters) {
     ASSERT_OK(cluster_->SetFlag(master, "TEST_do_not_start_election_test_only", "true"));
     // Do not let the followers commit change role - to keep their opid same as the new master,

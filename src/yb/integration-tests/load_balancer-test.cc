@@ -132,5 +132,37 @@ TEST_F(LoadBalancerTest, PreferredZoneAddNode) {
   ASSERT_EQ(firstLoad, secondLoad);
 }
 
+// Test load balancer idle / active:
+// 1. Add tserver.
+// 2. Check that load balancer becomes active and completes balancing load.
+// 3. Delete table should not activate the load balancer. Not triggered through LB.
+TEST_F(LoadBalancerTest, IsLoadBalancerIdle) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+
+  std::vector<std::string> extra_opts;
+  extra_opts.push_back("--placement_cloud=c");
+  extra_opts.push_back("--placement_region=r");
+  extra_opts.push_back("--placement_zone=z1");
+  ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
+  ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(num_tablet_servers() + 1,
+      MonoDelta::FromMilliseconds(kDefaultTimeoutMillis)));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
+    return !is_idle;
+  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis * 2), "IsLoadBalancerActive"));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return client_->IsLoadBalancerIdle();
+  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis * 2), "IsLoadBalancerIdle"));
+
+  YBTableTestBase::DeleteTable();
+  // Assert that this times out.
+  ASSERT_NOK(WaitFor([&]() -> Result<bool> {
+    bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
+    return !is_idle;
+  },  MonoDelta::FromMilliseconds(10000), "IsLoadBalancerActive"));
+}
+
 } // namespace integration_tests
 } // namespace yb

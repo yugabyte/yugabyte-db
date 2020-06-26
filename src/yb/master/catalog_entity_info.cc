@@ -412,6 +412,13 @@ Status TableInfo::GetCreateTableErrorStatus() const {
   return create_table_error_;
 }
 
+std::size_t TableInfo::NumLBTasks() const {
+  shared_lock<decltype(lock_)> l(lock_);
+  return std::count_if(pending_tasks_.begin(),
+                       pending_tasks_.end(),
+                       [](auto task) { return task->started_by_lb(); });
+}
+
 std::size_t TableInfo::NumTasks() const {
   shared_lock<decltype(lock_)> l(lock_);
   return pending_tasks_.size();

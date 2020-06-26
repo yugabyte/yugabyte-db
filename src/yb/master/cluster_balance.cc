@@ -333,17 +333,10 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
   uint32_t table_tasks = 0;
   for (const auto& table : GetTableMap()) {
-    table_tasks += table.second->NumTasks();
+    table_tasks += table.second->NumLBTasks();
   }
 
-  uint32_t tserver_tasks = 0;
-  TSDescriptorVector ts_descs;
-  GetAllReportedDescriptors(&ts_descs);
-  for (const auto& ts_desc : ts_descs) {
-    tserver_tasks += ts_desc->NumTasks();
-  }
-
-  struct ActivityInfo ai {table_tasks, tserver_tasks, master_errors};
+  struct ActivityInfo ai {table_tasks, master_errors};
 
   // Update circular buffer summary.
 
@@ -351,8 +344,8 @@ void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
     num_idle_runs_++;
   } else {
     VLOG(1) <<
-      Substitute("Load balancer has $0 table tasks, $1 tserver tasks, and $2 master errors",
-          table_tasks, tserver_tasks, master_errors);
+      Substitute("Load balancer has $0 table tasks and $1 master errors",
+          table_tasks, master_errors);
   }
 
   if (cbuf_activities_.full()) {
