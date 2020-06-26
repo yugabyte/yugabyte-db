@@ -250,7 +250,7 @@ Note the `yb-master-ui` service above. It is a load balancer service, which expo
 You can connect to one of the tserver pods and verify that the local disk is mounted into the pods.
 
 ```sh
-$ kubectl exec -it yb-tserver-0 bash
+$ kubectl exec -it yb-tserver-0 -- bash
 ```
 
 You can observe the local disks by running the following command.
@@ -267,7 +267,7 @@ Filesystem      Size  Used Avail Use% Mounted on
 You can connect to the `ycqlsh` shell on this universe by running the following command.
 
 ```sh
-$ kubectl exec -it yb-tserver-0 bin/ycqlsh
+$ kubectl exec -it yb-tserver-0 -- ycqlsh yb-tserver-0
 ```
 
 ```sh
