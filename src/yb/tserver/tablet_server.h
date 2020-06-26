@@ -208,7 +208,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   friend class TabletServerTestBase;
 
-  void DisplayRpcIcons(std::stringstream* output) override;
+  CHECKED_STATUS DisplayRpcIcons(std::stringstream* output) override;
 
   CHECKED_STATUS ValidateMasterAddressResolution() const;
 
