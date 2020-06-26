@@ -297,7 +297,6 @@ ARCHIVED_PATHS_IN_SRC_DIR = [
     'www',
     'yb_build.sh',
     'build/venv',
-    'thirdparty/homebrew_version_for_jenkins.txt',
     'requirements.txt',
     'requirements_frozen.txt',
 ]
