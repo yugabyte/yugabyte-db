@@ -11,10 +11,10 @@ $ kubectl apply -f yugabyte-statefulset.yaml
 Initialize the YEDIS API.
 
 ```sh
-$ kubectl exec -it yb-master-0 /home/yugabyte/bin/yb-admin -- --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100,yb-master-1.yb-masters.default.svc.cluster.local:7100,yb-master-2.yb-masters.default.svc.cluster.local:7100 setup_redis_table
+$ kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100,yb-master-1.yb-masters.default.svc.cluster.local:7100,yb-master-2.yb-masters.default.svc.cluster.local:7100 setup_redis_table
 ```
 
-Clients can now connect to the YSQL, YCQL and YEDIS APIs of the cluster at 5433, 9042 and 6379 ports respectively.
+Clients can now connect to the YSQL, YCQL, and YEDIS APIs of the cluster at the following ports: `5433`, `9042`, and `6379`, respectively.
 
 ## 2. Install Yugastore
 
@@ -65,7 +65,7 @@ Now you can see the Yugastore app at http://localhost:3001.
 You can do this as shown below.
 
 ```sh
-$ kubectl exec -it yugastore-55d7c6965-ql95t node /usr/local/yugastore/test/sample-user.js
+$ kubectl exec -it yugastore-55d7c6965-ql95t -- node /usr/local/yugastore/test/sample-user.js
 ```
 
 ## 4. Observe effects of load on YugabyteDB Admin UI

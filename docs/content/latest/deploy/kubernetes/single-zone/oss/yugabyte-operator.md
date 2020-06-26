@@ -87,13 +87,13 @@ kubectl get po,sts,svc
 Once the cluster is up and running, you may start the YSQL API and start executing relational queries.
 
 ```sh
-kubectl exec -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0 --echo-queries
+kubectl exec -it yb-tserver-0 -- ysqlsh -h yb-tserver-0 --echo-queries
 ```
 
 You can also connect to the YCQL API as shown below.
 
 ```sh
-kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ycqlsh yb-tserver-0
+kubectl exec -it yb-tserver-0 -- ycqlsh yb-tserver-0
 ```
 
 ## Configuration flags
