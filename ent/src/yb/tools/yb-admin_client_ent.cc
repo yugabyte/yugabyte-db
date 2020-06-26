@@ -530,8 +530,6 @@ Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferre
   return Status::OK();
 }
 
-
-
 Status ClusterAdminClient::RotateUniverseKey(const std::string& key_path) {
   return SendEncryptionRequest(key_path, true);
 }

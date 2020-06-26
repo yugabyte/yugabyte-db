@@ -164,7 +164,7 @@ class ClusterLoadBalancer {
   // across the tablets for the given table. Returns an OK status if the method succeeded or an
   // error if there are transient errors in updating the internal state.
   virtual CHECKED_STATUS AnalyzeTabletsUnlocked(const TableId& table_uuid)
-  REQUIRES_SHARED(catalog_manager_->lock_);
+      REQUIRES_SHARED(catalog_manager_->lock_);
 
   // Processes any required replica additions, as part of moving load from a highly loaded TS to
   // one that is less loaded.

@@ -74,6 +74,70 @@ Status CatalogManagerUtil::AreLeadersOnPreferredOnly(const TSDescriptorVector& t
   return Status::OK();
 }
 
+
+void CatalogManagerUtil::CalculateTxnLeaderMap(std::map<std::string, int>* txn_map,
+                                               int* num_txn_tablets,
+                                               vector<scoped_refptr<TableInfo>> tables) {
+
+  for (const auto& table : tables) {
+    bool is_txn_table = table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
+    if (!is_txn_table) {
+      continue;
+    }
+    TabletInfos tablets;
+    table->GetAllTablets(&tablets);
+    (*num_txn_tablets) += tablets.size();
+    for (const auto& tablet : tablets) {
+      TabletInfo::ReplicaMap replication_locations;
+      tablet->GetReplicaLocations(&replication_locations);
+      for (const auto& replica : replication_locations) {
+        if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
+          (*txn_map)[replica.first]++;
+        }
+      }
+    }
+  }
+}
+
+Status CatalogManagerUtil::AreTransactionLeadersSpread(const TSDescriptorVector& ts_descs,
+                                                       vector<scoped_refptr<TableInfo>> tables) {
+  std::map<std::string, int> txn_map;
+  int num_txn_tablets = 0;
+  CalculateTxnLeaderMap(&txn_map, &num_txn_tablets, tables);
+
+  auto num_servers = ts_descs.size();
+  int max_txn_leaders_per_node = num_txn_tablets / num_servers;
+  if (num_txn_tablets % num_servers) {
+    max_txn_leaders_per_node++;
+  }
+
+  for (const auto& ts_desc : ts_descs) {
+    auto tserver = txn_map.find(ts_desc->permanent_uuid());
+    int system_tablets_leaders = 0;
+
+    if (!(tserver == txn_map.end())) {
+      system_tablets_leaders = tserver->second;
+      if (system_tablets_leaders > max_txn_leaders_per_node) {
+        return STATUS(
+            IllegalState,
+            Substitute("Too many txn status leaders found on tserver $0. Found $1, Expected $2.",
+                       ts_desc->permanent_uuid(),
+                       system_tablets_leaders,
+                       max_txn_leaders_per_node));
+      }
+    } else {
+      return STATUS(
+            IllegalState,
+            Substitute("Tserver $0 expected to have $1 leader(s), but has 0.",
+                       ts_desc->permanent_uuid()));
+    }
+  }
+
+  return Status::OK();
+}
+
+
+
 Status CatalogManagerUtil::GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
                                             ZoneToDescMap* zone_to_ts) {
   if (zone_to_ts == nullptr) {
