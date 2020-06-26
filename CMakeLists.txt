@@ -106,21 +106,7 @@ function(DETECT_BREW)
   # Detect Linuxbrew. The logic needs to be consistent with the detect_linuxbrew function in
   # common-build-env.sh.
   set(USING_LINUXBREW FALSE)
-  set(USING_CUSTOM_HOMEBREW FALSE)
-  if(APPLE)
-    set(CUSTOM_HOMEBREW_DIR "$ENV{YB_CUSTOM_HOMEBREW_DIR}")
-    if("${CUSTOM_HOMEBREW_DIR}" STREQUAL "")
-      set(CUSTOM_HOMEBREW_DIR "$ENV{HOME}/.linuxbrew-yb-build")
-    endif()
-    if(EXISTS "${CUSTOM_HOMEBREW_DIR}/bin" AND
-       EXISTS "${CUSTOM_HOMEBREW_DIR}/lib")
-      message("Custom Homebrew installation found at ${CUSTOM_HOMEBREW_DIR}")
-      set(USING_CUSTOM_HOMEBREW TRUE)
-    else()
-      message("Not using custom Homebrew: no valid Homebrew installation found at "
-              "${CUSTOM_HOMEBREW_DIR}")
-    endif()
-  else()
+  if(NOT APPLE)
     set(LINUXBREW_DIR "$ENV{YB_LINUXBREW_DIR}")
     if("${LINUXBREW_DIR}" STREQUAL "")
       set(LINUXBREW_DIR "$ENV{HOME}/.linuxbrew-yb-build")
@@ -138,17 +124,10 @@ function(DETECT_BREW)
   if(NOT USING_LINUXBREW)
     set(LINUXBREW_DIR "/tmp/not-using-linuxbrew")
   endif()
-  if(NOT USING_CUSTOM_HOMEBREW)
-    set(CUSTOM_HOMEBREW_DIR "/tmp/not-using-custom-homebrew")
-  endif()
 
   set(USING_LINUXBREW "${USING_LINUXBREW}" PARENT_SCOPE)
   set(LINUXBREW_DIR "${LINUXBREW_DIR}" PARENT_SCOPE)
   set(LINUXBREW_LIB_DIR "${LINUXBREW_DIR}/lib" PARENT_SCOPE)
-
-  set(USING_CUSTOM_HOMEBREW "${USING_CUSTOM_HOMEBREW}" PARENT_SCOPE)
-  set(CUSTOM_HOMEBREW_DIR "${CUSTOM_HOMEBREW_DIR}" PARENT_SCOPE)
-  set(CUSTOM_HOMEBREW_LIB_DIR "${CUSTOM_HOMEBREW_DIR}/lib" PARENT_SCOPE)
 endfunction()
 
 # Ensures that the YB_COMPILER_TYPE environment variable matches the auto-detected compiler family.
@@ -697,9 +676,6 @@ endif()
 if(USING_LINUXBREW)
   # This is needed for finding correct versions of Flex, Bison, and other tools.
   set(CMAKE_PREFIX_PATH "${LINUXBREW_DIR}" ${CMAKE_PREFIX_PATH})
-endif()
-if(USING_CUSTOM_HOMEBREW)
-  set(CMAKE_PREFIX_PATH "${CUSTOM_HOMEBREW_DIR}" ${CMAKE_PREFIX_PATH})
 endif()
 
 # For both RocksDB and YugaByte code, we need to set the OS flag on Mac. Some code in RocksDB also
@@ -1334,19 +1310,6 @@ if(IS_CLANG AND NOT "$ENV{YB_CLANG_PREFIX}" STREQUAL "")
 endif()
 
 # -------------------------------------------------------------------------------------------------
-# Common setup allowing us to use Homebrew libraries on Darwin
-# -------------------------------------------------------------------------------------------------
-
-if(APPLE)
-  if ("$ENV{YB_CUSTOM_HOMEBREW_DIR}" STREQUAL "")
-    set(HOMEBREW_OPT_DIR "/usr/local/opt")
-  else()
-    set(HOMEBREW_OPT_DIR "$ENV{YB_CUSTOM_HOMEBREW_DIR}/opt")
-  endif()
-  message("HOMEBREW_OPT_DIR is ${HOMEBREW_OPT_DIR}")
-endif()
-
-# -------------------------------------------------------------------------------------------------
 
 ## OpenSSL
 
@@ -1589,9 +1552,6 @@ foreach(IDX RANGE ${LAST_IDX})
 endforeach()
 include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 
-if(APPLE)
-  set(ICU_ROOT "${HOMEBREW_OPT_DIR}/icu4c")
-endif()
 find_package(ICU COMPONENTS i18n uc REQUIRED)
 include_directories(SYSTEM ${ICU_INCLUDE_DIRS})
 ADD_THIRDPARTY_LIB(icui18n
@@ -1721,9 +1681,6 @@ if (USING_LINUXBREW)
   ADD_GLOBAL_RPATH_ENTRY("${LINUXBREW_LIB_DIR}")
   ADD_LINKER_FLAGS("-L/usr/lib64")
   ADD_GLOBAL_RPATH_ENTRY("/usr/lib64")
-elseif(APPLE)
-  ADD_LINKER_FLAGS("-L${ICU_ROOT}/lib")
-  ADD_GLOBAL_RPATH_ENTRY("${ICU_ROOT}/lib")
 endif()
 
 message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
