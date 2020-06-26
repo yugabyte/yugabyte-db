@@ -6135,11 +6135,11 @@ void CatalogManager::SendDeleteTabletRequest(
 
 void CatalogManager::SendLeaderStepDownRequest(
     const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
-    const string& change_config_ts_uuid, bool should_remove, const string& new_leader_uuid) {
+    const string& change_config_ts_uuid, bool should_remove,
+    const string& new_leader_uuid) {
   auto task = std::make_shared<AsyncTryStepDown>(
       master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid, should_remove,
       new_leader_uuid);
-
   tablet->table()->AddTask(task);
   Status status = task->Run();
   WARN_NOT_OK(status, Substitute("Failed to send new $0 request", task->type_name()));
@@ -6152,7 +6152,6 @@ void CatalogManager::SendRemoveServerRequest(
   // Check if the user wants the leader to be stepped down.
   auto task = std::make_shared<AsyncRemoveServerTask>(
       master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid);
-
   tablet->table()->AddTask(task);
   Status status = task->Run();
   WARN_NOT_OK(status, Substitute("Failed to send new $0 request", task->type_name()));
