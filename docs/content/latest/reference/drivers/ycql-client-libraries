@@ -55,3 +55,22 @@ The [Yugabyte Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-d
 For details, see the [README](https://github.com/yugabyte/cassandra-ruby-driver/blob/v3.2.3.x-yb/README.md) in the `yugabyte/cassandra-ruby-driver` GitHub repository.
 
 To build a sample application using this driver, follow the tutorial in [Build a Ruby application](https://docs.yugabyte.com/latest/quick-start/build-apps/ruby/ycql/).
+
+## Scala
+
+### Yugabyte Java Driver for YCQL
+
+The [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver) is based on the [DataStax Java Driver for Apache Cassandra](https://github.com/datastax/java-driver) and can be used to build Scala applications.
+
+For details, see the [README](https://github.com/yugabyte/cassandra-java-driver/blob/3.8.0-yb-x/README.md) in our `yugabyte/cassandra-java-driver` GitHub repository.
+
+Note
+
+To build a Scala application using the Yugabyte Java Driver for YCQL, you must add the following [`sbt` (Scala Build Tool)](https://www.scala-sbt.org/1.x/docs/index.html) dependency to your application:
+
+```
+libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-5"
+
+```
+
+To build a sample Scala application using this driver, follow the tutorial in [Build a Scala application](https://docs.yugabyte.com/latest/quick-start/build-apps/scala/ycql/).
