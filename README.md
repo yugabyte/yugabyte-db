@@ -121,7 +121,16 @@ Search the user@age.apache.org and dev@age.apache.org mailing list Archive Link 
 Search JIRA for existing issues: New JIRA link here
 Type age [search terms] at the top right search box. If a logically similar issue already exists, then contribute to the discussion on the existing JIRA ticket and pull request, instead of creating a new ticket and PR.
 
+Code Review Process
+----------------------
 
-
+* Make a commit (or multiple commits) on your local branch.
+* Create .patch file(s) of the commit(s).
+ ** Use `git format-patch` command.
+* Send the .patch file(s) to the reviewer.
+** The title of the email must be "[Review] [JIRA Ticket Name Here] summary-of-the-issue"
+(e.g. [Review] [JIRA Ticket Name] Support changing graph name)
+*** If the commit is not for any issues on Jira, omit " [JIRA Ticket Name Here]". OR make a Jira ticket
+** The email body will look like this:
 
 
