@@ -275,7 +275,6 @@ Use typedef only for struct and enum. It must not be used for pointer types.
 
 ##### Commenting
 For multi-line comments, use C style multi-line comments.
-
 For single-line comments, use C++ style single-line comments.
 
 ##### Newlines
@@ -283,5 +282,44 @@ For newlines, only \n is allowed, not \r\n and \r.
 
 ##### Conditions
 If a pointer variable (including List *) is used as a condition, which means that it is evaluated as true/false value, use it AS-IS. Do not perform explicit comparison with NULL (or NIL). For negation, put ! before it.
+
+Rules for ereport()
+----------------------
+
+An error message that is passed to errmsg() starts with a lower case letter.
+
+An error detail/hint message that is passed to errdetail()/errhint() starts with an upper case letter.
+
+http://jira.bitnine.net:19090/display/AGEXT/Coding+Style
+
+Creating Documentation
+----------------------
+
+Steps to create the html documentation:
+
+* Verify python3 is installed
+* Clone agensgraph-ext (AGE) “git clone https://github.com/bitnine-oss/agensgraph-ext”
+* In a terminal, go to the doc folder of the project
+* Type “make html”
+* The documents are in “_build/html”.
+https://github.com/bitnine-oss/agensgraph-ext/tree/master/doc
+
+Mailing List
+----------------------
+
+Get help using Apache AGE (Incubating) or contribute to the project on our mailing lists:
+
+* Commiter for people wanting to contribute to the project.
+* Developer for people wanting to commits to the project.
+* User for user wanting to learn more about the project.
+
+Jira Tracking
+----------------------  
+
+Apache AGE (Incubating) uses JIRA as an Issue Tracker. Don’t hesitate to report new bugs and improvements ideas.
+
+But before starting, please read our Contribution guidelines, it will give you important information about our review process, and pointers on how to make a good code contribution.
+
+* Jira for user wanting to learn more about the project.
 
 
