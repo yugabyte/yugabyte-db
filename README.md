@@ -104,3 +104,22 @@ Most contributors are able to directly resolve JIRAs. Use judgment in determinin
 
 earch JIRA for existing issues: New JIRA link here Type age [search terms] at the top right search box. If a logically similar issue already exists, then contribute to the discussion on the existing JIRA ticket and pull request, instead of creating a new ticket and PR.
 
+Preparing to Contribute Code Changes
+----------------------
+
+When new contributors want to join the project, they may have a particular change or bug in mind. If you are interested in the project and looking for ways to help, consult the list of tasks in JIRA, or ask the user@age.apache.org mailing list. Code Reviews can take hours or days of a committer’s time. Everyone benefits if contributors focus on changes that are useful, clear, easy to evaluate, and already pass basic checks.
+
+Before proceeding, contributors should evaluate if the proposed change is likely to be relevant, new and actionable:
+
+*Is it clear that code must change? Proposing a JIRA and pull request is appropriate only when a clear problem or change has been identified.
+*If simply having trouble using AGE, use the mailing lists first, rather than creating a JIRA ticket or proposing a change.
+*When in doubt, email user@age.apache.org first about the possible change
+Search the user@age.apache.org and dev@age.apache.org mailing list Archive Link Here for related discussions.
+
+Search JIRA for existing issues: New JIRA link here
+Type age [search terms] at the top right search box. If a logically similar issue already exists, then contribute to the discussion on the existing JIRA ticket and pull request, instead of creating a new ticket and PR.
+
+
+
+
+
