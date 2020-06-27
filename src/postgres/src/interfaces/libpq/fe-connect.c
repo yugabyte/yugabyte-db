@@ -5382,6 +5382,16 @@ conninfo_add_defaults(PQconninfoOption *options, PQExpBuffer errorMessage)
 			option->val = strdup("yugabyte");
 			continue;
 		}
+
+		/*
+		 * Special handling for "dbname" option.		 
+		 */
+		if (strcmp(option->keyword, "dbname") == 0)
+		{
+		  /* YugaByte default dbname to "yugabyte" */
+			option->val = strdup("yugabyte");
+			continue;
+		}
 	}
 
 	return true;
