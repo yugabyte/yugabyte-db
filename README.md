@@ -164,6 +164,23 @@ In this case, the commit will be merged into the master branch with the followin
     
     $ git checkout master 
 
+2. Make the local master branch up-to-date by running the following command (or any other commands that result the same.)
+    $ git pull
+
+3. Change the current working branch to the local task branch that the commit resides in by running the following command.
+    $ git checkout
+
+4. Rebase the local task branch by running the following command.
+    $ git rebase master
+
+5. Resolve any conflicts that occur during rebase.
+
+6. Change the current working branch to the local master branch by running the following command.
+    $ git checkout master
+
+7. Merge the local task branch into the local master branch by running the following command.
+    $ git merge
+
 
 
 
