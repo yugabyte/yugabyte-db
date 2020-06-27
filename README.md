@@ -138,5 +138,17 @@ Code Review Process
             [one blank line]
 
             Description
+        
+        * The first line is the hash code of the base commit, NOT the commit you've created.
+            * This will help reviewers to quickly apply the .patch files.
+        * Put proper information to help the reviewer.
+    * Attach .patch files.
+        * Do NOT rename files. They are named with numbers in order.
+        * Do NOT compress them unless the total file size is over 5MB.
+* Reply to the last email in the same thread to send a review of it.
+    * You can attach some .diff files.
+* Reply to the last email in the same thread to send updated patch(es) and opinions.
+    * If you rebase commits, state the hash code of the new base commit.
+* Repeat 4 and 5.
 
 
