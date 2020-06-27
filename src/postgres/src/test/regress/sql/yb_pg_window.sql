@@ -73,7 +73,7 @@ SELECT lead(ten * 2, 1, -1) OVER (PARTITION BY four ORDER BY ten), ten, four FRO
 SELECT first_value(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER by 1,2,3;
 
 -- last_value returns the last row of the frame, which is CURRENT ROW in ORDER BY window.
--- SELECT last_value(four) OVER (ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER by 1,2,3;
+--SELECT last_value(four) OVER (ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER by 1,2,3;
 
 SELECT last_value(ten) OVER (PARTITION BY four), ten, four FROM
 	(SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten)s
