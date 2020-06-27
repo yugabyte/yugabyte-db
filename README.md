@@ -161,8 +161,9 @@ Single Commit for a Single Task
 In this case, the commit will be merged into the master branch with the following process.
 
 1. Change the current working branch to the local master branch by running the following command.
+    
+    $ git checkout master 
 
-    $ git checkout master
 
 
 
