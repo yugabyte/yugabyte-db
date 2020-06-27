@@ -1077,6 +1077,9 @@ download_thirdparty() {
   yb_thirdparty_dir_where_from=" (downloaded from $YB_THIRDPARTY_URL)"
   save_thirdparty_info_to_build_dir
 
+  if ! is_centos; then
+    return
+  fi
   # Read a linuxbrew_url.txt file in the third-party directory that we downloaded, and follow that
   # link to download and install the appropriate Linuxbrew package.
   local linuxbrew_url_path=$YB_THIRDPARTY_DIR/linuxbrew_url.txt
