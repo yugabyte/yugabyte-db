@@ -162,29 +162,29 @@ In this case, the commit will be merged into the master branch with the followin
 
 1. Change the current working branch to the local master branch by running the following command.
     
-    $ git checkout master 
+        $ git checkout master 
 
 2. Make the local master branch up-to-date by running the following command (or any other commands that result the same.)
 
-    $ git pull
+        $ git pull
 
 3. Change the current working branch to the local task branch that the commit resides in by running the following command.
 
-    $ git checkout
+        $ git checkout
 
 4. Rebase the local task branch by running the following command.
 
-    $ git rebase master
+        $ git rebase master
 
 5. Resolve any conflicts that occur during rebase.
 
 6. Change the current working branch to the local master branch by running the following command.
 
-    $ git checkout master
+        $ git checkout master
 
 7. Merge the local task branch into the local master branch by running the following command.
 
-    $ git merge
+        $ git merge
 
 Multiple Commits for a Single Task
 ----------------------
@@ -196,7 +196,7 @@ In this case, the commits will be merged into the master branch with the same pr
 
 For the last step, the local task branch will be merged into the local master branch with an explicit merge commit by running the following command. If you omit --no-ff option, the command will do fast-forward merge instead.
 
- $ make install
+    $ git merge --no-ff
 
 
 
