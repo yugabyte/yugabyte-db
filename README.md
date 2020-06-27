@@ -126,11 +126,15 @@ Code Review Process
 
 * Make a commit (or multiple commits) on your local branch.
 * Create .patch file(s) of the commit(s).
+
  ** Use `git format-patch` command.
 * Send the .patch file(s) to the reviewer.
+
 ** The title of the email must be "[Review] [JIRA Ticket Name Here] summary-of-the-issue"
 (e.g. [Review] [JIRA Ticket Name] Support changing graph name)
+
 *** If the commit is not for any issues on Jira, omit " [JIRA Ticket Name Here]". OR make a Jira ticket
+
 ** The email body will look like this:
 
 
