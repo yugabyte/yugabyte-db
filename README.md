@@ -151,4 +151,18 @@ Code Review Process
     * If you rebase commits, state the hash code of the new base commit.
 * Repeat 4 and 5.
 
+How to Merge a Pull Request
+----------------------
+
+Git Merge Strategy for Apache AGE
+Detailed below is our workflow for adding patches that have passed the approval process to the master branch
+
+Single Commit for a Single Task
+In this case, the commit will be merged into the master branch with the following process.
+
+1.Change the current working branch to the local master branch by running the following command.
+    $ git checkout master
+
+
+
 
