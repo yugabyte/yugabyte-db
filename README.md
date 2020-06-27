@@ -133,10 +133,10 @@ Code Review Process
         * If the commit is not for any issues on Jira, omit " [JIRA Ticket Name Here]". OR make a Jira ticket
     *The email body will look like this:
     
-        Commit bef50e5d86d45707806f5733695a229f3e295b1a
-        
-        [one blank line]
-        
-        Description
+            Commit bef50e5d86d45707806f5733695a229f3e295b1a
+
+            [one blank line]
+
+            Description
 
 
