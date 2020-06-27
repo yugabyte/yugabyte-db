@@ -241,7 +241,18 @@ When resolving JIRA tickets, please observe the following conventions:
 * If the issue doesn’t make sense – not actionable – resolve as Invalid.
 * If it’s a coherent issue, but there is a clear indication that there is not support or interest in acting on it, then resolve as Won’t Fix.
 
+Code Style Guide
+----------------------
 
+For a full list of coding style guidelines, please refer to the style setup in the clang-format.5 in the AGE git repository.
+
+General Rules
+NOTE: In some environments, code block does not properly show indentation. To see the correct indentation, copy and paste the code to a text editor.
+
+##Indentation
+
+Use 4 spaces per indentation level. (no tab character)
+    * You can see the same indentation in all environments.
 
 
 
