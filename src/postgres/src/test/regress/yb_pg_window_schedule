@@ -1,4 +1,4 @@
-# src/test/regress/window_test_schedule
+# src/test/regress/yb_pg_window_schedule
 #
 ####################################################################################################
 # This includes tests for Window Functions
