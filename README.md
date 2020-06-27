@@ -249,7 +249,7 @@ For a full list of coding style guidelines, please refer to the style setup in t
 General Rules
 NOTE: In some environments, code block does not properly show indentation. To see the correct indentation, copy and paste the code to a text editor.
 
-##Indentation
+## Indentation
 
 Use 4 spaces per indentation level. (no tab character)
     * You can see the same indentation in all environments.
