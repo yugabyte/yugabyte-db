@@ -1,7 +1,8 @@
 [![Build Status](https://travis-ci.com/bitnine-oss/agensgraph-ext.svg?branch=master)](https://travis-ci.com/bitnine-oss/agensgraph-ext)
 
-Apache AGE
+Apache AGE(Incubating)
 ==========
+Note: AgensGraph-Extension was renamed to Apache AGE based on Apache requirements since we donated this project to Apache Software Foundation. 
 
 Apache AGE is an extension of PostgreSQL that provides an implemtation of the [openCypher](https://www.opencypher.org/) query language.
 
