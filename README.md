@@ -249,18 +249,39 @@ For a full list of coding style guidelines, please refer to the style setup in t
 General Rules
 NOTE: In some environments, code block does not properly show indentation. To see the correct indentation, copy and paste the code to a text editor.
 
-## Indentation
+##### Indentation
 
 Use 4 spaces per indentation level. (no tab character)
     * You can see the same indentation in all environments.
+    
+##### Breaking long lines and strings
 
+The line length limit is 79 columns, except for strings longer than 79 characters.
 
+##### Placing Braces and Spaces.
 
+All braces are on their own line solely.
 
+If all the bodies of if/else statement contain a singe line, omit braces.
 
+One exception is do statement.
 
+##### Naming
+###### Style
+Use the underscore name convention for all variables, functions, structs, enums and define macros.
 
+##### Typedefs
+Use typedef only for struct and enum. It must not be used for pointer types.
 
+##### Commenting
+For multi-line comments, use C style multi-line comments.
 
+For single-line comments, use C++ style single-line comments.
+
+##### Newlines
+For newlines, only \n is allowed, not \r\n and \r.
+
+##### Conditions
+If a pointer variable (including List *) is used as a condition, which means that it is evaluated as true/false value, use it AS-IS. Do not perform explicit comparison with NULL (or NIL). For negation, put ! before it.
 
 
