@@ -134,7 +134,9 @@ Code Review Process
     *The email body will look like this:
     
         Commit bef50e5d86d45707806f5733695a229f3e295b1a
+        
         [one blank line]
+        
         Description
 
 
