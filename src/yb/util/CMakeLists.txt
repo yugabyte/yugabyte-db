@@ -213,6 +213,7 @@ set(UTIL_SRCS
   path_util.cc
   pb_util-internal.cc
   pb_util.cc
+  pg_connstr.cc
   physical_time.cc
   port_picker.cc
   priority_thread_pool.cc

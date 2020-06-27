@@ -1685,6 +1685,8 @@ endif()
 
 message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
 
+set(PQ_SHARED_LIB
+    "${YB_BUILD_ROOT}/postgres/lib/libpq${YB_SHARED_LIBRARY_SUFFIX}")
 set(YB_PGBACKEND_SHARED_LIB 
     "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend${YB_SHARED_LIBRARY_SUFFIX}")
 

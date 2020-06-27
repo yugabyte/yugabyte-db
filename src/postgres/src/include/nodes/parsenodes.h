@@ -868,6 +868,18 @@ typedef struct PartitionCmd
 	PartitionBoundSpec *bound;	/* FOR VALUES, if attaching */
 } PartitionCmd;
 
+/*
+ * RowBounds - row bounds for BACKFILL INDEX statement
+ */
+typedef struct RowBounds
+{
+	NodeTag type;
+	const char	   *partition_key;	/* Partition key of tablet containing bound
+									 */
+	const char	   *row_key_start;	/* Starting row of bound (inclusive) */
+	const char	   *row_key_end;	/* Ending row of bound (exclusive) */
+} RowBounds;
+
 /****************************************************************************
  *	Nodes for a Query tree
  ****************************************************************************/
@@ -3339,6 +3351,19 @@ typedef struct ReindexStmt
 	const char *name;			/* name of database to reindex */
 	int			options;		/* Reindex options flags */
 } ReindexStmt;
+
+/* ----------------------
+ *		BACKFILL INDEX Statement
+ * ----------------------
+ */
+
+typedef struct BackfillIndexStmt
+{
+	NodeTag			type;
+	List		   *oid_list;		/* Oids of indexes to backfill */
+	uint64_t		read_time;		/* Read time for backfill */
+	RowBounds	   *row_bounds;		/* Rows to backfill */
+} BackfillIndexStmt;
 
 /* ----------------------
  *		CREATE CONVERSION Statement

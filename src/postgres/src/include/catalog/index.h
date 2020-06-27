@@ -113,6 +113,13 @@ extern void index_build(Relation heapRelation,
 			bool isreindex,
 			bool parallel);
 
+extern void index_backfill(Relation heapRelation,
+						   Relation indexRelation,
+						   IndexInfo *indexInfo,
+						   bool isprimary,
+						   uint64_t *read_time,
+						   RowBounds *row_bounds);
+
 extern double IndexBuildHeapScan(Relation heapRelation,
 				   Relation indexRelation,
 				   IndexInfo *indexInfo,
@@ -130,6 +137,13 @@ extern double IndexBuildHeapRangeScan(Relation heapRelation,
 						IndexBuildCallback callback,
 						void *callback_state,
 						HeapScanDesc scan);
+extern double IndexBackfillHeapRangeScan(Relation heapRelation,
+										 Relation indexRelation,
+										 IndexInfo *indexInfo,
+										 IndexBuildCallback callback,
+										 void *callback_state,
+										 uint64_t *read_time,
+										 RowBounds *row_bounds);
 
 extern void validate_index(Oid heapId, Oid indexId, Snapshot snapshot);
 

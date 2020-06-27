@@ -201,6 +201,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
     return log_prefix_;
   }
 
+  const HostPort pgsql_proxy_bind_address() const { return pgsql_proxy_bind_address_; }
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
@@ -271,6 +273,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   std::unique_ptr<client::TransactionPool> transaction_pool_holder_;
 
   std::string log_prefix_;
+
+  // Bind address of postgres proxy under this tserver.
+  HostPort pgsql_proxy_bind_address_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

@@ -381,6 +381,9 @@ WriteRpc::WriteRpc(AsyncRpcData* data, MonoDelta timeout)
         CHECK_EQ(table()->table_type(), YBTableType::PGSQL_TABLE_TYPE);
         auto* pgsql_op = down_cast<YBPgsqlWriteOp*>(op->yb_op.get());
         req_.add_pgsql_write_batch()->Swap(pgsql_op->mutable_request());
+        if (pgsql_op->write_time()) {
+          req_.set_external_hybrid_time(pgsql_op->write_time().ToUint64());
+        }
         break;
       }
       case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;

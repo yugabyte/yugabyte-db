@@ -148,6 +148,7 @@ AutoVacuumShmemStruct
 AutoVacuumWorkItem
 AutoVacuumWorkItemType
 AuxProcType
+BackfillIndexStmt
 BF_ctx
 BF_key
 BF_word
@@ -2001,6 +2002,7 @@ RoleSpec
 RoleSpecType
 RoleStmtType
 RollupData
+RowBounds
 RowCompareExpr
 RowCompareType
 RowExpr

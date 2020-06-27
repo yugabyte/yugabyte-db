@@ -254,6 +254,9 @@ Status TabletServer::Init() {
     shared_object_->SetEndpoint(bound_addresses.front());
   }
 
+  // 5433 is kDefaultPort in src/yb/yql/pgwrapper/pg_wrapper.h.
+  RETURN_NOT_OK(pgsql_proxy_bind_address_.ParseString(FLAGS_pgsql_proxy_bind_address, 5433));
+
   return Status::OK();
 }
 

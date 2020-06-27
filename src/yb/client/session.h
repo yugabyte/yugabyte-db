@@ -109,7 +109,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   void DeferReadPoint();
 
   // Used for backfilling the index, where we may want to write with a historic timestamp.
-  void SetHybridTimeForWrite(HybridTime ht);
+  void SetHybridTimeForWrite(const HybridTime ht);
 
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);

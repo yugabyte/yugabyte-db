@@ -571,6 +571,16 @@ YBCStatus YBCPgInsertStmtSetUpsertMode(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->InsertStmtSetUpsertMode(handle));
 }
 
+YBCStatus YBCPgInsertStmtSetWriteTime(YBCPgStatement handle, const uint64_t write_time) {
+  HybridTime write_hybrid_time;
+  YBCStatus status = ToYBCStatus(write_hybrid_time.FromUint64(write_time));
+  if (status) {
+    return status;
+  } else {
+    return ToYBCStatus(pgapi->InsertStmtSetWriteTime(handle, write_hybrid_time));
+  }
+}
+
 // UPDATE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,

@@ -322,6 +322,12 @@ class YBClient {
   CHECKED_STATUS GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback);
 
+  Result<IndexPermissions> GetIndexPermissions(
+      const TableId& table_id,
+      const TableId& index_id);
+  Result<IndexPermissions> GetIndexPermissions(
+      const YBTableName& table_name,
+      const YBTableName& index_name);
   Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
       const TableId& table_id,
       const TableId& index_id,

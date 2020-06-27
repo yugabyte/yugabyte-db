@@ -506,7 +506,11 @@ Oid YBCHeapInsert(TupleTableSlot *slot,
 	}
 }
 
-void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum ybctid)
+void YBCExecuteInsertIndex(Relation index,
+						   Datum *values,
+						   bool *isnull,
+						   Datum ybctid,
+						   bool is_backfill)
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 	Assert(ybctid != 0);
@@ -516,10 +520,14 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	YBCPgStatement insert_stmt = NULL;
 
 	/* Create the INSERT request and add the values from the tuple. */
+	/*
+	 * TODO(jason): rename `is_single_row_txn` to something like
+	 * `non_distributed_txn` when closing issue #4906.
+	 */
 	HandleYBStatus(YBCPgNewInsert(dboid,
-	                              relid,
-	                              false /* is_single_row_txn */,
-	                              &insert_stmt));
+								  relid,
+								  is_backfill /* is_single_row_txn */,
+								  &insert_stmt));
 
 	PrepareIndexWriteStmt(insert_stmt, index, values, isnull,
 						  RelationGetNumberOfAttributes(index),
@@ -532,6 +540,13 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	if (!index->rd_index->indisunique) {
 		HandleYBStatus(YBCPgInsertStmtSetUpsertMode(insert_stmt));
 	}
+
+	/* For index backfill, set write hybrid time to a time in the past.  This
+	 * is to guarantee that backfilled writes are temporally before any online
+	 * writes. */
+	/* TODO(jason): don't hard-code 50. */
+	if (is_backfill)
+		HandleYBStatus(YBCPgInsertStmtSetWriteTime(insert_stmt, 50));
 
 	/* Execute the insert and clean up. */
 	YBCExecWriteStmt(insert_stmt, index, NULL /* rows_affected_count */);
