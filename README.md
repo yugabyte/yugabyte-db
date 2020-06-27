@@ -205,6 +205,51 @@ Note: There is no commit between an explicit merge commit and the parent commit,
 
 http://jira.bitnine.net:19090/display/USRND/Git+Merge+Strategy
 
+Setting up GIT remotes
+----------------------
+
+https://git-scm.com/book/en/v2/Git-Basics-Working-with-Remotes
+
+Policy on Reporting Bug
+----------------------
+
+Bug reports are only useful however if they include enough information to understand, isolate and reproduce the bug. Simply encountering an error does not mean a bug should be reported. A bug logged in JIRA that cannot be reproduced will be closed.
+
+The more context the reporter can give about a bug, the better, such as: how the bug was introduced, by which commit, etc. It assists the committers in the decision process on how far the bug fix should be backported, when the pull request is merged. The pull request to fix the bug should narrow down the problem to the root cause.
+
+Ideally, bug reports are accompanied by a proposed code change to fix the bug. This isn’t always possible, as those who discover a bug may not have the experience to fix it. A bug may be reported by creating a JIRA ticket without creating a pull request.
+
+Data correctness/data loss bugs are very serious. Make sure the corresponding bug report JIRA ticket is labeled as correctness or data-loss. Please send an email to dev@age.apache.org after submitting the bug report, to quickly draw attention to the issue.
+
+Performance issues are classified as bugs. The pull request to fix a performance bug must provide a benchmark to prove the problem is indeed fixed.
+
+Maintaining JIRA issues
+----------------------
+
+Inevitably some issues are duplicates, become obsolete, can not be reproduced, could benefit from more detail, etc. It’s useful to help identify these issues and resolve them, either by advancing the discussion or resolving the JIRA ticket. Most contributors are able to directly resolve JIRAs. Use judgment in determining whether you are confident the issue should be resolved. If in doubt, just leave a comment on the JIRA ticket.
+
+When resolving JIRA tickets, please observe the following conventions:
+
+* Resolve as Fixed if there’s a release or code commit that resolved the issue.
+    * Set Fix Version(s), if and only if the resolution is Fixeds
+    * Set Assignee to the person who contributed the most to its resolution, usually the person who opened the PR that resolved the issue.
+* For issues that can’t be reproduced against master as reported, resolve as Cannot Reproduce.
+* If the issue is the same as or a subset of another issue, resolved as Duplicate
+    * Mark the issue that has less activity or discussion as the duplicate.
+    * Link it to the JIRA ticket it duplicates.
+* If the issue seems clearly obsolete and applies to issues or components that have changed radically since it was opened, resolve as Not a Problem
+* If the issue doesn’t make sense – not actionable – resolve as Invalid.
+* If it’s a coherent issue, but there is a clear indication that there is not support or interest in acting on it, then resolve as Won’t Fix.
+
+
+
+
+
+
+
+
+
+
 
 
 
