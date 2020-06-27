@@ -394,22 +394,38 @@ DefineIndex(Oid relationId,
 						INDEX_MAX_KEYS)));
 
 	/*
-	 * An index build should be concurent when
+	 * An index build should be concurent when all of the following hold:
 	 * - index backfill is enabled
 	 * - the index is secondary
 	 * - the indexed table is not temporary
 	 * Otherwise, it should not be concurrent.  This logic works because
-	 * - primary keys can't be altered after `CREATE TABLE`, so there is no
-	 *   need for index backfill.
+	 * - primary key indexes are on the main table, and index backfill doesn't
+	 *   apply to them.
 	 * - temporary tables cannot have concurrency issues when building indexes.
+	 * Concurrent index build is currently disabled for
+	 * - indexes in nested DDL
+	 * - unique indexes
 	 */
 	stmt->concurrent = (!YBCGetDisableIndexBackfill()
 						&& !stmt->primary
 						&& IsYBRelationById(relationId));
-	if (stmt->concurrent)
-		ereport(LOG,
-				(errmsg("creating index concurrently for table with oid %d",
-						relationId)));
+	{
+		int ddl_nesting_level = YBGetDdlNestingLevel();
+		if (stmt->concurrent && ddl_nesting_level != 1)
+			ereport(ERROR,
+					(errmsg("backfill for secondary indexes is currently only"
+							" supported for standalone CREATE INDEX"
+							" statements"),
+					 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
+							 "Click '+' on the description to raise its priority",
+							 4786)));
+	}
+	if (stmt->concurrent && stmt->unique)
+		ereport(ERROR,
+				(errmsg("backfill for unique indexes is not yet supported"),
+				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
+						 "Click '+' on the description to raise its priority",
+						 4899)));
 
 	/*
 	 * Only SELECT ... FOR UPDATE/SHARE are allowed while doing a standard
@@ -1214,6 +1230,8 @@ DefineIndex(Oid relationId,
 	YBIncrementDdlNestingLevel();
 	StartTransactionCommand();
 
+	/* TODO(jason): handle exclusion constraints, possibly not here. */
+
 	/*
 	 * TODO(jason): retry backfill or revert schema changes instead of failing
 	 * through HandleYBStatus.
@@ -1228,9 +1246,6 @@ DefineIndex(Oid relationId,
 	 * TODO(jason): handle bad actual_index_permissions, like
 	 * YB_INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING.
 	 */
-
-	/* We should now definitely not be advertising any xmin. */
-	Assert(MyPgXact->xmin == InvalidTransactionId);
 
 	/*
 	 * Index can now be marked valid -- update its pg_index entry
@@ -2648,4 +2663,61 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 		/* make our updates visible */
 		CommandCounterIncrement();
 	}
+}
+
+void
+BackfillIndex(BackfillIndexStmt *stmt)
+{
+	IndexInfo  *indexInfo;
+	ListCell   *cell;
+	Oid			heapId;
+	Oid			indexId;
+	Relation	heapRel;
+	Relation	indexRel;
+
+	if (YBCGetDisableIndexBackfill())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("backfill is not enabled")));
+
+	/*
+	 * Examine oid list.  Currently, we only allow it to be a single oid, but
+	 * later it should handle multiple oids of indexes on the same indexed
+	 * table.
+	 * TODO(jason): fix from here downwards for issue #4785.
+	 */
+	if (list_length(stmt->oid_list) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("only a single oid is allowed in BACKFILL INDEX (see"
+						" issue #4785)")));
+
+	foreach(cell, stmt->oid_list)
+	{
+		indexId = lfirst_oid(cell);
+	}
+
+	heapId = IndexGetRelation(indexId, false);
+	// TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock?
+	heapRel = heap_open(heapId, ShareLock);
+	indexRel = index_open(indexId, ShareLock);
+
+	indexInfo = BuildIndexInfo(indexRel);
+	/*
+	 * The index should be ready for writes because it should be on the
+	 * BACKFILLING permission.
+	 */
+	Assert(indexInfo->ii_ReadyForInserts);
+	indexInfo->ii_Concurrent = true;
+	indexInfo->ii_BrokenHotChain = false;
+
+	index_backfill(heapRel,
+				   indexRel,
+				   indexInfo,
+				   false,
+				   &stmt->read_time,
+				   stmt->row_bounds);
+
+	index_close(indexRel, ShareLock);
+	heap_close(heapRel, ShareLock);
 }

@@ -85,7 +85,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
  public:
   BackfillTable(Master *master, ThreadPool *callback_pool,
                 const scoped_refptr<TableInfo> &indexed_table,
-                std::vector<IndexInfoPB> indexes);
+                std::vector<IndexInfoPB> indexes,
+                const scoped_refptr<NamespaceInfo> &ns_info);
 
   void Launch();
 
@@ -125,6 +126,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   int64_t leader_term() const {
     return leader_term_;
   }
+
+  const std::string GetNamespaceName() const;
 
  private:
   void LaunchComputeSafeTimeForRead();
@@ -167,6 +170,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   std::shared_ptr<BackfillTableJob> backfill_job_;
   mutable simple_spinlock mutex_;
   HybridTime read_time_for_backfill_ GUARDED_BY(mutex_){HybridTime::kMin};
+  const scoped_refptr<NamespaceInfo> ns_info_;
 };
 
 class BackfillTableJob : public MonitoredTask {
@@ -238,6 +242,8 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   bool done() const {
     return done_.load(std::memory_order_acquire);
   }
+
+  const std::string GetNamespaceName() const { return backfill_table_->GetNamespaceName(); }
 
  private:
   std::shared_ptr<BackfillTable> backfill_table_;

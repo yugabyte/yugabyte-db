@@ -35,6 +35,8 @@
 #include <memory>
 #include <string>
 
+#include <boost/optional.hpp>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/partial_row.h"
@@ -471,6 +473,9 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
     is_single_row_txn_ = is_single_row_txn;
   }
 
+  const HybridTime& write_time() const { return write_time_; }
+  void SetWriteTime(const HybridTime& value) { write_time_ = value; }
+
  protected:
   virtual Type type() const override { return PGSQL_WRITE; }
 
@@ -485,6 +490,7 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   // Whether this operation should be run as a single row txn.
   // Else could be distributed transaction (or non-transactional) depending on target table type.
   bool is_single_row_txn_ = false;
+  HybridTime write_time_;
 };
 
 class YBPgsqlReadOp : public YBPgsqlOp {
@@ -533,6 +539,8 @@ class YBPgsqlReadOp : public YBPgsqlOp {
 
   bool should_add_intents(IsolationLevel isolation_level) override;
 
+  void SetPartitionKey(const std::string& partition_key) { partition_key_ = partition_key; }
+
  protected:
   virtual Type type() const override { return PGSQL_READ; }
 
@@ -542,6 +550,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   std::unique_ptr<PgsqlReadRequestPB> read_request_;
   YBConsistencyLevel yb_consistency_level_;
   ReadHybridTime read_time_;
+  boost::optional<std::string> partition_key_ = boost::none;
 };
 
 // This class is not thread-safe, though different YBNoOp objects on

@@ -733,8 +733,38 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  Result<string> resume_from = tablet.peer->tablet()->BackfillIndexes(
-      indexes_to_backfill, req->start_key(), deadline, read_at);
+  Result<string> resume_from = STATUS(InternalError, "placeholder");
+  if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
+    if (!req->has_namespace_name()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS(
+              InvalidArgument,
+              "Attempted backfill on YSQL table without supplying database name"),
+          TabletServerErrorPB::OPERATION_NOT_SUPPORTED,
+          &context);
+      return;
+    }
+    // TODO(jason): handle missing pgsql_proxy_bind_address (I think it is possible when disabling
+    // YSQL).
+    resume_from = tablet.peer->tablet()->BackfillIndexesForYsql(
+        indexes_to_backfill,
+        req->start_key(),
+        deadline,
+        read_at,
+        server_->pgsql_proxy_bind_address(),
+        req->namespace_name());
+  } else if (tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE) {
+    resume_from = tablet.peer->tablet()->BackfillIndexes(
+        indexes_to_backfill, req->start_key(), deadline, read_at);
+  } else {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(InvalidArgument, "Attempted backfill on tablet of invalid table type"),
+        TabletServerErrorPB::OPERATION_NOT_SUPPORTED,
+        &context);
+    return;
+  }
   DVLOG(1) << "Tablet " << tablet.peer->tablet_id()
            << ". Backfilled indexes for : " << yb::ToString(index_ids)
            << " got " << resume_from.ToString();

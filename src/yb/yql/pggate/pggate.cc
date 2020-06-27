@@ -825,6 +825,14 @@ Status PgApiImpl::InsertStmtSetUpsertMode(PgStatement *handle) {
   return Status::OK();
 }
 
+Status PgApiImpl::InsertStmtSetWriteTime(PgStatement *handle, const HybridTime write_time) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  RETURN_NOT_OK(down_cast<PgInsert*>(handle)->SetWriteTime(write_time));
+  return Status::OK();
+}
 
 // Update ------------------------------------------------------------------------------------------
 

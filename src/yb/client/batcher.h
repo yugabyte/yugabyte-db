@@ -168,7 +168,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
     force_consistent_read_ = value;
   }
 
-  void SetHybridTimeForWrite(HybridTime ht) {
+  void SetHybridTimeForWrite(const HybridTime ht) {
     hybrid_time_for_write_ = ht;
   }
 

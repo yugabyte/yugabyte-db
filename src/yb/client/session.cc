@@ -194,7 +194,7 @@ ConsistentReadPoint* YBSession::read_point() {
   return transaction_ ? &transaction_->read_point() : read_point_.get();
 }
 
-void YBSession::SetHybridTimeForWrite(HybridTime ht) {
+void YBSession::SetHybridTimeForWrite(const HybridTime ht) {
   hybrid_time_for_write_ = ht;
   if (batcher_) {
     batcher_->SetHybridTimeForWrite(hybrid_time_for_write_);

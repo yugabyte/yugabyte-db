@@ -276,6 +276,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	PartitionBoundSpec	*partboundspec;
 	RoleSpec			*rolespec;
 	OptSplit			*splitopt;
+	RowBounds			*rowbounds;
 }
 
 %type <node>	stmt schema_stmt
@@ -317,6 +318,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateMatViewStmt RefreshMatViewStmt CreateAmStmt
 		CreatePublicationStmt AlterPublicationStmt
 		CreateSubscriptionStmt AlterSubscriptionStmt DropSubscriptionStmt
+		BackfillIndexStmt
 
 %type <node>	select_no_parens select_with_parens select_clause
 				simple_select values_clause
@@ -557,6 +559,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <boolean> opt_varying opt_timezone opt_no_inherit
 
 %type <ival>	Iconst SignedIconst
+%type <ival>	Oid
+%type <list>	oid_list
 %type <str>		Sconst comment_text notify_payload
 %type <str>		RoleId opt_boolean_or_string
 %type <list>	var_list
@@ -623,6 +627,11 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>		hash_partbound partbound_datum_list range_datum_list
 %type <defelt>		hash_partbound_elem
 
+%type <rowbounds>	RowBounds
+%type <str>		partition_key
+%type <str>		row_key row_key_end row_key_start
+%type <str>		read_time
+
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
  * They must be listed first so that their numeric codes do not depend on
@@ -649,7 +658,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	AGGREGATE ALL ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC
 	ASSERTION ASSIGNMENT ASYMMETRIC AT ATTACH ATTRIBUTE AUTHORIZATION
 
-	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
+	BACKFILL BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
 	BOOLEAN_P BOTH BY
 
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
@@ -925,6 +934,7 @@ stmt :
 			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension"); }
 			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension"); }
 			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze"); }
+			| BackfillIndexStmt { parser_ybc_beta_feature(@1, "backfill index"); }
 			| CreateFunctionStmt { parser_ybc_beta_feature(@1, "function"); }
 			| CreateOpClassStmt { parser_ybc_beta_feature(@1, "opclass"); }
 			| CreatePolicyStmt { parser_ybc_beta_feature(@1, "roles"); }
@@ -8059,6 +8069,87 @@ opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }
 			| NULLS_LA LAST_P				{ $$ = SORTBY_NULLS_LAST; }
 			| /*EMPTY*/						{ $$ = SORTBY_NULLS_DEFAULT; }
 		;
+
+BackfillIndexStmt:
+			BACKFILL INDEX oid_list
+				READ TIME read_time
+				RowBounds
+				{
+					BackfillIndexStmt *n = makeNode(BackfillIndexStmt);
+					n->oid_list = $3;
+					{
+						char *nptr = $6;
+						char *end;
+						errno = 0;
+						n->read_time = strtoul(nptr, &end, 10);
+						if (!(*nptr != '\0' && *end == '\0')
+								|| errno == ERANGE)
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("read time must be uint64"),
+									 parser_errposition(@6)));
+					}
+					n->row_bounds = $7;
+					$$ = (Node *)n;
+				}
+		;
+
+oid_list:	Oid
+				{
+					$$ = list_make1_oid($1);
+				}
+			| oid_list ',' Oid
+				{
+					$$ = lappend_oid($1, $3);
+				}
+		;
+
+read_time:	I_or_F_const
+				{
+					A_Const *con = (A_Const *)$1;
+					if (con->val.type == T_Integer)
+						$$ = psprintf("%d", con->val.val.ival);
+					else
+						$$ = con->val.val.str;
+				}
+		;
+
+RowBounds:	PARTITION partition_key
+				{
+					$$ = makeNode(RowBounds);
+					/* Strip the leading 'x' */
+					$$->partition_key = $2 + 1;
+					$$->row_key_start = NULL;
+					$$->row_key_end = NULL;
+				}
+			| PARTITION partition_key FROM row_key_start
+				{
+					$$ = makeNode(RowBounds);
+					/* Strip the leading 'x' */
+					$$->partition_key = $2 + 1;
+					$$->row_key_start = $4 + 1;
+					$$->row_key_end = NULL;
+				}
+			| PARTITION partition_key FROM row_key_start TO row_key_end
+				{
+					$$ = makeNode(RowBounds);
+					/* Strip the leading 'x' */
+					$$->partition_key = $2 + 1;
+					$$->row_key_start = $4 + 1;
+					$$->row_key_end = $6 + 1;
+				}
+		;
+
+partition_key:
+			XCONST									{ $$ = $1; };
+
+row_key_start:
+			row_key									{ $$ = $1; };
+
+row_key_end:
+			row_key									{ $$ = $1; };
+
+row_key:	XCONST									{ $$ = $1; };
 
 
 /*****************************************************************************
@@ -15619,6 +15710,8 @@ SignedIconst: Iconst								{ $$ = $1; }
 			| '-' Iconst							{ $$ = - $2; }
 		;
 
+Oid:		ICONST									{ $$ = $1; };
+
 /* Role specifications */
 RoleId:		RoleSpec
 				{
@@ -15772,6 +15865,7 @@ unreserved_keyword:
 			| AT
 			| ATTACH
 			| ATTRIBUTE
+			| BACKFILL
 			| BACKWARD
 			| BEFORE
 			| BEGIN_P

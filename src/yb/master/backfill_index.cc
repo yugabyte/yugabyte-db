@@ -277,9 +277,18 @@ Status MultiStageAlterTable::StartBackfillingData(
     l->Commit();
   }
   indexed_table->SetIsBackfilling(true);
+
+  scoped_refptr<NamespaceInfo> ns_info;
+  {
+    NamespaceIdentifierPB ns_identifier;
+    ns_identifier.set_id(indexed_table->namespace_id());
+    RETURN_NOT_OK_PREPEND(
+        catalog_manager->FindNamespace(ns_identifier, &ns_info),
+        "Getting namespace info for backfill");
+  }
   auto backfill_table = std::make_shared<BackfillTable>(
       catalog_manager->master_, catalog_manager->AsyncTaskPool(),
-      indexed_table, std::vector<IndexInfoPB>{index_pb});
+      indexed_table, std::vector<IndexInfoPB>{index_pb}, ns_info);
   backfill_table->Launch();
   return Status::OK();
 }
@@ -441,9 +450,10 @@ void BackfillTableJob::SetState(MonitoredTaskState new_state) {
 // -----------------------------------------------------------------------------------------------
 BackfillTable::BackfillTable(Master *master, ThreadPool *callback_pool,
                              const scoped_refptr<TableInfo> &indexed_table,
-                             std::vector<IndexInfoPB> indexes)
+                             std::vector<IndexInfoPB> indexes,
+                             const scoped_refptr<NamespaceInfo> &ns_info)
     : master_(master), callback_pool_(callback_pool),
-      indexed_table_(indexed_table), indexes_to_build_(indexes) {
+      indexed_table_(indexed_table), indexes_to_build_(indexes), ns_info_(ns_info) {
   LOG_IF(DFATAL, indexes_to_build_.size() != 1)
       << "As of Dec 2019, we only support "
       << "building one index at a time. indexes_to_build_.size() = "
@@ -519,6 +529,10 @@ std::string BackfillTable::description() const {
            : Format("Waiting to GetSafeTime from $0/$1 tablets", num_pending, num_tablets)));
 }
 
+const std::string BackfillTable::GetNamespaceName() const {
+  return ns_info_->name();
+}
+
 Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
   if (!s.ok()) {
     // Move on to ABORTED permission.
@@ -543,7 +557,7 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
     read_timestamp = read_time_for_backfill_;
   }
 
-  // If OK then move on to READ permissions.
+  // If OK then move on to doing backfill.
   if (!timestamp_chosen() && --tablets_pending_ == 0) {
     LOG_WITH_PREFIX(INFO) << "Completed fetching SafeTime for the table "
                           << yb::ToString(indexed_table_) << " will be using "
@@ -954,6 +968,9 @@ bool BackfillChunk::SendRequest(int attempt) {
   req.set_read_at_hybrid_time(backfill_tablet_->read_time_for_backfill().ToUint64());
   req.set_schema_version(backfill_tablet_->schema_version());
   req.set_start_key(start_key_);
+  if (backfill_tablet_->tablet()->table()->GetTableType() == TableType::PGSQL_TABLE_TYPE) {
+    req.set_namespace_name(backfill_tablet_->GetNamespaceName());
+  }
   for (const IndexInfoPB& idx_info : backfill_tablet_->indexes()) {
     req.add_indexes()->CopyFrom(idx_info);
   }

@@ -358,6 +358,8 @@ class PgApiImpl {
 
   CHECKED_STATUS InsertStmtSetUpsertMode(PgStatement *handle);
 
+  CHECKED_STATUS InsertStmtSetWriteTime(PgStatement *handle, const HybridTime write_time);
+
   //------------------------------------------------------------------------------------------------
   // Update.
   CHECKED_STATUS NewUpdate(const PgObjectId& table_id,
