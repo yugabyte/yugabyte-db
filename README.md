@@ -186,6 +186,19 @@ In this case, the commit will be merged into the master branch with the followin
 
     $ git merge
 
+Multiple Commits for a Single Task
+----------------------
+
+Keeping Commit History
+Sometimes, having logically separated multiple commits for a single task helps developers to grasp the logical process of the work that had been done for the task. If the commits are merged with fast-forward strategy, the commits will not be grouped together. Therefore, to group the commits, create an explicit merge commit.
+
+In this case, the commits will be merged into the master branch with the same process above except the last step(step 7).
+
+For the last step, the local task branch will be merged into the local master branch with an explicit merge commit by running the following command. If you omit --no-ff option, the command will do fast-forward merge instead.
+
+ $ make install
+
+
 
 
 
