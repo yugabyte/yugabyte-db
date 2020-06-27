@@ -45,7 +45,7 @@ Options:
   --clean
     Remove the build directory before building.
   --clean-thirdparty
-    Remove previously built third-party dependencies and rebuild them. Does not imply --clean.
+    Remove previously built third-party dependencies and rebuild them. Implies --clean.
   --no-ccache
     Do not use ccache. Useful when debugging build scripts or compiler/linker options.
   --clang
@@ -682,6 +682,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     --clean-thirdparty)
       clean_thirdparty=true
+      is_clean_build=true
+      clean_before_build=true
     ;;
     -f|--force|-y)
       force=true
