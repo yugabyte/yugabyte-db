@@ -283,6 +283,8 @@ Status PgCreateTable::Exec() {
   // For index, set indexed (base) table id.
   if (indexed_table_id()) {
     table_creator->indexed_table_id(indexed_table_id()->GetYBTableId());
+    // TODO(jason): only skip waiting on concurrent index build.
+    table_creator->wait(false);
   }
   if (is_unique_index()) {
     table_creator->is_unique_index(true);

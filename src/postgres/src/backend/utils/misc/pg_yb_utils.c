@@ -726,6 +726,12 @@ YBIsInitDbAlreadyDone()
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static int ddl_nesting_level = 0;
 
+int
+YBGetDdlNestingLevel()
+{
+	return ddl_nesting_level;
+}
+
 void
 YBIncrementDdlNestingLevel()
 {

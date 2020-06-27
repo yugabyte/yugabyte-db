@@ -57,9 +57,10 @@ extern Oid YBCExecuteNonTxnInsert(Relation rel,
  * Insert a tuple into the an index's backing YugaByte index table.
  */
 extern void YBCExecuteInsertIndex(Relation rel,
-                                  Datum *values,
-                                  bool *isnull,
-                                  Datum ybctid);
+								  Datum *values,
+								  bool *isnull,
+								  Datum ybctid,
+								  bool is_backfill);
 
 /*
  * Delete a tuple (identified by ybctid) from a YugaByte table.
