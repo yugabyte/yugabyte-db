@@ -2,6 +2,7 @@
 
 Apache AGE(Incubating)
 ==========
+
 Note: AgensGraph-Extension was renamed to Apache AGE based on Apache requirements since we donated this project to Apache Software Foundation. 
 
 Apache AGE is an extension of PostgreSQL that provides an implemtation of the [openCypher](https://www.opencypher.org/) query language.
@@ -44,3 +45,10 @@ Run the following statements in ``psql`` to create and load age in PostgreSQL.
     LOAD
     =# SET search_path = ag_catalog, "$user", public;
     SET
+
+
+
+How To Contribute 
+============
+
+There are multiple ways you can contribute to the project.And help is always welcome! All details can be found on the contributing page. Keep reading for a quick overview!
