@@ -30,7 +30,7 @@ Installation Procedure
 The build process will attempt to use the first path in the PATH environment variable when installing AGE. If the pg_config path if located there, run the following command in the source code directory of Apache AGE to build and install the extension.
 
     $ make install
-
+    
 If the path to your Postgres installation is not in the PATH variable, add the path in the arguements:
 
     $ make PG_CONFIG=/path/to/postgres/bin/pg_config install
@@ -133,11 +133,11 @@ Code Review Process
         * If the commit is not for any issues on Jira, omit " [JIRA Ticket Name Here]". OR make a Jira ticket
     *The email body will look like this:
     
-            Commit bef50e5d86d45707806f5733695a229f3e295b1a
+                Commit bef50e5d86d45707806f5733695a229f3e295b1a
 
-            [one blank line]
+                [one blank line]
 
-            Description
+                Description
         
         * The first line is the hash code of the base commit, NOT the commit you've created.
             * This will help reviewers to quickly apply the .patch files.
@@ -160,7 +160,8 @@ Detailed below is our workflow for adding patches that have passed the approval 
 Single Commit for a Single Task
 In this case, the commit will be merged into the master branch with the following process.
 
-1.Change the current working branch to the local master branch by running the following command.
+1. Change the current working branch to the local master branch by running the following command.
+
     $ git checkout master
 
 
