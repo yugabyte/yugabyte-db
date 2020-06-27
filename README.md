@@ -199,6 +199,11 @@ For the last step, the local task branch will be merged into the local master br
     $ git merge --no-ff
 
 
+The above process will result, for example, the following commit history. (This is captured from bitnine/agensgraph-ext.) There is an explicit merge commit, 69f3b32. Each explicit merge commit groups related commits.
+
+Note: There is no commit between an explicit merge commit and the parent commit, which is on the master branch, of the explicit merge commit. This is done by doing rebase before merge.
+
+http://jira.bitnine.net:19090/display/USRND/Git+Merge+Strategy
 
 
 
