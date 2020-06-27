@@ -111,9 +111,11 @@ When new contributors want to join the project, they may have a particular chang
 
 Before proceeding, contributors should evaluate if the proposed change is likely to be relevant, new and actionable:
 
-*Is it clear that code must change? Proposing a JIRA and pull request is appropriate only when a clear problem or change has been identified.
-*If simply having trouble using AGE, use the mailing lists first, rather than creating a JIRA ticket or proposing a change.
-*When in doubt, email user@age.apache.org first about the possible change
+* Is it clear that code must change? Proposing a JIRA and pull request is appropriate only when a clear problem or change has been identified.
+
+* If simply having trouble using AGE, use the mailing lists first, rather than creating a JIRA ticket or proposing a change.
+
+* When in doubt, email user@age.apache.org first about the possible change
 Search the user@age.apache.org and dev@age.apache.org mailing list Archive Link Here for related discussions.
 
 Search JIRA for existing issues: New JIRA link here
