@@ -203,6 +203,10 @@ The above process will result, for example, the following commit history. (This 
 
 Note: There is no commit between an explicit merge commit and the parent commit, which is on the master branch, of the explicit merge commit. This is done by doing rebase before merge.
 
+
+
+
+
 http://jira.bitnine.net:19090/display/USRND/Git+Merge+Strategy
 
 Setting up GIT remotes
@@ -254,6 +258,26 @@ NOTE: In some environments, code block does not properly show indentation. To se
 Use 4 spaces per indentation level. (no tab character)
     * You can see the same indentation in all environments.
     
+For switch statement, see below.
+
+                    switch (suffix) {
+                case 'G':
+                case 'g':
+                        mem <<= 30;
+                        break;
+                case 'M':
+                case 'm':
+                        mem <<= 20;
+                        break;
+                case 'K':
+                case 'k':
+                        mem <<= 10;
+                        // fall through
+                default:
+                        break;
+                }
+
+    
 ##### Breaking long lines and strings
 
 The line length limit is 79 columns, except for strings longer than 79 characters.
@@ -262,9 +286,49 @@ The line length limit is 79 columns, except for strings longer than 79 character
 
 All braces are on their own line solely.
 
-If all the bodies of if/else statement contain a singe line, omit braces.
+        int function(int x)
+        {
+            body of function
+        }
 
-One exception is do statement.
+        struct s
+        {
+            int a;
+            int b;
+        };
+
+        if (x is true)
+        {
+            we do a
+        }
+        else if (y is true)
+        {
+            we do b
+        }
+        else
+        {
+            we do c
+            we do d
+        }
+
+
+If all the bodies of if/else statement contain a singe line, omit braces. See below.
+
+    if (x is true)
+        we do a
+
+    if (y is true)
+        we do b
+    else
+        we do c
+
+One exception is do statement.See below. 
+
+    do
+    {
+        body of do-loop
+    } while (condition);
+
 
 ##### Naming
 ###### Style
@@ -276,6 +340,57 @@ Use typedef only for struct and enum. It must not be used for pointer types.
 ##### Commenting
 For multi-line comments, use C style multi-line comments.
 For single-line comments, use C++ style single-line comments.
+See below. 
+
+
+    /*
+     * This function
+     * does x
+     */
+    void f(void)
+    {
+        // This is to check ...
+        if (y is true)
+            we do b
+
+        /*
+         * We need to do this here
+         * because of ...
+         */
+        for (;;)
+    }
+
+##### Macros, Enums, and RTL
+Don't align bodies of macros.
+
+* If names are changed or new entries are added, it may produces unnecessary diffs and this makes it harder for you to find lines that are actually modified.
+
+    // do this
+    #define Anum_ag_graph_name 1
+    #define Anum_ag_graph_namespace 2
+
+    // not this
+    #define Anum_ag_graph_name  	  1
+    #define Anum_ag_graph_namespace 2
+    
+When you write a macro that spans multiple lines, don't align \ character.
+* If bodies of macros are modified, it may produces unnecessary diffs and this makes
+* it harder for you to find lines that are actually modified.
+
+    // do this
+    #define f() \
+        do \
+        { \
+            run(); \
+        } while (0)
+
+    // not this
+    #define f() 	\
+        do      	\
+        {       	\
+            run();       \
+        } while (0)
+
 
 ##### Newlines
 For newlines, only \n is allowed, not \r\n and \r.
