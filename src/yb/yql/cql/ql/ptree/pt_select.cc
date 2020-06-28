@@ -378,6 +378,11 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   // Check if there is an index to use. If there is and it covers the query fully, we will query
   // just the index and that is it.
   if (index_id_.empty()) {
+    // Validate the ordering expressions without processing ORDER BY clause. This check is to
+    // verify that ordering column exists, and the column's datatype allows comparison. The entire
+    // ORDER BY clause can only be analyzed after an INDEX is chosen.
+    RETURN_NOT_OK(ValidateOrderByExprs(sem_context));
+
     RETURN_NOT_OK(AnalyzeIndexes(sem_context));
     if (child_select_ && child_select_->covers_fully_) {
       return Status::OK();
@@ -645,6 +650,15 @@ PTOrderBy::Direction directionFromSortingType(ColumnSchema::SortingType sorting_
 
 } // namespace
 
+CHECKED_STATUS PTSelectStmt::ValidateOrderByExprs(SemContext *sem_context) {
+  if (order_by_clause_ != nullptr) {
+    for (auto& order_by : order_by_clause_->node_list()) {
+      RETURN_NOT_OK(order_by->ValidateExpr(sem_context));
+    }
+  }
+  return Status::OK();
+}
+
 CHECKED_STATUS PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context) {
   if (order_by_clause_ != nullptr) {
     if (key_where_ops_.empty()) {
@@ -758,6 +772,11 @@ PTOrderBy::PTOrderBy(MemoryContext *memctx,
     order_expr_(order_expr),
     direction_(direction),
     null_placement_(null_placement) {
+}
+
+Status PTOrderBy::ValidateExpr(SemContext *sem_context) {
+  RETURN_NOT_OK(order_expr_->Analyze(sem_context));
+  return Status::OK();
 }
 
 Status PTOrderBy::Analyze(SemContext *sem_context) {
