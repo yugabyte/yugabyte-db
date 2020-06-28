@@ -301,6 +301,10 @@ class PTSelectStmt : public PTDmlStmt {
   // For nested select from an index: the index id and whether it covers the query fully.
   TableId index_id_;
   bool covers_fully_ = false;
+
+  // Name of all columns the SELECT statement is referenced. Similar to the list "column_refs_",
+  // but this is a list of column names instead of column ids.
+  MCSet<string> referenced_index_colnames_;
 };
 
 }  // namespace ql
