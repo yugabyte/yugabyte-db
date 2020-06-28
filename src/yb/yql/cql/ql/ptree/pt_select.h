@@ -59,6 +59,7 @@ class PTOrderBy : public TreeNode {
     return MCMakeShared<PTOrderBy>(memctx, std::forward<TypeArgs>(args)...);
   }
 
+  CHECKED_STATUS ValidateExpr(SemContext *sem_context);
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
   Direction direction() const {
@@ -260,6 +261,7 @@ class PTSelectStmt : public PTDmlStmt {
   CHECKED_STATUS LookupIndex(SemContext *sem_context);
   CHECKED_STATUS AnalyzeIndexes(SemContext *sem_context);
   CHECKED_STATUS AnalyzeDistinctClause(SemContext *sem_context);
+  CHECKED_STATUS ValidateOrderByExprs(SemContext *sem_context);
   CHECKED_STATUS AnalyzeOrderByClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeLimitClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeOffsetClause(SemContext *sem_context);
