@@ -1428,6 +1428,27 @@ void MasterPathHandlers::HandleGetClusterConfig(
   << "<pre class=\"prettyprint\">" << config.DebugString() << "</pre>";
 }
 
+void MasterPathHandlers::HandleGetClusterConfigJSON(
+  const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  SysClusterConfigEntryPB config;
+  Status s = master_->catalog_manager()->GetClusterConfig(&config);
+  if (!s.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(s.ToString());
+    jw.EndObject();
+    return;
+  }
+
+  // return cluster config in JSON format
+  jw.Protobuf(config);
+}
+
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
@@ -1461,6 +1482,11 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/cluster-config", "Cluster Config",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      false);
+  cb = std::bind(&MasterPathHandlers::HandleGetClusterConfigJSON, this, _1, _2);
+  server->RegisterPathHandler(
+      "/api/v1/cluster-config", "Cluster Config JSON",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false,
       false);
   cb = std::bind(&MasterPathHandlers::HandleTasksPage, this, _1, _2);
   server->RegisterPathHandler(
