@@ -365,31 +365,31 @@ Don't align bodies of macros.
 
 * If names are changed or new entries are added, it may produces unnecessary diffs and this makes it harder for you to find lines that are actually modified.
 
-    // do this
-    #define Anum_ag_graph_name 1
-    #define Anum_ag_graph_namespace 2
+        // do this
+        #define Anum_ag_graph_name 1
+        #define Anum_ag_graph_namespace 2
 
-    // not this
-    #define Anum_ag_graph_name  	  1
-    #define Anum_ag_graph_namespace 2
+        // not this
+        #define Anum_ag_graph_name  	  1
+        #define Anum_ag_graph_namespace 2
     
 When you write a macro that spans multiple lines, don't align \ character.
 * If bodies of macros are modified, it may produces unnecessary diffs and this makes
 * it harder for you to find lines that are actually modified.
 
-    // do this
-    #define f() \
-        do \
-        { \
-            run(); \
-        } while (0)
+        // do this
+        #define f() \
+            do \
+            { \
+                run(); \
+            } while (0)
 
-    // not this
-    #define f() 	\
-        do      	\
-        {       	\
-            run();       \
-        } while (0)
+        // not this
+        #define f() 	\
+            do      	\
+            {       	\
+                run();       \
+            } while (0)
 
 
 ##### Newlines
