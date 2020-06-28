@@ -78,7 +78,17 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       index_permissions_(pb.index_permissions()),
       use_mangled_column_name_(pb.use_mangled_column_name()) {
   for (const IndexInfo::IndexColumn &index_col : columns_) {
-    covered_column_ids_.insert(index_col.indexed_column_id);
+    // Mark column as covered if the index column is the column itself.
+    // Do not mark a column as covered when indexing by an expression of that column.
+    // - When an expression such as "jsonb->>'field'" is used, then the "jsonb" column should not
+    //   be included in the covered list.
+    // - Currently we only support "jsonb->>" expression, but this is true for all expressions.
+    if (index_col.colexpr.expr_case() == QLExpressionPB::ExprCase::kColumnId ||
+        index_col.colexpr.expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET) {
+      covered_column_ids_.insert(index_col.indexed_column_id);
+    } else {
+      has_index_by_expr_ = true;
+    }
   }
 }
 
@@ -130,6 +140,15 @@ bool IndexInfo::PrimaryKeyColumnsOnly(const Schema& indexed_schema) const {
 
 bool IndexInfo::IsColumnCovered(const ColumnId column_id) const {
   return covered_column_ids_.find(column_id) != covered_column_ids_.end();
+}
+
+bool IndexInfo::IsColumnCovered(const std::string& column_name) const {
+  for (const auto &col : columns_) {
+    if (column_name == col.column_name) {
+      return true;
+    }
+  }
+  return false;
 }
 
 int32_t IndexInfo::IsExprCovered(const string& expr_name) const {
