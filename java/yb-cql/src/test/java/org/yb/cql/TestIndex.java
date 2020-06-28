@@ -1221,4 +1221,29 @@ public class TestIndex extends BaseCQLTest {
 
     LOG.info("End test: " + getCurrentTestMethodName());
   }
+
+  @Test
+  public void testCreateInvalidOrderBy() throws Exception {
+    // This test makes sure that server does not crash for invalid query such as those with
+    // invalid ORDER BY expression.
+    LOG.info("Start test: " + getCurrentTestMethodName());
+
+    // Test scalar index against ORDER BY non existing column.
+    session.execute("CREATE TABLE test_order_by(a INT PRIMARY KEY, b INT, c INT) " +
+                    "WITH TRANSACTIONS = {'enabled' : true};");
+    session.execute("CREATE INDEX test_order_by_idx ON test_order_by(b, c);");
+    // Run one valid query to make sure the setup is correct.
+    runValidSelect("SELECT * FROM test_order_by WHERE b = 3 ORDER BY c;");
+    // Test invalid ORDER BY.
+    runInvalidQuery("SELECT * FROM test_order_by WHERE b = 3 ORDER BY non_existent_column;");
+
+    // Test jsonb index against ORDER BY non existing field.
+    session.execute("CREATE TABLE test_jsonb_order_by(i INT, j JSONB, k INT, PRIMARY KEY (i, k))" +
+                    "  WITH TRANSACTIONS = { 'enabled' : true };");
+    session.execute("CREATE INDEX test_jsonb_order_by_idx ON test_jsonb_order_by(k, j->>'x');");
+    // Run one valid query to make sure the setup is correct.
+    runValidSelect("SELECT * FROM test_jsonb_order_by WHERE k = 1 ORDER BY j->>'x';");
+    // Test invalid ORDER BY.
+    runInvalidQuery("SELECT * FROM test_jsonb_order_by WHERE k = 1 ORDER BY j->>'y';");
+  }
 }
