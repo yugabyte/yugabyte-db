@@ -155,6 +155,8 @@ string WriteOperation::ToString() const {
 
 void WriteOperation::DoStartSynchronization(const Status& status) {
   std::unique_ptr<WriteOperation> self(this);
+  // Move submit_token_ so it is released after this function.
+  ScopedRWOperation submit_token(std::move(submit_token_));
   // If a restart read is required, then we return this fact to caller and don't perform the write
   // operation.
   if (restart_read_ht_.is_valid()) {

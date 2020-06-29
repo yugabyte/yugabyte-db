@@ -191,6 +191,12 @@ DEFINE_int32(backfill_index_timeout_grace_margin_ms, 50,
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, advanced);
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, runtime);
 
+DEFINE_bool(disable_alter_vs_write_mutual_exclusion, false,
+             "A safety switch to disable the changes from D8710 which makes a schema "
+             "operation take an exclusive lock making all write operations wait for it.");
+TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
+TAG_FLAG(disable_alter_vs_write_mutual_exclusion, runtime);
+
 DEFINE_bool(cleanup_intents_sst_files, true,
             "Cleanup intents files that are no more relevant to any running transaction.");
 
@@ -397,6 +403,8 @@ Tablet::Tablet(const TabletInitData& data)
       mvcc_(
           MakeTabletLogPrefix(data.metadata->raft_group_id(), data.log_prefix_suffix), data.clock),
       tablet_options_(data.tablet_options),
+      pending_op_counter_("RocksDB"),
+      write_ops_being_submitted_counter_("Tablet schema"),
       client_future_(data.client_future),
       local_tablet_filter_(data.local_tablet_filter),
       log_prefix_suffix_(data.log_prefix_suffix),
@@ -1758,6 +1766,17 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
   }
 
   const WriteRequestPB* key_value_write_request = operation->state()->request();
+  if (!GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
+    auto write_permit = GetPermitToWrite(operation->deadline());
+    if (!write_permit.ok()) {
+      TRACE("Could not get the write permit.");
+      WriteOperation::StartSynchronization(std::move(operation), MoveStatus(write_permit));
+      return;
+    }
+    // Save the write permit to be released after the operation is submitted
+    // to Raft queue.
+    operation->UseSubmitToken(std::move(write_permit));
+  }
 
   if (!key_value_write_request->redis_write_batch().empty()) {
     KeyValueBatchFromRedisWriteBatch(std::move(operation));
@@ -2337,7 +2356,8 @@ ScopedRWOperationPause Tablet::PauseReadWriteOperations(Stop stop) {
                      Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
     return ScopedRWOperationPause(
         &pending_op_counter_,
-        MonoDelta::FromMilliseconds(FLAGS_tablet_rocksdb_ops_quiet_down_timeout_ms),
+        CoarseMonoClock::Now() +
+            MonoDelta::FromMilliseconds(FLAGS_tablet_rocksdb_ops_quiet_down_timeout_ms),
         stop);
   }
   FATAL_ERROR("Unreachable code -- the previous block must always return");
@@ -2878,6 +2898,19 @@ HybridTime Tablet::DoGetSafeTime(
     return HybridTime::kInvalid;
   }
   return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
+}
+
+ScopedRWOperationPause Tablet::PauseWritePermits(CoarseTimePoint deadline) {
+  TRACE("Blocking write permit(s)");
+  auto se = ScopeExit([] { TRACE("Blocking write permit(s) done"); });
+  // Prevent new write ops from being submitted.
+  return ScopedRWOperationPause(&write_ops_being_submitted_counter_, deadline, Stop::kFalse);
+}
+
+ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
+  TRACE("Acquiring write permit");
+  auto se = ScopeExit([] { TRACE("Acquiring write permit done"); });
+  return ScopedRWOperation(&write_ops_being_submitted_counter_);
 }
 
 void Tablet::ForceRocksDBCompactInTest() {
