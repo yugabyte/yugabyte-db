@@ -22,7 +22,8 @@ The rows in table  _"t1"_ are inserted in random order. The table is used for de
 and [`ntile()`](../../percent-rank-cume-dist-ntile/#ntile).
 It is also used in the section [Informal overview of function invocation using the OVER clause](../../../functionality-overview/).
 
-This `ysqlsh` script creates table _"t1"_:
+
+This `ysqlsh` script creates and populates able _"t1"_. Save it as `t1.sql`.
 
 ```postgresql
 -- Suppress the spurious warning that is raised

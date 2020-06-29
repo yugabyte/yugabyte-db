@@ -30,7 +30,7 @@ And for _"class = 2"_, there are deliberate duplicates so the _2_ and _8_ each o
 
 For maximum pedagogic effect, it uses the same technique that [table t1](../table-t1/) uses to ensure that, with no window `ORDER BY` clause, a `SELECT` will return rows in a random order.
 
-This `ysqlsh` script creates table  _"t2"_:
+This `ysqlsh` script creates and populates able _"t2"_. Save it as `t2.sql`.
 
 ```postgresql
 -- Suppress the spurious warning that is raised

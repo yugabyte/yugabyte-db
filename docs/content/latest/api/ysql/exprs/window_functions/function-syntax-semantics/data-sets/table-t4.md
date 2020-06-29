@@ -30,7 +30,8 @@ A large value like 100,000 gives the best compromise between the time to populat
 -   < ~3 sec to populate the table
 -   < ~3 sec to create the index
 
-This `ysqlsh` script creates the table _"t4"_ and creates the procedure to populate the table:
+This `ysqlsh` script creates the table _"t4"_ and creates the procedure to populate the table.
+Save it as `t4_1.sql`.
 
 ```postgresql
 -- Suppress the spurious warning that is raised
@@ -86,9 +87,15 @@ end;
 $body$;
 ```
 
-Now execute the procedure and then create unique index on the _"dp_score"_ column:
+This script executes the procedure and then creates a unique index on the _"dp_score"_ column. Save it as `t4_2.sql`.
 
 ```postgresql
+-- You can run this script time and again. It will always finish silently.
+
+set client_min_messages = warning;
+drop index if exists t4_dp_score_unq;
+truncate table t4;
+
 \timing on
 call generate_scores(no_of_rows => 100000);
 create unique index t4_dp_score_unq on t4(dp_score);

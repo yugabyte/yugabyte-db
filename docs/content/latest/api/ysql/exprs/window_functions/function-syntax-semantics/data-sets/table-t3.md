@@ -16,10 +16,9 @@ showAsideToc: true
 Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t3"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../extensions/#pgcrypto) extension.
 {{< /note >}}
 
-The rows in table  _"t3"_ are inserted in random order. It has twenty-five rows of the Monday through Friday prices of a stock. This supports demonstrations of the [`lag()` and `lead()`](../../lag-lead/) window functions.
-It is also used in the section [Informal overview of function invocation using the OVER clause](../../../functionality-overview/).
+The rows in table  _"t3"_ are inserted in random order. It has twenty-five rows of the Monday through Friday prices of a stock. This supports demonstrations of the [`lag()` and `lead()`](../../lag-lead/) window functions. It is also used in the section [Informal overview of function invocation using the OVER clause](../../../functionality-overview/).
 
-This `ysqlsh` script creates the table:
+This `ysqlsh` script creates and populates able _"t3"_. Save it as `t3.sql`.
 
 ```postgresql
 -- Suppress the spurious warning that is raised
