@@ -3,9 +3,6 @@ title: Replace a failed YB-TServer
 headerTitle: Replace a failed YB-TServer
 linkTitle: Replace a failed YB-TServer
 description: Procedure to replace a failed YB-TServer
-aliases:
-  - /troubleshoot/cluster/replace-tserver/
-  - /latest/troubleshoot/cluster/replace-tserver/
 menu:
   latest:
     identifier: replace-failed-tserver
