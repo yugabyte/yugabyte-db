@@ -25,24 +25,23 @@ showAsideToc: true
   </li>
 </ul>
 
-
-
 ## sbt
 
-To build your Java application using the YugabyteDB Java driver for YCQL, add the following sbt dependency to your application:
+To build your Java application using the Yugabyte Java Driver for YCQL, add the following `sbt` (Scala build tool) dependency to your application:
 
 ```sbt
-libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.2.0-yb-19"
+libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-5"
 ```
 
-## Working Example
+## Working example
 
 ### Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
-- installed Scala version 2.12+ and sbt 1.3.8+
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow the steps in [YCQL Quick start](../../../../api/ycql/quick-start/).
+- installed Scala version 2.12 or later.
+- installed `sbt` (Scala build tool) 1.3.8 or later.
 
 ### Create the sbt build file
 
@@ -58,7 +57,7 @@ scalacOptions := Seq("-unchecked", "-deprecation")
 libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.2.0-yb-19"
 ```
 
-### Writing a sample app
+### Write a sample application
 
 Copy the following contents into the file `YBCqlHelloWorld.scala`.
 
@@ -137,16 +136,15 @@ object YBCqlHelloWorld {
 } // object YBCqlHelloWorld
 ```
 
-
 ### Build and run the application
 
-To build the application, just run the following command.
+To build the application, run the following command:
 
 ```sh
 $ sbt compile
 ```
 
-To run the program, run the following command.
+To run the program, run the following command:
 
 ```sh
 $ sbt run
