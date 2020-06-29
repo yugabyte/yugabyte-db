@@ -395,6 +395,10 @@ Result<PgTableDesc::ScopedRefPtr> PgApiImpl::LoadTable(const PgObjectId& table_i
   return pg_session_->LoadTable(table_id);
 }
 
+void PgApiImpl::InvalidateTableCache(const PgObjectId& table_id) {
+  pg_session_->InvalidateTableCache(table_id);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewCreateTable(const char *database_name,
@@ -654,11 +658,18 @@ Status PgApiImpl::CreateIndexAddColumn(PgStatement *handle, const char *attr_nam
 }
 
 Status PgApiImpl::CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tablets) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
+  SCHECK(PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX),
+         InvalidArgument,
+         "Invalid statement handle");
   return down_cast<PgCreateIndex*>(handle)->SetNumTablets(num_tablets);
+}
+
+Status PgApiImpl::CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
+                                         YBCPgTypeEntity **types, uint64_t *data) {
+  SCHECK(PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX),
+      InvalidArgument,
+      "Invalid statement handle");
+  return down_cast<PgCreateIndex*>(handle)->AddSplitRow(num_cols, types, data);
 }
 
 Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {

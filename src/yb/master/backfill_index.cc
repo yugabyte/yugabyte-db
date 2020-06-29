@@ -146,6 +146,16 @@ using namespace std::literals;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
+void MultiStageAlterTable::CopySchemaDetailsToFullyApplied(SysTablesEntryPB* pb) {
+  VLOG(4) << "Setting fully_applied_schema_version to " << pb->version();
+  pb->mutable_fully_applied_schema()->CopyFrom(pb->schema());
+  pb->set_fully_applied_schema_version(pb->version());
+  pb->mutable_fully_applied_indexes()->CopyFrom(pb->indexes());
+  if (pb->has_index_info()) {
+    pb->mutable_fully_applied_index_info()->CopyFrom(pb->index_info());
+  }
+}
+
 Status MultiStageAlterTable::ClearAlteringState(
     CatalogManager* catalog_manager,
     const scoped_refptr<TableInfo>& table,
@@ -203,19 +213,7 @@ Status MultiStageAlterTable::UpdateIndexPermission(
           indexed_table_data.pb.version(), *current_version);
     }
 
-    indexed_table_data.pb.mutable_fully_applied_schema()->CopyFrom(
-        indexed_table_data.pb.schema());
-    VLOG(1) << "Setting fully_applied_schema_version to "
-            << indexed_table_data.pb.version();
-    indexed_table_data.pb.set_fully_applied_schema_version(
-        indexed_table_data.pb.version());
-    indexed_table_data.pb.mutable_fully_applied_indexes()->CopyFrom(
-        indexed_table_data.pb.indexes());
-    if (indexed_table_data.pb.has_index_info()) {
-      indexed_table_data.pb.mutable_fully_applied_index_info()->CopyFrom(
-          indexed_table_data.pb.index_info());
-    }
-
+    CopySchemaDetailsToFullyApplied(&indexed_table_data.pb);
     for (int i = 0; i < indexed_table_data.pb.indexes_size(); i++) {
       IndexInfoPB *idx_pb = indexed_table_data.pb.mutable_indexes(i);
       if (perm_mapping.find(idx_pb->table_id()) != perm_mapping.end()) {
@@ -223,15 +221,7 @@ Status MultiStageAlterTable::UpdateIndexPermission(
         idx_pb->set_index_permissions(new_perm);
       }
     }
-    VLOG(1) << "Updating index permissions of size " << indexed_table_data.pb.indexes_size()
-            << " to " << ToString(perm_mapping) << ". schema_version from "
-            << indexed_table_data.pb.version() << " to " << indexed_table_data.pb.version() + 1;
-
-    VLOG(1) << "Before updating indexed_table_data.pb.version() is "
-            << indexed_table_data.pb.version();
     indexed_table_data.pb.set_version(indexed_table_data.pb.version() + 1);
-    VLOG(1) << "After updating indexed_table_data.pb.version() is "
-            << indexed_table_data.pb.version();
     indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
                                  Substitute("Alter table version=$0 ts=$1",
                                             indexed_table_data.pb.version(),
@@ -274,18 +264,7 @@ Status MultiStageAlterTable::StartBackfillingData(
     TRACE("Locking indexed table");
     auto l = indexed_table->LockForWrite();
     auto &indexed_table_data = *l->mutable_data();
-    indexed_table_data.pb.mutable_fully_applied_schema()->CopyFrom(
-        indexed_table_data.pb.schema());
-    VLOG(1) << "Setting fully_applied_schema_version to "
-            << indexed_table_data.pb.version();
-    indexed_table_data.pb.set_fully_applied_schema_version(
-        indexed_table_data.pb.version());
-    indexed_table_data.pb.mutable_fully_applied_indexes()->CopyFrom(
-        indexed_table_data.pb.indexes());
-    if (indexed_table_data.pb.has_index_info()) {
-      indexed_table_data.pb.mutable_fully_applied_index_info()->CopyFrom(
-          indexed_table_data.pb.index_info());
-    }
+    CopySchemaDetailsToFullyApplied(&indexed_table_data.pb);
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating indexed table metadata on disk");
     RETURN_NOT_OK_PREPEND(
@@ -389,18 +368,23 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   if (!indexes_to_delete.empty()) {
     index_info_to_update = indexes_to_delete[0];
     // TODO(Amit): #4039 Delete the index after ensuring that there is no pending txn.
+    Status s;
     WARN_NOT_OK(
-        catalog_manager->DeleteIndexInfoFromTable(
-            indexed_table->id(), index_info_to_update.table_id()),
+        (s = catalog_manager->DeleteIndexInfoFromTable(
+             indexed_table->id(), index_info_to_update.table_id())),
         yb::Format(
             "failed to delete index_info for $0 from $1", index_info_to_update.table_id(),
             indexed_table->id()));
-    return ClearAlteringState(catalog_manager, indexed_table, current_version);
+    if (s.ok()) {
+      catalog_manager->SendAlterTableRequest(indexed_table);
+    }
+    return Status::OK();
   }
 
   if (!indexes_to_backfill.empty()) {
     // TODO(Amit): Batch backfill for different indexes.
     index_info_to_update = indexes_to_backfill[0];
+    VLOG(3) << "Start backfilling for " << yb::ToString(index_info_to_update);
     TRACE("Starting backfill process");
     VLOG(1) << ("Starting backfill process");
     WARN_NOT_OK(

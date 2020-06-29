@@ -179,6 +179,9 @@ class PgApiImpl {
   // Load table.
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
 
+  // Invalidate the cache entry corresponding to table_id from the PgSession table cache.
+  void InvalidateTableCache(const PgObjectId& table_id);
+
   //------------------------------------------------------------------------------------------------
   // Create, alter and drop table.
   CHECKED_STATUS NewCreateTable(const char *database_name,
@@ -260,6 +263,9 @@ class PgApiImpl {
                                       bool is_range, bool is_desc, bool is_nulls_first);
 
   CHECKED_STATUS CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tablets);
+
+  CHECKED_STATUS CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
+                                        YBCPgTypeEntity **types, uint64_t *data);
 
   CHECKED_STATUS ExecCreateIndex(PgStatement *handle);
 

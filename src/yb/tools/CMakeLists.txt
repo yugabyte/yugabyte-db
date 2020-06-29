@@ -182,6 +182,10 @@ if(YB_ENT_CURRENT_SOURCE_DIR)
   # Set the test source file folder.
   set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
 
+  set(YB_TEST_LINK_LIBS
+    ${TOOLS_EXTENSIONS_TEST_LINK_LIBS}
+    ${YB_TEST_LINK_LIBS})
+
   foreach(test ${TOOLS_EXTENSIONS_TESTS})
     ADD_YB_TEST(${test})
   endforeach()

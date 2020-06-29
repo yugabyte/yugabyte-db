@@ -40,7 +40,6 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/debug/leakcheck_disabler.h"
-#include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_util.h"

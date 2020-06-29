@@ -226,6 +226,12 @@ class CppCassandraDriverTestIndexMultipleChunks : public CppCassandraDriverTestI
 
 class CppCassandraDriverTestUserEnforcedIndex : public CppCassandraDriverTestIndexSlow {
  public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = CppCassandraDriverTestIndexSlow::ExtraMasterFlags();
+    flags.push_back("--disable_index_backfill_for_non_txn_tables=false");
+    return flags;
+  }
+
   std::vector<std::string> ExtraTServerFlags() override {
     auto flags = CppCassandraDriverTestIndexSlow::ExtraTServerFlags();
     flags.push_back("--client_read_write_timeout_ms=10000");
@@ -1510,9 +1516,10 @@ TEST_F_EX(CppCassandraDriverTest, TestIndexUpdateConcurrentTxn, CppCassandraDriv
     WARN_NOT_OK(session3.ExecuteQuery("update test_table set v = 'bar' where  k = 2;"),
                 "updating k =2 failed.");
 
-    ASSERT_RESULT(WaitUntilIndexPermissionIsAtLeast(
+    auto perm = ASSERT_RESULT(WaitUntilIndexPermissionIsAtLeast(
         client_.get(), table_name, index_table_name,
         IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+    LOG(INFO) << "IndexPermissions is now " << IndexPermissions_Name(perm);
   }
 
   auto main_table_size = ASSERT_RESULT(GetTableSize(&session_, "test_table"));
@@ -1748,16 +1755,23 @@ TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestI
     batch.Add(&statement2);
     ASSERT_OK(session_.ExecuteBatch(batch));
 
-    auto result = ASSERT_RESULT(session_.ExecuteWithResult("select * from index_by_value"));
-    auto iterator = result.CreateIterator();
-    while (iterator.Next()) {
-      auto row = iterator.Row();
-      auto key = row.Value(0).As<int>();
-      auto value = row.Value(1).As<int>();
-      if (value < 0) {
-        ASSERT_EQ(key, kBatchKey);
-        ASSERT_EQ(value, -200);
+    for (;;) {
+      auto result = session_.ExecuteWithResult("select * from index_by_value");
+      if (!result.ok()) {
+        LOG(WARNING) << "Read failed: " << result.status();
+        continue;
       }
+      auto iterator = result->CreateIterator();
+      while (iterator.Next()) {
+        auto row = iterator.Row();
+        auto key = row.Value(0).As<int>();
+        auto value = row.Value(1).As<int>();
+        if (value < 0) {
+          ASSERT_EQ(key, kBatchKey);
+          ASSERT_EQ(value, -200);
+        }
+      }
+      break;
     }
   }
 }

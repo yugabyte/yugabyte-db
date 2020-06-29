@@ -11,12 +11,16 @@
 # under the License.
 #
 
+# We need access to the generated pg_type_d.h header from this directory.
+include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
+
 # Utility functions that are specific for PGGate.
 add_subdirectory(util)
 
 # PGGate API library.
 set(PGGATE_SRCS
     ybc_pggate.cc
+    ybc_pggate_tool.cc
     pggate.cc
     pggate_thread_local_vars.cc
     pg_session.cc

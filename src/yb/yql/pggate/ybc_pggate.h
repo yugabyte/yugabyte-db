@@ -135,6 +135,11 @@ YBCStatus YBCPgReserveOids(YBCPgOid database_oid,
 
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version);
 
+void YBCPgInvalidateTableCache(
+    const YBCPgOid database_oid,
+    const YBCPgOid table_oid);
+YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
+
 // TABLE -------------------------------------------------------------------------------------------
 // Create and drop table "database_name.schema_name.table_name()".
 // - When "schema_name" is NULL, the table "database_name.table_name" is created.
@@ -200,6 +205,9 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              bool *is_primary,
                              bool *is_hash);
 
+YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
+                                  YBCPgTableProperties *properties);
+
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row);
 
 YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle);
@@ -230,6 +238,9 @@ YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name
                                     bool is_desc, bool is_nulls_first);
 
 YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_tablets);
+
+YBCStatus YBCPgCreateIndexAddSplitRow(YBCPgStatement handle, int num_cols,
+                                      YBCPgTypeEntity **types, uint64_t *data);
 
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 

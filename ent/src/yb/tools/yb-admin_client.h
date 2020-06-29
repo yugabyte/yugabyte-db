@@ -36,7 +36,9 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   // Snapshot operations.
   CHECKED_STATUS ListSnapshots(bool show_details, bool show_restored);
-  CHECKED_STATUS CreateSnapshot(const std::vector<client::YBTableName>& tables);
+  CHECKED_STATUS CreateSnapshot(const std::vector<client::YBTableName>& tables,
+                                bool add_indexes = true);
+  CHECKED_STATUS CreateNamespaceSnapshot(const TypedNamespaceName& ns);
   CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id);
   CHECKED_STATUS DeleteSnapshot(const std::string& snapshot_id);
 

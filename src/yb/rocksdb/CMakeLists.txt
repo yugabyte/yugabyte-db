@@ -74,7 +74,6 @@ set(ROCKSDB_SRCS
     db/write_thread.cc
     db/xfunc_test_points.cc
     db/db_iterator_wrapper.cc
-    memtable/hash_cuckoo_rep.cc
     memtable/hash_linklist_rep.cc
     memtable/hash_skiplist_rep.cc
     memtable/skiplistrep.cc
@@ -91,9 +90,6 @@ set(ROCKSDB_SRCS
     table/block_hash_index.cc
     table/block_prefix_index.cc
     table/bloom_block.cc
-    table/cuckoo_table_builder.cc
-    table/cuckoo_table_factory.cc
-    table/cuckoo_table_reader.cc
     table/flush_block_policy.cc
     table/format.cc
     table/fixed_size_filter_block.cc
@@ -332,7 +328,6 @@ ADD_YB_TEST(db/column_family_test)
 ADD_YB_TEST(db/compact_files_test)
 ADD_YB_TEST(db/compaction_job_stats_test)
 ADD_YB_TEST(db/corruption_test)
-ADD_YB_TEST(db/cuckoo_table_db_test)
 ADD_YB_TEST(db/db_block_cache_test)
 ADD_YB_TEST(db/db_bloom_filter_test)
 ADD_YB_TEST(db/db_compaction_filter_test)
@@ -356,8 +351,6 @@ ADD_YB_TEST(db/listener_test)
 ADD_YB_TEST(db/plain_table_db_test)
 ADD_YB_TEST(db/version_edit_test)
 ADD_YB_TEST(db/write_callback_test)
-ADD_YB_TEST(table/cuckoo_table_builder_test)
-ADD_YB_TEST(table/cuckoo_table_reader_test)
 ADD_YB_TEST(tools/ldb_cmd_test)
 ADD_YB_TEST(tools/reduce_levels_test)
 ADD_YB_TEST(util/delete_scheduler_test)

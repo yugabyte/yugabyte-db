@@ -39,6 +39,7 @@ void YBCFreeStatus(YBCStatus s);
 size_t YBCStatusMessageLen(YBCStatus s);
 const char* YBCStatusMessageBegin(YBCStatus s);
 const char* YBCStatusCodeAsCString(YBCStatus s);
+char* DupYBStatusMessage(YBCStatus status, bool message_only);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 

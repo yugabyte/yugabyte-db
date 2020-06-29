@@ -1169,8 +1169,28 @@ class SchemaBuilder {
     return next_id_;
   }
 
-  Schema Build() const { return Schema(cols_, col_ids_, num_key_columns_, table_properties_); }
-  Schema BuildWithoutIds() const { return Schema(cols_, num_key_columns_, table_properties_); }
+  void set_pgtable_id(PgTableOid pgtable_id) {
+    pgtable_id_ = pgtable_id;
+  }
+
+  PgTableOid pgtable_id() const {
+    return pgtable_id_;
+  }
+
+  void set_cotable_id(Uuid cotable_id) {
+    cotable_id_ = cotable_id;
+  }
+
+  Uuid cotable_id() const {
+    return cotable_id_;
+  }
+
+  Schema Build() const {
+    return Schema(cols_, col_ids_, num_key_columns_, table_properties_, cotable_id_, pgtable_id_);
+  }
+  Schema BuildWithoutIds() const {
+    return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,  pgtable_id_);
+  }
 
   // assumes type is allowed in primary key -- this should be checked before getting here
   // using DataType (not QLType) since primary key columns only support elementary types
@@ -1238,6 +1258,8 @@ class SchemaBuilder {
   unordered_set<string> col_names_;
   size_t num_key_columns_;
   TableProperties table_properties_;
+  PgTableOid pgtable_id_ = 0;
+  Uuid cotable_id_ = Uuid(boost::uuids::nil_uuid());
 
   DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);
 };

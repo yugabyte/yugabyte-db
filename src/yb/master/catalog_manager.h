@@ -588,6 +588,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
                                            AreLeadersOnPreferredOnlyResponsePB* resp);
 
+  // Check that transaction tablet leaders are spread amongst tservers.
+  CHECKED_STATUS AreTransactionLeadersSpread(const AreTransactionLeadersSpreadRequestPB* req,
+                                             AreTransactionLeadersSpreadResponsePB* resp);
+
   // Return the placement uuid of the primary cluster containing this master.
   string placement_uuid() const;
 
@@ -910,7 +914,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                   DeferredAssignmentActions* deferred,
                                   TabletInfos* new_tablets);
 
-  CHECKED_STATUS HandleTabletSchemaVersionReport(TabletInfo *tablet, uint32_t version);
+  CHECKED_STATUS HandleTabletSchemaVersionReport(TabletInfo *tablet, uint32_t version,
+                                                 const scoped_refptr<TableInfo>& table = nullptr);
 
   // Send the create tablet requests to the selected peers of the consensus configurations.
   // The creation is async, and at the moment there is no error checking on the

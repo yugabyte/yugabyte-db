@@ -289,6 +289,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
 ARCHIVED_PATHS_IN_SRC_DIR = [
     'bin',
     'build-support',
+    'managed/devops/bin/yb_backup.py',
     'managed/src/main/resources/version.txt',
     'managed/version.txt',
     'python',
@@ -297,7 +298,6 @@ ARCHIVED_PATHS_IN_SRC_DIR = [
     'www',
     'yb_build.sh',
     'build/venv',
-    'thirdparty/homebrew_version_for_jenkins.txt',
     'requirements.txt',
     'requirements_frozen.txt',
 ]

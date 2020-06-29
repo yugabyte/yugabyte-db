@@ -225,14 +225,19 @@ Heartbeater::Thread::Thread(
 
 namespace {
 
-void LeaderMasterCallback(HostPort* dst_hostport,
-                          Synchronizer* sync,
+struct FindLeaderMasterData {
+  HostPort result;
+  Synchronizer sync;
+  std::shared_ptr<GetLeaderMasterRpc> rpc;
+};
+
+void LeaderMasterCallback(const std::shared_ptr<FindLeaderMasterData>& data,
                           const Status& status,
                           const HostPort& result) {
   if (status.ok()) {
-    *dst_hostport = result;
+    data->result = result;
   }
-  sync->StatusCB(status);
+  data->sync.StatusCB(status);
 }
 
 } // anonymous namespace
@@ -247,20 +252,24 @@ Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline, HostPort*
   }
   auto master_sock_addrs = *master_addresses;
   if (master_sock_addrs.empty()) {
-    return STATUS(NotFound, "unable to resolve any of the master addresses!");
+    return STATUS(NotFound, "Unable to resolve any of the master addresses!");
   }
-  Synchronizer sync;
-  auto rpc = rpc::StartRpc<GetLeaderMasterRpc>(
-      Bind(&LeaderMasterCallback, leader_hostport, &sync),
+  auto data = std::make_shared<FindLeaderMasterData>();
+  data->rpc = std::make_shared<GetLeaderMasterRpc>(
+      Bind(&LeaderMasterCallback, data),
       master_sock_addrs,
       deadline,
       server_->messenger(),
       &server_->proxy_cache(),
       &rpcs_,
       true /* should_timeout_to_follower_ */);
-  auto result = sync.Wait();
+  data->rpc->SendRpc();
+  auto status = data->sync.WaitFor(deadline - CoarseMonoClock::Now() + 1s);
+  if (status.ok()) {
+    *leader_hostport = data->result;
+  }
   rpcs_.RequestAbortAll();
-  return result;
+  return status;
 }
 
 Status Heartbeater::Thread::ConnectToMaster() {
