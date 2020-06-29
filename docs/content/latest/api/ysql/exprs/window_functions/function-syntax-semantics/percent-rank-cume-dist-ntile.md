@@ -109,6 +109,10 @@ return value:      int
 
 ## Comparing the effect of percent_rank(), cume_dist(), and ntile() on the same input
 
+{{< note title=" " >}}
+If you haven't yet installed the tables that the code examples use, then go to the section [The data sets used by the code examples](../data-sets/).
+{{< /note >}}
+
 The query that this section presents shows that the results produced by `percent_rank()` and `cume_dist()` are consistent with the formulas for these values that are given in the accounts, above, of these two functions. 
 
 Create a data set using the `ysqlsh` script that [table t2](../data-sets/table-t2/) presents. This has been designed:
@@ -119,7 +123,6 @@ Create a data set using the `ysqlsh` script that [table t2](../data-sets/table-t
 Now do this:
 
 ```postgresql
--- Uses table t2.
 with
   v1 as (
     select

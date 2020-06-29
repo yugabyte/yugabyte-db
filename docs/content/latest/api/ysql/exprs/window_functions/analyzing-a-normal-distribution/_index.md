@@ -44,7 +44,7 @@ cume_dist() =
   "no of rows with a value <= the current row's value" /
   "no. of rows in window"
 ```
-The algorithm the that [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) uses is different from the one that  [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) uses. And the algorithm that `ntile()` uses to produce its bucket allocations directly is unspecified. 
+The algorithm that the [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) uses is different from the one that  [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) uses. And the algorithm that `ntile()` uses to produce its bucket allocations directly is unspecified. 
 
 However, the answer "Yes" to the question "is there any difference between the result produced by  each of the three functions?" is a qualified "Yes" because when certain conditions hold, there is no difference.
 
@@ -266,7 +266,7 @@ This function is useful in all sorts of generic testing scenarios. And it's ofte
 
 You saw that this idiom:
 ```
-k uuid default admin.gen_random_uuid() primary key
+k uuid default gen_random_uuid() primary key
 ```
 allows bulk insert into a table to go very much faster than this more familiar idiom:
 ```

@@ -22,21 +22,84 @@ These examples are sufficient to give a general sense of the following notions:
 - the three clauses of the [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) : the `PARTITION BY` clause, the window `ORDER BY` clause, and the [**frame_clause**](../../../syntax_resources/grammar_diagrams/#frame-clause)
 - how an aggregate function gains different useful functionality when it's invoked using an `OVER` clause rather than (as is probably more common) in conjunction with the regular `GROUP BY` clause.
 
-  The first four examples use the data set provided by [table t1](../function-syntax-semantics/data-sets/table-t1). The last two use the data set provided by [table t3](../function-syntax-semantics/data-sets/table-t3). If you create both these tables now, then you can quickly run all the `SELECT` statements that follow without losing momentum.
+{{< note title=" " >}}
+If you haven't yet installed the tables that the code examples use, then go to the section [The data sets used by the code examples](../function-syntax-semantics/data-sets/).
+{{< /note >}}
 
 ### Using row_number() in the simplest way
 
-The [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) window function is the simplest among the set of eleven such functions that YSQL supports. Briefly, this function assigns an ordinal number, starting at _1_, to the rows within the specified [_window_](../sql-syntax-semantics/#the-window-definition-rule) according to the specified ordering rule.
+The [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) window function is the simplest among the set of eleven such functions that YSQL supports. Briefly, this function assigns an ordinal number, starting at _1_, to the rows within the specified [_window_](../sql-syntax-semantics/#the-window-definition-rule) according to the specified ordering rule. Here is the most basic example.
+
+```postgresql
+select
+  k,
+  row_number() over(order by k desc) as r
+from t1
+order by k asc;
+```
+The syntax and semantics of the `ORDER BY` clause, within the parentheses of the `OVER` clause, are identical to what you're used to when an `ORDER BY` clause is used after the `FROM` clause in a subquery. The `DESC` keyword is used in this example to emphasize this point. It says that the values returned by [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) are to be assigned in the order corresponding to sorting the values of _"k"_ in descending order—and it specifies nothing else. Here is the result:
+
+```
+ k  | r  
+----+----
+  1 | 25
+  2 | 24
+  3 | 23
+  4 | 22
+  5 | 21
+  ...
+ 21 |  5
+ 22 |  4
+ 23 |  3
+ 24 |  2
+ 25 |  1
+```
+
+The output lines for values of _"r"_ between _6_ and _20_ were manually removed to reduce the clutter.
+
+Because the `OVER` clause doesn't specify a `PARTITION BY` clause, the so-called [_window_](../sql-syntax-semantics/#the-window-definition-rule) that [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) operates on coincides with all of the rows in table _"t1"_. 
+
+The next example emphasizes the point that a window function is often used in a subquery which, like any other subquery, is used to define a `WITH` clause view to allow further logic to be applied—in this case, a `WHERE` cause restriction on the values returned by [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) (and, of course, a final query-level `ORDER BY` rule).
+
+```postgresql
+with v as (
+  select
+    k,
+    row_number() over(order by k desc) as r
+  from t1)
+select
+  k,
+  r
+from v
+where (r between 1 and 5) or (r between 21 and 25)
+order by r asc;
+```
+
+This is the result:
+```
+ k  | r  
+----+----
+ 25 |  1
+ 24 |  2
+ 23 |  3
+ 22 |  4
+ 21 |  5
+  5 | 21
+  4 | 22
+  3 | 23
+  2 | 24
+  1 | 25
+```
+
+### Showing the importance of the window ORDER BY clause
 
 Here is a counter example. Notice that the [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) doesn't specify a window `ORDER BY` clause.
 
 ```plpgsql
--- Uses table t1.
 with a as (
   select
-    row_number() over (
-    --order by class, k
-    ) as r,
+    -- The use of the bare OVER() here brings meaningless results.
+    row_number() over () as r,
     class,
     k
   from t1)
@@ -84,43 +147,10 @@ To see the most dramatic effect of the unpredictability of the result set, save 
 
 Sometimes, you'll see that, by chance, not a single output row is marked _"true"_. Sometimes, you'll see that a few are so marked.
 
-The next example does specify the `ORDER BY` clause but doesn't specify a `PARTITION BY` clause. So in this case [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) operates on all of the rows in table _"t1"_. The `OVER` clause specifies that the rows in the single [_window_](../sql-syntax-semantics/#the-window-definition-rule) should be sorted by _"k"_ in descending order; and it specifies nothing else. The output of the window function is used to define a `WITH` clause view; and the overall statement's final `SELECT` orders a restriction on this view.
-
-```postgresql
--- Uses table t1.
-with v as (
-  select
-    k,
-    row_number() over(order by k desc) as r
-  from t1)
-select
-  k,
-  r
-from v
-where r between 1 and 10
-order by r desc;
-```
-This is the result:
-```
- k  | r  
-----+----
- 16 | 10
- 17 |  9
- 18 |  8
- 19 |  7
- 20 |  6
- 21 |  5
- 22 |  4
- 23 |  3
- 24 |  2
- 25 |  1
-```
-
 ### Using row_number() with "PARTITION BY"
 
 This example adds a `PARTITION BY` clause to the window `ORDER BY` clause in the [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) . It selects and orders by _"v"_ rather than _"k"_ because this has `NULL`s and demonstrates the within-[_window_](../sql-syntax-semantics/#the-window-definition-rule) effect of `NULLS FIRST`. The [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) is moved to a dedicated `WINDOW` clause that names it so that the `OVER` clause can simply reference the definition that it needs. This might seem only to add verbosity in this example. But using a dedicated `WINDOW` clause reduces verbosity when invocations of several different window functions in the same subquery use the same [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) .
 ```postgresql
--- Uses table t1.
 \pset null '??'
 
 with a as (
@@ -155,13 +185,15 @@ This is the result:
 ```
 ### Using nth_value() and last_value() to return the whole row
 
-If you want the output value for any of `first_value()`, `last_value()`, `nth_value()`, `lag()`, or `lead()` to include more than one column, then you must list them in a _"row"_ type constructor. And if you want _all_ of the table's columns, you can use the table's same-named implicitly created _"row"_ type. This example uses [`nth_value()`](../function-syntax-semantics/first-value-nth-value-last-value/#nth-value). This accesses the _Nth_ row within the ordered set that each [_window_](../sql-syntax-semantics/#the-window-definition-rule) defines. This example picks out the third row. The restriction _"class in (3, 5)"_ cuts down the result set to make it easier to read.
+If you want the output value for any of `first_value()`, `last_value()`, `nth_value()`, `lag()`, or `lead()` to include more than one column, then you must list them in a _"row"_ type constructor. This example uses [`nth_value()`](../function-syntax-semantics/first-value-nth-value-last-value/#nth-value). This accesses the _Nth_ row within the ordered set that each [_window_](../sql-syntax-semantics/#the-window-definition-rule) defines. It picks out the third row. The restriction _"class in (3, 5)"_ cuts down the result set to make it easier to read.
 
 ```postgresql
--- Uses table t1.
+drop type if exists rt cascade;
+create type rt as (class int, k int, v int);
+
 select
   class,
-  nth_value((class, k, v)::t1, 3) over w as nv
+  nth_value((class, k, v)::rt, 3) over w as nv
 from t1
 where class in (3, 5)
 window w as (
@@ -188,10 +220,13 @@ It produces this result:
 ```
 Each of `first_value()`, `last_value()`, and `nth_value()`, as their names suggest, produces the same output for each row of a [_window_](../sql-syntax-semantics/#the-window-definition-rule). It would be natural, therefore, to use the query above in a `WITH` clause whose final `SELECT ` picks out the individual columns from the record and adds a `GROUP BY` clause, thus:
 ```postgresql
+drop type if exists rt cascade;
+create type rt as (class int, k int, v int);
+
 \pset null '??'
 with a as (
   select
-    last_value((class, k, v)::t1) over w as lv
+    last_value((class, k, v)::rt) over w as lv
   from t1
   window w as (
     partition by class
@@ -207,13 +242,13 @@ order by class;
 ```
 This example uses [`last_value()`](../function-syntax-semantics/first-value-nth-value-last-value/#last-value) because the data set has different values for _"k"_ and _"v"_ for the last row in each [_window_](../sql-syntax-semantics/#the-window-definition-rule). This is the result:
 ```
- class | k | v  
--------+---+----
-     5 | 1 | ??
-    10 | 2 | ??
-    15 | 3 | ??
-    20 | 4 | ??
-    25 | 5 | ??
+ class | k  | v  
+-------+----+----
+     1 |  5 | ??
+     2 | 10 | ??
+     3 | 15 | ??
+     4 | 20 | ??
+     5 | 25 | ??
 ```
 ### Using lag() and lead() to compute a moving average
 
@@ -226,7 +261,6 @@ The query is specifically written to meet the exact requirements. It would need 
 The statement of requirement implies that the computation is not feasible for the first two and the last two days in the window. Under these circumstances, `lag()` and `lead()`, return `NULL`—or, it you prefer, a default value that you supply using an optional third parameter. See the dedicated section on [`lag()` and `lead()`](../function-syntax-semantics/lag-lead/) for details.
 
 ```postgresql
--- Uses table t3.
 with v as (
   select
     day,
@@ -279,7 +313,6 @@ Here, the statement is first prepared and then executed to emphasize the fact th
 
 Notice that this approach uses the value returned by [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number), using an `OVER` clause that does no more than order the rows, to exclude the meaningless first _N_ and last _N_ averages, where _N_ is the same parameterized value that _"groups between N preceding and N following"_ uses. These rows, if not excluded, would simply show the averages over the rows that allow access. You probably don't want to see those answers.
 ```postgresql
--- Uses table t3.
 prepare stmt(int) as
 with v as (
   select
@@ -298,7 +331,7 @@ order by day;
 
 execute stmt(2);
 ```
-The result is identical to that produced by the `lag()`/`lead()` approach.
+The result is identical to that produced by the `lag()`/`lead()` approach. Try repeating the `EXECUTE` statement with a few different actual arguments. The bigger it gets, the fewer result rows you see, and the closer the values of the moving average get to each other.
 ### Using the aggregate function sum() with the OVER clause
 This example shows a different spelling of the [**frame_clause**](../../../syntax_resources/grammar_diagrams/#frame-clause):
 ```
@@ -307,7 +340,6 @@ range between unbounded preceding and current row
 so that the average includes, for each row, the row itself and only the rows that precede it in the sort order.
 
 ```postgresql
--- Uses table t1.
 with v as (
   select
     class,

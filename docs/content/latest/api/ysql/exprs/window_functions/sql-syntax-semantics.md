@@ -156,7 +156,7 @@ The `PARTITION BY` clause groups the rows that the subquery defines into [_windo
 
 ### The window ORDER BY clause
 
-The window `ORDER BY` clause determines the order in which the rows of a [_window_](./#the-window-definition-rule) are processed by the window function. It works similarly to a query-level `ORDER BY` clause; but it cannot use output-column names or numbers. If the window `ORDER BY` clause is omitted, then rows are processed in an unspecified order so that the results of any window function invoked in this way would be unpredictable and therefore meaningless. Aggregation functions invoked in this way might be sensitve to what the window `ORDER BY` clause says. This will be the case when, for example, the [_window frame_](./#frame-clause-semantics-for-window-functions) is smaller than the whole [_window_](./#the-window-definition-rule) and moves with the current row. The section [Using the aggregate function avg() to compute a moving average](../functionality-overview/#using-the-aggregate-function-avg-to-compute-a-moving-average) provides an example.
+The window `ORDER BY` clause determines the order in which the rows of a [_window_](./#the-window-definition-rule) are processed by the window function. It works similarly to a query-level `ORDER BY` clause; but it cannot use output-column names or numbers. If the window `ORDER BY` clause is omitted, then rows are processed in an unspecified order so that the results of any window function invoked in this way would be unpredictable and therefore meaningless. Aggregation functions invoked in this way might be sensitive to what the window `ORDER BY` clause says. This will be the case when, for example, the [_window frame_](./#frame-clause-semantics-for-window-functions) is smaller than the whole [_window_](./#the-window-definition-rule) and moves with the current row. The section [Using the aggregate function avg() to compute a moving average](../functionality-overview/#using-the-aggregate-function-avg-to-compute-a-moving-average) provides an example.
 
 ### The frame_clause
 
@@ -241,7 +241,7 @@ If the `FILTER` clause is specified, then only the input rows for which it evalu
 
 This shows the use of a window function with an `OVER` clause that directly specifies the [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) :
 
-```postgresql
+```
 select
   ...
   window_function(...) over (partition by <column list 1> order by <column list 2>) as a1,

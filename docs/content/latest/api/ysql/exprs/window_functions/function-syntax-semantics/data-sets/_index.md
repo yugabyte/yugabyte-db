@@ -1,5 +1,5 @@
 ---
-title: Example sata sets for window-functions
+title: Example data sets for window-functions
 linkTitle: Tables for the code examples
 headerTitle: The data sets used by the code examples
 description: A selection of data sets for the code examples that illustrate the use of window functions.
@@ -22,32 +22,44 @@ These four pages:
 
 contain scripts to create and populate tables with data sets that are useful for demonstrating window function semantics.
 
-Each table uses a surrogate `uuid` primary key whose values are provided by the function `gen_random_uuid()`, brought by the `pgcrypto` extension. The procedure to popuate table _"t4"_ also uses the function `normal_rand()`, brought by the `tablefunc` extension. These extensions are described in the sections [pgcrypto](../../../../extensions/#pgcrypto) and [tablefunc](../../../../extensions/#tablefunc) in the section [Install and use extensions](../../../../extensions/). Each is a pre-bundled extension. This means that the installation for each will work without any preparatory steps, as long as you install them as a `superuser` like this:
+Each table uses a surrogate `uuid` primary key whose values are provided by the function `gen_random_uuid()`, brought by the `pgcrypto` extension. The procedure to populate table _"t4"_ also uses the function `normal_rand()`, brought by the `tablefunc` extension. These extensions are described in the sections [pgcrypto](../../../../extensions/#pgcrypto) and [tablefunc](../../../../extensions/#tablefunc) in the section [Install and use extensions](../../../../extensions/). Each is a pre-bundled extension. This means that the installation for each will work without any preparatory steps, as long as you install them as a `superuser` like this:
 
-```
-\c demo admin
+```postgresql
 create extension pgcrypto;
 create extension tablefunc;
-grant usage on schema admin to <some user>;
 ```
-This illustrates common good practice. The code examples for this _"Window functions"_ section were developed using a database called  _"demo_" with a `superuser` called _"admin"_. Then the examples themselves were created using a minimally privilaged user, like _"u1"_, in the same _"demo"_ database. You can adopt the practice that suits you—for example, in a sandbox YugabyteDB cluster on your laptop, you might prefer simply to run all your _ad hoc_ code examples as a `superuser`. The practice used for this overall section is reflected by schema-qualification for the invocation of `gen_random_uuid()` like this:
-```
-create table t4(
-  k uuid default admin.gen_random_uuid() primary key,
-  ...
-```
-{{< note title="About the use of the gen_random_uuid() function" >}}
 
-Yugabyte recommends that, when you want a self-populating surrogate primary key column, you should use the approach shown here for table _"t4"_ rather than, for example `serial` or `bigserial`. This is because these two datatypes use a `SEQUENCE`  to generate unique values, and this involves expensive coordination between the nodes in a YugabyteDB cluster. In contrast, any invocation of `gen_random_uuid()` on any node, will reliably produce a new globally unique value entirely algorithmically. This brings a noticeable performance benefit. The tables _"t1"_, _"t2"_, and _"t3"_ have only a handful of rows and so this performance benefit is well below the noise level. But [table _"t4"_](./table-t4/) is populated using a purpose-written procedure parameterized with the number of rows to create. You get the most convincing demonstration effect with a large number, like _100,000_, rows. You can easily compare the times to populate the table with a `uuid` column using `gen_random_uuid()` and the approach that is common, and that works well, in PostgreSQL—a monolithic SQL database:
+If you plan to run the code samples in this main "_Window functions"_ section on your laptop using a YugabyteDB cluster that you've created for your own personal use, then you probably have already adopted the habit of running any and all _ad hoc_ tests as a `superuser`. If so, then simply install the [pgcrypto](../../../../extensions/#pgcrypto) and [tablefunc](../../../../extensions/#tablefunc) extensions just as you'd do anything else and then create the tables _"t1"_, _"t2"_, _"t3"_, and _"t4"_.
+
+{{< note title="Note 1: about the installation of extensions" >}}
+
+If you've established the practice of creating different databases within your cluster for different purposes, and within a database using a regime of different users that own different schemas to model how a real-world application would be organized, then you'll doubtless want to create and install the extensions in a dedicated central schema and ensure that this is in the _search path_ for all ordinary users.
+
+{{< /note >}}
+
+{{< note title="Note 2: about the use of the gen_random_uuid() function" >}}
+
+Yugabyte recommends that, when you want a self-populating surrogate primary key column, you should use the approach shown here for the test tables, like this:
+
+```
+create table my_table(
+  k uuid default gen_random_uuid() primary key, ...
+```
+
+This is preferred to using, for example `serial` or `bigserial`, like this:
+
 ```
 create table t4(
-  k serial primary key,
-  ...
+  k serial primary key, ...
 ```
-You can expect to see about a _20x_ difference in the elapsed time that it takes to populate the table.
+(This approach that is common, and that works well, in PostgreSQL—a monolithic SQL database.) This is because `serial` and `bigserial` use a `SEQUENCE`  to generate unique values, and this involves expensive coordination between the nodes in a YugabyteDB cluster. In contrast, any invocation of `gen_random_uuid()` on any node, will reliably produce a new globally unique value entirely algorithmically. This brings a noticeable performance benefit.
+
+The tables _"t1"_, _"t2"_, and _"t3"_ have only a handful of rows and so this performance benefit is well below the noise level. But [table _"t4"_](./table-t4/) is populated using a purpose-written procedure parameterized with the number of rows to create. You get the most convincing demonstration effect with a large number, like _100,000_, rows.
+
+You can expect to see that populating the table "t4" if you use `gen_random_uuid()` is about _20x_ faster than if you use a sequence.
 
 {{< /note >}}
 
 Each of the tables _"t1"_, _"t2"_, _"t3"_, and _"t4"_ is populated so that the values of interest for the demonstrations come back in random order (as you are taught to expect) when a query has no `ORDER BY` clause. This takes just a little programming effort for the tables _"t1"_, _"t2"_, and _"t3"_. Effort is needed because, following a bulk insert into a newly-created table, queries with no `ORDER BY` clause tend to see the rows come back in the order in which they are inserted. And the `INSERT` statements for the tables _"t1"_, _"t2"_, and _"t3"_ explicitly list the to-be-inserted values in an intuitive order where they increase monotonically. No effort is needed for table _"t4"_ because the values of interest are generated by `normal_rand()`—which generates its values in a random order.
 
-Deliberately subverting this tendency allows a vivid demonstration of the fact that if the [**window_definition**](../../../../syntax_resources/grammar_diagrams/#window-definition) that's used to invoke _any_ window function has no window `ORDER BY` clause (even if there is such a clause at overall query level), then the results are unpredictable and therefore meaningless. This is demonstrated in the section [Using `row_number()` in the simplest way](../../functionality-overview/#using-row-number-in-the-simplest-way). (There are cases where the order doesn't matter—for example, when the set of rows is the input to a conventionally invoked aggregate function.)
+Deliberately subverting this tendency (that when rows are inserted naïvely, as they usually are for functionality demonstrations, they come back in a "natural" order, even with no `ORDER BY`) allows a vivid demonstration of the fact that if the [**window_definition**](../../../../syntax_resources/grammar_diagrams/#window-definition) that's used to invoke _any_ window function has no window `ORDER BY` clause (even if there is such a clause at overall query level), then the results are unpredictable and therefore meaningless. This is demonstrated in the section [Showing the importance of the window ORDER BY clause](../../showing-the-importance-of-the-window-order-by-clause). (There are cases where the order doesn't matter—for example, when the set of rows is the input to a conventionally invoked aggregate function.)

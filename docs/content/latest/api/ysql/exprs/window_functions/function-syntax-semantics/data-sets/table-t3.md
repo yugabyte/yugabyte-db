@@ -12,18 +12,20 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Note:** The rows in table  _"t3"_ are inserted in random order. Make sure that you have installed the `pgcrypto` extension before attempting to create this table. All of this is explained in the section [The data sets used by the code examples](../../data-sets/).
+{{< note title=" " >}}
+Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t3"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../extensions/#pgcrypto) extension.
+{{< /note >}}
 
-The table _"t3"_ creates twenty-five rows of the Monday through Friday prices of a stock. This supports demonstrations of the [`lag()` and `lead()`](../../lag-lead/) window functions.
+The rows in table  _"t3"_ are inserted in random order. It has twenty-five rows of the Monday through Friday prices of a stock. This supports demonstrations of the [`lag()` and `lead()`](../../lag-lead/) window functions.
 It is also used in the section [Informal overview of function invocation using the OVER clause](../../../functionality-overview/).
 
-This `ysqlsh` script creates the table and displays its contents:
+This `ysqlsh` script creates the table:
 
 ```postgresql
--- Uses table t3.
 -- Suppress the spurious warning that is raised
 -- when the to-be-deleted table doesn't yet exist.
 set client_min_messages = warning;
+drop type if exists rt cascade;
 drop table if exists t3;
 
 create table t3(
@@ -61,7 +63,7 @@ with v1 as (
     (to_date('17-Oct-2008', 'DD-Mon-YYYY'), 17.02)),
   v2 as (
     select
-      admin.gen_random_uuid() as r,
+      gen_random_uuid() as r,
       column1,
       column2
     from v1)
@@ -71,7 +73,11 @@ select
   column2
 from v2
 order by r;
+```
 
+Now inspect its contents:
+
+```postgresql
 -- Notice the absence of "ORDER BY".
 select
   to_char(day, 'Dy DD-Mon-YYYY') as "Day",

@@ -12,23 +12,23 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Note:** The rows in table  _"t1"_ are inserted in random order. Make sure that you have installed the `pgcrypto` extension before attempting to create this table. All of this is explained in the section [The data sets used by the code examples](../../data-sets/).
+{{< note title=" " >}}
+Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t1"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../extensions/#pgcrypto) extension.
+{{< /note >}}
 
-The table _"t1"_ is used for demonstrating these window functions:
+The rows in table  _"t1"_ are inserted in random order. The table is used for demonstrating these window functions:
 [`percent_rank()`](../../percent-rank-cume-dist-ntile/#percent-rank),
 [`cume_dist()`](../../percent-rank-cume-dist-ntile/#cume-dist),
 and [`ntile()`](../../percent-rank-cume-dist-ntile/#ntile).
 It is also used in the section [Informal overview of function invocation using the OVER clause](../../../functionality-overview/).
 
-The `ysqlsh` script below creates table _"t1"_ and inspects its contents. Notice that the first SELECT to display the content has no `ORDER BY`. This means that each time the script is rerun, the results that it produces will be ordered differently, as promised. If you repeatedly execute the first `SELECT` following a particular execution of the randomly ordered `INSERT`, then you'll probably see the same order time and again. The results of such an unordered `SELECT` tend to reflect the physical layout of the rows at the storage level; and this, in turn, tends to reflect the order of insertion—whatever that might have been, However, you _must not_ rely on this apparent rule. All sorts of things can intervene, especially over longer timescales, to change the ordering of the stored rows.
-
-The second `SELECT` orders the rows usefully and, of course, produces a deterministically reliable result.
+This `ysqlsh` script creates table _"t1"_:
 
 ```postgresql
--- Uses table t1.
 -- Suppress the spurious warning that is raised
 -- when the to-be-deleted table doesn't yet exist.
 set client_min_messages = warning;
+drop type if exists rt cascade;
 drop table if exists t1;
 
 create table t1(
@@ -36,7 +36,7 @@ create table t1(
   class int not null,
   k int not null,
   v int,
-  constraint t1_pk unique(class, k),
+  constraint t1_class_k_unq unique(class, k),
   constraint t1_k_positive check(k > 0),
   constraint t1_class_positive check(class > 0));
 
@@ -51,7 +51,7 @@ with
     from a1),
   a3 as (
     select
-      admin.gen_random_uuid() as r,
+      gen_random_uuid() as r,
       v1,
       v2,
       (v2*5 + (v1 % 5) - v2*5 + 1) as v3
@@ -66,7 +66,12 @@ select
   end
 from a3
 order by r;
+```
+Now inspect its contents. Notice that the first SELECT to display the content has no `ORDER BY`. This means that each time the script is rerun, the results that it produces will be ordered differently, as promised. If you repeatedly execute the first `SELECT` following a particular execution of the randomly ordered `INSERT`, then you'll probably see the same order time and again. The results of such an unordered `SELECT` tend to reflect the physical layout of the rows at the storage level; and this, in turn, tends to reflect the order of insertion—whatever that might have been, However, you _must not_ rely on this apparent rule. All sorts of things can intervene, especially over longer timescales, to change the ordering of the stored rows.
 
+The second `SELECT` orders the rows usefully and, of course, produces a deterministically reliable result.
+
+```postgresql
 \pset null '??'
 
 -- Notice the absence of "ORDER BY".
@@ -113,6 +118,7 @@ Here is the result of the second `SELECT`. To make it easier to see the pattern,
 ```
 
 Do the following to demonstrate that the result set produced by invoking a window function with an `OVER` clause whose [**window_definition**](../../../../../syntax_resources/grammar_diagrams/#window-definition) doesn't include a window `ORDER BY` clause is unreliable. Be sure to re-run the table creation and population script each time before you run this query:
+
 ```postgresql
 select
   class,

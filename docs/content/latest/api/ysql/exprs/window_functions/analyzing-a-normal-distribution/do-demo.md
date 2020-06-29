@@ -14,7 +14,7 @@ showAsideToc: true
 Save this script as `do_demo.sql`.
 ```postgresql
 -- Uses table t4.
--- Once you've created it, you can run this script time and againnusing
+-- Once you've created it, you can run this script time and again using
 -- for example, a different number of histogran buckets or a
 -- different number of buckts for the analyses done by percent_rank(),
 -- cum_dist(), and ntile().

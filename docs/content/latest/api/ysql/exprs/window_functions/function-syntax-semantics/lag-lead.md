@@ -16,10 +16,13 @@ These functions look backwards, or forwards, by the specified number of rows fro
 
 ## Example
 
-First, create a data set using the `ysqlsh` script that [table t3](../data-sets/table-t3/) presents. Then, try this basic demonstration. The actual argument, _2_, for each of `lag()` and `lead()` means, respectively, look back by two rows and look forward by two rows.
+{{< note title=" " >}}
+If you haven't yet installed the tables that the code examples use, then go to the section [The data sets used by the code examples](../data-sets/).
+{{< /note >}}
+
+Try this basic demonstration. The actual argument, _2_, for each of `lag()` and `lead()` means, respectively, look back by two rows and look forward by two rows.
 
 ```postgresql
--- Uses table t3.
 \pset null '<null>'
 select
   to_char(day, 'Dy DD-Mon') as "Day",
@@ -61,8 +64,8 @@ This is the result:
  Fri 17-Oct | $17.02 |             $15.95 |             <null>
 ```
 Notice that _"last_but_one_price"_ is `NULL` for the first two rows. This is, of course, because looking back by two rows for each of these takes you to before the start of the window and so the result of _"lag(price, 2)"_ cannot be determined. In the same way,  _"next_but_one_price"_ is `NULL` for the last two rows. It's easier to check, visually, that the results are as promised by focusing on one particular row, say Wed 01-Oct, the previous-but-one row, Mon 29-Sep, and the next-but-one row, Fri 03-Oct, thus:
+
 ```plostgresql
--- Uses table t3.
 with v as (
   select
     day,
@@ -123,7 +126,9 @@ Use the optional last parameter to specify the value to be returned, instead of 
 
 Here is the minimal demonstration of this technique. Notice that the syntax requires that the actual argument to `lag()` must used to construct a record or a _"row"_ type value. Usually, you want to access the individual column values, but, it can be tricky to work with records because they are anonymous data types. This means that you don't know what the fields are called. The better, therefore, is given by a user-defined _"row"_ type. Do this to demonstrate the technique:
 ```postgresql
+drop type if exists rt cascade;
 create type rt as(day date, price money);
+\pset null '<null>'
 
 select
   day,
@@ -136,7 +141,7 @@ This is the result. (Some rows have been manually elided.)
 ```
     day     | price  |        lag_1        
 ------------+--------+---------------------
- 2008-09-15 | $19.01 | ??
+ 2008-09-15 | $19.01 | <null>
  2008-09-16 | $18.96 | (2008-09-15,$19.01)
  2008-09-17 | $18.10 | (2008-09-16,$18.96)
  ...
@@ -145,10 +150,13 @@ This is the result. (Some rows have been manually elided.)
  2008-10-17 | $17.02 | (2008-10-16,$16.99)
 ```
 
-
 Now, the fields of the _"row"_ type values can be accessed, thus:
 
 ```postgresql
+drop type if exists rt cascade;
+create type rt as(day date, price money);
+\pset null '<null>'
+
 with
   v1 as (
     select
@@ -194,7 +202,6 @@ This is the result. (Again, some rows have been manually elided.)
 
 The first example lists the daily change in stock price for the available data, deliberately excluding the case where `lag()` would look before the start of the window:
 ```postgresql
--- Uses table t3.
 with
   v1 as (
   select

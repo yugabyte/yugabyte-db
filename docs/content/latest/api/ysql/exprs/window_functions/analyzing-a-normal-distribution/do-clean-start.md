@@ -38,5 +38,4 @@ create table int_results(
   max_s   double precision  not null,
 
   constraint int_results_pk primary key(method, bucket));
-
 ```

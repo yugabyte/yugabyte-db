@@ -12,9 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Note:** The rows in table  _"t2"_ are inserted in random order. Make sure that you have installed the `pgcrypto` extension before attempting to create this table. All of this is explained in the section [The data sets used by the code examples](../../data-sets/).
+{{< note title=" " >}}
+Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t2"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../extensions/#pgcrypto) extension.
+{{< /note >}}
 
-It is used for demonstrating these window functions:
+The rows in table  _"t2"_ are inserted in random order. It is used for demonstrating these window functions:
 [`row_number()`](../../row-number-rank-dense-rank/#row-number),
 [`rank()`](../../row-number-rank-dense-rank/#rank),
 [`dense_rank()`](../../row-number-rank-dense-rank/#dense-rank),
@@ -28,13 +30,13 @@ And for _"class = 2"_, there are deliberate duplicates so the _2_ and _8_ each o
 
 For maximum pedagogic effect, it uses the same technique that [table t1](../table-t1/) uses to ensure that, with no window `ORDER BY` clause, a `SELECT` will return rows in a random order.
 
-This `ysqlsh` script creates table  _"t2"_ and and inspects its contents:
+This `ysqlsh` script creates table  _"t2"_:
 
 ```postgresql
--- Uses table t2.
 -- Suppress the spurious warning that is raised
 -- when the to-be-deleted table doesn't yet exist.
 set client_min_messages = warning;
+drop type if exists rt cascade;
 drop table if exists t2;
 
 create table t2(
@@ -71,7 +73,7 @@ with
       (2, 18, 9)),
   v2 as (
     select
-      admin.gen_random_uuid() as r,
+      gen_random_uuid() as r,
       column1,
       column2,
       column3
@@ -83,7 +85,10 @@ select
   column3
 from v2
 order by r;
+```
+Now inspect its contents:
 
+```postgresql
 -- Notice the absence of "ORDER BY".
 select class, k, score
 from t2;

@@ -48,17 +48,24 @@ return value:      anyelement
 **Purpose:** Return the specified value from the last row, in the specified sort order, in the current [_window frame_](../../sql-syntax-semantics/#frame-clause-semantics-for-window-functions).
 
 ## Examples that illustrate all three functions
-First, create the data set provided by [table t1](../data-sets/table-t1/). Notice that it has been contrived so that the last _"v"_ (ordered by _"k"_) for each value of _"class"_ is `NULL`. 
 
-Now use the technique shown in the section [Using `nth_value()` and `last_value()` to return the whole row](../#using-nth-value-and-last-value-to-return-the-whole-row) so that each of the three window functions produces all of the fields in each row:
+{{< note title=" " >}}
+If you haven't yet installed the tables that the code examples use, then go to the section [The data sets used by the code examples](../data-sets/).
+{{< /note >}}
+
+This example uses table _"t1"_. Notice that it has been contrived so that the last _"v"_ (ordered by _"k"_) for each value of _"class"_ is `NULL`. 
+
+Use the technique shown in the section [Using `nth_value()` and `last_value()` to return the whole row](../#using-nth-value-and-last-value-to-return-the-whole-row) so that each of the three window functions produces all of the fields in each row:
 ```postgresql
--- Uses table t1.
+drop type if exists rt cascade;
+create type rt as (class int, k int, v int);
+
 select
   class,
   k,
-  first_value((class, k, v)::t1::text)    over w as fv,
-  nth_value  ((class, k, v)::t1::text, 3) over w as nv,
-  last_value ((class, k, v)::t1::text)    over w as lv
+  first_value((class, k, v)::rt::text)    over w as fv,
+  nth_value  ((class, k, v)::rt::text, 3) over w as nv,
+  last_value ((class, k, v)::rt::text)    over w as lv
 from t1
 window w as (
   partition by class
@@ -101,12 +108,16 @@ Here is the result. To make it easier to see the pattern, a break has been manua
 ```
 Notice that the `::text` typecast of a _"row"_ type value renders `NULL` simply as an absence. This explains why you see, for example, _"(1,5,)"_ for each value produced by `last_value()` in the [_window_](../../sql-syntax-semantics/#the-window-definition-rule) where _"k=1"_. This basic example certainly demonstrates the meaning of _"first"_, _"Nth"_ (for _"N=3"_), and _"last"_. But it isn't very useful because, just as these names suggest, the output is the same for each row in a particular [_window_](../../sql-syntax-semantics/#the-window-definition-rule). The following query adds a conventional `GROUP BY` clause. It also extracts the interesting fields from the _"row"_ type value that each window function produces as individual values.
 ```postgresql
+drop type if exists rt cascade;
+create type rt as (class int, k int, v int);
+\pset null '??'
+
 with a as (
   select
     class,
-    first_value((class, k, v)::t1)    over w as fv,
-    nth_value  ((class, k, v)::t1, 3) over w as nv,
-    last_value ((class, k, v)::t1)    over w as lv
+    first_value((class, k, v)::rt)    over w as fv,
+    nth_value  ((class, k, v)::rt, 3) over w as nv,
+    last_value ((class, k, v)::rt)    over w as lv
   from t1
   window w as (
     partition by class

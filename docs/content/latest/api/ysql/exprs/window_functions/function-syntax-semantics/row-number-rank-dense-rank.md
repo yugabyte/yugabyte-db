@@ -46,6 +46,10 @@ The "dense rank" notion reflects the ordering of _distinct values_ of the list o
 
 ## Example
 
+{{< note title=" " >}}
+If you haven't yet installed the tables that the code examples use, then go to the section [The data sets used by the code examples](../data-sets/).
+{{< /note >}}
+
 This example highlights the semantic difference between `row_number()`, `rank()`, and `dense_rank()`. Create a data set using the `ysqlsh` script that [table t2](../data-sets/table-t2/) presents. Then do this:
 ```postgresql
 select
