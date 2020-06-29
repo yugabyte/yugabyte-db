@@ -68,13 +68,15 @@ class ScopedOperation {
   std::unique_ptr<OperationCounter, ScopedCounterDeleter> counter_;
 };
 
-// This is used to track the number of pending operations using a certain resource (as of Apr 2018
-// just the RocksDB database within a tablet) so we can safely wait for all operations to complete
-// and destroy or replace the resource. This is similar to a shared mutex, but allows fine-grained
-// control, such as preventing new operations from being started.
+// This is used to track the number of pending operations using a certain resource (such as
+// the RocksDB database or the schema within a tablet) so we can safely wait for all operations to
+// complete and destroy or replace the resource. This is similar to a shared mutex, but allows
+// fine-grained control, such as preventing new operations from being started.
 class RWOperationCounter {
  public:
-  CHECKED_STATUS DisableAndWaitForOps(const MonoDelta& timeout, Stop stop);
+  explicit RWOperationCounter(const std::string resource_name) : resource_name_(resource_name) {}
+
+  CHECKED_STATUS DisableAndWaitForOps(const CoarseTimePoint& deadline, Stop stop);
 
   // Due to the thread restriction of "timed_mutex::unlock()", this Unlock method must be called
   // in the same thread that invoked DisableAndWaitForOps(). This is fine for truncate, snapshot
@@ -97,6 +99,9 @@ class RWOperationCounter {
 
   bool WaitMutexAndIncrement(CoarseTimePoint deadline);
 
+  std::string resource_name() const {
+    return resource_name_;
+  }
  private:
   CHECKED_STATUS WaitForOpsToFinish(
       const CoarseTimePoint& start_time, const CoarseTimePoint& deadline);
@@ -112,6 +117,8 @@ class RWOperationCounter {
   // waiting for all shared-ownership operations to complete. We need this to avoid a race condition
   // between Raft operations that replace RocksDB (apply snapshot / truncate) and tablet shutdown.
   std::timed_mutex disable_;
+
+  std::string resource_name_;
 };
 
 // A convenience class to automatically increment/decrement a RWOperationCounter. This is used
@@ -129,7 +136,7 @@ class ScopedRWOperation {
                              const CoarseTimePoint& deadline = CoarseTimePoint());
 
   ScopedRWOperation(ScopedRWOperation&& op)
-      : counter_(op.counter_)
+      : counter_(op.counter_), resource_name_(std::move(op.resource_name_))
 #ifndef NDEBUG
       , long_operation_tracker_(std::move(op.long_operation_tracker_))
 #endif
@@ -139,24 +146,37 @@ class ScopedRWOperation {
 
   ~ScopedRWOperation();
 
+  void operator=(ScopedRWOperation&& op) {
+    Reset();
+    counter_ = op.counter_;
+    resource_name_ = std::move(op.resource_name_);
+    op.counter_ = nullptr;
+#ifndef NDEBUG
+    long_operation_tracker_ = std::move(op.long_operation_tracker_);
+#endif
+  }
+
   bool ok() const {
     return counter_ != nullptr;
   }
 
   void Reset();
 
+  std::string resource_name() const {
+    return resource_name_;
+  }
  private:
   RWOperationCounter* counter_ = nullptr;
+  std::string resource_name_;
 #ifndef NDEBUG
   LongOperationTracker long_operation_tracker_;
 #endif
 };
 
 // RETURN_NOT_OK macro support.
-// The error message currently mentions RocksDB because that is the only type of resource that
-// this framework is used to protect as of Apr 2018.
 inline Status MoveStatus(const ScopedRWOperation& scoped) {
-  return scoped.ok() ? Status::OK() : STATUS(Busy, "RocksDB store is busy");
+  return scoped.ok() ? Status::OK()
+                     : STATUS_FORMAT(TryAgain, "Resource unavailable : $0", scoped.resource_name());
 }
 
 // A convenience class to automatically pause/resume a RWOperationCounter.
@@ -166,7 +186,7 @@ class ScopedRWOperationPause {
   void operator=(const ScopedRWOperationPause&) = delete;
   ScopedRWOperationPause(const ScopedRWOperationPause&) = delete;
 
-  ScopedRWOperationPause(RWOperationCounter* counter, const MonoDelta& timeout, Stop stop);
+  ScopedRWOperationPause(RWOperationCounter* counter, const CoarseTimePoint& deadline, Stop stop);
 
   ScopedRWOperationPause(ScopedRWOperationPause&& p)
       : counter_(p.counter_), status_(std::move(p.status_)), was_stop_(p.was_stop_) {

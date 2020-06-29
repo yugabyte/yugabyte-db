@@ -171,7 +171,7 @@ DEFINE_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, evolving);
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, runtime);
 
-DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 5000,
+DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 0,
              "Operations that are received by the tserver, and have decided how "
              "the indexes need to be updated (based on the IndexPermission), will "
              "not be added to the list of current transactions until they are "
@@ -182,7 +182,7 @@ DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 5000,
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, runtime);
 
-DEFINE_int32(index_backfill_wait_for_old_txns_ms, 10000,
+DEFINE_int32(index_backfill_wait_for_old_txns_ms, 0,
              "Index backfill needs to wait for transactions that started before the "
              "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
              "backfilling the index. This is the max time that the GetSafeTime call will "
@@ -213,6 +213,7 @@ DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
 
 DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC fail.");
 
+DECLARE_bool(disable_alter_vs_write_mutual_exclusion);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_min_running_check_interval_ms);
 
@@ -864,15 +865,37 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
           << " version=" << schema_version << " current-schema=" << tablet_schema.ToString()
           << " to request-schema=" << req_schema.ToString()
           << " for table ID=" << table_info->table_id;
-  auto operation_state = std::make_unique<ChangeMetadataOperationState>(
-      tablet.peer->tablet(), tablet.peer->log(), req);
+  if (tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE &&
+      !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
+    // For schema change operations we will have to pause the write operations
+    // until the schema change is done. This will be done synchronously.
+    auto pause_writes = tablet.peer->tablet()->PauseWritePermits(context.GetClientDeadline());
+    if (!pause_writes.ok()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_SUBSTITUTE(
+              TryAgain, "Could not lock the tablet against write operations for schema change"),
+          TabletServerErrorPB::UNKNOWN_ERROR, &context);
+      return;
+    }
+    s = tablet::SyncReplicateChangeMetadataOperation(req, tablet.peer.get(), tablet.leader_term);
+    if (PREDICT_FALSE(!s.ok())) {
+      SetupErrorAndRespond(resp->mutable_error(), s, &context);
+      return;
+    }
+    context.RespondSuccess();
+  } else {
+    auto operation_state = std::make_unique<ChangeMetadataOperationState>(
+        tablet.peer->tablet(), tablet.peer->log(), req);
 
-  operation_state->set_completion_callback(
-      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+    operation_state->set_completion_callback(
+        MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 
-  // Submit the alter schema op. The RPC will be responded to asynchronously.
-  tablet.peer->Submit(std::make_unique<tablet::ChangeMetadataOperation>(
-      std::move(operation_state)), tablet.leader_term);
+    // Submit the alter schema op. The RPC will be responded to asynchronously.
+    tablet.peer->Submit(
+        std::make_unique<tablet::ChangeMetadataOperation>(std::move(operation_state)),
+        tablet.leader_term);
+  }
 }
 
 #define VERIFY_RESULT_OR_RETURN(expr) \

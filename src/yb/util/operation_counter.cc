@@ -121,11 +121,10 @@ bool RWOperationCounter::Increment() {
   return true;
 }
 
-Status RWOperationCounter::DisableAndWaitForOps(const MonoDelta& timeout, Stop stop) {
+Status RWOperationCounter::DisableAndWaitForOps(const CoarseTimePoint& deadline, Stop stop) {
   LongOperationTracker long_operation_tracker(__func__, 1s);
 
   const auto start_time = CoarseMonoClock::now();
-  const auto deadline = start_time + timeout;
   std::unique_lock<std::timed_mutex> lock(disable_, deadline);
   if (!lock.owns_lock()) {
     return STATUS(TimedOut, "Timed out waiting to disable the resource exclusively");
@@ -184,6 +183,7 @@ ScopedRWOperation::ScopedRWOperation(RWOperationCounter* counter, const CoarseTi
     if (counter->Increment() || counter->WaitMutexAndIncrement(deadline)) {
       counter_ = counter;
     }
+    resource_name_ = counter->resource_name();
   }
 }
 
@@ -196,13 +196,14 @@ void ScopedRWOperation::Reset() {
     counter_->Decrement();
     counter_ = nullptr;
   }
+  resource_name_ = "";
 }
 
 ScopedRWOperationPause::ScopedRWOperationPause(
-    RWOperationCounter* counter, const MonoDelta& timeout, Stop stop)
+    RWOperationCounter* counter, const CoarseTimePoint& deadline, Stop stop)
     : was_stop_(stop) {
   if (counter != nullptr) {
-    status_ = counter->DisableAndWaitForOps(timeout, stop);
+    status_ = counter->DisableAndWaitForOps(deadline, stop);
     if (status_.ok()) {
       counter_ = counter;
     }

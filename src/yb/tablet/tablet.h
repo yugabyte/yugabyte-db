@@ -491,6 +491,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return *ql_storage_;
   }
 
+  // Provide a way for write operations to wait when tablet schema is
+  // being changed.
+  ScopedRWOperationPause PauseWritePermits(CoarseTimePoint deadline);
+  ScopedRWOperation GetPermitToWrite(CoarseTimePoint deadline);
+
   // Used from tests
   const std::shared_ptr<rocksdb::Statistics>& rocksdb_statistics() const {
     return rocksdb_statistics_;
@@ -782,6 +787,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //
   // This is marked mutable because read path member functions (which are const) are using this.
   mutable RWOperationCounter pending_op_counter_;
+
+  // Used by Alter/Schema-change ops to pause new write ops from being submitted.
+  RWOperationCounter write_ops_being_submitted_counter_;
 
   std::unique_ptr<TransactionCoordinator> transaction_coordinator_;
 

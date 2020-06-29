@@ -82,9 +82,10 @@ class CqlIndexTest : public MiniClusterTestWithClient<MiniCluster> {
 };
 
 CHECKED_STATUS CreateIndexedTable(CassandraSession* session) {
-  RETURN_NOT_OK(session->ExecuteQuery(
-      "CREATE TABLE t (key INT PRIMARY KEY, value INT) WITH transactions = { 'enabled' : true }"));
-  return session->ExecuteQuery("CREATE INDEX idx ON T (value)");
+  RETURN_NOT_OK(
+      session->ExecuteQuery("CREATE TABLE IF NOT EXISTS t (key INT PRIMARY KEY, value INT) WITH "
+                            "transactions = { 'enabled' : true }"));
+  return session->ExecuteQuery("CREATE INDEX IF NOT EXISTS idx ON T (value)");
 }
 
 TEST_F(CqlIndexTest, Simple) {
@@ -151,7 +152,20 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
 
-  ASSERT_OK(CreateIndexedTable(&session));
+  AssertLoggedWaitFor(
+      [&session]() { return CreateIndexedTable(&session).ok(); }, 60s, "create table", 12s);
+  constexpr auto kNamespace = "test";
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "t");
+  const client::YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "idx");
+  AssertLoggedWaitFor(
+      [this, table_name, index_table_name]() {
+        auto result = client_->WaitUntilIndexPermissionsAtLeast(
+            table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+        return result.ok() && *result == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
+      },
+      90s,
+      "wait for create index to complete",
+      12s);
 
   TestThreadHolder thread_holder;
   std::atomic<int> inserts(0);
