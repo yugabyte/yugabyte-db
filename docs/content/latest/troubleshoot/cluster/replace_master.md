@@ -68,4 +68,6 @@ If, however, none of the current masters are present in the TS flag, then the TS
 
 So it is important to make sure to update `--tserver_master_addrs` on every TS to the new set of master addresses, `M2:7100,M3:7100,M4:7100`!
 
+{{< note title="Note" >}}
 If the master you wish to replace is already dead (eg: VM was terminated), you might want to first do the `REMOVE` step, then do the `ADD` step.
+{{< /note >}}
