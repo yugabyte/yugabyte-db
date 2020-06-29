@@ -33,6 +33,7 @@ Plan *plan_cypher_create_path(PlannerInfo *root, RelOptInfo *rel,
                               List *clauses, List *custom_plans)
 {
     CustomScan *cs;
+    Plan *subplan = linitial(custom_plans);
 
     cs = makeNode(CustomScan);
 
@@ -62,7 +63,7 @@ Plan *plan_cypher_create_path(PlannerInfo *root, RelOptInfo *rel,
     cs->custom_plans = custom_plans;
     cs->custom_exprs = NIL;
     cs->custom_private = best_path->custom_private;
-    cs->custom_scan_tlist = tlist;
+    cs->custom_scan_tlist = subplan->targetlist;
     cs->custom_relids = NULL;
     cs->methods = &cypher_create_plan_methods;
 

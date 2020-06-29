@@ -25,6 +25,7 @@
 
 #include "fmgr.h"
 #include "lib/stringinfo.h"
+#include "nodes/pg_list.h"
 #include "utils/array.h"
 #include "utils/numeric.h"
 #include "utils/syscache.h"
@@ -453,6 +454,10 @@ Datum boolean_to_agtype(bool b);
 bool is_decimal_needed(char *numstr);
 int compare_agtype_scalar_values(agtype_value *a, agtype_value *b);
 
+Datum make_vertex(Datum id, Datum label, Datum properties);
+Datum make_edge(Datum id, Datum startid, Datum endid, Datum label,
+                   Datum properties);
+Datum make_path(List *path);
 // OID of agtype and _agtype
 #define AGTYPEOID \
     (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("agtype"), \

@@ -182,9 +182,15 @@ typedef struct cypher_string_match
 
 typedef struct cypher_create_target_nodes
 {
-    List *target_nodes;
+    List *paths;
     uint32 flags;
 } cypher_create_target_nodes;
+
+typedef struct cypher_create_path
+{
+    List *target_nodes;
+    AttrNumber tuple_position;
+} cypher_create_path;
 
 #define CYPHER_CREATE_CLAUSE_FLAG_NONE 0x0000
 #define CYPHER_CREATE_CLAUSE_FLAG_TERMINAL 0x0001
@@ -204,15 +210,42 @@ typedef struct cypher_create_target_nodes
      int id_var_no;
      int prop_var_no;
      List *targetList;
+     TargetEntry *te;
      List *expr_states;
      ResultRelInfo *resultRelInfo;
      TupleTableSlot *elemTupleSlot;
      Oid relid;
+     char *label_name;
+     AttrNumber tuple_position;
 } cypher_target_node;
 
-
 #define CYPHER_TARGET_NODE_FLAG_NONE 0x0000
+// node must insert data
 #define CYPHER_TARGET_NODE_FLAG_INSERT 0x0001
+//node is a var declared in a previous clause
+#define CYPHER_TARGET_NODE_PREV_VAR 0x0002
+//node is a var declared in the current clause
+#define CYPHER_TARGET_NODE_CUR_VAR 0x0004
+//node is the first instance of a declared variable
+#define CYPHER_TARGET_NODE_IS_VAR 0x0008
+// node is an element in a path variable
+#define CYPHER_TARGET_NODE_IN_PATH_VAR 0x0010
+
+#define CYPHER_TARGET_NODE_OUTPUT(flags) \
+    (flags & (CYPHER_TARGET_NODE_IS_VAR | CYPHER_TARGET_NODE_IN_PATH_VAR))
+
+#define CYPHER_TARGET_NODE_IN_PATH(flags) \
+    (flags & CYPHER_TARGET_NODE_IN_PATH_VAR)
+
+#define CYPHER_TARGET_NODE_IS_VARIABLE(flags) \
+    (flags & CYPHER_TARGET_NODE_IS_VAR)
+
+#define CYPHER_TARGET_NODE_ID_IS_GRAPHID(flags) \
+    (flags & CYPHER_TARGET_NODE_CUR_VAR)
+
+#define CYPHER_TARGET_NODE_ID_IS_AGTYPE(flags) \
+    (flags & CYPHER_TARGET_NODE_PREV_VAR)
+
 
 #define CYPHER_TARGET_NODE_INSERT_ENTITY(flags) \
     (flags & CYPHER_TARGET_NODE_FLAG_INSERT)

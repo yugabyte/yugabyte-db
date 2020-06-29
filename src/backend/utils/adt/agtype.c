@@ -30,6 +30,7 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
+#include "nodes/pg_list.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/int8.h"
@@ -1698,6 +1699,58 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
 }
 
+Datum make_path(List *path)
+{
+    ListCell *lc;
+    agtype_in_state result;
+    int i = 1;
+
+    memset(&result, 0, sizeof(agtype_in_state));
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_ARRAY, NULL);
+
+    if (list_length(path) < 3 || list_length(path) % 2 != 1)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("path list is not a valid path")));
+
+    foreach (lc, path)
+    {
+        agtype *agt= DATUM_GET_AGTYPE_P(PointerGetDatum(lfirst(lc)));
+        agtype_value *elem;
+        elem = get_ith_agtype_value_from_container(&agt->root, 0);
+
+        if (!agt)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("argument must not be null")));
+        }
+        else if (i % 2 == 1 && elem->type != AGTV_VERTEX)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("argument %i must be a vertex", i)));
+        }
+        else if (i % 2 == 0 && elem->type != AGTV_EDGE)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("argument %i must be an edge", i)));
+        }
+
+        add_agtype((Datum)agt, false, &result, AGTYPEOID, false);
+
+        i++;
+    }
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_END_ARRAY, NULL);
+
+    result.res->type = AGTV_PATH;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
 PG_FUNCTION_INFO_V1(_agtype_build_vertex);
 
 /*
@@ -1768,6 +1821,15 @@ Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
     result.res->type = AGTV_VERTEX;
 
     PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
+Datum make_vertex(Datum id, Datum label, Datum properties)
+{
+    return DirectFunctionCall3(_agtype_build_vertex,
+                     id,
+                     label,
+                     properties);
+
 }
 
 PG_FUNCTION_INFO_V1(_agtype_build_edge);
@@ -1865,6 +1927,17 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
 
     PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
 }
+
+Datum make_edge(Datum id, Datum startid, Datum endid, Datum label,
+                   Datum properties)
+{
+    return DirectFunctionCall5(_agtype_build_edge,
+                     id, startid, endid,
+                     label,
+                     properties);
+
+}
+
 
 PG_FUNCTION_INFO_V1(agtype_build_map);
 

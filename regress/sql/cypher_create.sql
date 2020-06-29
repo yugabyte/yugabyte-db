@@ -104,8 +104,73 @@ $$) as (a agtype);
 
 SELECT * FROM cypher('cypher_create', $$
 	MATCH (a:n_var)
+	WHERE a.name = 'Node A'
+	CREATE (a)-[b:e_var]->()
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (a)-[:b_var]->()
+	RETURN a, id(a)
+$$) as (a agtype, b agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE ()-[b:e_var]->()
+	RETURN b, id(b)
+$$) as (a agtype, b agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (a)-[b:e_var {id: 0}]->()
+	RETURN a, b, b.id, b.id + 1
+$$) as (a agtype, b agtype, c agtype, d agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	CREATE (a)-[b:e_var]->(a)
+	RETURN a, b
+$$) as (a agtype, b agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	CREATE (a)-[b:e_var]->(c)
+	RETURN a, b, c
+$$) as (a agtype, b agtype, c agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (a)-[:e_var]->()
+	RETURN a
+$$) as (b agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE ()-[b:e_var]->()
+	RETURN b
+$$) as (b agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=()-[:e_var]->()
+	RETURN p
+$$) as (b agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=(a {id:0})-[:e_var]->(a)
+	RETURN p
+$$) as (b agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
+	CREATE p=(a)-[:e_var]->(a)
+	RETURN p
+$$) as (b agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=(a)-[:e_var]->(), (a)-[b:e_var]->(a)
+	RETURN p, b
+$$) as (a agtype, b agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a:n_var)
 	WHERE a.name = 'Node Z'
-	CREATE (a)-[:e_var {name: a.name + ' -> doesn''t exist'}]->(:n_other_node)
+	CREATE (a)-[:e_var {name: a.name + ' -> doesnt exist'}]->(:n_other_node)
+	RETURN a
 $$) as (a agtype);
 
 SELECT * FROM cypher_create.n_var;
@@ -135,11 +200,27 @@ SELECT * FROM cypher('cypher_create', $$
 $$) as (a agtype);
 
 SELECT * FROM cypher('cypher_create', $$
-	MATCH (a:n_var)
+	MATCH (a:n_var)-[b]-()
 	WHERE a.name = 'Node A'
 	CREATE (a)-[b:e_var]->()
 $$) as (a agtype);
 
+-- Not a valid path
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=(a)
+	RETURN p
+$$) as (a agtype);
+
+--CREATE with joins
+SELECT *
+FROM cypher('cypher_create', $$
+	CREATE (a)
+	RETURN a
+$$) as q(a agtype),
+cypher('cypher_create', $$
+	CREATE (b)
+	RETURN b
+$$) as t(b agtype);
 
 -- column definition list for CREATE clause must contain a single agtype
 -- attribute
