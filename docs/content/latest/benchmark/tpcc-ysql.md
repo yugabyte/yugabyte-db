@@ -26,9 +26,12 @@ isTocNested: true
 
 </ul>
 
+## Overview
 Follow the steps below to run the open-source [oltpbench](https://github.com/oltpbenchmark/oltpbench) TPC-C workload against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
 
-## Step 1. Download the TPC-C binaries
+## Running the benchmark
+
+### 1. Prerequisites
 
 To download the TPC-C binaries, run the following commands.
 
@@ -43,90 +46,79 @@ $ cd tpcc
 The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
 {{< /note >}}
 
-## Step 2. Start your database
+Start your YugabyteDB cluster by following the steps [here](../../deploy/manual-deployment/).
 
-Start the database using the steps mentioned [here](https://docs.yugabyte.com/latest/quick-start/create-local-cluster/macos/).
+{{< tip title="Tip" >}}
+You will need the IP addresses of the nodes in the cluster for the next step.
+{{< /tip>}}
 
-## Step 3. Configure connection properties
 
-Set the following connection configurations in the workload configuration file (`config/workload_all.xml`).
+### Step 2. TPC-C Load Phase
+
+Before starting the workload, you will need to load the data first. Make sure
+to replace the IP addresses with that of the nodes in the cluster.
+
 
 ```sh
-<!-- Connection details -->
+$ ./tpccbenchmark --create=true --load=true \
+  --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
+  --warehouses=100 \
+  --loaderthreads=48
+```
+
+{{< note title="Note" >}}
+The default values for `nodes` is `127.0.0.1`, `warehouses` is `10` and
+`loaderthreads` is `10`.
+{{< /note >}}
+
+### Step 3. TPC-C Execute Phase
+
+You can then run the workload against the database as follows:
+
+```sh
+$ ./tpccbenchmark --execute=true \
+  --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
+  --warehouses=100  \
+  -o outputfile
+```
+
+{{< tip title="Tip" >}}
+You can also load and run the benchmark in a single step:
+```sh
+$ ./tpccbenchmark --create=true --load=true --execute=true \
+  --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
+  --warehouses=100 \
+  -o outputfile
+```
+{{< /tip>}}
+
+## TPC-C Benchmark Results
+
+Once the execution is done the TPM-C number along with the efficiency is printed.
+
+```
+01:25:34,669 (DBWorkload.java:880) INFO  - Rate limited reqs/s: Results(nanoSeconds=1800000482491, measuredRequests=423634) = 235.35215913594521 requests/sec
+01:25:34,669 (DBWorkload.java:885) INFO  - Num New Order transactions : 186826, time seconds: 1800
+01:25:34,669 (DBWorkload.java:886) INFO  - TPM-C: 6227
+01:25:34,669 (DBWorkload.java:887) INFO  - Efficiency : 96.84292379471229
+01:25:34,671 (DBWorkload.java:722) INFO  - Output Raw data into file: results/outputfile.csv
+```
+
+## Configure the benchmark
+
+We can change the default username, password, port, etc. using the configuration file at `config/workload_all.xml`. We can also change the terminals or the physical connections being used by the benchmark using the configuration.
+```sh
 <dbtype>postgres</dbtype>
 <driver>org.postgresql.Driver</driver>
-<DBUrl>jdbc:postgresql://<ip>:5433/yugabyte</DBUrl>
+<port>5433</5433>
 <username>yugabyte</username>
 <password></password>
 <isolation>TRANSACTION_REPEATABLE_READ</isolation>
+
+<terminals>100</terminals>
+<numDBConnections>10</numDBConnections>
 ```
 
-The details of the workloads have already been populated in the sample configuration files located in the `/config` directory.
-The workload descriptor works the same way as it does in the upstream branch and details can be found in the [online documentation](https://github.com/oltpbenchmark/oltpbench/wiki).
-
-## Step 4. Running the TPC-C benchmark
-
-Use the provided utility script (`./tpccbenchmark`) to run the TPC-C benchmark. Available options are:
-
-```
--c,--config &lt;arg&gt;            [required] Workload configuration file
-   --clear &lt;arg&gt;             Clear all records in the database for this benchmark
-   --create &lt;arg&gt;            Initialize the database for this benchmark
-   --dialects-export &lt;arg&gt;   Export benchmark SQL to a dialects file
-   --execute &lt;arg&gt;           Execute the benchmark workload
--h,--help                          Print this help
-   --histograms                    Print txn histograms
-   --load &lt;arg&gt;              Load data using the benchmark's data loader
--o,--output &lt;arg&gt;            Output file (default System.out)
-   --runscript &lt;arg&gt;         Run an SQL script
--s,--sample &lt;arg&gt;            Sampling window
--v,--verbose                       Display Messages
-```
-
-Before starting the workload, you will need to load the data first.
-
-```sh
-$ ./tpccbenchmark -c config/workload_all.xml --create=true --load=true
-```
-
-Then, you can run the workload.
-
-```sh
-$ ./tpccbenchmark -c config/workload_all.xml --execute=true -s 5 -o outputfile
-```
-
-You can also load and run the benchmark in a single step:
-
-```sh
-$ ./tpccbenchmark -c config/workload_all.xml --create=true --load=true --execute=true -s 5 -o outputfile
-```
-
-The `config` directory has different configurations for various workloads. You can run any of those workloads by changing the configuration file.
-
-```sh
-$ ./tpccbenchmark -c config/workload_1.xml --create=true --load=true --execute=true -s 5 -o outputfile
-```
-
-## Output
-
-The raw output is a listing of start time (in Java microseconds) and duration (microseconds) for each transaction type.
-
-```
-transaction type (index in config file), start time (microseconds),latency (microseconds)
-3,1323686190.045091,8677
-4,1323686190.050116,6800
-4,1323686190.055146,3221
-3,1323686190.060193,1459
-4,1323686190.065246,2476
-4,1323686190.070348,1834
-4,1323686190.075342,1904
-```
-
-To obtain transactions per second (TPS), you can aggregate the results into windows using the `-s 1` option. The throughput and different latency measures in milliseconds are reported.
-
-```
-time (seconds),throughput (requests/s),average,min,25th,median,75th,90th,95th,99th,max
-0,200.200,1.183,0.585,0.945,1.090,1.266,1.516,1.715,2.316,12.656
-5,199.800,0.994,0.575,0.831,0.964,1.071,1.209,1.424,2.223,2.657
-10,200.000,0.984,0.550,0.796,0.909,1.029,1.191,1.357,2.024,35.835
-```
+{{< note title="Note" >}}
+By default the number of terminals is 10 times the number of warehouses which is the max that the TPC-C spec allows. The number of DB connections is the same as the number of warehouses.
+{{< /note >}}
