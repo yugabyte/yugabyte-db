@@ -1,8 +1,8 @@
 ---
-title: API client libraries for YCQL
-headerTitle: API client libraries for YCQL
-linkTitle: API client libraries for YCQL
-description: Lists the API client libraries that you can use to build and access YCQL applications. 
+title: API client drivers for YCQL
+headerTitle: API client drivers for YCQL
+linkTitle: API client drivers for YCQL
+description: Lists the API client library drivers that you can use to build and access YCQL applications. 
 menu:
   latest:
     identifier: ycql-client-libraries
@@ -14,20 +14,28 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB Cassandra driver
-: 
 
-## NodeJS (`yugabyte/cassandra-nodejs-driver`)
+## C/C++ 
 
-### [YugabyteDB NodeJS driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver)
-
-The YugabyteDB NodeJS driver for YCQL is available as a fork of the Cassandra NodeJS driver. For details, see the [README](https://github.com/datastax/cpp-driver/blob/master/README.md) in our GitHub repository. 
-
-## C++ (`yugabyte/cassandra-cpp-driver`)
-
-### [YugabyteDB C++ Driver for YCQL](https://github.com/yugabyte/cassandra-cpp-driver)
+### [YugabyteDB C++ Driver for YCQL](https://github.com/yugabyte/cassandra-cpp-driver) (`yugabyte/cassandra-cpp-driver`)
 
 Based on the [DataStax C/C++ driver](https://github.com/datastax/cpp-driver).
+
+The [Yugabyte C++ Driver for YCQL](https://github.com/yugabyte/cassandra-cpp-driver) is based on the [DataStax C++ Driver for Apache Cassandra](https://github.com/datastax/cpp-driver). 
+
+For details, see the [README](https://github.com/yugabyte/cassandra-csharp-driver/blob/3.8.0-yb-x/README.md) in our `yugabyte/cassandra-csharp-driver` GitHub repository.
+
+For a tutorial on building a sample C++ application using this driver, see [Build a C++ application](https://docs.yugabyte.com/latest/quick-start/build-apps/cplusplus/ycql/).
+
+## C# 
+
+### [YugabyteDB C# Driver for YCQL](https://github.com/yugabyte/cassandra-cpp-driver) (`yugabyte/cassandra-cpp-driver`)
+
+The [Yugabyte C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-driver) is based on the [DataStax C# Driver for Apache Cassandra](https://github.com/datastax/csharp-driver). 
+
+For details, see the [README](https://github.com/yugabyte/cassandra-csharp-driver/blob/3.8.0-yb-x/README.md) in our `yugabyte/cassandra-csharp-driver` GitHub repository.
+
+For a tutorial on building a sample C# application using this driver, see [Build a C# application](https://docs.yugabyte.com/latest/quick-start/build-apps/csharp/ycql/).
 
 ## Go
 
@@ -35,16 +43,28 @@ Based on the [DataStax C/C++ driver](https://github.com/datastax/cpp-driver).
 
 The [Yugabyte Go Driver for YCQL](https://github.com/yugabyte/gocql) is based on [GoCQL (`gocql/gocql`)](http://gocql.github.io/). For more information, see the [README](https://github.com/yugabyte/gocql/blob/master/README.md) in the `yugabyte/gocql` GitHub repository.
 
+For a tutorial on building a sample Go application using this driver, see [Build a Go application](https://docs.yugabyte.com/latest/quick-start/build-apps/go/ycql/).
+
+## NodeJS 
+
+### [YugabyteDB NodeJS driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver) (`yugabyte/cassandra-nodejs-driver`)
+
+The YugabyteDB NodeJS driver for YCQL is available as a fork of the Cassandra NodeJS driver. For details, see the [README](https://github.com/datastax/cpp-driver/blob/master/README.md) in our GitHub repository. 
+
+For a tutorial on building a sample NodeJS application using this driver, see [Build a NodeJS application](https://docs.yugabyte.com/latest/quick-start/build-apps/nodejs/ycql/).
+
 
 ## Java
 
-### Yugabyte Java Driver for YCQL
+### Yugabyte Java Driver for YCQL (`yugabyte/cassandra-java-driver`)
 
 The [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver) is based on the [DataStax Java Driver for Apache Cassandra](https://github.com/datastax/java-driver). 
 
 For details, see the [README](https://github.com/yugabyte/cassandra-java-driver/blob/3.8.0-yb-x/README.md) in our `yugabyte/cassandra-java-driver` GitHub repository.
 
-To build a sample application using this driver, follow the tutorial in [Build a Java application](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ycql/).
+To build a sample Java application using this driver, follow the tutorial in [Build a Java application](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ycql/).
+
+For a tutorial on building a sample Java application using this driver, see [Build a Java application](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ycql/).
 
 ## Ruby
 
@@ -54,7 +74,7 @@ The [Yugabyte Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-d
 
 For details, see the [README](https://github.com/yugabyte/cassandra-ruby-driver/blob/v3.2.3.x-yb/README.md) in the `yugabyte/cassandra-ruby-driver` GitHub repository.
 
-To build a sample application using this driver, follow the tutorial in [Build a Ruby application](https://docs.yugabyte.com/latest/quick-start/build-apps/ruby/ycql/).
+For a tutorial on building a sample Ruby application using this driver, see [Build a Ruby application](https://docs.yugabyte.com/latest/quick-start/build-apps/ruby/ycql/).
 
 ## Scala
 
@@ -64,8 +84,6 @@ The [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-d
 
 For details, see the [README](https://github.com/yugabyte/cassandra-java-driver/blob/3.8.0-yb-x/README.md) in our `yugabyte/cassandra-java-driver` GitHub repository.
 
-Note
-
 To build a Scala application using the Yugabyte Java Driver for YCQL, you must add the following [`sbt` (Scala Build Tool)](https://www.scala-sbt.org/1.x/docs/index.html) dependency to your application:
 
 ```
@@ -73,4 +91,4 @@ libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-5"
 
 ```
 
-To build a sample Scala application using this driver, follow the tutorial in [Build a Scala application](https://docs.yugabyte.com/latest/quick-start/build-apps/scala/ycql/).
+For a tutorial on building a sample Scala application using this driver, see [Build a Scala application](https://docs.yugabyte.com/latest/quick-start/build-apps/scala/ycql/).
