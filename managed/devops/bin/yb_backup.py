@@ -22,6 +22,7 @@ import subprocess
 import time
 import json
 from argparse import RawDescriptionHelpFormatter
+from boto.utils import get_instance_metadata
 from multiprocessing.pool import ThreadPool
 
 import os
@@ -469,6 +470,24 @@ class KubernetesDetails():
         self.env_config["KUBECONFIG"] = config_map[self.namespace]
 
 
+def get_instance_profile_credentials():
+    result = ()
+    iam_credentials_endpoint = 'meta-data/iam/security-credentials/'
+    metadata = get_instance_metadata(timeout=1, num_retries=1, data=iam_credentials_endpoint)
+    if metadata:
+        instance_credentials = metadata.values()[0]
+        if isinstance(instance_credentials, dict):
+            try:
+                access_key = instance_credentials['AccessKeyId']
+                secret_key = instance_credentials['SecretAccessKey']
+                token = instance_credentials['Token']
+                result = access_key, secret_key, token
+            except KeyError as e:
+                logging.info("Could not find {} in instance metadata".format(e))
+
+    return result
+
+
 class YBBackup:
     def __init__(self):
         self.leader_master_ip = ''
@@ -641,11 +660,18 @@ class YBBackup:
         self.cloud_cfg_file_path = os.path.join(self.get_tmp_dir(), CLOUD_CFG_FILE_NAME)
         if self.is_s3():
             if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
+                metadata = get_instance_profile_credentials()
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
-                    s3_cfg.write('[default]\n' +
-                                 'access_key = ' + '\n' +
-                                 'secret_key = ' + '\n' +
-                                 'security_token = ' + '\n')
+                    if metadata:
+                        s3_cfg.write('[default]\n' +
+                                     'access_key = ' + metadata[0] + '\n' +
+                                     'secret_key = ' + metadata[1] + '\n' +
+                                     'security_token = ' + metadata[2] + '\n')
+                    else:
+                        s3_cfg.write('[default]\n' +
+                                     'access_key = ' + '\n' +
+                                     'secret_key = ' + '\n' +
+                                     'security_token = ' + '\n')
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
                     s3_cfg.write('[default]\n' +
