@@ -21,6 +21,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/docdb/doc_key.h"
@@ -283,8 +284,11 @@ Status PgCreateTable::Exec() {
   // For index, set indexed (base) table id.
   if (indexed_table_id()) {
     table_creator->indexed_table_id(indexed_table_id()->GetYBTableId());
-    // TODO(jason): only skip waiting on concurrent index build.
-    table_creator->wait(false);
+    // For online index backfill, don't wait for backfill to finish because waiting on index
+    // permissions is done anyway.
+    if (!FLAGS_ysql_disable_index_backfill) {
+      table_creator->wait(false);
+    }
   }
   if (is_unique_index()) {
     table_creator->is_unique_index(true);
