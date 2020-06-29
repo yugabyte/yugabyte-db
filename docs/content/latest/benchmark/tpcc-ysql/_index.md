@@ -4,13 +4,15 @@ headerTitle: TPC-C
 linkTitle: TPC-C
 description: Benchmark YSQL performance using TPC-C
 headcontent: Benchmark YugabyteDB using TPC-C
+image: /images/section_icons/quick_start/explore_ysql.png
+aliases:
+  - /benchmark/tpcc
+  - /benchmark/tpcc-ysql
 menu:
   latest:
     identifier: tpcc-ysql
     parent: benchmark
     weight: 4
-aliases:
-  - /benchmark/tpcc/
 showAsideToc: true
 isTocNested: true
 ---
@@ -29,9 +31,9 @@ isTocNested: true
 ## Overview
 Follow the steps below to run the open-source [oltpbench](https://github.com/oltpbenchmark/oltpbench) TPC-C workload against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
 
-## Running the benchmark
+## 1. Prerequisites
 
-### 1. Prerequisites
+### Get TPC-C binaries
 
 To download the TPC-C binaries, run the following commands.
 
@@ -46,6 +48,8 @@ $ cd tpcc
 The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
 {{< /note >}}
 
+### Start the Database
+
 Start your YugabyteDB cluster by following the steps [here](../../deploy/manual-deployment/).
 
 {{< tip title="Tip" >}}
@@ -53,60 +57,10 @@ You will need the IP addresses of the nodes in the cluster for the next step.
 {{< /tip>}}
 
 
-### Step 2. TPC-C Load Phase
+### Configure DB connection params (optional)
 
-Before starting the workload, you will need to load the data first. Make sure
-to replace the IP addresses with that of the nodes in the cluster.
+If not working with the defaults, we can change the username, password, port, etc. using the configuration file at `config/workload_all.xml`. We can also change the terminals or the physical connections being used by the benchmark using the configuration.
 
-
-```sh
-$ ./tpccbenchmark --create=true --load=true \
-  --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
-  --warehouses=100 \
-  --loaderthreads=48
-```
-
-{{< note title="Note" >}}
-The default values for `nodes` is `127.0.0.1`, `warehouses` is `10` and
-`loaderthreads` is `10`.
-{{< /note >}}
-
-### Step 3. TPC-C Execute Phase
-
-You can then run the workload against the database as follows:
-
-```sh
-$ ./tpccbenchmark --execute=true \
-  --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
-  --warehouses=100  \
-  -o outputfile
-```
-
-{{< tip title="Tip" >}}
-You can also load and run the benchmark in a single step:
-```sh
-$ ./tpccbenchmark --create=true --load=true --execute=true \
-  --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
-  --warehouses=100 \
-  -o outputfile
-```
-{{< /tip>}}
-
-## TPC-C Benchmark Results
-
-Once the execution is done the TPM-C number along with the efficiency is printed.
-
-```
-01:25:34,669 (DBWorkload.java:880) INFO  - Rate limited reqs/s: Results(nanoSeconds=1800000482491, measuredRequests=423634) = 235.35215913594521 requests/sec
-01:25:34,669 (DBWorkload.java:885) INFO  - Num New Order transactions : 186826, time seconds: 1800
-01:25:34,669 (DBWorkload.java:886) INFO  - TPM-C: 6227
-01:25:34,669 (DBWorkload.java:887) INFO  - Efficiency : 96.84292379471229
-01:25:34,671 (DBWorkload.java:722) INFO  - Output Raw data into file: results/outputfile.csv
-```
-
-## Configure the benchmark
-
-We can change the default username, password, port, etc. using the configuration file at `config/workload_all.xml`. We can also change the terminals or the physical connections being used by the benchmark using the configuration.
 ```sh
 <dbtype>postgres</dbtype>
 <driver>org.postgresql.Driver</driver>
@@ -122,3 +76,35 @@ We can change the default username, password, port, etc. using the configuration
 {{< note title="Note" >}}
 By default the number of terminals is 10 times the number of warehouses which is the max that the TPC-C spec allows. The number of DB connections is the same as the number of warehouses.
 {{< /note >}}
+
+## 2. Run the TPC-C benchmark
+
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#10-wh" class="nav-link active" id="10-wh-tab" data-toggle="tab" role="tab" aria-controls="10-wh" aria-selected="true">
+      10 Warehouses
+    </a>
+  </li>
+  <li>
+    <a href="#100-wh" class="nav-link" id="100-wh-tab" data-toggle="tab" role="tab" aria-controls="100-wh" aria-selected="false">
+      100 Warehouses
+    </a>
+  </li>
+  <li>
+    <a href="#1000-wh" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
+      1000 Warehouses
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="10-wh" class="tab-pane fade show active" role="tabpanel" aria-labelledby="10-wh-tab">
+    {{% includeMarkdown "10-wh/tpcc-ysql.md" /%}}
+  </div>
+  <div id="100-wh" class="tab-pane fade" role="tabpanel" aria-labelledby="100-wh-tab">
+    {{% includeMarkdown "100-wh/tpcc-ysql.md" /%}}
+  </div>
+  <div id="1000-wh" class="tab-pane fade" role="tabpanel" aria-labelledby="1000-wh-tab">
+    {{% includeMarkdown "1000-wh/tpcc-ysql.md" /%}}
+  </div>
+</div>
