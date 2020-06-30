@@ -2480,7 +2480,6 @@ index_backfill(Relation heapRelation,
 			   uint64_t *read_time,
 			   RowBounds *row_bounds)
 {
-	IndexBuildResult *stats;
 	Oid			save_userid;
 	int			save_sec_context;
 	int			save_nestlevel;
@@ -2510,12 +2509,11 @@ index_backfill(Relation heapRelation,
 	/*
 	 * Call the access method's build procedure
 	 */
-	stats = indexRelation->rd_amroutine->yb_ambackfill(heapRelation,
-													   indexRelation,
-													   indexInfo,
-													   read_time,
-													   row_bounds);
-	Assert(PointerIsValid(stats));
+	indexRelation->rd_amroutine->yb_ambackfill(heapRelation,
+											   indexRelation,
+											   indexInfo,
+											   read_time,
+											   row_bounds);
 
 	/*
 	 * I don't think we should be backfilling unlogged indexes.
