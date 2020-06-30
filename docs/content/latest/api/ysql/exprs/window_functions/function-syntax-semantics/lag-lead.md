@@ -65,7 +65,7 @@ This is the result:
 ```
 Notice that _"last_but_one_price"_ is `NULL` for the first two rows. This is, of course, because looking back by two rows for each of these takes you to before the start of the window and so the result of _"lag(price, 2)"_ cannot be determined. In the same way,  _"next_but_one_price"_ is `NULL` for the last two rows. It's easier to check, visually, that the results are as promised by focusing on one particular row, say Wed 01-Oct, the previous-but-one row, Mon 29-Sep, and the next-but-one row, Fri 03-Oct, thus:
 
-```plostgresql
+```postgresql
 with v as (
   select
     day,

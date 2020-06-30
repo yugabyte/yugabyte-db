@@ -95,6 +95,12 @@ Save this script as, for example, `install_all_tables.sql`:
 \i t4_2.sql
 \echo 't4 done'
 ```
+Then you can simply do this whenever you need to re-establish the state that the code examples rely on:
+
+```postgresql
+\i install_all_tables.sql
+```
+
 It takes only a few seconds to finish. Each of the scripts `t1.sql`, `t2.sql`, `t3.sql`, `t4_1.sql`, and `t4_2.sql` that it runs is designed to be able to be repeated. Each finishes silently on its first and all subsequent runs.
 
 {{< /note >}}

@@ -198,7 +198,7 @@ This is the result. To make it easier to see the pattern, several blank lines ha
 
      2 | 18 |     9 |     9 |           9 | true     | true     |      9 |  100.0         |  100.0    |       4
 ```
-Notice that, as promised for `ntile()` in the case that the number of rows per [_window_](../../sql-syntax-semantics/#the-window-definition-rule), _9_, is not a multiple of the actual value, _4_ with which the function is invoked, the assignment to percentile sets makes a best effort to get the number of rows in each even. You can confirm, visually, that the populations are _three_ for one of the four percentile sets and _two_ for the other three.
+Notice that in this example, the number of rows per [_window_](../../sql-syntax-semantics/#the-window-definition-rule), _9_, is not a multiple of the actual value, _4_ with which the function is invoked. This means that the number of rows assigned to each bucket can't be the same. Here, as promised, `ntile()` makes a best effort to get the numbers as close to each other as is possible. You can confirm, visually, that the populations are _three_ for one of the four buckets and _two_ for the other three.
 
 Notice, too, what the outcomes are for the tie groups. Each of `percent_rank()` and `cume_dist()` produces a different value for each row where _"class=1"_, which has no ties. For _"class=2"_, when there are ties, these functions each produce the same value for all the rows in each of the two tie groups. In contrast, `ntile()` assigns the two rows in the second tie group (with _"score=7"_) to different percentile groups.
 
