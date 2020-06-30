@@ -352,20 +352,37 @@ docdb::PartialRangeKeyIntents UsePartialRangeKeyIntents(const RaftGroupMetadata&
   return docdb::PartialRangeKeyIntents(metadata.table_type() == TableType::PGSQL_TABLE_TYPE);
 }
 
-} // namespace
-
-string DocDbOpIds::ToString() const {
-  return Format("{ regular: $0 intents: $1 }", regular, intents);
-}
-
-namespace {
-
 std::string MakeTabletLogPrefix(
     const TabletId& tablet_id, const std::string& log_prefix_suffix) {
   return Format("T $0$1: ", tablet_id, log_prefix_suffix);
 }
 
 } // namespace
+
+string DocDbOpIds::ToString() const {
+  return Format("{ regular: $0 intents: $1 }", regular, intents);
+}
+
+class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
+ public:
+  RegularRocksDbListener(Tablet* tablet, const std::string& log_prefix)
+      : tablet_(*CHECK_NOTNULL(tablet)),
+        log_prefix_(log_prefix) {}
+
+  void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
+    if (ci.is_full_compaction) {
+      auto& metadata = *CHECK_NOTNULL(tablet_.metadata());
+      if (!metadata.has_been_fully_compacted()) {
+        metadata.set_has_been_fully_compacted(true);
+        ERROR_NOT_OK(metadata.Flush(), log_prefix_);
+      }
+    }
+  }
+
+ private:
+  Tablet& tablet_;
+  const std::string log_prefix_;
+};
 
 Tablet::Tablet(const TabletInitData& data)
     : key_schema_(data.metadata->schema()->CreateKeyProjection()),
@@ -645,12 +662,16 @@ Status Tablet::OpenKeyValueTablet() {
   rocksdb_options.level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
   rocksdb_options.level0_stop_writes_trigger = std::numeric_limits<int>::max();
 
+  rocksdb::Options regular_rocksdb_options(rocksdb_options);
+  regular_rocksdb_options.listeners.push_back(
+      std::make_shared<RegularRocksDbListener>(this, regular_rocksdb_options.log_prefix));
+
   const string db_dir = metadata()->rocksdb_dir();
   RETURN_NOT_OK(CreateTabletDirectories(db_dir, metadata()->fs_manager()));
 
   LOG(INFO) << "Opening RocksDB at: " << db_dir;
   rocksdb::DB* db = nullptr;
-  rocksdb::Status rocksdb_open_status = rocksdb::DB::Open(rocksdb_options, db_dir, &db);
+  rocksdb::Status rocksdb_open_status = rocksdb::DB::Open(regular_rocksdb_options, db_dir, &db);
   if (!rocksdb_open_status.ok()) {
     LOG_WITH_PREFIX(ERROR) << "Failed to open a RocksDB database in directory " << db_dir << ": "
                            << rocksdb_open_status;

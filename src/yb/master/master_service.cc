@@ -52,6 +52,10 @@
 #include "yb/util/random_util.h"
 #include "yb/util/shared_lock.h"
 
+DEFINE_int64(tablet_split_size_threshold_bytes, 0,
+             "Threshold on tablet size after which tablet should be split. Automated splitting is "
+             "disabled if this value is set to 0");
+
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
              "requests for tablet locations.");
@@ -191,6 +195,21 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     }
   }
 
+  if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
+    // TODO(tsplit): for now we only do splitting in case there is no full tablet report to
+    // minimize probability of TSHeartbeat RPC timeout and retry.
+    // This will be improved to handle split retries appropriately and then we won't need that
+    // check.
+    for (const auto& tablet : req->tablets_for_split()) {
+      LOG(INFO) << "Got tablet to split: " << AsString(tablet);
+      const auto split_status = server_->catalog_manager()->SplitTablet(
+          tablet.tablet_id(), tablet.split_encoded_key(), tablet.split_partition_key());
+      if (!split_status.ok()) {
+        LOG(WARNING) << split_status;
+      }
+    }
+  }
+
   if (!ts_desc->has_tablet_report()) {
     resp->set_needs_full_tablet_report(true);
   }
@@ -205,6 +224,10 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   // Retrieve the ysql catalog schema version.
   uint64_t version = server_->catalog_manager()->GetYsqlCatalogVersion();
   resp->set_ysql_catalog_version(version);
+
+  if (FLAGS_tablet_split_size_threshold_bytes > 0) {
+    resp->set_tablet_split_size_threshold_bytes(FLAGS_tablet_split_size_threshold_bytes);
+  }
 
   rpc.RespondSuccess();
 }
