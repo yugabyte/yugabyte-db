@@ -40,7 +40,7 @@ approach we have chosen has the following benefits:
     records, and putting them in a separate section of the RocksDB key space allows to simplify the
     read path.
 - Storing provisional records in a separate RocksDB instance allows us to have different store,
- compaction and flush strategies for them.
+ compaction, and flush strategies for them.
 
 ### Encoding details of provisional records
 
