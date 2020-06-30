@@ -37,7 +37,7 @@ showAsideToc: true
 
 ## Install the Yugabyte Python Driver for YCQL
 
-To install the [Yugabyte Python Driver for YCQL](https://github.com/yugabyte/yb-cassandra--driver), run the following command:
+To install the [Yugabyte Python Driver for YCQL](https://github.com/yugabyte/cassandra-python-driver), run the following command:
 
 ```sh
 $ pip install yb-cassandra-driver
@@ -49,7 +49,7 @@ $ pip install yb-cassandra-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [YCQL quick start](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
 
 ### Write the application
 

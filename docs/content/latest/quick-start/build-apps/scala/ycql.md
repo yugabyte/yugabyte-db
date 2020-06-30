@@ -39,7 +39,7 @@ libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-5"
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [YCQL quick start](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
 - installed Scala version 2.12 or later.
 - installed `sbt` (Scala build tool) 1.3.8 or later.
 
