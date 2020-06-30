@@ -18,9 +18,9 @@ The following API client library drivers are supported for use with the [Yugabyt
 
 For tutorials on building a sample application with the following API client drivers, click the relevant link included below for each driver.
 
-## C/C++ 
+## C/C++
 
-### YugabyteDB C/C++ Driver for YCQL
+### Yugabyte C/C++ Driver for YCQL
 
 The [Yugabyte C++ Driver for YCQL](https://github.com/yugabyte/cassandra-cpp-driver) is based on the [DataStax C++ Driver for Apache Cassandra](https://github.com/datastax/cpp-driver).
 
@@ -28,11 +28,11 @@ For details, see the [README](https://github.com/yugabyte/cassandra-cpp-driver) 
 
 For a tutorial on building a sample C++ application with this driver, see [Build a C++ application](https://docs.yugabyte.com/latest/quick-start/build-apps/cpp/ycql/).
 
-## C# 
+## C\#
 
-### YugabyteDB C# Driver for YCQL
+### Yugabyte C# Driver for YCQL
 
-The [Yugabyte C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-driver) is based on a fork of the [DataStax C# Driver for Apache Cassandra](https://github.com/datastax/csharp-driver). 
+The [Yugabyte C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-driver) is based on a fork of the [DataStax C# Driver for Apache Cassandra](https://github.com/datastax/csharp-driver).
 
 For details, see the [README](https://github.com/yugabyte/cassandra-csharp-driver) in our GitHub repository.
 
@@ -42,7 +42,7 @@ For a tutorial on building a sample C# application with this driver, see [Build 
 
 ## Yugabyte Go Driver for YCQL
 
-The [Yugabyte Go Driver for YCQL](https://github.com/yugabyte/gocql) is based on a fork of [GoCQL](http://gocql.github.io/). 
+The [Yugabyte Go Driver for YCQL](https://github.com/yugabyte/gocql) is based on a fork of [GoCQL](http://gocql.github.io/).
 
 For details, see the [README](https://github.com/yugabyte/gocql/blob/master/README.md) in our GitHub repository.
 
@@ -52,7 +52,7 @@ For a tutorial on building a sample Go application with this driver, see [Build 
 
 ### Yugabyte Java Driver for YCQL
 
-The [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver) is based on the [DataStax Java Driver for Apache Cassandra](https://github.com/datastax/java-driver) and requires the Maven dependency shown below. 
+The [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver) is based on the [DataStax Java Driver for Apache Cassandra](https://github.com/datastax/java-driver) and requires the Maven dependency shown below.
 
 For details, see the [README](https://github.com/yugabyte/cassandra-java-driver/blob/3.8.0-yb-x/README.md) in our GitHub repository.
 
@@ -68,13 +68,13 @@ To build Java applications with this driver, you must add the following Maven de
 
 For a tutorial on building a sample Java application with this driver, see [Build a Java application](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ycql/).
 
-## NodeJS 
+## NodeJS
 
-### YugabyteDB Node.js driver for YCQL
+### Yugabyte Node.js driver for YCQL
 
-The [YugabyteDB Node.js driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver) is based on a fork of the [DataStax Node.js Driver for Apache Cassandra](https://github.com/datastax/nodejs-driver). 
+The [YugabyteDB Node.js driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver) is based on a fork of the [DataStax Node.js Driver for Apache Cassandra](https://github.com/datastax/nodejs-driver).
 
-For details, see the [README](https://github.com/datastax/cpp-driver/blob/master/README.md) in our GitHub repository. 
+For details, see the [README](https://github.com/datastax/cpp-driver/blob/master/README.md) in our GitHub repository.
 
 For a tutorial on building a sample Node.js application with this driver, see [Build a NodeJS application](https://docs.yugabyte.com/latest/quick-start/build-apps/nodejs/ycql/).
 

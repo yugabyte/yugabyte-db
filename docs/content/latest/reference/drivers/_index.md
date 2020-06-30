@@ -51,13 +51,13 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-   <a class="section-link icon-offset" href="../../quick-start/build-apps">
+   <a class="section-link icon-offset" href="ycql-client-libraries">
      <div class="head">
        <img class="icon" src="/images/section_icons/index/api.png" aria-hidden="true" />
-       <div class="title">Other Drivers</div>
+       <div class="title">API client drivers for YCQL</div>
      </div>
      <div class="body">
-       Build your applications using other YSQL & YCQL drivers and ORMs.
+       Build your applications using these supported YCQL drivers.
      </div>
    </a>
   </div>
