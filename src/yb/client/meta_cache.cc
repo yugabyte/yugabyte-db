@@ -38,6 +38,7 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/client_error.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/table.h"
 
@@ -51,6 +52,8 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/algorithm_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
@@ -473,7 +476,7 @@ std::string RemoteTablet::ReplicasAsStringUnlocked() const {
 }
 
 std::string RemoteTablet::ToString() const {
-  return YB_CLASS_TO_STRING(tablet_id, split_depth);
+  return YB_CLASS_TO_STRING(tablet_id, partition, split_depth);
 }
 
 ////////////////////////////////////////////////////////////
@@ -627,6 +630,9 @@ void LookupRpc::NewLeaderMasterDeterminedCb(const Status& status) {
 template <class Response>
 void LookupRpc::DoFinished(
     const Status& status, const Response& resp, const std::string* partition_group_start) {
+  VLOG_WITH_FUNC(4) << "partition_group_start: "
+                    << (partition_group_start ? Slice(*partition_group_start).ToDebugHexString()
+                                              : "None");
   if (status.ok() && resp.has_error()) {
     LOG_WITH_PREFIX(INFO)
         << "Failed, got resp error " << master::MasterErrorPB::Code_Name(resp.error().code());
@@ -692,45 +698,22 @@ void LookupRpc::DoFinished(
 
 namespace {
 
-Status CheckTabletLocationsGaps(
+Status CheckTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations) {
   const std::string* prev_partition_end = nullptr;
   for (const TabletLocationsPB& loc : locations) {
-    if (prev_partition_end && *prev_partition_end != loc.partition().partition_key_start()) {
+    if (prev_partition_end && *prev_partition_end > loc.partition().partition_key_start()) {
       LOG(DFATAL)
-          << "There should be no gaps and overlaps in tablet partitions and they should be sorted "
+          << "There should be no overlaps in tablet partitions and they should be sorted "
           << "by partition_key_start. Prev partition end: "
           << Slice(*prev_partition_end).ToDebugHexString() << ", current partition start: "
           << Slice(loc.partition().partition_key_start()).ToDebugHexString()
           << ". Tablet locations: " << AsString(locations);
-      return STATUS(IllegalState, "Wrong order or gaps in partitions");
+      return STATUS(IllegalState, "Wrong order or overlaps in partitions");
     }
     prev_partition_end = &loc.partition().partition_key_end();
   }
   return Status::OK();
-}
-
-Status CheckColocatedTabletSplit(const TabletLocationsPB& location) {
-  if (location.table_ids_size() == 1) {
-    return Status::OK();
-  }
-  const auto error_msg = Format(
-      "Tablet splitting is not supported for colocated tables, tablet_id: $0",
-      location.tablet_id());
-  LOG(DFATAL) << error_msg;
-  return STATUS(IllegalState, error_msg);
-}
-
-Status PreSplitTabletNotCoveredError(
-    const RemoteTabletPtr& pre_split_tablet,
-    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-    const std::string& clarification) {
-  const auto error_msg = Format(
-      "Pre-split tablet $0 partition: $1 is not exactly covered with post-split tablets "
-      "partitions: $2. $3", pre_split_tablet->tablet_id(), pre_split_tablet->partition(),
-      AsString(locations), clarification);
-  LOG(DFATAL) << error_msg;
-  return STATUS(IllegalState, error_msg);
 }
 
 } // namespace
@@ -738,30 +721,23 @@ Status PreSplitTabletNotCoveredError(
 Result<RemoteTabletPtr> MetaCache::ProcessTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
     const std::string* partition_group_start) {
-  VLOG(2) << "Processing master response " << ToString(locations);
+  VLOG(2) << "Processing master response " << AsString(locations);
 
-  RETURN_NOT_OK(CheckTabletLocationsGaps(locations));
+  RETURN_NOT_OK(CheckTabletLocations(locations));
 
   RemoteTabletPtr result;
   bool first = true;
   std::vector<std::pair<LookupTabletCallback, internal::RemoteTabletPtr>> to_notify;
+  std::vector<LookupTabletCallback> to_notify_retry_later;
 
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
 
-    std::unordered_set<TableId> table_ids_to_reset;
-    auto se = ScopeExit([this, &table_ids_to_reset]() NO_THREAD_SAFETY_ANALYSIS {
-      // Reset the cache for partially updated tables to avoid inconsistent state.
-      for (const auto& table_id : table_ids_to_reset) {
-        tables_.erase(table_id);
-      }
-    });
-
-    RemoteTabletPtr current_pre_split_tablet;
+    std::unordered_set<TableId> table_ids_processed;
 
     for (const TabletLocationsPB& loc : locations) {
       for (const std::string& table_id : loc.table_ids()) {
-        table_ids_to_reset.insert(table_id);
+        table_ids_processed.insert(table_id);
 
         auto& table_data = tables_[table_id];
         auto& tablets_by_key = table_data.tablets_by_partition;
@@ -794,13 +770,15 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocations(
           remote = new RemoteTablet(tablet_id, partition, loc.split_depth());
 
           CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
-          // TODO(tsplit): cover this functionality with test.
           auto emplace_result = tablets_by_key.emplace(partition.partition_key_start(), remote);
           if (!emplace_result.second) {
             const auto& old_tablet = emplace_result.first->second;
             if (old_tablet->split_depth() < remote->split_depth()) {
               // Only replace with tablet of higher split_depth.
-              current_pre_split_tablet = old_tablet;
+              // TODO(tsplit): add cleanup for table_data.split_tablets, we don't need to keep
+              // pre-split tablet info after it has been fully covered by post-split tablets
+              // in meta cache.
+              table_data.split_tablets[partition.partition_key_start()].push_back(old_tablet);
               emplace_result.first->second = remote;
             } else {
               // If split_depth is the same - it should be the same tablet.
@@ -811,30 +789,11 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocations(
                     old_tablet->tablet_id(), tablet_id, loc.partition().partition_key_start(),
                     old_tablet->split_depth());
                 LOG(DFATAL) << error_msg;
-                return STATUS(IllegalState, error_msg);
+                // Just skip updating this tablet for release build.
               }
             }
           }
-          if (current_pre_split_tablet) {
-            RETURN_NOT_OK(CheckColocatedTabletSplit(loc));
-            if (!current_pre_split_tablet->partition().ContainsPartition(partition)) {
-              return PreSplitTabletNotCoveredError(
-                  current_pre_split_tablet, locations,
-                  Format("Not contains partition: $0", partition));
-            }
-            {
-              std::lock_guard<simple_spinlock> request_lock(client_->data_->tablet_requests_mutex_);
-              client_->data_->tablet_requests_[remote->tablet_id()].request_id_seq =
-                  client_->data_->tablet_requests_[current_pre_split_tablet->tablet_id()]
-                      .request_id_seq;
-            }
-            if (current_pre_split_tablet->partition().partition_key_end() ==
-                partition.partition_key_end()) {
-              // `remote` is the last part of pre_split_tablet split, so we should finish pre-split
-              // tablet replacement.
-              current_pre_split_tablet = nullptr;
-            }
-          }
+          MaybeUpdateClientRequests(table_data, *remote);
         }
         remote->Refresh(ts_cache_, loc.replicas());
 
@@ -844,6 +803,7 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocations(
         }
 
         if (partition_group_start) {
+          // Put lookup callbacks corresponding to *partition_group_start into to_notify.
           auto lookup_by_group_iter =
               table_data.tablet_lookups_by_group.find(*partition_group_start);
           if (lookup_by_group_iter != table_data.tablet_lookups_by_group.end()) {
@@ -864,20 +824,144 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocations(
       }
     }
 
-    if (current_pre_split_tablet) {
-      return PreSplitTabletNotCoveredError(
-          current_pre_split_tablet, locations, "No last covering partition.");
+    if (partition_group_start) {
+      // Check if for some tables processed we haven't received some tablet locations (this could
+      // happen if tablet is not yet in running state). In this case we notify lookup callbacks to
+      // try again later.
+      for (const TableId& table_id : table_ids_processed) {
+        auto& table_data = tables_[table_id];
+        const auto lookup_by_group_iter =
+            table_data.tablet_lookups_by_group.find(*partition_group_start);
+        if (lookup_by_group_iter != table_data.tablet_lookups_by_group.end()) {
+          VLOG_WITH_FUNC(4) << "Checking tablet_lookups_by_group for partition_group_start: "
+                            << *partition_group_start;
+          const auto& lookups_by_partition_key = lookup_by_group_iter->second;
+          for (const auto& lookups : lookups_by_partition_key) {
+            for (const auto& lookup : lookups.second) {
+              to_notify_retry_later.emplace_back(std::move(lookup.callback));
+            }
+          }
+          table_data.tablet_lookups_by_group.erase(lookup_by_group_iter);
+        }
+      }
     }
-
-    table_ids_to_reset.clear();
   }
 
   for (const auto& callback_and_remote_tablet : to_notify) {
     callback_and_remote_tablet.first(callback_and_remote_tablet.second);
   }
 
+  if (to_notify_retry_later.size() > 0) {
+    static auto status = STATUS(TryAgain, "Tablet for requested partition is not yet running");
+    for (const auto& callback : to_notify_retry_later) {
+      callback(status);
+    }
+  }
+
   CHECK_NOTNULL(result.get());
   return result;
+}
+
+RemoteTabletPtr MetaCache::GetNearestSplitAncestorUnlocked(
+    const TableData& table_data, const RemoteTablet& tablet) {
+  VLOG_WITH_FUNC(3) << Format("tablet: $0", tablet);
+  if (tablet.split_depth() == 0) {
+    // Tablet is not a result of another tablet split, it couldn't have split ancestor.
+    return nullptr;
+  }
+
+  const auto& partition = tablet.partition();
+  const auto& partition_key_start = partition.partition_key_start();
+
+  VLOG_WITH_FUNC(4) << "table_data.tablets_by_partition: "
+                    << AsString(table_data.tablets_by_partition);
+  VLOG_WITH_FUNC(4) << "table_data.split_tablets: " << AsString(table_data.split_tablets);
+
+  RemoteTabletPtr nearest_split_ancestor;
+
+  {
+    // Try to find the deepest tablet X in table_data.tablets_by_partition whose partition strictly
+    // contains tablet's (T) partition.
+    //
+    // If such tablet X exists it will have the maximum possible X.partition_key_start <=
+    // T.partition_key_start.
+    //
+    // Proof: Lets assume there is another tablet Y != X in the map that strictly contains
+    // T.partition, but it has Y.partition_key_start < X.partition_key_start.
+    // That means:
+    // Y.partition_key_end >= T.partition_key_end > T.partition_key_start >= X.partition_key_start
+    //  => Y.partition_key_end > X.partition_key_start
+    // So, Y.partition overlaps with X.partition and Y.partition_key_start < X.partition_key_start.
+    // Due to the nature of tablet splitting, there could be no partial overlap of tablet partition
+    // key ranges. Then Y should strictly contains X and that means Y is not the
+    // deepest tablet available strictly containing T.partition.
+    const auto it = GetLastLessOrEqual(table_data.tablets_by_partition, partition_key_start);
+    if (it != table_data.tablets_by_partition.end()) {
+      VLOG_WITH_FUNC(3) << Format(
+          "Nearest_split_ancestor candidate: $0",
+          it != table_data.tablets_by_partition.end() ? AsString(it->second) : "None");
+      if (it->second->partition().ContainsPartitionStrict(partition)) {
+        nearest_split_ancestor = it->second;
+        VLOG_WITH_FUNC(3) << Format(
+            "Found nearest split ancestor tablet: $0", nearest_split_ancestor);
+      }
+    }
+  }
+
+  if (!nearest_split_ancestor) {
+    // Nearest split ancestor could be already replaced and moved to table_data.split_tablets,
+    // so try to find it there starting with largest depth.
+    const auto it = GetLastLessOrEqual(table_data.split_tablets, partition_key_start);
+    if (it != table_data.split_tablets.end()) {
+      for (auto tablet_it = it->second.rbegin(); tablet_it != it->second.rend(); ++tablet_it) {
+        VLOG_WITH_FUNC(3) << Format(
+            "Nearest_split_ancestor candidate: $0", tablet_it->get());
+        if (tablet_it->get()->partition().ContainsPartition(partition)) {
+          nearest_split_ancestor = tablet_it->get();
+          VLOG_WITH_FUNC(3) << Format(
+              "Found nearest split ancestor tablet: $0", nearest_split_ancestor);
+          break;
+        }
+      }
+    }
+  }
+
+  if (!nearest_split_ancestor) {
+    VLOG_WITH_FUNC(3) << Format("No nearest split ancestor tablet for: $0", tablet);
+    return nullptr;
+  }
+
+  if (nearest_split_ancestor->split_depth() >= tablet.split_depth()) {
+    LOG(DFATAL) << Format(
+        "Nearest split ancestor $0 (split_depth: $1, partition: $2) should have smaller"
+        " split depth than $3 (split_depth: $4, partition: $5)",
+        nearest_split_ancestor->tablet_id(), nearest_split_ancestor->split_depth(),
+        nearest_split_ancestor->partition(), tablet.tablet_id(), tablet.split_depth(),
+        tablet.partition());
+    return nullptr;
+  }
+
+  return nearest_split_ancestor;
+}
+
+void MetaCache::MaybeUpdateClientRequests(const TableData& table_data, const RemoteTablet& tablet) {
+  const auto nearest_split_ancestor = GetNearestSplitAncestorUnlocked(table_data, tablet);
+
+  if (!nearest_split_ancestor) {
+    return;
+  }
+
+  // TODO: MetaCache is a friend of Client and tablet_requests_mutex_ with tablet_requests_ are
+  // public members of YBClient::Data. Consider refactoring that.
+  std::lock_guard<simple_spinlock> request_lock(client_->data_->tablet_requests_mutex_);
+  auto& tablet_requests = client_->data_->tablet_requests_;
+  const auto requests_it = tablet_requests.find(nearest_split_ancestor->tablet_id());
+  if (requests_it == tablet_requests.end()) {
+    LOG(DFATAL) << "Not found tablet requests structure for tablet "
+                << nearest_split_ancestor->tablet_id();
+    return;
+  }
+  tablet_requests[tablet.tablet_id()].request_id_seq = requests_it->second.request_id_seq;
 }
 
 void MetaCache::InvalidateTableCache(const TableId& table_id) {
@@ -889,7 +973,7 @@ void MetaCache::InvalidateTableCache(const TableId& table_id) {
     if (it != tables_.end()) {
       it->second.stale = true;
       // TODO(tsplit): Optimize to retry only necessary lookups inside ProcessTabletLocations,
-      // detect which need to be retried by GetTableLocationsResponsePB.partition_version.
+      // detect which need to be retried by GetTableLocationsResponsePB.partitions_version.
       for (const auto& group_lookups : it->second.tablet_lookups_by_group) {
         for (const auto& partition_lookups : group_lookups.second) {
           for (const auto& lookup : partition_lookups.second) {
@@ -1062,6 +1146,19 @@ class LookupByKeyRpc : public LookupRpc {
 
  private:
   void Finished(const Status& status) override {
+    const auto table_partitions_version = table_->GetPartitionsVersion();
+    VLOG_WITH_FUNC(4) << Format(
+        "Received table $0 partitions version: $1, ours is: $2", table_->id(),
+        resp_.partitions_version(), table_partitions_version);
+    if (resp_.partitions_version() != table_partitions_version) {
+      DoFinished(
+          STATUS_EC_FORMAT(
+              TryAgain, ClientError(ClientErrorCode::kTablePartitionsAreStale),
+              "Received table $0 partitions version: $1, ours is: $2", table_->id(),
+              resp_.partitions_version(), table_partitions_version),
+          resp_, &partition_group_start_);
+      return;
+    }
     DoFinished(status, resp_, &partition_group_start_);
   }
 
@@ -1165,6 +1262,8 @@ void MetaCache::LookupTabletByKey(const YBTable* table,
     bool was_empty = lookup.empty();
     lookup[partition_start].push_back({std::move(callback), deadline});
     if (!was_empty) {
+      VLOG_WITH_FUNC(4) << "Lookups were not empty for partition_group_start: "
+                        << Slice(partition_group_start).ToDebugHexString();
       return;
     }
   }
