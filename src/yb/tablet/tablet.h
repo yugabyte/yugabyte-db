@@ -624,6 +624,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   friend class ScopedReadOperation;
   friend class TabletComponent;
 
+  class RegularRocksDbListener;
+
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
   void StartDocWriteOperation(

@@ -1604,6 +1604,12 @@ Status CatalogManager::TEST_SplitTablet(
 Status CatalogManager::DoSplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, const std::string& split_encoded_key,
     const std::string& split_partition_key) {
+  if (source_tablet_info->colocated()) {
+    return STATUS_FORMAT(
+        IllegalState, "Tablet splitting is not supported for colocated tables, tablet_id: $0",
+        source_tablet_info->tablet_id());
+  }
+
   constexpr auto kNumSplitParts = 2;
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = CreateNewTabletsPartition(
@@ -3783,8 +3789,27 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
   //   not get executed.
   {
     std::lock_guard<LockType> l(lock_);
+    auto table_lock = table->LockForWrite();
+
+    auto& table_pb = table_lock->mutable_data()->pb;
+    table_pb.set_partitions_version(table_pb.partitions_version() + 1);
+
+    RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
+    // If we crash here - we will have new partitions version with the same set of tablets which
+    // is harmless.
+    // If we first save new_tablet to syscatalog and then crash - we would have table with old
+    // partitions version, but new set of tablets which would break invariant that table partitions
+    // set is not changed within the same partitions version.
+    // TODO: rework this after https://github.com/yugabyte/yugabyte-db/issues/4912 is implemented.
+    RETURN_NOT_OK(sys_catalog_->AddItem(new_tablet, leader_ready_term()));
+
     table->AddTablet(new_tablet);
+    // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
+    // committed TabletInfo from the `table` ?
     new_tablet->mutable_metadata()->CommitMutation();
+
+    table_lock->Commit();
+
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
   }
@@ -6987,7 +7012,9 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
     }
   }
 
-  resp->set_table_type(table->metadata().state().pb.table_type());
+  resp->set_table_type(l->data().pb.table_type());
+  resp->set_partitions_version(l->data().pb.partitions_version());
+
   return Status::OK();
 }
 

@@ -1334,8 +1334,6 @@ Status YBClient::GetTabletsAndUpdateCache(
   RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets, RequireTabletsRunning::kFalse));
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
 
-  // RequireTabletsRunning::kFalse guarantees that we don't have gaps in tablets partitions as
-  // ProcessTabletLocations expects.
   RETURN_NOT_OK(
       data_->meta_cache_->ProcessTabletLocations(tablets, nullptr /* partition_group_start */));
 
