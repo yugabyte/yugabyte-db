@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TSERVER_METRICS_HEARTBEAT_DATA_PROVIDER_H
-#define YB_TSERVER_TSERVER_METRICS_HEARTBEAT_DATA_PROVIDER_H
+#ifndef YB_TSERVER_TABLET_SPLIT_HEARTBEAT_DATA_PROVIDER_H
+#define YB_TSERVER_TABLET_SPLIT_HEARTBEAT_DATA_PROVIDER_H
 
 #include <memory>
 
@@ -21,24 +21,16 @@
 namespace yb {
 namespace tserver {
 
-class TServerMetricsHeartbeatDataProvider : public PeriodicalHeartbeatDataProvider {
+class TabletSplitHeartbeatDataProvider : public PeriodicalHeartbeatDataProvider {
  public:
-  explicit TServerMetricsHeartbeatDataProvider(TabletServer* server);
+  explicit TabletSplitHeartbeatDataProvider(TabletServer* server);
 
  private:
   void DoAddData(
       const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) override;
-
-  uint64_t CalculateUptime();
-
-  MonoTime start_time_;
-
-  // Stores the total read and writes ops for computing iops.
-  uint64_t prev_reads_ = 0;
-  uint64_t prev_writes_ = 0;
 };
 
 } // namespace tserver
 } // namespace yb
 
-#endif // YB_TSERVER_TSERVER_METRICS_HEARTBEAT_DATA_PROVIDER_H
+#endif // YB_TSERVER_TABLET_SPLIT_HEARTBEAT_DATA_PROVIDER_H

@@ -194,6 +194,7 @@ Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb, TableId primary_table_id
   rocksdb_dir = pb.rocksdb_dir();
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
+  has_been_fully_compacted = pb.has_been_fully_compacted();
   return LoadTablesFromPB(pb.tables(), primary_table_id);
 }
 
@@ -210,6 +211,7 @@ void KvStoreInfo::ToPB(TableId primary_table_id, KvStoreInfoPB* pb) const {
   } else {
     pb->set_upper_bound_key(upper_bound_key);
   }
+  pb->set_has_been_fully_compacted(has_been_fully_compacted);
 
   // Putting primary table first, then all other tables.
   const auto& it = tables.find(primary_table_id);
@@ -831,6 +833,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
   metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
+  metadata->kv_store_.has_been_fully_compacted = false;
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
   metadata->tablet_data_state_ = TABLET_DATA_UNKNOWN;

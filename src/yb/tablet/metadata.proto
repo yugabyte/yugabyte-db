@@ -126,6 +126,11 @@ message KvStoreInfoPB {
   // See docdb::KeyBounds.
   optional bytes lower_bound_key = 6;
   optional bytes upper_bound_key = 7;
+
+  // Whether KV-store regular DB has been fully compacted since creation.
+  // We don't split not yet fully compacted post-split tablets as of 2020-06-23, since
+  // detecting effective middle key and tablet size for such tablets is not yet implemented.
+  optional bool has_been_fully_compacted = 8;
 }
 
 // The super-block keeps track of the Raft group.

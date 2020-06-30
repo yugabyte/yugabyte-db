@@ -145,6 +145,9 @@ struct KvStoreInfo {
   std::string lower_bound_key;
   std::string upper_bound_key;
 
+  // See KvStoreInfoPB field with the same name.
+  bool has_been_fully_compacted = false;
+
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
   // KV-stores.
@@ -334,6 +337,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   int64_t cdc_min_replicated_index() const;
 
+  bool has_been_fully_compacted() const {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.has_been_fully_compacted;
+  }
+
+  void set_has_been_fully_compacted(const bool& value) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    kv_store_.has_been_fully_compacted = value;
+  }
+
   // Returns the data root dir for this Raft group, for example:
   // /mnt/d0/yb-data/tserver/data
   // TODO(#79): rework when we have more than one KV-store (and data roots) per Raft group.
@@ -500,6 +513,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   State state_;
 
   // Lock protecting the underlying data.
+  // TODO: consider switching to RW mutex.
   mutable MutexType data_mutex_;
 
   // Lock protecting flushing the data to disk.

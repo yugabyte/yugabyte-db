@@ -612,7 +612,9 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
 
   ASSERT_LT(insert_failure_rate, 0.01);
   ASSERT_LT(read_failure_rate, 0.01);
-  ASSERT_LT(read_try_again_rate, 0.01);
+  // TODO(tsplit): lower this threshold as internal (without reaching client app) read retries
+  //  implemented for split tablets.
+  ASSERT_LT(read_try_again_rate, 0.1);
   ASSERT_EQ(workload.rows_read_empty(), 0);
 
   // TODO(tsplit): Check with different isolation levels.
