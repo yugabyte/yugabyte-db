@@ -58,9 +58,8 @@ DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
 TAG_FLAG(master_inject_latency_on_tablet_lookups_ms, unsafe);
 TAG_FLAG(master_inject_latency_on_tablet_lookups_ms, hidden);
 
-DEFINE_test_flag(int32, master_inject_latency_on_transactional_tablet_lookups_ms, 0,
-                 "Number of milliseconds that the master will sleep before responding to "
-                 "requests for transactional tablet locations.");
+DEFINE_test_flag(bool, master_fail_transactional_tablet_lookups, false,
+                 "Whether to fail all lookup requests to transactional table.");
 
 DEFINE_double(master_slow_get_registration_probability, 0,
               "Probability of injecting delay in GetMasterRegistration.");
@@ -221,7 +220,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
   if (PREDICT_FALSE(FLAGS_master_inject_latency_on_tablet_lookups_ms > 0)) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
   }
-  if (PREDICT_FALSE(FLAGS_TEST_master_inject_latency_on_transactional_tablet_lookups_ms > 0)) {
+  if (PREDICT_FALSE(FLAGS_TEST_master_fail_transactional_tablet_lookups)) {
     std::vector<scoped_refptr<TableInfo>> tables;
     server_->catalog_manager()->GetAllTables(&tables);
     const auto& tablet_id = req->tablet_ids(0);
@@ -230,10 +229,14 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
       table->GetAllTablets(&tablets);
       for (const auto& tablet : tablets) {
         if (tablet->tablet_id() == tablet_id) {
-          auto lock = table->LockForRead();
-          if (table->metadata().state().table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-            SleepFor(MonoDelta::FromMilliseconds(
-                FLAGS_TEST_master_inject_latency_on_transactional_tablet_lookups_ms));
+          TableType table_type;
+          {
+            auto lock = table->LockForRead();
+            table_type = table->metadata().state().table_type();
+          }
+          if (table_type == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+            rpc.RespondFailure(STATUS(InvalidCommand, "TEST: Artificial failure"));
+            return;
           }
           break;
         }

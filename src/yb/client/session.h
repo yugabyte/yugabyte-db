@@ -117,8 +117,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Set the timeout for writes made in this session.
   void SetTimeout(MonoDelta timeout);
 
-  void SetSingleRpcTimeout(MonoDelta timeout);
-
   MonoDelta timeout() const {
     return timeout_;
   }
@@ -286,9 +284,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   // Timeout for the next batch.
   MonoDelta timeout_;
-
-  // Timeout for the rpcs. Initialized only on SetRpcTimeout.
-  MonoDelta single_rpc_timeout_;
 
   // HybridTime for Write. Used for Index Backfill.
   HybridTime hybrid_time_for_write_;

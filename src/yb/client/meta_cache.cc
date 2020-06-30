@@ -600,7 +600,7 @@ void LookupRpc::SendRpc() {
     Finished(STATUS(TimedOut, "timed out after deadline expired"));
     return;
   }
-  mutable_retrier()->PrepareController(MonoDelta());
+  mutable_retrier()->PrepareController();
 
   DoSendRpc();
 }

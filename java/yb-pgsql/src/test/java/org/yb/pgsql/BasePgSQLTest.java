@@ -189,11 +189,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   protected Map<String, String> getMasterAndTServerFlags() {
-    Map<String, String> flagMap = new TreeMap<>();
-    flagMap.put(
-        "retryable_rpc_single_call_timeout_ms",
-        String.valueOf(getRetryableRpcSingleCallTimeoutMs()));
-    return flagMap;
+    return new TreeMap<>();
   }
 
   protected Integer getYsqlPrefetchLimit() {

@@ -60,7 +60,6 @@ DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_string(time_source);
 DECLARE_int32(TEST_delay_execute_async_ms);
-DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_lease_revocation);
 DECLARE_bool(rocksdb_disable_compactions);
@@ -757,7 +756,6 @@ TEST_F(QLTabletTest, LeaderChange) {
     req->mutable_if_expr()->mutable_condition(), kValueColumn, QL_OP_EQUAL, kValue1);
   req->mutable_column_refs()->add_ids(table.ColumnId(kValueColumn));
   ASSERT_OK(session->Apply(write_op));
-  FLAGS_retryable_rpc_single_call_timeout_ms = 60000;
 
   SetAtomicFlag(30000, &FLAGS_TEST_delay_execute_async_ms);
   auto flush_future = session->FlushFuture();
