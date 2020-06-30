@@ -48,7 +48,6 @@ DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
-DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
@@ -72,7 +71,6 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
     FLAGS_enable_ysql = true;
     FLAGS_hide_pg_catalog_table_creation_logs = true;
     FLAGS_master_auto_run_initdb = true;
-    FLAGS_retryable_rpc_single_call_timeout_ms = 30000;
     FLAGS_pggate_rpc_timeout_secs = 120;
     FLAGS_ysql_num_shards_per_tserver = 1;
 

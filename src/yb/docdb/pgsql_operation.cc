@@ -32,7 +32,6 @@
 
 DECLARE_bool(trace_docdb_calls);
 DECLARE_bool(ysql_disable_index_backfill);
-DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 
 DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
               "YSQL read scan timeout multipler of retryable_rpc_single_call_timeout_ms.");
@@ -504,9 +503,6 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
 
   // Set scan start time.
   bool scan_time_exceeded = false;
-  const int64 scan_time_limit =
-    FLAGS_retryable_rpc_single_call_timeout_ms * FLAGS_ysql_scan_timeout_multiplier;
-  const MonoTime start_time = MonoTime::Now();
 
   // Fetching data.
   int match_count = 0;
@@ -552,8 +548,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
 
     // Check every row_count_limit matches whether we've exceeded our scan time.
     if (match_count % row_count_limit == 0) {
-      const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
-      scan_time_exceeded = elapsed_time.ToMilliseconds() > scan_time_limit;
+      scan_time_exceeded = CoarseMonoClock::now() >= deadline;
     }
   }
 
