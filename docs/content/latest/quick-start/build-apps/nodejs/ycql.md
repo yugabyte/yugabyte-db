@@ -1,8 +1,8 @@
 ---
-title: Build a NodeJS application that uses YCQL
-headerTitle: Build a NodeJS application
+title: Build a Node.js application that uses YCQL
+headerTitle: Build a Node.js application
 linkTitle: NodeJS
-description: Build a NodeJS application that uses YCQL
+description: Build a Node.js application with the Yugabyte Node.js driver for YCQL.
 menu:
   latest:
     parent: build-apps
@@ -57,7 +57,7 @@ This tutorial assumes that you have:
 $ npm install --save async
 ```
 
-### Write the Node.js sample application
+### Write the application
 
 Create a file `yb-cql-helloworld.js` and add the following content to it.
 
@@ -121,7 +121,7 @@ async.series([
 });
 ```
 
-### Run the Node.js application
+### Run the application
 
 To use the application, run the following command:
 

@@ -59,7 +59,7 @@ This tutorial assumes that you have:
 
 ### Create the Maven build file
 
-Create a maven build file `pom.xml` and add the following content into it.
+Create a Maven build file, named `pom.xml`, and add the following content into it.
 
 ```mvn
 <?xml version="1.0"?>

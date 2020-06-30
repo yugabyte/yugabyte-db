@@ -58,9 +58,9 @@ The YugabyteDB C++ Driver for YCQL depends on the following:
 
 For details on installing the dependencies, see [Installing dependencies](https://docs.datastax.com/en/developer/cpp-driver/2.9/topics/building/#installing-dependencies).
 
-### Install the Yugabyte
+### Install the Yugabyte C++ Driver for YCQL
 
-To build and install the driver:
+To build and install the driver, run the following commands:
 
 ```sh
 $ mkdir build
@@ -72,7 +72,7 @@ $ make install
 
 ## Create a working C++ sample application
 
-### Write the C++ application
+### Write the sample application
 
 Create a file `ybcql_hello_world.c` and copy the contents below:
 
@@ -221,7 +221,7 @@ int main() {
 }
 ```
 
-### Run the C++ application
+### Run the application
 
 You can compile the file using `gcc` or `clang`.
 

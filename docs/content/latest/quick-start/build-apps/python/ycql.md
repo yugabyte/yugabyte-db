@@ -2,7 +2,7 @@
 title: Build a Python application that uses YCQL
 headerTitle: Build a Python application
 linkTitle: Python
-description: Build a Python application that uses YCQL.
+description: Build a Python application with the Yugabyte Python Driver for YCQL.
 menu:
   latest:
     parent: build-apps
@@ -51,7 +51,7 @@ This tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [YCQL quick start](../../../../api/ycql/quick-start/).
 
-### Write the Python sample application
+### Write the application
 
 Create a file `yb-cql-helloworld.py` and add the following content to it.
 
@@ -93,7 +93,7 @@ for row in rows:
 cluster.shutdown()
 ```
 
-### Run the Python application
+### Run the application
 
 To use the application, run the following command:
 

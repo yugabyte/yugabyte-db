@@ -43,9 +43,9 @@ In your Visual Studio, create a new **Project** and choose **Console Application
 
 ### Install the YugaByte C# Driver for YCQL
 
-The [Yugabyte C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-driver) is based on a fork of the Apache Cassandra C# Driver, but adds features unique to YCQL, including [JSONB support](../../api/ycql/type_jsonb/) and a different routing policy.
+The [Yugabyte C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-driver) is based on a fork of the Apache Cassandra C# Driver, but adds features unique to YCQL, including [JSONB support](../../../api/ycql/type_jsonb/) and a different routing policy.
 
-To install the [YugbyteDB C# Driver for YCQL](https://www.nuget.org/packages/YugaByteCassandraCSharpDriver/) in your Visual Studio project, follow the instructions in the [README](https://github.com/yugabyte/cassandra-csharp-driver).
+To install the [Yugbyte C# Driver for YCQL](https://www.nuget.org/packages/YugaByteCassandraCSharpDriver/) in your Visual Studio project, follow the instructions in the [README](https://github.com/yugabyte/cassandra-csharp-driver).
 
 ### Copy the contents below to your `Program.cs` file
 
@@ -107,8 +107,9 @@ namespace Yugabyte_CSharp_Demo
 }
 ```
 
-### Running the C# app
-Run the C# app from menu select `Run -> Start Without Debugging`
+### Run the application
+
+To run the C# application from the Visual Studio menu, select `Run > Start Without Debugging`.
 
 You should see the following as the output.
 
