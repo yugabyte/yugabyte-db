@@ -12,6 +12,10 @@ select ::= [ WITH [ RECURSIVE ] { with_query [ , ... ] } ]  SELECT
            [ LIMIT [ integer | ALL ] ]  
            [ OFFSET integer [ ROW | ROWS ] ]
 
+fn_over_window ::= fn_invocation 
+                   [ FILTER ( WHERE { boolean_expression [ , ... ] } ) ] 
+                   OVER { window_definition | name }
+
 order_expr ::= expression [ ASC | DESC | USING operator_name ] 
                [ NULLS { FIRST | LAST } ]
 ```
