@@ -2,7 +2,7 @@
 title: Build a C# application that uses YCQL
 headerTitle: Build a C# application
 linkTitle: C#
-description: Build a C# application that uses YCQL.
+description: Build a sample C# application with the Yugabyte C# Driver for YCQL.
 menu:
   latest:
     identifier: build-apps-csharp-2-ycql
@@ -34,20 +34,20 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, please follow these steps in the [Quick start YCQL](../../../../quick-start/test-cassandra/).
-- installed Visual Studio
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../quick-start/test-cassandra/).
+- installed Visual Studio.
 
-## Writing a HelloWorld C# app
+## Write the HelloWorld C# application
 
-In your Visual Studio create a new Project and choose Console Application as template. Follow the instructions to save the project.
+In your Visual Studio, create a new **Project** and choose **Console Application** as template. Follow the instructions to save the project.
 
-### Install YugaByteCassandraCSharpDriver C# driver
+### Install the YugaByte C# Driver for YCQL
 
-YugabyteDB has forked the Cassandra driver to add more features like JSONB and change the routing policy.
-[Install the C# driver](https://www.nuget.org/packages/YugaByteCassandraCSharpDriver/) in your Visual Studio project by
-following instructions on the page.
+The [Yugabyte C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-driver) is based on a fork of the Apache Cassandra C# Driver, but adds features unique to YCQL, including [JSONB support](../../api/ycql/type_jsonb/) and a different routing policy.
 
-### Copy the contents below to your `Program.cs` file.
+To install the [YugbyteDB C# Driver for YCQL](https://www.nuget.org/packages/YugaByteCassandraCSharpDriver/) in your Visual Studio project, follow the instructions in the [README](https://github.com/yugabyte/cassandra-csharp-driver).
+
+### Copy the contents below to your `Program.cs` file
 
 ```cs
 using System;

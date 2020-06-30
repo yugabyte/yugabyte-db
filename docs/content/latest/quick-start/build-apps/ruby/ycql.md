@@ -35,23 +35,23 @@ showAsideToc: true
   </li>
 </ul>
 
-## Installation
+## Install the Yugabyte Ruby Driver for YCQL
 
-Install the Ruby YCQL driver using the following command. You can get further details for the driver [here](https://github.com/yugabyte/cassandra-ruby-driver).
+Install the [Yugabyte Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-driver) using the following command:
 
 ```sh
 $ gem install yugabyte-ycql-driver
 ```
 
-## Working example
+## Create a sample Ruby application
 
 ### Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
 
-### Writing the Ruby code
+### Write the Ruby sample HelloWorld application
 
 Create a file `yb-ycql-helloworld.rb` and add the following content to it.
 
@@ -94,9 +94,9 @@ end
 cluster.close()
 ```
 
-### Running the application
+### Run the application
 
-To run the application, type the following:
+To use the application, run the following command:
 
 ```sh
 $ ruby yb-cql-helloworld.rb

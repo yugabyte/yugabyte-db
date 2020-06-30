@@ -2,7 +2,7 @@
 title: Build a Go application that uses YCQL
 headerTitle: Build a Go application
 linkTitle: Go
-description: Build a Go application that uses YCQL.
+description: Build a sample Go application with the Yugabyte Go Driver for YCQL.
 aliases:
   - /latest/develop/client-drivers/cassandra/go/
 menu:
@@ -41,18 +41,18 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, please follow these steps in the [Quick start](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
 - installed Go version 1.13 or later.
 
-## Install the Go Cassandra driver
+## Install the Yugabyte Go Driver for YCQL
 
-To install the driver locally, run:
+To install the [Yugabyte Go Driver for YCQL](https://github.com/yugabyte/gocql) locally, run the following command:
 
 ```sh
 $ go get github.com/yugabyte/gocql
 ```
 
-## Writing a HelloWorld YCQL app
+## Write the YCQL sample application
 
 Create a file `ybcql_hello_world.go` and copy the contents below.
 
@@ -121,9 +121,9 @@ func main() {
 }
 ```
 
-## Running the application
+## Run the Go application
 
-To execute the file, run the following command:
+To use the application, run the following command:
 
 ```sh
 $ go run ybcql_hello_world.go

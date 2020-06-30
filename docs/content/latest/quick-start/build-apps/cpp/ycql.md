@@ -1,8 +1,8 @@
 ---
-title: Build a C++ application using YCQL
+title: Build a C++ sample application that uses YCQL
 headerTitle: Build a C++ application
 linkTitle: C++
-description: Build a C++ application that uses the YCQL API.
+description: Build a sample C++ application with the Yugabyte C++ Driver for YCQL.
 menu:
   latest:
     identifier: build-apps-cpp-2-ycql
@@ -35,13 +35,14 @@ showAsideToc: true
 The tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`ycqlsh`). If
-  not, please follow the steps in the [Quick Start guide](../../../../api/ycql/quick-start/).
+  not, follow the steps in [YCQL quick start](../../../../api/ycql/quick-start/).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
-- have gcc 4.1.2 or later, Clang 3.4 or later installed.
+- have gcc 4.1.2 or later.
+- have Clang 3.4 or later.
 
-## Install the C/C++ driver
+## Install the YugabyteDB C++ Driver for YCQL
 
-To get the C/C++ driver, run:
+To get the [YugabyteDB C++ Driver for YCQL](https://github.com/yugabyte/cassandra-cpp-driver), clone the repository:
 
 ```sh
 $ git clone https://github.com/yugabyte/cassandra-cpp-driver.git
@@ -49,16 +50,15 @@ $ git clone https://github.com/yugabyte/cassandra-cpp-driver.git
 
 ### Dependencies
 
-The C/C++ driver depends on the following:
+The YugabyteDB C++ Driver for YCQL depends on the following:
 
-- CMake v2.6.4+
+- CMake v2.6.4 or later
 - libuv 1.x
 - OpenSSL v1.0.x or v1.1.x
 
-More detailed instructions for installing the dependencies are 
-given [here](https://docs.datastax.com/en/developer/cpp-driver/2.9/topics/building/#dependencies).
+For details on installing the dependencies, see [Installing dependencies](https://docs.datastax.com/en/developer/cpp-driver/2.9/topics/building/#installing-dependencies).
 
-### Build and install
+### Install the Yugabyte
 
 To build and install the driver:
 
@@ -70,9 +70,9 @@ $ make
 $ make install
 ```
 
-## Working example
+## Create a working C++ sample application
 
-### Write an application
+### Write the C++ application
 
 Create a file `ybcql_hello_world.c` and copy the contents below:
 
@@ -221,10 +221,11 @@ int main() {
 }
 ```
 
-### Run the application
+### Run the C++ application
 
-You can compile the file using gcc or clang. 
-For clang, you can use:
+You can compile the file using `gcc` or `clang`.
+
+For `clang`, run the following command:
 
 ```sh
 $ clang ybcql_hello_world.c -lcassandra -Iinclude -o yb_cql_hello_world

@@ -27,25 +27,25 @@ showAsideToc: true
 
 ## sbt
 
-To build your Java application using the Yugabyte Java Driver for YCQL, add the following `sbt` (Scala build tool) dependency to your application:
+To build a Scala application using the [Yugabyte Java Driver for YCQL](), you must add the following `sbt` (Scala build tool) dependency to your application:
 
 ```sbt
 libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-5"
 ```
 
-## Working example
+## Create a sample Scala application
 
 ### Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow the steps in [YCQL Quick start](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [YCQL Quick start](../../../../api/ycql/quick-start/).
 - installed Scala version 2.12 or later.
 - installed `sbt` (Scala build tool) 1.3.8 or later.
 
-### Create the sbt build file
+### Create a `sbt` build file
 
-Create a sbt build file `build.sbt` and add the following content into it.
+Create a `sbt` build file, named `build.sbt`, and add the following content into it.
 
 ```sbt
 name := "YBCqlHelloWorld"
@@ -57,7 +57,7 @@ scalacOptions := Seq("-unchecked", "-deprecation")
 libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.2.0-yb-19"
 ```
 
-### Write a sample application
+### Write the Scala sample application
 
 Copy the following contents into the file `YBCqlHelloWorld.scala`.
 
@@ -158,4 +158,3 @@ Created table employee
 Inserted data: INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'Scala');
 Query returned 1 row: name=John, age=35, language=Scala
 ```
-
