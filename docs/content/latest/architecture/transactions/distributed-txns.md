@@ -119,10 +119,10 @@ none are visible at all. YugabyteDB already provides atomicity of single-shard u
 replicating them via Raft and applying them as one write batch to the underlying RocksDB / DocDB
 storage engine. The same approach could be reused to make *transaction status* changes atomic.
 The status of transactions is tracked in a "transaction status" table. This table, under the covers,
-is just another elastic/sharded table in the system. The transaction ID (a globally unique ID)
+is just another sharded table in the system. The transaction ID (a globally unique ID)
 serves as the key in the table, and updates to a transaction's status are simple single-shard ACID
-operations. This allows us to atomically make all values written as part of that transaction visible
-by setting the status to "committed" in that transaction's status record in the table.
+operations. By setting the status to `committed` in that transaction's status record in the table, all values written as part of that transaction become atomically visible.
+.
 
 A transaction status record contains the following fields for a particular transaction ID:
 
