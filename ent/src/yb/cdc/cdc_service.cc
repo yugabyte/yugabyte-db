@@ -75,6 +75,9 @@ DEFINE_int32(update_min_cdc_indices_interval_secs, 60,
              "replicated index across all streams is sent to the other peers in the configuration. "
              "If flag enable_log_retention_by_op_idx is disabled, this flag has no effect.");
 
+DEFINE_int32(update_metrics_interval_ms, 1000,
+             "How often to update xDC cluster metrics.");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -110,8 +113,8 @@ CDCServiceImpl::CDCServiceImpl(TSTabletManager* tablet_manager,
       server->messenger());
   async_client_init_->Start();
 
-  get_minimum_checkpoints_and_update_peers_thread_.reset(new std::thread(
-      &CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers, this));
+  update_peers_and_metrics_thread_.reset(new std::thread(
+      &CDCServiceImpl::UpdatePeersAndMetrics, this));
 }
 
 CDCServiceImpl::~CDCServiceImpl() {
@@ -413,19 +416,20 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
       // Only count bytes responded if we are including a response payload.
       tablet_metric->rpc_payload_bytes_responded->Increment(resp->ByteSize());
       // Get the physical time of the last committed record on producer.
-      yb::tablet::RemoveIntentsData data;
-      tablet_peer->GetLastReplicatedData(&data);
-      auto last_replicated_micros = data.log_ht.GetPhysicalValueMicros();
-
+      auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
       tablet_metric->async_replication_sent_lag_micros->set_value(
           last_replicated_micros - last_record_micros);
       auto& first_record = resp->records(0);
       auto first_record_micros = HybridTime(first_record.time()).GetPhysicalValueMicros();
+      tablet_metric->last_checkpoint_physicaltime->set_value(first_record_micros);
       tablet_metric->async_replication_committed_lag_micros->set_value(
           last_replicated_micros - first_record_micros);
     } else {
       tablet_metric->rpc_heartbeats_responded->Increment();
       // If there are no more entries to be read, that means we're caught up.
+      auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
+      tablet_metric->last_read_physicaltime->set_value(last_replicated_micros);
+      tablet_metric->last_checkpoint_physicaltime->set_value(last_replicated_micros);
       tablet_metric->async_replication_sent_lag_micros->set_value(0);
       tablet_metric->async_replication_committed_lag_micros->set_value(0);
     }
@@ -461,11 +465,45 @@ void CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id,
   }
 }
 
-void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
+void CDCServiceImpl::UpdateLagMetrics() {
+  SharedLock<decltype(mutex_)> l(mutex_);
+  for (auto it = tablet_checkpoints_.begin(); it != tablet_checkpoints_.end(); it++) {
+    std::shared_ptr<tablet::TabletPeer> tablet_peer;
+    Status s = tablet_manager_->GetTabletPeer(it->tablet_id(), &tablet_peer);
+    if (!s.ok()) {
+      LOG(WARNING) << s;
+      continue;
+    }
+    auto tablet_metric = GetCDCTabletMetrics(it->producer_tablet_info, tablet_peer);
+    if (tablet_metric) {
+      // Get the physical time of the last committed record on producer.
+      auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
+
+      auto last_sent_micros = tablet_metric->last_read_physicaltime->value();
+      auto last_committed_micros = tablet_metric->last_checkpoint_physicaltime->value();
+
+      tablet_metric->async_replication_sent_lag_micros->set_value(
+          last_replicated_micros - last_sent_micros);
+      tablet_metric->async_replication_committed_lag_micros->set_value(
+          last_replicated_micros - last_committed_micros);
+    }
+  }
+}
+
+MicrosTime CDCServiceImpl::GetLastReplicatedTime(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer) {
+  yb::tablet::RemoveIntentsData data;
+  tablet_peer->GetLastReplicatedData(&data);
+  return data.log_ht.GetPhysicalValueMicros();
+}
+
+void CDCServiceImpl::UpdatePeersAndMetrics() {
+  MonoTime time_since_update_peers = MonoTime::Now();
+
   // Returns false if the CDC service has been stopped.
   auto sleep_while_not_stopped = [this]() {
-    auto time_to_sleep = MonoDelta::FromSeconds(
-        GetAtomicFlag(&FLAGS_update_min_cdc_indices_interval_secs));
+    auto time_to_sleep = MonoDelta::FromMilliseconds(
+        GetAtomicFlag(&FLAGS_update_metrics_interval_ms));
     auto time_slept = MonoDelta::FromMilliseconds(0);
     auto sleep_period = MonoDelta::FromMilliseconds(100);
     while (time_slept < time_to_sleep) {
@@ -479,9 +517,16 @@ void CDCServiceImpl::ReadCdcMinReplicatedIndexForAllTabletsAndUpdatePeers() {
   };
 
   do {
-    if (!FLAGS_enable_log_retention_by_op_idx) {
+    // Always update lag metrics, default every 1s.
+    UpdateLagMetrics();
+
+    // If its not been 60s since the last peer update, continue.
+    if (!FLAGS_enable_log_retention_by_op_idx || MonoTime::Now() - time_since_update_peers <
+        MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_update_min_cdc_indices_interval_secs))) {
       continue;
     }
+
+    time_since_update_peers = MonoTime::Now();
     LOG(INFO) << "Started to read minimum replicated indices for all tablets";
 
     client::TableHandle table;
@@ -971,9 +1016,9 @@ void CDCServiceImpl::Shutdown() {
   if (async_client_init_) {
     async_client_init_->Shutdown();
     rpcs_.Shutdown();
-    if (get_minimum_checkpoints_and_update_peers_thread_) {
+    if (update_peers_and_metrics_thread_) {
       cdc_service_stopped_.store(true, std::memory_order_release);
-      get_minimum_checkpoints_and_update_peers_thread_->join();
+      update_peers_and_metrics_thread_->join();
     }
     async_client_init_ = boost::none;
   }
