@@ -246,6 +246,9 @@ public class TestJsonIndex extends BaseCQLTest {
     session.execute("CREATE INDEX jidx ON test_similar_column_name(j->'a'->>'b')" +
                     "  INCLUDE (v)");
 
+    // Add "vvidx" to match with the original test case in bug report github #4881
+    session.execute("CREATE INDEX vvidx ON test_similar_column_name(vv)");
+
     // Insert into table.
     int h = 7;
     int v = h * 2;
@@ -261,6 +264,22 @@ public class TestJsonIndex extends BaseCQLTest {
     assertEquals(1, session.execute(query).all().size());
 
     query = String.format("SELECT vv FROM test_similar_column_name WHERE v = %d;", v * 2);
+    assertEquals(0, session.execute(query).all().size());
+
+    query = String.format("SELECT * FROM test_similar_column_name" +
+                          "  WHERE v = %d AND vv = %d;", v, vv);
+    assertEquals(1, session.execute(query).all().size());
+
+    query = String.format("SELECT * FROM test_similar_column_name" +
+                          "  WHERE v = %d AND vv = %d;", v * 2, vv * 2);
+    assertEquals(0, session.execute(query).all().size());
+
+    query = String.format("SELECT v FROM test_similar_column_name" +
+                          "  WHERE v = %d AND vv = %d;", v, vv);
+    assertEquals(1, session.execute(query).all().size());
+
+    query = String.format("SELECT v FROM test_similar_column_name" +
+                          "  WHERE v = %d AND vv = %d;", v * 2, vv * 2);
     assertEquals(0, session.execute(query).all().size());
 
     // Query using "jidx" to test NAME resolution.
