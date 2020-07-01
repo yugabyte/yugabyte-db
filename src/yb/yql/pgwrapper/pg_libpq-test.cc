@@ -1363,7 +1363,6 @@ TEST_F_EX(PgLibPqTest,
   const std::string kNamespaceName = "yugabyte";
   const std::string kTableName = "t";
 
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
 
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (c char, i int, p point)", kTableName));
@@ -1396,7 +1395,6 @@ TEST_F_EX(PgLibPqTest,
   const std::string kNamespaceName = "yugabyte";
   const std::string kTableName = "t";
 
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
 
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
@@ -1445,7 +1443,6 @@ TEST_F_EX(PgLibPqTest,
   const std::string kNamespaceName = "yugabyte";
   const std::string kTableName = "t";
 
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
 
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
@@ -1481,6 +1478,113 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(values[1][0], 18);
   ASSERT_EQ(values[1][1], 8);
   ASSERT_EQ(values[1][2], 2);
+}
+
+// Make sure that unique indexes work when index backfill is enabled (skips backfill for now)
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillUnique),
+          PgLibPqTestIndexBackfill) {
+  constexpr int kNumRows = 3;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
+      kTableName,
+      kNumRows));
+  // Add row that would make j not unique.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (99, 11)",
+      kTableName,
+      kNumRows));
+
+  // Create unique index without failure.
+  ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (i ASC)", kTableName));
+  // Index scan to verify contents of index table.
+  const std::string query = Format(
+      "SELECT * from $0 ORDER BY i",
+      kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  auto res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 4);
+  ASSERT_EQ(PQnfields(res.get()), 2);
+
+  // Create unique index with failure.
+  Status status = conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (j ASC)", kTableName);
+  ASSERT_NOK(status);
+  auto msg = status.message().ToBuffer();
+  ASSERT_TRUE(msg.find("duplicate key value") != std::string::npos) << status;
+}
+
+// Make sure that indexes created in postgres nested DDL work and skip backfill (optimization).
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillNestedDdl),
+          PgLibPqTestIndexBackfill) {
+  constexpr int kNumRows = 3;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int, UNIQUE (j))", kTableName));
+
+  // Make sure that the index create was not multi-stage.
+  std::string table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  Synchronizer sync;
+  ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(table_info->schema.version(), 1);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
+      kTableName,
+      kNumRows));
+
+  // Add row that violates unique constraint on j.
+  Status status = conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (99, 11)",
+      kTableName,
+      kNumRows);
+  ASSERT_NOK(status);
+  auto msg = status.message().ToBuffer();
+  ASSERT_TRUE(msg.find("duplicate key value") != std::string::npos) << status;
+}
+
+// Make sure that drop index works when index backfill is enabled (skips online schema migration for
+// now)
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillDrop),
+          PgLibPqTestIndexBackfill) {
+  constexpr int kNumRows = 5;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kIndexName = "i";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
+      kTableName,
+      kNumRows));
+
+  // Create index.
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
+
+  // Drop index.
+  ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", kIndexName));
+
+  // Ensure index is not used for scan.
+  const std::string query = Format(
+      "SELECT * from $0 ORDER BY i",
+      kTableName);
+  ASSERT_FALSE(ASSERT_RESULT(conn.HasIndexScan(query)));
 }
 
 // Override the index backfill test to have slower backfill-related operations

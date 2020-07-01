@@ -2185,7 +2185,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  if ((req.has_index_info() || req.has_indexed_table_id()) && !disable_index_backfill) {
+  if ((req.has_index_info() || req.has_indexed_table_id()) &&
+      !disable_index_backfill &&
+      !req.skip_index_backfill()) {
     // Start off the index table with major compactions disabled. We need this to preserve
     // the delete markers until the backfill process is completed.
     // No need to set index_permissions in the index table.
@@ -2323,7 +2325,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // don't insert index info for YSQL tables.
   if ((req.has_index_info() || req.has_indexed_table_id()) &&
       !(is_pg_table && disable_index_backfill)) {
-    if (!disable_index_backfill) {
+    if (!disable_index_backfill && !req.skip_index_backfill()) {
       index_info.set_index_permissions(INDEX_PERM_DELETE_ONLY);
     }
     s = AddIndexInfoToTable(indexed_table, index_info, resp);
@@ -3091,8 +3093,9 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
   const bool is_pg_table = indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
   // We don't need to handle user enforced txns separately here because there
   // is no additional wait.
+  // TODO(jason): use FLAGS_ysql_disable_index_backfill when closing issue #4936.
   const bool disable_index_backfill = (
-      is_pg_table ? GetAtomicFlag(&FLAGS_ysql_disable_index_backfill)
+      is_pg_table ? true
                   : GetAtomicFlag(&FLAGS_disable_index_backfill));
   if (disable_index_backfill) {
     RETURN_NOT_OK(DeleteIndexInfoFromTable(indexed_table_id, index_table_id));

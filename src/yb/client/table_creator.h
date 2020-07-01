@@ -98,6 +98,9 @@ class YBTableCreator {
   // For index table: sets whether this is a unique index.
   YBTableCreator& is_unique_index(bool is_unique_index);
 
+  // For index table: sets whether to do online schema migration when creating index.
+  YBTableCreator& skip_index_backfill(const bool skip_index_backfill);
+
   // For index table: indicates whether this index has mangled column name.
   // - Older index supports only ColumnRef, and its name is identical with colum name.
   // - Newer index supports expressions including ColumnRef, and its name is a mangled name of
@@ -165,6 +168,8 @@ class YBTableCreator {
   // When creating index, proxy server construct index_info_, and master server will write it to
   // the data-table being indexed.
   IndexInfoPB index_info_;
+
+  bool skip_index_backfill_ = false;
 
   bool TEST_use_old_style_create_request_ = false;
 

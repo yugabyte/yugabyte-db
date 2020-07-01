@@ -409,23 +409,27 @@ DefineIndex(Oid relationId,
 	stmt->concurrent = (!YBCGetDisableIndexBackfill()
 						&& !stmt->primary
 						&& IsYBRelationById(relationId));
-	{
-		int ddl_nesting_level = YBGetDdlNestingLevel();
-		if (stmt->concurrent && ddl_nesting_level != 1)
-			ereport(ERROR,
-					(errmsg("backfill for secondary indexes is currently only"
-							" supported for standalone CREATE INDEX"
-							" statements"),
-					 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-							 "Click '+' on the description to raise its priority",
-							 4786)));
-	}
+	/* Use fast path create index when in nested DDL.  This is desired
+	 * when there would be no concurrency issues (e.g. `CREATE TABLE
+	 * ... (... UNIQUE (...))`).  However, there may be cases where it
+	 * is unsafe to use the fast path.  For now, just use the fast path
+	 * in all cases.
+	 * TODO(jason): support backfill for nested DDL, and use the online
+	 * path for the appropriate statements (issue #4786).
+	 */
+	if (stmt->concurrent && YBGetDdlNestingLevel() != 1)
+		stmt->concurrent = false;
+	/*
+	 * Backfilling unique indexes is currently not supported.  This is desired
+	 * when there would be no concurrency issues (e.g. `CREATE TABLE ... (...
+	 * UNIQUE (...))`).  However, it is not desired in cases where there could
+	 * be concurrency issues (e.g. `CREATE UNIQUE INDEX ...`, `ALTER TABLE ...
+	 * ADD UNIQUE (...)`).  For now, just use the fast path in all cases.
+	 * TODO(jason): support backfill for unique indexes, and use the online
+	 * path for the appropriate statements (issue #4899).
+	 */
 	if (stmt->concurrent && stmt->unique)
-		ereport(ERROR,
-				(errmsg("backfill for unique indexes is not yet supported"),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-						 "Click '+' on the description to raise its priority",
-						 4899)));
+		stmt->concurrent = false;
 
 	/*
 	 * Only SELECT ... FOR UPDATE/SHARE are allowed while doing a standard
@@ -922,7 +926,8 @@ DefineIndex(Oid relationId,
 					 coloptions, reloptions,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
-					 &createdConstraintId, stmt->split_options);
+					 &createdConstraintId, stmt->split_options,
+					 !stmt->concurrent);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 

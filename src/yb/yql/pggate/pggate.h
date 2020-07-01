@@ -255,6 +255,7 @@ class PgApiImpl {
                                 const PgObjectId& table_id,
                                 bool is_shared_index,
                                 bool is_unique_index,
+                                const bool skip_index_backfill,
                                 bool if_not_exist,
                                 PgStatement **handle);
 
