@@ -955,6 +955,7 @@ stmt :
 			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension"); }
 			| AlterGroupStmt { parser_ybc_beta_feature(@1, "roles"); }
 			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze"); }
+			| BackfillIndexStmt { parser_ybc_beta_feature(@1, "backfill index"); }
 			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum"); }
 
 			/* Not supported in template0/template1 statements */
