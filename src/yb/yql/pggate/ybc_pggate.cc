@@ -421,12 +421,14 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               const YBCPgOid table_oid,
                               bool is_shared_index,
                               bool is_unique_index,
+                              const bool skip_index_backfill,
                               bool if_not_exist,
                               YBCPgStatement *handle) {
   const PgObjectId index_id(database_oid, index_oid);
   const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
-                                           table_id, is_shared_index, is_unique_index, if_not_exist,
+                                           table_id, is_shared_index, is_unique_index,
+                                           skip_index_backfill, if_not_exist,
                                            handle));
 }
 

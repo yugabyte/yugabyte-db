@@ -284,14 +284,16 @@ Status PgCreateTable::Exec() {
   // For index, set indexed (base) table id.
   if (indexed_table_id()) {
     table_creator->indexed_table_id(indexed_table_id()->GetYBTableId());
-    // For online index backfill, don't wait for backfill to finish because waiting on index
-    // permissions is done anyway.
-    if (!FLAGS_ysql_disable_index_backfill) {
+    if (is_unique_index()) {
+      table_creator->is_unique_index(true);
+    }
+    if (skip_index_backfill()) {
+      table_creator->skip_index_backfill(true);
+    } else if (!FLAGS_ysql_disable_index_backfill) {
+      // For online index backfill, don't wait for backfill to finish because waiting on index
+      // permissions is done anyway.
       table_creator->wait(false);
     }
-  }
-  if (is_unique_index()) {
-    table_creator->is_unique_index(true);
   }
 
   const Status s = table_creator->Create();
@@ -366,12 +368,14 @@ PgCreateIndex::PgCreateIndex(PgSession::ScopedRefPtr pg_session,
                              const PgObjectId& base_table_id,
                              bool is_shared_index,
                              bool is_unique_index,
+                             const bool skip_index_backfill,
                              bool if_not_exist)
     : PgCreateTable(pg_session, database_name, schema_name, index_name, index_id,
                     is_shared_index, if_not_exist, false /* add_primary_key */,
                     true /* colocated */),
       base_table_id_(base_table_id),
-      is_unique_index_(is_unique_index) {
+      is_unique_index_(is_unique_index),
+      skip_index_backfill_(skip_index_backfill) {
 }
 
 size_t PgCreateIndex::PrimaryKeyRangeColumnCount() const {

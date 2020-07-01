@@ -854,6 +854,8 @@ message CreateTableRequestPB {
   optional bytes indexed_table_id = 9; // Indexed table id of this index.
   optional bool is_local_index = 10 [ default = false ];  // Is a local index?
   optional bool is_unique_index = 11 [ default = false ]; // Is a unique index?
+  optional bool skip_index_backfill = 18 [ default = false ]; // Skip online schema migration for
+                                                              // index?
 
   // For RBAC.
   optional string creator_role_name = 12;

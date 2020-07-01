@@ -149,6 +149,11 @@ YBTableCreator& YBTableCreator::is_unique_index(bool is_unique_index) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::skip_index_backfill(const bool skip_index_backfill) {
+  skip_index_backfill_ = skip_index_backfill;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::use_mangled_column_name(bool value) {
   index_info_.set_use_mangled_column_name(value);
   return *this;
@@ -252,6 +257,7 @@ Status YBTableCreator::Create() {
     req.set_indexed_table_id(index_info_.indexed_table_id());
     req.set_is_local_index(index_info_.is_local());
     req.set_is_unique_index(index_info_.is_unique());
+    req.set_skip_index_backfill(skip_index_backfill_);
   }
 
   auto deadline = CoarseMonoClock::Now() +
