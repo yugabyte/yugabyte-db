@@ -48,6 +48,7 @@
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/master/master_defaults.h"
 
+#include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/stol_utils.h"
@@ -102,24 +103,35 @@ class BlacklistChecker {
     string out;
     RETURN_NOT_OK(Subprocess::Call(args_, &out));
     boost::erase_all(out, "\n");
-    size_t match_count = 0;
-    std::regex re(R"(.*?hosts \{\s*host:\s*\"([^\"]*)\"\s*port:\s*(\d+)[^\}]*\})");
-    for (std::sregex_iterator i = std::sregex_iterator(out.cbegin(), out.cend(), re), end;
-        i != end; ++i) {
-      HostPort server(i->str(1), VERIFY_RESULT(CheckedStoll(i->str(2))));
-      if (std::find(servers.begin(), servers.end(), server) == servers.end()) {
-        return STATUS_FORMAT(
-            NotFound, "Item $0 not found in list of expected hosts $1",
-            server, servers);
-      } else {
-        ++match_count;
+    JsonReader reader(out);
+
+    vector<const rapidjson::Value *> blacklistEntries;
+    const rapidjson::Value *blacklistRoot;
+    RETURN_NOT_OK(reader.Init());
+    RETURN_NOT_OK(
+        reader.ExtractObject(reader.root(), "serverBlacklist", &blacklistRoot));
+    RETURN_NOT_OK(
+        reader.ExtractObjectArray(blacklistRoot, "hosts", &blacklistEntries));
+
+    for (const rapidjson::Value *entry : blacklistEntries) {
+      std::string host;
+      int32_t port;
+      RETURN_NOT_OK(reader.ExtractString(entry, "host", &host));
+      RETURN_NOT_OK(reader.ExtractInt32(entry, "port", &port));
+      HostPort blacklistServer(host, port);
+      if (std::find(servers.begin(), servers.end(), blacklistServer) ==
+          servers.end()) {
+        return STATUS_FORMAT(NotFound,
+                             "Item $0 not found in list of expected hosts $1",
+                             blacklistServer, servers);
       }
     }
-    if (match_count != servers.size()) {
-      return STATUS_FORMAT(
-          NotFound, "$0 items expected but $1 found",
-          servers.size(), match_count);
+
+    if (blacklistEntries.size() != servers.size()) {
+      return STATUS_FORMAT(NotFound, "$0 items expected but $1 found",
+                           servers.size(), blacklistEntries.size());
     }
+
     return Status::OK();
   }
 

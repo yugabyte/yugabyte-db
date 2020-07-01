@@ -1747,10 +1747,10 @@ class YBAdminProxy(object):
         out, err, ret_code = run_process(cmd)
         if ret_code:
             return None
-        for line in out.splitlines():
-            if "cluster_uuid: " in line:
-                return line.split("cluster_uuid: ")[1].replace('"', '')
-        return None
+        try:
+            return json.loads(out)['clusterUuid']
+        except Exception:
+            return None
 
     # Returns node_uuid by finding the UUID corresponding to current master's IP
     @staticmethod
