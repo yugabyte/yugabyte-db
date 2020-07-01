@@ -143,6 +143,7 @@ class PgCreateTable : public PgDdl {
   // For PgCreateIndex: the indexed (base) table id and if this is a unique index.
   virtual boost::optional<const PgObjectId&> indexed_table_id() const { return boost::none; }
   virtual bool is_unique_index() const { return false; }
+  virtual const bool skip_index_backfill() const { return false; }
 
   CHECKED_STATUS AddColumn(const char *attr_name,
                            int attr_num,
@@ -266,6 +267,7 @@ class PgCreateIndex : public PgCreateTable {
                 const PgObjectId& base_table_id,
                 bool is_shared_index,
                 bool is_unique_index,
+                const bool skip_index_backfill,
                 bool if_not_exist);
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_INDEX; }
@@ -276,6 +278,10 @@ class PgCreateIndex : public PgCreateTable {
 
   bool is_unique_index() const override {
     return is_unique_index_;
+  }
+
+  const bool skip_index_backfill() const override {
+    return skip_index_backfill_;
   }
 
   // Execute.
@@ -296,6 +302,7 @@ class PgCreateIndex : public PgCreateTable {
 
   const PgObjectId base_table_id_;
   bool is_unique_index_ = false;
+  bool skip_index_backfill_ = false;
   bool ybbasectid_added_ = false;
   size_t primary_key_range_column_count_ = 0;
 };
