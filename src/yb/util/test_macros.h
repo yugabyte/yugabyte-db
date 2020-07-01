@@ -74,6 +74,10 @@
   } \
 } while (0)
 
+#ifdef EXPECT_OK
+#undef EXPECT_OK
+#endif
+
 #define EXPECT_OK(status) do { \
     auto&& _s = (status); \
     if (_s.ok()) { \

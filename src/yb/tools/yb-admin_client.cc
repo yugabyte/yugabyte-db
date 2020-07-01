@@ -32,6 +32,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include <array>
+#include <iomanip>
 #include <sstream>
 #include <type_traits>
 
@@ -41,6 +42,8 @@
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/tti/has_member_function.hpp>
+
+#include <google/protobuf/util/json_util.h>
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
@@ -92,6 +95,7 @@ using std::cout;
 using std::endl;
 
 using google::protobuf::RepeatedPtrField;
+using google::protobuf::util::MessageToJsonString;
 
 using client::YBClientBuilder;
 using client::YBTableName;
@@ -1619,7 +1623,9 @@ Status ClusterAdminClient::ModifyPlacementInfo(
 
 Status ClusterAdminClient::GetUniverseConfig() {
   const auto cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
-  cout << "Config: \r\n"  << cluster_config.cluster_config().DebugString() << endl;
+  std::string output;
+  MessageToJsonString(cluster_config.cluster_config(), &output);
+  cout << output << endl;
   return Status::OK();
 }
 
