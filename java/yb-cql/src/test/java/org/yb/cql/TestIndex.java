@@ -1246,4 +1246,37 @@ public class TestIndex extends BaseCQLTest {
     // Test invalid ORDER BY.
     runInvalidQuery("SELECT * FROM test_jsonb_order_by WHERE k = 1 ORDER BY j->>'y';");
   }
+
+  @Test
+  public void testColumnCoverage() throws Exception {
+    // Create test table.
+    session.execute("CREATE TABLE test_coverage" +
+                    "  ( h INT, r INT, v INT, vv INT, PRIMARY KEY (h, r) )" +
+                    "  WITH transactions = {'enabled' : true};");
+
+    // Create test index.
+    session.execute("CREATE INDEX vidx ON test_coverage (v);");
+    assertIndexOptions("test_coverage", "vidx", "v, h, r", null);
+
+    // Use INSERT & SELECT to check for coverage.
+    int h = 7;
+    int r = h * 2;
+    int v = h * 3;
+    int vv = h * 4;
+    String stmt = String.format("INSERT INTO test_coverage(h, r, v, vv)" +
+                                "  VALUES (%d, %d, %d, %d);", h, r, v, vv);
+    session.execute(stmt);
+
+    String query = String.format("SELECT vv FROM test_coverage WHERE v = %d;", v);
+    assertEquals(1, session.execute(query).all().size());
+
+    query = String.format("SELECT * FROM test_coverage WHERE v = %d;", v);
+    assertEquals(1, session.execute(query).all().size());
+
+    query = String.format("SELECT h FROM test_coverage WHERE v = %d AND vv = %d;", v, vv);
+    assertEquals(1, session.execute(query).all().size());
+
+    query = String.format("SELECT * FROM test_coverage WHERE v = %d AND vv = %d;", v, vv);
+    assertEquals(1, session.execute(query).all().size());
+  }
 }
