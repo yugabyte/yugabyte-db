@@ -1763,7 +1763,7 @@ cql_yb_local_vs_remote:
   function: "rate|avg"
   range: "1m"
   filters:
-    export_type: "cql_export"
+    export_type: "cql_export|tserver_export"
     service_type: "read|write"
     service_method: "local|remote"
   group_by: "service_method,service_type"
@@ -1783,7 +1783,7 @@ cql_yb_latency:
   function: "irate|avg"
   range: "1m"
   filters:
-    export_type: "cql_export"
+    export_type: "cql_export|tserver_export"
     service_type: "read|write"
     service_method: "local|remote"
   group_by: "service_method,service_type"
