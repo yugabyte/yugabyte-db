@@ -83,6 +83,7 @@ namespace tablet {
 const int64 kNoDurableMemStore = -1;
 const std::string kIntentsSubdir = "intents";
 const std::string kIntentsDBSuffix = ".intents";
+const std::string kSnapshotsDirSuffix = ".snapshots";
 
 // ============================================================================
 //  Raft group metadata
@@ -389,7 +390,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   docdb::InitRocksDBOptions(
       &rocksdb_options, log_prefix, nullptr /* statistics */, tablet_options);
 
-  const auto& rocksdb_dir = kv_store_.rocksdb_dir;
+  const auto& rocksdb_dir = this->rocksdb_dir();
   LOG(INFO) << "Destroying regular db at: " << rocksdb_dir;
   rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir, rocksdb_options);
 
@@ -404,7 +405,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     LOG_IF(WARNING, !s.ok()) << "Unable to delete rocksdb data directory " << rocksdb_dir;
   }
 
-  const auto intents_dir = rocksdb_dir + kIntentsDBSuffix;
+  const auto intents_dir = this->intents_rocksdb_dir();
   if (fs_manager_->env()->FileExists(intents_dir)) {
     status = rocksdb::DestroyDB(intents_dir, rocksdb_options);
 
@@ -419,6 +420,12 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   if (fs_manager_->env()->FileExists(intents_dir)) {
     auto s = fs_manager_->env()->DeleteRecursively(intents_dir);
     LOG_IF(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
+  }
+
+  const auto snapshots_dir = this->snapshots_dir();
+  if (fs_manager_->env()->FileExists(snapshots_dir)) {
+    auto s = fs_manager_->env()->DeleteRecursively(snapshots_dir);
+    LOG_IF(WARNING, !s.ok()) << "Unable to delete snapshots directory " << snapshots_dir;
   }
 
   // Flushing will sync the new tablet_data_state_ to disk and will now also

@@ -65,6 +65,7 @@ namespace tablet {
 extern const int64 kNoDurableMemStore;
 extern const std::string kIntentsSubdir;
 extern const std::string kIntentsDBSuffix;
+extern const std::string kSnapshotsDirSuffix;
 
   // Table info.
 struct TableInfo {
@@ -321,6 +322,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   std::string rocksdb_dir() const { return kv_store_.rocksdb_dir; }
   std::string intents_rocksdb_dir() const { return kv_store_.rocksdb_dir + kIntentsDBSuffix; }
+  std::string snapshots_dir() const { return kv_store_.rocksdb_dir + kSnapshotsDirSuffix; }
 
   std::string lower_bound_key() const { return kv_store_.lower_bound_key; }
   std::string upper_bound_key() const { return kv_store_.upper_bound_key; }

@@ -511,7 +511,7 @@ yb-admin -master_addresses <master-addresses> create_snapshot <keyspace> <table_
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *keyspace*: The name of the database or keyspace.
+- *keyspace*: The name of the database or keyspace formatted as <ycql|ysql|yedis>.<keyspace>.
 - *table_name*: The name of the table name.
 - *table_id*: The identifier (ID) of the table.
 - *flush_timeout_in_seconds*: Specifies duration, in seconds, before flushing snapshot. Default value is `60`. To skip flushing, set the value to `0`.
