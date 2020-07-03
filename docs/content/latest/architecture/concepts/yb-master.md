@@ -38,7 +38,7 @@ The YB-Master stores all tablets and the corresponding YB-TServers that currentl
 
 ### Background operations
 
-These operations are performed throughout the lifetime of the universe in the background without impacting foreground read and write performance.
+These operations are performed throughout the lifetime of the universe, in the background, without impacting foreground read and write performance.
 
 #### Data placement and load balancing
 
