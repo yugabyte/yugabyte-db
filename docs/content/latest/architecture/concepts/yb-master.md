@@ -30,7 +30,7 @@ Examples of such operations are user-issued `CREATE TABLE`, `ALTER TABLE`, and `
 
 ### Storage of system metadata
 
-The master stores system metadata such as the information about all the namespaces, tables, roles, permissions, and assignment of tablets to YB-TServers. These system records are replicated across the YB-Masters for redundancy using Raft as well. The system metadata is also stored as a DocDB table by the YB-Masters.
+Each YB-Master stores system metadata, including information about namespaces, tables, roles, permissions, and assignments of tablets to YB-TServers. These system records are replicated across the YB-Masters for redundancy using Raft as well. The system metadata is also stored as a DocDB table by the YB-Masters.
 
 ### Authoritative source of tablet assignments to YB-TServers
 
