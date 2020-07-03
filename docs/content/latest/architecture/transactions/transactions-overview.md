@@ -71,7 +71,7 @@ The timestamp that we are using for MVCC comes from the [Hybrid Time](http://use
   transactional reads across multiple tablets. This condition becomes easier to satisfy due to the
   fact that the read timestamp is chosen as the current hybrid time on the YB-TServer processing the
   read request, so hybrid time on the leader of the tablet we're reading from immediately gets
-  updated to a value that is at least as high as than the read timestamp.  Then the read request
+  updated to a value that is at least as high as the read timestamp.  Then the read request
   only has to wait for any relevant entries in the Raft queue with timestamps lower than the read
   timestamp to get replicated and applied to RocksDB, and it can proceed with processing the read
   request after that.
