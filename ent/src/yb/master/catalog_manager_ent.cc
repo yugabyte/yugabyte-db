@@ -2300,7 +2300,7 @@ void CatalogManager::GetTableSchemaCallback(
     return;
   }
 
-  auto result = info->schema.Equals(resp.schema());
+  auto result = info->schema.EquivalentForDataCopy(resp.schema());
   if (!result.ok() || !*result) {
     LOG(ERROR) << "Source and target schemas don't match: Source: " << info->table_id
                << ", Target: " << resp.identifier().table_id()
