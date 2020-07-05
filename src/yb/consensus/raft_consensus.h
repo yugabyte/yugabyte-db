@@ -638,7 +638,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // If any RequestVote() RPC arrives before this hybrid time,
   // the request will be ignored. This prevents abandoned or partitioned
   // nodes from disturbing the healthy leader.
-  MonoTime withhold_votes_until_;
+  std::atomic<MonoTime> withhold_votes_until_;
 
   // UUID of new desired leader during stepdown.
   TabletServerId protege_leader_uuid_;
