@@ -144,6 +144,11 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
     b.SetTableProperties(table_properties);
     CHECK_OK(b.Build(&schema_));
 
+    YBSchema consumer_schema;
+    table_properties.SetDefaultTimeToLive(0);
+    b.SetTableProperties(table_properties);
+    CHECK_OK(b.Build(&consumer_schema));
+
     if (num_consumer_tablets.size() != num_producer_tablets.size()) {
       return STATUS(IllegalState,
                     Format("Num consumer tables: $0 num producer tables: $1 must be equal.",
@@ -158,7 +163,8 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
       RETURN_NOT_OK(producer_client_->OpenTable(tables[i * 2], &producer_table));
       yb_tables.push_back(producer_table);
 
-      RETURN_NOT_OK(CreateTable(i, num_consumer_tablets[i], consumer_client_.get(), &tables));
+      RETURN_NOT_OK(CreateTable(i, num_consumer_tablets[i], consumer_client_.get(),
+                                consumer_schema, &tables));
       std::shared_ptr<client::YBTable> consumer_table;
       RETURN_NOT_OK(consumer_client_->OpenTable(tables[(i * 2) + 1], &consumer_table));
       yb_tables.push_back(consumer_table);
@@ -168,15 +174,19 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
   }
 
   Result<YBTableName> CreateTable(YBClient* client, const std::string& namespace_name,
-                                  const std::string& table_name, uint32_t num_tablets) {
+                                  const std::string& table_name, uint32_t num_tablets,
+                                  const YBSchema* schema = nullptr) {
     YBTableName table(YQL_DATABASE_CQL, namespace_name, table_name);
     RETURN_NOT_OK(client->CreateNamespaceIfNotExists(table.namespace_name(),
                                                      table.namespace_type()));
 
+    if (!schema) {
+      schema = &schema_;
+    }
     // Add a table, make sure it reports itself.
     std::unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
         RETURN_NOT_OK(table_creator->table_name(table)
-                          .schema(&schema_)
+                          .schema(schema)
                           .table_type(YBTableType::YQL_TABLE_TYPE)
                           .num_tablets(num_tablets)
                           .Create());
@@ -187,6 +197,14 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
       uint32_t idx, uint32_t num_tablets, YBClient* client, std::vector<YBTableName>* tables) {
     auto table = VERIFY_RESULT(CreateTable(client, kNamespaceName, Format("test_table_$0", idx),
                                            num_tablets));
+    tables->push_back(table);
+    return Status::OK();
+  }
+
+  Status CreateTable(uint32_t idx, uint32_t num_tablets, YBClient* client, YBSchema schema,
+                     std::vector<YBTableName>* tables) {
+    auto table = VERIFY_RESULT(CreateTable(client, kNamespaceName, Format("test_table_$0", idx),
+                                           num_tablets, &schema));
     tables->push_back(table);
     return Status::OK();
   }
