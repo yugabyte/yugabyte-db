@@ -905,7 +905,7 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   DisableFailureDetector();
 
   // Don't vote for anyone if we're a leader.
-  withhold_votes_until_ = MonoTime::Max();
+  withhold_votes_until_.store(MonoTime::Max(), std::memory_order_release);
 
   queue_->RegisterObserver(this);
 
@@ -955,7 +955,7 @@ Status RaftConsensus::BecomeReplicaUnlocked(
   EnableFailureDetector(initial_fd_wait);
 
   // Now that we're a replica, we can allow voting for other nodes.
-  withhold_votes_until_ = MonoTime::Min();
+  withhold_votes_until_.store(MonoTime::Min(), std::memory_order_release);
 
   const Status unregister_observer_status = queue_->UnRegisterObserver(this);
   if (!unregister_observer_status.IsNotFound()) {
@@ -1695,7 +1695,7 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   }
 
   // Also prohibit voting for anyone for the minimum election timeout.
-  withhold_votes_until_ = now + MinimumElectionTimeout();
+  withhold_votes_until_.store(now + MinimumElectionTimeout(), std::memory_order_release);
 
   // 1 - Early commit pending (and committed) operations
   RETURN_NOT_OK(EarlyCommitUnlocked(*request, deduped_req));
@@ -1875,6 +1875,9 @@ Status RaftConsensus::WaitForWrites(const yb::OpId& wait_for_op_id) {
       break;
     }
     SnoozeFailureDetector(DO_NOT_LOG);
+
+    const auto election_timeout_at = MonoTime::Now() + MinimumElectionTimeout();
+    UpdateAtomicMax(&withhold_votes_until_, election_timeout_at);
   }
   TRACE("Finished waiting on the replicates to finish logging");
 
@@ -2007,7 +2010,8 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // section 4.2.3.
   MonoTime now = MonoTime::Now();
   if (request->candidate_uuid() != state_->GetLeaderUuidUnlocked() &&
-      !request->ignore_live_leader() && now < withhold_votes_until_) {
+      !request->ignore_live_leader() &&
+      now < withhold_votes_until_.load(std::memory_order_acquire)) {
     return RequestVoteRespondLeaderIsAlive(request, response);
   }
 
@@ -2531,7 +2535,7 @@ Status RaftConsensus::RequestVoteRespondLeaderIsAlive(const VoteRequestPB* reque
       "$0: Denying vote to candidate $1 for term $2 because replica is either leader or believes a "
       "valid leader to be alive. Time left: $3",
       GetRequestVoteLogPrefix(*request), request->candidate_uuid(), request->candidate_term(),
-      withhold_votes_until_ - MonoTime::Now());
+      withhold_votes_until_.load(std::memory_order_acquire) - MonoTime::Now());
   LOG(INFO) << msg;
   StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
   return Status::OK();
