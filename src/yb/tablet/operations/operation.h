@@ -50,6 +50,8 @@
 
 namespace yb {
 
+struct OpId;
+
 namespace tablet {
 
 class Tablet;
@@ -230,6 +232,11 @@ class OperationState {
 
   void CompleteWithStatus(const Status& status) const;
   void SetError(const Status& status, tserver::TabletServerErrorPB::Code code) const;
+
+  // Initialize operation at leader side.
+  // op_id - operation id.
+  // committed_op_id - current committed operation id.
+  void LeaderInit(const OpId& op_id, const OpId& committed_op_id);
 
   virtual ~OperationState();
 

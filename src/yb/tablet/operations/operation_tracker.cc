@@ -47,6 +47,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/tsan_util.h"
 
 DEFINE_int64(tablet_operation_memory_limit_mb, 1024,
              "Maximum amount of memory that may be consumed by all in-flight "
@@ -99,6 +100,7 @@ METRIC_DEFINE_counter(tablet, operation_memory_pressure_rejections,
                       "Number of operations rejected because the tablet's "
                       "operation memory limit was reached.");
 
+using namespace std::literals;
 using std::shared_ptr;
 using std::vector;
 
@@ -247,11 +249,11 @@ void OperationTracker::WaitForAllToFinish() const {
 }
 
 Status OperationTracker::WaitForAllToFinish(const MonoDelta& timeout) const {
-  const int complain_ms = 1000;
-  int wait_time = 250;
+  const MonoDelta kComplainInterval = 1000ms * kTimeMultiplier;
+  MonoDelta wait_time = 250ms * kTimeMultiplier;
   int num_complaints = 0;
   MonoTime start_time = MonoTime::Now();
-  while (1) {
+  for (;;) {
     auto operations = GetPendingOperations();
 
     if (operations.empty()) {
@@ -264,20 +266,19 @@ Status OperationTracker::WaitForAllToFinish(const MonoDelta& timeout) const {
                                          "$0 operations pending. Waited for $1",
                                          operations.size(), diff.ToString()));
     }
-    int64_t waited_ms = diff.ToMilliseconds();
-    if (waited_ms / complain_ms > num_complaints) {
+    if (diff > kComplainInterval * num_complaints) {
       LOG_WITH_PREFIX(WARNING)
-          << Substitute("OperationTracker waiting for $0 outstanding operations to"
-                        " complete now for $1 ms", operations.size(), waited_ms);
+          << Format("OperationTracker waiting for $0 outstanding operations to"
+                        " complete now for $1", operations.size(), diff);
       num_complaints++;
     }
-    wait_time = std::min(wait_time * 5 / 4, 1000000);
+    wait_time = std::min<MonoDelta>(wait_time * 5 / 4, 1s);
 
     LOG_WITH_PREFIX(INFO) << "Dumping currently running operations: ";
     for (scoped_refptr<OperationDriver> driver : operations) {
       LOG_WITH_PREFIX(INFO) << driver->ToString();
     }
-    SleepFor(MonoDelta::FromMicroseconds(wait_time));
+    SleepFor(wait_time);
   }
   return Status::OK();
 }

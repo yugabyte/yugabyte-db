@@ -1008,25 +1008,24 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 
   std::vector<ReplicateMsgPtr> replicate_msgs;
   replicate_msgs.reserve(rounds.size());
+  const yb::OpId& committed_op_id = state_->GetCommittedOpIdUnlocked();
 
   for (auto iter = rounds.begin(); iter != rounds.end(); ++iter) {
     const ConsensusRoundPtr& round = *iter;
 
-    state_->NewIdUnlocked(round->replicate_msg()->mutable_id());
-
-    ReplicateMsg* const replicate_msg = round->replicate_msg().get();
-
-    // In YB tables we include the last committed id into every REPLICATE log record so we can
-    // perform local bootstrap more efficiently.
-    state_->GetCommittedOpIdUnlocked().ToPB(replicate_msg->mutable_committed_op_id());
+    yb::OpId op_id = state_->NewIdUnlocked();
 
     // We use this callback to transform write operations by substituting the hybrid_time into
     // the write batch inside the write operation.
     //
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
     auto* const append_cb = round->append_callback();
-    if (append_cb != nullptr) {
-      append_cb->HandleConsensusAppend();
+    if (append_cb) {
+      append_cb->HandleConsensusAppend(op_id, committed_op_id);
+    } else {
+      // No op operation
+      op_id.ToPB(round->replicate_msg()->mutable_id());
+      committed_op_id.ToPB(round->replicate_msg()->mutable_committed_op_id());
     }
 
     Status s = state_->AddPendingOperation(round);
