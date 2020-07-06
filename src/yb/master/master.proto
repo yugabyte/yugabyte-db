@@ -1036,6 +1036,11 @@ message AlterTableRequestPB {
   optional NamespaceIdentifierPB new_namespace = 4;
   optional TablePropertiesPB alter_properties = 5;
   optional uint32 wal_retention_secs = 6;
+
+  // If set to true, SendAlterTableRequest will be sent even if no changes are specified in this
+  // request.
+  // This is useful to trigger index permissions update.
+  optional bool force_send_alter_request = 7 [default = false];
 }
 
 message AlterTableResponsePB {

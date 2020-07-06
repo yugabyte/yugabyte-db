@@ -486,6 +486,13 @@ YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
   return YBCStatusOK();
 }
 
+YBCStatus YBCPgAsyncUpdateIndexPermissions(
+    const YBCPgOid database_oid,
+    const YBCPgOid indexed_table_oid) {
+  const PgObjectId indexed_table_id(database_oid, indexed_table_oid);
+  return ToYBCStatus(pgapi->AsyncUpdateIndexPermissions(indexed_table_id));
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statements.
 //--------------------------------------------------------------------------------------------------

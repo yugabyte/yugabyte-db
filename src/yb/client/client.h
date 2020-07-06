@@ -337,6 +337,9 @@ class YBClient {
       const YBTableName& index_name,
       const IndexPermissions& target_index_permissions);
 
+  // Trigger an async index permissions update after new YSQL index permissions are committed.
+  Status AsyncUpdateIndexPermissions(const TableId& indexed_table_id);
+
   // Namespace related methods.
 
   // Create a new namespace with the given name.
