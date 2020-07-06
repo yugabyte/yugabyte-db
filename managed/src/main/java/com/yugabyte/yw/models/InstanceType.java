@@ -30,7 +30,7 @@ public class InstanceType extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceType.class);
 
   public static List<String> AWS_INSTANCE_PREFIXES_SUPPORTED = ImmutableList.of(
-    "m3.", "c5.", "c4.", "c3.", "i3.");
+    "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");
 
   public enum VolumeType {
     @EnumValue("EBS")
