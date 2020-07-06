@@ -67,7 +67,16 @@ void WriteCurrentProcessInfo(const string& destination_dir) {
                << destination_dir << " dir: error " << errno << " " << std::strerror(errno);
 }
 
-Status InitInternal(const char* argv0) {
+Status InitGFlags(const char* argv0) {
+
+  const char* executable_path = argv0;
+  std::string executable_path_str;
+  if (executable_path == nullptr) {
+    RETURN_NOT_OK(Env::Default()->GetExecutablePath(&executable_path_str));
+    executable_path = executable_path_str.c_str();
+  }
+  DSCHECK(executable_path != nullptr, RuntimeError, "Unable to get path to executable");
+
   // Change current working directory from postgres data dir (as set by postmaster)
   // to the one from yb-tserver so that relative paths in gflags would be resolved in the same way.
   char pg_working_dir[PATH_MAX];
@@ -80,19 +89,6 @@ Status InitInternal(const char* argv0) {
     // Restore PG data dir as current directory.
     ChangeWorkingDir(pg_working_dir);
   });
-
-  // Allow putting gflags into a file and specifying that file's path as an env variable.
-  const char* pg_flagfile_path = getenv("YB_PG_FLAGFILE");
-  if (pg_flagfile_path) {
-    char* arguments[] = {
-        const_cast<char*>(argv0),
-        const_cast<char*>("--flagfile"),
-        const_cast<char*>(pg_flagfile_path)
-    };
-    char** argv_ptr = arguments;
-    int argc = arraysize(arguments);
-    gflags::ParseCommandLineFlags(&argc, &argv_ptr, /* remove_flags */ false);
-  }
 
   // Also allow overriding flags on the command line using the appropriate environment variables.
   std::vector<google::CommandLineFlagInfo> flag_infos;
@@ -109,7 +105,7 @@ Status InitInternal(const char* argv0) {
   // Use InitGoogleLoggingSafeBasic() instead of InitGoogleLoggingSafe() to avoid calling
   // google::InstallFailureSignalHandler(). This will prevent interference with PostgreSQL's
   // own signal handling.
-  yb::InitGoogleLoggingSafeBasic(argv0);
+  yb::InitGoogleLoggingSafeBasic(executable_path);
 
   if (VLOG_IS_ON(1)) {
     for (auto& flag_info : flag_infos) {
@@ -242,6 +238,10 @@ bool YBCIsRestartReadError(uint16_t txn_errcode) {
   return txn_errcode == static_cast<uint16_t>(TransactionErrorCode::kReadRestartRequired);
 }
 
+YBCStatus YBCInitGFlags(const char* argv0) {
+  return ToYBCStatus(yb::InitGFlags(argv0));
+}
+
 YBCStatus YBCInit(const char* argv0,
                   YBCPAllocFn palloc_fn,
                   YBCCStringToTextWithLenFn cstring_to_text_with_len_fn) {
@@ -249,7 +249,7 @@ YBCStatus YBCInit(const char* argv0,
   if (cstring_to_text_with_len_fn) {
     YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
   }
-  auto status = yb::InitInternal(argv0);
+  auto status = yb::InitGFlags(argv0);
   if (status.ok() && !FLAGS_TEST_process_info_dir.empty()) {
     WriteCurrentProcessInfo(FLAGS_TEST_process_info_dir);
   }
