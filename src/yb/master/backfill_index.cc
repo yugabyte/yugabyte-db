@@ -76,6 +76,8 @@
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
 
+#include "yb/docdb/doc_rowwise_iterator.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -146,6 +148,95 @@ using namespace std::literals;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
+namespace {
+
+// Peek into pg_index table to get an index (boolean) status from YSQL perspective.
+Result<bool> GetPgIndexStatus(
+    CatalogManager* catalog_manager,
+    const TableId& idx_id,
+    const std::string& status_col_name) {
+  const auto pg_index_id =
+      GetPgsqlTableId(VERIFY_RESULT(GetPgsqlDatabaseOid(idx_id)), kPgIndexTableOid);
+
+  const tablet::Tablet* catalog_tablet =
+      catalog_manager->sys_catalog()->tablet_peer()->tablet();
+  const Schema& pg_index_schema =
+      VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_index_id))->schema;
+
+  Schema projection;
+  RETURN_NOT_OK(pg_index_schema.CreateProjectionByNames({"indexrelid", status_col_name},
+                                                        &projection,
+                                                        pg_index_schema.num_key_columns()));
+
+  const auto indexrelid_col_id = VERIFY_RESULT(projection.ColumnIdByName("indexrelid")).rep();
+  const auto status_col_id     = VERIFY_RESULT(projection.ColumnIdByName(status_col_name)).rep();
+
+  const auto idx_oid = VERIFY_RESULT(GetPgsqlTableOid(idx_id));
+
+  auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(projection.CopyWithoutColumnIds(),
+                                                           boost::none /* transaction_id */,
+                                                           {} /* read_hybrid_time */,
+                                                           pg_index_id));
+
+  // Filtering by 'indexrelid' == idx_oid.
+  {
+    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(indexrelid_col_id);
+    cond.set_op(QL_OP_EQUAL);
+    cond.add_operands()->mutable_value()->set_uint32_value(idx_oid);
+    docdb::DocPgsqlScanSpec spec(projection,
+                                 rocksdb::kDefaultQueryId,
+                                 {} /* hashed_components */,
+                                 &cond,
+                                 boost::none /* hash_code */,
+                                 boost::none /* max_hash_code */,
+                                 nullptr /* where_expr */);
+    RETURN_NOT_OK(doc_iter->Init(spec));
+  }
+
+  // Expecting one row at most.
+  QLTableRow row;
+  if (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&row));
+    return row.GetColumn(status_col_id)->bool_value();
+  }
+
+  // For practical purposes, an absent index is the same as having false status column value.
+  return false;
+}
+
+// Before advancing index permissions, we need to make sure Postgres side has advanced sufficiently
+// - that the state tracked in pg_index haven't fallen behind from the desired permission
+// for more than one step.
+Result<bool> ShouldProceedWithPgsqlIndexPermissionUpdate(
+    CatalogManager* catalog_manager,
+    const TableId& idx_id,
+    IndexPermissions new_perm) {
+  // TODO(alex, jason): Add the appropriate cases for dropping index path
+  switch (new_perm) {
+    case INDEX_PERM_WRITE_AND_DELETE: {
+      auto live = VERIFY_RESULT(GetPgIndexStatus(catalog_manager, idx_id, "indislive"));
+      if (!live) {
+        VLOG(1) << "Index " << idx_id << " is not yet live, skipping permission update";
+      }
+      return live;
+    }
+    case INDEX_PERM_DO_BACKFILL: {
+      auto ready = VERIFY_RESULT(GetPgIndexStatus(catalog_manager, idx_id, "indisready"));
+      if (!ready) {
+        VLOG(1) << "Index " << idx_id << " is not yet ready, skipping permission update";
+      }
+      return ready;
+    }
+    default:
+      // No need to wait for anything
+      return true;
+  }
+}
+
+} // namespace
+
 void MultiStageAlterTable::CopySchemaDetailsToFullyApplied(SysTablesEntryPB* pb) {
   VLOG(4) << "Setting fully_applied_schema_version to " << pb->version();
   pb->mutable_fully_applied_schema()->CopyFrom(pb->schema());
@@ -185,7 +276,7 @@ Status MultiStageAlterTable::ClearAlteringState(
   return Status::OK();
 }
 
-Status MultiStageAlterTable::UpdateIndexPermission(
+Result<bool> MultiStageAlterTable::UpdateIndexPermission(
     CatalogManager* catalog_manager,
     const scoped_refptr<TableInfo>& indexed_table,
     const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
@@ -200,32 +291,51 @@ Status MultiStageAlterTable::UpdateIndexPermission(
     DVLOG(3) << __PRETTY_FUNCTION__ << "Done Sleeping";
     TRACE("Done Sleeping");
   }
+
+  bool permissions_updated = false;
   {
     TRACE("Locking indexed table");
     auto l = indexed_table->LockForWrite();
-    auto &indexed_table_data = *l->mutable_data();
-    if (current_version && *current_version != indexed_table_data.pb.version()) {
+    auto& indexed_table_data = *l->mutable_data();
+    auto& indexed_table_pb = indexed_table_data.pb;
+    if (current_version && *current_version != indexed_table_pb.version()) {
       LOG(INFO) << "The table schema version "
-                << "seems to have already been updated to " << indexed_table_data.pb.version()
+                << "seems to have already been updated to " << indexed_table_pb.version()
                 << " We wanted to do this update at " << *current_version;
       return STATUS_SUBSTITUTE(
           AlreadyPresent, "Schema was already updated to $0 before we got to it (expected $1).",
-          indexed_table_data.pb.version(), *current_version);
+          indexed_table_pb.version(), *current_version);
     }
 
-    CopySchemaDetailsToFullyApplied(&indexed_table_data.pb);
-    for (int i = 0; i < indexed_table_data.pb.indexes_size(); i++) {
-      IndexInfoPB *idx_pb = indexed_table_data.pb.mutable_indexes(i);
-      if (perm_mapping.find(idx_pb->table_id()) != perm_mapping.end()) {
-        const auto new_perm = perm_mapping.at(idx_pb->table_id());
+    CopySchemaDetailsToFullyApplied(&indexed_table_pb);
+    bool is_pgsql = indexed_table_pb.table_type() == TableType::PGSQL_TABLE_TYPE;
+    for (int i = 0; i < indexed_table_pb.indexes_size(); i++) {
+      IndexInfoPB* idx_pb = indexed_table_pb.mutable_indexes(i);
+      auto& idx_table_id = idx_pb->table_id();
+      if (perm_mapping.find(idx_table_id) != perm_mapping.end()) {
+        const auto new_perm = perm_mapping.at(idx_table_id);
+        // TODO(alex, amit): Non-OK status here should be converted to TryAgain,
+        //                   which should be handled on an upper level.
+        if (is_pgsql && !VERIFY_RESULT(ShouldProceedWithPgsqlIndexPermissionUpdate(catalog_manager,
+                                                                                   idx_table_id,
+                                                                                   new_perm))) {
+          continue;
+        }
         idx_pb->set_index_permissions(new_perm);
+        permissions_updated = true;
       }
     }
-    indexed_table_data.pb.set_version(indexed_table_data.pb.version() + 1);
-    indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
-                                 Substitute("Alter table version=$0 ts=$1",
-                                            indexed_table_data.pb.version(),
-                                            LocalTimeAsString()));
+
+    if (permissions_updated) {
+      indexed_table_pb.set_version(indexed_table_pb.version() + 1);
+      indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
+                                   Substitute("Alter table version=$0 ts=$1",
+                                              indexed_table_pb.version(),
+                                              LocalTimeAsString()));
+    } else {
+      VLOG(1) << "Index permissions update skipped, leaving schema_version at "
+              << indexed_table_pb.version();
+    }
 
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating indexed table metadata on disk");
@@ -246,7 +356,7 @@ Status MultiStageAlterTable::UpdateIndexPermission(
     DVLOG(3) << __PRETTY_FUNCTION__ << "Done Sleeping";
     TRACE("Done Sleeping");
   }
-  return Status::OK();
+  return permissions_updated;
 }
 
 Status MultiStageAlterTable::StartBackfillingData(
@@ -358,19 +468,31 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     }
   }
 
+  if (indexes_to_update.empty() &&
+      indexes_to_delete.empty() &&
+      indexes_to_backfill.empty()) {
+
+    TRACE("Not necessary to launch next version");
+    VLOG(1) << "Not necessary to launch next version";
+    return ClearAlteringState(catalog_manager, indexed_table, current_version);
+  }
+
   if (!indexes_to_update.empty()) {
-    Status s;
-    WARN_NOT_OK(
-        (s = UpdateIndexPermission(
-             catalog_manager, indexed_table, indexes_to_update, current_version)),
-        Format(
-            "Could not update index permissions.",
-            " Possible that the master-leader has changed, or a race "
-            "with another thread trying to launch next version. "));
-    if (s.ok()) {
-      catalog_manager->SendAlterTableRequest(indexed_table);
+    Result<bool> permissions_updated =
+        VERIFY_RESULT(UpdateIndexPermission(catalog_manager, indexed_table, indexes_to_update,
+                                            current_version));
+
+    if (!permissions_updated.ok()) {
+      LOG(WARNING) << "Could not update index permissions."
+                   << " Possible that the master-leader has changed, or a race "
+                   << "with another thread trying to launch next version: "
+                   << permissions_updated.ToString();
     }
-    return Status::OK();
+
+    if (permissions_updated.ok() && *permissions_updated) {
+      catalog_manager->SendAlterTableRequest(indexed_table);
+      return Status::OK();
+    }
   }
 
   IndexInfoPB index_info_to_update;
@@ -402,9 +524,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     return Status::OK();
   }
 
-  TRACE("Not necessary to launch next version");
-  VLOG(1) << "Not necessary to launch next version";
-  return ClearAlteringState(catalog_manager, indexed_table, current_version);
+  return Status::OK();
 }
 
 // -----------------------------------------------------------------------------------------------

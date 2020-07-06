@@ -594,14 +594,9 @@ Result<IndexPermissions> YBClient::GetIndexPermissions(
 Result<IndexPermissions> YBClient::GetIndexPermissions(
     const YBTableName& table_name,
     const YBTableName& index_name) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   YBTableInfo table_info = VERIFY_RESULT(GetYBTableInfo(table_name));
   YBTableInfo index_info = VERIFY_RESULT(GetYBTableInfo(index_name));
-  return data_->GetIndexPermissions(
-      this,
-      table_info.table_id,
-      index_info.table_id,
-      deadline);
+  return GetIndexPermissions(table_info.table_id, index_info.table_id);
 }
 
 Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
@@ -621,15 +616,19 @@ Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
     const YBTableName& table_name,
     const YBTableName& index_name,
     const IndexPermissions& target_index_permissions) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   YBTableInfo table_info = VERIFY_RESULT(GetYBTableInfo(table_name));
   YBTableInfo index_info = VERIFY_RESULT(GetYBTableInfo(index_name));
-  return data_->WaitUntilIndexPermissionsAtLeast(
-      this,
-      table_info.table_id,
-      index_info.table_id,
-      deadline,
-      target_index_permissions);
+  return WaitUntilIndexPermissionsAtLeast(table_info.table_id,
+                                          index_info.table_id,
+                                          target_index_permissions);
+}
+
+Status YBClient::AsyncUpdateIndexPermissions(const TableId& indexed_table_id) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  AlterTableRequestPB req;
+  req.mutable_table()->set_table_id(indexed_table_id);
+  req.set_force_send_alter_request(true);
+  return data_->AlterTable(this, req, deadline);
 }
 
 Status YBClient::CreateNamespace(const std::string& namespace_name,

@@ -955,5 +955,9 @@ Result<IndexPermissions> PgSession::WaitUntilIndexPermissionsAtLeast(
       target_index_permissions);
 }
 
+Status PgSession::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
+  return client_->AsyncUpdateIndexPermissions(indexed_table_id.GetYBTableId());
+}
+
 }  // namespace pggate
 }  // namespace yb
