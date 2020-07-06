@@ -1030,10 +1030,9 @@ OpId ReplicaState::GetLastPendingOperationOpIdUnlocked() const {
       ? MinimumOpId() : pending_operations_.back()->id();
 }
 
-void ReplicaState::NewIdUnlocked(OpId* id) {
+yb::OpId ReplicaState::NewIdUnlocked() {
   DCHECK(IsLocked());
-  id->set_term(GetCurrentTermUnlocked());
-  id->set_index(next_index_++);
+  return yb::OpId(GetCurrentTermUnlocked(), next_index_++);
 }
 
 void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {

@@ -182,16 +182,13 @@ void OperationDriver::ExecuteAsync() {
   }
 }
 
-void OperationDriver::HandleConsensusAppend() {
+void OperationDriver::HandleConsensusAppend(
+    const yb::OpId& op_id, const yb::OpId& committed_op_id) {
+  ADOPT_TRACE(trace());
   if (!StartOperation()) {
     return;
   }
-  ADOPT_TRACE(trace());
-  auto* const replicate_msg = operation_->state()->consensus_round()->replicate_msg().get();
-  CHECK(!replicate_msg->has_hybrid_time());
-  replicate_msg->set_hybrid_time(operation_->state()->hybrid_time().ToUint64());
-  replicate_msg->set_monotonic_counter(
-      *operation_->state()->tablet()->monotonic_counter());
+  operation_->state()->LeaderInit(op_id, committed_op_id);
 }
 
 void OperationDriver::PrepareAndStartTask() {
