@@ -39,7 +39,7 @@ approach we have chosen has the following benefits:
 - During the read path, we need to handle provisional records very differently compared to regular
     records, and putting them in a separate section of the RocksDB key space allows to simplify the
     read path.
-- Storing provisional records in a separate RocksDB instance allows us to have different store,
+- Storing provisional records in a separate RocksDB instance allows us to have different storage,
  compaction, and flush strategies for them.
 
 ### Encoding details of provisional records
@@ -107,9 +107,9 @@ TxnId, HybridTime -> primary provisional record key
   This mapping allows us to find all provisional RocksDB records belonging to a particular
   transaction. This is used when cleaning up committed or aborted transactions. Note that
   because multiple RocksDB key-value pairs belonging to primary provisional records can we written
-  for the same transaction with the same hybrid time, we need to use an increasing counter (which we
-  call a *write ID*) at the end of the encoded representation of hybrid time in order to obtain
-  unique RocksDB keys for this reverse index. This write ID is shown as `.0`, `.1`, etc. in
+  for the same transaction with the same hybrid timestamp, we need to use an increasing counter 
+  (which we call a *write ID*) at the end of the encoded representation of hybrid time in order to 
+  obtain unique RocksDB keys for this reverse index. This write ID is shown as `.0`, `.1`, etc. in
   `T130.0`, `T130.1` in the figure above.
 
 ## Transaction status tracking
@@ -119,10 +119,11 @@ none are visible at all. YugabyteDB already provides atomicity of single-shard u
 replicating them via Raft and applying them as one write batch to the underlying RocksDB / DocDB
 storage engine. The same approach could be reused to make *transaction status* changes atomic.
 The status of transactions is tracked in a "transaction status" table. This table, under the covers,
-is just another sharded table in the system. The transaction ID (a globally unique ID)
-serves as the key in the table, and updates to a transaction's status are simple single-shard ACID
-operations. By setting the status to `committed` in that transaction's status record in the table, all values written as part of that transaction become atomically visible.
-.
+is just another sharded table in the system, although it does not use RocksDB and instead stores all
+its data in memory, backed by the Raft WAL. The transaction ID (a globally unique ID) serves as the
+key in the table, and updates to a transaction's status are simple single-shard ACID operations. 
+By setting the status to `committed` in that transaction's status record in the table, all values 
+written as part of that transaction become atomically visible.
 
 A transaction status record contains the following fields for a particular transaction ID:
 
