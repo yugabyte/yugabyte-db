@@ -757,7 +757,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
   // will be able to find YSQL tables
   const auto tables = ASSERT_RESULT(client->ListTables());
   for (const auto& t : tables) {
-    if (t.namespace_name() == "postgres" && t.table_name() == table_name) {
+    if (t.namespace_type() == YQLDatabase::YQL_DATABASE_PGSQL && t.table_name() == table_name) {
       table_found = true;
       ASSERT_OK(client->GetTableSchema(t, &schema, &partition_schema));
       const auto& columns = schema.columns();
@@ -766,6 +766,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
       for (size_t i = 0; i < expected_column_names.size(); ++i) {
         ASSERT_EQ(columns[i].name(), expected_column_names[i]);
       }
+      break;
     }
   }
   ASSERT_TRUE(table_found);
