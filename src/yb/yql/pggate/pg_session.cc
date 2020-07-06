@@ -711,8 +711,14 @@ Status PgSession::DropTable(const PgObjectId& table_id) {
   return client_->DeleteTable(table_id.GetYBTableId());
 }
 
-Status PgSession::DropIndex(const PgObjectId& index_id) {
-  return client_->DeleteIndexTable(index_id.GetYBTableId());
+Status PgSession::DropIndex(
+    const PgObjectId& index_id,
+    client::YBTableName* indexed_table_name,
+    bool wait) {
+  return client_->DeleteIndexTable(
+      index_id.GetYBTableId(),
+      indexed_table_name,
+      wait);
 }
 
 Status PgSession::TruncateTable(const PgObjectId& table_id) {
