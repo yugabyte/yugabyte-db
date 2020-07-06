@@ -259,6 +259,10 @@ YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
     const uint32_t target_index_permissions,
     uint32_t *actual_index_permissions);
 
+YBCStatus YBCPgAsyncUpdateIndexPermissions(
+    const YBCPgOid database_oid,
+    const YBCPgOid indexed_table_oid);
+
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)
 //--------------------------------------------------------------------------------------------------

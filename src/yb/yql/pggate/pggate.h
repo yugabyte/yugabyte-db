@@ -281,6 +281,8 @@ class PgApiImpl {
       const PgObjectId& index_id,
       const IndexPermissions& target_index_permissions);
 
+  CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
+
   //------------------------------------------------------------------------------------------------
   // All DML statements
   CHECKED_STATUS DmlAppendTarget(PgStatement *handle, PgExpr *expr);

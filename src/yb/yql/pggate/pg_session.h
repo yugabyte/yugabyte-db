@@ -304,6 +304,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       const PgObjectId& index_id,
       const IndexPermissions& target_index_permissions);
 
+  CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
+
  private:
   CHECKED_STATUS FlushBufferedOperationsImpl();
   CHECKED_STATUS FlushBufferedOperationsImpl(const PgsqlOpBuffer& ops, bool transactional);

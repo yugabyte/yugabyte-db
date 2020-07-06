@@ -42,9 +42,6 @@ class MultiStageAlterTable {
   // table info, upon the completion of an alter table round if we are in the
   // middle of an index backfill. Will update the IndexPermission from
   // INDEX_PERM_DELETE_ONLY -> INDEX_PERM_WRITE_AND_DELETE -> BACKFILL
-  // Returns true if the next version of table schema/info was kicked off.
-  // Returns false otherwise -- so that the alter table operation can be
-  // considered to have completed.
   static Status LaunchNextTableInfoVersionIfNecessary(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& Info, uint32_t current_version);
 
@@ -62,7 +59,8 @@ class MultiStageAlterTable {
 
   // Updates and persists the IndexPermission corresponding to the index_table_id for
   // the indexed_table's TableInfo.
-  static Status UpdateIndexPermission(
+  // Returns whether any permissions were actually updated (leading to a version being incremented).
+  static Result<bool> UpdateIndexPermission(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& indexed_table,
       const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
       boost::optional<uint32_t> current_version = boost::none);

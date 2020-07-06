@@ -284,6 +284,7 @@ message PgsqlReadRequestPB {
   // Where clause condition
   optional PgsqlExpressionPB where_expr = 8;
 
+  // TODO(alex): This should be renamed to make it clear that it's ONLY related to range columns!
   // Conditions for range columns.
   optional PgsqlExpressionPB condition_expr = 22;
 
