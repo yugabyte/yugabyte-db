@@ -12,7 +12,7 @@ import { UniverseFormContainer, UniverseStatusContainer, NodeDetailsContainer,
          UniverseOverviewContainerNew, EncryptionKeyModalContainer } from '../../universes';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
-import { ListTablesContainer, ListBackupsContainer } from '../../tables';
+import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from '../../tables';
 import { isEmptyObject, isNonEmptyObject, isNonEmptyArray, isEmptyArray } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -22,7 +22,7 @@ import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
 import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import UniverseHealthCheckList from './UniverseHealthCheckList/UniverseHealthCheckList.js';
-import { isNonAvailable, isDisabled, isEnabled, isHidden, isNotHidden, getFeatureState } from '../../../utils/LayoutUtils';
+import { isAvailable, isNonAvailable, isDisabled, isEnabled, isHidden, isNotHidden, getFeatureState } from '../../../utils/LayoutUtils';
 import { LinkContainer } from 'react-router-bootstrap';
 
 import './UniverseDetail.scss';
@@ -275,6 +275,18 @@ class UniverseDetail extends Component {
                 nodePrefixes={nodePrefixes}
                 isKubernetesUniverse={isItKubernetesUniverse} />
             </div>
+          </Tab.Pane>,
+
+        isAvailable(currentCustomer.data.features, "universes.details.replication", "hidden") &&
+          <Tab.Pane
+            eventKey={"replication"}
+            tabtitle="Replication"
+            key="replication-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, "universes.details.backups")}
+          >
+            <ReplicationContainer />
           </Tab.Pane>,
 
         isNotHidden(currentCustomer.data.features, "universes.details.tasks") &&
