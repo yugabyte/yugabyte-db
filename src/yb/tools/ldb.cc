@@ -19,13 +19,21 @@
 //
 #ifndef ROCKSDB_LITE
 
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/rocksdb/options.h"
+#include "yb/tablet/tablet_options.h"
 #include "yb/rocksdb/ldb_tool.h"
 
 int main(int argc, char** argv) {
+  rocksdb::Options options;
+  yb::tablet::TabletOptions t_options;
+  yb::docdb::InitRocksDBOptions(
+      &options, "" /* log_prefix */, nullptr /* statistics */, t_options);
   rocksdb::LDBTool tool;
-  tool.Run(argc, argv);
+  tool.Run(argc, argv, options);
   return 0;
 }
+
 #else
 #include <stdio.h>
 int main(int argc, char** argv) {
