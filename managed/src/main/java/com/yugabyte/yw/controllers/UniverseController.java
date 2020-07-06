@@ -485,8 +485,14 @@ public class UniverseController extends AuthenticatedController {
                 primaryCluster.userIntent.enableClientToNodeEncrypt) {
           if (taskParams.rootCA == null) {
             taskParams.rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix,
-                    customerUUID, appConfig.getString("yb.storage.path"),
-                    primaryCluster.userIntent.enableClientToNodeEncrypt);
+                    customerUUID, appConfig.getString("yb.storage.path"));
+          }
+          // If client encryption is enabled, generate the client cert file for each node.
+          if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
+            CertificateHelper.createClientCertificate(taskParams.rootCA,
+                String.format(CertificateHelper.CERT_PATH, appConfig.getString("yb.storage.path"),
+                              customerUUID.toString(), taskParams.rootCA.toString()),
+                CertificateHelper.DEFAULT_CLIENT, null, null);
           }
           // Set the flag to mark the universe as using TLS enabled and therefore not allowing
           // insecure connections.
