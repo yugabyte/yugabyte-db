@@ -18,6 +18,7 @@
 #include <mutex>
 #include <unordered_map>
 
+#include "yb/util/cross_thread_mutex.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
@@ -78,9 +79,6 @@ class RWOperationCounter {
 
   CHECKED_STATUS DisableAndWaitForOps(const CoarseTimePoint& deadline, Stop stop);
 
-  // Due to the thread restriction of "timed_mutex::unlock()", this Unlock method must be called
-  // in the same thread that invoked DisableAndWaitForOps(). This is fine for truncate, snapshot
-  // restore, and tablet shutdown operations.
   void Enable(Unlock unlock, Stop was_stop);
 
   void UnlockExclusiveOpMutex() {
@@ -116,7 +114,7 @@ class RWOperationCounter {
   // Mutex to disable the resource exclusively. This mutex is locked by DisableAndWaitForOps after
   // waiting for all shared-ownership operations to complete. We need this to avoid a race condition
   // between Raft operations that replace RocksDB (apply snapshot / truncate) and tablet shutdown.
-  std::timed_mutex disable_;
+  yb::CrossThreadMutex disable_;
 
   std::string resource_name_;
 };
@@ -135,42 +133,37 @@ class ScopedRWOperation {
   explicit ScopedRWOperation(RWOperationCounter* counter = nullptr,
                              const CoarseTimePoint& deadline = CoarseTimePoint());
 
-  ScopedRWOperation(ScopedRWOperation&& op)
-      : counter_(op.counter_), resource_name_(std::move(op.resource_name_))
-#ifndef NDEBUG
-      , long_operation_tracker_(std::move(op.long_operation_tracker_))
-#endif
-      {
-    op.counter_ = nullptr; // Moved ownership.
+  ScopedRWOperation(ScopedRWOperation&& op) : data_{std::move(op.data_)} {
+    op.data_.counter_ = nullptr;  // Moved ownership.
   }
 
   ~ScopedRWOperation();
 
   void operator=(ScopedRWOperation&& op) {
     Reset();
-    counter_ = op.counter_;
-    resource_name_ = std::move(op.resource_name_);
-    op.counter_ = nullptr;
-#ifndef NDEBUG
-    long_operation_tracker_ = std::move(op.long_operation_tracker_);
-#endif
+    data_ = std::move(op.data_);
+    op.data_.counter_ = nullptr;
   }
 
   bool ok() const {
-    return counter_ != nullptr;
+    return data_.counter_ != nullptr;
   }
 
   void Reset();
 
   std::string resource_name() const {
-    return resource_name_;
+    return data_.resource_name_;
   }
  private:
-  RWOperationCounter* counter_ = nullptr;
-  std::string resource_name_;
+  struct Data {
+    RWOperationCounter* counter_ = nullptr;
+    std::string resource_name_;
 #ifndef NDEBUG
-  LongOperationTracker long_operation_tracker_;
+    LongOperationTracker long_operation_tracker_;
 #endif
+  };
+
+  Data data_;
 };
 
 // RETURN_NOT_OK macro support.
@@ -186,11 +179,21 @@ class ScopedRWOperationPause {
   void operator=(const ScopedRWOperationPause&) = delete;
   ScopedRWOperationPause(const ScopedRWOperationPause&) = delete;
 
+  ScopedRWOperationPause() {}
   ScopedRWOperationPause(RWOperationCounter* counter, const CoarseTimePoint& deadline, Stop stop);
 
-  ScopedRWOperationPause(ScopedRWOperationPause&& p)
-      : counter_(p.counter_), status_(std::move(p.status_)), was_stop_(p.was_stop_) {
-    p.counter_ = nullptr; // Moved ownership.
+  ScopedRWOperationPause(ScopedRWOperationPause&& p) : data_(std::move(p.data_)) {
+    p.data_.counter_ = nullptr;  // Moved ownership.
+  }
+
+  ~ScopedRWOperationPause();
+
+  void Reset();
+
+  void operator=(ScopedRWOperationPause&& p) {
+    Reset();
+    data_ = std::move(p.data_);
+    p.data_.counter_ = nullptr;  // Moved ownership.
   }
 
   // This is called during tablet shutdown to release the mutex that we took to prevent concurrent
@@ -199,25 +202,21 @@ class ScopedRWOperationPause {
   // to happen after tablet shutdown anyway.
   void ReleaseMutexButKeepDisabled();
 
-  // See RWOperationCounter::Enable() for the thread restriction.
-  ~ScopedRWOperationPause() {
-    if (counter_ != nullptr) {
-      counter_->Enable(Unlock(status_.ok()), was_stop_);
-    }
-  }
-
   bool ok() const {
-    return status_.ok();
+    return data_.status_.ok();
   }
 
   Status&& status() {
-    return std::move(status_);
+    return std::move(data_.status_);
   }
 
  private:
-  RWOperationCounter* counter_ = nullptr;
-  Status status_;
-  Stop was_stop_;
+  struct Data {
+    RWOperationCounter* counter_ = nullptr;
+    Status status_;
+    Stop was_stop_ = Stop::kFalse;
+  };
+  Data data_;
 };
 
 // RETURN_NOT_OK macro support.

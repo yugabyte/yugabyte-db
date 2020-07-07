@@ -144,6 +144,7 @@ void ExclusiveSchemaOperationStateBase::AcquireSchemaLock(rw_semaphore* mutex) {
 
 void ExclusiveSchemaOperationStateBase::ReleaseSchemaLock() {
   schema_lock_ = std::unique_lock<rw_semaphore>();
+  permit_token_.Reset();
   TRACE("Released schema lock");
 }
 
