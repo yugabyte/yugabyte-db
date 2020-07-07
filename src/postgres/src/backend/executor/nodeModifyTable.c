@@ -1127,9 +1127,9 @@ ExecUpdate(ModifyTableState *mtstate,
 		if (resultRelationDesc->rd_att->constr)
 			ExecConstraints(resultRelInfo, slot, estate, mtstate);
 
-		/* 
+		/*
 		 * Verify that the update does not violate partition constraints.
-         */
+		 */
 		ExecPartitionCheck(resultRelInfo, slot, estate, true /* emitError */);
 
 		RangeTblEntry *rte = rt_fetch(resultRelInfo->ri_RangeTableIndex,

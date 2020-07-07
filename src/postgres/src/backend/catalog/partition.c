@@ -226,7 +226,7 @@ has_partition_attrs(Relation rel, Bitmapset *attnums, bool *used_in_expr)
 		if (partattno != 0)
 		{
 			if (bms_is_member(partattno - YBGetFirstLowInvalidAttributeNumber(rel),
-					  	attnums))
+			                  attnums))
 			{
 				if (used_in_expr)
 					*used_in_expr = false;
@@ -240,10 +240,11 @@ has_partition_attrs(Relation rel, Bitmapset *attnums, bool *used_in_expr)
 			Bitmapset  *expr_attrs = NULL;
 
 			/* Find all attributes referenced */
-			// pull_varattnos_min_attr offsets attributes by min_attr + 1. Therefore pass
-			// YBGetFirstLowInvalidAttributeNumber + 1.
+			/* pull_varattnos_min_attr offsets attributes by min_attr - 1. Therefore pass
+			 * YBGetFirstLowInvalidAttributeNumber + 1.
+			 */
 			pull_varattnos_min_attr(expr, 1, &expr_attrs,
-							YBGetFirstLowInvalidAttributeNumber(rel) + 1);
+			                        YBGetFirstLowInvalidAttributeNumber(rel) + 1);
 			partexprs_item = lnext(partexprs_item);
 
 			if (bms_overlap(attnums, expr_attrs))

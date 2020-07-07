@@ -1740,43 +1740,43 @@ void YBPreloadRelCache()
 	systable_endscan(scandesc);
 
 	/* Start scan for pg_partitioned_table */
-    Relation pg_partitioned_table_desc;
-    pg_partitioned_table_desc = heap_open(PartitionedRelationId, AccessShareLock);
+	Relation pg_partitioned_table_desc;
+	pg_partitioned_table_desc = heap_open(PartitionedRelationId, AccessShareLock);
 
-    scandesc = systable_beginscan(pg_partitioned_table_desc,
-       	                          PartitionedRelationId,
-               	                  false /* indexOk */,
-                       	          NULL,
-                                  0,
-                                  NULL);
+	scandesc = systable_beginscan(pg_partitioned_table_desc,
+	                              PartitionedRelationId,
+	                              false /* indexOk */,
+	                              NULL,
+	                              0,
+	                              NULL);
 
-    HeapTuple pg_partition_tuple;
-    while (HeapTupleIsValid(pg_partition_tuple = systable_getnext(scandesc)))
-    {
-       	pg_partition_tuple = heap_copytuple(pg_partition_tuple);
-       	Form_pg_partitioned_table part_table_form;
+	HeapTuple pg_partition_tuple;
+	while (HeapTupleIsValid(pg_partition_tuple = systable_getnext(scandesc)))
+	{
+		pg_partition_tuple = heap_copytuple(pg_partition_tuple);
+		Form_pg_partitioned_table part_table_form;
 
-       	part_table_form = (Form_pg_partitioned_table) GETSTRUCT(pg_partition_tuple);
+		part_table_form = (Form_pg_partitioned_table) GETSTRUCT(pg_partition_tuple);
 
-       	Relation relation;
-       	RelationIdCacheLookup(part_table_form->partrelid, relation);
+		Relation relation;
+		RelationIdCacheLookup(part_table_form->partrelid, relation);
 
-       	if (!relation) {
-           	continue;
-       	}
+		if (!relation) {
+			continue;
+		}
 
-       	/* Initialize key and partition descriptor info */
-       	if (relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-       	{
-           		RelationBuildPartitionKey(relation);
-           		RelationBuildPartitionDesc(relation);
-       	}
-   	}
+		/* Initialize key and partition descriptor info */
+		if (relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		{
+			RelationBuildPartitionKey(relation);
+			RelationBuildPartitionDesc(relation);
+		}
+	}
 
-   	systable_endscan(scandesc);
+	systable_endscan(scandesc);
 
-   	/* Close all the three relations that were opened */
-   	heap_close(pg_partitioned_table_desc, AccessShareLock);
+	/* Close all the three relations that were opened */
+	heap_close(pg_partitioned_table_desc, AccessShareLock);
 
 	heap_close(pg_attribute_desc, AccessShareLock);
 
