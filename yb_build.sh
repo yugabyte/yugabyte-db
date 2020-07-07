@@ -1029,6 +1029,10 @@ update_submodules
 
 if [[ -n $YB_GTEST_FILTER && -z $cxx_test_name ]]; then
   test_name=${YB_GTEST_FILTER%%.*}
+  # Fix tests with non standard naming.
+  if [[ $test_name == "CppCassandraDriverTest" ]]; then
+    test_name="cassandracppdrivertest";
+  fi
   set_cxx_test_name "GTEST_${test_name,,}"
 fi
 

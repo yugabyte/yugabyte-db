@@ -201,8 +201,15 @@ Status CassandraFuture::CheckErrorCode() {
     const char* message = nullptr;
     size_t message_sz = 0;
     cass_future_error_message(future_.get(), &message, &message_sz);
+    if (message_sz == 0) {
+      message = cass_error_desc(rc);
+      message_sz = strlen(message);
+    }
     if (rc == CASS_ERROR_LIB_REQUEST_TIMED_OUT) {
       return STATUS(TimedOut, Slice(message, message_sz));
+    }
+    if (rc == CASS_ERROR_SERVER_OVERLOADED) {
+      return STATUS(ServiceUnavailable, Slice(message, message_sz));
     }
     return STATUS(RuntimeError, Slice(message, message_sz));
   }
