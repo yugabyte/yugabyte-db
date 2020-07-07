@@ -356,6 +356,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                 RedisConfigGetResponsePB* resp,
                                 rpc::RpcContext* rpc);
 
+  CHECKED_STATUS CreateTablegroup(const CreateTablegroupRequestPB* req,
+                                  CreateTablegroupResponsePB* resp,
+                                  rpc::RpcContext* rpc);
+
+  CHECKED_STATUS DeleteTablegroup(const DeleteTablegroupRequestPB* req,
+                                  DeleteTablegroupResponsePB* resp,
+                                  rpc::RpcContext* rpc);
+
   // Create a new User-Defined Type with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,

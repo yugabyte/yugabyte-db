@@ -115,6 +115,66 @@ class PgAlterDatabase : public PgDdl {
 };
 
 //--------------------------------------------------------------------------------------------------
+// CREATE / DROP TABLEGROUP
+//--------------------------------------------------------------------------------------------------
+
+class PgCreateTablegroup : public PgDdl {
+ public:
+  // Public types.
+  typedef scoped_refptr<PgCreateTablegroup> ScopedRefPtr;
+  typedef scoped_refptr<const PgCreateTablegroup> ScopedRefPtrConst;
+
+  typedef std::unique_ptr<PgCreateTablegroup> UniPtr;
+  typedef std::unique_ptr<const PgCreateTablegroup> UniPtrConst;
+
+  // Constructors.
+  PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
+                     const char *database_name,
+                     const PgOid database_oid,
+                     const char *tablegroup_name,
+                     const PgOid tablegroup_oid);
+  virtual ~PgCreateTablegroup();
+
+  StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLEGROUP; }
+
+  // Execute.
+  CHECKED_STATUS Exec();
+
+ private:
+  const char *database_name_;
+  const PgOid database_oid_;
+  const char *tablegroup_name_;
+  const PgOid tablegroup_oid_;
+};
+
+class PgDropTablegroup : public PgDdl {
+ public:
+  // Public types.
+  typedef scoped_refptr<PgDropTablegroup> ScopedRefPtr;
+  typedef scoped_refptr<const PgDropTablegroup> ScopedRefPtrConst;
+
+  typedef std::unique_ptr<PgDropTablegroup> UniPtr;
+  typedef std::unique_ptr<const PgDropTablegroup> UniPtrConst;
+
+  // Constructors.
+  PgDropTablegroup(PgSession::ScopedRefPtr pg_session,
+                   const char *tablegroup_name,
+                   PgOid database_oid,
+                   PgOid tablegroup_oid);
+  virtual ~PgDropTablegroup();
+
+  StmtOp stmt_op() const override { return StmtOp::STMT_DROP_TABLEGROUP; }
+
+  // Execute.
+  CHECKED_STATUS Exec();
+
+ private:
+  const char *tablegroup_name_;
+  const PgOid database_oid_;
+  const PgOid tablegroup_oid_;
+};
+
+//--------------------------------------------------------------------------------------------------
 // CREATE TABLE
 //--------------------------------------------------------------------------------------------------
 

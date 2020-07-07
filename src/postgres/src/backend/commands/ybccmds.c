@@ -117,6 +117,29 @@ YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_o
 }
 
 /* ------------------------------------------------------------------------- */
+/*  Tablegroup Functions. */
+void
+YBCCreateTablegroup(Oid grpoid, const char *grpname)
+{
+	YBCPgStatement handle;
+	char *db_name = get_database_name(MyDatabaseId);
+
+	HandleYBStatus(YBCPgNewCreateTablegroup(db_name, MyDatabaseId, grpname,
+																					grpoid, &handle));
+	HandleYBStatus(YBCPgExecCreateTablegroup(handle));
+}
+
+void
+YBCDropTablegroup(Oid grpoid, const char *grpname)
+{
+	YBCPgStatement handle;
+
+	HandleYBStatus(YBCPgNewDropTablegroup(grpname, MyDatabaseId, grpoid, &handle));
+	HandleYBStatus(YBCPgExecDropTablegroup(handle));
+}
+
+
+/* ------------------------------------------------------------------------- */
 /*  Table Functions. */
 
 static void CreateTableAddColumn(YBCPgStatement handle,

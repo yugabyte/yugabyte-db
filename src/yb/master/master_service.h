@@ -124,6 +124,14 @@ class MasterServiceImpl : public MasterServiceIf,
                             GetYsqlCatalogConfigResponsePB* resp,
                             rpc::RpcContext rpc) override;
 
+  void CreateTablegroup(const CreateTablegroupRequestPB* req,
+                        CreateTablegroupResponsePB* resp,
+                        rpc::RpcContext rpc) override;
+
+  void DeleteTablegroup(const DeleteTablegroupRequestPB* req,
+                        DeleteTablegroupResponsePB* resp,
+                        rpc::RpcContext rpc) override;
+
   void CreateRole(const CreateRoleRequestPB* req,
                   CreateRoleResponsePB* resp,
                   rpc::RpcContext rpc) override;
