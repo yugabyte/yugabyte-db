@@ -110,9 +110,9 @@ class Certificates extends Component {
     };
     return (
       <a onClick={() => {
-          this.setState({selectedCert: payload})
-          this.props.showDownloadCertificateModal()
-        }}
+        this.setState({selectedCert: payload});
+        this.props.showDownloadCertificateModal();
+      }}
         className="btn-orange"
         style={{padding: '8px 15px', borderRadius: '7px', background: '#7a6f6f', cursor: 'pointer'}}
       >

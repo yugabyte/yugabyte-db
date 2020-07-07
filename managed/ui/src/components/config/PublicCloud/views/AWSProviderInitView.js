@@ -404,11 +404,12 @@ class AWSProviderInitView extends Component {
         reader.readAsText(sshPrivateKeyText);
         // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
         reader.onloadend = () => {
-        try {
-          regionFormVals["sshPrivateKeyContent"] = JSON.parse(reader.result);
-        } catch (e) {
-          this.setState({"error": "Invalid PEM Config file"});
-        }};
+          try {
+            regionFormVals["sshPrivateKeyContent"] = JSON.parse(reader.result);
+          } catch (e) {
+            this.setState({"error": "Invalid PEM Config file"});
+          }
+        };
       }
       return this.props.createAWSProvider(formValues.accountName, awsProviderConfig, regionFormVals);
 

@@ -33,8 +33,10 @@ export default class ListBackups extends Component {
     this.props.resetUniverseBackups();
   }
 
-  isMultiTableBackup = (row) => {
+   isMultiTableBackup = (row) => {
     if (row.tableUUIDList && row.tableUUIDList.length > 1) {
+      return true;
+    } else if (row.backupList && Array.isArray(row.backupList)) {
       return true;
     }
     return false;
@@ -42,6 +44,20 @@ export default class ListBackups extends Component {
 
   showMultiTableInfo = (row) => {
     const { universeTableTypes } = this.props;
+    if (row.backupList && Array.isArray(row.backupList)) {
+      return row.backupList.map((backup, index) => {
+        const tableName = backup.tableUUIDList ? backup.tableNameList.join(', ') : backup.tableName;
+        const tableType = backup.tableUUIDList ? universeTableTypes[backup.tableUUIDList[0]] : universeTableTypes[backup.tableUUID];
+        return (
+          <div key={`universe-backup-${index}`} style={{display: 'flex', margin: '15px 0'}}>
+            <span style={{flex: '0 0 14.3%'}}>{backup.keyspace}</span>
+            <span style={{flex: '0 0 14.3%'}}>{tableName}</span>
+            <span style={{flex: '0 0 14.3%'}}>{tableType}</span>
+            <span style={{flex: '0 0 auto'}}>{backup.storageLocation}</span>
+          </div>
+        );
+      });
+    }
     return row.tableUUIDList.map((uuid, index) => (
       <div key={`multi-backup-${uuid}`} style={{display: 'flex', margin: '15px 0'}}>
         <span style={{flex: '0 0 14.3%'}}>{row.keyspace}</span>
