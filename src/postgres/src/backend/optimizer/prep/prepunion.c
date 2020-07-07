@@ -117,8 +117,8 @@ static void make_inh_translation_list(Relation oldrelation,
 						  Index newvarno,
 						  List **translated_vars);
 static Bitmapset *translate_col_privs(Relation parentrel,
-					const Bitmapset *parent_privs,
-                    List *translated_vars);
+                                      const Bitmapset *parent_privs,
+                                      List *translated_vars);
 static Node *adjust_appendrel_attrs_mutator(Node *node,
 							   adjust_appendrel_attrs_context *context);
 static Relids adjust_child_relids(Relids relids, int nappinfos,
@@ -1843,14 +1843,14 @@ expand_single_inheritance_child(PlannerInfo *root, RangeTblEntry *parentrte,
 		if (childOID != parentOID)
 		{
 			childrte->selectedCols = translate_col_privs(parentrel,
-                                                         parentrte->selectedCols,
-                                                         appinfo->translated_vars);
+			                                             parentrte->selectedCols,
+			                                             appinfo->translated_vars);
 			childrte->insertedCols = translate_col_privs(parentrel,
-                                                         parentrte->insertedCols,
-                                                         appinfo->translated_vars);
+			                                             parentrte->insertedCols,
+			                                             appinfo->translated_vars);
 			childrte->updatedCols = translate_col_privs(parentrel,
-                                                         parentrte->updatedCols,
-                                                         appinfo->translated_vars);
+			                                            parentrte->updatedCols,
+			                                            appinfo->translated_vars);
 		}
 	}
 
@@ -2033,10 +2033,11 @@ translate_col_privs(Relation parentrel,
 			continue;
 		if (whole_row ||
 			bms_is_member(attno - firstLowInvalidAttrNumber,
-						  parent_privs)) {
+						  parent_privs))
+		{
 			child_privs = bms_add_member(child_privs,
 										 var->varattno - firstLowInvalidAttrNumber);
-        }
+		}
 	}
 
 	return child_privs;

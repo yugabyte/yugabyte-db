@@ -185,7 +185,12 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 	List	   *opfamilies;
 	EquivalenceClass *eclass;
 
-	strategy = reverse_sort ? BTGreaterStrategyNumber : BTLessStrategyNumber;
+	if (is_hash_index) {
+		/* We are picking a hash index. The strategy can only be BTEqualStrategyNumber */
+		strategy = BTEqualStrategyNumber;
+	} else {
+		strategy = reverse_sort ? BTGreaterStrategyNumber : BTLessStrategyNumber;
+	}
 
 	/*
 	 * EquivalenceClasses need to contain opfamily lists based on the family
@@ -219,11 +224,6 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 	 */
 	if (is_hash_index && eclass->ec_sortref != 0) {
 		return NULL;
-	}
-
-	/* We are picking a hash index. The strategy can only be BTEqualStrategyNumber */
-	if (is_hash_index) {
-		strategy = BTEqualStrategyNumber;
 	}
 
 	/* And finally we can find or create a PathKey node */

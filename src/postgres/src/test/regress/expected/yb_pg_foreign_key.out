@@ -1797,12 +1797,6 @@ CREATE TABLE fk_partitioned_fk_5 (a int, b int,
 FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE,
 FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE)
 PARTITION BY RANGE (a);
-ERROR:  DEFERRABLE constraint not supported yet
-LINE 2: ...oned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE...
-                                                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
--- Uncomment below tests after deferrable constraints are supported.
-/*
 CREATE TABLE fk_partitioned_fk_5_1 (a int, b int, FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk);
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_5 FOR VALUES IN (4500);
 ALTER TABLE fk_partitioned_fk_5 ATTACH PARTITION fk_partitioned_fk_5_1 FOR VALUES FROM (0) TO (10);
@@ -1811,11 +1805,35 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_5 FOR VALUES IN
 -- this one has two constraints, similar but not quite the one in the parent,
 -- so it gets a new one
 \d fk_partitioned_fk_5
+        Table "public.fk_partitioned_fk_5"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | integer |           |          |
+Partition of: fk_partitioned_fk FOR VALUES IN (4500)
+Partition key: RANGE (a)
+Foreign-key constraints:
+    "fk_partitioned_fk_5_a_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE
+    "fk_partitioned_fk_5_a_fkey1" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+    "fk_partitioned_fk_a_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE
+Number of partitions: 1 (Use \d+ to list them.)
+
 -- verify that it works to reattaching a child with multiple candidate
 -- constraints
 ALTER TABLE fk_partitioned_fk_5 DETACH PARTITION fk_partitioned_fk_5_1;
 ALTER TABLE fk_partitioned_fk_5 ATTACH PARTITION fk_partitioned_fk_5_1 FOR VALUES FROM (0) TO (10);
 \d fk_partitioned_fk_5_1
+       Table "public.fk_partitioned_fk_5_1"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | integer |           |          |
+Partition of: fk_partitioned_fk_5 FOR VALUES FROM (0) TO (10)
+Foreign-key constraints:
+    "fk_partitioned_fk_5_1_a_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b)
+    "fk_partitioned_fk_5_a_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE
+    "fk_partitioned_fk_5_a_fkey1" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+    "fk_partitioned_fk_a_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE
 
 -- verify that attaching a table checks that the existing data satisfies the
 -- constraint
@@ -1825,10 +1843,11 @@ CREATE TABLE fk_partitioned_fk_2_2 PARTITION OF fk_partitioned_fk_2 FOR VALUES F
 INSERT INTO fk_partitioned_fk_2 VALUES (1600, 601), (1600, 1601);
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2
   FOR VALUES IN (1600);
+ERROR:  insert or update on table "fk_partitioned_fk_2" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+DETAIL:  Key (a, b)=(1600, 601) is not present in table "fk_notpartitioned_pk".
 INSERT INTO fk_notpartitioned_pk VALUES (1600, 601), (1600, 1601);
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2
   FOR VALUES IN (1600);
-*/
 -- leave these tables around intentionally
 -- Test creating a constraint at the parent that already exists in partitions.
 -- There should be no duplicated constraints, and attempts to drop the
@@ -1844,8 +1863,8 @@ create schema fkpart0
       partition by list (a)
   create table fk_part_23_2 partition of fk_part_23 for values in (2);
 ERROR:  CREATE SCHEMA with elements not supported yet
-LINE 34:   create table pkey (a int primary key)
-           ^
+LINE 2:   create table pkey (a int primary key)
+          ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 /*
 alter table fkpart0.fk_part add foreign key (a) references fkpart0.pkey;
