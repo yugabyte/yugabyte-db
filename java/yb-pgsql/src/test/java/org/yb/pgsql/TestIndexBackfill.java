@@ -28,7 +28,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestIndexBackfill extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestIndexBackfill.class);
 
-  private static final int AWAIT_TIMEOUT_SEC = 60;
+  private static final int AWAIT_TIMEOUT_SEC = 80;
 
   @Override
   protected Map<String, String> getMasterAndTServerFlags() {
@@ -37,17 +37,18 @@ public class TestIndexBackfill extends BasePgSQLTest {
     return flagMap;
   }
 
-  @Test
-  public void noop() {
-    // Avoid Jenkins erroring out with "No runnable methods" until we in-ignore the real test
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("TEST_slowdown_backfill_alter_table_rpcs_ms", "2000");
+    return flagMap;
   }
 
-  // TODO(alex, jason): Enable when the YSQL backfill is fully implemented
-  @Ignore
-  public void concurrentAsc() throws Exception {
+  @Test
+  public void insertsWhileCreatingIndex() throws Exception {
     int minThreads = 2;
     int insertsChunkSize = 100;
-    String tableName = "concurrent_asc";
+    String tableName = "inserts_while_creating_index";
     String indexName = tableName + "_idx";
 
     try (Statement stmt = connection.createStatement()) {
@@ -83,7 +84,14 @@ public class TestIndexBackfill extends BasePgSQLTest {
         do {
           LOG.info("Inserting a chunk of " + insertsChunkSize + " values");
           for (int i = 0; i < insertsChunkSize; i++) {
-            stmt.executeUpdate("INSERT INTO " + tableName + " VALUES (" + (v++) + ")");
+            try {
+              stmt.executeUpdate("INSERT INTO " + tableName + " VALUES (" + v + ")");
+              ++v;
+            } catch (Exception ex) {
+              if (!isIgnorableException(ex)) {
+                throw ex;
+              }
+            }
             insertDone.countDown();
           }
         } while (!isIndexValid(conn, indexName));
@@ -129,5 +137,13 @@ public class TestIndexBackfill extends BasePgSQLTest {
         return false;
       }
     }
+  }
+
+  /** Whether we expect this exception to casually happen during a concurrent workflow */
+  private boolean isIgnorableException(Exception ex) {
+    String msgLc = ex.getMessage().toLowerCase();
+    return msgLc.contains("schema version mismatch")
+        || msgLc.contains("catalog version mismatch")
+        || msgLc.contains("rocksdb store is busy");
   }
 }
