@@ -218,6 +218,37 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   return YBCStatusOK();
 }
 
+// Tablegroup Operations ---------------------------------------------------------------------------
+
+YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
+                                   YBCPgOid database_oid,
+                                   const char *tablegroup_name,
+                                   YBCPgOid tablegroup_oid,
+                                   YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewCreateTablegroup(database_name,
+                                                database_oid,
+                                                tablegroup_name,
+                                                tablegroup_oid,
+                                                handle));
+}
+
+YBCStatus YBCPgExecCreateTablegroup(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecCreateTablegroup(handle));
+}
+
+YBCStatus YBCPgNewDropTablegroup(const char *tablegroup_name,
+                                 YBCPgOid database_oid,
+                                 YBCPgOid tablegroup_oid,
+                                 YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropTablegroup(tablegroup_name,
+                                              database_oid,
+                                              tablegroup_oid,
+                                              handle));
+}
+YBCStatus YBCPgExecDropTablegroup(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropTablegroup(handle));
+}
+
 // Statement Operations ----------------------------------------------------------------------------
 
 YBCStatus YBCPgClearBinds(YBCPgStatement handle) {

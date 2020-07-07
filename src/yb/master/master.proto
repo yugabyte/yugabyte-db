@@ -1425,6 +1425,33 @@ message GetNamespaceInfoResponsePB {
 }
 
 // ============================================================================
+//  Tablegroup
+// ============================================================================
+
+message CreateTablegroupRequestPB {
+  required string name = 1;
+  required bytes id = 2;
+  required bytes namespace_id = 3;
+  optional string namespace_name = 4;
+}
+
+message CreateTablegroupResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message DeleteTablegroupRequestPB {
+  required string name = 1;
+  required bytes id = 2;
+  required bytes namespace_id = 3;
+}
+
+message DeleteTablegroupResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+// ============================================================================
 //  Authentication and Authorization
 // ============================================================================
 
@@ -1826,6 +1853,10 @@ service MasterService {
   rpc AlterNamespace(AlterNamespaceRequestPB) returns (AlterNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
   rpc GetNamespaceInfo(GetNamespaceInfoRequestPB) returns (GetNamespaceInfoResponsePB);
+
+  // For Tablegroup:
+  rpc CreateTablegroup(CreateTablegroupRequestPB) returns (CreateTablegroupResponsePB);
+  rpc DeleteTablegroup(DeleteTablegroupRequestPB) returns (DeleteTablegroupResponsePB);
 
   // For Postgres:
   rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);
