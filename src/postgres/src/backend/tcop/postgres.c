@@ -4027,7 +4027,7 @@ yb_copy_param_list(ParamListInfo source)
 }
 
 /*
- * Collect data necessary for yb_restart_portal invocation.
+ * Collect data necessary for yb_attempt_to_restart_on_error invocation.
  */
 static YBQueryRestartData*
 yb_collect_portal_restart_data(const char* portal_name)
@@ -4956,12 +4956,49 @@ PostgresMain(int argc, char *argv[],
 					}
 					PG_CATCH();
 					{
+						/*
+						 * The portal recreation logic is restored to the pre-#2216 state
+						 * (it was reworked in #4254).
+						 */
+						Portal old_portal = GetPortalByName(portal_name);
+
+						/*
+						 * TODO Do not support retrying for prepared statements
+						 * yet. (i.e. if portal is named or has params).
+						 */
 						bool can_retry =
 						    IsYugaByteEnabled() &&
-						    unnamed_stmt_psrc &&
-						    yb_check_retry_allowed(unnamed_stmt_psrc->query_string);
+						    old_portal &&
+						    portal_name[0] == '\0' &&
+						    !old_portal->portalParams &&
+						    yb_check_retry_allowed(restart_data->query_string);
+
+
+						/* Stuff we might need for retrying below */
+						char* query_string = NULL;
+						int   nformats = 0;
+						int16 *formats = NULL;
+
+						if (can_retry)
+						{
+							/*
+							 * Copy the data needed to retry before transaction
+							 * abort cleans it up.
+							 */
+							query_string = pstrdup(restart_data->query_string);
+
+							if (old_portal->formats)
+							{
+								nformats = old_portal->tupDesc->natts;
+								formats  = (int16 *) palloc(nformats * sizeof(int16));
+								memcpy(formats,
+								       old_portal->formats,
+								       nformats * sizeof(int16));
+							}
+						}
 
 						bool need_retry = false;
+
 						/*
 						 * Execute may have been partially applied so need to
 						 * cleanup (and restart) the transaction.
@@ -4972,7 +5009,48 @@ PostgresMain(int argc, char *argv[],
 
 						if (need_retry && can_retry)
 						{
-							yb_restart_portal(portal_name);
+							/* 1. Redo Parse: Create Cached stmt (no output) */
+							exec_parse_message(query_string,
+							                   portal_name,
+							                   NULL /* param_types*/,
+							                   0 /* num_params */,
+							                   DestNone);
+
+							/* 2. Redo the Bind step */
+							Portal portal;
+							/* Create portal */
+							portal = CreatePortal(portal_name, true, true);
+
+							/* Set portal data */
+							MemoryContext oldContext = MemoryContextSwitchTo(
+									portal->portalContext);
+							char          *stmt_name;
+							if (portal_name[0])
+								stmt_name = pstrdup(portal_name);
+							else
+								stmt_name = NULL;
+
+							/* TODO params are none for now (see above) */
+							ParamListInfo params = NULL;
+
+							MemoryContextSwitchTo(oldContext);
+
+							CachedPlan *cplan = GetCachedPlan(unnamed_stmt_psrc,
+							                                  params,
+							                                  false,
+							                                  NULL);
+
+							PortalDefineQuery(portal,
+							                  stmt_name,
+							                  query_string,
+							                  unnamed_stmt_psrc->commandTag,
+							                  cplan->stmt_list,
+							                  cplan);
+
+							/* Start portal */
+							PortalStart(portal, params, 0, InvalidSnapshot);
+							/* Set the output format */
+							PortalSetResultFormat(portal, nformats, formats);
 
 							/* Now ready to retry the execute step. */
 							yb_exec_execute_message_attempting_to_restart_read(portal_name,
