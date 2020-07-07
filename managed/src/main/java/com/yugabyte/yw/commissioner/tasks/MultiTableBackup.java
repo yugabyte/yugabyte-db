@@ -26,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.HashMap;
 
 import static org.yb.Common.TableType;
 
@@ -116,30 +117,67 @@ public class MultiTableBackup extends UniverseTaskBase {
         }
         // If user did not specify tables, that means we need to backup all tables.
         else {
-          ListTablesResponse response = client.getTablesList(null, true, params().keyspace);
+          // AC: This API call does not work when retrieving YSQL tables in specified
+          // namespace, so we have to filter explicitly below
+          ListTablesResponse response = client.getTablesList(null, true, null);
           List<TableInfo> tableInfoList = response.getTableInfoList();
+          HashMap<String, BackupTableParams> keyspaceMap = new HashMap<>();
           for (TableInfo table : tableInfoList) {
             TableType tableType = table.getTableType();
+            String tableKeySpace = table.getNamespace().getName();
             String tableUUIDString = table.getId().toStringUtf8();
             UUID tableUUID = getUUIDRepresentation(tableUUIDString);
             // If table is not REDIS or YCQL, ignore.
-            if (tableType == TableType.PGSQL_TABLE_TYPE ||
-              tableType == TableType.TRANSACTION_STATUS_TABLE_TYPE ||
-              table.getRelationType() == RelationType.INDEX_TABLE_RELATION) {
-              LOG.info("Skipping backup of table with UUID: " + tableUUID);
+            if (tableType == TableType.TRANSACTION_STATUS_TABLE_TYPE ||
+              table.getRelationType() == RelationType.INDEX_TABLE_RELATION ||
+              (params().keyspace != null && !params().keyspace.equals(tableKeySpace))) {
+              LOG.info("Skipping keyspace/universe backup of table " + tableUUID +
+                       ". Expected keyspace is " + params().keyspace +
+                       "; actual keyspace is " + tableKeySpace);
               continue;
             }
-            String tableKeySpace = table.getNamespace().getName();
-            if (params().transactionalBackup) {
-              populateBackupParams(tableBackupParams,
-                tableKeySpace,
-                table.getName(),
-                tableUUID);
+
+            if (tableType == TableType.PGSQL_TABLE_TYPE && !keyspaceMap.containsKey(tableKeySpace)) {
+              // YSQL keyspaces must have prefix in front
+              if (params().keyspace != null) {
+                populateBackupParams(tableBackupParams, "ysql." + tableKeySpace);
+              } else {
+                // Backing up entire universe
+                BackupTableParams backupParams = createBackupParams("ysql." + tableKeySpace);
+                backupParamsList.add(backupParams);
+                keyspaceMap.put(tableKeySpace, backupParams);
+              }
+            } else if (tableType == TableType.YQL_TABLE_TYPE || tableType == TableType.REDIS_TABLE_TYPE) {
+              if (params().transactionalBackup && params().keyspace != null) {
+                populateBackupParams(tableBackupParams,
+                  tableKeySpace,
+                  table.getName(),
+                  tableUUID);
+              } else if (params().transactionalBackup && params().keyspace == null) {
+                // Backing up universe as transaction
+                if (keyspaceMap.containsKey(tableKeySpace)) {
+                  BackupTableParams currentBackup = keyspaceMap.get(tableKeySpace);
+                  populateBackupParams(currentBackup,
+                    tableKeySpace,
+                    table.getName(),
+                    tableUUID);
+                } else {
+                  // Current keyspace not in list, add new BackupTableParams
+                  BackupTableParams backupParams = createBackupParams(tableKeySpace,
+                                                                      table.getName(),
+                                                                      tableUUID);
+                  backupParamsList.add(backupParams);
+                  keyspaceMap.put(tableKeySpace, backupParams);
+                }
+              } else {
+                BackupTableParams backupParams = createBackupParams(tableKeySpace,
+                                                                    table.getName(),
+                                                                    tableUUID);
+                backupParamsList.add(backupParams);
+              }
             } else {
-              BackupTableParams backupParams = createBackupParams(tableKeySpace,
-                table.getName(),
-                tableUUID);
-              backupParamsList.add(backupParams);
+              LOG.error("Unrecognized table type {} for {}:{}", tableType, tableKeySpace,
+                table.getName());
             }
 
             LOG.info("Queuing backup for table {}:{}", tableKeySpace,
@@ -160,9 +198,23 @@ public class MultiTableBackup extends UniverseTaskBase {
 
       LOG.info("Successfully started scheduled backup of tables.");
       if (params().transactionalBackup) {
-        Backup backup = Backup.create(params().customerUUID, tableBackupParams);
-        createTableBackupTask(tableBackupParams, backup).setSubTaskGroupType(
-          UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
+        if (params().keyspace != null) {
+          Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+          createTableBackupTask(tableBackupParams, backup).setSubTaskGroupType(
+            UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
+        } else {
+          // Handles case of full universe backup
+          tableBackupParams.backupList = backupParamsList;
+          tableBackupParams.storageConfigUUID = params().storageConfigUUID;
+          tableBackupParams.actionType = BackupTableParams.ActionType.CREATE;
+          tableBackupParams.storageConfigUUID = params().storageConfigUUID;
+          tableBackupParams.universeUUID = params().universeUUID;
+          tableBackupParams.sse = params().sse;
+          tableBackupParams.transactionalBackup = params().transactionalBackup;
+          Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+          createTableBackupTask(tableBackupParams, backup).setSubTaskGroupType(
+            UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
+        }
       } else {
         for (BackupTableParams tableParams : backupParamsList) {
           Backup backup = Backup.create(params().customerUUID, tableParams);
@@ -204,20 +256,40 @@ public class MultiTableBackup extends UniverseTaskBase {
     backupParams.keyspace = tableKeySpace;
     backupParams.transactionalBackup = params().transactionalBackup;
 
-    if (backupParams.tableNameList == null) {
-      backupParams.tableNameList = new ArrayList<String>();
-      backupParams.tableUUIDList = new ArrayList<UUID>();
+    if (tableName != null && tableUUID != null) {
+      if (backupParams.tableNameList == null) {
+        backupParams.tableNameList = new ArrayList<String>();
+        backupParams.tableUUIDList = new ArrayList<UUID>();
+        if (backupParams.tableName != null && backupParams.tableUUID != null) {
+          // Clear singular fields and add to lists
+          backupParams.tableNameList.add(backupParams.tableName);
+          backupParams.tableUUIDList.add(backupParams.tableUUID);
+          backupParams.tableName = null;
+          backupParams.tableUUID = null;
+        }
+      }
+      backupParams.tableNameList.add(tableName);
+      backupParams.tableUUIDList.add(tableUUID);
     }
-    backupParams.tableNameList.add(tableName);
-    backupParams.tableUUIDList.add(tableUUID);
+  }
+
+  private void populateBackupParams(BackupTableParams backupParams,
+                                    String tableKeySpace) {
+    populateBackupParams(backupParams, tableKeySpace, null, null);
+  }
+
+  private BackupTableParams createBackupParams(String tableKeySpace) {
+    return createBackupParams(tableKeySpace, null, null);
   }
 
   private BackupTableParams createBackupParams(String tableKeySpace, String tableName,
                                                  UUID tableUUID) {
     BackupTableParams backupParams = new BackupTableParams();
     backupParams.keyspace = tableKeySpace;
-    backupParams.tableUUID = tableUUID;
-    backupParams.tableName = tableName;
+    if (tableUUID != null && tableName != null) {
+      backupParams.tableUUID = tableUUID;
+      backupParams.tableName = tableName;
+    }
     backupParams.actionType = BackupTableParams.ActionType.CREATE;
     backupParams.storageConfigUUID = params().storageConfigUUID;
     backupParams.universeUUID = params().universeUUID;

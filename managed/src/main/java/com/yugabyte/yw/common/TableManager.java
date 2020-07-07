@@ -90,8 +90,10 @@ public class TableManager extends DevopsBase {
               commandArgs.add(backupTableParams.tableUUIDList.get(listIndex).toString());
             }
           } else {
-            commandArgs.add("--table");
-            commandArgs.add(taskParams.tableName);
+            if (backupTableParams.tableName != null) {
+              commandArgs.add("--table");
+              commandArgs.add(taskParams.tableName);
+            }
             commandArgs.add("--keyspace");
             commandArgs.add(taskParams.keyspace);
           }
