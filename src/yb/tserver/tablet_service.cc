@@ -865,11 +865,12 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
           << " version=" << schema_version << " current-schema=" << tablet_schema.ToString()
           << " to request-schema=" << req_schema.ToString()
           << " for table ID=" << table_info->table_id;
+  ScopedRWOperationPause pause_writes;
   if (tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE &&
       !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
     // For schema change operations we will have to pause the write operations
     // until the schema change is done. This will be done synchronously.
-    auto pause_writes = tablet.peer->tablet()->PauseWritePermits(context.GetClientDeadline());
+    pause_writes = tablet.peer->tablet()->PauseWritePermits(context.GetClientDeadline());
     if (!pause_writes.ok()) {
       SetupErrorAndRespond(
           resp->mutable_error(),
@@ -878,24 +879,18 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
           TabletServerErrorPB::UNKNOWN_ERROR, &context);
       return;
     }
-    s = tablet::SyncReplicateChangeMetadataOperation(req, tablet.peer.get(), tablet.leader_term);
-    if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s, &context);
-      return;
-    }
-    context.RespondSuccess();
-  } else {
-    auto operation_state = std::make_unique<ChangeMetadataOperationState>(
-        tablet.peer->tablet(), tablet.peer->log(), req);
-
-    operation_state->set_completion_callback(
-        MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
-
-    // Submit the alter schema op. The RPC will be responded to asynchronously.
-    tablet.peer->Submit(
-        std::make_unique<tablet::ChangeMetadataOperation>(std::move(operation_state)),
-        tablet.leader_term);
   }
+  auto operation_state = std::make_unique<ChangeMetadataOperationState>(
+      tablet.peer->tablet(), tablet.peer->log(), req);
+
+  operation_state->set_completion_callback(
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+  operation_state->UsePermitToken(std::move(pause_writes));
+
+  // Submit the alter schema op. The RPC will be responded to asynchronously.
+  tablet.peer->Submit(
+      std::make_unique<tablet::ChangeMetadataOperation>(std::move(operation_state)),
+      tablet.leader_term);
 }
 
 #define VERIFY_RESULT_OR_RETURN(expr) \
