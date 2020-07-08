@@ -296,7 +296,7 @@ ERROR:  'TABLESAMPLE' clause is not yet supported by YugaByte
 EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
                      QUERY PLAN
 ----------------------------------------------------
- Foreign Scan on document
+ Seq Scan on document
    Filter: ((dlevel <= $0) AND f_leak(dtitle))
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
@@ -310,7 +310,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dt
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
-   ->  Foreign Scan on document
+   ->  Seq Scan on document
          Filter: ((dlevel <= $0) AND f_leak(dtitle))
    ->  Index Scan using category_pkey on category
          Index Cond: (cid = document.cid)
@@ -359,7 +359,7 @@ NOTICE:  f_leak => awesome technology book
 EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
                                           QUERY PLAN
 ----------------------------------------------------------------------------------------------
- Foreign Scan on document
+ Seq Scan on document
    Filter: ((cid <> 44) AND (cid <> 44) AND (cid < 50) AND (dlevel <= $0) AND f_leak(dtitle))
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
@@ -373,7 +373,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dt
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
-   ->  Foreign Scan on document
+   ->  Seq Scan on document
          Filter: ((cid <> 44) AND (cid <> 44) AND (cid < 50) AND (dlevel <= $0) AND f_leak(dtitle))
    ->  Index Scan using category_pkey on category
          Index Cond: (cid = document.cid)
@@ -452,7 +452,7 @@ NOTICE:  f_leak => great manga
 EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
                        QUERY PLAN
 ---------------------------------------------------------
- Foreign Scan on document
+ Seq Scan on document
    Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
 (2 rows)
 
@@ -460,7 +460,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dt
                           QUERY PLAN
 ---------------------------------------------------------------
  Nested Loop
-   ->  Foreign Scan on document
+   ->  Seq Scan on document
          Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
    ->  Index Scan using category_pkey on category
          Index Cond: (cid = document.cid)
@@ -702,7 +702,7 @@ SELECT * FROM t1;
 EXPLAIN (COSTS OFF) SELECT * FROM t1;
        QUERY PLAN
 -------------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: ((a % 2) = 0)
 (2 rows)
 
@@ -718,7 +718,7 @@ NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: (((a % 2) = 0) AND f_leak(b))
 (2 rows)
 
@@ -730,7 +730,7 @@ LINE 1: SELECT oid, * FROM t1;
 EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
        QUERY PLAN
 -------------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: ((a % 2) = 0)
 (2 rows)
 
@@ -745,7 +745,7 @@ SELECT *, t1 FROM t1;
 EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
        QUERY PLAN
 -------------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: ((a % 2) = 0)
 (2 rows)
 
@@ -761,7 +761,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 FOR SHARE;
           QUERY PLAN
 -------------------------------
  LockRows
-   ->  Foreign Scan on t1
+   ->  Seq Scan on t1
          Filter: ((a % 2) = 0)
 (3 rows)
 
@@ -778,7 +778,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
                   QUERY PLAN
 -----------------------------------------------
  LockRows
-   ->  Foreign Scan on t1
+   ->  Seq Scan on t1
          Filter: (((a % 2) = 0) AND f_leak(b))
 (3 rows)
 
@@ -810,7 +810,7 @@ NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
      QUERY PLAN
 ---------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: f_leak(b)
 (2 rows)
 
@@ -833,7 +833,7 @@ NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
      QUERY PLAN
 ---------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: f_leak(b)
 (2 rows)
 
@@ -1101,9 +1101,9 @@ HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TABLE dependee CASCADE;
 NOTICE:  drop cascades to policy d1 on table dependent
 EXPLAIN (COSTS OFF) SELECT * FROM dependent; -- After drop, should be unqualified
-        QUERY PLAN
----------------------------
- Foreign Scan on dependent
+      QUERY PLAN
+-----------------------
+ Seq Scan on dependent
 (1 row)
 
 -----   RECURSION    ----
@@ -1194,10 +1194,10 @@ NOTICE:  f_leak => a87ff679a2f3e71d9181a67b7542122c
 EXPLAIN (COSTS OFF) SELECT * FROM only s1 WHERE f_leak(b);
                         QUERY PLAN
 -----------------------------------------------------------
- Foreign Scan on s1
+ Seq Scan on s1
    Filter: ((hashed SubPlan 1) AND f_leak(b))
    SubPlan 1
-     ->  Foreign Scan on s2
+     ->  Seq Scan on s2
            Filter: (((x % 2) = 0) AND (y ~~ '%2f%'::text))
 (5 rows)
 
@@ -1216,10 +1216,10 @@ NOTICE:  f_leak => 1679091c5a880faf6fb5e6087eb1b2dc
 EXPLAIN (COSTS OFF) SELECT * FROM s1 WHERE f_leak(b);
                         QUERY PLAN
 -----------------------------------------------------------
- Foreign Scan on s1
+ Seq Scan on s1
    Filter: ((hashed SubPlan 1) AND f_leak(b))
    SubPlan 1
-     ->  Foreign Scan on s2
+     ->  Seq Scan on s2
            Filter: (((x % 2) = 0) AND (y ~~ '%af%'::text))
 (5 rows)
 
@@ -1234,14 +1234,14 @@ SELECT (SELECT x FROM s1 LIMIT 1) xx, * FROM s2 WHERE y like '%28%';
 EXPLAIN (COSTS OFF) SELECT (SELECT x FROM s1 LIMIT 1) xx, * FROM s2 WHERE y like '%28%';
                                QUERY PLAN
 -------------------------------------------------------------------------
- Foreign Scan on s2
+ Seq Scan on s2
    Filter: (((x % 2) = 0) AND (y ~~ '%28%'::text))
    SubPlan 2
      ->  Limit
-           ->  Foreign Scan on s1
+           ->  Seq Scan on s1
                  Filter: (hashed SubPlan 1)
                  SubPlan 1
-                   ->  Foreign Scan on s2 s2_1
+                   ->  Seq Scan on s2 s2_1
                          Filter: (((x % 2) = 0) AND (y ~~ '%af%'::text))
 (9 rows)
 
@@ -1261,7 +1261,7 @@ EXECUTE p1(2);
 EXPLAIN (COSTS OFF) EXECUTE p1(2);
                QUERY PLAN
 ----------------------------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: ((a <= 2) AND ((a % 2) = 0))
 (2 rows)
 
@@ -1284,7 +1284,7 @@ NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
      QUERY PLAN
 ---------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: f_leak(b)
 (2 rows)
 
@@ -1299,7 +1299,7 @@ EXECUTE p1(2);
 EXPLAIN (COSTS OFF) EXECUTE p1(2);
      QUERY PLAN
 --------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: (a <= 2)
 (2 rows)
 
@@ -1311,9 +1311,9 @@ EXECUTE p2(2);
 (1 row)
 
 EXPLAIN (COSTS OFF) EXECUTE p2(2);
-     QUERY PLAN
---------------------
- Foreign Scan on t1
+    QUERY PLAN
+-------------------
+ Seq Scan on t1
    Filter: (a = 2)
 (2 rows)
 
@@ -1329,7 +1329,7 @@ EXECUTE p2(2);
 EXPLAIN (COSTS OFF) EXECUTE p2(2);
               QUERY PLAN
 ---------------------------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: ((a = 2) AND ((a % 2) = 0))
 (2 rows)
 
@@ -1341,7 +1341,7 @@ EXPLAIN (COSTS OFF) UPDATE t1 SET b = b || b WHERE f_leak(b);
                   QUERY PLAN
 -----------------------------------------------
  Update on t1
-   ->  Foreign Scan on t1
+   ->  Seq Scan on t1
          Filter: (((a % 2) = 0) AND f_leak(b))
 (3 rows)
 
@@ -1352,7 +1352,7 @@ EXPLAIN (COSTS OFF) UPDATE only t1 SET b = b || '_updt' WHERE f_leak(b);
                   QUERY PLAN
 -----------------------------------------------
  Update on t1
-   ->  Foreign Scan on t1
+   ->  Seq Scan on t1
          Filter: (((a % 2) = 0) AND f_leak(b))
 (3 rows)
 
@@ -1440,7 +1440,7 @@ EXPLAIN (COSTS OFF) DELETE FROM only t1 WHERE f_leak(b);
                   QUERY PLAN
 -----------------------------------------------
  Delete on t1
-   ->  Foreign Scan on t1
+   ->  Seq Scan on t1
          Filter: (((a % 2) = 0) AND f_leak(b))
 (3 rows)
 
@@ -1448,7 +1448,7 @@ EXPLAIN (COSTS OFF) DELETE FROM t1 WHERE f_leak(b);
                   QUERY PLAN
 -----------------------------------------------
  Delete on t1
-   ->  Foreign Scan on t1
+   ->  Seq Scan on t1
          Filter: (((a % 2) = 0) AND f_leak(b))
 (3 rows)
 
@@ -1709,7 +1709,7 @@ NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: (((a % 2) = 0) AND f_leak(b))
 (2 rows)
 
@@ -1717,7 +1717,7 @@ PREPARE plancache_test AS SELECT * FROM z1 WHERE f_leak(b);
 EXPLAIN (COSTS OFF) EXECUTE plancache_test;
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: (((a % 2) = 0) AND f_leak(b))
 (2 rows)
 
@@ -1727,11 +1727,11 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
 -------------------------------------------------
  Nested Loop
    CTE q
-     ->  Foreign Scan on z1
+     ->  Seq Scan on z1
            Filter: (((a % 2) = 0) AND f_leak(b))
    ->  CTE Scan on q
    ->  Materialize
-         ->  Foreign Scan on z2
+         ->  Seq Scan on z2
 (7 rows)
 
 PREPARE plancache_test3 AS WITH q AS (SELECT * FROM z2) SELECT * FROM q,z1 WHERE f_leak(z1.b);
@@ -1740,10 +1740,10 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
 -----------------------------------------------------
  Nested Loop
    CTE q
-     ->  Foreign Scan on z2
+     ->  Seq Scan on z2
    ->  CTE Scan on q
    ->  Materialize
-         ->  Foreign Scan on z1
+         ->  Seq Scan on z1
                Filter: (((a % 2) = 0) AND f_leak(b))
 (7 rows)
 
@@ -1760,14 +1760,14 @@ NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: (((a % 2) = 0) AND f_leak(b))
 (2 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test;
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: (((a % 2) = 0) AND f_leak(b))
 (2 rows)
 
@@ -1776,11 +1776,11 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
 -------------------------------------------------
  Nested Loop
    CTE q
-     ->  Foreign Scan on z1
+     ->  Seq Scan on z1
            Filter: (((a % 2) = 0) AND f_leak(b))
    ->  CTE Scan on q
    ->  Materialize
-         ->  Foreign Scan on z2
+         ->  Seq Scan on z2
 (7 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
@@ -1788,10 +1788,10 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
 -----------------------------------------------------
  Nested Loop
    CTE q
-     ->  Foreign Scan on z2
+     ->  Seq Scan on z2
    ->  CTE Scan on q
    ->  Materialize
-         ->  Foreign Scan on z1
+         ->  Seq Scan on z1
                Filter: (((a % 2) = 0) AND f_leak(b))
 (7 rows)
 
@@ -1808,14 +1808,14 @@ NOTICE:  f_leak => ccc
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: (((a % 2) = 1) AND f_leak(b))
 (2 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test;
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: (((a % 2) = 1) AND f_leak(b))
 (2 rows)
 
@@ -1824,11 +1824,11 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
 -------------------------------------------------
  Nested Loop
    CTE q
-     ->  Foreign Scan on z1
+     ->  Seq Scan on z1
            Filter: (((a % 2) = 1) AND f_leak(b))
    ->  CTE Scan on q
    ->  Materialize
-         ->  Foreign Scan on z2
+         ->  Seq Scan on z2
 (7 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
@@ -1836,10 +1836,10 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
 -----------------------------------------------------
  Nested Loop
    CTE q
-     ->  Foreign Scan on z2
+     ->  Seq Scan on z2
    ->  CTE Scan on q
    ->  Materialize
-         ->  Foreign Scan on z1
+         ->  Seq Scan on z1
                Filter: (((a % 2) = 1) AND f_leak(b))
 (7 rows)
 
@@ -1856,14 +1856,14 @@ NOTICE:  f_leak => ccc
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: (((a % 2) = 1) AND f_leak(b))
 (2 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test;
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: (((a % 2) = 1) AND f_leak(b))
 (2 rows)
 
@@ -1872,11 +1872,11 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
 -------------------------------------------------
  Nested Loop
    CTE q
-     ->  Foreign Scan on z1
+     ->  Seq Scan on z1
            Filter: (((a % 2) = 1) AND f_leak(b))
    ->  CTE Scan on q
    ->  Materialize
-         ->  Foreign Scan on z2
+         ->  Seq Scan on z2
 (7 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
@@ -1884,10 +1884,10 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
 -----------------------------------------------------
  Nested Loop
    CTE q
-     ->  Foreign Scan on z2
+     ->  Seq Scan on z2
    ->  CTE Scan on q
    ->  Materialize
-         ->  Foreign Scan on z1
+         ->  Seq Scan on z1
                Filter: (((a % 2) = 1) AND f_leak(b))
 (7 rows)
 
@@ -1916,7 +1916,7 @@ NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
      QUERY PLAN
 ---------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: f_leak(b)
 (2 rows)
 
@@ -1938,7 +1938,7 @@ NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
      QUERY PLAN
 ---------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: f_leak(b)
 (2 rows)
 
@@ -1962,7 +1962,7 @@ NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: (((a % 2) = 0) AND f_leak(b))
 (2 rows)
 
@@ -1981,7 +1981,7 @@ NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: (((a % 2) = 0) AND f_leak(b))
 (2 rows)
 
@@ -2006,7 +2006,7 @@ NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
                QUERY PLAN
 -----------------------------------------
- Foreign Scan on z1
+ Seq Scan on z1
    Filter: (((a % 2) = 0) AND f_leak(b))
 (2 rows)
 
@@ -2144,7 +2144,7 @@ CREATE VIEW rls_sbv WITH (security_barrier) AS
 EXPLAIN (COSTS OFF) SELECT * FROM rls_sbv WHERE (a = 1);
             QUERY PLAN
 -----------------------------------
- Foreign Scan on y1
+ Seq Scan on y1
    Filter: (f_leak(b) AND (a = 1))
 (2 rows)
 
@@ -2156,7 +2156,7 @@ CREATE VIEW rls_sbv WITH (security_barrier) AS
 EXPLAIN (COSTS OFF) SELECT * FROM rls_sbv WHERE (a = 1);
                             QUERY PLAN
 ------------------------------------------------------------------
- Foreign Scan on y1
+ Seq Scan on y1
    Filter: ((a = 1) AND ((a > 2) OR ((a % 2) = 0)) AND f_leak(b))
 (2 rows)
 
@@ -2205,7 +2205,7 @@ NOTICE:  f_leak => 98f13708210194c475687be6106a3b84
 EXPLAIN (COSTS OFF) SELECT * FROM y2 WHERE f_leak(b);
                                  QUERY PLAN
 -----------------------------------------------------------------------------
- Foreign Scan on y2
+ Seq Scan on y2
    Filter: ((((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0)) AND f_leak(b))
 (2 rows)
 
@@ -2255,7 +2255,7 @@ NOTICE:  f_leak => abc
 EXPLAIN (COSTS OFF) SELECT * FROM y2 WHERE f_leak('abc');
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
- Foreign Scan on y2
+ Seq Scan on y2
    Filter: (f_leak('abc'::text) AND (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0)))
 (2 rows)
 
@@ -2275,10 +2275,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE 
 -------------------------------------------------------------------
  Hash Join
    Hash Cond: (y2.b = test_qual_pushdown.abc)
-   ->  Foreign Scan on y2
+   ->  Seq Scan on y2
          Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
    ->  Hash
-         ->  Foreign Scan on test_qual_pushdown
+         ->  Seq Scan on test_qual_pushdown
                Filter: f_leak(abc)
 (7 rows)
 
@@ -2306,10 +2306,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE 
 -----------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (y2.b = test_qual_pushdown.abc)
-   ->  Foreign Scan on y2
+   ->  Seq Scan on y2
          Filter: ((((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0)) AND f_leak(b))
    ->  Hash
-         ->  Foreign Scan on test_qual_pushdown
+         ->  Seq Scan on test_qual_pushdown
 (6 rows)
 
 DROP TABLE test_qual_pushdown;
@@ -2334,7 +2334,7 @@ PREPARE role_inval AS SELECT * FROM t1;
 EXPLAIN (COSTS OFF) EXECUTE role_inval;
        QUERY PLAN
 -------------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: ((a % 2) = 0)
 (2 rows)
 
@@ -2344,7 +2344,7 @@ SET ROLE regress_rls_carol;
 EXPLAIN (COSTS OFF) EXECUTE role_inval;
        QUERY PLAN
 -------------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: ((a % 4) = 0)
 (2 rows)
 
@@ -2354,7 +2354,7 @@ SET ROLE regress_rls_bob;
 EXPLAIN (COSTS OFF) EXECUTE role_inval;
        QUERY PLAN
 -------------------------
- Foreign Scan on t1
+ Seq Scan on t1
    Filter: ((a % 2) = 0)
 (2 rows)
 
@@ -2402,7 +2402,7 @@ EXPLAIN (COSTS OFF) WITH cte1 AS (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FRO
 -------------------------------------------------
  CTE Scan on cte1
    CTE cte1
-     ->  Foreign Scan on t1
+     ->  Seq Scan on t1
            Filter: (((a % 2) = 0) AND f_leak(b))
 (4 rows)
 
@@ -2467,7 +2467,7 @@ EXPLAIN (COSTS OFF) INSERT INTO t2 (SELECT * FROM t1);
           QUERY PLAN
 -------------------------------
  Insert on t2
-   ->  Foreign Scan on t1
+   ->  Seq Scan on t1
          Filter: ((a % 2) = 0)
 (3 rows)
 
@@ -2489,9 +2489,9 @@ SELECT * FROM t2;
 (12 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t2;
-     QUERY PLAN
---------------------
- Foreign Scan on t2
+   QUERY PLAN
+----------------
+ Seq Scan on t2
 (1 row)
 
 CREATE TABLE t3 AS SELECT * FROM t1;
@@ -2624,9 +2624,9 @@ SELECT * FROM t1;
 (22 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1;
-     QUERY PLAN
---------------------
- Foreign Scan on t1
+   QUERY PLAN
+----------------
+ Seq Scan on t1
 (1 row)
 
 -- Check that default deny does not apply to table owner.
@@ -2659,9 +2659,9 @@ SELECT * FROM t1;
 (22 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1;
-     QUERY PLAN
---------------------
- Foreign Scan on t1
+   QUERY PLAN
+----------------
+ Seq Scan on t1
 (1 row)
 
 -- Check that default deny applies to non-owner/non-superuser when RLS on.
