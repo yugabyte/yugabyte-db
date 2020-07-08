@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
+import play.Configuration;
+
 import play.mvc.Action;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -18,6 +20,11 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 
+import org.pac4j.core.profile.CommonProfile;
+import org.pac4j.core.profile.ProfileManager;
+import org.pac4j.play.PlayWebContext;
+import org.pac4j.play.store.PlaySessionStore;
+
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
 import static com.yugabyte.yw.models.Users.Role;
 
@@ -29,6 +36,33 @@ public class TokenAuthenticator extends Action.Simple {
 
   @Inject
   ConfigHelper configHelper;
+
+  @Inject
+  Configuration appConfig;
+
+  @Inject
+  private PlaySessionStore playSessionStore;
+
+  private Users getCurrentAuthenticatedUser(Http.Context ctx) {
+    boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
+    if (useOAuth) {
+      final PlayWebContext context = new PlayWebContext(ctx, playSessionStore);
+      final ProfileManager<CommonProfile> profileManager = new ProfileManager(context);
+      if (profileManager.isAuthenticated()) {
+        String email = profileManager.get(true).get().getEmail();
+        return Users.getByEmail(email);
+      }
+    } else {
+      String token = fetchToken(ctx, true);
+      if (token != null) {
+        return Users.authWithApiToken(token);
+      } else {
+        token = fetchToken(ctx, false);
+        return Users.authWithToken(token);
+      }
+    }
+    return null;
+  }
 
   @Override
   public CompletionStage<Result> call(Http.Context ctx) {
@@ -42,15 +76,9 @@ public class TokenAuthenticator extends Action.Simple {
       custUUID = UUID.fromString(matcher.group(1));
       endPoint = matcher.group(2);
     }
-    String token = fetchToken(ctx, true);
     Customer cust = null;
-    Users user = null;
-    if (token != null) {
-      user = Users.authWithApiToken(token);
-    } else {
-      token = fetchToken(ctx, false);
-      user = Users.authWithToken(token);
-    }
+    Users user = getCurrentAuthenticatedUser(ctx);
+
     if (user != null) {
       cust = Customer.get(user.customerUUID);
     }

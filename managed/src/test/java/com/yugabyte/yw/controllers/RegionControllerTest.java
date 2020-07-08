@@ -52,17 +52,6 @@ public class RegionControllerTest extends FakeDBApplication {
   Customer customer;
   Users user;
 
-  NetworkManager networkManager;
-
-  @Override
-  protected Application provideApplication() {
-    networkManager = mock(NetworkManager.class);
-    return new GuiceApplicationBuilder()
-        .configure((Map) Helpers.inMemoryDatabase())
-        .overrides(bind(NetworkManager.class).toInstance(networkManager))
-        .build();
-  }
-
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
@@ -248,7 +237,7 @@ public class RegionControllerTest extends FakeDBApplication {
     regionJson.put("destVpcId", "dest-vpc-id");
     JsonNode vpcInfo = Json.parse("{\"foo-region\": {\"zones\": {\"zone-1\": \"subnet-1\"}}}");
     // TODO:
-    when(networkManager.bootstrap(any(UUID.class), any(UUID.class), any(String.class)))
+    when(mockNetworkManager.bootstrap(any(UUID.class), any(UUID.class), any(String.class)))
         .thenReturn(vpcInfo);
     Result result = createRegion(provider.uuid, regionJson);
     JsonNode json = Json.parse(contentAsString(result));
@@ -275,7 +264,7 @@ public class RegionControllerTest extends FakeDBApplication {
     regionJson.put("destVpcId", "dest-vpc-id");
     ObjectNode vpcInfo = Json.newObject();
     vpcInfo.put("error", "Something went wrong!!.");
-    when(networkManager.bootstrap(any(UUID.class), any(UUID.class), any(String.class)))
+    when(mockNetworkManager.bootstrap(any(UUID.class), any(UUID.class), any(String.class)))
         .thenReturn(vpcInfo);
     Result result = createRegion(provider.uuid, regionJson);
     assertInternalServerError(result, "Region Bootstrap failed.");
