@@ -627,7 +627,7 @@ select first_value(max(x)) over (), y
  WindowAgg
    ->  HashAggregate
          Group Key: (tenk1.ten + tenk1.four)
-         ->  Foreign Scan on tenk1
+         ->  Seq Scan on tenk1
 (4 rows)
 
 -- test non-default frame specifications
@@ -3844,4 +3844,3 @@ SELECT i, b, bool_and(b) OVER w, bool_or(b) OVER w
  4 | f | f        | t
  5 | t | t        | t
 (5 rows)
-
