@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -50,20 +51,10 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
-public class CustomerTaskControllerTest extends WithApplication {
+public class CustomerTaskControllerTest extends FakeDBApplication {
   private Customer customer;
   private Users user;
   private Universe universe;
-  private Commissioner mockCommissioner;
-
-  @Override
-  protected Application provideApplication() {
-    mockCommissioner = mock(Commissioner.class);
-    return new GuiceApplicationBuilder()
-      .configure((Map) Helpers.inMemoryDatabase())
-      .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
-      .build();
-  }
 
   @Before
   public void setUp() {

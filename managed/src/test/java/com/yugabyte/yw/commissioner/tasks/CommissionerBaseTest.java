@@ -9,6 +9,7 @@ import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -29,6 +30,10 @@ import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.test.Helpers;
 import play.test.WithApplication;
+
+import org.pac4j.play.CallbackController;
+import org.pac4j.play.store.PlayCacheSessionStore;
+import org.pac4j.play.store.PlaySessionStore;
 
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ChangeMasterClusterConfigResponse;
@@ -71,6 +76,9 @@ public abstract class CommissionerBaseTest extends WithApplication {
   protected SwamperHelper mockSwamperHelper;
   protected CallHome mockCallHome;
   protected HealthChecker mockHealthChecker;
+  protected CallbackController mockCallbackController;
+  protected PlayCacheSessionStore mockSessionStore;
+  protected ApiHelper mockApiHelper;
 
   Customer defaultCustomer;
   Provider defaultProvider;
@@ -99,6 +107,9 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockSwamperHelper = mock(SwamperHelper.class);
     mockCallHome = mock(CallHome.class);
     mockHealthChecker = mock(HealthChecker.class);
+    mockCallbackController = mock(CallbackController.class);
+    mockSessionStore = mock(PlayCacheSessionStore.class);
+    mockApiHelper = mock(ApiHelper.class);
 
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
@@ -116,6 +127,9 @@ public abstract class CommissionerBaseTest extends WithApplication {
         .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
         .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
         .overrides(bind(CallHome.class).toInstance(mockCallHome))
+        .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
+        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .build();
   }
 
