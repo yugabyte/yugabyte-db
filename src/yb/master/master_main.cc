@@ -45,6 +45,7 @@
 #include "yb/util/ulimit_info.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/server/total_mem_watcher.h"
+#include "yb/util/net/net_util.h"
 
 DECLARE_bool(callhome_enabled);
 DECLARE_bool(evict_failed_followers);
@@ -55,6 +56,7 @@ DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(durable_wal_write);
 DECLARE_int32(stderrthreshold);
 
+DECLARE_string(metric_node_name);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 // Deprecated because it's misspelled.  But if set, this flag takes precedence over
 // remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
@@ -69,6 +71,16 @@ static int MasterMain(int argc, char** argv) {
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", kMasterDefaultPort);
   FLAGS_webserver_port = kMasterDefaultWebPort;
+
+
+  auto host_name = GetHostname();
+  if (host_name.ok()) {
+    FLAGS_metric_node_name = (*host_name) + ":" + std::to_string(FLAGS_webserver_port);
+  }
+  else {
+      LOG(INFO) << "Failed to get current host name, keeping default metric_node_name: " << host_name.status();
+  }
+
   FLAGS_default_memory_limit_to_ram_ratio = 0.10;
   // For masters we always want to fsync the WAL files.
   FLAGS_durable_wal_write = true;
