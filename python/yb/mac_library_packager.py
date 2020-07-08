@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 from yb.command_util import run_program
+from yb.common_util import get_thirdparty_dir
 
 
 def add_common_arguments(parser):
@@ -78,6 +79,8 @@ class MacLibraryPackager:
 
         src_lib_dir = os.path.join(src, 'lib')
         yb_lib_file_for_postgres = os.path.join(src_lib_dir, 'libyb_pggate.dylib')
+        libedit_file_for_postgres = os.path.join(get_thirdparty_dir(),
+                                                 'installed/common/lib/libedit.dylib')
 
         processed_libs = []
         for bin_file in os.listdir(dst_bin_dir):
@@ -99,6 +102,7 @@ class MacLibraryPackager:
 
             # Treat this as a special case for now (10/14/18).
             libs.append(yb_lib_file_for_postgres)
+            libs.append(libedit_file_for_postgres)
             for lib in libs:
                 if lib in processed_libs:
                     continue
