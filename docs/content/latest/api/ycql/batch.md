@@ -163,15 +163,6 @@ cqlsh:sample> SELECT * FROM test;
  1 | 1 | [4, 2]
 (1 rows)
 ```
-6. Multiple statements in 1 batch:
-```cassandraql
-BEGIN TRANSACTION
-    UPDATE test SET v[0] = 4 WHERE h = 1 AND r = 1 IF v[1] = 2 RETURNS STATUS AS ROW;
-    INSERT INTO test(h,r,v) VALUES (1,1,[1,2]) IF NOT EXISTS   RETURNS STATUS AS ROW;
-    DELETE FROM test WHERE h=9 AND r=9 IF EXISTS   RETURNS STATUS AS ROW;
-END TRANSACTION;
-```
-
 
 {{< note Type="Note" >}}
 
