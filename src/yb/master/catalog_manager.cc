@@ -2664,6 +2664,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
     auto& indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(pb);
     if (pb.table_type() == PGSQL_TABLE_TYPE &&
         !is_unique_index &&
+        IsUserCreatedTable(*table) &&
         IsIndexBackfillEnabled(pb.table_type(),
                                pb.schema().table_properties().is_transactional())) {
       GetTableSchemaRequestPB get_schema_req;
