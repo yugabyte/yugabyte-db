@@ -79,7 +79,7 @@ class ProxyContext {
 
   virtual const Protocol* DefaultProtocol() = 0;
 
-  virtual ThreadPool& CallbackThreadPool() = 0;
+  virtual ThreadPool& CallbackThreadPool(ServicePriority priority = ServicePriority::kNormal) = 0;
 
   virtual IoService& io_service() = 0;
 
