@@ -398,17 +398,22 @@ DefineIndex(Oid relationId,
 	 * - index backfill is enabled
 	 * - the index is secondary
 	 * - the indexed table is not temporary
+	 * - we are not in bootstrap mode
 	 * Otherwise, it should not be concurrent.  This logic works because
 	 * - primary key indexes are on the main table, and index backfill doesn't
 	 *   apply to them.
 	 * - temporary tables cannot have concurrency issues when building indexes.
+	 * - system table indexes created during initdb cannot have concurrency
+	 *   issues.
 	 * Concurrent index build is currently disabled for
 	 * - indexes in nested DDL
 	 * - unique indexes
+	 * - system table indexes (implied by disallowing on bootstrap mode)
 	 */
 	stmt->concurrent = (!YBCGetDisableIndexBackfill()
 						&& !stmt->primary
-						&& IsYBRelationById(relationId));
+						&& IsYBRelationById(relationId) &&
+						!IsBootstrapProcessingMode());
 	/* Use fast path create index when in nested DDL.  This is desired
 	 * when there would be no concurrency issues (e.g. `CREATE TABLE
 	 * ... (... UNIQUE (...))`).  However, there may be cases where it
@@ -417,7 +422,7 @@ DefineIndex(Oid relationId,
 	 * TODO(jason): support backfill for nested DDL, and use the online
 	 * path for the appropriate statements (issue #4786).
 	 */
-	if (stmt->concurrent && YBGetDdlNestingLevel() != 1)
+	if (stmt->concurrent && YBGetDdlNestingLevel() > 1)
 		stmt->concurrent = false;
 	/*
 	 * Backfilling unique indexes is currently not supported.  This is desired
@@ -448,6 +453,14 @@ DefineIndex(Oid relationId,
 	 */
 	lockmode = stmt->concurrent ? ShareUpdateExclusiveLock : ShareLock;
 	rel = heap_open(relationId, lockmode);
+
+	/*
+	 * Ensure that system tables don't go through online schema change.  This
+	 * is curently guaranteed because
+	 * - initdb (bootstrap mode) is prevented from being concurrent
+	 * - users cannot create indexes on system tables
+	 */
+	Assert(!(stmt->concurrent && IsSystemRelation(rel)));
 
 	relationId = RelationGetRelid(rel);
 	namespaceId = RelationGetNamespace(rel);
