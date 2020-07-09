@@ -751,6 +751,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
         election_state->req.set_originator_uuid(req->dest_uuid());
         election_state->req.set_dest_uuid(new_leader_uuid);
         election_state->req.set_tablet_id(tablet_id);
+        election_state->rpc.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
         state_->GetCommittedOpIdUnlocked().ToPB(election_state->req.mutable_committed_index());
         election_state->proxy->RunLeaderElectionAsync(
             &election_state->req, &election_state->resp, &election_state->rpc,
@@ -2749,6 +2750,7 @@ void RaftConsensus::NotifyOriginatorAboutLostElection(const std::string& origina
       req.set_tablet_id(state_->GetOptions().tablet_id);
       auto resp = std::make_shared<LeaderElectionLostResponsePB>();
       auto rpc = std::make_shared<rpc::RpcController>();
+      rpc->set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
       auto log_prefix = state_->LogPrefix();
       proxy->LeaderElectionLostAsync(&req, resp.get(), rpc.get(), [log_prefix, resp, rpc] {
         if (!rpc->status().ok()) {
