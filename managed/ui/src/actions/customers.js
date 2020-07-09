@@ -266,7 +266,7 @@ export function updatePassword(user, values) {
   const data = {
     ...values,
     role: user.role
-  };
+  }
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/users/${userUUID}/change_password`, data);
   return {
     type: UPDATE_PROFILE,

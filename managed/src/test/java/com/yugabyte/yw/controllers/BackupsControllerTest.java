@@ -114,6 +114,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertErrorNodeValue(resultJson, "storageConfigUUID", "This field is required");
+    assertErrorNodeValue(resultJson, "keyspace", "This field is required");
+    assertErrorNodeValue(resultJson, "tableName", "This field is required");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 

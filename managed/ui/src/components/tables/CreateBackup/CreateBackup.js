@@ -16,13 +16,11 @@ import {
 } from '../../../utils/ObjectUtils';
 import { Field } from 'formik';
 import { YBModalForm } from '../../common/forms';
-import _ from 'lodash';
 import * as cron from 'cron-validator';
 import * as Yup from "yup";
 
 import '../common.scss';
 
-const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 const schemaValidation =  Yup.object().shape({
   backupTableUUID: Yup.mixed().when('tableKeyspace', {
     is: (tableKeyspace) => !tableKeyspace || tableKeyspace.value === 'allkeyspaces',
@@ -63,10 +61,7 @@ export default class CreateBackup extends Component {
         "schedulingFrequency": isEmptyString(values.schedulingFrequency) ? null : values.schedulingFrequency,
         "cronExpression": isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
       };
-      if (isDefinedNotNull(values.tableKeyspace) && values.tableKeyspace.value === "allkeyspaces") {
-        // Backup all tables in all keyspaces
-        createUniverseBackup(universeUUID, payload);
-      } else if (isDefinedNotNull(values.backupTableUUID)) {
+      if (isDefinedNotNull(values.backupTableUUID) && values.backupTableUUID.length) {
         values.backupTableUUID = Array.isArray(values.backupTableUUID) ? 
           values.backupTableUUID.map(x => x.value) : [values.backupTableUUID.value];
         if (values.backupTableUUID[0] === "alltables") {
@@ -83,18 +78,14 @@ export default class CreateBackup extends Component {
           payload.actionType = "CREATE";
           createTableBackup(universeUUID, values.backupTableUUID[0], payload);
         }
+      } else if (values.tableKeyspace) {
+        payload.keyspace = values.tableKeyspace.value;
+        createUniverseBackup(universeUUID, payload);
       }
       onHide();
       browserHistory.push('/universes/' + universeUUID + "/backups");
     }
   };
-
-  backupKeyspaceChanged = (props, option) => {
-    if (isNonEmptyObject(option) && !_.isEqual(option, props.field.value)) {
-      props.form.setFieldValue("backupTableUUID", null);
-    }
-    props.form.setFieldValue(props.field.name, option);
-  }
 
   backupTableChanged = (props, option) => {
     if (isNonEmptyObject(option) && option.value === "alltables") {
@@ -125,25 +116,12 @@ export default class CreateBackup extends Component {
     const keyspaces = new Set();
     let modalTitle = "Create Backup";
     if (isNonEmptyObject(tableInfo)) {
-      if (tableInfo.tableType === YSQL_TABLE_TYPE) {
-        // YSQL does not do individual table backups
-        initialValues.backupTableUUID = {
-          label: <b>All Tables in Keyspace</b>,
-          value: "alltables",
-        };
-      } else {
-        tableOptions = [{
-          value: tableInfo.tableID,
-          label: tableInfo.keySpace + "." + tableInfo.tableName,
-          keyspace: tableInfo.keySpace
-        }];
-        initialValues.backupTableUUID = tableOptions[0];
-      }      
+      tableOptions = [{
+        value: tableInfo.tableID,
+        label: tableInfo.keySpace + "." + tableInfo.tableName
+      }];
       modalTitle = modalTitle + " for " + tableInfo.keySpace + "." + tableInfo.tableName;
-      initialValues.tableKeyspace = {
-        label: tableInfo.keySpace,
-        value: tableInfo.keySpace
-      };      
+      initialValues.backupTableUUID = tableOptions[0];
     } else {      
       tableOptions = universeTables.map((tableInfo) => {
         keyspaces.add(tableInfo.keySpace);
@@ -186,16 +164,13 @@ export default class CreateBackup extends Component {
             this.createBackup(payload);
           }}
           initialValues={initialValues}
-          validationSchema={schemaValidation}         
+          validationSchema={schemaValidation}
           render={({values: { cronExpression, schedulingFrequency, backupTableUUID, storageConfigUUID, tableKeyspace  }, values}) => {
-            const isKeyspaceSelected = tableKeyspace && tableKeyspace.value;
-            const universeBackupSelected = isKeyspaceSelected && tableKeyspace.value === 'allkeyspaces';
-            const isYSQLKeyspace = isKeyspaceSelected && !universeBackupSelected &&
-              universeTables.find(x => x.keySpace === values.tableKeyspace.value).tableType === YSQL_TABLE_TYPE;
             const isSchedulingFrequencyReadOnly = cronExpression !== "";
             const isCronExpressionReadOnly = schedulingFrequency !== "";
             const isTableSelected = backupTableUUID && backupTableUUID.length;
-            
+            const isKeyspaceSelected = tableKeyspace && tableKeyspace.value;
+            const universeBackupSelected = isKeyspaceSelected && tableKeyspace.value === 'allkeyspaces';
             const s3StorageSelected = storageConfigUUID && storageConfigUUID.label === 'S3 Storage';
 
             const showTransactionalToggle = isKeyspaceSelected && 
@@ -205,18 +180,15 @@ export default class CreateBackup extends Component {
               {
                 label: <b>All Tables in Keyspace</b>,
                 value: "alltables",
-              }
-            ];
-
-            if (!universeBackupSelected && !isYSQLKeyspace) {
-              displayedTables.push({
+              },
+              !universeBackupSelected && {
                 label: "Tables",
                 value: 'tables',
                 options: isKeyspaceSelected ?
                   tableOptions.filter(option => option.keyspace === tableKeyspace.value) :
                   tableOptions
-              });
-            }
+              }
+            ];
             keyspaceOptions = [{
               label: <b>All Keyspaces</b>,
               value: "allkeyspaces",
@@ -232,7 +204,7 @@ export default class CreateBackup extends Component {
             // NOTE: No entire keyspace selection implemented
             return (<Fragment>
               {isScheduled &&
-                <div className="backup-frequency-control">
+                <div className="backup-frequency-control">                  
                   <Row>
                     <Col xs={6}>
                       <Field
@@ -277,7 +249,7 @@ export default class CreateBackup extends Component {
                 label={"Storage"}
                 options={storageOptions}
               />
-              {!!keyspaceOptions.length &&               
+              {!!keyspaceOptions.length &&
                 <Field
                   name="tableKeyspace"
                   component={YBFormSelect}
@@ -287,34 +259,23 @@ export default class CreateBackup extends Component {
                   }}
                   label="Keyspace"
                   options={keyspaceOptions}
-                  onChange={this.backupKeyspaceChanged}
-                  isDisabled={isNonEmptyObject(tableInfo)}
+                  isDisabled={tableInfo} // Disable if backup table is specified
                 />
               }
               {isKeyspaceSelected && 
-                <Row>
-                  <Col xs={6}>
-                    <Field
-                      name="backupTableUUID"
-                      component={YBFormSelect}
-                      components={{
-                        Option: customOption,
-                        SingleValue: customSingleValue
-                      }}
-                      label={`Tables to backup`}
-                      options={displayedTables}
-                      isMulti={true}
-                      onChange={this.backupTableChanged}
-                      isDisabled={isNonEmptyObject(tableInfo)}
-                    />
-                  </Col>
-                  {isYSQLKeyspace && 
-                    <Col lg={1} className="config-zone-tooltip">
-                      <YBInfoTip title="Backups in YSQL"
-                        content={<div>Table-level backups are unavailable for YSQL.<br />Please use keyspace-level backups instead.</div>} />
-                    </Col>
-                  }
-                </Row>
+                <Field
+                  name="backupTableUUID"
+                  component={YBFormSelect}
+                  components={{
+                    Option: customOption,
+                    SingleValue: customSingleValue
+                  }}
+                  label={`Tables to backup`}
+                  options={displayedTables}
+                  isMulti={true}
+                  onChange={this.backupTableChanged}
+                  readOnly={isNonEmptyObject(tableInfo)}
+                />
               }
               {showTransactionalToggle &&
                 <Field

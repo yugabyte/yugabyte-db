@@ -22,10 +22,7 @@ export default class YBInfoTip extends Component {
 }
 
 YBInfoTip.propTypes = {
-  content: PropTypes.oneOfType([
-    PropTypes.string,
-    PropTypes.element
-  ]).isRequired,
+  content: PropTypes.string.isRequired,
   placement: PropTypes.oneOf(['left', 'right', 'top', 'bottom']),
   title: PropTypes.string
 };

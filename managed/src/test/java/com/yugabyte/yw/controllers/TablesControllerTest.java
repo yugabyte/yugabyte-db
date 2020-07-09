@@ -494,6 +494,8 @@ public class TablesControllerTest extends WithApplication {
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertErrorNodeValue(resultJson, "storageConfigUUID", "This field is required");
+    assertErrorNodeValue(resultJson, "keyspace", "This field is required");
+    assertErrorNodeValue(resultJson, "tableName", "This field is required");
     assertErrorNodeValue(resultJson, "actionType", "This field is required");
     assertAuditEntry(0, customer.uuid);
   }

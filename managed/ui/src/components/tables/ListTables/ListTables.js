@@ -128,13 +128,13 @@ class ListTableGrid extends Component {
     };
     const actions_disabled = isDisabled(currentCustomer.data.features, "universes.tableActions");
     const formatActionButtons = function(item, row, disabled) {
-      if (!row.isIndexTable) {
+      if (!row.isIndexTable && row.tableType !== "PGSQL_TABLE_TYPE") {
         const actions = [
           <TableAction key={`${row.tableName}-backup-btn`} currentRow={row}
                       actionType="create-backup"
                       disabled={actions_disabled} btnClass={"btn-orange"}/>
         ];
-        if (getTableIcon(row.tableType) === "YCQL") {
+        if (row.tableType !== "REDIS_TABLE_TYPE") {
           actions.push([
             <TableAction key={`${row.tableName}-import-btn`} currentRow={row} actionType="import"
                         disabled={actions_disabled} />

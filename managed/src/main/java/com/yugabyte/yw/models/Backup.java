@@ -90,10 +90,6 @@ public class Backup extends Model {
       params.storageLocation = String.format("univ-%s/backup-%s-%d/multi-table-%s",
         params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
         params.keyspace);
-    } else if (params.tableName == null && params.keyspace != null) {
-      params.storageLocation = String.format("univ-%s/backup-%s-%d/keyspace-%s",
-        params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
-        params.keyspace);
     } else {
       params.storageLocation = String.format("univ-%s/backup-%s-%d/table-%s.%s",
         params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
@@ -123,14 +119,7 @@ public class Backup extends Model {
     backup.backupUUID = UUID.randomUUID();
     backup.customerUUID = customerUUID;
     backup.state = BackupState.InProgress;
-    if (params.backupList != null) {
-      // In event of universe backup
-      for (BackupTableParams childBackup : params.backupList) {
-        if (childBackup.storageLocation == null) {
-          backup.updateStorageLocation(childBackup);
-        }
-      }
-    } else if (params.storageLocation == null) {
+    if (params.storageLocation == null) {
       // We would derive the storage location based on the parameters
       backup.updateStorageLocation(params);
     }

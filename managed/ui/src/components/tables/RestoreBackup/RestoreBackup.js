@@ -23,7 +23,7 @@ export default class RestoreBackup extends Component {
     } = this.props;
 
     if (!isEmptyString(values.storageConfigUUID) &&
-        (!isEmptyString(values.storageLocation) || values.backupList)) {
+        !isEmptyString(values.storageLocation)) {
       const { restoreToUniverseUUID } = values;
       const payload = {
         storageConfigUUID: values.storageConfigUUID,
@@ -34,9 +34,6 @@ export default class RestoreBackup extends Component {
       // TODO: Allow renaming of individual tables
       if (values.keyspace !== initialValues.keyspace) {
         payload.keyspace = values.restoreToKeyspace;
-      }
-      if (values.backupList) {
-        payload.backupList = values.backupList;
       }
       onHide();
       restoreTableBackup(restoreToUniverseUUID, payload);
@@ -57,16 +54,14 @@ export default class RestoreBackup extends Component {
     const validationSchema = Yup.object().shape({
       restoreToUniverseUUID: Yup.string()
       .required('Restore To Universe is Required'),
-      restoreToKeyspace: Yup.string().nullable(),
-      restoreToTableName: Yup.string().nullable(),
+      restoreToKeyspace: Yup.string()
+      .required('Restore To Keyspace is Required'),
+      restoreToTableName: Yup.string()
+      .required('Restore To Tablename is Required'),
       storageConfigUUID: Yup.string()
       .required('Storage Config is Required'),
-      storageLocation: Yup.string().nullable()
-        .when('backupList', {
-          is: x => !x || !Array.isArray(x),
-          then: Yup.string().required('Storage Location is Required'),
-        }),
-      backupList: Yup.mixed().nullable()
+      storageLocation: Yup.string()
+      .required('Storage Location is Required')
     });
 
     if (hasBackupInfo) {
@@ -108,12 +103,10 @@ export default class RestoreBackup extends Component {
                   }
                   const payload = {
                     ...values,
-                    restoreToUniverseUUID,                    
+                    restoreToUniverseUUID,
+                    storageLocation: values.storageLocation.trim(),
                     storageConfigUUID: values.storageConfigUUID.value,
                   };
-                  if (values.storageLocation) {
-                    payload.storageLocation = values.storageLocation.trim()
-                  }                   
                   this.restoreBackup(payload);
                 }}
                 initialValues= {initialValues}

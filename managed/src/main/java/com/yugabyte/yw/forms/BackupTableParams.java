@@ -27,10 +27,6 @@ public class BackupTableParams extends TableManagerParams {
 
   public List<UUID> tableUUIDList;
 
-  // Allows bundling multiple backup params. Used only in the case
-  // of backing up an entire universe transactionally
-  public List<BackupTableParams> backupList;
-
   // Specifies the frequency for running the backup in milliseconds.
   public long schedulingFrequency = 0L;
 
