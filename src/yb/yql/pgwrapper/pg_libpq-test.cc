@@ -1588,6 +1588,26 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_FALSE(ASSERT_RESULT(conn.HasIndexScan(query)));
 }
 
+// Make sure deletes to nonexistent rows look like noops to clients.  This may seem too obvious to
+// necessitate a test, but logic for backfill is special in that it wants nonexistent index deletes
+// to be applied for the backfill process to use them.  This test guards against that logic being
+// implemented incorrectly.
+TEST_F_EX(PgLibPqTest,
+    YB_DISABLE_TEST_IN_TSAN(BackfillNonexistentDelete),
+    PgLibPqTestIndexBackfill) {
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY)", kTableName));
+
+  // Delete to nonexistent row should return no rows.
+  auto res = ASSERT_RESULT(conn.FetchFormat("DELETE FROM $0 WHERE i = 1 RETURNING i", kTableName));
+  ASSERT_EQ(PQntuples(res.get()), 0);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+}
+
 // Override the index backfill test to have slower backfill-related operations
 class PgLibPqTestIndexBackfillSlow : public PgLibPqTestIndexBackfill {
  public:
