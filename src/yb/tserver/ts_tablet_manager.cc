@@ -218,6 +218,9 @@ DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeou
              "Default timeout for the YBClient embedded into the tablet server that is used "
              "for distributed transactions.");
 
+DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
+            "Set to true to prioritize bootstrapping transaction status tablets first.");
+
 namespace yb {
 namespace tserver {
 
@@ -549,7 +552,7 @@ Status TSTabletManager::Init() {
 
   InitLocalRaftPeerPB();
 
-  vector<RaftGroupMetadataPtr> metas;
+  deque<RaftGroupMetadataPtr> metas;
 
   // First, load all of the tablet metadata. We do this before we start
   // submitting the actual OpenTablet() tasks so that we don't have to compete
@@ -566,8 +569,18 @@ Status TSTabletManager::Init() {
     RegisterDataAndWalDir(
         fs_manager_, meta->table_id(), meta->raft_group_id(), meta->data_root_dir(),
         meta->wal_root_dir());
-    metas.push_back(meta);
+    if (FLAGS_enable_restart_transaction_status_tablets_first) {
+      // Prioritize bootstrapping transaction status tablets first.
+      if (meta->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
+        metas.push_front(meta);
+      } else {
+        metas.push_back(meta);
+      }
+    } else {
+      metas.push_back(meta);
+    }
   }
+
   MonoDelta elapsed = MonoTime::Now().GetDeltaSince(start);
   LOG(INFO) << "Loaded metadata for " << tablet_ids.size() << " tablet in "
             << elapsed.ToMilliseconds() << " ms";
