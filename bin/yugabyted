@@ -156,7 +156,7 @@ class ControlScript(object):
                 "Failed to shut down {}: {}. Please check PID in {}".format(
                     SCRIPT_NAME, err, self.script.pidfile))
             sys.exit(1)
-        else:
+        elif pid:
             self.script.wait_until_stop(pid)
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
         sys.exit(0)
@@ -175,7 +175,7 @@ class ControlScript(object):
             Output.log_error_and_exit(
                 "Failed to shut down {}: {}. Please check PID in {}".format(
                     SCRIPT_NAME, err, self.script.pidfile))
-        else:
+        elif pid:
             self.script.wait_until_stop(pid)
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
         logpath = self.configs.saved_data.get("log_dir")
