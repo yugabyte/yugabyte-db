@@ -29,7 +29,7 @@ function mapStateToProps(state, ownProps) {
 
   if (isNonEmptyObject(ownProps.backupInfo)) {
     const { backupInfo : {
-      storageConfigUUID, storageLocation, universeUUID, keyspace, tableName, tableNameList, tableUUIDList, transactionalBackup }
+      storageConfigUUID, storageLocation, universeUUID, keyspace, tableName }
     } = ownProps;
 
     /* AC: Careful! This sets the default of the Select but the return value
@@ -39,12 +39,9 @@ function mapStateToProps(state, ownProps) {
     initialFormValues.restoreToUniverseUUID = universeUUID;
 
     initialFormValues.restoreToTableName = tableName;
-    initialFormValues.restoreTableNameList = tableNameList;
-    initialFormValues.restoreTableUUIDList = tableUUIDList;
     initialFormValues.restoreToKeyspace = keyspace;
     initialFormValues.storageConfigUUID = storageConfigUUID;
     initialFormValues.storageLocation = storageLocation;
-    initialFormValues.transactionalBackup = transactionalBackup;
   } else {
     if (getPromiseState(currentUniverse).isSuccess() &&
         isNonEmptyObject(currentUniverse.data)) {

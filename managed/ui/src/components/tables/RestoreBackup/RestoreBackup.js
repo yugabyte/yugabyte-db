@@ -18,8 +18,7 @@ export default class RestoreBackup extends Component {
   restoreBackup = values => {
     const {
       onHide,
-      restoreTableBackup,
-      initialValues
+      restoreTableBackup
     } = this.props;
 
     if (!isEmptyString(values.storageConfigUUID) &&
@@ -29,12 +28,9 @@ export default class RestoreBackup extends Component {
         storageConfigUUID: values.storageConfigUUID,
         storageLocation:  values.storageLocation,
         actionType: 'RESTORE',
-        // tableName: values.restoreToTableName,        
+        keyspace: values.restoreToKeyspace,
+        tableName: values.restoreToTableName
       };
-      // TODO: Allow renaming of individual tables
-      if (values.keyspace !== initialValues.keyspace) {
-        payload.keyspace = values.restoreToKeyspace;
-      }
       onHide();
       restoreTableBackup(restoreToUniverseUUID, payload);
       browserHistory.push('/universes/' + restoreToUniverseUUID + "/backups");
@@ -88,7 +84,7 @@ export default class RestoreBackup extends Component {
     };
 
     return (
-      <div className="universe-apps-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="universe-apps-modal">
         <YBModalForm title={"Restore backup To"}
                 visible={visible}
                 onHide={onHide}
@@ -121,11 +117,10 @@ export default class RestoreBackup extends Component {
           <Field name="restoreToUniverseUUID" component={YBFormSelect}
                 label={"Universe"} options={universeOptions} />
           <Field name="restoreToKeyspace"
-                component={YBFormInput}                
+                component={YBFormInput}
                 label={"Keyspace"} />
           <Field name="restoreToTableName"
                 component={YBFormInput}
-                disabled={true}
                 label={"Table"}/>
         </YBModalForm>
       </div>
