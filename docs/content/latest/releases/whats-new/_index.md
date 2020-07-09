@@ -11,10 +11,10 @@ section: RELEASES
 menu:
   latest:
     identifier: whats-new
-    weight: 2589 
+    weight: 2554 
 ---
 
-**Released:** June ??, 2020 (2.2.0.0-b??).
+**Released:** July 9, 2020 (2.2.0.0-b??).
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
