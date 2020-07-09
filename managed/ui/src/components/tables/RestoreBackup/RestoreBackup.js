@@ -94,7 +94,8 @@ export default class RestoreBackup extends Component {
                   const payload = {
                     ...values,
                     storageLocation: values.storageLocation.trim(),
-                    restoreToUniverseUUID: values.restoreToUniverseUUID.value,
+                    restoreToUniverseUUID: typeof values.restoreToUniverseUUID === 'string' ?
+                      values.restoreToUniverseUUID : values.restoreToUniverseUUID.value,
                     storageConfigUUID: values.storageConfigUUID.value,
                   };
                   this.restoreBackup(payload);
