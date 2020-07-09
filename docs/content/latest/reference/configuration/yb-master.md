@@ -370,6 +370,19 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/comma
 
 {{< /note >}}
 
+#### --tablet_split_size_threshold_bytes
+
+Enables dynamic tablet splitting and sets the threshold on tablet size, in bytes, before each tablet splits.
+
+**Syntax**
+
+```sh
+yb-admin --master_addresses <master-addresses> --tablet_split_size_threshold_bytes <bytes>
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *bytes*: The threshold size, in bytes, before each tablet should be split. Default value is `0`, Default value of `0` disables dynamic tablet splitting.
+
 ---
 
 ### Geo-distribution flags

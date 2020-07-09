@@ -272,11 +272,21 @@ Usage: yugabyted demo [-h] {connect,destroy} ...
 
 Print the help message and exit.
 
+<<<<<<< HEAD
 ##### connect 
 
 Load northwind sample dataset into a new `yb_demo_northwind` SQL database and then opens up `ysqlsh` prompt for the same database. Skips the data load if data is already loaded.
 
 ##### destroy 
+=======
+##### connect
+
+Loads the `northwind` sample dataset into a new `yb_demo_northwind` SQL database and then opens up `ysqlsh` prompt for the same database. Skips the data load if data is already loaded.
+
+##### destroy
+
+Shuts down the yugabyted single-node cluster and removes data, configuration, and log directories.
+>>>>>>> 2b127c84d... Add 2.1.8 to earlier-releases
 
 Deletes the `yb_demo_northwind` northwind database.
 

@@ -218,7 +218,7 @@ It produces this result:
      5 | (5,23,23)
      5 | (5,23,23)
 ```
-Each of `first_value()`, `last_value()`, and `nth_value()`, as their names suggest, produces the same output for each row of a [_window_](../sql-syntax-semantics/#the-window-definition-rule). It would be natural, therefore, to use the query above in a `WITH` clause whose final `SELECT ` picks out the individual columns from the record and adds a `GROUP BY` clause, thus:
+Each of `first_value()`, `last_value()`, and `nth_value()`, as their names suggest, produces the same output for each row of a [_window_](../sql-syntax-semantics/#the-window-definition-rule). It would be natural, therefore, to use the query above in a `WITH` clause whose final `SELECT` picks out the individual columns from the record and adds a `GROUP BY` clause, thus:
 ```postgresql
 drop type if exists rt cascade;
 create type rt as (class int, k int, v int);

@@ -1,7 +1,7 @@
 ---
-title: What's new in 2.1.8
-headerTitle: What's new in 2.1.8
-linkTitle: What's new in 2.1.8
+title: What's new in 2.2
+headerTitle: What's new in 2.2
+linkTitle: What's new in 2.2
 description: Enhancements, changes, and resolved issues in the latest YugabyteDB release.
 headcontent: Features, enhancements, and resolved issues in the latest release.
 image: /images/section_icons/quick_start/install.png
@@ -14,9 +14,9 @@ menu:
     weight: 2589 
 ---
 
-**Released:** June 19, 2020 (2.1.8.2-b1).
+**Released:** July 14, 2020 (2.2.0.0-b76).
 
-**New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
+**New to YugabyteDB?** To get up and running in less than five minutes, follow [Quick start](../../quick-start/).
 
 **Looking for earlier releases?** History of earlier releases is available in [Earlier releases](../earlier-releases/) section.  
 
@@ -24,13 +24,13 @@ menu:
 
 ### Binaries
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.8.2-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.0.0-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.8.2-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.0.0-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -40,93 +40,139 @@ menu:
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.1.8.2-b1
+docker pull yugabytedb/yugabyte:2.2.0.0-b76
 ```
+
+## Notable new features and enhancements
 
 ## YSQL
 
-- Add support for [`SPLIT INTO` clause for `CREATE INDEX`](../../api/ysql/commands/ddl_create_index/#split-into) statement. [#3047](https://github.com/yugabyte/yugabyte-db/issues/3047)
-- Fix aggregate functions pushdown for columns with default values added after table creation. [#4376](https://github.com/yugabyte/yugabyte-db/issues/4376)
-- Resolve timeout frequently encountered whe batch-loading data in YSQL by using client-specified timeouts for RPC requests instead of hardcoded values. [#4045](https://github.com/yugabyte/yugabyte-db/issues/4045)
-- Fix incorrect cross-component dependency in DocDB found in builds using `ninja`. [#4474](https://github.com/yugabyte/yugabyte-db/issues/4474)
-- Fix operation buffering in stored procedures to handle transactions correctly. [#4268](https://github.com/yugabyte/yugabyte-db/issues/4268)
-- [DocDB] Ensure that fast path (pushed down) single row writes honor higher priority transactions and get aborted or retired instead. [#4316](https://github.com/yugabyte/yugabyte-db/issues/4316)
-- [DocDB] Split copy table operations into smaller chunks (using byte size instead of count) for CREATE DATABASE statement. [#3743](https://github.com/yugabyte/yugabyte-db/issues/3743)
-- Correctly push down `IS NULL` condition to DocDB. [#4499](https://github.com/yugabyte/yugabyte-db/issues/4499)
-- Avoid ASAN failures after a large data set is uploaded by rearranging files and test functionalities. [#4488](https://github.com/yugabyte/yugabyte-db/issues/4488)
-- Fix memory leaks by using memory context to manage object alloc and free. [#4490](https://github.com/yugabyte/yugabyte-db/issues/4490)
-- Fix multi-touch cache and improve caching logic for read and write operations. [#4379](https://github.com/yugabyte/yugabyte-db/issues/4379)
-- Improve index cost estimates by considering index uniqueness, included columns (index scan vs. index only scan), scan direction, and partial indexes. Also, disable merge joins for unsupported cases. [#4494](https://github.com/yugabyte/yugabyte-db/issues/4494) and [#4496](https://github.com/yugabyte/yugabyte-db/issues/4496)
-- Add support for deferrable foreign key constraints. [#3995](https://github.com/yugabyte/yugabyte-db/issues/3995)
-- Prevent dropping primary key constraint. [#3163](https://github.com/yugabyte/yugabyte-db/issues/3163)
-- Push down SELECT <aggregate>(<const>), for example, SELECT COUNT(1) , to DocDB. [#4276](https://github.com/yugabyte/yugabyte-db/issues/4276)
-- Fix rare core dumps due to concurrency issues in metrics webserver during shutdown. [#4092](https://github.com/yugabyte/yugabyte-db/issues/4092)
+### Transactional distributed backups
+
+YugabyteDB now supports distributed backup and restore of YSQL databases. [#1139](https://github.com/yugabyte/yugabyte-db/issues/1139) and [#3849](https://github.com/yugabyte/yugabyte-db/issues/3849)
+
+### Online index builds
+
+- YugabyteDB can now build indexes on non-empty tables while online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can now use the YSQL [`CREATE INDEX`](../../api/ysql/commands/ddl_create_index) statement and the YCQL [CREATE INDEX](../../api/ycql/ddl_create_index) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+- To backfill an index while online, set the `yb-tserver` [`--ysql_disable_index_backfill`](../../reference/configuration/yb-tserver/#ysql-disable-index-backfill) flag to `false` when starting YB-TServers. Note: Do not use this flag in a production cluster yet -- this is a beta feature. For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)
+
+### Colocated tables
+
+Database-level colocation for YSQL, which started as a beta feature in the 2.1 release, is now generally available in the 2.2 release. Traditional RDBMS modeling of parent-child relationships as foreign key constraints can lead to high-latency `JOIN` queries in a geo-distributed SQL database. This is because the tablets (or shards) containing the child rows may be hosted in nodes, availability zones, and regions different from the tablets containing the parent rows. Using colocated tables lets a single tablet be shared across all tables. Colocation can also be at the overall database level where all tables of a single database are located in the same tablet and hence are managed by the same Raft group.  Note that tables that do not want to reside in the overall database’s tablet because of the expectation of large data volume can override the feature at table creation time and hence get independent tablets for themselves.
+
+The natural question to ask is what happens when the “colocation” tablet containing all the tables of a database becomes too big and starts impacting performance? The answer lies in automatic tablet splitting (now available in beta).
+
+### Deferred constraints on foreign keys
+
+Foreign keys in YSQL now support the [DEFERRABLE INITIALLY IMMEDIATE](../../../api/ysql/commands/ddl_create_table/#foreign-key) and [DEFERRABLE INITIALLY DEFERRED](../../../api/ysql/commands/ddl_create_table/#foreign-key) clauses. Work on deferring additional constraints, including those for primary keys, is in progress. 
+
+Application developers often declare constraints that their data must obey, leaving it to relational databases to enforce the rules. The end result is simpler application logic, lower error probability, and higher developer productivity. Automatic constraint enforcement is a powerful feature that should be leveraged whenever possible. There are times, however, when you need to temporarily defer enforcement. An example is during the data load of a relational schema where there are cyclic foreign key dependencies. Data migration tools usually defer the enforcement of foreign key dependencies to the end of a transaction by which data for all foreign keys would ideally be present.  This should also allow YSQL to power Django apps. 
+
+### yugabyted for single-node clusters
+
+The `yugabyted` server is now out of beta for single-node deployments. New users can start using YugabyteDB without needing to understand the underlying architectures acts as a parent server, reducing the need to understand data management by YB-TServers and metadata management by YB-Masters. A new user interface (similar to the Yugabyte Platform Console) displays a richer data placement map and metrics dashboard.
+
+See it in action by following the updated Quick start. For details, see `yugabyted` in the Reference section.
+
+### [Beta] Automatic tablet splitting
+
+- YugabyteDB now supports automatic tablet splitting, changing the number of tablets (resharding of data) at runtime. For details, see [Automatic Resharding of Data with Tablet Splitting]https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
+- You can use the new `yb-tserver` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-tserver/#tablet-split-size-threshold-bytes) flag that enables dynamic tablet splitting when tablets reach the specified size (in bytes).
+
+### TPC-C benchmarking
+
+New results are now available for benchmarking the performance of the YSQL API using the TPC-C suite. For the new TPC-C results and details on performing your own benchmark tests, see [TPC-C](../../benchmark/tpcc-sql)
+
+### Other notable changes
+
+- Support pre-splitting using [CREATE INDEX...SPLIT INTO](../../api/ysql/commands/ddl_create_index/#split-into) for range-partitioned table indexes. For details, see [Pre-splitting](../../architecture/docdb-sharding/tablet-splitting/#pre-splitting) [#4235](https://github.com/yugabyte/yugabyte-db/issues/4235)
+- Fix crash for nested `SELECT` statements that involve null pushdown on system tables. [#4685](https://github.com/yugabyte/yugabyte-db/issues/4685)
+- Fix wrong sorting order in pre-split tables. [#4651](https://github.com/yugabyte/yugabyte-db/issues/4651)
+- To help track down unoptimized (or "slow") queries, use the new `yb-tserver` [`--ysql_log_min_duration_statement`](../../reference/configuration/yb-tserver/#ysql-log-min-duration-statement). [#4817](https://github.com/yugabyte/yugabyte-db/issues/4817)
+- Enhance the [`yb-admin list_tables`](../../admin/yb-admin/#list-tables) command to include optional flags for including the database type (`include_db_type`), table ID (`include_table_id`), and the table type (`include_table_type`). Use this command instead of the now deprecated `yb-admin list_tables_with_db_types` command. [#4546](https://github.com/yugabyte/yugabyte-db/issues/4546)
+- Add support for `ALTER TABLE` on colocated tables. [#4293](https://github.com/yugabyte/yugabyte-db/issues/4293)
+- Improve logic for index delete permissions. [#4980](https://github.com/yugabyte/yugabyte-db/issues/4980)
+- Add fast path option for index backfill when certain statements can create indexes without unnecessary overhead from online schema migration (for example, `CREATE TABLE` with unique column constraint). Skip index backfill for unsupported statements, including `DROP INDEX`, "CREATE UNIQUE INDEX ON`, and index create in postgres nested DDL). [#4918]
+- Suppress `incomplete startup packet` messages in YSQL logs. [#4813](https://github.com/yugabyte/yugabyte-db/issues/4813)
+- Improve YSQL create namespace failure handling. [#3979](https://github.com/yugabyte/yugabyte-db/issues/3979)
+- Add error messages to table schema version mismatch errors so they are more understandable. [#4810]
+- Increase the default DDL operations timeout to 120 seconds to allow for multi-region deployments, where a CREATE DATABASE statement can take longer than one minute. [#4762](https://github.com/yugabyte/yugabyte-db/issues/4762)
 
 ## YCQL
 
-- Rename `cqlsh` to `ycqlsh`. [#3935](https://github.com/yugabyte/yugabyte-db/issues/3935)
-- Update Cassandra Java driver version to `3.8.0-yb-4` and adds support for [`guava`](https://github.com/google/guava) 26 or later. The latest release of the driver is available in the [Yugabyte `cassandra-java-driver` repository](https://github.com/yugabyte/cassandra-java-driver/releases). [#3897](https://github.com/yugabyte/yugabyte-db/issues/3897)
-- YB-TServers should not crash when attempting to log in using YCQL authentication without a password. [#4459](https://github.com/yugabyte/yugabyte-db/issues/4459)
-- Performance degradation in `CassandraSecondaryIndex` workload resolved. [#4401](https://github.com/yugabyte/yugabyte-db/issues/4401)
-- Add [`yb-admin import_snapshot`](../../admin/yb-admin/#import-snapshot) support for renaming a few tables (not all), but the specified name is equal to the old table name: `yb-admin import_snapshot <meta-file> ks old_table_name`. [#4280](https://github.com/yugabyte/yugabyte-db/issues/4280)
-- For DDL creation with Spring Data Cassandra, change the `Enum` value from `JSON` to `JSONB` to allow schema creation to succeed programmatically involving JSON column types and update the `cassandra-java-driver` to `3.8.0-yb-5`. [#4481](https://github.com/yugabyte/yugabyte-db/issues/4481)
-- Use the same timestamp for current time to compute multiple runtimes in output of `<tserver-ip>:13000/rpcz`. [#4418](https://github.com/yugabyte/yugabyte-db/issues/4418)
-- Correctly push down `= NULL` condition to DocDB. [#4499](https://github.com/yugabyte/yugabyte-db/issues/4499)
-- Reduce YCQL unprepared statement execution time by up to 98% (example: reduced time to insert a 5 MB string from 18 seconds to 0.25 seconds). [#4397](https://github.com/yugabyte/yugabyte-db/issues/4397) and [#3586](https://github.com/yugabyte/yugabyte-db/issues/3586)
-  - Special thanks to [@ouvai59](https://github.com/ouvai59) for your contribution!
+### Online index backfill
 
-## YEDIS
+- YugabyteDB can now build indexes on non-empty tables while online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can now use the YSQL [`CREATE INDEX`](../../api/ysql/commands/ddl_create_index) statement and the YCQL [CREATE INDEX](../../api/ycql/ddl_create_index) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+- In YCQL, backfilling an index while online is enabled by default. To disable, set the `yb-tserver` [`--ycql_disable_index_backfill`](../../reference/configuration/yb-tserver/#ysql-disable-index-backfill) flag to `false` when starting YB-TServers. Note: Do not use this flag in a production cluster yet -- this is a **beta** feature. For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) [#2301](https://github.com/yugabyte/yugabyte-db/issues/2301) and [#4708](https://github.com/yugabyte/yugabyte-db/issues/4708)
 
-- For `yugabyted`, do not start `redis` server by default. Resolves port conflict during startup. [#4057](https://github.com/yugabyte/yugabyte-db/issues/4057)
+### Other notable changes
+
+- Throttle YCQL call when soft memory limit is reached. Two new flags, `throttle_cql_calls_on_soft_memory_limit
+- Implement a password cache to allow connections to be created more quickly from recently used accounts. Helps reduce high CPU usage when using YCQL authorization. [#4596](https://github.com/yugabyte/yugabyte-db/issues/4596)
+
+### Distributed backups
+
+### Online index builds
+
+### Colocated tables ??
+
+### Other changes
+
+- Implement YCQL call throttling when soft memory limit is reached. Two new flags available to manage throttling: `throttle_cql_calls_on_soft_memory_limit` and `throttle_cql_calls_policy` [#4973](https://github.com/yugabyte/yugabyte-db/issues/4973)
+- Fix "column doesn't exist" error when an index is created on a column which is a prefix of another column. [#4881](https://github.com/yugabyte/yugabyte-db/issues/4881)
+- Fix crashes when using ORDER BY for non-existent column with index scan. [#4908](https://github.com/yugabyte/yugabyte-db/issues/4908)
+
+### [Beta] Online schema changes
 
 ## System improvements
 
-- New `yb-admin` command [`get_load_balancer_state`](../../admin/yb-admin/#get-load-balancer-state) to get the cluster load balancer state. [#4509](https://github.com/yugabyte/yugabyte-db/issues/4509)
-- Avoid creating intent iterator when no transactions are running. [#4500](https://github.com/yugabyte/yugabyte-db/issues/4500)
-- Increase default memory limit for `yb-master` for running in low-memory setups (`<=4 GB`). [#3742](https://github.com/yugabyte/yugabyte-installation/pull/3742)
-- Improve RocksDB checkpoint directory cleanup if a tserver crashes or is restarted while performing a snapshot operation. [#4352](https://github.com/yugabyte/yugabyte-db/issues/4352)
-- [DocDB] Use bloom filters for range-partitioned tables. The first primary key column is added to the bloom filter. [#4437](https://github.com/yugabyte/yugabyte-installation/pull/4437)
-- [DocDB] Fix snapshots bootstrap order bu altering the load for transaction-aware snapshots. [#4470](https://github.com/yugabyte/yugabyte-db/issues/4470)
-- [DocDB] Add [`yb-admin master_leader_stepdown`](../../admin/yb-admin/#master-leader-stepdown) command. [#4135](https://github.com/yugabyte/yugabyte-db/issues/4135)
-- [DocDB] Reduce impact on CPU and throughput during node failures. [#4042](https://github.com/yugabyte/yugabyte-db/issues/4042)
-- [DocDB] Add `yb-ts-cli` commands, [`flush_all_tablets`](../../admin/yb-ts-cli/#flush-all-tablets) and [`flush_tablet <tablet_id>`](../../admin/yb-ts-cli/#flush-tablet), to flush tablets. When used with rolling restarts, less time is spent applying WAL records to rocksdb. [#2785](https://github.com/yugabyte/yugabyte-db/issues/2785)
-  - Special thanks to [mirageyjd](https://github.com/mirageyjd) for your contribution.
-- [DocDB] Fix deadlock during tablet splitting. [#4312](https://github.com/yugabyte/yugabyte-db/issues/4312)
-- Introduced load balancing throttle on the total number of tablets being remote bootstrapped, across the cluster. [#4053](https://github.com/yugabyte/yugabyte-db/issues/4053) and [#4436](https://github.com/yugabyte/yugabyte-db/issues/4436)
-- [DocDB] Remove applied intent doc hybrid time during compaction. [#4535](https://github.com/yugabyte/yugabyte-db/issues/4535)
-- [DocDB] Fixed BoundedRocksDbIterator::SeekToLast works incorrectly for 2nd post-split tablet. [#4542](https://github.com/yugabyte/yugabyte-db/issues/4542)
-- [DocDB] Abort snapshot if table was deleted. [#4610](https://github.com/yugabyte/yugabyte-db/issues/4610)
-- [DocDB] Backfill index without waiting indefinitely for pending transactions. [#3471](https://github.com/yugabyte/yugabyte-db/issues/3471)
-- [DocDB] Fix `yb-master` rerunning snapshot operations after upgrade. [#4816](https://github.com/yugabyte/yugabyte-db/issues/4816)
-- [Colocation] During load balancing operations, load balance each colocated tablet once. This fix removes unnecessary load balancing for every user table sharing that table and the parent table.
-- Fix YB-Master hangs due to transaction status resolution. [#4410](https://github.com/yugabyte/yugabyte-db/issues/4410)
-- Redirect the master UI to the master leader UI without failing when one master is down. [#4442](https://github.com/yugabyte/yugabyte-db/issues/4442) and [#3869](https://github.com/yugabyte/yugabyte-db/issues/3869)
-- Avoid race in `change_metadata_operation`. Use atomic<P*> to avoid race between
-`Finish()` and `ToString` from updating or accessing request. [#3912](https://github.com/yugabyte/yugabyte-db/issues/3912)
-- Refactor `RaftGroupMetadata` to avoid keeping unnecessary `TableInfo` objects in memory. [#4354](https://github.com/yugabyte/yugabyte-db/issues/4354)
-- Fix missing rows in unidirectional replication and fix race conditions with CDC and TransactionManager. [#4257](https://github.com/yugabyte/yugabyte-installation/pull/4257)
-- Change intent iterator creation logic. [#4543](https://github.com/yugabyte/yugabyte-installation/pull/4543)
-- Upgrade all Python scripts used to build and package the code to Python 3. [#1442](https://github.com/yugabyte/yugabyte-db/issues/1442)
+- Add HTTP endpoints for determining master leadership and returning information on masters. [#2606](https://github.com/yugabyte/yugabyte-db/issues/2606)
+  - `<web>/api/v1/masters`: Returns all master statuses.
+  - `<web>/api/v1/is-leader`: Returns `200 OK` response status code when the master is a leader and `503 Service Unavailable` when the master is not a leader.
+- Add HTTP endpoint `/api/v1/cluster-config` for YB-Master to return the current cluster configuration in JSON format. [#4748](https://github.com/yugabyte/yugabyte-db/issues/4748)
+  - Thanks, [AbdallahKhaled93](https://github.com/AbdallahKhaled93), for your contribution!
+- Output of `yb-admin get_universe_config` command is now in JSON format for easier parsing. [#4589]([#1462](https://github.com/yugabyte/yugabyte-db/issues/4589)
+- Add `yugabyted destroy` command. [#3872]([#3849](https://github.com/yugabyte/yugabyte-db/issues/3872)
+- Change logic used to determine if the load balancer is idle. [#4707](https://github.com/yugabyte/yugabyte-db/issues/4707)
+- Default to IPv4 addresses for DNS resolution and local addresses. [#4851](https://github.com/yugabyte/yugabyte-db/issues/4293)
+- Add a Grafana dashboard for YugabyteDB. [#4725](https://github.com/yugabyte/yugabyte-db/issues/4725)
+- [CDC] Check for table properties equivalence when comparing schemas in 2DC setups and ignore properties that don't need to be the same. [#4233](https://github.com/yugabyte/yugabyte-db/issues/4233)
+- [DocDB] Allow multiple indexes to backfill or delete simultaneously. [#2784](https://github.com/yugabyte/yugabyte-db/issues/2784)
+- [DocDB] Transition to new leader gracefully during a leader stepdown. When a leader stepdown happens with no new leader candidate specified in the stepdown request, the peer simply steps down leaving the group with no leader until regular heartbeat timeouts are triggered. This change makes it so that the leader attempts to transition to the most up-to-date peer, if possible. [#4298](https://github.com/yugabyte/yugabyte-db/issues/4298)
+- Update [`yb-admin list_snapshots`](../../admin/yb-admin/#list-snapshots) command to use `not_show_restored` option to exclude fully RESTORED entries. [#4351](ttps://github.com/yugabyte/yugabyte-db/issues/4351)
+- [DocDB] Clean up leftover snapshot files from failed snapshots that resulted in remote bootstrap getting stuck in a failure loop. [#4745](https://github.com/yugabyte/yugabyte-db/issues/4745)
+- [DocDB] Clean up metadata in memory after deleting snapshots. [#4887](https://github.com/yugabyte/yugabyte-db/issues/4877)
+- [DocDB] Fix snapshots getting stuck in retry loop with deleted table. [#4610](https://github.com/yugabyte/yugabyte-db/issues/4877) and [#4302](https://github.com/yugabyte/yugabyte-db/issues/4302)
+- [DocDB] When using [`yb-admin master_leader_stepdown`](../../admin/yb-admin/#master-leader-stepdown), specifying a new leader is now optional. [#4722](https://github.com/yugabyte/yugabyte-db/issues/4722)
+- [DocDB] Add breakdown of disk space on TServer dashboard. [#4767](https://github.com/yugabyte/yugabyte-db/issues/4767)
+- [DocDB] Suppress `yb-admin` from logging harmless "Failed to schedule invoking callback on response" warning. [#4131](https://github.com/yugabyte/yugabyte-db/issues/4131)
+- [DocDB] Allow specifying IPv6 addresses in bind addresses. [#3644](https://github.com/yugabyte/yugabyte-db/issues/3644)
+- [DocDB] Fix TS Heartbeater can get stuck if master network connectivity breaks. [#4838](https://github.com/yugabyte/yugabyte-db/issues/4838)
+- [DocDB] Improve protection against hitting hard memory limit when follower tablet peers are lagging behind leaders on a node. (for example, node downtime because of yb-tserver restart). [#2563](https://github.com/yugabyte/yugabyte-db/issues/2563)
+- `yugabyted` `--bind_ip` flag renamed to `--listen`. [#4960](https://github.com/yugabyte/yugabyte-db/issues/4960)
+- Fix malformed URL for ycql rpcz when clicking **YCQL Live Ops** link in the YB-TServer utilities page. [#4886](https://github.com/yugabyte/yugabyte-db/issues/4866)
+- Fix export name for YCQL metrics. [#4955](https://github.com/yugabyte/yugabyte-db/issues/4955)
+- Fix YB-Master UI to show correct number of tablets for colocated tables. [#4699](https://github.com/yugabyte/yugabyte-db/issues/4699)
 
 ## Yugabyte Platform
 
-- Fix failure when adding a node on a TLS-enabled universe. [#4482](https://github.com/yugabyte/yugabyte-db/issues/4482)
-- Improve latency tracking by splitting overall operation metrics into individual rows for each API. [#3825](https://github.com/yugabyte/yugabyte-db/issues/3825)
-  - YCQL and YEDIS metrics include `ops`, `avg latency`, and `P99 latency`.
-  - YSQL metrics include only `ops` and `avg latency`.
-- Add metrics for RPC queue sizes of services, including YB-Master, YB-TServer, YCQL, and YEDIS. [#4294](https://github.com/yugabyte/yugabyte-db/issues/4294)
-- Add option to edit configuration flags without requiring server restart. [#4433](https://github.com/yugabyte/yugabyte-db/issues/4433)
-- When configuration flags are deleted in the YugabyteDB Admin Console, remove the flags from `server.conf` file. [#4341](https://github.com/yugabyte/yugabyte-db/issues/4341)
-- When creating GCP instances, only use host project when specifying network.
-- When creating a cloud provider configuration, display provider-level (non-k8s) settings for SSH ports and enabling airgapped installations. [#3615](https://github.com/yugabyte/yugabyte-db/issues/3615), [#4243](https://github.com/yugabyte/yugabyte-db/issues/4243), and [#4240](https://github.com/yugabyte/yugabyte-db/issues/4240).
-- After removing a node and then adding a node, check for certificate and key files and create the files if needed. [#4551](https://github.com/yugabyte/yugabyte-db/issues/4551)
-- Update to support Helm 3 deployments. Note: Helm 2 is no longer supported. For migrating existing Helm 2 universes to Helm 3, see [Migrate from Helm 2 to Helm 3](../../yugabyte-platform/manage/migrate-to-helm3/). [#4416]((https://github.com/yugabyte/yugabyte-db/issues/4416))
-- Change `QLTableRow` representation. [#4427](https://github.com/yugabyte/yugabyte-db/issues/4427)
-- Fix CDC-related race conditions using `CDCServiceTxnTest.TestGetChangesForPendingTransaction`. [#4544](https://github.com/yugabyte/yugabyte-db/issues/4544)
-- Revert validation on alerting email field to allow comma-separated emails in the form. [#4639](https://github.com/yugabyte/yugabyte-db/issues/4639)
-- Add **Custom SMTP Configuration** section to **Health & Alerting** tab on customer profile page. [#4443](https://github.com/yugabyte/yugabyte-db/issues/4443)
-- Fix Kubernetes pod container metrics not displaying in **Metrics** panel. [#4652](https://github.com/yugabyte/yugabyte-db/issues/4652)
-- Fix **Backups** tab not rendering when there are no backups. [#4661](https://github.com/yugabyte/yugabyte-db/issues/4661)
+- Add backup and restore options for YSQL tables and universe-level transactional backups. [#3849](https://github.com/yugabyte/yugabyte-db/issues/3849)
+- On the **Universes** page, the **Replication** tab displays by default and adds default state when replication lag metric query returns no data.
+- Add **Replication** tab to Universe overview tab list if enabled and query for replication lag metrics. [#]
+- Add replication lag metrics `async_replication_sent_lag_micros` (last applied time on producer - last polled for record) and `async_replication_committed_lag_micros` (last applied time on producer - last applied time on consumer) for 2DC replication and export to Prometheus. [#2154](https://github.com/yugabyte/yugabyte-db/issues/2154)
+- Retrieve IAM Instance Profile Credentials for backups. This retrieves the `AccessKeyId` and `SecretAccessKey` and set these in the configuration so that data nodes inherit the required IAM permissions to access S3. [#3451](https://github.com/yugabyte/yugabyte-db/issues/3451) and [#4900](https://github.com/yugabyte/yugabyte-db/issues/4900)
+- Add option to create a backup of multiple YCQL transactional tables. [#4540](https://github.com/yugabyte/yugabyte-db/issues/4540)
+- Add support for c5d instance types. [#4914](https://github.com/yugabyte/yugabyte-db/issues/4914)
+- Add support for installing epel-release in Amazon Linux. [#4561](https://github.com/yugabyte/yugabyte-db/issues/4561)
+- Fixed requested TLS client certificate generated with expired date and ysqlsh fails to connect. [#4732](https://github.com/yugabyte/yugabyte-db/issues/4732)
+- Fixed universe fails to create if user-supplied certificate is selected. [#4733](https://github.com/yugabyte/yugabyte-db/issues/4733)
+- Implement OAuth2/SSO authentication for Yugabyte Platform sign-in. [#4633](https://github.com/yugabyte/yugabyte-db/issues/4644) and [#4420](https://github.com/yugabyte/yugabyte-db/issues/4420)
+- Add backup and restore options for YSQL tables and universe-level transactional backups. [#3849](https://github.com/yugabyte/yugabyte-db/issues/3849)
+- Retrieve IAM Instance Profile Credentials for backups. This retrieves the `AccessKeyId` and `SecretAccessKey` and set these in the configuration so that data nodes inherit the required IAM permissions to access S3. [#4900](https://github.com/yugabyte/yugabyte-db/issues/4900)
+- In the **Health and Alerting** tab of the Admin Console, the Username and Password fields in **Custom SMTP Configuration** are now optional. [#4952](https://github.com/yugabyte/yugabyte-db/issues/4952)
+- Fix password reset in customer profile page. [#4666](https://github.com/yugabyte/yugabyte-db/issues/4666) and [#3909](https://github.com/yugabyte/yugabyte-db/issues/3909)
+- Fix **Backups** page not loading when there is a pending task. [#4754](https://github.com/yugabyte/yugabyte-db/issues/4754)
+- Change UI text displaying "GFlag" to "Flag" in the Admin Console. [#4659](https://github.com/yugabyte/yugabyte-db/issues/4659)
 
 {{< note title="Note" >}}
 

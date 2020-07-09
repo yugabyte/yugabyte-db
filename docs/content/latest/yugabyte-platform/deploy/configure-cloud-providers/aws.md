@@ -4,8 +4,7 @@ headerTitle: Configure cloud providers
 linkTitle: 4. Configure cloud providers
 description: Configure Amazon Web Services (AWS) for YugabyteDB deployments using the YugabyteDB Admin Console
 aliases:
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/aws
+  - /yugabyte-platform/deploy/configure-cloud-providers/
   - /latest/yugabyte-platform/deploy/configure-cloud-providers/
 menu:
   latest:
