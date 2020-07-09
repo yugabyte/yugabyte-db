@@ -14,9 +14,9 @@ menu:
     weight: 2554 
 ---
 
-**Released:** July 9, 2020 (2.2.0.0-b??).
+**Released:** July 10, 2020 (2.2.0.0-b??).
 
-**New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
+**New to YugabyteDB?** To get started and running in less than five minutes by following the steps in [Quick start](../../quick-start/).
 
 **Looking for earlier releases?** History of earlier releases is available [here](../earlier-releases/).  
 
@@ -45,15 +45,15 @@ docker pull yugabytedb/yugabyte:2.2.0.0-b??
 
 ## YSQL
 
-- Content to be added.
+- Add distributed backup support.
 
 ## YCQL
 
-- Content to be added.
+- Add distributed backup support.
 
 ## System improvements
 
-- Content to be added.
+- C
 
 ## Yugabyte Platform
 
