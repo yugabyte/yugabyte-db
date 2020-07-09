@@ -10,8 +10,14 @@ import { Field, Form, Formik } from 'formik';
 import * as Yup from "yup";
 import _ from 'lodash';
 import { ROOT_URL, USE_SSO } from '../../../../config';
+import {clearCredentials} from "../../../../routes";
 
 class LoginForm extends Component {
+  constructor(props) {
+    super(props);
+    clearCredentials();
+  }
+
   submitLogin = formValues => {
     const { loginCustomer } = this.props;
     loginCustomer(formValues);
@@ -79,23 +85,23 @@ class LoginForm extends Component {
                 setSubmitting(false);
               }}
               render={({
-                handleSubmit,
-                isSubmitting
-              }) => (
-                <Form onSubmit={handleSubmit}>
-                  <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
-                    {<strong>{JSON.stringify(authToken.error)}</strong>}
-                  </div>
+                         handleSubmit,
+                         isSubmitting
+                       }) => (
+                         <Form onSubmit={handleSubmit}>
+                           <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
+                             {<strong>{JSON.stringify(authToken.error)}</strong>}
+                           </div>
 
-                  <div className="clearfix">
-                    <Field name="email" placeholder="Email Address" type="text" component={YBFormInput} />
-                    <Field name="password" placeholder="Password" type="password" component={YBFormInput} />
-                  </div>
-                  <div className="clearfix">
-                    <YBButton btnType="submit" disabled={isSubmitting || getPromiseState(authToken).isLoading()}
+                           <div className="clearfix">
+                             <Field name="email" placeholder="Email Address" type="text" component={YBFormInput} />
+                             <Field name="password" placeholder="Password" type="password" component={YBFormInput} />
+                           </div>
+                           <div className="clearfix">
+                             <YBButton btnType="submit" disabled={isSubmitting || getPromiseState(authToken).isLoading()}
                               btnClass="btn btn-orange" btnText="Login"/>
-                  </div>
-                </Form>
+                           </div>
+                         </Form>
               )}
             />
           )}
