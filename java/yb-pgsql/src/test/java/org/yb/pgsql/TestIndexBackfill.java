@@ -21,6 +21,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.yb.util.SanitizerUtil;
 import org.yb.util.ThreadUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
@@ -28,7 +29,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestIndexBackfill extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestIndexBackfill.class);
 
-  private static final int AWAIT_TIMEOUT_SEC = 80;
+  private static final int AWAIT_TIMEOUT_SEC = (int) (80 * SanitizerUtil.getTimeoutMultiplier());
 
   @Override
   protected Map<String, String> getMasterAndTServerFlags() {
@@ -84,6 +85,7 @@ public class TestIndexBackfill extends BasePgSQLTest {
         do {
           LOG.info("Inserting a chunk of " + insertsChunkSize + " values");
           for (int i = 0; i < insertsChunkSize; i++) {
+            if (Thread.interrupted()) return;
             try {
               stmt.executeUpdate("INSERT INTO " + tableName + " VALUES (" + v + ")");
               ++v;
@@ -99,20 +101,32 @@ public class TestIndexBackfill extends BasePgSQLTest {
       } catch (Exception ex) {
         LOG.error("Insert thread failed", ex);
         fail("Insert thread failed: " + ex.getMessage());
+      } finally {
+        insertDone.countDown();
       }
     }));
 
-    // Wait for inserts/backfill to return
     try {
-      LOG.info("Waiting for INSERT and CREATE INDEX threads");
-      for (Future<?> future : futures) {
-        future.get(AWAIT_TIMEOUT_SEC, TimeUnit.SECONDS);
+      // Wait for inserts/backfill to return
+      try {
+        LOG.info("Waiting for INSERT and CREATE INDEX threads");
+        for (Future<?> future : futures) {
+          future.get(AWAIT_TIMEOUT_SEC, TimeUnit.SECONDS);
+        }
+      } catch (TimeoutException ex) {
+        LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
+        // It's very likely that cause lies on a YB side (e.g. unexpected performance slowdown),
+        // not in test.
+        fail("Waiting for future threads timed out, this is unexpected!");
       }
-    } catch (TimeoutException ex) {
-      LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
-      // It's very likely that cause lies on a YB side (e.g. unexpected performance slowdown),
-      // not in test.
-      fail("Waiting for future threads timed out, this is unexpected!");
+    } finally {
+      LOG.info("Shutting down executor service");
+      es.shutdownNow(); // This should interrupt all submitted threads
+      if (es.awaitTermination(10, TimeUnit.SECONDS)) {
+        LOG.info("Executor shutdown complete");
+      } else {
+        LOG.info("Executor shutdown failed (timed out)");
+      }
     }
 
     // Make sure that index contains everything
@@ -144,6 +158,6 @@ public class TestIndexBackfill extends BasePgSQLTest {
     String msgLc = ex.getMessage().toLowerCase();
     return msgLc.contains("schema version mismatch")
         || msgLc.contains("catalog version mismatch")
-        || msgLc.contains("rocksdb store is busy");
+        || (msgLc.contains("resource unavailable") && msgLc.contains("rocksdb"));
   }
 }
