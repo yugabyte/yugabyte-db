@@ -76,6 +76,8 @@ class LogEntryBatch;
 class LogIndex;
 class LogReader;
 
+YB_STRONGLY_TYPED_BOOL(CreateNewSegment);
+
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
 // Write Ahead Log and also plays the role of persistent storage for the consensus state machine.
 //
@@ -103,7 +105,7 @@ class Log : public RefCountedThreadSafe<Log> {
   static const Status kLogShutdownStatus;
 
   // Opens or continues a log and sets 'log' to the newly built Log.
-  // After a successful Open() the Log is ready to receive entries.
+  // After a successful Open() the Log is ready to receive entries, if create_new_segment is true.
   static CHECKED_STATUS Open(const LogOptions &options,
                              const std::string& tablet_id,
                              const std::string& wal_dir,
@@ -113,7 +115,8 @@ class Log : public RefCountedThreadSafe<Log> {
                              const scoped_refptr<MetricEntity>& metric_entity,
                              ThreadPool *append_thread_pool,
                              int64_t cdc_min_replicated_index,
-                             scoped_refptr<Log> *log);
+                             scoped_refptr<Log> *log,
+                             CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
 
   ~Log();
 
@@ -233,6 +236,10 @@ class Log : public RefCountedThreadSafe<Log> {
   // entries appended up to this point are available in closed, readable segments.
   CHECKED_STATUS AllocateSegmentAndRollOver();
 
+  // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization by
+  // allocating a new segment.
+  CHECKED_STATUS EnsureInitialNewSegmentAllocated();
+
   // Returns the total size of the current segments, in bytes.
   // Returns 0 if the log is shut down.
   uint64_t OnDiskSize();
@@ -320,9 +327,15 @@ class Log : public RefCountedThreadSafe<Log> {
     kAllocationFinished // Next segment ready
   };
 
-  Log(LogOptions options, std::string wal_dir, std::string tablet_id, std::string peer_uuid,
-      const Schema& schema, uint32_t schema_version,
-      const scoped_refptr<MetricEntity>& metric_entity, ThreadPool* append_thread_pool);
+  Log(LogOptions options,
+      std::string wal_dir,
+      std::string tablet_id,
+      std::string peer_uuid,
+      const Schema& schema,
+      uint32_t schema_version,
+      const scoped_refptr<MetricEntity>& metric_entity,
+      ThreadPool* append_thread_pool,
+      CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
 
   Env* get_env() {
     return options_.env;
@@ -511,6 +524,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // The current replicated index that CDC has read.  Used for CDC read cache optimization.
   std::atomic<int64_t> cdc_min_replicated_index_{std::numeric_limits<int64_t>::max()};
+
+  CreateNewSegment create_new_segment_at_start_;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };
