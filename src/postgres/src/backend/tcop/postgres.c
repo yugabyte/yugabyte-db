@@ -3800,6 +3800,12 @@ static void YBPrepareCacheRefreshIfNeeded(MemoryContext oldcontext,
 			FlushErrorState();
 			FreeErrorData(edata);
 
+			/*
+			 * Make sure debug_query_string gets reset before we possibly clobber
+			 * the storage it points at.
+			 */
+			debug_query_string = NULL;
+
 			/* Abort the transaction and clean up. */
 			AbortCurrentTransaction();
 			if (am_walsender)
