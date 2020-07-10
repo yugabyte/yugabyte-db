@@ -1652,7 +1652,7 @@ class ClusterControl:
                 YSQL_DEFAULT_PORT)
 
             info_kv_list.extend([
-                ("JDBC", "jdbc:postgresql://{}:{}/postgres".format(
+                ("JDBC", "jdbc:postgresql://{}:{}/yugabyte".format(
                     ip_address, ysql_port)),
                 ("YSQL Shell", ysqlsh_cmd_line)
             ])
