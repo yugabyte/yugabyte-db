@@ -136,7 +136,7 @@ OperationTracker::OperationTracker(const std::string& log_prefix)
 }
 
 OperationTracker::~OperationTracker() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<std::mutex> lock(mutex_);
   CHECK_EQ(pending_operations_.size(), 0);
   if (mem_tracker_) {
     mem_tracker_->UnregisterFromParent();
@@ -170,7 +170,7 @@ Status OperationTracker::Add(OperationDriver* driver) {
   // again, as it may disappear between now and then.
   State st;
   st.memory_footprint = driver_mem_footprint;
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<std::mutex> lock(mutex_);
   CHECK(pending_operations_.emplace(driver, st).second);
   return Status::OK();
 }
@@ -202,15 +202,20 @@ void OperationTracker::Release(OperationDriver* driver, OpIds* applied_op_ids) {
   State st;
   yb::OpId op_id = driver->GetOpId();
   OperationType operation_type = driver->operation_type();
+  bool notify;
   {
     // Remove the operation from the map, retaining the state for use
     // below.
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<std::mutex> lock(mutex_);
     st = FindOrDie(pending_operations_, driver);
     if (PREDICT_FALSE(pending_operations_.erase(driver) != 1)) {
       LOG_WITH_PREFIX(FATAL) << "Could not remove pending operation from map: "
           << driver->ToStringUnlocked();
     }
+    notify = pending_operations_.empty();
+  }
+  if (notify) {
+    cond_.notify_all();
   }
 
   if (mem_tracker_ && st.memory_footprint) {
@@ -227,19 +232,22 @@ void OperationTracker::Release(OperationDriver* driver, OpIds* applied_op_ids) {
 }
 
 std::vector<scoped_refptr<OperationDriver>> OperationTracker::GetPendingOperations() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return GetPendingOperationsUnlocked();
+}
+
+std::vector<scoped_refptr<OperationDriver>> OperationTracker::GetPendingOperationsUnlocked() const {
   std::vector<scoped_refptr<OperationDriver>> result;
-  {
-    std::lock_guard<simple_spinlock> l(lock_);
-    result.reserve(pending_operations_.size());
-    for (const auto& e : pending_operations_) {
-      result.push_back(e.first);
-    }
+  result.reserve(pending_operations_.size());
+  for (const auto& e : pending_operations_) {
+    result.push_back(e.first);
   }
   return result;
 }
 
+
 int OperationTracker::GetNumPendingForTests() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<std::mutex> l(mutex_);
   return pending_operations_.size();
 }
 
@@ -248,18 +256,17 @@ void OperationTracker::WaitForAllToFinish() const {
   CHECK_OK(WaitForAllToFinish(MonoDelta::FromNanoseconds(std::numeric_limits<int64_t>::max())));
 }
 
-Status OperationTracker::WaitForAllToFinish(const MonoDelta& timeout) const {
+Status OperationTracker::WaitForAllToFinish(const MonoDelta& timeout) const
+    NO_THREAD_SAFETY_ANALYSIS {
   const MonoDelta kComplainInterval = 1000ms * kTimeMultiplier;
   MonoDelta wait_time = 250ms * kTimeMultiplier;
   int num_complaints = 0;
   MonoTime start_time = MonoTime::Now();
+  auto operations = GetPendingOperations();
+  if (operations.empty()) {
+    return Status::OK();
+  }
   for (;;) {
-    auto operations = GetPendingOperations();
-
-    if (operations.empty()) {
-      break;
-    }
-
     MonoDelta diff = MonoTime::Now().GetDeltaSince(start_time);
     if (diff.MoreThan(timeout)) {
       return STATUS(TimedOut, Substitute("Timed out waiting for all operations to finish. "
@@ -278,7 +285,17 @@ Status OperationTracker::WaitForAllToFinish(const MonoDelta& timeout) const {
     for (scoped_refptr<OperationDriver> driver : operations) {
       LOG_WITH_PREFIX(INFO) << driver->ToString();
     }
-    SleepFor(wait_time);
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      if (pending_operations_.empty()) {
+        break;
+      }
+      if (cond_.wait_for(lock, wait_time.ToSteadyDuration()) == std::cv_status::no_timeout &&
+          pending_operations_.empty()) {
+        break;
+      }
+      operations = GetPendingOperationsUnlocked();
+    }
   }
   return Status::OK();
 }
