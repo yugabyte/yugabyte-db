@@ -682,19 +682,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // atomically to avoid race conditions.
   std::shared_ptr<client::YBMetaDataCache> YBMetaDataCache();
 
-  // Lock protecting schema_ and key_schema_.
-  //
-  // Writers take this lock in shared mode before decoding and projecting
-  // their requests. They hold the lock until after APPLY.
-  //
-  // Readers take this lock in shared mode only long enough to copy the
-  // current schema into the iterator, after which all projection is taken
-  // care of based on that copy.
-  //
-  // On an AlterSchema, this is taken in exclusive mode during Prepare() and
-  // released after the schema change has been applied.
-  mutable rw_semaphore schema_lock_;
-
   const Schema key_schema_;
 
   RaftGroupMetadataPtr metadata_;

@@ -136,16 +136,9 @@ void OperationState::LeaderInit(const OpId& op_id, const OpId& committed_op_id) 
   replicate_msg->set_monotonic_counter(*tablet()->monotonic_counter());
 }
 
-void ExclusiveSchemaOperationStateBase::AcquireSchemaLock(rw_semaphore* mutex) {
-  TRACE("Acquiring schema lock in exclusive mode");
-  schema_lock_ = std::unique_lock<rw_semaphore>(*mutex);
-  TRACE("Acquired schema lock");
-}
-
-void ExclusiveSchemaOperationStateBase::ReleaseSchemaLock() {
-  schema_lock_ = std::unique_lock<rw_semaphore>();
+void ExclusiveSchemaOperationStateBase::ReleasePermitToken() {
   permit_token_.Reset();
-  TRACE("Released schema lock");
+  TRACE("Released permit token");
 }
 
 OperationCompletionCallback::OperationCompletionCallback()

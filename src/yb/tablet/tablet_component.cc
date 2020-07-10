@@ -33,10 +33,6 @@ std::string TabletComponent::LogPrefix() const {
   return tablet_.LogPrefix();
 }
 
-rw_semaphore& TabletComponent::schema_lock() const {
-  return tablet_.schema_lock_;
-}
-
 RaftGroupMetadata& TabletComponent::metadata() const {
   return *tablet_.metadata();
 }
