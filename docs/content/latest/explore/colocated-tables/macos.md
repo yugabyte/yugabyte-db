@@ -3,7 +3,6 @@ title: Explore colocated tables in YugabyteDB on macOS
 headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Create and use colocated tables in a local YugabyteDB cluster on macOS.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /latest/explore/colocated-tables/
 menu:

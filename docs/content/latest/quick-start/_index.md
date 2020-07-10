@@ -8,7 +8,7 @@ headcontent: The easiest way to test YugabyteDB's basic features and APIs is to 
 type: page
 aliases:
   - /quick-start/
-section: GET STARTED
+section: YUGABYTEDB CORE
 menu:
   latest:
     identifier: quick-start

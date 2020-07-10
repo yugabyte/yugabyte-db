@@ -1,8 +1,8 @@
 ---
-title: Explore core features
-headerTitle: Explore core features
-linkTitle: Explore core features
-description: Explore the core features of YugabyteDB on macOS, Linux, Docker, and Kubernetes (Minikube).
+title: Explore features
+headerTitle: Explore features
+linkTitle: Explore features
+description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes (Minikube).
 headcontent:
 image: /images/section_icons/index/explore.png
 aliases:
@@ -11,11 +11,11 @@ aliases:
   - /latest/explore/high-performance/
   - /latest/explore/planet-scale/
   - /latest/explore/cloud-native/orchestration-readiness/
-section: GET STARTED
+section: YUGABYTEDB CORE
 menu:
   latest:
     identifier: explore
-    weight: 600
+    weight: 540
 ---
 
 {{< tip title="Tip" >}}
