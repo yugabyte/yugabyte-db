@@ -29,10 +29,12 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tools/yb-admin_client.h"
 
+using namespace std::literals;
+
 namespace yb {
 namespace integration_tests {
 
-constexpr uint32_t kDefaultTimeoutMillis = 30000;
+const auto kDefaultTimeout = 30000ms;
 
 class LoadBalancerTest : public YBTableTestBase {
  protected:
@@ -40,7 +42,7 @@ class LoadBalancerTest : public YBTableTestBase {
     YBTableTestBase::SetUp();
 
     yb_admin_client_ = std::make_unique<tools::enterprise::ClusterAdminClient>(
-        external_mini_cluster()->GetMasterAddresses(), kDefaultTimeoutMillis);
+        external_mini_cluster()->GetMasterAddresses(), kDefaultTimeout);
 
     ASSERT_OK(yb_admin_client_->Init());
   }
@@ -64,8 +66,8 @@ class LoadBalancerTest : public YBTableTestBase {
     master::GetTableLocationsResponsePB resp;
 
     rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromMilliseconds(kDefaultTimeoutMillis));
-        RETURN_NOT_OK(proxy->GetTableLocations(req, &resp, &rpc));
+    rpc.set_timeout(kDefaultTimeout);
+    RETURN_NOT_OK(proxy->GetTableLocations(req, &resp, &rpc));
 
     uint32_t count = 0;
     std::vector<string> replicas;
@@ -86,7 +88,7 @@ class LoadBalancerTest : public YBTableTestBase {
     master::AreLeadersOnPreferredOnlyRequestPB req;
     master::AreLeadersOnPreferredOnlyResponsePB resp;
     rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kDefaultTimeoutMillis));
+    rpc.set_timeout(kDefaultTimeout);
     auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
     RETURN_NOT_OK(proxy->AreLeadersOnPreferredOnly(req, &resp, &rpc));
     return !resp.has_error();
@@ -114,7 +116,7 @@ TEST_F(LoadBalancerTest, PreferredZoneAddNode) {
 
   ASSERT_OK(WaitFor([&]() {
     return AreLeadersOnPreferredOnly();
-  }, MonoDelta::FromMilliseconds(kDefaultTimeoutMillis), "AreLeadersOnPreferredOnly"));
+  }, kDefaultTimeout, "AreLeadersOnPreferredOnly"));
 
   std::vector<std::string> extra_opts;
   extra_opts.push_back("--placement_cloud=c");
@@ -124,7 +126,7 @@ TEST_F(LoadBalancerTest, PreferredZoneAddNode) {
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return client_->IsLoadBalanced(num_tablet_servers() + 1);
-  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis * 2), "IsLoadBalanced"));
+  },  kDefaultTimeout * 2, "IsLoadBalanced"));
 
   auto firstLoad = ASSERT_RESULT(GetLoadOnTserver(external_mini_cluster()->tablet_server(1)));
   auto secondLoad = ASSERT_RESULT(GetLoadOnTserver(external_mini_cluster()->tablet_server(3)));
@@ -145,16 +147,16 @@ TEST_F(LoadBalancerTest, IsLoadBalancerIdle) {
   extra_opts.push_back("--placement_zone=z1");
   ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
   ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(num_tablet_servers() + 1,
-      MonoDelta::FromMilliseconds(kDefaultTimeoutMillis)));
+      kDefaultTimeout));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
     return !is_idle;
-  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis * 2), "IsLoadBalancerActive"));
+  },  kDefaultTimeout * 2, "IsLoadBalancerActive"));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return client_->IsLoadBalancerIdle();
-  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis * 2), "IsLoadBalancerIdle"));
+  },  kDefaultTimeout * 2, "IsLoadBalancerIdle"));
 
   YBTableTestBase::DeleteTable();
   // Assert that this times out.

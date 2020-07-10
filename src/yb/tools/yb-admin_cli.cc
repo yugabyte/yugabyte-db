@@ -135,11 +135,11 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
         &init_master_addrs));
     client.reset(new ClusterAdminClientClass(
         init_master_addrs[0],
-        FLAGS_timeout_ms));
+        MonoDelta::FromMilliseconds(FLAGS_timeout_ms)));
   } else {
     client.reset(new ClusterAdminClientClass(
         addrs,
-        FLAGS_timeout_ms));
+        MonoDelta::FromMilliseconds(FLAGS_timeout_ms)));
   }
 
   RegisterCommandHandlers(client.get());

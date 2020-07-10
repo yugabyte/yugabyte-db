@@ -28,11 +28,11 @@ namespace enterprise {
 class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   typedef yb::tools::ClusterAdminClient super;
  public:
-  ClusterAdminClient(std::string addrs, int64_t timeout_millis)
-      : super(std::move(addrs), timeout_millis) {}
+  ClusterAdminClient(std::string addrs, MonoDelta timeout)
+      : super(std::move(addrs), timeout) {}
 
-  ClusterAdminClient(const HostPort& init_master_addrs, int64_t timeout_millis)
-      : super(init_master_addrs, timeout_millis) {}
+  ClusterAdminClient(const HostPort& init_master_addrs, MonoDelta timeout)
+      : super(init_master_addrs, timeout) {}
 
   // Snapshot operations.
   CHECKED_STATUS ListSnapshots(bool show_details, bool show_restored);

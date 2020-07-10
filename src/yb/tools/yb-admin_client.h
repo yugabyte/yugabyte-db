@@ -94,9 +94,9 @@ class ClusterAdminClient {
   // Creates an admin client for host/port combination e.g.,
   // "localhost" or "127.0.0.1:7050" with the given timeout.
   // If certs_dir is non-empty, caller will init the yb_client_.
-  ClusterAdminClient(std::string addrs, int64_t timeout_millis);
+  ClusterAdminClient(std::string addrs, MonoDelta timeout);
 
-  ClusterAdminClient(const HostPort& init_master_addr, int64_t timeout_millis);
+  ClusterAdminClient(const HostPort& init_master_addr, MonoDelta timeout);
 
   virtual ~ClusterAdminClient();
 

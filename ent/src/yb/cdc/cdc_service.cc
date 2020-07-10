@@ -710,7 +710,7 @@ void CDCServiceImpl::TabletLeaderGetChanges(const GetChangesRequestPB* req,
     deadline = CoarseMonoClock::now() + async_client_init_->client()->default_rpc_timeout();
   }
   *rpc_handle = CreateGetChangesCDCRpc(
-      context->GetClientDeadline(),
+      deadline,
       nullptr, /* RemoteTablet: will get this from 'new_req' */
       async_client_init_->client(),
       &new_req,
