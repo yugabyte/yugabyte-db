@@ -29,10 +29,12 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tools/yb-admin_client.h"
 
+using namespace std::literals;
+
 namespace yb {
 namespace integration_tests {
 
-constexpr uint32_t kDefaultTimeoutMillis = 30000;
+const MonoDelta kDefaultTimeout = 30000ms;
 
 class LoadBalancerRespectAffinityTest : public YBTableTestBase {
  protected:
@@ -40,7 +42,7 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
     YBTableTestBase::SetUp();
 
     yb_admin_client_ = std::make_unique<tools::enterprise::ClusterAdminClient>(
-        external_mini_cluster()->GetMasterAddresses(), kDefaultTimeoutMillis);
+        external_mini_cluster()->GetMasterAddresses(), kDefaultTimeout);
 
     ASSERT_OK(yb_admin_client_->Init());
   }
@@ -59,7 +61,7 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
     master::AreTransactionLeadersSpreadRequestPB req;
     master::AreTransactionLeadersSpreadResponsePB resp;
     rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kDefaultTimeoutMillis));
+    rpc.set_timeout(kDefaultTimeout);
     auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
     RETURN_NOT_OK(proxy->AreTransactionLeadersSpread(req, &resp, &rpc));
     return !resp.has_error();
@@ -69,7 +71,7 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
     master::AreLeadersOnPreferredOnlyRequestPB req;
     master::AreLeadersOnPreferredOnlyResponsePB resp;
     rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kDefaultTimeoutMillis));
+    rpc.set_timeout(kDefaultTimeout);
     auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
     RETURN_NOT_OK(proxy->AreLeadersOnPreferredOnly(req, &resp, &rpc));
     return !resp.has_error();
@@ -100,15 +102,15 @@ TEST_F(LoadBalancerRespectAffinityTest,
   // using preferred zones.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return client_->IsLoadBalanced(num_tablet_servers());
-  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis * 2), "IsLoadBalanced"));
+  }, kDefaultTimeout * 2, "IsLoadBalanced"));
 
   ASSERT_OK(WaitFor([&]() {
     return AreTransactionLeadersSpread();
-  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis), "AreTransactionLeadersSpread"));
+  }, kDefaultTimeout, "AreTransactionLeadersSpread"));
 
   Status s = WaitFor([&]() {
     return AreLeadersOnPreferredOnly();
-  }, MonoDelta::FromMilliseconds(kDefaultTimeoutMillis), "AreLeadersOnPreferredOnly");
+  }, kDefaultTimeout, "AreLeadersOnPreferredOnly");
   ASSERT_FALSE(s.ok());
 
   // Now test that once setting this gflag, after leader load re-balances all leaders are
@@ -120,11 +122,11 @@ TEST_F(LoadBalancerRespectAffinityTest,
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return client_->IsLoadBalanced(num_tablet_servers());
-  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis * 2), "IsLoadBalanced"));
+  },  kDefaultTimeout * 2, "IsLoadBalanced"));
 
   ASSERT_OK(WaitFor([&]() {
     return AreLeadersOnPreferredOnly();
-  }, MonoDelta::FromMilliseconds(kDefaultTimeoutMillis), "AreLeadersOnPreferredOnly"));
+  }, kDefaultTimeout, "AreLeadersOnPreferredOnly"));
 
   // Now test that toggling the gflag back to false rebalances the transaction tablet leaders
   // to not just be on preferred zones.
@@ -135,15 +137,15 @@ TEST_F(LoadBalancerRespectAffinityTest,
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return client_->IsLoadBalanced(num_tablet_servers());
-  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis * 2), "IsLoadBalanced"));
+  },  kDefaultTimeout * 2, "IsLoadBalanced"));
 
   ASSERT_OK(WaitFor([&]() {
     return AreTransactionLeadersSpread();
-  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis), "AreTransactionLeadersSpread"));
+  },  kDefaultTimeout, "AreTransactionLeadersSpread"));
 
   s = WaitFor([&]() {
     return AreLeadersOnPreferredOnly();
-  }, MonoDelta::FromMilliseconds(kDefaultTimeoutMillis), "AreLeadersOnPreferredOnly");
+  }, kDefaultTimeout, "AreLeadersOnPreferredOnly");
   ASSERT_FALSE(s.ok());
 }
 

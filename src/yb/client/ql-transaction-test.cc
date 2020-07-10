@@ -1389,7 +1389,7 @@ TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
   constexpr auto kTestTime = 5s;
 
   DisableTransactionTimeout();
-  FLAGS_transaction_rpc_timeout_ms = MonoDelta(1min).ToMicroseconds();
+  FLAGS_transaction_rpc_timeout_ms = MonoDelta(1min).ToMilliseconds();
 
   std::vector<std::thread> threads;
   std::atomic<bool> stopped{false};

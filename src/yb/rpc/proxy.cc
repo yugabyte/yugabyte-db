@@ -172,6 +172,10 @@ void Proxy::DoAsyncRequest(const RemoteMethod* method,
     return;
   }
 
+  if (controller->timeout().Initialized() && controller->timeout() > 3600s) {
+    LOG(DFATAL) << "Too big timeout specified: " << controller->timeout();
+  }
+
   if (call_local_service_) {
     // For local call, the response message buffer is reused when an RPC call is retried. So clear
     // the buffer before calling the RPC method.

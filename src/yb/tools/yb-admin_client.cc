@@ -426,14 +426,14 @@ std::vector<client::YBTableName>& TableNameResolver::values() {
   return impl_->values();
 }
 
-ClusterAdminClient::ClusterAdminClient(string addrs, int64_t timeout_millis)
+ClusterAdminClient::ClusterAdminClient(string addrs, MonoDelta timeout)
     : master_addr_list_(std::move(addrs)),
-      timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
+      timeout_(timeout),
       initted_(false) {}
 
-ClusterAdminClient::ClusterAdminClient(const HostPort& init_master_addr, int64_t timeout_millis)
+ClusterAdminClient::ClusterAdminClient(const HostPort& init_master_addr, MonoDelta timeout)
     : init_master_addr_(init_master_addr),
-      timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
+      timeout_(timeout),
       initted_(false) {}
 
 ClusterAdminClient::~ClusterAdminClient() {
