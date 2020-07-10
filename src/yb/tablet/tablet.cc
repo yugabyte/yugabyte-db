@@ -1943,11 +1943,6 @@ Status Tablet::CreatePreparedChangeMetadata(ChangeMetadataOperationState *operat
     }
   }
 
-  if (!operation_state->op_id().IsInitialized()) {
-    // Acquire schema lock only on the leader.
-    operation_state->AcquireSchemaLock(&schema_lock_);
-  }
-
   operation_state->set_schema(schema);
   return Status::OK();
 }
