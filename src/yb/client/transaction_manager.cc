@@ -57,7 +57,7 @@ void InvokeCallback(const LocalTabletFilter& filter, const std::vector<TabletId>
       callback(*RandomElement(ids));
       return;
     }
-    LOG(WARNING) << "No local transaction status tablet";
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << "No local transaction status tablet";
   }
   callback(RandomElement(tablets));
 }
