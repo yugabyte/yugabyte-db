@@ -112,6 +112,8 @@ Status:
 
 ## Connecting TLS Secured YugabyteDB cluster deployed by Helm Charts
 
+Follow the following [documentation link](https://docs.yugabyte.com/latest/deploy/kubernetes/single-zone/gke/helm-chart/) for the deployment of YugabyteDB cluster using Helm Chart and to bring up the cluster with encryption in transit (TLS) enabled, set the flag `tls.enabled=true` in the helm command-line.
+
 ### Within Kubernetes cluster
 
 Copy the following `yb-client.yaml` and use this `kubectl create -f yb-client.yaml` command to create a pod with auto-mounted client certificates.
@@ -186,7 +188,7 @@ $ kubectl delete po yb-client -n yb-demo
 pod "yb-client" deleted
 ```
 
-### Connecting Remote Cluster
+### Connecting externally
 
 Prerequisites:
 1. Client Certificates
