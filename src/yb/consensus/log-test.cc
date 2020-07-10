@@ -407,6 +407,7 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
   // Last entry is ignored, but we should still see the previous ones.
   ASSERT_EQ(expected_entries, read_entries.entries.size());
 }
+
 // Tests that the log reader reads up until some truncated entry is found.
 // It should still return OK, since on a crash, it's acceptable to have
 // a partial entry at EOF.
@@ -684,7 +685,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
 TEST_F(LogTest, TestWaitUntilAllFlushed) {
   BuildLog();
   // Append 2 replicate pairs asynchronously
-  AppendReplicateBatchToLog(2, APPEND_ASYNC);
+  AppendReplicateBatchToLog(2, AppendSync::kTrue);
 
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
@@ -876,8 +877,12 @@ TEST_F(LogTest, TestLogReader) {
 TEST_F(LogTest, TestLogReaderReturnsLatestSegmentIfIndexEmpty) {
   BuildLog();
 
-  OpIdPB opid = MakeOpId(1, 1);
-  AppendReplicateBatch(opid, MakeOpId(0, 0), {}, APPEND_SYNC, kTableType);
+  AppendReplicateBatch({
+    .op_id = {1, 1},
+    .committed_op_id = {0, 0},
+    .writes = {},
+    .sync = AppendSync::kTrue,
+  });
 
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));

@@ -76,6 +76,7 @@ using consensus::ReplicateMsg;
 using consensus::WRITE_OP;
 using consensus::NO_OP;
 using consensus::MakeOpId;
+using consensus::MakeOpIdPB;
 
 using server::Clock;
 
@@ -91,8 +92,8 @@ using docdb::ValueType;
 
 const char* kTestTable = "test-log-table";
 const char* kTestTablet = "test-log-tablet";
-const bool APPEND_SYNC = true;
-const bool APPEND_ASYNC = false;
+
+YB_STRONGLY_TYPED_BOOL(AppendSync);
 
 // Append a single batch of 'count' NoOps to the log.  If 'size' is not NULL, increments it by the
 // expected increase in log size.  Increments 'op_id''s index once for each operation logged.
@@ -171,6 +172,11 @@ class LogTestBase : public YBTest {
                  .Build(&append_pool_));
   }
 
+  void CleanTablet() {
+    ASSERT_OK(fs_manager_->DeleteFileSystemLayout(ShouldDeleteLogs::kTrue));
+    ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
+  }
+
   void BuildLog() {
     Schema schema_with_ids = SchemaBuilder(schema_).Build();
     ASSERT_OK(Log::Open(options_,
@@ -183,13 +189,13 @@ class LogTestBase : public YBTest {
                        append_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                        &log_));
+    LOG(INFO) << "Sucessfully opened the log at " << tablet_wal_path_;
   }
 
   void CheckRightNumberOfSegmentFiles(int expected) {
-    // Test that we actually have the expected number of files in the fs.  We should have n segments
-    // plus '.' and '..'
-    vector<string> files;
-    ASSERT_OK(env_->GetChildren(tablet_wal_path_, &files));
+    // Test that we actually have the expected number of files in the fs. We should have n segments.
+    const vector<string> files =
+        ASSERT_RESULT(env_->GetChildren(tablet_wal_path_, ExcludeDots::kTrue));
     int count = 0;
     for (const string& s : files) {
       if (HasPrefixString(s, FsManager::kWalFileNamePrefix)) {
@@ -203,33 +209,71 @@ class LogTestBase : public YBTest {
     ASSERT_OK(s);
   }
 
+  struct AppendReplicateBatchData {
+    yb::OpId op_id;
+    yb::OpId committed_op_id;
+    std::vector<TupleForAppend> writes;
+    AppendSync sync = AppendSync::kTrue;
+    consensus::OperationType op_type = consensus::OperationType::WRITE_OP;
+    TransactionId txn_id = TransactionId::Nil();
+    TransactionStatus txn_status = TransactionStatus::CLEANUP;
+  };
+
+  void AppendReplicateBatch(AppendReplicateBatchData data) {
+    AppendReplicateBatch(
+        MakeOpIdPB(data.op_id),
+        MakeOpIdPB(data.committed_op_id),
+        std::move(data.writes),
+        data.sync,
+        data.op_type,
+        data.txn_id,
+        data.txn_status);
+  }
+
   // Appends a batch with size 2, or the given set of writes.
-  void AppendReplicateBatch(const OpIdPB& opid,
-                            const OpIdPB& committed_opid = MakeOpId(0, 0),
-                            std::vector<TupleForAppend> writes = {},
-                            bool sync = APPEND_SYNC,
-                            TableType table_type = TableType::YQL_TABLE_TYPE) {
+  void AppendReplicateBatch(
+      const OpIdPB& opid,
+      const OpIdPB& committed_opid = MakeOpId(0, 0),
+      std::vector<TupleForAppend> writes = {},
+      AppendSync sync = AppendSync::kTrue,
+      consensus::OperationType op_type = consensus::OperationType::WRITE_OP,
+      TransactionId txn_id = TransactionId::Nil(),
+      TransactionStatus txn_status = TransactionStatus::APPLYING) {
     auto replicate = std::make_shared<ReplicateMsg>();
-    replicate->set_op_type(WRITE_OP);
+    replicate->set_op_type(op_type);
     replicate->mutable_id()->CopyFrom(opid);
     replicate->mutable_committed_op_id()->CopyFrom(committed_opid);
     replicate->set_hybrid_time(clock_->Now().ToUint64());
     WriteRequestPB *batch_request = replicate->mutable_write_request();
-    if (writes.empty()) {
-      const int opid_index_as_int = static_cast<int>(opid.index());
-      // Since OpIds deal with int64 index and term, we are downcasting here. In order to be able
-      // to test with values > INT_MAX, we need to make sure we do not overflow, while still
-      // wanting to add 2 different values here.
-      //
-      // Picking x and x / 2 + 1 as the 2 values.
-      // For small numbers, special casing x <= 2.
-      const int other_int = opid_index_as_int <= 2 ? 3 : opid_index_as_int / 2 + 1;
-      writes.emplace_back(opid_index_as_int, 0, "this is a test insert");
-      writes.emplace_back(other_int, 0, "this is a test mutate");
-    }
-    auto write_batch = batch_request->mutable_write_batch();
-    for (const auto &w : writes) {
-      AddKVToPB(std::get<0>(w), std::get<1>(w), std::get<2>(w), write_batch);
+
+    if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
+      ASSERT_TRUE(!txn_id.IsNil());
+      replicate->mutable_transaction_state()->set_status(txn_status);
+    } else if (op_type == consensus::OperationType::WRITE_OP) {
+      if (writes.empty()) {
+        const int opid_index_as_int = static_cast<int>(opid.index());
+        // Since OpIds deal with int64 index and term, we are downcasting here. In order to be able
+        // to test with values > INT_MAX, we need to make sure we do not overflow, while still
+        // wanting to add 2 different values here.
+        //
+        // Picking x and x / 2 + 1 as the 2 values.
+        // For small numbers, special casing x <= 2.
+        const int other_int = opid_index_as_int <= 2 ? 3 : opid_index_as_int / 2 + 1;
+        writes.emplace_back(
+            /* key */ opid_index_as_int, /* int_val */ 0, /* string_val */ "this is a test insert");
+        writes.emplace_back(
+            /* key */ other_int, /* int_val */ 0, /* string_val */ "this is a test mutate");
+      }
+
+      auto write_batch = batch_request->mutable_write_batch();
+      if (!txn_id.IsNil()) {
+        write_batch->mutable_transaction()->set_transaction_id(txn_id.data(), txn_id.size());
+      }
+      for (const auto &w : writes) {
+        AddKVToPB(std::get<0>(w), std::get<1>(w), std::get<2>(w), write_batch);
+      }
+    } else {
+      FAIL() << "Unexpected operation type: " << consensus::OperationType_Name(op_type);
     }
 
     batch_request->set_tablet_id(kTestTablet);
@@ -238,40 +282,41 @@ class LogTestBase : public YBTest {
 
   // Appends the provided batch to the log.
   void AppendReplicateBatch(const consensus::ReplicateMsgPtr& replicate,
-                            bool sync = APPEND_SYNC) {
+                            AppendSync sync = AppendSync::kTrue) {
+    const auto committed_op_id = yb::OpId::FromPB(replicate->committed_op_id());
+    const auto batch_mono_time = restart_safe_coarse_mono_clock_.Now();
     if (sync) {
       Synchronizer s;
       ASSERT_OK(log_->AsyncAppendReplicates(
-          { replicate }, yb::OpId() /* committed_op_id */, restart_safe_coarse_mono_clock_.Now(),
-          s.AsStatusCallback()));
+          { replicate }, committed_op_id, batch_mono_time, s.AsStatusCallback()));
       ASSERT_OK(s.Wait());
     } else {
       // AsyncAppendReplicates does not free the ReplicateMsg on completion, so we
       // need to pass it through to our callback.
       ASSERT_OK(log_->AsyncAppendReplicates(
-          { replicate }, yb::OpId() /* committed_op_id */, restart_safe_coarse_mono_clock_.Now(),
+          { replicate }, committed_op_id, batch_mono_time,
           Bind(&LogTestBase::CheckReplicateResult, replicate)));
     }
   }
 
   // Appends 'count' ReplicateMsgs to the log as committed entries.
-  void AppendReplicateBatchToLog(int count, bool sync = true) {
+  void AppendReplicateBatchToLog(int count, AppendSync sync = AppendSync::kTrue) {
     for (int i = 0; i < count; i++) {
       OpIdPB opid = consensus::MakeOpId(1, current_index_);
-      AppendReplicateBatch(opid, opid);
+      AppendReplicateBatch(opid, opid, /* writes */ {}, sync);
       current_index_ += 1;
     }
   }
 
   // Append a single NO_OP entry. Increments op_id by one.  If non-NULL, and if the write is
   // successful, 'size' is incremented by the size of the written operation.
-  CHECKED_STATUS AppendNoOp(OpIdPB* op_id, int* size = NULL) {
+  CHECKED_STATUS AppendNoOp(OpIdPB* op_id, int* size = nullptr) {
     return AppendNoOpToLogSync(clock_, log_.get(), op_id, size);
   }
 
   // Append a number of no-op entries to the log.  Increments op_id's index by the number of records
   // written.  If non-NULL, 'size' keeps track of the size of the operations successfully written.
-  CHECKED_STATUS AppendNoOps(OpIdPB* op_id, int num, int* size = NULL) {
+  CHECKED_STATUS AppendNoOps(OpIdPB* op_id, int num, int* size = nullptr) {
     for (int i = 0; i < num; i++) {
       RETURN_NOT_OK(AppendNoOp(op_id, size));
     }
