@@ -73,7 +73,7 @@ struct TestLogSequenceElem {
     ROLL
   };
   ElemType type;
-  OpId id;
+  OpIdPB id;
 };
 
 class LogTest : public LogTestBase {
@@ -88,8 +88,8 @@ class LogTest : public LogTestBase {
   // Create a series of NO_OP entries in the log.
   // Anchor each segment on the first OpId of each log segment,
   // and update op_id to point to the next valid OpId.
-  Status AppendMultiSegmentSequence(int num_total_segments, int num_ops_per_segment,
-                                    OpId* op_id, vector<LogAnchor*>* anchors) {
+  Status AppendMultiSegmentSequence(
+      int num_total_segments, int num_ops_per_segment, OpIdPB* op_id, vector<LogAnchor*>* anchors) {
     CHECK(op_id->IsInitialized());
     for (int i = 0; i < num_total_segments - 1; i++) {
       if (anchors) {
@@ -158,7 +158,7 @@ class LogTest : public LogTestBase {
 TEST_F(LogTest, TestMultipleEntriesInABatch) {
   BuildLog();
 
-  OpId opid;
+  OpIdPB opid;
   opid.set_term(1);
   opid.set_index(1);
 
@@ -214,7 +214,7 @@ TEST_F(LogTest, TestFsync) {
   options_.durable_wal_write = true;
   BuildLog();
 
-  OpId opid;
+  OpIdPB opid;
   opid.set_term(0);
   opid.set_index(1);
 
@@ -227,7 +227,7 @@ TEST_F(LogTest, TestFsyncInterval) {
   options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(1);
   BuildLog();
 
-  OpId opid;
+  OpIdPB opid;
   opid.set_term(0);
   opid.set_index(1);
 
@@ -246,7 +246,7 @@ TEST_F(LogTest, TestFsyncIntervalPhysical) {
   options_.preallocate_segments = false;
   BuildLog();
 
-  OpId opid;
+  OpIdPB opid;
   opid.set_term(0);
   opid.set_index(1);
 
@@ -287,7 +287,7 @@ TEST_F(LogTest, TestFsyncDataSize) {
   options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(10000);
   BuildLog();
 
-  OpId opid;
+  OpIdPB opid;
   opid.set_term(0);
   opid.set_index(1);
 
@@ -306,7 +306,7 @@ TEST_F(LogTest, TestSizeIsMaintained) {
   options_.preallocate_segments = false;
   BuildLog();
 
-  OpId opid = MakeOpId(0, 1);
+  OpIdPB opid = MakeOpId(0, 1);
   ASSERT_OK(AppendNoOp(&opid));
 
   SegmentSequence segments;
@@ -328,7 +328,7 @@ TEST_F(LogTest, TestSizeIsMaintained) {
 TEST_F(LogTest, TestLogNotTrimmed) {
   BuildLog();
 
-  OpId opid;
+  OpIdPB opid;
   opid.set_term(0);
   opid.set_index(1);
 
@@ -369,7 +369,7 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
                                Status expected_status, int expected_entries) {
   const int kNumEntries = 4;
   BuildLog();
-  OpId op_id = MakeOpId(1, 1);
+  OpIdPB op_id = MakeOpId(1, 1);
   ASSERT_OK(AppendNoOps(&op_id, kNumEntries));
 
   // Find the entry that we want to corrupt before closing the log.
@@ -439,7 +439,7 @@ TEST_F(LogTest, TestSegmentRollover) {
   log_->SetMaxSegmentSizeForTests(990);
   const int kNumEntriesPerBatch = 100;
 
-  OpId op_id = MakeOpId(1, 1);
+  OpIdPB op_id = MakeOpId(1, 1);
   int num_entries = 0;
 
   SegmentSequence segments;
@@ -499,7 +499,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   // Dummy add_entry to help us estimate the size of what
   // gets written to disk.
   LogEntryBatchPB batch;
-  OpId op_id = MakeOpId(1, 1);
+  OpIdPB op_id = MakeOpId(1, 1);
   batch.set_mono_time(1);
   LogEntryPB* log_entry = batch.add_entry();
   log_entry->set_type(REPLICATE);
@@ -569,7 +569,7 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   const int kNumTotalSegments = 4;
   const int kNumOpsPerSegment = 5;
   int num_gced_segments;
-  OpId op_id = MakeOpId(1, 1);
+  OpIdPB op_id = MakeOpId(1, 1);
   int64_t anchored_index = -1;
 
   ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
@@ -649,7 +649,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   // 1000010-<still open> /
   const int kNumTotalSegments = 5;
   const int kNumOpsPerSegment = 5;
-  OpId op_id = MakeOpId(1, 999990);
+  OpIdPB op_id = MakeOpId(1, 999990);
   ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
                                               &op_id, nullptr));
 
@@ -712,7 +712,7 @@ TEST_F(LogTest, TestLogReopenAndGC) {
   const int kNumTotalSegments = 3;
   const int kNumOpsPerSegment = 5;
   int num_gced_segments;
-  OpId op_id = MakeOpId(1, 1);
+  OpIdPB op_id = MakeOpId(1, 1);
   int64_t anchored_index = -1;
 
   ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
@@ -824,7 +824,7 @@ TEST_F(LogTest, TestLogReader) {
   ASSERT_OK(AppendNewEmptySegmentToReader(3, 20, &reader));
   ASSERT_OK(AppendNewEmptySegmentToReader(4, 30, &reader));
 
-  OpId op;
+  OpIdPB op;
   op.set_term(0);
   SegmentSequence segments;
 
@@ -876,7 +876,7 @@ TEST_F(LogTest, TestLogReader) {
 TEST_F(LogTest, TestLogReaderReturnsLatestSegmentIfIndexEmpty) {
   BuildLog();
 
-  OpId opid = MakeOpId(1, 1);
+  OpIdPB opid = MakeOpId(1, 1);
   AppendReplicateBatch(opid, MakeOpId(0, 0), {}, APPEND_SYNC, kTableType);
 
   SegmentSequence segments;
@@ -889,7 +889,7 @@ TEST_F(LogTest, TestLogReaderReturnsLatestSegmentIfIndexEmpty) {
 }
 
 TEST_F(LogTest, TestOpIdUtils) {
-  OpId id = MakeOpId(1, 2);
+  OpIdPB id = MakeOpId(1, 2);
   ASSERT_EQ("1.2", consensus::OpIdToString(id));
   ASSERT_EQ(1, id.term());
   ASSERT_EQ(2, id.index());
@@ -921,7 +921,7 @@ void LogTest::GenerateTestSequence(Random* rng, int seq_len,
   int64_t committed_index = 0;
   int64_t max_repl_index = 0;
 
-  OpId id = MakeOpId(1, 0);
+  OpIdPB id = MakeOpId(1, 0);
   for (int i = 0; i < seq_len; i++) {
     if (rng->OneIn(5)) {
       // Reset term - it may stay the same, or go up/down
@@ -959,7 +959,7 @@ void LogTest::AppendTestSequence(const vector<TestLogSequenceElem>& seq) {
     switch (e.type) {
       case TestLogSequenceElem::REPLICATE:
       {
-        OpId id(e.id);
+        OpIdPB id(e.id);
         ASSERT_OK(AppendNoOp(&id));
         break;
       }
@@ -1076,7 +1076,7 @@ TEST_F(LogTest, TestGetMaxIndexesToSegmentSizeMap) {
 
   const int kNumTotalSegments = 5;
   const int kNumOpsPerSegment = 5;
-  OpId op_id = MakeOpId(1, 10);
+  OpIdPB op_id = MakeOpId(1, 10);
   // Create 5 segments, starting from log index 10, with 5 ops per segment.
   ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
                                               &op_id, nullptr));
@@ -1128,7 +1128,7 @@ TEST_F(LogTest, TestReadReplicatesHighIndex) {
   const int kSequenceLength = 10;
 
   BuildLog();
-  OpId op_id;
+  OpIdPB op_id;
   op_id.set_term(first_log_index);
   op_id.set_index(first_log_index);
   ASSERT_OK(AppendNoOps(&op_id, kSequenceLength));

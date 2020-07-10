@@ -110,7 +110,6 @@ using consensus::RaftConfigPB;
 using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MinimumOpId;
-using consensus::OpId;
 using consensus::OpIdEquals;
 using consensus::OpIdToString;
 using consensus::ReplicateMsg;
@@ -153,15 +152,15 @@ typedef std::map<int64_t, Entry> OpIndexToEntryMap;
 
 // State kept during replay.
 struct ReplayState {
-  ReplayState(const consensus::OpId& regular_op_id, const consensus::OpId& intents_op_id);
+  ReplayState(const OpIdPB& regular_op_id, const OpIdPB& intents_op_id);
 
   // Return true if 'b' is allowed to immediately follow 'a' in the log.
-  static bool IsValidSequence(const consensus::OpId& a, const consensus::OpId& b);
+  static bool IsValidSequence(const OpIdPB& a, const OpIdPB& b);
 
   // Return a Corruption status if 'id' seems to be out-of-sequence in the log.
   Status CheckSequentialReplicateId(const consensus::ReplicateMsg& msg);
 
-  void UpdateCommittedOpId(const consensus::OpId& id);
+  void UpdateCommittedOpId(const OpIdPB& id);
 
   // Updates split_op_id. Expects msg to be SPLIT_OP.
   // tablet_id is ID of the tablet being bootstrapped.
@@ -189,15 +188,15 @@ struct ReplayState {
   bool UpdateCommittedFromStored();
 
   // The last replicate message's ID.
-  consensus::OpId prev_op_id = consensus::MinimumOpId();
+  OpIdPB prev_op_id = consensus::MinimumOpId();
 
   // The last operation known to be committed.  All other operations with lower IDs are also
   // committed.
-  consensus::OpId committed_op_id = consensus::MinimumOpId();
+  OpIdPB committed_op_id = consensus::MinimumOpId();
 
   // The id of the split operation designated for this tablet added to Raft log.
   // See comments for ReplicateState::split_op_id_.
-  consensus::OpId split_op_id;
+  OpIdPB split_op_id;
 
   // All REPLICATE entries that have not been applied to RocksDB yet. We decide what entries are
   // safe to apply and delete from this map based on the commit index included into each REPLICATE
@@ -209,8 +208,8 @@ struct ReplayState {
   // ----------------------------------------------------------------------------------------------
   // State specific to RocksDB-backed tables
 
-  const consensus::OpId regular_stored_op_id;
-  const consensus::OpId intents_stored_op_id;
+  const OpIdPB regular_stored_op_id;
+  const OpIdPB intents_stored_op_id;
 
   // Total number of log entries applied to RocksDB.
   int64_t num_entries_applied_to_rocksdb = 0;
@@ -222,7 +221,7 @@ struct ReplayState {
   HybridTime max_committed_hybrid_time = HybridTime::kMin;
 };
 
-ReplayState::ReplayState(const consensus::OpId& regular_op_id, const consensus::OpId& intents_op_id)
+ReplayState::ReplayState(const OpIdPB& regular_op_id, const OpIdPB& intents_op_id)
     : regular_stored_op_id(regular_op_id), intents_stored_op_id(intents_op_id) {
 }
 
@@ -243,7 +242,7 @@ bool ReplayState::UpdateCommittedFromStored() {
 }
 
 // Return true if 'b' is allowed to immediately follow 'a' in the log.
-bool ReplayState::IsValidSequence(const OpId& a, const OpId& b) {
+bool ReplayState::IsValidSequence(const OpIdPB& a, const OpIdPB& b) {
   if (a.term() == 0 && a.index() == 0) {
     // Not initialized - can start with any opid.
     return true;
@@ -276,7 +275,7 @@ Status ReplayState::CheckSequentialReplicateId(const ReplicateMsg& msg) {
   return Status::OK();
 }
 
-void ReplayState::UpdateCommittedOpId(const OpId& id) {
+void ReplayState::UpdateCommittedOpId(const OpIdPB& id) {
   if (consensus::OpIdLessThan(committed_op_id, id)) {
     committed_op_id = id;
   }
@@ -660,7 +659,7 @@ Status TabletBootstrap::HandleReplicateMessage(
   // This sets the monotonic counter to at least replicate.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate.monotonic_counter());
 
-  const OpId op_id = replicate_entry.replicate().id();
+  const OpIdPB op_id = replicate_entry.replicate().id();
   if (op_id.index() == replay_state_->regular_stored_op_id.index()) {
     // We need to set the committed OpId to be at least what's been applied to RocksDB. The reason
     // we could not do it before starting log replay is that we don't know the term number of the
@@ -894,10 +893,10 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     RETURN_NOT_OK(tablet_->snapshot_coordinator()->Load(tablet_.get()));
   }
 
-  consensus::OpId regular_op_id;
+  OpIdPB regular_op_id;
   regular_op_id.set_term(flushed_op_id.regular.term);
   regular_op_id.set_index(flushed_op_id.regular.index);
-  consensus::OpId intents_op_id;
+  OpIdPB intents_op_id;
   intents_op_id.set_term(flushed_op_id.intents.term);
   intents_op_id.set_index(flushed_op_id.intents.index);
   replay_state_ = std::make_unique<ReplayState>(regular_op_id, intents_op_id);
@@ -1039,7 +1038,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
       // That should be guaranteed by RAFT protocol. If record is committed, it cannot
       // be overriden by a new leader.
       if (last_committed_op_id.term == it->second.entry->replicate().id().term()) {
-        replay_state_->UpdateCommittedOpId(last_committed_op_id.ToPB<consensus::OpId>());
+        replay_state_->UpdateCommittedOpId(last_committed_op_id.ToPB<OpIdPB>());
         RETURN_NOT_OK(replay_state_->ApplyCommittedPendingReplicates(
             std::bind(&TabletBootstrap::HandleEntryPair, this, _1, _2)));
       } else {

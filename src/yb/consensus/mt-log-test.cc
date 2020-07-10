@@ -110,7 +110,7 @@ class MultiThreadedLogTest : public LogTestBase {
         for (int j = 0; j < num_ops; j++) {
           auto replicate = std::make_shared<ReplicateMsg>();
           int32_t index = current_index_++;
-          OpId* op_id = replicate->mutable_id();
+          OpIdPB* op_id = replicate->mutable_id();
           op_id->set_term(0);
           op_id->set_index(index);
 

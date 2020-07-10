@@ -69,8 +69,8 @@ using namespace std::literals;
 #define TOKENPASTE2(x, y) TOKENPASTE(x, y)
 
 #define ASSERT_OPID_EQ(left, right) \
-  OpId TOKENPASTE2(_left, __LINE__) = (left); \
-  OpId TOKENPASTE2(_right, __LINE__) = (right); \
+  OpIdPB TOKENPASTE2(_left, __LINE__) = (left); \
+  OpIdPB TOKENPASTE2(_right, __LINE__) = (right); \
   if (!consensus::OpIdEquals(TOKENPASTE2(_left, __LINE__), TOKENPASTE2(_right, __LINE__))) \
     FAIL() << "Expected: " << TOKENPASTE2(_right, __LINE__).ShortDebugString() << "\n" \
            << "Value: " << TOKENPASTE2(_left, __LINE__).ShortDebugString() << "\n"
@@ -93,7 +93,7 @@ inline ReplicateMsgPtr CreateDummyReplicate(int64_t term,
                                             const HybridTime& hybrid_time,
                                             int64_t payload_size) {
   auto msg = std::make_shared<ReplicateMsg>();
-  OpId* id = msg->mutable_id();
+  OpIdPB* id = msg->mutable_id();
   id->set_term(term);
   id->set_index(index);
 
@@ -132,7 +132,7 @@ static inline void AppendReplicateMessagesToQueue(
   }
 }
 
-OpId MakeOpIdForIndex(int index) {
+OpIdPB MakeOpIdForIndex(int index) {
   return MakeOpId(index / kTermDivisor, index);
 }
 
@@ -395,7 +395,7 @@ class NoOpTestPeerProxy : public TestPeerProxy {
     return RegisterCallbackAndRespond(kRequestVote, callback);
   }
 
-  const OpId& last_received() {
+  const OpIdPB& last_received() {
     std::lock_guard<simple_spinlock> lock(lock_);
     return last_received_;
   }
@@ -403,7 +403,7 @@ class NoOpTestPeerProxy : public TestPeerProxy {
  private:
   const consensus::RaftPeerPB peer_pb_;
   ConsensusStatusPB last_status_; // Protected by lock_.
-  OpId last_received_;            // Protected by lock_.
+  OpIdPB last_received_;            // Protected by lock_.
 };
 
 class NoOpTestPeerProxyFactory : public PeerProxyFactory {
@@ -913,14 +913,14 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
     return majority_replicated_op_id_.index() >= index;
   }
 
-  OpId majority_replicated_op_id() {
+  OpIdPB majority_replicated_op_id() {
     std::lock_guard<simple_spinlock> lock(lock_);
     return majority_replicated_op_id_;
   }
 
  protected:
-  void UpdateMajorityReplicated(const MajorityReplicatedData& data,
-                                OpId* committed_index) override {
+  void UpdateMajorityReplicated(
+      const MajorityReplicatedData& data, OpIdPB* committed_index) override {
     std::lock_guard<simple_spinlock> lock(lock_);
     majority_replicated_op_id_ = data.op_id;
     committed_index->CopyFrom(data.op_id);
@@ -933,7 +933,7 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
 
  private:
   mutable simple_spinlock lock_;
-  OpId majority_replicated_op_id_;
+  OpIdPB majority_replicated_op_id_;
 };
 
 }  // namespace consensus

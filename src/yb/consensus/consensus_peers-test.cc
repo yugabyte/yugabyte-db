@@ -237,7 +237,7 @@ TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
 
   // Append one message to the queue.
   const auto start_time = MonoTime::Now();
-  OpId first = MakeOpId(0, 1);
+  OpIdPB first = MakeOpId(0, 1);
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, first.index(), 1);
 
   ASSERT_OK(remote_peer1->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
@@ -272,7 +272,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
   remote_peer2_proxy->DelayResponse();
 
   // Append one message to the queue.
-  OpId first = MakeOpId(0, 1);
+  OpIdPB first = MakeOpId(0, 1);
 
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, first.index(), 1);
 

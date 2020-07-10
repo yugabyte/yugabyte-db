@@ -72,7 +72,6 @@ namespace tserver {
 
 using std::unique_ptr;
 using consensus::ConsensusMetadata;
-using consensus::OpId;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
 using log::Log;

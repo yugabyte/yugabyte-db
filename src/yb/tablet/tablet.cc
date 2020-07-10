@@ -243,7 +243,6 @@ namespace yb {
 namespace tablet {
 
 using yb::MaintenanceManager;
-using consensus::OpId;
 using consensus::MaximumOpId;
 using log::LogAnchorRegistry;
 using strings::Substitute;

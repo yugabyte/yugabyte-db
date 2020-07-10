@@ -133,8 +133,8 @@ class ConsensusQueueTest : public YBTest {
   // last operation in the queue
   bool UpdatePeerWatermarkToOp(ConsensusRequestPB* request,
                                ConsensusResponsePB* response,
-                               const OpId& last_received,
-                               const OpId& last_received_current_leader,
+                               const OpIdPB& last_received,
+                               const OpIdPB& last_received_current_leader,
                                int last_committed_idx) {
 
     queue_->TrackPeer(kPeerUuid);
@@ -161,16 +161,16 @@ class ConsensusQueueTest : public YBTest {
   // Like the above but uses the last received index as the commtited index.
   bool UpdatePeerWatermarkToOp(ConsensusRequestPB* request,
                                ConsensusResponsePB* response,
-                               const OpId& last_received,
-                               const OpId& last_received_current_leader) {
+                               const OpIdPB& last_received,
+                               const OpIdPB& last_received_current_leader) {
     return UpdatePeerWatermarkToOp(request, response, last_received,
                                    last_received_current_leader,
                                    last_received.index());
   }
 
   void RefuseWithLogPropertyMismatch(ConsensusResponsePB* response,
-                                     const OpId& last_received,
-                                     const OpId& last_received_current_leader) {
+                                     const OpIdPB& last_received,
+                                     const OpIdPB& last_received_current_leader) {
     ConsensusStatusPB* status = response->mutable_status();
     status->mutable_last_received()->CopyFrom(last_received);
     status->mutable_last_received_current_leader()->CopyFrom(last_received_current_leader);
@@ -191,8 +191,8 @@ class ConsensusQueueTest : public YBTest {
 
   // Sets the last received op on the response, as well as the last committed index.
   void SetLastReceivedAndLastCommitted(ConsensusResponsePB* response,
-                                       const OpId& last_received,
-                                       const OpId& last_received_current_leader,
+                                       const OpIdPB& last_received,
+                                       const OpIdPB& last_received_current_leader,
                                        int last_committed_idx) {
     *response->mutable_status()->mutable_last_received() = last_received;
     *response->mutable_status()->mutable_last_received_current_leader() =
@@ -202,7 +202,7 @@ class ConsensusQueueTest : public YBTest {
 
   // Like the above but uses the same last_received for current term.
   void SetLastReceivedAndLastCommitted(ConsensusResponsePB* response,
-                                       const OpId& last_received,
+                                       const OpIdPB& last_received,
                                        int last_committed_idx) {
     SetLastReceivedAndLastCommitted(response, last_received, last_received, last_committed_idx);
   }
@@ -210,7 +210,7 @@ class ConsensusQueueTest : public YBTest {
   // Like the above but just sets the last committed index to have the same index
   // as the last received op.
   void SetLastReceivedAndLastCommitted(ConsensusResponsePB* response,
-                                       const OpId& last_received) {
+                                       const OpIdPB& last_received) {
     SetLastReceivedAndLastCommitted(response, last_received, last_received.index());
   }
 
@@ -242,8 +242,8 @@ TEST_F(ConsensusQueueTest, TestStartTrackingAfterStart) {
   response.set_responder_uuid(kPeerUuid);
 
   // Peer already has some messages, last one being index (kNumMessages / 2)
-  OpId last_received = MakeOpIdForIndex(kNumMessages / 2);
-  OpId last_received_current_leader = MinimumOpId();
+  OpIdPB last_received = MakeOpIdForIndex(kNumMessages / 2);
+  OpIdPB last_received_current_leader = MinimumOpId();
 
   ASSERT_TRUE(UpdatePeerWatermarkToOp(
       &request, &response, last_received, last_received_current_leader));
@@ -278,8 +278,8 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
     // Helper to estimate request size so that we can set the max batch size appropriately.
     ConsensusRequestPB page_size_estimator;
     page_size_estimator.set_caller_term(14);
-    OpId* committed_index = page_size_estimator.mutable_committed_op_id();
-    OpId* preceding_id = page_size_estimator.mutable_preceding_id();
+    OpIdPB* committed_index = page_size_estimator.mutable_committed_op_id();
+    OpIdPB* preceding_id = page_size_estimator.mutable_preceding_id();
 
     // The actual leader lease duration does not matter here, we just want it to be set.
     page_size_estimator.set_leader_lease_duration_ms(kDefaultLeaderLeaseDurationMs);
@@ -320,7 +320,7 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
   // result in async log reads instead of cache hits.
   AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 100);
 
-  OpId last;
+  OpIdPB last;
   for (int i = 0; i < 11; i++) {
     VLOG(1) << "Making request " << i;
     ReplicateMsgsHolder refs;
@@ -353,7 +353,7 @@ TEST_F(ConsensusQueueTest, TestPeersDontAckBeyondWatermarks) {
   // Wait for the local peer to append all messages
   WaitForLocalPeerToAckIndex(kNumMessages);
 
-  OpId all_replicated = MakeOpIdForIndex(kNumMessages);
+  OpIdPB all_replicated = MakeOpIdForIndex(kNumMessages);
 
   ASSERT_OPID_EQ(queue_->GetMajorityReplicatedOpIdForTests(), MinimumOpId());
   // Since we're tracking a single peer still this should have moved the all
@@ -362,7 +362,7 @@ TEST_F(ConsensusQueueTest, TestPeersDontAckBeyondWatermarks) {
 
   // Start to track the peer after the queue has some messages in it
   // at a point that is halfway through the current messages in the queue.
-  OpId first_msg = MakeOpIdForIndex(kNumMessages / 2);
+  OpIdPB first_msg = MakeOpIdForIndex(kNumMessages / 2);
 
   ConsensusRequestPB request;
   ConsensusResponsePB response;
@@ -397,7 +397,7 @@ TEST_F(ConsensusQueueTest, TestPeersDontAckBeyondWatermarks) {
   ASSERT_FALSE(needs_remote_bootstrap);
   ASSERT_EQ(kNumMessages, request.ops_size());
 
-  OpId expected = request.ops(kNumMessages - 1).id();
+  OpIdPB expected = request.ops(kNumMessages - 1).id();
 
   SetLastReceivedAndLastCommitted(&response, expected);
   response.set_responder_term(expected.term());
@@ -434,7 +434,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   ConsensusResponsePB response;
   response.set_responder_term(1);
 
-  OpId last_sent = MakeOpIdForIndex(5);
+  OpIdPB last_sent = MakeOpIdForIndex(5);
 
   // Ack the first five operations for peer-1
   response.set_responder_uuid("peer-1");
@@ -491,8 +491,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
 // and then start tracking a peer whose first required operation
 // is before the first operation in the queue.
 TEST_F(ConsensusQueueTest, TestQueueLoadsOperationsForPeer) {
-
-  OpId opid = MakeOpId(1, 1);
+  OpIdPB opid = MakeOpId(1, 1);
 
   for (int i = 1; i <= 100; i++) {
     ASSERT_OK(log::AppendNoOpToLogSync(clock_, log_.get(), &opid));
@@ -503,14 +502,14 @@ TEST_F(ConsensusQueueTest, TestQueueLoadsOperationsForPeer) {
   }
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
-  OpId queues_last_op = opid;
+  OpIdPB queues_last_op = opid;
   queues_last_op.set_index(queues_last_op.index() - 1);
 
   // Now reset the queue so that we can pass a new committed index,
   // the last operation in the log.
   CloseAndReopenQueue();
 
-  OpId committed_index;
+  OpIdPB committed_index;
   committed_index.set_term(1);
   committed_index.set_index(100);
   queue_->Init(committed_index);
@@ -522,7 +521,7 @@ TEST_F(ConsensusQueueTest, TestQueueLoadsOperationsForPeer) {
 
   // The peer will actually be behind the first operation in the queue
   // in this case about 50 operations before.
-  OpId peers_last_op;
+  OpIdPB peers_last_op;
   peers_last_op.set_term(1);
   peers_last_op.set_index(50);
 
@@ -547,8 +546,7 @@ TEST_F(ConsensusQueueTest, TestQueueLoadsOperationsForPeer) {
 // new leader starts at term 2 with only a part of the operations of the previous
 // leader having been committed.
 TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
-
-  OpId opid = MakeOpId(1, 1);
+  OpIdPB opid = MakeOpId(1, 1);
   // Append 10 messages in term 1 to the log.
   for (int i = 1; i <= 10; i++) {
     ASSERT_OK(log::AppendNoOpToLogSync(clock_, log_.get(), &opid));
@@ -573,7 +571,7 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
   // op, 2.15.
   CloseAndReopenQueue();
 
-  OpId committed_op_id = MakeOpId(2, 15);
+  OpIdPB committed_op_id = MakeOpId(2, 15);
   queue_->Init(MakeOpId(2, 20));
   queue_->SetLeaderMode(committed_op_id, committed_op_id.term(), BuildRaftConfigPBForTests(3));
 
@@ -712,9 +710,9 @@ TEST_F(ConsensusQueueTest, TestOnlyAdvancesWatermarkWhenPeerHasAPrefixOfOurLog) 
   ConsensusResponsePB response;
 
   // We expect the majority replicated watermark to star at the committed index.
-  OpId expected_majority_replicated = MakeOpId(72, 31);
+  OpIdPB expected_majority_replicated = MakeOpId(72, 31);
   // We expect the all replicated watermark to be reset when we track a new peer.
-  OpId expected_all_replicated = MinimumOpId();
+  OpIdPB expected_all_replicated = MinimumOpId();
 
   ASSERT_OPID_EQ(queue_->GetMajorityReplicatedOpIdForTests(), expected_majority_replicated);
   ASSERT_OPID_EQ(queue_->GetAllReplicatedIndexForTests(), expected_all_replicated);
@@ -743,7 +741,7 @@ TEST_F(ConsensusQueueTest, TestOnlyAdvancesWatermarkWhenPeerHasAPrefixOfOurLog) 
   ASSERT_FALSE(needs_remote_bootstrap);
   ASSERT_EQ(request.ops_size(), 9);
   ASSERT_OPID_EQ(request.ops(0).id(), MakeOpId(72, 32));
-  const OpId* last_op = &request.ops(request.ops_size() - 1).id();
+  const OpIdPB* last_op = &request.ops(request.ops_size() - 1).id();
 
   // When the peer acks that it received an operation that is not in our current
   // term, it gets ignored in terms of watermark advancement.

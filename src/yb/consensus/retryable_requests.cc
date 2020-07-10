@@ -56,7 +56,7 @@ struct RunningRetryableRequest {
   mutable std::vector<ConsensusRoundPtr> duplicate_rounds;
 
   RunningRetryableRequest(
-      RetryableRequestId request_id_, const OpId& op_id_, RestartSafeCoarseTimePoint time_)
+      RetryableRequestId request_id_, const OpIdPB& op_id_, RestartSafeCoarseTimePoint time_)
       : request_id(request_id_), op_id(yb::OpId::FromPB(op_id_)), time(time_) {}
 
   std::string ToString() const {

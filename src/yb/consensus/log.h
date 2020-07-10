@@ -571,7 +571,7 @@ class LogEntryBatch {
   }
 
   // The highest OpId of a REPLICATE message in this batch.
-  consensus::OpId MaxReplicateOpId() const {
+  OpIdPB MaxReplicateOpId() const {
     DCHECK_EQ(REPLICATE, type_);
     int idx = entry_batch_pb_.entry_size() - 1;
     DCHECK(entry_batch_pb_.entry(idx).replicate().IsInitialized());

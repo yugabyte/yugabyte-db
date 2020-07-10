@@ -312,7 +312,6 @@ using consensus::ConsensusMetadata;
 using consensus::ConsensusServiceProxy;
 using consensus::ConsensusStatePB;
 using consensus::GetConsensusRole;
-using consensus::OpId;
 using consensus::RaftPeerPB;
 using consensus::StartRemoteBootstrapRequestPB;
 using rpc::RpcContext;
