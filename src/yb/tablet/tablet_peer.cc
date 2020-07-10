@@ -132,7 +132,6 @@ using consensus::ConsensusOptions;
 using consensus::ConsensusRound;
 using consensus::StateChangeContext;
 using consensus::StateChangeReason;
-using consensus::OpId;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
 using consensus::RaftConsensus;

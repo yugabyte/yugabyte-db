@@ -65,7 +65,6 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::kMinimumTerm;
 using consensus::MakeOpId;
-using consensus::OpId;
 using consensus::ReplicateMsg;
 using consensus::ReplicateMsgPtr;
 using log::Log;
@@ -214,7 +213,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
   // Append a REPLICATE with no commit
   int replicate_index = current_index_++;
 
-  OpId opid = MakeOpId(1, replicate_index);
+  OpIdPB opid = MakeOpId(1, replicate_index);
 
   AppendReplicateBatch(opid);
 
@@ -259,12 +258,12 @@ TEST_F(BootstrapTest, TestCommitFirstMessageBySpecifyingCommittedIndexInSecond) 
   BuildLog();
 
   // This appends a write with op 1.1
-  const OpId insert_opid = MakeOpId(1, 1);
+  const OpIdPB insert_opid = MakeOpId(1, 1);
   AppendReplicateBatch(insert_opid, MakeOpId(0, 0),
                        {TupleForAppend(10, 1, "this is a test insert")}, true /* sync */);
 
   // This appends a write with op 1.2 and commits the previous one.
-  const OpId mutate_opid = MakeOpId(1, 2);
+  const OpIdPB mutate_opid = MakeOpId(1, 2);
   AppendReplicateBatch(mutate_opid, insert_opid,
                        {TupleForAppend(10, 2, "this is a test mutate")}, true /* sync */);
   ConsensusBootstrapInfo boot_info;
@@ -282,7 +281,7 @@ TEST_F(BootstrapTest, TestCommitFirstMessageBySpecifyingCommittedIndexInSecond) 
 TEST_F(BootstrapTest, TestOperationOverwriting) {
   BuildLog();
 
-  const OpId opid = MakeOpId(1, 1);
+  const OpIdPB opid = MakeOpId(1, 1);
 
   // Append a replicate in term 1 with only one row.
   AppendReplicateBatch(opid, MakeOpId(0, 0), {TupleForAppend(1, 0, "this is a test insert")});
@@ -361,7 +360,7 @@ TEST_F(BootstrapTest, TestBootstrapHighOpIdIndex) {
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
   ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
-  OpId last_opid;
+  OpIdPB last_opid;
   last_opid.set_term(1);
   last_opid.set_index(current_index_ - 1);
   ASSERT_OPID_EQ(last_opid, boot_info.last_id);

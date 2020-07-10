@@ -167,7 +167,6 @@ static const char kSegmentPlaceholderFileTemplate[] = ".tmp.newsegmentXXXXXX";
 namespace yb {
 namespace log {
 
-using consensus::OpId;
 using env_util::OpenFileForRandom;
 using std::shared_ptr;
 using std::unique_ptr;

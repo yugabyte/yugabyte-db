@@ -219,11 +219,11 @@ class OperationState {
   // For instance it could be different from hybrid_time() for CDC.
   virtual HybridTime WriteHybridTime() const;
 
-  consensus::OpId* mutable_op_id() {
+  OpIdPB* mutable_op_id() {
     return &op_id_;
   }
 
-  const consensus::OpId& op_id() const {
+  const OpIdPB& op_id() const {
     return op_id_;
   }
 
@@ -259,7 +259,7 @@ class OperationState {
   uint64_t hybrid_time_error_ = 0;
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
-  consensus::OpId op_id_;
+  OpIdPB op_id_;
 
   scoped_refptr<consensus::ConsensusRound> consensus_round_;
 

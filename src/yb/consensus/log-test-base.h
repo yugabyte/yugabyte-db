@@ -72,7 +72,6 @@ DECLARE_int32(log_min_seconds_to_retain);
 namespace yb {
 namespace log {
 
-using consensus::OpId;
 using consensus::ReplicateMsg;
 using consensus::WRITE_OP;
 using consensus::NO_OP;
@@ -98,8 +97,7 @@ const bool APPEND_ASYNC = false;
 // Append a single batch of 'count' NoOps to the log.  If 'size' is not NULL, increments it by the
 // expected increase in log size.  Increments 'op_id''s index once for each operation logged.
 static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
-                                           Log* log,
-                                           OpId* op_id,
+                                           Log* log, OpIdPB* op_id,
                                            int count,
                                            int* size = NULL) {
   ReplicateMsgs replicates;
@@ -136,8 +134,7 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
 }
 
 static CHECKED_STATUS AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
-                                          Log* log,
-                                          OpId* op_id,
+                                          Log* log, OpIdPB* op_id,
                                           int* size = nullptr) {
   return AppendNoOpsToLogSync(clock, log, op_id, 1, size);
 }
@@ -207,8 +204,8 @@ class LogTestBase : public YBTest {
   }
 
   // Appends a batch with size 2, or the given set of writes.
-  void AppendReplicateBatch(const OpId& opid,
-                            const OpId& committed_opid = MakeOpId(0, 0),
+  void AppendReplicateBatch(const OpIdPB& opid,
+                            const OpIdPB& committed_opid = MakeOpId(0, 0),
                             std::vector<TupleForAppend> writes = {},
                             bool sync = APPEND_SYNC,
                             TableType table_type = TableType::YQL_TABLE_TYPE) {
@@ -260,7 +257,7 @@ class LogTestBase : public YBTest {
   // Appends 'count' ReplicateMsgs to the log as committed entries.
   void AppendReplicateBatchToLog(int count, bool sync = true) {
     for (int i = 0; i < count; i++) {
-      consensus::OpId opid = consensus::MakeOpId(1, current_index_);
+      OpIdPB opid = consensus::MakeOpId(1, current_index_);
       AppendReplicateBatch(opid, opid);
       current_index_ += 1;
     }
@@ -268,13 +265,13 @@ class LogTestBase : public YBTest {
 
   // Append a single NO_OP entry. Increments op_id by one.  If non-NULL, and if the write is
   // successful, 'size' is incremented by the size of the written operation.
-  CHECKED_STATUS AppendNoOp(OpId* op_id, int* size = NULL) {
+  CHECKED_STATUS AppendNoOp(OpIdPB* op_id, int* size = NULL) {
     return AppendNoOpToLogSync(clock_, log_.get(), op_id, size);
   }
 
   // Append a number of no-op entries to the log.  Increments op_id's index by the number of records
   // written.  If non-NULL, 'size' keeps track of the size of the operations successfully written.
-  CHECKED_STATUS AppendNoOps(OpId* op_id, int num, int* size = NULL) {
+  CHECKED_STATUS AppendNoOps(OpIdPB* op_id, int num, int* size = NULL) {
     for (int i = 0; i < num; i++) {
       RETURN_NOT_OK(AppendNoOp(op_id, size));
     }

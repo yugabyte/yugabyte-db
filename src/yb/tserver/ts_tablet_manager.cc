@@ -273,7 +273,6 @@ METRIC_DEFINE_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
 
 using consensus::ConsensusMetadata;
 using consensus::ConsensusStatePB;
-using consensus::OpId;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
 using consensus::StartRemoteBootstrapRequestPB;

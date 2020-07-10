@@ -76,7 +76,6 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MakeOpId;
 using consensus::MinimumOpId;
-using consensus::OpId;
 using consensus::OpIdEquals;
 using consensus::RaftPeerPB;
 using consensus::WRITE_OP;

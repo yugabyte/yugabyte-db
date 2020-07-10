@@ -116,7 +116,7 @@ class LogCacheTest : public YBTest {
     ASSERT_OK(log_->WaitUntilAllFlushed());
   }
 
-  void CloseAndReopenCache(const OpId& preceding_id) {
+  void CloseAndReopenCache(const OpIdPB& preceding_id) {
     // Blow away the memtrackers before creating the new cache.
     cache_.reset();
 

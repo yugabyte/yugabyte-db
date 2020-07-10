@@ -231,7 +231,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
   // Add an Insert operation to the given consensus request.
   // The row to be inserted is generated based on the OpId.
-  void AddOp(const OpId& id, ConsensusRequestPB* req);
+  void AddOp(const OpIdPB& id, ConsensusRequestPB* req);
 
   string DumpToString(TServerDetails* leader,
                       const vector<string>& leader_results,
@@ -973,7 +973,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {
 
   // Do majority correctness check for 3 servers.
   ASSERT_NO_FATALS(AssertMajorityRequiredForElectionsAndWrites(active_tablet_servers, leader_uuid));
-  OpId opid;
+  OpIdPB opid;
   ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader_tserver, consensus::RECEIVED_OPID, kTimeout,
                                   &opid));
   int64_t cur_log_index = opid.index();
@@ -1093,7 +1093,7 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
   // Make a note of whatever the current term of the cluster is,
   // before we resume the follower.
   {
-    OpId op_id;
+    OpIdPB op_id;
     ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader, consensus::RECEIVED_OPID, kTimeout,
                                     &op_id));
     *orig_term = op_id.term();
@@ -1152,7 +1152,7 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
 
   // Do majority correctness check for 3 servers.
   ASSERT_NO_FATALS(AssertMajorityRequiredForElectionsAndWrites(active_tablet_servers, leader_uuid));
-  OpId opid;
+  OpIdPB opid;
   ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader_tserver, consensus::RECEIVED_OPID, kTimeout,
                                   &opid));
   int64_t cur_log_index = opid.index();
@@ -1395,7 +1395,7 @@ TEST_F(RaftConsensusITest, TestFollowerFallsBehindLeaderGC) {
     // TODO: would be nicer to use an RPC to check the current term of the
     // abandoned replica, and wait until it has incremented a couple of times.
     SleepFor(MonoDelta::FromSeconds(5));
-    OpId op_id;
+    OpIdPB op_id;
     TServerDetails* leader = tablet_servers_[leader_uuid].get();
     ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader, consensus::RECEIVED_OPID,
                                     MonoDelta::FromSeconds(10), &op_id));
@@ -1763,7 +1763,7 @@ TEST_F(RaftConsensusITest, VerifyTransactionOrder) {
   }
 }
 
-void RaftConsensusITest::AddOp(const OpId& id, ConsensusRequestPB* req) {
+void RaftConsensusITest::AddOp(const OpIdPB& id, ConsensusRequestPB* req) {
   ReplicateMsg* msg = req->add_ops();
   msg->mutable_id()->CopyFrom(id);
   msg->set_hybrid_time(clock_->Now().ToUint64());
@@ -3035,7 +3035,7 @@ TEST_F(RaftConsensusITest, TestChangeConfigBasedOnJepsen) {
   SleepFor(MonoDelta::FromSeconds(kSleepDelaySec));
   LOG(INFO) << "Done Sleeping";
 
-  vector<OpId> committed_op_ids, received_op_ids;
+  vector<OpIdPB> committed_op_ids, received_op_ids;
   GetLastOpIdForEachReplica(tablet_id_, tservers_list, consensus::OpIdType::COMMITTED_OPID,
       timeout, &committed_op_ids);
   GetLastOpIdForEachReplica(tablet_id_, tservers_list, consensus::OpIdType::RECEIVED_OPID,
@@ -3047,7 +3047,7 @@ TEST_F(RaftConsensusITest, TestChangeConfigBasedOnJepsen) {
               << " Last received op id " << yb::ToString(received_op_ids[i]);
   }
 
-  const OpId kLeaderCommittedOpId = committed_op_ids[0];
+  const OpIdPB kLeaderCommittedOpId = committed_op_ids[0];
   int num_voters_who_received_committed_op_id = 0;
   for(int i = 0; i < 3; i++) {
      if (yb::consensus::OpIdCompare(kLeaderCommittedOpId, received_op_ids[i]) <= 0) {
@@ -3178,7 +3178,7 @@ TEST_F(RaftConsensusITest, DisruptiveServerAndSlowWAL) {
     ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader_tserver));
     ASSERT_OK(WriteSimpleTestRow(leader_tserver, tablet_id_,
                                  0 /* key */, 0 /* int_val */, "" /* string_val */, kTimeout));
-    OpId op_id;
+    OpIdPB op_id;
     ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader_tserver,
                                     consensus::COMMITTED_OPID, kTimeout,
                                     &op_id));

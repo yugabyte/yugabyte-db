@@ -201,8 +201,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // can cause consensus to deadlock.
   ReplicaState* GetReplicaStateForTests();
 
-  void UpdateMajorityReplicatedInTests(const OpId &majority_replicated,
-                                       OpId *committed_index) {
+  void UpdateMajorityReplicatedInTests(const OpIdPB&majority_replicated, OpIdPB*committed_index) {
     UpdateMajorityReplicated({ majority_replicated,
                                CoarseTimePoint::min(),
                                HybridTime::kMin.GetPhysicalValueMicros() },
@@ -304,8 +303,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Updates the committed_index and triggers the Apply()s for whatever
   // operations were pending.
   // This is idempotent.
-  void UpdateMajorityReplicated(const MajorityReplicatedData& data,
-                                OpId* committed_op_id) override;
+  void UpdateMajorityReplicated(
+      const MajorityReplicatedData& data, OpIdPB* committed_op_id) override;
 
   void NotifyTermChange(int64_t term) override;
 
@@ -460,7 +459,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                                 VoteResponsePB* response);
 
   // Respond to VoteRequest that the candidate's last-logged OpId is too old.
-  CHECKED_STATUS RequestVoteRespondLastOpIdTooOld(const OpId& local_last_opid,
+  CHECKED_STATUS RequestVoteRespondLastOpIdTooOld(const OpIdPB& local_last_opid,
                                                   const VoteRequestPB* request,
                                                   VoteResponsePB* response);
 

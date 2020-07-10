@@ -126,14 +126,14 @@ Status GetLastOpIdForEachReplica(const TabletId& tablet_id,
                                  const std::vector<TServerDetails*>& replicas,
                                  consensus::OpIdType opid_type,
                                  const MonoDelta& timeout,
-                                 std::vector<consensus::OpId>* op_ids);
+                                 std::vector<OpIdPB>* op_ids);
 
 // Like the above, but for a single replica.
 Status GetLastOpIdForReplica(const TabletId& tablet_id,
                              TServerDetails* replica,
                              consensus::OpIdType opid_type,
                              const MonoDelta& timeout,
-                             consensus::OpId* op_id);
+                             OpIdPB* op_id);
 
 // Creates server vector from map.
 vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);
@@ -303,7 +303,7 @@ Status RequestVote(const TServerDetails* replica,
                    const std::string& tablet_id,
                    const std::string& candidate_uuid,
                    int64_t candidate_term,
-                   const consensus::OpId& last_logged_opid,
+                   const OpIdPB& last_logged_opid,
                    boost::optional<bool> ignore_live_leader,
                    boost::optional<bool> is_pre_election,
                    const MonoDelta& timeout);
@@ -429,7 +429,7 @@ Status GetLastOpIdForMasterReplica(const std::shared_ptr<ConsensusServiceProxy>&
                                    const std::string& dest_uuid,
                                    const OpIdType opid_type,
                                    const MonoDelta& timeout,
-                                   consensus::OpId* op_id);
+                                   OpIdPB* op_id);
 
 } // namespace itest
 } // namespace yb

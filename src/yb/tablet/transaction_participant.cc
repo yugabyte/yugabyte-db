@@ -1248,7 +1248,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     TransactionApplyData data = {
         .leader_term = term,
         .transaction_id = *id,
-        .op_id = consensus::OpId(),
+        .op_id = OpIdPB(),
         .commit_ht = HybridTime(),
         .log_ht = HybridTime(),
         .sealed = state->request()->sealed(),
