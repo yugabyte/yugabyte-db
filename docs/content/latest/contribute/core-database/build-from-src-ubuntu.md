@@ -64,6 +64,13 @@ cd ~/code/yugabyte-db
 ./yb_build.sh release
 ```
 
+{{< note title="Note" >}}
+
+If you are seeing errors such as `g++: internal compiler error: Killed`, it's probably because the system has ran out of memory.
+Try again by running the build script with less concurrency `-j1`.
+
+{{< /note >}}
+
 The above command will build the release configuration, put the C++ binaries in `build/release-gcc-dynamic-ninja`, and will also create the `build/latest` symlink to that directory.
 
 
