@@ -466,8 +466,12 @@ void CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id,
 }
 
 void CDCServiceImpl::UpdateLagMetrics() {
-  SharedLock<decltype(mutex_)> l(mutex_);
-  for (auto it = tablet_checkpoints_.begin(); it != tablet_checkpoints_.end(); it++) {
+  TabletCheckpoints tablet_checkpoints;
+  {
+    SharedLock<decltype(mutex_)> l(mutex_);
+    tablet_checkpoints = tablet_checkpoints_;
+  }
+  for (auto it = tablet_checkpoints.begin(); it != tablet_checkpoints.end(); it++) {
     std::shared_ptr<tablet::TabletPeer> tablet_peer;
     Status s = tablet_manager_->GetTabletPeer(it->tablet_id(), &tablet_peer);
     if (!s.ok()) {
