@@ -86,7 +86,7 @@ Where
                                                                                                      
 When an index is created on an existing table, YugabyteDB will automatically backfill existing data
 into the index in an online manner (that is, while continuing to serve other concurrent writes and traffic). For more details 
-on how this is done, please see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)
+on how this is done, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)
 
 {{< /note >}}
 
