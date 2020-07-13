@@ -5,6 +5,7 @@ linkTitle: Schedule a data backup
 description: Use Yugabyte Platform to create a scheduled backup of a universe or cluster.
 aliases:
   - /latest/manage/enterprise-edition/schedule-backups/
+  - /latest/manage/enterprise-edition/schedule-data-backup/
 menu:
   latest:
     identifier: schedule-data-backup

@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: configure-cloud-providers-5-vmwtanzu
     parent: deploy-yugabyte-platform
-    weight: 635
+    weight: 680
 isTocNested: true
 showAsideToc: true
 ---
@@ -39,7 +39,7 @@ showAsideToc: true
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/kubernetes" class="nav-link active">
+    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -65,9 +65,7 @@ This tutorial walks through the steps to a create service instance of YugabyteDB
 
 ## Prerequisites
 
-Before creating the Service Instance, you need to have YugabyteDB tile installed in your PCF marketplace. Follow the instructions[here](https://docs.pivotal.io/partners/yugabyte-db/).
-
-Also in your YugaWare instance that you brought up in your PCF environment you have configured cloud provider. If not follow the instructions [here](../enterprise-edition/configure-cloud-providers/) to setup appropriate cloud providers.
+Before creating the Service Instance, you need to have YugabyteDB tile installed in your PCF marketplace. Follow the instructions[here](https://docs.pivotal.io/partners/yugabyte-db/). Also in your YugaWare instance that you brought up in your PCF environment you have configured cloud provider. 
 
 After installing the tile, you have two ways to create a YugabyteDB instance, one is through the App Manager UI, and other is through Cloud Foundry CLI (cf).
 

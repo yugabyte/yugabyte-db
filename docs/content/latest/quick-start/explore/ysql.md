@@ -1,10 +1,12 @@
 ---
-title: Explore YSQL, the YugabyteDB SQL API
-headerTitle: 3. Explore YSQL 
-linkTitle: 3. Explore YSQL 
-description: Explore Yugabyte SQL (YSQL), a PostgreSQL-compatible distributed SQL API
+title: Explore YSQL, the Yugabyte SQL API
+headerTitle: 3. Explore Yugabyte SQL 
+linkTitle: 3. Explore distributed SQL APIs
+description: Explore Yugabyte SQL (YSQL), a PostgreSQL-compatible fully-relational distributed SQL API
 image: /images/section_icons/quick_start/explore_ysql.png
 aliases:
+  - /latest/quick-start/explore-ysql/
+  - /latest/quick-start/explore/
   - /quick-start/test-postgresql/
   - /latest/quick-start/test-postgresql/
   - /latest/quick-start/test-ysql/
@@ -15,13 +17,36 @@ aliases:
 menu:
   latest:
     parent: quick-start
+    name: 3. Explore distributed SQL
+    identifier: explore-dsql-1-ysql
     weight: 130
 type: page
 isTocNested: false
 showAsideToc: true
 ---
 
-After [creating a local cluster](../create-local-cluster/), you can now begin to explore YugabyteDB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/quick-start/explore/ysql" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+ <li >
+    <a href="/latest/quick-start/explore/ycql" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+  
+</ul>
+
+
+After [creating a local cluster](../create-local-cluster/), you can now begin to explore YugabyteDB's PostgreSQL-compatible fully-relational [Yugabyte SQL](../../api/ysql/) API.
+
+[**ysqlsh**](../../../admin/ysqlsh/) is the command line shell for interacting with the YSQL API. You will use ysqlsh for this tutorial.
 
 ## 1. Load sample data
 
@@ -38,8 +63,6 @@ $ ls share/
 The `share` directory includes sample dataset files available for creating databases for learning YugabyteDB. The files that will be used in the steps below are `schema.sql`, `orders.sql`, `products.sql`,`reviews.sql` and `users.sql`.
 
 {{< /note >}}
-
-Open the YSQL shell (`ysqlsh) by running the following command.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

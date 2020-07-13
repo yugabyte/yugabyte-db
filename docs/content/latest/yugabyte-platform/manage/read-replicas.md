@@ -3,6 +3,8 @@ title: Create a read replica cluster
 headerTitle: Create a read replica cluster
 linkTitle: Create a read replica cluster
 description: Use Yugabyte Platform to create a read replica cluster.
+aliases:
+  - /latest/manage/enterprise-edition/read-replicas/
 menu:
   latest:
     identifier: create-read-replica-cluster
@@ -16,7 +18,7 @@ This section will describe how to create a universe with both a primary and [rea
 
 ## Create the universe
 
-First, enter the following values to create a primary cluster on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-gcp) cloud provider. Click **Create Universe** and then enter the following intent.
+First, enter the following values to create a primary cluster on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/gcp) cloud provider. Click **Create Universe** and then enter the following intent.
 
 - Enter a universe name: **helloworld3**
 - Enter the set of regions: **Oregon**

@@ -3,6 +3,8 @@ title: Configure Kubernetes for YugabyteDB
 headerTitle: Configure cloud providers
 linkTitle: 4. Configure cloud providers
 description: Configure Kubernetes for YugabyteDB deployments using the YugabyteDB Admin Console
+aliases:
+  - /latest/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
   latest:
     identifier: configure-cloud-providers-4-kubernetes

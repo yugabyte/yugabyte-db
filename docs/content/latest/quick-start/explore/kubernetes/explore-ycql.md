@@ -1,6 +1,4 @@
-
 To connect to the service, open the YCQL shell (`ycqlsh`) by running the following command:
-`
 
 ```sh
 $ kubectl exec -it yb-tserver-0 -- ycqlsh yb-tserver-0

@@ -6,6 +6,7 @@ description: Use Replicated to install Yugabyte Platform (aka YugaWare).
 aliases:
   - /latest/deploy/enterprise-edition/admin-console/
   - /latest/deploy/enterprise-edition/install-admin-console/
+  - /latest/yugabyte-platform/deploy/install-admin-console/
 menu:
   latest:
     identifier: install-yp-1-default
@@ -18,19 +19,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/enterprise-edition/install-admin-console/default" class="nav-link active">
+    <a href="/latest/yugabyte-platform/deploy/install-admin-console/default" class="nav-link active">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/enterprise-edition/install-admin-console/airgapped" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/install-admin-console/airgapped" class="nav-link">
       <i class="fas fa-unlink"></i>
       Airgapped
     </a>
   </li>
   <li>
-    <a href="/latest/deploy/enterprise-edition/install-admin-console/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/install-admin-console/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -111,4 +112,4 @@ Replicated will perform a set of pre-flight checks to ensure that the host is se
 
 Clicking Continue above will bring us to Yugabyte Platform configuration.
 
-In case the pre-flight check fails, see [Troubleshoot Yugabyte Platform](../../../troubleshoot/enterprise-edition/) to identify the resolution.
+In case the pre-flight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to identify the resolution.

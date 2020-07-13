@@ -2,8 +2,8 @@
 title: Deploy
 headerTitle: Deploy YugabyteDB
 linkTitle: Deploy
-description: Deploy to any public cloud or private data center of your choice using either YugabyteDB or the Yugabyte Platform.
-headcontent: Deploy to any public cloud or private data center of your choice using either YugabyteDB or the Yugabyte Platform.
+description: Deploy to any public cloud or private data center of your choice.
+headcontent: Deploy to any public cloud or private data center of your choice.
 image: /images/section_icons/index/deploy.png
 aliases:
   - /deploy/
