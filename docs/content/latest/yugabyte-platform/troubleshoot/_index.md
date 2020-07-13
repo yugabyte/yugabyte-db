@@ -6,6 +6,8 @@ image: /images/section_icons/manage/enterprise.png
 headcontent: Tools and issues specific to the Yugabyte Platform.
 aliases:
   - /troubleshoot/enterprise-edition/
+  - /latest/troubleshoot/enterprise-edition/
+  - /latest/troubleshoot/yugabyte-platform/
 menu:
   latest:
     identifier: troubleshoot-yugabyte-platform

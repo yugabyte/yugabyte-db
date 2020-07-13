@@ -9,7 +9,7 @@ section: REFERENCE
 menu:
   latest:
     identifier: architecture
-    weight: 2720
+    weight: 1050
 ---
 
 

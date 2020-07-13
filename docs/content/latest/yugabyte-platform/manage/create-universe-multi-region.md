@@ -3,6 +3,8 @@ title: Create a multi-region universe using using Yugabyte Platform
 headerTitle: Create a multi-region universe
 linkTitle: Create a multi-region universe
 description: Create a YugabyteDB universe that spans multiple geographic regions using Yugabyte Platform.
+aliases:
+  - /latest/manage/enterprise-edition/create-universe-multi-region
 menu:
   latest:
     identifier: create-universe-multi-region
@@ -21,7 +23,7 @@ This section will describe how to create a universe spanning multiple geographic
 
 ## 1. Create the universe
 
-We are going to enter the following values to create a multi-region universe on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-gcp) cloud provider. Click **Create Universe** and enter the following intent.
+We are going to enter the following values to create a multi-region universe on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/gcp) cloud provider. Click **Create Universe** and enter the following intent.
 
 - Enter a universe name: **helloworld2**
 - Enter the set of regions: **Oregon**, **Northern Virginia**, **Tokyo**

@@ -5,6 +5,7 @@ linkTitle: Edit configuration flags
 description: Use Yugabyte Platform to manage configuration flags.
 aliases:
   - /latest/manage/enterprise-edition/edit-flags/
+  - /latest/manage/enterprise-edition/edit-config-flags/
 menu:
   latest:
     identifier: edit-config-flags

@@ -1,22 +1,46 @@
 ---
-title: Quick start YCQL
-headerTitle: Quick start YCQL
-linkTitle: Quick start YCQL
-description: Quick start to explore YCQL in YugabyteDB.
+title: Explore YCQL, the Yugabyte Cloud QL API
+headerTitle: 3. Explore Yugabyte Cloud QL
+linkTitle: 3. Explore distributed SQL APIs
+description: Explore Yugabyte Cloud QL (YCQL), a semi-relational distributed SQL API
 image: /images/section_icons/quick_start/explore_ycql.png
 aliases:
   - /quick-start/test-cassandra/
   - /latest/quick-start/test-cassandra/
   - /latest/quick-start/test-ycql/
+  - /latest/api/ycql/quick-start/
 menu:
   latest:
-    parent: api-cassandra
-    weight: 1101
+    parent: quick-start
+    name: 3. Explore distributed SQL
+    identifier: explore-dsql-2-ycql
+    weight: 130
+type: page
+isTocNested: false
+showAsideToc: true
 ---
 
-After [creating a local cluster](../../../quick-start/create-local-cluster/), follow the instructions below to explore the [YCQL](../) API.
+<ul class="nav nav-tabs-alt nav-tabs-yb">
 
-[**ycqlsh**](../../../admin/cqlsh/) is the YCQL shell for interacting with YCQL-enabled servers. It uses the Python driver, and connects to the single node specified on the command line.
+  <li >
+    <a href="/latest/quick-start/explore/ysql" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+ <li >
+    <a href="/latest/quick-start/explore/ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+  
+</ul>
+
+After [creating a local cluster](../../../quick-start/create-local-cluster/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql) API.
+
+[**ycqlsh**](../../../admin/cqlsh/) is the command line shell for interacting with the YCQL API. You will use ycqlsh for this tutorial.
 
 ## 1. Connect with ycqlsh
 
