@@ -287,6 +287,14 @@
 #define METRIC_DEFINE_simple_counter(entity, name, label, unit) \
     METRIC_DEFINE_counter(entity, name, label, unit, label)
 
+#define METRIC_DEFINE_lag(entity, name, label, desc) \
+  ::yb::MillisLagPrototype BOOST_PP_CAT(METRIC_, name)( \
+      ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity), \
+                                      BOOST_PP_STRINGIZE(name), \
+                                      label, \
+                                      yb::MetricUnit::kMilliseconds, \
+                                      desc))
+
 #define METRIC_DEFINE_gauge(type, entity, name, label, unit, desc, ...) \
   ::yb::GaugePrototype<type> BOOST_PP_CAT(METRIC_, name)(         \
       ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity), \
@@ -334,6 +342,8 @@
   extern ::yb::MetricEntityPrototype METRIC_ENTITY_##name
 #define METRIC_DECLARE_counter(name)                             \
   extern ::yb::CounterPrototype METRIC_##name
+#define METRIC_DECLARE_lag(name) \
+  extern ::yb::LagPrototype METRIC_##name
 #define METRIC_DECLARE_gauge_string(name) \
   extern ::yb::GaugePrototype<std::string> METRIC_##name
 #define METRIC_DECLARE_gauge_bool(name) \
@@ -366,6 +376,10 @@ namespace yb {
 
 class Counter;
 class CounterPrototype;
+
+class MillisLag;
+class AtomicMillisLag;
+class MillisLagPrototype;
 
 template<typename T>
 class AtomicGauge;
@@ -430,7 +444,7 @@ struct MetricUnit {
 
 class MetricType {
  public:
-  enum Type { kGauge, kCounter, kHistogram };
+  enum Type { kGauge, kCounter, kHistogram, kLag };
   static const char* Name(Type t);
  private:
   static const char* const kGaugeType;
@@ -493,6 +507,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
     ExternalPrometheusMetricsCb;
 
   scoped_refptr<Counter> FindOrCreateCounter(const CounterPrototype* proto);
+  scoped_refptr<MillisLag> FindOrCreateMillisLag(const MillisLagPrototype* proto);
+  scoped_refptr<AtomicMillisLag> FindOrCreateAtomicMillisLag(const MillisLagPrototype* proto);
   scoped_refptr<Histogram> FindOrCreateHistogram(const HistogramPrototype* proto);
 
   template<typename T>
@@ -1216,6 +1232,75 @@ class Counter : public Metric {
   DISALLOW_COPY_AND_ASSIGN(Counter);
 };
 
+class MillisLagPrototype : public MetricPrototype {
+ public:
+  explicit MillisLagPrototype(const MetricPrototype::CtorArgs& args) : MetricPrototype(args) {
+  }
+  scoped_refptr<MillisLag> Instantiate(const scoped_refptr<MetricEntity>& entity);
+
+  virtual MetricType::Type type() const override { return MetricType::kLag; }
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(MillisLagPrototype);
+};
+
+// Metric used to calculate the lag of a specific metric.
+// The metric is in charge of updating the metric timestamp, and this method
+// will be in charge of calculating the lag by doing now() - metric_timestamp_.
+class MillisLag : public Metric {
+ public:
+  virtual int64_t lag_ms() const {
+    return std::max(static_cast<int64_t>(0),
+        static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()) - timestamp_ms_);
+  }
+  virtual void UpdateTimestampInMilliseconds(int64_t timestamp) {
+    timestamp_ms_ = timestamp;
+  }
+  virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
+      const MetricJsonOptions& opts) const override;
+  virtual CHECKED_STATUS WriteForPrometheus(
+      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const override;
+
+ private:
+  friend class MetricEntity;
+  friend class AtomicMillisLag;
+  friend class MetricsTest;
+
+  explicit MillisLag(const MillisLagPrototype* proto);
+
+  int64_t timestamp_ms_;
+};
+
+class AtomicMillisLag : public MillisLag {
+ public:
+  explicit AtomicMillisLag(const MillisLagPrototype* proto) : MillisLag(proto) {}
+
+  int64_t lag_ms() const override {
+    return std::max(static_cast<int64_t>(0),
+        static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()) -
+                atomic_timestamp_ms_.load(std::memory_order_acquire));
+  }
+
+  void UpdateTimestampInMilliseconds(int64_t timestamp) override {
+    atomic_timestamp_ms_.store(timestamp, std::memory_order_release);
+  }
+
+  CHECKED_STATUS WriteAsJson(JsonWriter* w,
+                             const MetricJsonOptions& opts) const override;
+
+  CHECKED_STATUS WriteForPrometheus(
+      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const override {
+    return writer->WriteSingleEntry(attr, prototype_->name(), this->lag_ms());
+  }
+
+ protected:
+  std::atomic<int64_t> atomic_timestamp_ms_;
+ private:
+  DISALLOW_COPY_AND_ASSIGN(AtomicMillisLag);
+};
+
 inline void IncrementCounter(const scoped_refptr<Counter>& counter) {
   if (counter) {
     counter->Increment();
@@ -1333,6 +1418,31 @@ inline scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
   scoped_refptr<Counter> m = down_cast<Counter*>(FindPtrOrNull(metric_map_, proto).get());
   if (!m) {
     m = new Counter(proto);
+    InsertOrDie(&metric_map_, proto, m);
+  }
+  return m;
+}
+
+inline scoped_refptr<MillisLag> MetricEntity::FindOrCreateMillisLag(
+    const MillisLagPrototype* proto) {
+  CheckInstantiation(proto);
+  std::lock_guard<simple_spinlock> l(lock_);
+  scoped_refptr<MillisLag> m = down_cast<MillisLag*>(FindPtrOrNull(metric_map_, proto).get());
+  if (!m) {
+    m = new MillisLag(proto);
+    InsertOrDie(&metric_map_, proto, m);
+  }
+  return m;
+}
+
+inline scoped_refptr<AtomicMillisLag> MetricEntity::FindOrCreateAtomicMillisLag(
+    const MillisLagPrototype* proto) {
+  CheckInstantiation(proto);
+  std::lock_guard<simple_spinlock> l(lock_);
+  scoped_refptr<AtomicMillisLag> m = down_cast<AtomicMillisLag*>(
+      FindPtrOrNull(metric_map_, proto).get());
+  if (!m) {
+    m = new AtomicMillisLag(proto);
     InsertOrDie(&metric_map_, proto, m);
   }
   return m;
