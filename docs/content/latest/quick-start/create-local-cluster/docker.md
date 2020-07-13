@@ -49,9 +49,9 @@ showAsideToc: true
 
 {{< note title="Note" >}}
 
-This Docker Quick Start is based on the new [`yugabyted`](../../../reference/configuration/yugabyted/) server currently in BETA. You can refer to the older [`yb-docker-ctl`](../../../admin/yb-docker-ctl/) based instructions in the [v2.0 docs](/v2.0/quick-start/install/docker/).
+This Docker Quick Start is based on the new [`yugabyted`](../../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-docker-ctl`](../../../admin/yb-docker-ctl/) based instructions in the [v2.0 docs](/v2.0/quick-start/install/docker/).
 
-Note that yugabyted currently supports creating a 1-node cluster only. Ability to create multi-node clusters is under [active development](https://github.com/yugabyte/yugabyte-db/issues/2057). Meanwhile, use the [v2.0 docs](/v2.0/quick-start/install/docker/) if you need to create local multi-node clusters.
+Note that yugabyted currently supports creating a single-node cluster only. Ability to create multi-node clusters is under [active development](https://github.com/yugabyte/yugabyte-db/issues/2057). 
 
 {{< /note >}}
 

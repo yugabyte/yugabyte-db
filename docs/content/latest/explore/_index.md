@@ -20,7 +20,7 @@ menu:
 
 {{< tip title="Tip" >}}
 
-Use your [local cluster](../quick-start/) to explore all the core features of YugabyteDB.
+Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the core features of YugabyteDB.
 
 {{< /tip >}}
 

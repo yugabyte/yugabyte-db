@@ -2,8 +2,7 @@
 title: yugabyted reference
 headerTitle: yugabyted
 linkTitle: yugabyted
-description: Use yugabyted to simplify creating, running, and managing yb-tserver and yb-master servers.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+description: Use yugabyted to run single-node YugabyteDB clusters.
 menu:
   latest:
     identifier: yugabyted
@@ -19,11 +18,9 @@ The `yugabyted` executable file is located in the YugabyteDB home's `bin` direct
 
 {{< note title="Note" >}}
 
-yugabyted currently supports creating a 1-node cluster only. Ability to create multi-node clusters is under active development. 
+- yugabyted currently supports both single-node and multi-node clusters (using the `join` option in the `start` command). However, ability to create multi-node clusters is currently under BETA.
 
-- For local multi-node clusters, use [`yb-ctl`](../../../admin/yb-ctl). 
-
-- For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master).
+- yugabytedb is not recommended for production deployments at this time. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) directly using the [Deploy](../../../deploy) docs.
 
 {{< /note >}}
 
@@ -66,8 +63,11 @@ The following commands are available:
 
 - [start](#start)
 - [stop](#stop)
+- [destroy](#destroy)
 - [status](#status)
 - [version](#version)
+- [collect_logs](#collect-logs)
+- [connect](#connect)
 - [demo](#demo)
 
 -----
@@ -79,22 +79,17 @@ Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your
 #### Syntax
 
 ```sh
- yugabyted start
-   [ -h | --help ] 
-   [ --config <config-file> ]
-   [ --data_dir <data-dir> ]
-   [ --log_dir <log-dir> ]  
-   [ --ycql_port <ycql-port> ]
-   [ --ysql_port <ysql-port> ]
-   [ --master_rpc_port <master-rpc-port> ]
-   [ --tserver_rpc_port <tserver-rpc-port> ]
-   [ --master_webserver_port <master-webserver-port> ]
-   [ --tserver_webserver_port <tserver-webserver-port> ]
-   [ --webserver_port <webserver-port> ]
-   [ --bind_ip BIND_IP ] 
-   [ --daemon <bool> ]
-   [ --callhome <bool> ] 
-   [ --ui <bool> ]
+Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
+                                [--base_dir BASE_DIR] [--log_dir LOG_DIR]
+                                [--ycql_port YCQL_PORT]
+                                [--ysql_port YSQL_PORT]
+                                [--master_rpc_port MASTER_RPC_PORT]
+                                [--tserver_rpc_port TSERVER_RPC_PORT]
+                                [--master_webserver_port MASTER_WEBSERVER_PORT]
+                                [--tserver_webserver_port TSERVER_WEBSERVER_PORT]
+                                [--webserver_port WEBSERVER_PORT]
+                                [--listen LISTEN] [--join JOIN]
+                                [--daemon BOOL] [--callhome BOOL] [--ui BOOL]
 ```
 
 #### Flags
@@ -109,11 +104,15 @@ The path to the configuration file.
 
 ##### --data_dir *data-directory*
 
-The directory where YugabyteDB stores data.
+The directory where yugabyted stores data. Must be an absolute path.
+
+##### --base_dir *base-directory*
+
+The directory where yugabyted stores data, conf and logs. Must be an absolute path.
 
 ##### --log_dir *log-directory*
 
-The directory to store YugabyteDB logs.
+The directory to store yugabyted logs. Must be an absolute path.
 
 ##### --ycql_port *ycql-port*
 
@@ -143,9 +142,13 @@ The port on which YB-TServer webserver will run.
 
 The port on which main webserver will run.
 
-##### --bind_ip *bind-ip*
+##### --listen *bind-ip*
 
-The IP address to which `yugabyted` processes will bind.
+The IP address or localhost name to which `yugabyted` will listen.
+
+##### --join *master-ip* [BETA]
+
+The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
 
 ##### --daemon *bool*
 
@@ -157,17 +160,18 @@ Enable or disable the "call home" feature that sends analytics data to Yugabyte.
 
 ##### --ui *bool*
 
-Enable or disable the webserver UI. Default is `true`.
+Enable or disable the webserver UI. Default is `false`.
 
 -----
 ### stop
 
-Use the `yugabted stop` command to stop a YugabyteDB cluster.
+Use the `yugabyted stop` command to stop a YugabyteDB cluster.
 
 #### Syntax
 
 ```sh
-yugabyted stop [ -h ] [ --config <config-file> ] [ --data_dir <data-directory> ]
+Usage: yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
+                               [--base_dir BASE_DIR]
 ```
 
 #### Flags
@@ -178,11 +182,15 @@ Print the command line help and exit.
   
 ##### --config *config-file*
 
-The path to the YugabyteDB configuration file.
+The path to the configuration file of the yugabyted server that needs to be stopped.
   
 ##### --data_dir *data-directory*
 
-The directory where YugabyteDB will store data.
+The data directory for the yugabtyed server that needs to be stopped.
+
+##### --base_dir *base-directory*
+
+The base directory for the yugabtyed server that needs to be stopped.
 
 -----
 
@@ -193,22 +201,27 @@ Use the `yugabyted status` command to check the status.
 #### Syntax
 
 ```
-yugabyted status [ -h | --help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
+Usage: yugabyted status [-h] [--config CONFIG] [--data_dir DATA_DIR]
+                                 [--base_dir BASE_DIR]
 ```
 
 #### Flags
 
-##### -h --help
+##### -h | --help
 
 Print the command line help and exit.
-
+  
 ##### --config *config-file*
 
-The path to the YugabyteDB configuration file.
-
+The path to the configuration file of the yugabyted server whose status is desired.
+  
 ##### --data_dir *data-directory*
 
-The directory where YugabyteDB stores data.
+The data directory for the yugabtyed server whose status is desired.
+
+##### --base_dir *base-directory*
+
+The base directory for the yugabtyed server that whose status is desired.
 
 -----
 
@@ -219,39 +232,38 @@ Use the `yugabyted version` command to check the version number.
 #### Syntax
 
 ```
-yugabyted version [ -h | --help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
+Usage: yugabyted version [-h] [--config CONFIG] [--data_dir DATA_DIR]
+                                  [--base_dir BASE_DIR]
 ```
 
 #### Flags
 
 ##### -h | --help
 
-Print the help message and exit.
-
+Print the command line help and exit.
+  
 ##### --config *config-file*
 
-The path to the YugabyteDB configuration file.
-
+The path to the configuration file of the yugabyted server whose version is desired.
+  
 ##### --data_dir *data-directory*
 
-The directory where YugabyteDB stores data.
+The data directory for the yugabtyed server whose version is desired.
+
+##### --base_dir *base-directory*
+
+The base directory for the yugabtyed server that whose version is desired.
 
 -----
 
 ### demo
 
-Use the `yugabyted demo` command to start YugabyteDB with a retail demo database. Get started with YSQL by using the [Explore YSQL](../../../quick-start/explore-ysql) tutorial in the [Quick start](../../../quick-start/) guide.
-
-{{< note title="Note" >}}
-
-When you quit the demo instance, the retail demo database is deleted and any changes you've made are lost.
-
-{{< /note >}}
+Use the `yugabyted demo connect` command to start YugabyteDB with the [northwind sample dataset](../../../sample-data/northwind/). 
 
 #### Syntax
 
 ```
-yugabyted demo [ -h | -help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
+Usage: yugabyted demo [-h] {connect,destroy} ...
 ```
 
 #### Flags
@@ -260,10 +272,43 @@ yugabyted demo [ -h | -help ] [ --config <config-file> ] [ --data_dir <data-dire
 
 Print the help message and exit.
 
-##### --config *config-file*
+##### connect 
 
-The path to the YugabyteDB configuration file.
+Load northwind sample dataset into a new `yb_demo_northwind` SQL database and then opens up `ysqlsh` prompt for the same database. Skips the data load if data is already loaded.
 
-##### --data_dir *data_directory*
+##### destroy 
 
-The directory where YugabyteDB stores data.
+Deletes the `yb_demo_northwind` northwind database.
+
+-----
+## Examples
+
+### Create a single-node cluster
+
+Create a single-node cluster with a given base dir and listen address. Note the need to provide a fully-qualified directory path for the base dir parameter.
+
+```sh
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.0.0/data1 --listen=127.0.0.1
+```
+
+### Create a multi-node cluster 
+
+Add two more nodes to the cluster using the `join` option.
+
+```sh
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.0.0/data2 --listen=127.0.0.2 --join=127.0.0.1
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.0.0/data3 --listen=127.0.0.3 --join=127.0.0.1
+```
+
+### Destroy a multi-node cluster 
+
+Destroy the above multi-node cluster.
+
+```sh
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.0.0/data1
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.0.0/data2
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.0.0/data1
+```
+
+
+

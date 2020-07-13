@@ -3,6 +3,8 @@ title: Configure on-premises data centers for YugabyteDB deployments
 headerTitle: Configure cloud providers
 linkTitle: 4. Configure cloud providers
 description: Configure on-premises data centers for YugabyteDB deployments using the YugabyteDB Admin Console
+aliases:
+  - /latest/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
   latest:
     identifier: configure-cloud-providers-6-onprem

@@ -3,6 +3,8 @@ title: Install Yugabyte Platform
 headerTitle: Install Yugabyte Platform on Airgapped
 linkTitle: 2. Install Yugabyte Platform
 description: Install Yugabyte Platform (aka YugaWare).
+aliases:
+  - /latest/deploy/enterprise-edition/install-admin-console/airgapped
 menu:
   latest:
     identifier: install-yp-2-airgapped
@@ -14,19 +16,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/enterprise-edition/install-admin-console/default" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/install-admin-console/default" class="nav-link">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/enterprise-edition/install-admin-console/airgapped" class="nav-link active">
+    <a href="/latest/yugabyte-platform/deploy/install-admin-console/airgapped" class="nav-link active">
       <i class="fas fa-unlink"></i>
       Airgapped
     </a>
   </li>
   <li>
-    <a href="/latest/deploy/enterprise-edition/install-admin-console/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/install-admin-console/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -158,4 +160,4 @@ Replicated will perform a set of pre-flight checks to ensure that the host is se
 
 Clicking **Continue** above will bring you to the Yugabyte Platform configuration.
 
-In case the pre-flight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/enterprise-edition/) to identify the resolution.
+In case the pre-flight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to identify the resolution.
