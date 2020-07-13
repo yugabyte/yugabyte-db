@@ -43,16 +43,18 @@ Based on the heartbeats from all the YB-TServers, the YB-Master picks the set of
 
 ## Initiating a split
 
-The YB-Master registers new post-split tablets and increments `SysTablesEntryPB.partitions_version` for the table. 
+The YB-Master registers two new post-split tablets and increments `SysTablesEntryPB.partitions_version` for the table. 
 Then it sends a `SplitTablet()` RPC call to the appropriate YB-TServer with the tablet ID to split, post-split tablet IDs and split key. Note that a server can split a tablet only if it hosts the leader tablet-peer.
+
+Note: we use two new tablet IDs vs old tablet ID + one new tablet ID for the following reasons:
+- The key range per tablet ID can be aggressively cached everywhere because it never changes.
+- Handling of two new tablets' logs will be uniform, vs. separate handling for the old tablet (but with reduced key 
+  range) and new tablet logs.
 
 ## Performing the split on YB-TServer side
 
 When leader tablet server receives `SplitTablet` RPC it adds a special Raft record containing:
-- 2 new tablet IDs. Why it might be easier to use two new tablet ids:
-  - The key range per tablet id can be aggressively cached everywhere because it never changes.
-  - Handling of two new tablets' logs will be uniform, vs. separate handling for the old tablet (but with reduced key 
-  range) and new tablet logs.
+- 2 new tablet IDs.
 - Split key (chosen as the approximate mid-key). Should be encoded DocKey (or its part), so we don’t split in the middle 
 of DocDB row. In case hash partitioning is used for the table - we should split by hash.
 - We disallow processing any writes on the old tablet after split record is added to Raft log.
@@ -69,11 +71,21 @@ have to handle this appropriately, update metadata and retry to new tablets.
 tablet report embedded into `TSHeartbeatRequestPB`. Also we can send this info back as a response to 
 `TabletServerAdminService.SplitTablet` RPC, so master knows faster about new tablets.
 - After leaders are elected for the new tablets - they are switched into `RUNNING` state.
-- We keep old tablet Raft group available as a Remote bootstrap source after the split, but not available for serving 
-reads/writes. This is needed, for example, in case some old tablet replica is partitioned away before split record was 
-added into it’s Raft log and then it joins the cluster back after majority splits and need to bootstrap old tablet, so 
-it can split. We need to keep old tablet available for `follower_unavailable_considered_failed_sec seconds`. After that 
-timeout tserver is considered as failed and is evicted from Raft group, so we don’t need to hold old tablet anymore.
+- We keep the old tablet Raft group available, but not serving reads/writes for the case when some old tablet replica hasn’t 
+received a Raft split record and hasn’t been split. For example, this replica was partitioned away before the split record 
+has been added into its Raft log and then it joins the cluster back after majority splits. There are following cases:
+  - This replica joins the cluster back in less than `log_min_seconds_to_retain` seconds, it will be able to get all Raft log
+   records from the old tablet leader, split the old tablet on a replica and then get all Raft log records for post-split 
+   tablets.
+  - This replica joins the cluster back in less than `follower_unavailable_considered_failed_sec`, but after 
+  `log_min_seconds_to_retain seconds`, part of Raft log records absent on this replica could be not available on the old 
+  tablet leader and remote bootstrap will be initiated.
+  
+    Note: we have a logic to prevent a Raft split record from being GCed.
+  - This replica joins the cluster back after follower_unavailable_considered_failed_sec. In this case replica is considered as failed and is evicted from the Raft group, so we don’t need to hold the old tablet anymore.
+
+  Note: by default `follower_unavailable_considered_failed_sec` = `log_min_seconds_to_retain`, but these flags could be adjusted.
+
 
 ### Document Storage Layer splitting
 - We copy the RocksDB to additional directory using hard links and add metadata saying that only 
