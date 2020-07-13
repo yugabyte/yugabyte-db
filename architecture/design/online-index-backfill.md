@@ -1,6 +1,6 @@
 # Online Index Backfill
 
-This design document explains how online backfill of indexes in YugabyteDB works. Upon adding new indexes to a table that already has data, this feature would enable rebuilding these indexes. Note that this feature should work across both YSQL and YCQL APIs.
+This design document explains how online backfill of indexes in YugabyteDB works. Upon adding new indexes to a table that already has data, this feature would enable building these indexes in an online manner, while continuing to serve other traffic. Note that this feature should work across both YSQL and YCQL APIs.
 
 ## Design Goals
 
