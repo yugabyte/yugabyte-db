@@ -47,6 +47,16 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 `CONCURRENTLY`, `USING method`, `COLLATE`, and `TABLESPACE` options are not yet supported.
 
+{{< note title="Note" >}}
+
+When an index is created on an existing table, YugabyteDB will automatically backfill existing data
+into the index. However, currently, this is not done in an online manner. To online backfill an
+index, you can set `ysql_disable_index_backfill` gflag to `false` while starting yb-tservers. Note that we don't recommend setting this
+gflag in a production cluster yet. For more information on how online index backfill works,
+please see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)
+
+{{< /note >}}
+
 ### UNIQUE
 
 Enforce that duplicate values in a table are not allowed.
