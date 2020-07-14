@@ -148,20 +148,14 @@ Here is an example of a client that uses the `YSQL shell` ([`ysqlsh`](../../../a
 Use the following command to verify the connection.
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-client -- ysqlsh -h yb-tservers.yb-demo.svc.cluster.local "sslmode=require" -c \\conninfo
-You are connected to database "yugabyte" as user "yugabyte" on host "yb-tservers.yb-demo.svc.cluster.local" at port "5433".
-SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
-```
-
-Use the following command to use YugabyteDB cluster.
-
-```sh
 $ kubectl exec -n yb-demo -it yb-client -- ysqlsh -h yb-tservers.yb-demo.svc.cluster.local "sslmode=require"
 ysqlsh (11.2-YB-2.1.5.0-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 
-yugabyte=#
+yugabyte=# \conninfo
+You are connected to database "yugabyte" as user "yugabyte" on host "yb-tservers.yb-demo.svc.cluster.local" at port "5433".
+SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 ```
 
 Here is an example of a client that uses the `YCQL shell` ([`ycqlsh`](../../../admin/cqlsh)) to connect.
@@ -169,18 +163,12 @@ Here is an example of a client that uses the `YCQL shell` ([`ycqlsh`](../../../a
 Use the following command to verify the connection.
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-client -- ycqlsh yb-tservers.yb-demo.svc.cluster.local 9042 --ssl --execute 'SHOW HOST'
-Connected to local cluster at yb-tservers.yb-demo.svc.cluster.local:9042.
-```
-
-Use the following command to use YugabyteDB cluster.
-
-```sh
 $ kubectl exec -n yb-demo -it yb-client -- ycqlsh yb-tservers.yb-demo.svc.cluster.local 9042 --ssl
 Connected to local cluster at yb-tservers.yb-demo.svc.cluster.local:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh>
+cqlsh> SHOW HOST
+Connected to local cluster at yb-tservers.yb-demo.svc.cluster.local:9042.
 ```
 
 (Optional) After the operations are complete, remove the client pod. 
@@ -191,10 +179,6 @@ pod "yb-client" deleted
 ```
 
 ### Connecting externally
-
-Prerequisites:
-1. Client Certificates
-2. External Cluster IP
 
 To connect externally to a TLS-enabled YugabyteDB helm cluster, first download the client certificates locally from the Kubernetes cluster's secrets.
 
@@ -210,20 +194,14 @@ Here is an example of a client that uses the `YSQL shell` ([`ysqlsh`](../../../a
 Use the following command to verify the connection.
 
 ```sh
-$ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro yugabytedb/yugabyte-client:latest ysqlsh -h <External_Cluster_IP> "sslmode=require" -c \\conninfo
-You are connected to database "yugabyte" as user "yugabyte" on host "35.200.205.208" at port "5433".
-SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
-```
-
-Use the following command to use YugabyteDB cluster.
-
-```sh
 $ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro yugabytedb/yugabyte-client:latest ysqlsh -h <External_Cluster_IP> "sslmode=require"
 ysqlsh (11.2-YB-2.1.5.0-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 
-yugabyte=#
+yugabyte=# \conninfo
+You are connected to database "yugabyte" as user "yugabyte" on host "35.200.205.208" at port "5433".
+SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 ```
 
 Here is an example of a client that uses the `YCQL shell` ([`ycqlsh`](../../../admin/cqlsh)) to connect.
@@ -232,18 +210,11 @@ Use the following docker command to verify the connection.
 
 ```sh
 $ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro \
---env SSL_CERTFILE=/root/.yugabytedb/root.crt yugabytedb/yugabyte-client:latest ycqlsh <External_Cluster_IP> 9042 --ssl --execute 'SHOW HOST'
-Connected to local cluster at 35.200.205.208:9042.
-```
-
-Use the following docker command to use YugabyteDB cluster.
-
-```sh
-$ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro \
 --env SSL_CERTFILE=/root/.yugabytedb/root.crt yugabytedb/yugabyte-client:latest ycqlsh <External_Cluster_IP> 9042 --ssl
 ysqlsh (11.2-YB-2.1.5.0-b0)
 Connected to local cluster at 35.200.205.208:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh>
+cqlsh> SHOW HOST
+Connected to local cluster at 35.200.205.208:9042.
 ```
