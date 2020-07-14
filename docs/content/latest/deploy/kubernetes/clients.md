@@ -196,7 +196,7 @@ Prerequisites:
 1. Client Certificates
 2. External Cluster IP
 
-Use the following commands to get the client certificates from Kubernetes cluster's Secrets.
+To connect externally to a TLS-enabled YugabyteDB helm cluster, first download the client certificates locally from the Kubernetes cluster's secrets.
 
 ```sh
 $ mkdir $(pwd)/certs
