@@ -139,6 +139,18 @@ In practice, the clock drift would have to be orders of magnitude higher in orde
 
 {{< /note >}}
 
+## DNS caching
+
+If you are using name servers instead of static ips you may end up doing aggressive DNS lookups.
+
+If the DNS query load is large enough to be a problem or the RTT to the external DNS server is long enough to be a problem, you 
+can set high enough TTL on your DNS records.
+
+On Linux , there is no OS-level DNS caching unless `nscd` is installed and running which has DNS caching features disabled
+by default because it's broken. 
+You can install a caching DNS server such as [Unbound](https://nlnetlabs.nl/projects/unbound/about/) on each server 
+configured to cache responses and forward misses to the regular DNS resolvers.
+
 ## Running on public clouds
 
 ### Amazon Web Services (AWS)
