@@ -22,7 +22,7 @@ import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
 import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import UniverseHealthCheckList from './UniverseHealthCheckList/UniverseHealthCheckList.js';
-import { isAvailable, isNonAvailable, isDisabled, isEnabled, isHidden, isNotHidden, getFeatureState } from '../../../utils/LayoutUtils';
+import { isNonAvailable, isDisabled, isEnabled, isHidden, isNotHidden, getFeatureState } from '../../../utils/LayoutUtils';
 import { LinkContainer } from 'react-router-bootstrap';
 
 import './UniverseDetail.scss';
@@ -277,14 +277,14 @@ class UniverseDetail extends Component {
             </div>
           </Tab.Pane>,
 
-        isAvailable(currentCustomer.data.features, "universes.details.replication", "hidden") &&
+        isNotHidden(currentCustomer.data.features, "universes.details.replication") &&
           <Tab.Pane
             eventKey={"replication"}
             tabtitle="Replication"
             key="replication-tab"
             mountOnEnter={true}
             unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, "universes.details.backups")}
+            disabled={isDisabled(currentCustomer.data.features, "universes.details.replication")}
           >
             <ReplicationContainer />
           </Tab.Pane>,

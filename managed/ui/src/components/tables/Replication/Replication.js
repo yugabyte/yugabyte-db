@@ -54,17 +54,17 @@ export default class ListBackups extends Component {
       return <YBLoading />;
     }
     let latestStat = null;
-    let maxValue = null;
     let latestTimestamp = null;
+    let showMetrics = false;
     if (metrics && metrics[GRAPH_TYPE]) {
       // Get alias 
       const metricAliases = metrics[GRAPH_TYPE][METRIC_NAME].layout.yaxis.alias;
       const displayName = metricAliases['async_replication_committed_lag_micros']
       const replicationMetric = metrics[GRAPH_TYPE][METRIC_NAME].data.find(x => x.name === displayName);
       if (replicationMetric) {
-        maxValue = Math.max(...replicationMetric.y.map(x => Number(x))).toString();
         latestStat = replicationMetric.y[replicationMetric.y.length - 1];
         latestTimestamp = replicationMetric.x[replicationMetric.x.length - 1];
+        showMetrics = true;
       }
     }
     
@@ -110,7 +110,10 @@ export default class ListBackups extends Component {
               <div className="replication-content-stats">                
                 {recentStatBlock}
               </div>
-              {metrics[GRAPH_TYPE] &&
+              {!showMetrics &&
+                <div className="no-data">No data to display.</div>
+              }
+              {showMetrics && metrics[GRAPH_TYPE] && 
                 <div className="graph-container">
                   <MetricsPanel 
                     metricKey={METRIC_NAME}
