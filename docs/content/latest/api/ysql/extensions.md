@@ -55,9 +55,24 @@ SELECT * FROM pgcrypto_example;
 
 For more information see [`pgcrypto`](https://www.postgresql.org/docs/current/pgcrypto.html) in the PostgreSQL Docs.
 
+### pg_stat_statements
+
+The `pg_stat_statements` is installed by default and needs to be enabled before it can be queried. 
+
+```postgresql
+CREATE EXTENSION pg_stat_statements;
+SELECT query, calls, total_time, min_time, max_time, mean_time, stddev_time, rows FROM pg_stat_statements;
+```
+
+The same info is also available in the UI. On every `yb-tserver` node, you can access `http://<yb-tserver-ip>13000
+/statements` for output of pg_stat_statements
+in `json` format. 
+
+For more information see [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) in the PostgreSQL Docs.
+
 ### spi module
 
-The spi module includes several separate extensions using the Server Programming Interface (SPI) and triggers.
+The `spi` module includes several separate extensions using the Server Programming Interface (SPI) and triggers.
 The specific extensions currently supported in YSQL are:
 
 - `insert_username`: functions for tracking who changed a table
