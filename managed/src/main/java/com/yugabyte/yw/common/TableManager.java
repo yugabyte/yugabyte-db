@@ -58,7 +58,7 @@ public class TableManager extends DevopsBase {
     String accessKeyCode = userIntent.accessKeyCode;
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
-    Map<String, String> extraVars = new HashMap<>();
+    Map<String, String> extraVars = region.provider.getConfig();
     Map<String, String> namespaceToConfig = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
@@ -150,11 +150,9 @@ public class TableManager extends DevopsBase {
         if (taskParams.sse) {
           commandArgs.add("--sse");
         }
-        extraVars = customerConfig.dataAsMap();
-        if (region.provider.code.equals("kubernetes")) {
-          extraVars.putAll(region.provider.getConfig());
-        }
-
+        // Update env vars with customer config data after provider config to make sure the correct
+        // credentials are used.
+        extraVars.putAll(customerConfig.dataAsMap());
         break;
       // TODO: Add support for TLS connections for bulk-loading.
       // Tracked by issue: https://github.com/YugaByte/yugabyte-db/issues/1864
@@ -188,7 +186,6 @@ public class TableManager extends DevopsBase {
         commandArgs.add("--s3bucket");
         commandArgs.add(bulkImportParams.s3Bucket);
 
-        extraVars = region.provider.getConfig();
         extraVars.put("AWS_DEFAULT_REGION", region.code);
 
         break;
