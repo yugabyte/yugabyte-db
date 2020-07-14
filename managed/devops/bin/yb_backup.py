@@ -1530,13 +1530,11 @@ class YBBackup:
         if self.is_ysql_keyspace():
             sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
             db_name = keyspace_name(self.args.keyspace[0])
-        else:
-            sql_dump_path = None
 
         stored_keyspaces = self.args.keyspace
         stored_tables = self.args.table
         num_retry = CREATE_METAFILES_MAX_RETRIES
-        start_version = self.get_ysql_catalog_version()
+        start_version = self.get_ysql_catalog_version() if self.is_ysql_keyspace() else ''
         while num_retry > 0:
             num_retry = num_retry - 1
 
@@ -1549,12 +1547,13 @@ class YBBackup:
                     logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
                     atexit.register(self.delete_created_snapshot, snapshot_id)
 
-            if sql_dump_path:
+            if self.is_ysql_keyspace():
                 logging.info("Creating ysql dump for DB '{}' to {}".format(db_name, sql_dump_path))
-                self.run_ysql_dump(['--include-yb-metadata', '--create', '--schema-only',
+                self.run_ysql_dump(['--include-yb-metadata', '--serializable-deferrable',
+                                    '--create', '--schema-only',
                                     '--dbname=' + db_name, '--file=' + sql_dump_path])
 
-            final_version = self.get_ysql_catalog_version()
+            final_version = self.get_ysql_catalog_version() if self.is_ysql_keyspace() else ''
             logging.info('Catalog versions: {} - {}'.format(start_version, final_version))
             if final_version == start_version:
                 break  # Ok. No table schema changes during meta data creating.
@@ -1575,7 +1574,7 @@ class YBBackup:
         self.upload_metadata_and_checksum(metadata_path,
                                           os.path.join(snapshot_filepath, METADATA_FILE_NAME))
 
-        if sql_dump_path:
+        if self.is_ysql_keyspace():
             self.upload_metadata_and_checksum(sql_dump_path,
                                               os.path.join(snapshot_filepath, SQL_DUMP_FILE_NAME))
 
