@@ -112,7 +112,9 @@ Status:
 
 ## Connecting TLS Secured YugabyteDB cluster deployed by Helm Charts
 
-Follow the following [documentation link](https://docs.yugabyte.com/latest/deploy/kubernetes/single-zone/gke/helm-chart/) for the deployment of YugabyteDB cluster using Helm Chart and to bring up the cluster with encryption in transit (TLS) enabled, set the flag `tls.enabled=true` in the helm command-line.
+To bring up a YugabyteDB cluster with encryption in transit (TLS) enabled, follow the [instructions here](https://docs.yugabyte.com/latest/deploy/kubernetes/single-zone/gke/helm-chart/) and set the flag `tls.enabled=true` in the helm command-line.
+
+For example, `helm install yugabyte --namespace yb-demo --name yb-demo --set=tls.enabled=true`.
 
 ### Within Kubernetes cluster
 
