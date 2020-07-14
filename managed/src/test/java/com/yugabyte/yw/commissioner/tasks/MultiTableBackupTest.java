@@ -125,13 +125,14 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     when(mockSchemaResponse3.getTableType()).thenReturn(TableType.PGSQL_TABLE_TYPE);
   }
 
-  private TaskInfo submitTask(String keyspace, List<UUID> tableUUIDs) {
+  private TaskInfo submitTask(String keyspace, List<UUID> tableUUIDs, boolean transactional) {
     MultiTableBackup.Params backupTableParams = new MultiTableBackup.Params();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
     backupTableParams.customerUUID = defaultCustomer.uuid;
     backupTableParams.keyspace = keyspace;
     backupTableParams.storageConfigUUID = UUID.randomUUID();
     backupTableParams.tableUUIDList = tableUUIDs;
+    backupTableParams.transactionalBackup = transactional;
     try {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, backupTableParams);
       CustomerTask.create(defaultCustomer, defaultUniverse.universeUUID, taskUUID,
@@ -142,6 +143,10 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
       assertNull(e.getMessage());
     }
     return null;
+  }
+
+  private TaskInfo submitTask(String keyspace, List<UUID> tableUUIDs) {
+    return submitTask(keyspace, tableUUIDs, false);
   }
 
   @Test
@@ -189,6 +194,24 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     tableUUIDs.add(table3UUID);
     TaskInfo taskInfo = submitTask(null, tableUUIDs);
     verify(mockTableManager, times(2)).createBackup(any());
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testTransactionalMultiTableBackupList() {
+    Map<String, String> config = new HashMap<>();
+    config.put(Universe.TAKE_BACKUPS, "true");
+    defaultUniverse.setConfig(config);
+    ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
+    shellResponse.message = "{\"success\": true}";
+    shellResponse.code = 0;
+    when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
+    List<UUID> tableUUIDs = new ArrayList<UUID>();
+    tableUUIDs.add(table1UUID);
+    tableUUIDs.add(table2UUID);
+    tableUUIDs.add(table3UUID);
+    TaskInfo taskInfo = submitTask(null, tableUUIDs, true);
+    verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
 
