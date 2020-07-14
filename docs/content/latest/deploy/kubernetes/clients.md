@@ -186,7 +186,7 @@ cqlsh>
 (Optional) Use the below-mentioned command to remove the `yb-client` pod.
 
 ```sh
-$ kubectl delete po yb-client -n yb-demo
+$ kubectl delete pod yb-client -n yb-demo
 pod "yb-client" deleted
 ```
 
