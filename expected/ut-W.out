@@ -1241,7 +1241,7 @@ error hint:
 
 \o
 \! sql/maskout2.sh results/ut-W.tmpout
-                                                QUERY PLAN                                                 
+--(snip..)
 --(snip..)
  Append
    ->  Result
