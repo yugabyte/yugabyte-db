@@ -49,39 +49,39 @@ docker pull yugabytedb/yugabyte:2.2.0.0-b76
 
 ### Transactional distributed backups
 
-YugabyteDB now supports distributed backup and restore of YSQL databases. [#1139](https://github.com/yugabyte/yugabyte-db/issues/1139) and [#3849](https://github.com/yugabyte/yugabyte-db/issues/3849)
+YugabyteDB now supports [distributed backup and restore of YSQL databases](../../manage/backup-restore/snapshot-ysql/), including backup of all tables in a database. [#1139](https://github.com/yugabyte/yugabyte-db/issues/1139) and [#3849](https://github.com/yugabyte/yugabyte-db/issues/3849)
 
-### Online index builds
+### Online index backfills
 
-- YugabyteDB can now build indexes on non-empty tables while online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can now use the YSQL [`CREATE INDEX`](../../api/ysql/commands/ddl_create_index) statement and the YCQL [CREATE INDEX](../../api/ycql/ddl_create_index) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-- To backfill an index while online, set the `yb-tserver` [`--ysql_disable_index_backfill`](../../reference/configuration/yb-tserver/#ysql-disable-index-backfill) flag to `false` when starting YB-TServers. Note: Do not use this flag in a production cluster yet -- this is a beta feature. For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)
+- YugabyteDB can now build indexes on non-empty tables while online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can now use the YSQL [`CREATE INDEX`](../../api/ysql/commands/ddl_create_index/#semantics) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+- Backfilling an index while online is disable by default. To enable online index backfilling, set the `yb-tserver` [`--ysql_disable_index_backfill`](../../reference/configuration/yb-tserver/#ysql-disable-index-backfill) flag to `false` when starting YB-TServers. Note: Do not use this flag in a production cluster yet. For details on how this works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)
 
 ### Colocated tables
 
-Database-level colocation for YSQL, which started as a beta feature in the 2.1 release, is now generally available in the 2.2 release. Traditional RDBMS modeling of parent-child relationships as foreign key constraints can lead to high-latency `JOIN` queries in a geo-distributed SQL database. This is because the tablets (or shards) containing the child rows may be hosted in nodes, availability zones, and regions different from the tablets containing the parent rows. Using colocated tables lets a single tablet be shared across all tables. Colocation can also be at the overall database level where all tables of a single database are located in the same tablet and hence are managed by the same Raft group.  Note that tables that do not want to reside in the overall database’s tablet because of the expectation of large data volume can override the feature at table creation time and hence get independent tablets for themselves.
+Database-level colocation for YSQL, which started as a beta feature in the 2.1 release, is **now generally available** in the 2.2 release. Traditional RDBMS modeling of parent-child relationships as foreign key constraints can lead to high-latency `JOIN` queries in a geo-distributed SQL database. This is because the tablets (or shards) containing the child rows might be hosted in nodes, availability zones, and regions different from the tablets containing the parent rows. By using [colocated tables](../../architecture/docdb-sharding/colocated-tables), you can let a single tablet be shared across all tables. Colocation can also be at the overall database level, where all tables of a single database are located in the same tablet and managed by the same Raft group.  Note that tables that you do not want to reside in the overall database’s tablet because of the expectation of large data volume can override the feature at table creation time and hence get independent tablets for themselves.
 
-The natural question to ask is what happens when the “colocation” tablet containing all the tables of a database becomes too big and starts impacting performance? The answer lies in automatic tablet splitting (now available in beta).
+What happens when the “colocation” tablet containing all the tables of a database becomes too large and starts impacting performance? Check out [automatic tablet splitting [BETA]](#automatic-tablet-splitting-beta).
 
 ### Deferred constraints on foreign keys
 
 Foreign keys in YSQL now support the [DEFERRABLE INITIALLY IMMEDIATE](../../../api/ysql/commands/ddl_create_table/#foreign-key) and [DEFERRABLE INITIALLY DEFERRED](../../../api/ysql/commands/ddl_create_table/#foreign-key) clauses. Work on deferring additional constraints, including those for primary keys, is in progress. 
 
-Application developers often declare constraints that their data must obey, leaving it to relational databases to enforce the rules. The end result is simpler application logic, lower error probability, and higher developer productivity. Automatic constraint enforcement is a powerful feature that should be leveraged whenever possible. There are times, however, when you need to temporarily defer enforcement. An example is during the data load of a relational schema where there are cyclic foreign key dependencies. Data migration tools usually defer the enforcement of foreign key dependencies to the end of a transaction by which data for all foreign keys would ideally be present.  This should also allow YSQL to power Django apps. 
+Application developers often declare constraints that their data must obey, leaving it to relational databases to enforce the rules. The end result is simpler application logic, lower error probability, and higher developer productivity. Automatic constraint enforcement is a powerful feature that should be leveraged whenever possible. There are times, however, when you need to temporarily defer enforcement. An example is during the data load of a relational schema where there are cyclic foreign key dependencies. Data migration tools usually defer the enforcement of foreign key dependencies to the end of a transaction by which data for all foreign keys would ideally be present.  This should also allow YSQL to power Django apps.
 
 ### yugabyted for single-node clusters
 
-The `yugabyted` server is now out of beta for single-node deployments. New users can start using YugabyteDB without needing to understand the underlying architectures acts as a parent server, reducing the need to understand data management by YB-TServers and metadata management by YB-Masters. A new user interface (similar to the Yugabyte Platform Console) displays a richer data placement map and metrics dashboard.
+The `yugabyted` server is now out of beta for single-node deployments. New users can start using YugabyteDB without needing to understand the underlying architectures acts as a parent server, reducing the need to understand data management by YB-TServers and metadata management by YB-Masters.
 
-See it in action by following the updated Quick start. For details, see `yugabyted` in the Reference section.
+See it in action by following the updated [Quick start](../../quick-start). For details, see [`yugabyted`](../../reference/configuration/yugabyted) in the Reference section.
 
-### [Beta] Automatic tablet splitting
+### Automatic tablet splitting [BETA]
 
-- YugabyteDB now supports automatic tablet splitting, changing the number of tablets (resharding of data) at runtime. For details, see [Automatic Resharding of Data with Tablet Splitting]https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
-- You can use the new `yb-tserver` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-tserver/#tablet-split-size-threshold-bytes) flag that enables dynamic tablet splitting when tablets reach the specified size (in bytes).
+- YugabyteDB now supports automatic tablet splitting, resharding your data by changing the number of tablets at runtime. For details, see [Automatic Resharding of Data with Tablet Splitting]https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
+- To enable dynamic tablet splitting, use the new `yb-tserver` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-tserver/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
 
 ### TPC-C benchmarking
 
-New results are now available for benchmarking the performance of the YSQL API using the TPC-C suite. For the new TPC-C results and details on performing your own benchmark tests, see [TPC-C](../../benchmark/tpcc-sql)
+New results are now available for benchmarking the performance of the YSQL API using the TPC-C suite. For the new TPC-C results and details on performing your own benchmark tests to evaluate YugabyteDB, see [TPC-C](../../benchmark/tpcc-ysql/).
 
 ### Other notable changes
 
@@ -89,8 +89,8 @@ New results are now available for benchmarking the performance of the YSQL API u
 - Fix crash for nested `SELECT` statements that involve null pushdown on system tables. [#4685](https://github.com/yugabyte/yugabyte-db/issues/4685)
 - Fix wrong sorting order in pre-split tables. [#4651](https://github.com/yugabyte/yugabyte-db/issues/4651)
 - To help track down unoptimized (or "slow") queries, use the new `yb-tserver` [`--ysql_log_min_duration_statement`](../../reference/configuration/yb-tserver/#ysql-log-min-duration-statement). [#4817](https://github.com/yugabyte/yugabyte-db/issues/4817)
-- Enhance the [`yb-admin list_tables`](../../admin/yb-admin/#list-tables) command to include optional flags for including the database type (`include_db_type`), table ID (`include_table_id`), and the table type (`include_table_type`). Use this command instead of the now deprecated `yb-admin list_tables_with_db_types` command. [#4546](https://github.com/yugabyte/yugabyte-db/issues/4546)
-- Add support for `ALTER TABLE` on colocated tables. [#4293](https://github.com/yugabyte/yugabyte-db/issues/4293)
+- Enhance the [`yb-admin list_tables`](../../admin/yb-admin/#list-tables) command with optional flags for listing tables with database type (`include_db_type`), table ID (`include_table_id`), and table type (`include_table_type`). This command replaces the deprecated `yb-admin list_tables_with_db_types` command. [#4546](https://github.com/yugabyte/yugabyte-db/issues/4546)
+- Add support for [`ALTER TABLE`](../../api/ysql/commands/ddl_alter_table/#) on colocated tables. [#4293](https://github.com/yugabyte/yugabyte-db/issues/4293)
 - Improve logic for index delete permissions. [#4980](https://github.com/yugabyte/yugabyte-db/issues/4980)
 - Add fast path option for index backfill when certain statements can create indexes without unnecessary overhead from online schema migration (for example, `CREATE TABLE` with unique column constraint). Skip index backfill for unsupported statements, including `DROP INDEX`, "CREATE UNIQUE INDEX ON`, and index create in postgres nested DDL). [#4918]
 - Suppress `incomplete startup packet` messages in YSQL logs. [#4813](https://github.com/yugabyte/yugabyte-db/issues/4813)
@@ -100,29 +100,34 @@ New results are now available for benchmarking the performance of the YSQL API u
 
 ## YCQL
 
-### Online index backfill
+### Transactional distributed backups
 
-- YugabyteDB can now build indexes on non-empty tables while online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can now use the YSQL [`CREATE INDEX`](../../api/ysql/commands/ddl_create_index) statement and the YCQL [CREATE INDEX](../../api/ycql/ddl_create_index) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-- In YCQL, backfilling an index while online is enabled by default. To disable, set the `yb-tserver` [`--ycql_disable_index_backfill`](../../reference/configuration/yb-tserver/#ysql-disable-index-backfill) flag to `false` when starting YB-TServers. Note: Do not use this flag in a production cluster yet -- this is a **beta** feature. For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) [#2301](https://github.com/yugabyte/yugabyte-db/issues/2301) and [#4708](https://github.com/yugabyte/yugabyte-db/issues/4708)
+YugabyteDB supports [distributed backup and restore of YCQL databases and tables](../../manage/backup-restore/snapshot-ysql/). [#1139](https://github.com/yugabyte/yugabyte-db/issues/1139) and [#3849](https://github.com/yugabyte/yugabyte-db/issues/3849)
+
+### Online index backfills
+
+- YugabyteDB can now build indexes on non-empty tables while online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can now use the YCQL [CREATE INDEX](../../api/ycql/ddl_create_index/#synopsis) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+- In YCQL, backfilling an index while online is enabled by default. To disable, set the `yb-tserver` [`--ycql_disable_index_backfill`](../../reference/configuration/yb-tserver/#ycql-disable-index-backfill) flag to `false` when starting YB-TServers. Note: Do not use this flag in a production cluster yet. For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) [#2301](https://github.com/yugabyte/yugabyte-db/issues/2301) and [#4708](https://github.com/yugabyte/yugabyte-db/issues/4708)
+
+### Online schema changes for YCQL [BETA]
+
+Most applications have a need to frequently evolve the database schema, while simultaneously ensuring zero downtime during those schema change operations. Therefore, there is a need for schema migrations (which involve DDL operations) to be safely run in a concurrent and online manner alongside foreground client operations. In case of a failure, the schema change should be rolled back and not leave the database in a partially modified state. With the 2.2 release, not only the overall DocDB framework for supporting such schema changes in an online and safe manner has been introduced but also this feature is now available in beta in the context of YCQL using the [`ALTER TABLE`](../../api/ycql/ddl_alter_table/) statement.
+
+### Automatic tablet splitting [BETA]
+
+- YugabyteDB now supports automatic tablet splitting at runtime by changing the number of tablets based on size thresholds. For details, see the design document on [Automatic Resharding of Data with Tablet Splitting]https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
+- To enable automatic tablet splitting, use the new `yb-tserver` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-tserver/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
 
 ### Other notable changes
 
-- Throttle YCQL call when soft memory limit is reached. Two new flags, `throttle_cql_calls_on_soft_memory_limit
-- Implement a password cache to allow connections to be created more quickly from recently used accounts. Helps reduce high CPU usage when using YCQL authorization. [#4596](https://github.com/yugabyte/yugabyte-db/issues/4596)
+- Throttle YCQL calls when soft memory limit is reached. Two new flags, `throttle_cql_calls_on_soft_memory_limit` and `throttle_cql_calls_policy` can be used to control it. [#4973](https://github.com/yugabyte/yugabyte-db/issues/4973)
+- Implements a password cache to allow connections to be created more quickly from recently used accounts. Helps reduce high CPU usage when using YCQL authorization. [#4596](https://github.com/yugabyte/yugabyte-db/issues/4596)
 
-### Distributed backups
-
-### Online index builds
-
-### Colocated tables ??
-
-### Other changes
+### Other notable changes
 
 - Implement YCQL call throttling when soft memory limit is reached. Two new flags available to manage throttling: `throttle_cql_calls_on_soft_memory_limit` and `throttle_cql_calls_policy` [#4973](https://github.com/yugabyte/yugabyte-db/issues/4973)
 - Fix "column doesn't exist" error when an index is created on a column which is a prefix of another column. [#4881](https://github.com/yugabyte/yugabyte-db/issues/4881)
 - Fix crashes when using ORDER BY for non-existent column with index scan. [#4908](https://github.com/yugabyte/yugabyte-db/issues/4908)
-
-### [Beta] Online schema changes
 
 ## System improvements
 
@@ -156,7 +161,7 @@ New results are now available for benchmarking the performance of the YSQL API u
 
 ## Yugabyte Platform
 
-- Add backup and restore options for YSQL tables and universe-level transactional backups. [#3849](https://github.com/yugabyte/yugabyte-db/issues/3849)
+- Add option to [back up and restore YSQL databases](../../) and universe-level transactional backups. [#3849](https://github.com/yugabyte/yugabyte-db/issues/3849)
 - On the **Universes** page, the **Replication** tab displays by default and adds default state when replication lag metric query returns no data.
 - Add **Replication** tab to Universe overview tab list if enabled and query for replication lag metrics. [#]
 - Add replication lag metrics `async_replication_sent_lag_micros` (last applied time on producer - last polled for record) and `async_replication_committed_lag_micros` (last applied time on producer - last applied time on consumer) for 2DC replication and export to Prometheus. [#2154](https://github.com/yugabyte/yugabyte-db/issues/2154)
