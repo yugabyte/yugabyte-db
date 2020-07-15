@@ -54,7 +54,8 @@ Update packages on your system, install development tools and additional package
 sudo apt-get update
 sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build \
                      cmake curl rsync python3-pip zip autoconf libtool \
-                     pkg-config libssl1.0-dev libicu-dev bison flex
+                     pkg-config libssl1.0-dev libicu-dev bison flex \
+                     libncurses5-dev 
 ```
 
 Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
