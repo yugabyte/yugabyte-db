@@ -146,7 +146,13 @@ The port on which main webserver will run.
 
 The IP address or localhost name to which `yugabyted` will listen.
 
-##### --join *master-ip* [BETA]
+##### --join *master-ip*
+
+{{< note title="Note" >}}
+
+This feature is currently in [Beta](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+{{< /note >}}
 
 The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
 
