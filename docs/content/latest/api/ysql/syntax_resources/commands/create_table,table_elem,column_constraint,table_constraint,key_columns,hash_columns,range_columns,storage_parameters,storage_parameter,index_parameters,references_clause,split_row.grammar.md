@@ -17,14 +17,18 @@ column_constraint ::= [ CONSTRAINT constraint_name ]
                         | DEFAULT expression
                         | UNIQUE index_parameters
                         | PRIMARY KEY
-                        | references_clause }
+                        | references_clause } 
+                      [ DEFERRABLE | NOT DEFERRABLE ] 
+                      [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
 
 table_constraint ::= [ CONSTRAINT constraint_name ] 
                      { CHECK ( expression )
                        | UNIQUE ( column_names ) index_parameters
                        | PRIMARY KEY ( key_columns )
                        | FOREIGN KEY ( column_names ) 
-                         references_clause }
+                         references_clause } 
+                     [ DEFERRABLE | NOT DEFERRABLE ] 
+                     [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
 
 key_columns ::= hash_columns [ , range_columns ] | range_columns
 
