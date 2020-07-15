@@ -14,7 +14,7 @@ menu:
     weight: 2589 
 ---
 
-**Released:** July 14, 2020 (2.2.0.0-b76).
+**Released:** July 15, 2020 (2.2.0.0-b80).
 
 **New to YugabyteDB?** To get up and running in less than five minutes, follow [Quick start](../../quick-start/).
 
@@ -40,7 +40,7 @@ menu:
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.2.0.0-b76
+docker pull yugabytedb/yugabyte:2.2.0.0-b80
 ```
 
 ## Notable new features and enhancements
