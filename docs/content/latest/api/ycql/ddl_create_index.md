@@ -82,7 +82,10 @@ Where
 - An error is raised if `index_name` already exists in the associated keyspace unless the `IF NOT EXISTS` option is used.
 - Indexes do not support TTL. An error is raised if data is inserted with TTL into a table with indexes.
 
-{{< note title="Note" >}}                                                                                                                                                         When an index is created on an existing table, YugabyteDB will automatically backfill existing data into the index in an online manner (that is, while continuing to serve other concurrent writes and traffic). For more details on how this is done, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)
+
+{{< note title="Note" >}}
+
+When an index is created on an existing table, YugabyteDB will automatically backfill existing data into the index in an online manner (that is, while continuing to serve other concurrent writes and traffic). For more details on how this is done, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
 
 {{< /note >}}
 
