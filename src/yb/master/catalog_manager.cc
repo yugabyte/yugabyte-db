@@ -4133,6 +4133,11 @@ NamespaceName CatalogManager::GetNamespaceName(const scoped_refptr<TableInfo>& t
   return GetNamespaceName(table->namespace_id());
 }
 
+bool CatalogManager::IsSystemTable(const TableInfo& table) const {
+  SharedLock<LockType> l(lock_);
+  return IsSystemTableUnlocked(table);
+}
+
 bool CatalogManager::IsSystemTableUnlocked(const TableInfo& table) const {
   TabletInfos tablets;
   table.GetAllTablets(&tablets);
