@@ -5,7 +5,6 @@ linkTitle: 1. Prepare cloud environment
 description: Prepare your AWS environment for the Yugabyte Platform.
 aliases:
   - /latest/deploy/enterprise-edition/prepare-cloud-environment/
-  - /latest/deploy/enterprise-edition/prepare-cloud-environment/
   - /latest/yugabyte-platform/deploy/prepare-cloud-environment/
 menu:
   latest:
