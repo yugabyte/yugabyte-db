@@ -132,7 +132,7 @@ In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, 
 
 Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
-Default: `0.0.0.0:9100`
+Default: `""`
 
 ##### --use_private_ip
 
