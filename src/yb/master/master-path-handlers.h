@@ -153,6 +153,7 @@ class MasterPathHandlers {
                        Webserver::WebResponse* resp);
   void HandleTasksPage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
+  void HandleTabletReplicasPage(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
   void HandleMasters(const Webserver::WebRequest& req,
                      Webserver::WebResponse* resp);
   void HandleDumpEntities(const Webserver::WebRequest& req,
@@ -164,9 +165,12 @@ class MasterPathHandlers {
   void HandleHealthCheck(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleCheckIfLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetMastersStatus(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleGetReplicationStatus(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
 
   // Calcuates number of leaders/followers per table.
   void CalculateTabletMap(TabletCountMap* tablet_map);
+
+  void GetLeaderlessTablets(TabletInfos* leaderless_tablets);
 
   // Convert location of peers to HTML, indicating the roles
   // of each tablet server in a consensus configuration.
