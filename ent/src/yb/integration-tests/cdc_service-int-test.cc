@@ -483,6 +483,62 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
   }
 }
 
+TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+
+  const auto& tserver = cluster_->mini_tablet_server(0)->server();
+  // Use proxy for to most accurately simulate normal requests.
+  const auto& proxy = tserver->proxy();
+
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+  change_req.set_tablet_id(tablet_id);
+  change_req.set_stream_id(stream_id);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+  {
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+  }
+
+  // Insert test rows, one at a time so they have different hybrid times.
+  tserver::WriteRequestPB write_req;
+  tserver::WriteResponsePB write_resp;
+  write_req.set_tablet_id(tablet_id);
+  {
+    RpcController rpc;
+    AddTestRowInsert(1, 11, "key1", &write_req);
+    AddTestRowInsert(2, 22, "key2", &write_req);
+    SCOPED_TRACE(write_req.DebugString());
+    ASSERT_OK(proxy->Write(write_req, &write_resp, &rpc));
+    SCOPED_TRACE(write_resp.DebugString());
+    ASSERT_FALSE(write_resp.has_error());
+  }
+
+  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  // Assert that leader lag > 0.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
+    return metrics->async_replication_sent_lag_micros->value() > 0 &&
+        metrics->async_replication_committed_lag_micros->value() > 0;
+  }, MonoDelta::FromSeconds(10), "Wait for Lag > 0"));
+
+  // Now, delete the replication stream and assert that lag is 0.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
+    return metrics->async_replication_sent_lag_micros->value() == 0 &&
+        metrics->async_replication_committed_lag_micros->value() == 0;
+  }, MonoDelta::FromSeconds(10), "Wait for Lag = 0"));
+}
+
+
 TEST_F(CDCServiceTest, TestGetChanges) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
