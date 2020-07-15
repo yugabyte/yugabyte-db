@@ -11,22 +11,26 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TSERVER_FWD_H
-#define YB_TSERVER_TSERVER_FWD_H
+#ifndef YB_TSERVER_LOCAL_TABLET_SERVER_H
+#define YB_TSERVER_LOCAL_TABLET_SERVER_H
+
+#include "yb/tserver/tserver_fwd.h"
 
 namespace yb {
 namespace tserver {
 
-class GetTabletStatusRequestPB;
-class GetTabletStatusResponsePB;
-class LocalTabletServer;
-class TabletServer;
-class TabletPeerLookupIf;
-class TabletServerOptions;
-class TabletServerServiceProxy;
-class TSTabletManager;
+class LocalTabletServer {
+ public:
+  LocalTabletServer() = default;
+  virtual ~LocalTabletServer() = default;
+
+  virtual CHECKED_STATUS GetTabletStatus(const GetTabletStatusRequestPB* req,
+                                         GetTabletStatusResponsePB* resp) const = 0;
+
+  virtual bool LeaderAndReady(const TabletId& tablet_id, bool allow_stale = false) const = 0;
+};
 
 } // namespace tserver
 } // namespace yb
 
-#endif // YB_TSERVER_TSERVER_FWD_H
+#endif // YB_TSERVER_LOCAL_TABLET_SERVER_H
