@@ -12,7 +12,7 @@ $ ./tpccbenchmark --create=true --load=true \
   <tbody>
     <tr>
       <td>Cluster</td>
-      <td>3 nodes of type `c5.large`</td>
+      <td>3 nodes of type `c5d.large`</td>
     </tr>
     <tr>
       <td>Loader threads</td>
@@ -56,9 +56,9 @@ $ ./tpccbenchmark --create=true --load=true --execute=true \
 Once the execution is done the TPM-C number along with the efficiency is printed.
 
 ```
-22:51:04,125 (DBWorkload.java:895) INFO  - Rate limited reqs/s: Results(nanoSeconds=1800000323771, measuredRequests=8536) = 4.742221369225692 requests/sec
-22:51:04,125 (DBWorkload.java:900) INFO  - Num New Order transactions : 3839, time seconds: 1800
-22:51:04,126 (DBWorkload.java:901) INFO  - TPM-C: 127
-22:51:04,126 (DBWorkload.java:902) INFO  - Efficiency : 98.75583203732505
-22:51:04,127 (DBWorkload.java:737) INFO  - Output Raw data into file: results/oltpbench.csv
+22:06:27,915 (DBWorkload.java:895) INFO  - Rate limited reqs/s: Results(nanoSeconds=1800000677500, measuredRequests=8571) = 4.761664874428916 requests/sec
+22:06:27,915 (DBWorkload.java:900) INFO  - Num New Order transactions : 3816, time seconds: 1800
+22:06:27,915 (DBWorkload.java:901) INFO  - TPM-C: 127
+22:06:27,915 (DBWorkload.java:902) INFO  - Efficiency : 98.75583203732505
+22:06:27,916 (DBWorkload.java:737) INFO  - Output Raw data into file: results/oltpbench.csv
 ```
