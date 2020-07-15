@@ -1,5 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
+import _ from 'lodash';
 import React, { Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
@@ -146,7 +147,9 @@ class OnPremNodesList extends Component {
 
     let provisionMessage = <span />;
     const onPremProvider = providers.data.find((provider)=>provider.code === "onprem");
+    let useHostname = false;
     if (isDefinedNotNull(onPremProvider)) {
+      useHostname = _.get(onPremProvider, 'config.USE_HOSTNAME', false)
       const onPremKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid);
       if (isDefinedNotNull(onPremKey) && onPremKey.keyInfo.airGapInstall) {
         provisionMessage = (
@@ -185,6 +188,7 @@ class OnPremNodesList extends Component {
       && this.state.nodeToBeDeleted.nodeName
       ? ' ' + this.state.nodeToBeDeleted.nodeName
       : ''}?`;
+    const nodeAddressLabel = useHostname ? "Hostname" : "IP";
     return (
       <div>
         <span className="buttons pull-right">
@@ -202,7 +206,7 @@ class OnPremNodesList extends Component {
           <Col xs={12}>
             <BootstrapTable data={nodeListItems} >
               <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} />
-              <TableHeaderColumn dataField="ip">IP</TableHeaderColumn>
+              <TableHeaderColumn dataField="ip">{nodeAddressLabel}</TableHeaderColumn>
               <TableHeaderColumn dataField="inUse">In Use</TableHeaderColumn>
               <TableHeaderColumn dataField="region">Region</TableHeaderColumn>
               <TableHeaderColumn dataField="zone">Zone</TableHeaderColumn>
