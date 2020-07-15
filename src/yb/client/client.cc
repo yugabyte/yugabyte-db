@@ -1333,8 +1333,8 @@ Status YBClient::GetTabletsAndUpdateCache(
   RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets, RequireTabletsRunning::kFalse));
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
 
-  RETURN_NOT_OK(
-      data_->meta_cache_->ProcessTabletLocations(tablets, nullptr /* partition_group_start */));
+  RETURN_NOT_OK(data_->meta_cache_->ProcessTabletLocations(
+      tablets, /* partition_group_start= */ nullptr, /* request_no= */ 0));
 
   return Status::OK();
 }
