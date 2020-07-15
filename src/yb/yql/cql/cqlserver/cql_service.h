@@ -28,6 +28,7 @@
 #include "yb/yql/cql/cqlserver/cql_server_options.h"
 #include "yb/yql/cql/ql/statement.h"
 
+#include "yb/util/object_pool.h"
 #include "yb/util/string_case.h"
 
 #include "yb/client/async_initializer.h"
@@ -78,6 +79,10 @@ class CQLServiceImpl : public CQLServerServiceIf,
     return prepared_stmts_mem_tracker_;
   }
 
+  const MemTrackerPtr& processors_mem_tracker() const {
+    return processors_mem_tracker_;
+  }
+
   // Return the YBClient to communicate with either master or tserver.
   client::YBClient* client() const;
 
@@ -85,7 +90,9 @@ class CQLServiceImpl : public CQLServerServiceIf,
   const std::shared_ptr<client::YBMetaDataCache>& metadata_cache() const;
 
   // Return the CQL metrics.
-  std::shared_ptr<CQLMetrics> cql_metrics() const { return cql_metrics_; }
+  const std::shared_ptr<CQLMetrics>& cql_metrics() const { return cql_metrics_; }
+
+  ThreadSafeObjectPool<ql::Parser>& parser_pool() { return parser_pool_; }
 
   // Return the messenger.
   rpc::Messenger* messenger() { return messenger_; }
@@ -98,7 +105,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   constexpr static int kRpcTimeoutSec = 5;
 
   // Either gets an available processor or creates a new one.
-  CQLProcessor *GetProcessor();
+  Result<CQLProcessor*> GetProcessor();
 
   // Insert a prepared statement at the front of the LRU list. "prepared_stmts_mutex_" needs to be
   // locked before this call.
@@ -147,12 +154,19 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Tracker to measure and limit memory usage of prepared statements.
   MemTrackerPtr prepared_stmts_mem_tracker_;
 
+  MemTrackerPtr processors_mem_tracker_;
+
   // Metrics to be collected and reported.
   yb::rpc::RpcMethodMetrics metrics_;
 
   std::shared_ptr<CQLMetrics> cql_metrics_;
+
+  ThreadSafeObjectPool<ql::Parser> parser_pool_;
+
   // Used to requeue the cql_inbound call to handle the response callback(s).
   rpc::Messenger* messenger_ = nullptr;
+
+  int64_t num_allocated_processors_ = 0;
 };
 
 }  // namespace cqlserver
