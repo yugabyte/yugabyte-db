@@ -52,7 +52,7 @@ $ helm 2to3 convert yw-test
 ```sh
 $ helm ls -n yw-test
 NAME   	NAMESPACE	REVISION	UPDATED                               	STATUS  	CHART         	APP VERSION
-yw-test	yw-test  	1       	2020-06-16 16:51:16.44463488 +0000 UTC	deployed	yugaware-2.2.0	2.2.0.0-b76 
+yw-test	yw-test  	1       	2020-06-16 16:51:16.44463488 +0000 UTC	deployed	yugaware-2.2.0	2.2.0.0-b80 
 ```
 
 ## Upgrade Yugabyte Platform and YugabyteDB using Helm 3
