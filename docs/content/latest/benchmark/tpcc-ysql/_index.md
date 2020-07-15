@@ -34,9 +34,9 @@ Follow the steps below to run the open-source [oltpbench](https://github.com/olt
 ### Results at a glance
 | Warehouses| TPMC | Efficiency (approx) | Cluster Details
 -------------|-----------|------------|------------|
-10   | 126   | 97.97% | 3 nodes of type `c5.large` (2 vCPUs)
-100  | 1257  | 98.98% | 3 nodes of type `c5d.4xlarge` (16 vCPUs)
-1000 | 11205 | 97.90% | 3 nodes of type `c5d.4xlarge` (16 vCPUs)
+10   | 127   | 98.75% | 3 nodes of type `c5d.large` (2 vCPUs)
+100  | 1273  | 98.98% | 3 nodes of type `c5d.4xlarge` (16 vCPUs)
+1000 | 12590 | 97.90% | 3 nodes of type `c5d.4xlarge` (16 vCPUs)
 
 All the nodes in the cluster were in the same zone. The benchmark VM was the same type as the nodes in the cluster and was deployed in the same zone as the DB cluster. Each test was run for `30 minutes` after the loading of the data.
 
