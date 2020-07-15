@@ -96,7 +96,7 @@ Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
 
 ##### -h, --help
 
-Print the commmand line help and exit.
+Print the command line help and exit.
 
 ##### --config *config-file*
 
@@ -163,6 +163,7 @@ Enable or disable the "call home" feature that sends analytics data to Yugabyte.
 Enable or disable the webserver UI. Default is `false`.
 
 -----
+
 ### stop
 
 Use the `yugabyted stop` command to stop a YugabyteDB cluster.
@@ -272,15 +273,18 @@ Usage: yugabyted demo [-h] {connect,destroy} ...
 
 Print the help message and exit.
 
-##### connect 
+##### connect
 
-Load northwind sample dataset into a new `yb_demo_northwind` SQL database and then opens up `ysqlsh` prompt for the same database. Skips the data load if data is already loaded.
+Loads the `northwind` sample dataset into a new `yb_demo_northwind` SQL database and then opens up `ysqlsh` prompt for the same database. Skips the data load if data is already loaded.
 
-##### destroy 
+##### destroy
+
+Shuts down the yugabyted single-node cluster and removes data, configuration, and log directories.
 
 Deletes the `yb_demo_northwind` northwind database.
 
 -----
+
 ## Examples
 
 ### Create a single-node cluster
@@ -300,7 +304,7 @@ bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.0.0/data2 --listen=1
 bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.0.0/data3 --listen=127.0.0.3 --join=127.0.0.1
 ```
 
-### Destroy a multi-node cluster 
+### Destroy a multi-node cluster
 
 Destroy the above multi-node cluster.
 
@@ -309,6 +313,3 @@ bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.0.0/data1
 bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.0.0/data2
 bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.0.0/data1
 ```
-
-
-

@@ -34,8 +34,8 @@ In the table above, it is not possible for the database to infer the range of va
 In use-cases with a low-cardinality of the primary keys (or the secondary index), hashing is not very effective. For example, if we had a table where the primary key (or index) was the column gender which has only two values Male and Female, hash sharding would not be very effective. However, it is still desirable to use the entire cluster of machines to maximize serving throughput.
 
 ### Small tables that become very large
-This feature is also useful for use-cases where tables begin small, and thereby start with a few shards. If these tables grow very large, then nodes continuously get added to the cluster. We may reach a scenario where the number of nodes exceeds the number of tablets. Such cases require tablet splitting to effectively re-balance the cluster.
 
+This feature is also useful for use-cases where tables begin small, and thereby start with a few shards. If these tables grow very large, then nodes continuously get added to the cluster. We may reach a scenario where the number of nodes exceeds the number of tablets. Such cases require tablet splitting to effectively re-balance the cluster.
 
 ## Approaches to tablet splitting
 
@@ -49,13 +49,13 @@ DocDB allows the following mechanisms to re-shard data by splitting tablets:
 
 The sections below go into the details of how to pre-split tablets.
 
-
 ## Pre-splitting
 
-As the name suggests, the table is split at creation time into a desired number of tablets. Pre-splitting of tablets is supported for both *range* and *hash* sharded tables. The number of tablets can be spicified in one of two ways:
+As the name suggests, the table is split at creation time into a desired number of tablets. Pre-splitting of tablets is supported for both *range* and *hash* sharded tables. The number of tablets can be specified in one of two ways:
 
 * **Desired number of tablets** In this case, the table is created with the desired number of tablets.
 * **Desired number of tablets per node** In this case, the total number of tablets the table is split into is computed as follows:
+
     ```
     num_tablets_in_table = num_tablets_per_node * num_nodes_at_table_creation_time
     ```
@@ -65,7 +65,6 @@ As the name suggests, the table is split at creation time into a desired number 
 In order to pre-split a table into a desired number of tablets, we need the start and end key for each tablet. This makes pre-splitting slightly different for hash-sharded and range-sharded tables.
 
 {{</note >}}
-
 
 ### Hash-sharded tables
 
