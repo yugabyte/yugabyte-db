@@ -18,6 +18,7 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/random_util.h"
 #include "yb/util/subprocess.h"
 
 using std::unique_ptr;
@@ -36,10 +37,27 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     ASSERT_OK(CreateClient());
   }
 
+  void DoBeforeTearDown() override {
+    if (!tmp_dir_.empty()) {
+      LOG(INFO) << "Deleting temporary folder: " << tmp_dir_;
+      ASSERT_OK(Env::Default()->DeleteRecursively(tmp_dir_));
+    }
+  }
+
+  string GetTempDir(const string& subdir) {
+    if (tmp_dir_.empty()) {
+      EXPECT_OK(Env::Default()->GetTestDirectory(&tmp_dir_));
+      tmp_dir_ = JoinPathSegments(
+        tmp_dir_, string(CURRENT_TEST_CASE_NAME()) + '_' + RandomHumanReadableString(8));
+    }
+
+    return JoinPathSegments(tmp_dir_, subdir);
+  }
+
   Status RunBackupCommand(const vector<string>& args) {
     const HostPort pg_hp = cluster_->pgsql_hostport(0);
     std::stringstream command;
-    command << "python2 " << GetToolPath("../../../managed/devops/bin", "yb_backup.py")
+    command << "python3 " << GetToolPath("../../../managed/devops/bin", "yb_backup.py")
             << " --masters " << cluster_->GetMasterAddresses()
             << " --remote_yb_admin_binary=" << GetToolPath("yb-admin")
             << " --remote_ysql_dump_binary=" << GetPgToolPath("ysql_dump")
@@ -50,7 +68,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
             << " --no_ssh"
             << " --no_auto_name";
 #if defined(__APPLE__)
-    command << " --mac";
+    command << " --mac" << " --verbose";
 #endif // defined(__APPLE__)
     string backup_cmd;
     for (const auto& a : args) {
@@ -94,6 +112,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
   }
 
   client::TableHandle table_;
+  string tmp_dir_;
 };
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackup)) {
@@ -101,9 +120,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackup)) {
       client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
   const string& keyspace = table_.name().namespace_name();
 
-  string tmp_dir;
-  ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
-  const auto backup_dir = JoinPathSegments(tmp_dir, "backup");
+  const string backup_dir = GetTempDir("backup");
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
@@ -126,9 +143,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackup)) {
       )#"
   ));
 
-  string tmp_dir;
-  ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
-  const auto backup_dir = JoinPathSegments(tmp_dir, "backup");
+  const string backup_dir = GetTempDir("backup");
 
   // There is no YCQL keyspace 'yugabyte'.
   ASSERT_NOK(RunBackupCommand(
@@ -233,9 +248,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
 
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO vendors (v_code, v_name) VALUES (100, 'foo')"));
 
-  string tmp_dir;
-  ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
-  const auto backup_dir = JoinPathSegments(tmp_dir, "backup");
+  const string backup_dir = GetTempDir("backup");
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
