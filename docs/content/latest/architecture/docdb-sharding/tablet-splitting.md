@@ -203,7 +203,13 @@ There are a few important things to note here.
 
 {{</note >}}
 
-## Dynamic splitting
+## Automatic splitting
 
-Dynamic splitting is currently a [work-in-progress](https://github.com/yugabyte/yugabyte-db/issues/1004) feature and is not yet available. Design for this feature can be reviewed on [GitHub](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md).
+{{< note title="Note" >}}
+
+This feature is currently in [BETA](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+{{< /note >}}
+
+Design for automatic splitting can be reviewed on [GitHub](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). While the broader feature is [work-in-progress](https://github.com/yugabyte/yugabyte-db/issues/1004), tablets can be automatically split for a few scenarions starting the v2.2 release. Detailed documentation is coming soon.
 
