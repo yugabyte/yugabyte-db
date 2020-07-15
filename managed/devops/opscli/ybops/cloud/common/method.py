@@ -446,6 +446,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--gflags_to_remove', default=None)
         self.parser.add_argument('--master_addresses_for_tserver')
         self.parser.add_argument('--master_addresses_for_master')
+        self.parser.add_argument('--server_broadcast_addresses')
         self.parser.add_argument('--rootCA_cert')
         self.parser.add_argument('--rootCA_key')
         self.parser.add_argument('--client_key')
@@ -495,6 +496,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
             if args.master_addresses_for_master is not None:
                 self.extra_vars["master_addresses_for_master"] = args.master_addresses_for_master
+
+            if args.server_broadcast_addresses is not None:
+                self.extra_vars["server_broadcast_addresses"] = args.server_broadcast_addresses
 
             if args.yb_process_type:
                 self.extra_vars["yb_process_type"] = args.yb_process_type.lower()

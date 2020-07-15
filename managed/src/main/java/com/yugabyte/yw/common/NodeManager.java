@@ -218,6 +218,8 @@ public class NodeManager extends DevopsBase {
 
     switch(taskParam.type) {
       case Everything:
+        boolean useHostname = universe.getUniverseDetails()
+          .getPrimaryCluster().userIntent.useHostname;
         if (ybServerPackage == null) {
           throw new RuntimeException("Unable to fetch yugabyte release for version: " +
               taskParam.ybSoftwareVersion);
@@ -235,9 +237,17 @@ public class NodeManager extends DevopsBase {
         extra_gflags.put("metric_node_name", taskParam.nodeName);
         // TODO: add a shared path to massage flags across different flavors of configure.
         NodeDetails node = universe.getNode(taskParam.nodeName);
+        String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
+        if (useHostname) {
+          subcommand.add("--server_broadcast_addresses");
+          subcommand.add(node.cloudInfo.private_ip);
+          pgsqlProxyBindAddress = "0.0.0.0";
+        }
         if (taskParam.enableYSQL) {
           extra_gflags.put("enable_ysql", "true");
-          extra_gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", node.cloudInfo.private_ip, node.ysqlServerRpcPort));
+          extra_gflags.put("pgsql_proxy_bind_address", String.format(
+            "%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort
+          ));
         } else {
           extra_gflags.put("enable_ysql", "false");
         }

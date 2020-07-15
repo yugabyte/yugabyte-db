@@ -456,6 +456,12 @@ public class UniverseController extends AuthenticatedController {
       for (Cluster c : taskParams.clusters) {
         Provider provider = Provider.find.byId(UUID.fromString(c.userIntent.provider));
         c.userIntent.providerType = CloudType.valueOf(provider.code);
+        if (
+          c.userIntent.providerType.equals(CloudType.onprem) &&
+            provider.getConfig().containsKey("USE_HOSTNAME")
+        ) {
+          c.userIntent.useHostname = Boolean.parseBoolean(provider.getConfig().get("USE_HOSTNAME"));
+        }
         updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       }
 
