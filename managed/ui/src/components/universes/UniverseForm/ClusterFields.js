@@ -92,7 +92,6 @@ export default class ClusterFields extends Component {
     this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
     this.accessKeyChanged = this.accessKeyChanged.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
-    this.getCurrentUserIntent = this.getCurrentUserIntent.bind(this);
 
     this.currentInstanceType = _.get(this.props.universe,
       'currentUniverse.data.universeDetails.clusters[0].userIntent.instanceType');
@@ -434,39 +433,6 @@ export default class ClusterFields extends Component {
     }
   }
 
-  getCurrentUserIntent = () => {
-    const {formValues, clusterType, universe: { currentUniverse } } = this.props;
-    const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
-    if (formValues[clusterType]) {
-      return {
-        universeName: primaryCluster.userIntent.universeName,
-        numNodes: formValues[clusterType].numNodes,
-        provider: formValues[clusterType].provider,
-        providerType: this.getCurrentProvider(formValues[clusterType].provider) ?
-          this.getCurrentProvider(formValues[clusterType].provider).code :
-          null,
-        regionList: formValues[clusterType].regionList.map((a)=>(a.value)),
-        instanceType: formValues[clusterType].instanceType,
-        ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
-        replicationFactor: formValues[clusterType].replicationFactor,
-        deviceInfo: {
-          volumeSize: formValues[clusterType].volumeSize,
-          numVolumes: formValues[clusterType].numVolumes,
-          diskIops: formValues[clusterType].diskIops,
-          mountPoints: formValues[clusterType].mountPoints,
-          storageType: formValues[clusterType].storageType
-        },
-        accessKeyCode: formValues[clusterType].accessKeyCode,
-        gflags: formValues[clusterType].gflags,
-        instanceTags: formValues[clusterType].instanceTags,
-        useTimeSync: formValues[clusterType].useTimeSync,
-        enableYSQL: formValues[clusterType].enableYSQL,
-        enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
-        enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
-      };
-    }
-  };
-
   softwareVersionChanged(value) {
     const { updateFormField, clusterType } = this.props;
     this.setState({ybSoftwareVersion: value});
@@ -599,14 +565,14 @@ export default class ClusterFields extends Component {
   };
 
   hasFieldChanged = () => {
-    const { universe: { currentUniverse }, clusterType } = this.props;
+    const { universe: { currentUniverse }, clusterType, getCurrentUserIntent } = this.props;
     if (isEmptyObject(currentUniverse.data) || isEmptyObject(currentUniverse.data.universeDetails)) {
       return true;
     }
     const currentCluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
     const existingIntent = isNonEmptyObject(currentCluster) ?
       _.clone(currentCluster.userIntent, true) : null;
-    const currentIntent = this.getCurrentUserIntent();
+    const currentIntent = getCurrentUserIntent(clusterType);
 
     return !areIntentsEqual(existingIntent, currentIntent);
   };
@@ -649,28 +615,14 @@ export default class ClusterFields extends Component {
     }
   }
 
-  updateTaskParams = (universeTaskParams, userIntent, clusterType) => {
-    const cluster = getClusterByType(universeTaskParams.clusters, clusterType);
-    universeTaskParams.currentClusterType = clusterType.toUpperCase();
-    const isEdit = this.props.type === "Edit" ||
-      (this.props.type === "Async" && this.state.isReadOnlyExists);
-
-    if (isDefinedNotNull(cluster)) {
-      cluster.userIntent = userIntent;
-    } else {
-      if (isEmptyObject(universeTaskParams.clusters)) {
-        universeTaskParams.clusters = [];
-      }
-      universeTaskParams.clusters.push({
-        clusterType: clusterType.toUpperCase(),
-        userIntent: userIntent
-      });
-    }
-    universeTaskParams.clusterOperation = isEdit ? "EDIT": "CREATE";
-  }
-
   configureUniverseNodeList() {
-    const { universe: { universeConfigTemplate, currentUniverse }, formValues, clusterType } = this.props;
+    const {
+      universe: { universeConfigTemplate, currentUniverse },
+      formValues,
+      clusterType,
+      getCurrentUserIntent,
+      updateTaskParams
+    } = this.props;
     const { hasInstanceTypeChanged } = this.state;
     const currentProviderUUID = this.state.providerSelected;
     let universeTaskParams = {};
@@ -685,44 +637,13 @@ export default class ClusterFields extends Component {
       universeTaskParams.expectedUniverseVersion = currentUniverse.data.version;
     }
 
-    const userIntent = {
-      universeName: formValues[clusterType].universeName,
-      provider: formValues[clusterType].provider,
-      regionList: formValues[clusterType].regionList && formValues[clusterType].regionList.map(function (item) {
-        return item.value;
-      }),
-      assignPublicIP: formValues[clusterType].assignPublicIP,
-      useTimeSync: formValues[clusterType].useTimeSync,
-      enableYSQL: formValues[clusterType].enableYSQL,
-      enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
-      enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
-      numNodes: formValues[clusterType].numNodes,
-      instanceType: formValues[clusterType].instanceType,
-      ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
-      replicationFactor: formValues[clusterType].replicationFactor,
-      enableEncryptionAtRest: formValues[clusterType].enableEncryptionAtRest,
-      deviceInfo: {
-        volumeSize: formValues[clusterType].volumeSize,
-        numVolumes: formValues[clusterType].numVolumes,
-        mountPoints: formValues[clusterType].mountPoints,
-        storageType: formValues[clusterType].storageType,
-        diskIops: formValues[clusterType].diskIops
-      },
-      accessKeyCode: formValues[clusterType].accessKeyCode
-    };
-
+    const userIntent = getCurrentUserIntent(clusterType);    
     if (hasInstanceTypeChanged !==
       (formValues[clusterType].instanceType !== this.currentInstanceType)
     ) {
       this.setState({ hasInstanceTypeChanged: !hasInstanceTypeChanged });
     }
 
-    if (isNonEmptyObject(formValues[clusterType].masterGFlags)) {
-      userIntent["masterGFlags"] = formValues[clusterType].masterGFlags;
-    }
-    if (isNonEmptyObject(formValues[clusterType].tserverGFlags)) {
-      userIntent["tserverGFlags"] = formValues[clusterType].tserverGFlags;
-    }
     if (isNonEmptyObject(formValues[clusterType].instanceTags) && currentProviderUUID && this.getCurrentProvider(currentProviderUUID).code === "aws") {
       userIntent["instanceTags"] = formValues[clusterType].instanceTags;
     }
@@ -733,7 +654,9 @@ export default class ClusterFields extends Component {
       }
     });
 
-    this.updateTaskParams(universeTaskParams, userIntent, clusterType);
+    const isEdit = this.props.type === "Edit" ||
+      (this.props.type === "Async" && this.state.isReadOnlyExists);
+    updateTaskParams(universeTaskParams, userIntent, clusterType, isEdit);
     universeTaskParams.userAZSelected = false;
     this.handleUniverseConfigure(universeTaskParams);
   }

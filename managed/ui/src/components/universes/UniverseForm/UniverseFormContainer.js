@@ -27,8 +27,8 @@ const mapDispatchToProps = (dispatch) => {
   return {
     submitConfigureUniverse: (values) => {
       dispatch(configureUniverseTemplateLoading());
-      dispatch(configureUniverseTemplate(values)).then((response) => {
-        dispatch(configureUniverseTemplateResponse(response.payload));
+      return dispatch(configureUniverseTemplate(values)).then((response) => {
+        return dispatch(configureUniverseTemplateResponse(response.payload));
       });
     },
 
