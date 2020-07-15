@@ -474,8 +474,9 @@ void CDCServiceImpl::UpdateLagMetrics() {
   for (auto it = tablet_checkpoints.begin(); it != tablet_checkpoints.end(); it++) {
     std::shared_ptr<tablet::TabletPeer> tablet_peer;
     Status s = tablet_manager_->GetTabletPeer(it->tablet_id(), &tablet_peer);
-    if (!s.ok()) {
-      LOG(WARNING) << s;
+    if (s.IsNotFound() ||
+        tablet_peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
+      // We either couldn't find the tablet or we're not the leader for this tablet, skip.
       continue;
     }
     auto tablet_metric = GetCDCTabletMetrics(it->producer_tablet_info, tablet_peer);
