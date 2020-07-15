@@ -44,7 +44,7 @@ This section goes into details of backing up data and restoring it from Yugabyte
 </div>
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="snapshots/">
+    <a class="section-link icon-offset" href="snapshot-ysql">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
         <div class="title">Snapshot and restore data</div>
