@@ -3,8 +3,6 @@ title: Prepare cloud environments for Yugabyte Platform
 headerTitle: Prepare cloud environment for GCP
 linkTitle: 1. Prepare cloud environment
 description: Prepare your GCP environment for the Yugabyte Platform.
-aliases:
-  - /latest/deploy/enterprise-edition/prepare-cloud-environment/
 menu:
   latest:
     identifier: prepare-cloud-2-gcp
