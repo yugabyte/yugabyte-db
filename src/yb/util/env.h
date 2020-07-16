@@ -457,6 +457,12 @@ class Env {
   // All directory entries in 'path' must exist on the filesystem.
   virtual CHECKED_STATUS Canonicalize(const std::string& path, std::string* result) = 0;
 
+  Result<std::string> Canonicalize(const std::string& path) {
+    string result;
+    RETURN_NOT_OK(Canonicalize(path, &result));
+    return result;
+  }
+
   // Get the total amount of RAM installed on this machine.
   virtual CHECKED_STATUS GetTotalRAMBytes(int64_t* ram) = 0;
 

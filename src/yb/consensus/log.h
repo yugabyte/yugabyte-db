@@ -408,8 +408,9 @@ class Log : public RefCountedThreadSafe<Log> {
   // The currently active segment being written.
   gscoped_ptr<WritableLogSegment> active_segment_;
 
-  // The current (active) segment sequence number.
-  std::atomic<uint64_t> active_segment_sequence_number_ = {0};
+  // The current (active) segment sequence number. Initialized in the Log constructor based on
+  // LogOptions.
+  std::atomic<uint64_t> active_segment_sequence_number_;
 
   // The writable file for the next allocated segment
   std::shared_ptr<WritableFile> next_segment_file_;
@@ -449,8 +450,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // The maximum segment size we want for the current WAL segment, in bytes.  This value keeps
   // doubling (for each subsequent WAL segment) till it gets to max_segment_size_.
-  // Note: The first WAL segment will start off as twice of this value.
-  uint64_t cur_max_segment_size_ = 512 * 1024;
+  uint64_t cur_max_segment_size_;
 
   // Appender manages a TaskStream writing to the log. We will use one taskstream per tablet.
   std::unique_ptr<Appender> appender_;

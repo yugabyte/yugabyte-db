@@ -65,6 +65,11 @@ DEFINE_uint64(log_segment_size_bytes, 0,
              "The default segment size for log roll-overs, in bytes. "
              "If 0 then log_segment_size_mb is used.");
 
+DEFINE_uint64(initial_log_segment_size_bytes, 1024 * 1024,
+              "The maximum segment size we want for a new WAL segment, in bytes. "
+              "This value keeps doubling (for each subsequent WAL segment) till it gets to the "
+              "maximum configured segment size (log_segment_size_bytes or log_segment_size_mb).");
+
 DEFINE_bool(durable_wal_write, false,
             "Whether the Log/WAL should explicitly call fsync() after each write.");
 TAG_FLAG(durable_wal_write, stable);
@@ -130,6 +135,7 @@ const uint32_t kLogSegmentMaxHeaderOrFooterSize = 8 * 1024 * 1024;
 LogOptions::LogOptions()
     : segment_size_bytes(FLAGS_log_segment_size_bytes == 0 ? FLAGS_log_segment_size_mb * 1_MB
                                                            : FLAGS_log_segment_size_bytes),
+      initial_segment_size_bytes(FLAGS_initial_log_segment_size_bytes),
       durable_wal_write(FLAGS_durable_wal_write),
       interval_durable_wal_write(FLAGS_interval_durable_wal_write_ms > 0 ?
                                      MonoDelta::FromMilliseconds(

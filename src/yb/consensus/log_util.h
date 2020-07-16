@@ -79,12 +79,15 @@ extern const int kLogMinorVersion;
 
 class ReadableLogSegment;
 
-// Options for the State Machine/Write Ahead Log
+// Options for the Write Ahead Log. The LogOptions constructor initializes default field values
+// based on flags. See log_util.cc for details.
 struct LogOptions {
 
-  // The size of a Log segment
-  // Logs will rollover upon reaching this size (default 64 MB)
+  // The size of a Log segment.
+  // Logs will roll over upon reaching this size.
   size_t segment_size_bytes;
+
+  size_t initial_segment_size_bytes;
 
   // Whether to call fsync on every call to Append().
   bool durable_wal_write;
@@ -107,6 +110,8 @@ struct LogOptions {
   Env* env;
 
   std::string peer_uuid;
+
+  uint64_t initial_active_segment_sequence_number = 0;
 
   LogOptions();
 };
