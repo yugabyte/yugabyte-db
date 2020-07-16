@@ -1063,6 +1063,9 @@ message AlterTableRequestPB {
   // request.
   // This is useful to trigger index permissions update.
   optional bool force_send_alter_request = 7 [default = false];
+
+  // Replication information for this table.
+  optional ReplicationInfoPB replication_info = 8;
 }
 
 message AlterTableResponsePB {

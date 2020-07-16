@@ -48,6 +48,7 @@
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/client/client.h"
+#include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master_error.h"
@@ -1572,6 +1573,67 @@ Status ClusterAdminClient::FillPlacementInfo(
   }
 
   return Status::OK();
+}
+
+Status ClusterAdminClient::ModifyTablePlacementInfo(
+  const YBTableName& table_name, const std::string& placement_info, int replication_factor,
+  const std::string& optional_uuid) {
+
+  std::vector<std::string> placement_info_split = strings::Split(
+      placement_info, ",", strings::SkipEmpty());
+  if (placement_info_split.size() < 1) {
+    return STATUS(InvalidCommand, "Table placement config must be a list of "
+    "placement infos seperated by commas. "
+    "Format: 'cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3 ..."
+    + std::to_string(placement_info_split.size()));
+  }
+
+  master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
+  live_replicas->set_num_replicas(replication_factor);
+  // Iterate over the placement blocks of the placementInfo structure.
+  for (int iter = 0; iter < placement_info_split.size(); iter++) {
+    std::vector<std::string> block = strings::Split(placement_info_split[iter], ".",
+                                                    strings::SkipEmpty());
+    if (block.size() != 3) {
+      return STATUS(InvalidCommand, "Each placement info must have exactly 3 values seperated"
+          "by dots that denote cloud, region and zone. Block: " + placement_info_split[iter]
+          + " is invalid");
+    }
+    auto pb = live_replicas->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(block[0]);
+    pb->mutable_cloud_info()->set_placement_region(block[1]);
+    pb->mutable_cloud_info()->set_placement_zone(block[2]);
+    // TODO: Should this also be passed in as input?
+    pb->set_min_num_replicas(1);
+  }
+
+  if (!optional_uuid.empty()) {
+    // If we have an optional uuid, set it.
+    live_replicas->set_placement_uuid(optional_uuid);
+  }
+
+  master::ReplicationInfoPB replication_info;
+  // Merge the obtained info with the existing table replication info.
+  std::shared_ptr<client::YBTable> table;
+  RETURN_NOT_OK_PREPEND(yb_client_->OpenTable(table_name, &table),
+                        "Fetching table schema failed!");
+
+  // If it does not exist, fetch the cluster replication info.
+  if (!table->has_replication_info()) {
+    auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
+    master::SysClusterConfigEntryPB* sys_cluster_config_entry =
+      resp_cluster_config.mutable_cluster_config();
+    replication_info.CopyFrom(sys_cluster_config_entry->replication_info());
+  } else {
+    // Table replication info exists, copy it over.
+    replication_info.CopyFrom(table->replication_info());
+  }
+  // Put in the placement info.
+  replication_info.set_allocated_live_replicas(live_replicas);
+
+  std::unique_ptr<yb::client::YBTableAlterer> table_alterer(
+    yb_client_->NewTableAlterer(table_name));
+  return table_alterer->replication_info(replication_info)->Alter();
 }
 
 Status ClusterAdminClient::ModifyPlacementInfo(

@@ -127,6 +127,7 @@ ADD_YB_TEST(log_version-test)
 ADD_YB_TEST(load_balancer-test)
 ADD_YB_TEST(load_balancer_multi_table-test)
 ADD_YB_TEST(load_balancer_respect_affinity-test)
+ADD_YB_TEST(load_balancer_placement_policy-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra cql_test_util)

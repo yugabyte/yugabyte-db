@@ -59,6 +59,12 @@ YBTableAlterer* YBTableAlterer::SetTableProperties(const TableProperties& table_
   return this;
 }
 
+YBTableAlterer* YBTableAlterer::replication_info(const master::ReplicationInfoPB& ri) {
+  replication_info_ = ri;
+  has_replication_info_ = true;
+  return this;
+}
+
 YBTableAlterer* YBTableAlterer::SetWalRetentionSecs(const uint32_t wal_retention_secs) {
   wal_retention_secs_ = wal_retention_secs;
   return this;
@@ -97,7 +103,7 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
     return status_;
   }
 
-  if (!rename_to_ && steps_.empty() && !table_properties_ && !wal_retention_secs_) {
+  if (!rename_to_ && steps_.empty() && !table_properties_ && !wal_retention_secs_ && !has_replication_info_) {
     return STATUS(InvalidArgument, "No alter steps provided");
   }
 
@@ -167,6 +173,11 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
 
   if (wal_retention_secs_) {
     req->set_wal_retention_secs(*wal_retention_secs_);
+  }
+
+  if (has_replication_info_) {
+    // TODO: Maybe add checks for the sanity of the replication_info.
+    req->mutable_replication_info()->CopyFrom(replication_info_);
   }
 
   return Status::OK();

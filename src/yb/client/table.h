@@ -47,6 +47,7 @@ struct YBTableInfo {
   boost::optional<IndexInfo> index_info;
   YBTableType table_type;
   bool colocated;
+  master::ReplicationInfoPB replication_info;
 };
 
 // A YBTable represents a table on a particular cluster. It holds the current
@@ -100,6 +101,12 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   // Is the table colocated?
   const bool colocated() const;
+
+  // Returns the replication info for the table.
+  const master::ReplicationInfoPB& replication_info() const;
+
+  // Returns whether any field in the replication info has been set for the table.
+  const bool has_replication_info() const;
 
   std::string ToString() const;
   //------------------------------------------------------------------------------------------------
