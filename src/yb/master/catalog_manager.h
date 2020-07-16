@@ -370,6 +370,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS ListTablegroups(const ListTablegroupsRequestPB* req,
                                  ListTablegroupsResponsePB* resp);
 
+  bool HasTablegroups();
+
   // Create a new User-Defined Type with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,

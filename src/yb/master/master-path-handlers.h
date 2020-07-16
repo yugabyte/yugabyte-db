@@ -78,6 +78,7 @@ class MasterPathHandlers {
   enum TableType {
     kUserTable,
     kUserIndex,
+    kColocatedParentTable,
     kSystemTable,
     kNumTypes,
   };
@@ -114,7 +115,7 @@ class MasterPathHandlers {
   // Map of tserver UUID -> TabletCounts
   typedef std::unordered_map<std::string, TabletCounts> TabletCountMap;
 
-  const string table_type_[kNumTypes] = {"User", "Index", "System"};
+  const string table_type_[kNumTypes] = {"User", "Index", "Colocated", "System"};
 
   const string kNoPlacementUUID = "NONE";
 
@@ -171,6 +172,8 @@ class MasterPathHandlers {
   void CalculateTabletMap(TabletCountMap* tablet_map);
 
   void GetLeaderlessTablets(TabletInfos* leaderless_tablets);
+  // Calculates the YSQL OID of a tablegroup / colocated database parent table
+  string GetParentTableOid(scoped_refptr<TableInfo> parent_table);
 
   // Convert location of peers to HTML, indicating the roles
   // of each tablet server in a consensus configuration.
