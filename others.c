@@ -444,7 +444,6 @@ Datum
 orafce_dump(PG_FUNCTION_ARGS)
 {
 	Oid		valtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
-	List	*args;
 	int16	typlen;
 	bool	typbyval;
 	Size	length;
@@ -452,7 +451,7 @@ orafce_dump(PG_FUNCTION_ARGS)
 	int		format;
 	StringInfoData	str;
 
-	if (!fcinfo->flinfo || !fcinfo->flinfo->fn_expr)
+	if (!OidIsValid(valtype))
 		elog(ERROR, "function is called from invalid context");
 
 	if (PG_ARGISNULL(0))
@@ -460,9 +459,6 @@ orafce_dump(PG_FUNCTION_ARGS)
 
 	value = PG_GETARG_DATUM(0);
 	format = PG_GETARG_IF_EXISTS(1, INT32, 10);
-
-	args = ((FuncExpr *) fcinfo->flinfo->fn_expr)->args;
-	valtype = exprType((Node *) list_nth(args, 0));
 
 	get_typlenbyval(valtype, &typlen, &typbyval);
 	length = datumGetSize(value, typbyval, typlen);
