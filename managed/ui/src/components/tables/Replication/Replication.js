@@ -79,13 +79,11 @@ export default class ListBackups extends Component {
           </div>
         </div>;
       }
-      let resourceNumber = <YBResourceCount size={latestStat} kind="&mu;s" inline={true} />;
-      if (latestStat > 60000000) {
-        resourceNumber = <YBResourceCount size={(latestStat / 60000000.00).toFixed(4)} kind="min" inline={true} />;
-      } else if (latestStat > 1000000) {
-        resourceNumber = <YBResourceCount size={(latestStat / 1000000.00).toFixed(4)} kind="s" inline={true} />;
+      let resourceNumber = <YBResourceCount size={latestStat} kind="ms" inline={true} />;
+      if (latestStat > 60000) {
+        resourceNumber = <YBResourceCount size={(latestStat / 60000.00).toFixed(4)} kind="min" inline={true} />;
       } else if (latestStat > 1000) {
-        resourceNumber = <YBResourceCount size={latestStat / 1000.00} kind="ms" inline={true} />;
+        resourceNumber = <YBResourceCount size={(latestStat / 1000.00).toFixed(4)} kind="s" inline={true} />;
       }
       recentStatBlock = <div className="metric-block">
         <h3>Current Replication Lag</h3>
