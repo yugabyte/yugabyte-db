@@ -4909,6 +4909,11 @@ Status CatalogManager::ListTablegroups(const ListTablegroupsRequestPB* req,
   return Status::OK();
 }
 
+bool CatalogManager::HasTablegroups() {
+  SharedLock<LockType> l(lock_);
+  return !tablegroup_ids_map_.empty();
+}
+
 Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                        CreateNamespaceResponsePB* resp,
                                        rpc::RpcContext* rpc) {
