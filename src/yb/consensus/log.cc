@@ -375,8 +375,12 @@ Log::Log(
       peer_uuid_(std::move(peer_uuid)),
       schema_(schema),
       schema_version_(schema_version),
+      active_segment_sequence_number_(options.initial_active_segment_sequence_number),
       log_state_(kLogInitialized),
       max_segment_size_(options_.segment_size_bytes),
+      // We halve the initial log segment size here because we double it for every new segment,
+      // including the very first segment.
+      cur_max_segment_size_((options.initial_segment_size_bytes + 1) / 2),
       appender_(new Appender(this, append_thread_pool)),
       durable_wal_write_(options_.durable_wal_write),
       interval_durable_wal_write_(options_.interval_durable_wal_write),
