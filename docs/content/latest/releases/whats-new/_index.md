@@ -107,7 +107,7 @@ YugabyteDB supports [distributed backup and restore of YCQL databases and tables
 ### Online index backfills
 
 - YugabyteDB can now build indexes on non-empty tables while online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can now use the YCQL [CREATE INDEX](../../api/ycql/ddl_create_index/#synopsis) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-- In YCQL, backfilling an index while online is enabled by default. To disable, set the `yb-tserver` [`--ycql_disable_index_backfill`](../../reference/configuration/yb-tserver/#ycql-disable-index-backfill) flag to `false` when starting YB-TServers. Note: Do not use this flag in a production cluster yet. For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) [#2301](https://github.com/yugabyte/yugabyte-db/issues/2301) and [#4708](https://github.com/yugabyte/yugabyte-db/issues/4708)
+- In YCQL, backfilling an index while online is enabled by default. To disable, set the `yb-tserver` [`--ycql_disable_index_backfill`](../../reference/configuration/yb-tserver/#ycql-disable-index-backfill) flag to `false` when starting YB-TServers. For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). [#2301](https://github.com/yugabyte/yugabyte-db/issues/2301) and [#4708](https://github.com/yugabyte/yugabyte-db/issues/4708)
 
 ### Online schema changes for YCQL [BETA]
 
@@ -122,11 +122,7 @@ Most applications have a need to frequently evolve the database schema, while si
 
 - Throttle YCQL calls when soft memory limit is reached. Two new flags, `throttle_cql_calls_on_soft_memory_limit` and `throttle_cql_calls_policy` can be used to control it. [#4973](https://github.com/yugabyte/yugabyte-db/issues/4973)
 - Implements a password cache to allow connections to be created more quickly from recently used accounts. Helps reduce high CPU usage when using YCQL authorization. [#4596](https://github.com/yugabyte/yugabyte-db/issues/4596)
-
-### Other notable changes
-
-- Implement YCQL call throttling when soft memory limit is reached. Two new flags available to manage throttling: `throttle_cql_calls_on_soft_memory_limit` and `throttle_cql_calls_policy` [#4973](https://github.com/yugabyte/yugabyte-db/issues/4973)
-- Fix "column doesn't exist" error when an index is created on a column which is a prefix of another column. [#4881](https://github.com/yugabyte/yugabyte-db/issues/4881)
+- Fix `column doesn't exist` error when an index is created on a column which is a prefix of another column. [#4881](https://github.com/yugabyte/yugabyte-db/issues/4881)
 - Fix crashes when using ORDER BY for non-existent column with index scan. [#4908](https://github.com/yugabyte/yugabyte-db/issues/4908)
 
 ## System improvements
