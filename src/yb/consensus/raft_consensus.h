@@ -663,7 +663,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   scoped_refptr<Counter> follower_memory_pressure_rejections_;
   scoped_refptr<AtomicGauge<int64_t>> term_metric_;
   scoped_refptr<AtomicMillisLag> follower_last_update_time_ms_metric_;
-  scoped_refptr<AtomicGauge<int32_t>> is_leader_metric_;
+  scoped_refptr<AtomicGauge<int64_t>> is_raft_leader_metric_;
   std::shared_ptr<MemTracker> parent_mem_tracker_;
 
   TableType table_type_;

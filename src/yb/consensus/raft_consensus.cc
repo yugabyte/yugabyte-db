@@ -155,11 +155,11 @@ METRIC_DEFINE_lag(tablet, follower_lag_ms,
                   "The amount of time since the last UpdateConsensus request from the "
                   "leader.");
 
-METRIC_DEFINE_gauge_int32(tablet, is_leader,
-                          "Is tablet leader",
+METRIC_DEFINE_gauge_int64(tablet, is_raft_leader,
+                          "Is tablet raft leader",
                           yb::MetricUnit::kUnits,
-                          "Keeps track whether tablet is leader"
-                          "1 indicates that the tablet is leader");
+                          "Keeps track whether tablet is raft leader"
+                          "1 indicates that the tablet is raft leader");
 
 METRIC_DEFINE_histogram(
   tablet, dns_resolve_latency_during_update_raft_config,
@@ -341,7 +341,7 @@ RaftConsensus::RaftConsensus(
                                                     cmeta->current_term())),
       follower_last_update_time_ms_metric_(
           metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms)),
-      is_leader_metric_(metric_entity->FindOrCreateGauge(&METRIC_is_leader, static_cast<int32_t>(0))),
+      is_raft_leader_metric_(metric_entity->FindOrCreateGauge(&METRIC_is_raft_leader, static_cast<int64_t>(0))),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type),
       update_raft_config_dns_latency_(
@@ -951,7 +951,7 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 
   peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
 
-  is_leader_metric_->set_value(1);
+  is_raft_leader_metric_->set_value(1);
 
   return Status::OK();
 }
@@ -984,7 +984,7 @@ Status RaftConsensus::BecomeReplicaUnlocked(
 
   peer_manager_->Close();
 
-  is_leader_metric_->set_value(0);
+  is_raft_leader_metric_->set_value(0);
 
   return Status::OK();
 }
