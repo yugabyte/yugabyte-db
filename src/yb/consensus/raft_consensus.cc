@@ -150,6 +150,11 @@ METRIC_DEFINE_gauge_int64(tablet, raft_term,
                           "Current Term of the Raft Consensus algorithm. This number increments "
                           "each time a leader election is started.");
 
+METRIC_DEFINE_lag(tablet, follower_lag_ms,
+                  "Follower lag from leader",
+                  "The amount of time since the last UpdateConsensus request from the "
+                  "leader.");
+
 METRIC_DEFINE_histogram(
   tablet, dns_resolve_latency_during_update_raft_config,
   "yb.consensus.RaftConsensus.UpdateRaftConfig DNS Resolve",
@@ -310,6 +315,8 @@ RaftConsensus::RaftConsensus(
           &METRIC_follower_memory_pressure_rejections)),
       term_metric_(metric_entity->FindOrCreateGauge(&METRIC_raft_term,
                                                     cmeta->current_term())),
+      follower_last_update_time_ms_metric_(
+          metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms)),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type),
       update_raft_config_dns_latency_(
@@ -1623,7 +1630,6 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   SnoozeFailureDetector(DO_NOT_LOG);
 
   auto now = MonoTime::Now();
-  last_message_from_leader_time_ = now;
 
   // Update the expiration time of the current leader's lease, so that when this follower becomes
   // a leader, it can wait out the time interval while the old leader might still be active.
@@ -1669,6 +1675,16 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
     result.wait_for_op_id = state_->GetLastReceivedOpIdUnlocked();
   }
 
+  uint64_t update_time_ms = 0;
+  if (request->has_propagated_hybrid_time()) {
+    update_time_ms =  HybridTime::FromPB(
+        request->propagated_hybrid_time()).GetPhysicalValueMicros() / 1000;
+  } else if (!deduped_req.messages.empty()) {
+    update_time_ms = HybridTime::FromPB(
+        deduped_req.messages.back()->hybrid_time()).GetPhysicalValueMicros() / 1000;
+  }
+  follower_last_update_time_ms_metric_->UpdateTimestampInMilliseconds(
+      (update_time_ms > 0 ? update_time_ms : clock_->Now().GetPhysicalValueMicros() / 1000));
   TRACE("UpdateReplica() finished");
   return result;
 }

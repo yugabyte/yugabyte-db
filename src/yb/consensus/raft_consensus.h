@@ -290,10 +290,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   CHECKED_STATUS CheckIsActiveLeaderAndHasLease() const override;
 
-  MonoTime TimeSinceLastMessageFromLeader() override {
-    return last_message_from_leader_time_;
-  }
-
  private:
   friend class ReplicaState;
   friend class RaftConsensusQuorumTest;
@@ -639,8 +635,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   Random rng_;
 
-  MonoTime last_message_from_leader_time_ = MonoTime::kUninitialized;
-
   std::shared_ptr<rpc::PeriodicTimer> failure_detector_;
 
   // If any RequestVote() RPC arrives before this hybrid time,
@@ -674,7 +668,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   AtomicBool shutdown_;
 
   scoped_refptr<Counter> follower_memory_pressure_rejections_;
-  scoped_refptr<AtomicGauge<int64_t> > term_metric_;
+  scoped_refptr<AtomicGauge<int64_t>> term_metric_;
+  scoped_refptr<AtomicMillisLag> follower_last_update_time_ms_metric_;
 
   std::shared_ptr<MemTracker> parent_mem_tracker_;
 

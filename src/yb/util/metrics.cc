@@ -725,6 +725,46 @@ CHECKED_STATUS Counter::WriteForPrometheus(
   return writer->WriteSingleEntry(attr, prototype_->name(), value());
 }
 
+//
+// MillisLag
+//
+
+scoped_refptr<MillisLag> MillisLagPrototype::Instantiate(
+    const scoped_refptr<MetricEntity>& entity) {
+  return entity->FindOrCreateMillisLag(this);
+}
+
+MillisLag::MillisLag(const MillisLagPrototype* proto) : Metric(proto) {
+}
+
+Status MillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions& opts) const {
+  writer->StartObject();
+
+  prototype_->WriteFields(writer, opts);
+
+  writer->String("value");
+  writer->Int64(lag_ms());
+
+  writer->EndObject();
+  return Status::OK();
+}
+
+Status MillisLag::WriteForPrometheus(
+    PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const {
+  return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms());
+}
+
+Status AtomicMillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions& opts) const {
+  writer->StartObject();
+
+  prototype_->WriteFields(writer, opts);
+
+  writer->String("value");
+  writer->Int64(this->lag_ms());
+
+  writer->EndObject();
+  return Status::OK();
+}
 
 /////////////////////////////////////////////////
 // HistogramPrototype
