@@ -879,10 +879,13 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
   FLAGS_delete_intents_sst_files = false;
 
 #ifndef NDEBUG
-  const int kTransactions = 10;
+  constexpr int kTransactions = 10;
 #else
-  const int kTransactions = 20;
+  constexpr int kTransactions = 20;
 #endif
+  // Empirically determined constant.
+  constexpr int kBytesPerRow = 75;
+  constexpr int kRequiredCompactedBytes = kTransactions * kNumRows * kBytesPerRow;
 
   LOG(INFO) << "Write values";
 
@@ -924,7 +927,7 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
     }
     LOG(INFO) << "Compact read bytes: " << bytes;
 
-    return bytes >= 5_KB;
+    return bytes >= kRequiredCompactedBytes;
   }, 10s, "Enough compactions happen"));
 }
 
