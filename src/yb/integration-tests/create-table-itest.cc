@@ -58,6 +58,8 @@ using yb::client::YBTableType;
 using yb::client::YBTableName;
 
 METRIC_DECLARE_entity(server);
+METRIC_DECLARE_entity(tablet);
+METRIC_DECLARE_gauge_int64(is_raft_leader);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_CreateTablet);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_DeleteTablet);
 
@@ -408,6 +410,37 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
       cluster_->data_root(), "ts-4", "yb-data", "tserver", "wals", "table-" + parent_table_id,
       "tablet-" + tablet_id);
   ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(100), "Create data and wal directories"));
+}
+
+TEST_F(CreateTableITest, TestIsRaftLeaderMetric) {
+  const int kNumReplicas = 3;
+  const int kNumTablets = 1;
+  const int kExpectedRaftLeaders = 1;
+  vector<string> ts_flags;
+  vector<string> master_flags;
+  master_flags.push_back("--tablet_creation_timeout_ms=1000");
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+
+  // create a table
+  ASSERT_OK(table_creator->table_name(kTableName)
+                .schema(&client_schema)
+                .num_tablets(kNumTablets)
+                .Create());
+
+  // Count the total Number of Raft Leaders in the cluster. Go through each tablet of every tablet-server and sum up the leaders.
+  int64_t kNumRaftLeaders = 0;
+  for(int i=0 ; i< kNumReplicas ;i++) {
+    auto tabletIds = ASSERT_RESULT(cluster_->GetTabletIds(cluster_->tablet_server(i)));
+    for(int ti = 0;ti < inspect_->ListTabletsOnTS(i).size();ti++) {
+      const char *tabletId = tabletIds[ti].c_str();
+      kNumRaftLeaders += ASSERT_RESULT(cluster_->tablet_server(i)->GetInt64Metric(&METRIC_ENTITY_tablet,tabletId,&METRIC_is_raft_leader,"value"));
+    }
+  }
+  ASSERT_EQ(kNumRaftLeaders,kExpectedRaftLeaders);
 }
 
 }  // namespace yb
