@@ -73,9 +73,10 @@ class OnPremNodesList extends Component {
           if (isNonEmptyObject(val) && isNonEmptyString(val.zone)) {
             const currentZone = val.zone.trim();
             const currentZoneUUID = zoneList[region][currentZone];
+            const instanceNames = val.instanceNames.split(",");
             acc[currentZoneUUID] = acc[currentZoneUUID] || [];
             if (val.instanceTypeIPs) {
-              val.instanceTypeIPs.split(",").forEach((ip) => {
+              val.instanceTypeIPs.split(",").forEach((ip, index) => {
                 acc[currentZoneUUID].push({
                   zone: currentZone,
                   region: region,
@@ -84,7 +85,8 @@ class OnPremNodesList extends Component {
                   sshUser: isNonEmptyObject(currentCloudAccessKey) ?
                     currentCloudAccessKey.keyInfo.sshUser : "",
                   sshPort: isNonEmptyObject(currentCloudAccessKey) ?
-                    currentCloudAccessKey.keyInfo.sshPort : null
+                    currentCloudAccessKey.keyInfo.sshPort : null,
+                  instanceName: instanceNames[index]
                 });
               });
             }
@@ -131,7 +133,8 @@ class OnPremNodesList extends Component {
           ip: item.details.ip,
           instanceType: item.details.instanceType,
           region: item.details.region,
-          zone: item.details.zone
+          zone: item.details.zone,
+          instanceName: item.instanceName
         };
       });
     }
@@ -149,7 +152,7 @@ class OnPremNodesList extends Component {
     const onPremProvider = providers.data.find((provider)=>provider.code === "onprem");
     let useHostname = false;
     if (isDefinedNotNull(onPremProvider)) {
-      useHostname = _.get(onPremProvider, 'config.USE_HOSTNAME', false)
+      useHostname = _.get(onPremProvider, 'config.USE_HOSTNAME', false) === 'true';
       const onPremKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid);
       if (isDefinedNotNull(onPremKey) && onPremKey.keyInfo.airGapInstall) {
         provisionMessage = (
@@ -179,7 +182,7 @@ class OnPremNodesList extends Component {
             <div className="instance-region-type">{regionItem.code}</div>
             <div className="form-field-grid">
               <FieldArray name={`instances.${regionItem.code}`} component={InstanceTypeForRegion}
-                          zoneOptions={zoneOptions} machineTypeOptions={machineTypeOptions} formType={"modal"}/>
+                          zoneOptions={zoneOptions} machineTypeOptions={machineTypeOptions} useHostname={useHostname} formType={"modal"}/>
             </div>
           </div>
         );
@@ -188,7 +191,7 @@ class OnPremNodesList extends Component {
       && this.state.nodeToBeDeleted.nodeName
       ? ' ' + this.state.nodeToBeDeleted.nodeName
       : ''}?`;
-    const nodeAddressLabel = useHostname ? "Hostname" : "IP";
+    const modalAddressSpecificText = useHostname ? "hostnames" : "IP addresses";
     return (
       <div>
         <span className="buttons pull-right">
@@ -206,7 +209,8 @@ class OnPremNodesList extends Component {
           <Col xs={12}>
             <BootstrapTable data={nodeListItems} >
               <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} />
-              <TableHeaderColumn dataField="ip">{nodeAddressLabel}</TableHeaderColumn>
+              <TableHeaderColumn dataField="instanceName">Identifier</TableHeaderColumn>
+              <TableHeaderColumn dataField="ip">Address</TableHeaderColumn>
               <TableHeaderColumn dataField="inUse">In Use</TableHeaderColumn>
               <TableHeaderColumn dataField="region">Region</TableHeaderColumn>
               <TableHeaderColumn dataField="zone">Zone</TableHeaderColumn>
@@ -217,9 +221,9 @@ class OnPremNodesList extends Component {
         </Row>
         <YBModal title={"Add Instances"} formName={"AddNodeForm"} visible={visibleModal === "AddNodesForm"}
                  onHide={this.hideAddNodeModal} onFormSubmit={handleSubmit(this.submitAddNodesForm)}
-                 showCancelButton={true} submitLabel="Add">
+                 showCancelButton={true} submitLabel="Add" size="large">
           <div className="on-prem-form-text">
-            Enter IP addresses for the instances of each availability zone and instance type.
+            {`Enter ${modalAddressSpecificText} for the instances of each availability zone and instance type.`}
           </div>
           {regionFormTemplate}
         </YBModal>
