@@ -34,6 +34,8 @@ cypher_parsestate *make_cypher_parsestate(cypher_parsestate *parent_cpstate)
     cpstate = palloc0(sizeof(*cpstate));
 
     pstate = (ParseState *)cpstate;
+
+    /* Fill in fields that don't start at null/false/zero */
     pstate->parentParseState = parent_pstate;
     pstate->p_next_resno = 1;
     pstate->p_resolve_unknowns = true;

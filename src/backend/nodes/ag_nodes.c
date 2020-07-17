@@ -46,7 +46,8 @@ const char *node_names[] = {
     "cypher_string_match",
     "cypher_typecast",
     "cypher_function",
-    "cypher_integer_const"
+    "cypher_integer_const",
+    "cypher_sub_pattern"
 };
 
 #define DEFINE_NODE_METHODS(type) \
@@ -75,7 +76,11 @@ const ExtensibleNodeMethods node_methods[] = {
     DEFINE_NODE_METHODS(cypher_param),
     DEFINE_NODE_METHODS(cypher_map),
     DEFINE_NODE_METHODS(cypher_list),
-    DEFINE_NODE_METHODS(cypher_string_match)
+    DEFINE_NODE_METHODS(cypher_string_match),
+    DEFINE_NODE_METHODS(cypher_typecast),
+    DEFINE_NODE_METHODS(cypher_function),
+    DEFINE_NODE_METHODS(cypher_integer_const),
+    DEFINE_NODE_METHODS(cypher_sub_pattern)
 };
 
 static void copy_ag_node(ExtensibleNode *newnode,

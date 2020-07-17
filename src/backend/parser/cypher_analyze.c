@@ -448,8 +448,13 @@ static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
     parent_cpstate.params = NULL;
 
     cpstate = make_cypher_parsestate(&parent_cpstate);
+
     pstate = (ParseState *)cpstate;
 
+    /* we don't want functions that go up the pstate parent chain to access the
+     * original SQL query pstate.
+     */
+    pstate->parentParseState = NULL;
     /*
      * override p_sourcetext with query_str to make parser_errposition() work
      * correctly with errpos_ecb()

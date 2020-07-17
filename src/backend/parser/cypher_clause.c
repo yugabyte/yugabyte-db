@@ -24,6 +24,7 @@
 #include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
 #include "optimizer/var.h"
+#include "parser/parse_agg.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
@@ -195,6 +196,9 @@ static int get_target_entry_resno(List *target_list, char *name);
 static TargetEntry *placeholder_target_entry(cypher_parsestate *cpstate,
                                              char *name);
 static RangeTblEntry *find_prev_cypher_clause(cypher_parsestate *cpstate);
+static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
+                                           cypher_clause *clause);
+
 // transform
 #define PREV_CYPHER_CLAUSE_ALIAS "_"
 #define transform_prev_cypher_clause(cpstate, prev_clause) \
@@ -208,7 +212,15 @@ transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
 static Query *analyze_cypher_clause(transform_method transform,
                                     cypher_clause *clause,
                                     cypher_parsestate *parent_cpstate);
+static ParseNamespaceItem *makeNamespaceItem(RangeTblEntry *rte,
+                                             bool rel_visible,
+                                             bool cols_visible,
+                                             bool lateral_only,
+                                             bool lateral_ok);
 
+/*
+ * transform a cypher_clause
+ */
 Query *transform_cypher_clause(cypher_parsestate *cpstate,
                                cypher_clause *clause)
 {
@@ -228,6 +240,8 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
         return NULL;
     else if (is_ag_node(self, cypher_delete))
         return NULL;
+    else if (is_ag_node(self, cypher_sub_pattern))
+        result = transform_cypher_sub_pattern(cpstate, clause);
     else
         ereport(ERROR, (errmsg_internal("unexpected Node for cypher_clause")));
 
@@ -412,6 +426,7 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
         query->commandType = CMD_SELECT;
 
         rte = transform_cypher_clause_as_subquery(cpstate, transform, clause);
+
         rtindex = list_length(pstate->p_rtable);
         Assert(rtindex == 1); // rte is the only RangeTblEntry in pstate
 
@@ -432,6 +447,10 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
     {
         query = transform(cpstate, clause);
     }
+
+    query->hasSubLinks = pstate->p_hasSubLinks;
+    query->hasTargetSRFs = pstate->p_hasTargetSRFs;
+    query->hasAggs = pstate->p_hasAggs;
 
     return query;
 }
@@ -479,6 +498,106 @@ static Query *transform_cypher_match_pattern(cypher_parsestate *cpstate,
     assign_query_collations(pstate, query);
 
     return query;
+}
+
+/*
+ * Function to make a target list from an RTE. Borrowed from AgensGraph and PG
+ */
+static List *makeTargetListFromRTE(ParseState *pstate, RangeTblEntry *rte)
+{
+    List *targetlist = NIL;
+    int rtindex;
+    int varattno;
+    ListCell *ln;
+    ListCell *lt;
+
+    /* right now this is only for subqueries */
+    AssertArg(rte->rtekind == RTE_SUBQUERY);
+
+    rtindex = RTERangeTablePosn(pstate, rte, NULL);
+
+    varattno = 1;
+    ln = list_head(rte->eref->colnames);
+    foreach(lt, rte->subquery->targetList)
+    {
+        TargetEntry *te = lfirst(lt);
+        Var *varnode;
+        char *resname;
+        TargetEntry *tmp;
+
+        if (te->resjunk)
+            continue;
+
+        Assert(varattno == te->resno);
+
+        /* no transform here, just use `te->expr` */
+        varnode = makeVar(rtindex, varattno, exprType((Node *) te->expr),
+                          exprTypmod((Node *) te->expr),
+                          exprCollation((Node *) te->expr), 0);
+
+        resname = strVal(lfirst(ln));
+
+        tmp = makeTargetEntry((Expr *)varnode,
+                              (AttrNumber)pstate->p_next_resno++, resname,
+                              false);
+        targetlist = lappend(targetlist, tmp);
+
+        varattno++;
+        ln = lnext(ln);
+    }
+
+    return targetlist;
+}
+
+/*
+ * Transform a cypher sub pattern. This is put here because it is a sub clause.
+ * This works in tandem with transform_Sublink in cypher_expr.c
+ */
+static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
+                                           cypher_clause *clause)
+{
+    cypher_match *match;
+    cypher_clause *c;
+    Query *qry;
+    RangeTblEntry *rte;
+    ParseState *pstate = (ParseState *)cpstate;
+    cypher_sub_pattern *subpat = (cypher_sub_pattern*)clause->self;
+
+    /* create a cypher match node and assign it the sub pattern */
+    match = make_ag_node(cypher_match);
+    match->pattern = subpat->pattern;
+    match->where = NULL;
+    /* wrap it in a clause */
+    c = palloc(sizeof(cypher_clause));
+    c->self = (Node *)match;
+    c->prev = NULL;
+    c->next = NULL;
+
+    /* set up a select query and run it as a sub query to the parent match */
+    qry = makeNode(Query);
+    qry->commandType = CMD_SELECT;
+
+    rte = transform_cypher_clause_as_subquery(cpstate, transform_cypher_clause,
+                                              c);
+
+    qry->targetList = makeTargetListFromRTE(pstate, rte);
+
+    markTargetListOrigins(pstate, qry->targetList);
+
+    qry->rtable = pstate->p_rtable;
+    qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+
+    /* the state will be destroyed so copy the data we need */
+    qry->hasSubLinks = pstate->p_hasSubLinks;
+    qry->hasTargetSRFs = pstate->p_hasTargetSRFs;
+    qry->hasAggs = pstate->p_hasAggs;
+
+    if (qry->hasAggs)
+        parseCheckAggregates(pstate, qry);
+
+    assign_query_collations(pstate, qry);
+
+    return qry;
 }
 
 static void transform_match_pattern(cypher_parsestate *cpstate, Query *query,
@@ -1225,6 +1344,11 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
     if (rel->name != NULL)
     {
         TargetEntry *te = findTarget(*target_list, rel->name);
+        /* also search for a variable from a previous transform */
+        Node *expr = colNameToVar(pstate, rel->name, false, rel->location);
+
+        if (expr != NULL)
+            return (Expr*)expr;
 
         if (te != NULL)
         {
@@ -1235,8 +1359,10 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
              * is properly declared. This logic is not satifactory
              * for that and must be better developed.
              */
-            if (entity->type != ENT_EDGE ||
-                !IS_DEFAULT_LABEL_EDGE(rel->label) || rel->props)
+            if (entity != NULL &&
+                (entity->type != ENT_EDGE ||
+                 !IS_DEFAULT_LABEL_EDGE(rel->label) ||
+                 rel->props))
                 ereport(ERROR,
                         (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                          errmsg("variable %s already exists", rel->name),
@@ -1244,6 +1370,16 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
 
             return te->expr;
         }
+
+        /*
+         * If we are in a WHERE clause transform, we don't want to create new
+         * variables, we want to use the existing ones. So, error if otherwise.
+         */
+        if (pstate->p_expr_kind == EXPR_KIND_WHERE)
+            ereport(ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg("variable %s does not exist", rel->name),
+                     parser_errposition(pstate, rel->location)));
     }
 
     if (rel->props)
@@ -1328,6 +1464,11 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
     if (node->name != NULL)
     {
         TargetEntry *te = findTarget(*target_list, node->name);
+        /* also search for the variable from a previous transforms */
+        Node *expr = colNameToVar(pstate, node->name, false, node->location);
+
+        if (expr != NULL)
+            return (Expr*)expr;
 
         if (te != NULL)
         {
@@ -1337,8 +1478,10 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
              * is properly declared. This logic is not satifactory
              * for that and must be better developed.
              */
-            if (entity->type != ENT_VERTEX ||
-                !IS_DEFAULT_LABEL_VERTEX(node->label) || node->props)
+            if (entity != NULL &&
+                (entity->type != ENT_VERTEX ||
+                 !IS_DEFAULT_LABEL_VERTEX(node->label) ||
+                 node->props))
                 ereport(ERROR,
                         (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                          errmsg("variable %s already exists", node->name),
@@ -1346,6 +1489,16 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
 
             return te->expr;
         }
+
+        /*
+         * If we are in a WHERE clause transform, we don't want to create new
+         * variables, we want to use the existing ones. So, error if otherwise.
+         */
+        if (pstate->p_expr_kind == EXPR_KIND_WHERE)
+            ereport(ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg("variable `%s` does not exist", node->name),
+                     parser_errposition(pstate, node->location)));
     }
 
     // NOTE: for now, nodes with a property condition are not supported
@@ -1371,7 +1524,7 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
      * relation is visible (r.a in expression works) but attributes in the
      * relation are not visible (a in expression doesn't work)
      */
-    addRTEtoQuery(pstate, rte, true, true, false);
+    addRTEtoQuery(pstate, rte, true, true, true);
 
     resno = pstate->p_next_resno++;
 
@@ -2116,6 +2269,26 @@ static RangeTblEntry *find_prev_cypher_clause(cypher_parsestate *cpstate)
 }
 
 /*
+ * makeNamespaceItem (from PG makeNamespaceItem)-
+ *        Convenience subroutine to construct a ParseNamespaceItem.
+ */
+static ParseNamespaceItem *makeNamespaceItem(RangeTblEntry *rte,
+                                             bool rel_visible,
+                                             bool cols_visible,
+                                             bool lateral_only, bool lateral_ok)
+{
+    ParseNamespaceItem *nsitem;
+
+    nsitem = (ParseNamespaceItem *) palloc(sizeof(ParseNamespaceItem));
+    nsitem->p_rte = rte;
+    nsitem->p_rel_visible = rel_visible;
+    nsitem->p_cols_visible = cols_visible;
+    nsitem->p_lateral_only = lateral_only;
+    nsitem->p_lateral_ok = lateral_ok;
+    return nsitem;
+}
+
+/*
  * This function is similar to transformFromClause() that is called with a
  * single RangeSubselect.
  */
@@ -2125,33 +2298,66 @@ transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
                                     cypher_clause *clause)
 {
     ParseState *pstate = (ParseState *)cpstate;
-    const bool lateral = false;
+    bool lateral = false;
     Query *query;
     RangeTblEntry *rte;
     Alias *alias;
+    ParseExprKind old_expr_kind = pstate->p_expr_kind;
 
-    Assert(pstate->p_expr_kind == EXPR_KIND_NONE);
-    pstate->p_expr_kind = EXPR_KIND_FROM_SUBSELECT;
-    // p_lateral_active is false since query is the only FROM clause item here.
+    /*
+     * We allow expression kinds of none, where, and subselect. Others MAY need
+     * to be added depending. However, at this time, only these are needed.
+     */
+    Assert(pstate->p_expr_kind == EXPR_KIND_NONE ||
+           pstate->p_expr_kind == EXPR_KIND_WHERE ||
+           pstate->p_expr_kind == EXPR_KIND_FROM_SUBSELECT);
+
+    /*
+     * As these are all sub queries, if this is just of type NONE, note it as a
+     * SUBSELECT. Other types will be dealt with as needed.
+     */
+    if (pstate->p_expr_kind == EXPR_KIND_NONE)
+        pstate->p_expr_kind = EXPR_KIND_FROM_SUBSELECT;
+    /*
+     * If this is a WHERE, pass it through and set lateral to true because it
+     * needs to see what comes before it.
+     */
+    if (pstate->p_expr_kind == EXPR_KIND_WHERE)
+        lateral = true;
+
     pstate->p_lateral_active = lateral;
 
     query = analyze_cypher_clause(transform, clause, cpstate);
 
-    pstate->p_lateral_active = false;
-    pstate->p_expr_kind = EXPR_KIND_NONE;
+    /* set pstate kind back */
+    pstate->p_expr_kind = old_expr_kind;
 
     alias = makeAlias(PREV_CYPHER_CLAUSE_ALIAS, NIL);
 
     rte = addRangeTableEntryForSubquery(pstate, query, alias, lateral, true);
 
     /*
-     * NOTE: skip namespace conflicts check since rte will be the only
+     * NOTE: skip namespace conflicts check if the rte will be the only
      *       RangeTblEntry in pstate
      */
+    if (list_length(pstate->p_rtable) > 1)
+    {
+        List *namespace;
+        int rtindex;
 
-    Assert(list_length(pstate->p_rtable) == 1);
+        rtindex = list_length(pstate->p_rtable);
+        Assert(rte == rt_fetch(rtindex, pstate->p_rtable));
+
+        namespace = list_make1(makeNamespaceItem(rte, true, true, false, true));
+
+        checkNameSpaceConflicts(pstate, pstate->p_namespace, namespace);
+    }
+
     // all variables(attributes) from the previous clause(subquery) are visible
     addRTEtoQuery(pstate, rte, true, false, true);
+
+    /* set pstate lateral back */
+    pstate->p_lateral_active = false;
 
     return rte;
 }
@@ -2162,14 +2368,19 @@ static Query *analyze_cypher_clause(transform_method transform,
 {
     cypher_parsestate *cpstate;
     Query *query;
+    ParseState *parent_pstate = (ParseState*)parent_cpstate;
+    ParseState *pstate;
 
     cpstate = make_cypher_parsestate(parent_cpstate);
+    pstate = (ParseState*)cpstate;
+
+    /* copy the expr_kind down to the child */
+    pstate->p_expr_kind = parent_pstate->p_expr_kind;
 
     query = transform(cpstate, clause);
 
     parent_cpstate->entities = list_concat(parent_cpstate->entities,
                                            cpstate->entities);
-
     free_cypher_parsestate(cpstate);
 
     return query;
@@ -2209,4 +2420,31 @@ static Expr *add_volatile_wrapper(Expr *node)
 
     return (Expr *)makeFuncExpr(oid, AGTYPEOID, list_make1(node), InvalidOid,
                                 InvalidOid, COERCE_EXPLICIT_CALL);
+}
+
+/*
+ * from postgresql parse_sub_analyze
+ * Entry point for recursively analyzing a sub-statement.
+ */
+Query *cypher_parse_sub_analyze(Node *parseTree,
+                                cypher_parsestate *cpstate,
+                                CommonTableExpr *parentCTE,
+                                bool locked_from_parent,
+                                bool resolve_unknowns)
+{
+    ParseState *pstate = make_parsestate((ParseState*)cpstate);
+    cypher_clause *clause;
+    Query *query;
+
+    pstate->p_parent_cte = parentCTE;
+    pstate->p_locked_from_parent = locked_from_parent;
+    pstate->p_resolve_unknowns = resolve_unknowns;
+
+    clause = palloc(sizeof(cypher_clause));
+    clause->self = parseTree;
+    query = transform_cypher_clause(cpstate, clause);
+
+    free_parsestate(pstate);
+
+    return query;
 }

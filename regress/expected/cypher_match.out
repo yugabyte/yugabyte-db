@@ -458,8 +458,135 @@ ERROR:  paths consist of alternating vertices and edges.
 LINE 2:        MATCH p=() RETURN p
                        ^
 HINT:  paths require at least 2 vertices and 1 edge
+--
+-- MATCH with WHERE EXISTS(pattern)
+--
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) RETURN u, e, v $$) AS (u agtype, e agtype, v agtype);
+                                        u                                         |                                                             e                                                             |                                        v                                         
+----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------
+ {"id": 2251799813685251, "label": "v3", "properties": {"id": "end"}}::vertex     | {"id": 2533274790395905, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685251, "properties": {}}::edge | {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
+ {"id": 2251799813685249, "label": "v3", "properties": {"id": "initial"}}::vertex | {"id": 2533274790395906, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685249, "properties": {}}::edge | {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex  | {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge | {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex  | {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge | {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex
+ {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex  | {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge | {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+ {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex | {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge | {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+(6 rows)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+                                        u                                         |                                                             e                                                             |                                        v                                         
+----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------
+ {"id": 2251799813685251, "label": "v3", "properties": {"id": "end"}}::vertex     | {"id": 2533274790395905, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685251, "properties": {}}::edge | {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
+ {"id": 2251799813685249, "label": "v3", "properties": {"id": "initial"}}::vertex | {"id": 2533274790395906, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685249, "properties": {}}::edge | {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex  | {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge | {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex  | {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge | {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex
+ {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex  | {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge | {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+ {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex | {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge | {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+(6 rows)
+
+-- Exists checks for a loop. There shouldn't be any.
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(u)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+ u | e | v 
+---+---+---
+(0 rows)
+
+-- Create a loop
+SELECT * FROM cypher('cypher_match', $$
+        CREATE (u:loop {id:'initial'})-[:self]->(u)
+$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- dump paths
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+                                         u                                          |                                                              e                                                              |                                         v                                          
+------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------
+ {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex | {"id": 3096224743817217, "label": "self", "end_id": 2814749767106561, "start_id": 2814749767106561, "properties": {}}::edge | {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
+ {"id": 2251799813685251, "label": "v3", "properties": {"id": "end"}}::vertex       | {"id": 2533274790395905, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685251, "properties": {}}::edge   | {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
+ {"id": 2251799813685249, "label": "v3", "properties": {"id": "initial"}}::vertex   | {"id": 2533274790395906, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685249, "properties": {}}::edge   | {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex    | {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge   | {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex    | {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge   | {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex
+ {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex    | {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge   | {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+ {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex   | {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge   | {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+(7 rows)
+
+-- Exists checks for a loop. There should be one.
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(u)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+                                         u                                          |                                                              e                                                              |                                         v                                          
+------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------
+ {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex | {"id": 3096224743817217, "label": "self", "end_id": 2814749767106561, "start_id": 2814749767106561, "properties": {}}::edge | {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
+(1 row)
+
+-- Exists checks for a loop. There should be one.
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((v)-[e]->(v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+                                         u                                          |                                                              e                                                              |                                         v                                          
+------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------
+ {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex | {"id": 3096224743817217, "label": "self", "end_id": 2814749767106561, "start_id": 2814749767106561, "properties": {}}::edge | {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
+(1 row)
+
+-- Exists checks for a loop. There should be none because of edge uniqueness
+-- requirement.
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(u)-[e]->(u)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+ u | e | v 
+---+---+---
+(0 rows)
+
+-- Multiple exists
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)) AND EXISTS((v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+                                         u                                          |                                                              e                                                              |                                         v                                          
+------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------
+ {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex | {"id": 3096224743817217, "label": "self", "end_id": 2814749767106561, "start_id": 2814749767106561, "properties": {}}::edge | {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
+ {"id": 2251799813685251, "label": "v3", "properties": {"id": "end"}}::vertex       | {"id": 2533274790395905, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685251, "properties": {}}::edge   | {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
+ {"id": 2251799813685249, "label": "v3", "properties": {"id": "initial"}}::vertex   | {"id": 2533274790395906, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685249, "properties": {}}::edge   | {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex    | {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge   | {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex    | {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge   | {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex
+ {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex    | {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge   | {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+ {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex   | {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge   | {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+(7 rows)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(u)) AND EXISTS((v)-[e]->(v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+                                         u                                          |                                                              e                                                              |                                         v                                          
+------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------
+ {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex | {"id": 3096224743817217, "label": "self", "end_id": 2814749767106561, "start_id": 2814749767106561, "properties": {}}::edge | {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
+(1 row)
+
+-- These should error
+-- Bad pattern
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)) AND EXISTS([e]) AND EXISTS((v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+ERROR:  syntax error at or near "["
+LINE 2: ...$$MATCH (u)-[e]->(v) WHERE EXISTS((u)) AND EXISTS([e]) AND E...
+                                                             ^
+-- variable creation error
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(x)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+ERROR:  variable `x` does not exist
+LINE 2:  $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(x)) RETURN u, e...
+                                                    ^
+--
+-- Clean up
+--
 SELECT drop_graph('cypher_match', true);
-NOTICE:  drop cascades to 9 other objects
+NOTICE:  drop cascades to 11 other objects
 DETAIL:  drop cascades to table cypher_match._ag_label_vertex
 drop cascades to table cypher_match._ag_label_edge
 drop cascades to table cypher_match.v
@@ -469,9 +596,14 @@ drop cascades to table cypher_match.v2
 drop cascades to table cypher_match.e2
 drop cascades to table cypher_match.v3
 drop cascades to table cypher_match.e3
+drop cascades to table cypher_match.loop
+drop cascades to table cypher_match.self
 NOTICE:  graph "cypher_match" has been dropped
  drop_graph 
 ------------
  
 (1 row)
 
+--
+-- End
+--

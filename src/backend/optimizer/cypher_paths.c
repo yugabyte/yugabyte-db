@@ -84,6 +84,10 @@ static cypher_clause_kind get_cypher_clause_kind(RangeTblEntry *rte)
     if (rte->rtekind != RTE_SUBQUERY)
         return CYPHER_CLAUSE_NONE;
 
+    // Make sure the targetList isn't NULL. NULL means potential EXIST subclause
+    if (rte->subquery->targetList == NULL)
+        return CYPHER_CLAUSE_NONE;
+
     // A Cypher clause function is always the last entry.
     te = llast(rte->subquery->targetList);
 

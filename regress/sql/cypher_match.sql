@@ -245,5 +245,73 @@ SELECT * FROM cypher('cypher_match', $$
        MATCH p=() RETURN p
 $$) AS (p agtype);
 
+--
+-- MATCH with WHERE EXISTS(pattern)
+--
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) RETURN u, e, v $$) AS (u agtype, e agtype, v agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+
+-- Exists checks for a loop. There shouldn't be any.
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(u)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+
+-- Create a loop
+SELECT * FROM cypher('cypher_match', $$
+        CREATE (u:loop {id:'initial'})-[:self]->(u)
+$$) AS (a agtype);
+
+-- dump paths
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+
+-- Exists checks for a loop. There should be one.
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(u)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+
+-- Exists checks for a loop. There should be one.
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((v)-[e]->(v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+
+-- Exists checks for a loop. There should be none because of edge uniqueness
+-- requirement.
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(u)-[e]->(u)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+
+-- Multiple exists
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)) AND EXISTS((v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(u)) AND EXISTS((v)-[e]->(v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+
+-- These should error
+-- Bad pattern
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)) AND EXISTS([e]) AND EXISTS((v)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+
+-- variable creation error
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(x)) RETURN u, e, v $$)
+AS (u agtype, e agtype, v agtype);
+
+--
+-- Clean up
+--
+
 SELECT drop_graph('cypher_match', true);
 
+--
+-- End
+--

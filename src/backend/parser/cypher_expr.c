@@ -23,7 +23,9 @@
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/value.h"
+#include "optimizer/tlist.h"
 #include "parser/parse_coerce.h"
+#include "parser/cypher_clause.h"
 #include "parser/parse_node.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
@@ -110,7 +112,8 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
 static Node *transform_cypher_function(cypher_parsestate *cpstate,
                                        cypher_function *cfunction);
 static Node *transform_CoalesceExpr(cypher_parsestate *cpstate,
-                                    CoalesceExpr *c);
+                                    CoalesceExpr *cexpr);
+static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink);
 
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -204,6 +207,9 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
                 (errmsg_internal("unrecognized ExtensibleNode: %s",
                                  ((ExtensibleNode *)expr)->extnodename)));
         return NULL;
+    case T_SubLink:
+        return transform_SubLink(cpstate, (SubLink *)expr);
+        break;
     default:
         ereport(ERROR, (errmsg_internal("unrecognized node type: %d",
                                         nodeTag(expr))));
@@ -227,22 +233,22 @@ static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac)
         d = integer_to_agtype((int64)intVal(v));
         break;
     case T_Float:
-    {
-        char *n = strVal(v);
-        int64 i;
-
-        if (scanint8(n, true, &i))
         {
-            d = integer_to_agtype(i);
-        }
-        else
-        {
-            float8 f = float8in_internal(n, NULL, "double precision", n);
+            char *n = strVal(v);
+            int64 i;
 
-            d = float_to_agtype(f);
+            if (scanint8(n, true, &i))
+            {
+                d = integer_to_agtype(i);
+            }
+            else
+            {
+                float8 f = float8in_internal(n, NULL, "double precision", n);
+
+                d = float_to_agtype(f);
+            }
         }
-    }
-    break;
+        break;
     case T_String:
         d = string_to_agtype(strVal(v));
         break;
@@ -800,16 +806,17 @@ static Node *transform_cypher_function(cypher_parsestate *cpstate,
 /*
  * Code borrowed from PG's transformCoalesceExpr and updated for AGE
  */
-static Node *transform_CoalesceExpr(cypher_parsestate *cpstate, CoalesceExpr *c)
+static Node *transform_CoalesceExpr(cypher_parsestate *cpstate, CoalesceExpr
+                                    *cexpr)
 {
     ParseState *pstate = &cpstate->pstate;
-    CoalesceExpr *newc = makeNode(CoalesceExpr);
+    CoalesceExpr *newcexpr = makeNode(CoalesceExpr);
     Node *last_srf = pstate->p_last_srf;
     List *newargs = NIL;
     List *newcoercedargs = NIL;
     ListCell *args;
 
-    foreach(args, c->args)
+    foreach(args, cexpr->args)
     {
         Node *e = (Node *)lfirst(args);
         Node *newe;
@@ -818,7 +825,8 @@ static Node *transform_CoalesceExpr(cypher_parsestate *cpstate, CoalesceExpr *c)
         newargs = lappend(newargs, newe);
     }
 
-    newc->coalescetype = select_common_type(pstate, newargs, "COALESCE", NULL);
+    newcexpr->coalescetype = select_common_type(pstate, newargs, "COALESCE",
+                                                NULL);
     /* coalescecollid will be set by parse_collate.c */
 
     /* Convert arguments if necessary */
@@ -827,7 +835,8 @@ static Node *transform_CoalesceExpr(cypher_parsestate *cpstate, CoalesceExpr *c)
         Node *e = (Node *)lfirst(args);
         Node *newe;
 
-        newe = coerce_to_common_type(pstate, e, newc->coalescetype, "COALESCE");
+        newe = coerce_to_common_type(pstate, e, newcexpr->coalescetype,
+                                     "COALESCE");
         newcoercedargs = lappend(newcoercedargs, newe);
     }
 
@@ -840,7 +849,69 @@ static Node *transform_CoalesceExpr(cypher_parsestate *cpstate, CoalesceExpr *c)
                         "COALESCE"),
                  parser_errposition(pstate, exprLocation(pstate->p_last_srf))));
 
-    newc->args = newcoercedargs;
-    newc->location = c->location;
-    return (Node *) newc;
+    newcexpr->args = newcoercedargs;
+    newcexpr->location = cexpr->location;
+    return (Node *) newcexpr;
+}
+
+/* from PG's transformSubLink but reduced and hooked into our parser */
+static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink)
+{
+    Node *result = (Node*)sublink;
+    Query *qtree;
+    ParseState *pstate = (ParseState*)cpstate;
+
+    /*
+     * Check to see if the sublink is in an invalid place within the query. We
+     * allow sublinks everywhere in SELECT/INSERT/UPDATE/DELETE, but generally
+     * not in utility statements.
+     */
+    switch (pstate->p_expr_kind)
+    {
+        case EXPR_KIND_NONE:
+            Assert(false);          /* can't happen */
+            break;
+        case EXPR_KIND_OTHER:
+            /* Accept sublink here; caller must throw error if wanted */
+            break;
+        case EXPR_KIND_FROM_SUBSELECT:
+        case EXPR_KIND_WHERE:
+            /* okay */
+            break;
+        default:
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg_internal("unsupported SubLink"),
+                            parser_errposition(pstate, sublink->location)));
+    }
+
+    pstate->p_hasSubLinks = true;
+
+    /*
+     * OK, let's transform the sub-SELECT.
+     */
+    qtree = cypher_parse_sub_analyze(sublink->subselect, cpstate, NULL, false,
+                                     true);
+
+    /*
+     * Check that we got a SELECT.  Anything else should be impossible given
+     * restrictions of the grammar, but check anyway.
+     */
+    if (!IsA(qtree, Query) || qtree->commandType != CMD_SELECT)
+        elog(ERROR, "unexpected non-SELECT command in SubLink");
+
+    sublink->subselect = (Node *)qtree;
+
+    if (sublink->subLinkType == EXISTS_SUBLINK)
+    {
+        /*
+         * EXISTS needs no test expression or combining operator. These fields
+         * should be null already, but make sure.
+         */
+        sublink->testexpr = NULL;
+        sublink->operName = NIL;
+    }
+    else
+        elog(ERROR, "unsupported SubLink type");
+
+    return result;
 }

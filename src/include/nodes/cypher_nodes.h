@@ -25,6 +25,21 @@
 
 #include "nodes/ag_nodes.h"
 
+/* cypher sub patterns */
+typedef enum csp_kind
+{
+        CSP_EXISTS,
+        CSP_SIZE,
+        CSP_FINDPATH /* shortestpath, allshortestpaths, dijkstra */
+} csp_kind;
+
+typedef struct cypher_sub_pattern
+{
+        ExtensibleNode extensible;
+        csp_kind kind;
+        List *pattern;
+} cypher_sub_pattern;
+
 /*
  * clauses
  */
@@ -291,5 +306,17 @@ void out_cypher_list(StringInfo str, const ExtensibleNode *node);
 
 /* string match */
 void out_cypher_string_match(StringInfo str, const ExtensibleNode *node);
+
+/* typecast */
+void out_cypher_typecast(StringInfo str, const ExtensibleNode *node);
+
+/* function */
+void out_cypher_function(StringInfo str, const ExtensibleNode *node);
+
+/* integer constant */
+void out_cypher_integer_const(StringInfo str, const ExtensibleNode *node);
+
+/* sub pattern */
+void out_cypher_sub_pattern(StringInfo str, const ExtensibleNode *node);
 
 #endif

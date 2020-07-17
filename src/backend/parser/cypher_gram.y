@@ -78,7 +78,7 @@
                  BY
                  COALESCE CONTAINS CREATE
                  DELETE DESC DESCENDING DETACH DISTINCT
-                 ENDS
+                 ENDS EXISTS
                  FALSE_P
                  IN IS
                  LIMIT
@@ -126,7 +126,8 @@
 %type <string> label_opt
 
 /* expression */
-%type <node> expr expr_opt atom literal map list var
+%type <node> expr expr_opt expr_atom expr_literal map list
+%type <node> expr_var expr_func expr_func_norm expr_func_subexpr
 %type <list> expr_list expr_list_opt map_keyval_list_opt map_keyval_list
 
 /* names */
@@ -956,22 +957,7 @@ expr:
         {
             $$ = make_typecast_expr($1, $3, @2);
         }
-    | COALESCE '(' expr_list ')'
-        {
-            CoalesceExpr *c = makeNode(CoalesceExpr);
-            c->args = $3;
-            c->location = @1;
-            $$ = (Node *)c;
-        }
-    | symbolic_name '(' expr_list ')'
-        {
-            $$ = make_function_expr($1, $3, @2);
-        }
-    | symbolic_name '(' ')'
-        {
-            $$ = make_immediate_no_arg_function_expr($1, @1);
-        }
-    | atom
+    | expr_atom
     ;
 
 expr_opt:
@@ -1001,8 +987,54 @@ expr_list_opt:
     | expr_list
     ;
 
-atom:
-    literal
+expr_func:
+    expr_func_norm
+    | expr_func_subexpr
+    ;
+
+expr_func_norm:
+    symbolic_name '(' ')'
+        {
+            $$ = make_immediate_no_arg_function_expr($1, @1);
+        }
+    | symbolic_name '(' expr_list ')'
+        {
+            $$ = make_function_expr($1, $3, @2);
+        }
+    ;
+
+expr_func_subexpr:
+    COALESCE '(' expr_list ')'
+        {
+            CoalesceExpr *c;
+
+            c = makeNode(CoalesceExpr);
+            c->args = $3;
+            c->location = @1;
+            $$ = (Node *) c;
+        }
+    | EXISTS '(' anonymous_path ')'
+        {
+            cypher_sub_pattern *sub;
+            SubLink    *n;
+
+            sub = make_ag_node(cypher_sub_pattern);
+            sub->kind = CSP_EXISTS;
+            sub->pattern = list_make1($3);
+
+            n = makeNode(SubLink);
+            n->subLinkType = EXISTS_SUBLINK;
+            n->subLinkId = 0;
+            n->testexpr = NULL;
+            n->operName = NIL;
+            n->subselect = (Node *) sub;
+            n->location = @1;
+            $$ = (Node *) n;
+        }
+    ;
+
+expr_atom:
+    expr_literal
     | PARAMETER
         {
             cypher_param *n;
@@ -1017,10 +1049,11 @@ atom:
         {
             $$ = $2;
         }
-    | var
+    | expr_var
+    | expr_func
     ;
 
-literal:
+expr_literal:
     INTEGER
         {
             $$ = make_int_const($1, @1);
@@ -1092,7 +1125,7 @@ list:
         }
     ;
 
-var:
+expr_var:
     var_name
         {
             ColumnRef *n;
@@ -1156,6 +1189,7 @@ reserved_keyword:
     | DETACH
     | DISTINCT
     | ENDS
+    | EXISTS
     | FALSE_P
     | IN
     | IS

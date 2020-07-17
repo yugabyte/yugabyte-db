@@ -61,6 +61,13 @@
                          _node->field_name); \
     } while (0)
 
+#define write_int64_field(field_name) \
+    do \
+    { \
+        appendStringInfo(str, " :" CppAsString(field_name) " %ld", \
+                         _node->field_name); \
+    } while (0)
+
 /*
  * clauses
  */
@@ -208,4 +215,42 @@ void out_cypher_string_match(StringInfo str, const ExtensibleNode *node)
     write_node_field(lhs);
     write_node_field(rhs);
     write_location_field(location);
+}
+
+/* typecast */
+void out_cypher_typecast(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_typecast);
+
+    write_node_field(expr);
+    write_string_field(typecast);
+    write_location_field(location);
+}
+
+/* function */
+void out_cypher_function(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_function);
+
+    write_node_field(exprs);
+    write_string_field(funcname);
+    write_location_field(location);
+}
+
+/* integer constant */
+void out_cypher_integer_const(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_integer_const);
+
+    write_int64_field(integer);
+    write_location_field(location);
+}
+
+/* sub pattern */
+void out_cypher_sub_pattern(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_sub_pattern);
+
+    write_enum_field(kind, csp_kind);
+    write_node_field(pattern);
 }

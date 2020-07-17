@@ -45,6 +45,7 @@ const ScanKeyword cypher_keywords[] = {
     {"detach", DETACH, RESERVED_KEYWORD},
     {"distinct", DISTINCT, RESERVED_KEYWORD},
     {"ends", ENDS, RESERVED_KEYWORD},
+    {"exists", EXISTS, RESERVED_KEYWORD},
     {"false", FALSE_P, RESERVED_KEYWORD},
     {"in", IN, RESERVED_KEYWORD},
     {"is", IS, RESERVED_KEYWORD},
