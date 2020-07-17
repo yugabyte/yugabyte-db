@@ -157,7 +157,7 @@ yugabyte=# select count(*) from t;
 
 ### Verify a table has one tablet
 
-In order to verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../admin/yb-admin/#list-tablets) command.
+In order to verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../../admin/yb-admin/#list-tablets) command.
 
 ```bash
 $ bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
@@ -172,7 +172,7 @@ Tablet UUID                       Range                         Leader
 
 ### Manually split the tablet
 
-The tablet of this table can be manually split into two tablets by running the following [`yb-admin split_tablet`](../../admin/yb-admin/split-tablet) command.
+The tablet of this table can be manually split into two tablets by running the following [`yb-admin split_tablet`](../../../admin/yb-admin/#split-tablet) command.
 
 ```sh
 $ bin/yb-admin \
@@ -209,7 +209,9 @@ Automatic tablet splitting is currently in [BETA](../../../../faq/general/#what-
 
 Automatic tablet splitting enables resharding of the data in a cluster automatically while online, and transparently to users, when a specified size threshold has been reached.
 
-Design for automatic tablet splitting can be reviewed on [GitHub](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). While the broader feature is [work-in-progress](https://github.com/yugabyte/yugabyte-db/issues/1004), tablets can be automatically split for a few scenarios starting the v2.2 release.
+For details on the architecture design document, see [Automatic Re-sharding of Data with Tablet Splitting]](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). While the broader feature is [work-in-progress](https://github.com/yugabyte/yugabyte-db/issues/1004), tablets can be automatically split for a few scenarios starting in the v2.2 release.
+
+??? Which scenarios are the "few scenarios" listed in the previous sentence?
 
 ### Enable automatic tablet splitting
 

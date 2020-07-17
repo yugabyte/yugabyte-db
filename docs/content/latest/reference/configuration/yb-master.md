@@ -393,6 +393,7 @@ For details on automatic tablet splitting, see:
 
 - [Automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting) — Architecture overview
 - [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) — Architecture design document in the GitHub repository.
+
 ---
 
 ### Geo-distribution flags

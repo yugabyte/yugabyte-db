@@ -251,7 +251,12 @@ split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *tablet_id_to_split*: The identifier of the tablet to split.
 
-For more information on tablet splitting, see 
+For more information on tablet splitting, see
+
+For details on tablet splitting, see:
+
+- [Tablet splitting](../../architecture/docdb-sharding/tablet-splitting) — Architecture overview
+- [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) — Architecture design document in the GitHub repository.
 
 #### master_leader_stepdown
 
