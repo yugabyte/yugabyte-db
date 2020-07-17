@@ -122,6 +122,10 @@ export default class CreateBackup extends Component {
       }];
       modalTitle = modalTitle + " for " + tableInfo.keySpace + "." + tableInfo.tableName;
       initialValues.backupTableUUID = tableOptions[0];
+      initialValues.tableKeyspace = {
+        label: tableInfo.keySpace,
+        value: tableInfo.keySpace
+      };
     } else {      
       tableOptions = universeTables.map((tableInfo) => {
         keyspaces.add(tableInfo.keySpace);
