@@ -41,6 +41,9 @@ public class NodeInstance extends Model {
   }
 
   @Column(nullable = false)
+  public String instanceName;
+
+  @Column(nullable = false)
   public UUID zoneUuid;
 
   @Column(nullable = false)
@@ -168,6 +171,9 @@ public class NodeInstance extends Model {
     node.zoneUuid = zoneUuid;
     node.inUse = false;
     node.instanceTypeCode = formData.instanceType;
+    String instanceName = formData.instanceName;
+    if (instanceName == null) instanceName = "";
+    node.instanceName = instanceName;
     node.setDetails(formData);
     node.setNodeName("");
     node.save();
