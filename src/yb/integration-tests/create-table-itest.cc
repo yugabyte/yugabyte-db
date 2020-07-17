@@ -431,16 +431,18 @@ TEST_F(CreateTableITest, TestIsRaftLeaderMetric) {
                 .num_tablets(kNumTablets)
                 .Create());
 
-  // Count the total Number of Raft Leaders in the cluster. Go through each tablet of every tablet-server and sum up the leaders.
+  // Count the total Number of Raft Leaders in the cluster. Go through each tablet of every
+  // tablet-server and sum up the leaders.
   int64_t kNumRaftLeaders = 0;
-  for(int i=0 ; i< kNumReplicas ;i++) {
-    auto tabletIds = ASSERT_RESULT(cluster_->GetTabletIds(cluster_->tablet_server(i)));
-    for(int ti = 0;ti < inspect_->ListTabletsOnTS(i).size();ti++) {
-      const char *tabletId = tabletIds[ti].c_str();
-      kNumRaftLeaders += ASSERT_RESULT(cluster_->tablet_server(i)->GetInt64Metric(&METRIC_ENTITY_tablet,tabletId,&METRIC_is_raft_leader,"value"));
+  for (int i = 0 ; i < kNumReplicas; i++) {
+    auto tablet_ids = ASSERT_RESULT(cluster_->GetTabletIds(cluster_->tablet_server(i)));
+    for(int ti = 0; ti < inspect_->ListTabletsOnTS(i).size(); ti++) {
+      const char *tabletId = tablet_ids[ti].c_str();
+      kNumRaftLeaders += ASSERT_RESULT(cluster_->tablet_server(i)->GetInt64Metric(
+          &METRIC_ENTITY_tablet, tabletId, &METRIC_is_raft_leader, "value"));
     }
   }
-  ASSERT_EQ(kNumRaftLeaders,kExpectedRaftLeaders);
+  ASSERT_EQ(kNumRaftLeaders, kExpectedRaftLeaders);
 }
 
 }  // namespace yb

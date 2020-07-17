@@ -341,7 +341,8 @@ RaftConsensus::RaftConsensus(
                                                     cmeta->current_term())),
       follower_last_update_time_ms_metric_(
           metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms)),
-      is_raft_leader_metric_(metric_entity->FindOrCreateGauge(&METRIC_is_raft_leader, static_cast<int64_t>(0))),
+      is_raft_leader_metric_(metric_entity->FindOrCreateGauge(&METRIC_is_raft_leader,
+                                                              static_cast<int64_t>(0))),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type),
       update_raft_config_dns_latency_(
