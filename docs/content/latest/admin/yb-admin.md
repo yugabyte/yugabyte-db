@@ -240,6 +240,19 @@ yb-admin -master_addresses <master-addresses> list_tablets_for_tablet_server <ts
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *ts_uuid*: The UUID of the tablet server (YB-TServer).
 
+#### split_tablet
+
+Splits the specified tablet and and computes the split point as the middle of tablet's partition range.
+
+```sh
+split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *tablet_id_to_split*: The identifier of the tablet to split.
+
+For more information on tablet splitting, see 
+
 #### master_leader_stepdown
 
 Forces the master leader to step down. The specified YB-Master node will take its place as leader.

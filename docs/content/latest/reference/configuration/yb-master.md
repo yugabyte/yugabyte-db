@@ -372,7 +372,13 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/comma
 
 #### --tablet_split_size_threshold_bytes
 
-Enables dynamic tablet splitting and sets the threshold on tablet size, in bytes, before each tablet splits.
+{{< note title="Note" >}}
+
+Automatic tablet splitting is currently in [BETA](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+{{< /note >}}
+
+Enables tablets to automatically split tablets while online, based on the specified tablet threshold size.
 
 **Syntax**
 
@@ -381,8 +387,12 @@ yb-admin --master_addresses <master-addresses> --tablet_split_size_threshold_byt
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *bytes*: The threshold size, in bytes, before each tablet should be split. Default value is `0`, Default value of `0` disables dynamic tablet splitting.
+- *bytes*: The threshold size, in bytes, before each tablet should be split. Default value of `0` disables automatic tablet splitting.
 
+For details on automatic tablet splitting, see:
+
+- [Automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting) — Architecture overview
+- [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) — Architecture design document in the GitHub repository.
 ---
 
 ### Geo-distribution flags

@@ -76,8 +76,8 @@ See it in action by following the updated [Quick start](../../quick-start). For 
 
 ### Automatic tablet splitting [BETA]
 
-- YugabyteDB now supports automatic tablet splitting, resharding your data by changing the number of tablets at runtime. For details, see [Automatic Resharding of Data with Tablet Splitting]https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
-- To enable dynamic tablet splitting, use the new `yb-tserver` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-tserver/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
+- YugabyteDB now supports automatic tablet splitting, resharding your data by changing the number of tablets at runtime. For details, see [Automatic Resharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
+- To enable automatic tablet splitting, use the new `yb-master` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-master/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
 
 ### TPC-C benchmarking
 
@@ -115,8 +115,8 @@ Most applications have a need to frequently evolve the database schema, while si
 
 ### Automatic tablet splitting [BETA]
 
-- YugabyteDB now supports automatic tablet splitting at runtime by changing the number of tablets based on size thresholds. For details, see the design document on [Automatic Resharding of Data with Tablet Splitting]https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
-- To enable automatic tablet splitting, use the new `yb-tserver` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-tserver/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
+- YugabyteDB now supports automatic tablet splitting at runtime by changing the number of tablets based on size thresholds. For details, see the design document on [Automatic Resharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
+- To enable automatic tablet splitting, use the new `yb-master` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-master/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
 
 ### Other notable changes
 
