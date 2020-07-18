@@ -1314,6 +1314,13 @@ TEST_F_EX(
         client_.get(), table_name, index_table_name, IndexPermissions::INDEX_PERM_NOT_USED, false);
     ASSERT_TRUE(!res.ok());
     ASSERT_TRUE(res.status().IsNotFound());
+
+    AssertLoggedWaitFor(
+        [this, index_table_name]() {
+          Result<YBTableInfo> index_table_info = client_->GetYBTableInfo(index_table_name);
+          return !index_table_info && index_table_info.status().IsNotFound();
+        },
+        10s, "waiting for index to be deleted");
   }
 }
 
@@ -1347,23 +1354,45 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexFails, CppCassandraDriver
   ASSERT_TRUE(!res.ok());
   ASSERT_TRUE(res.status().IsNotFound());
 
-  // Try the delete index
-  ASSERT_OK(session_.ExecuteQuery("drop index IF EXISTS test_table_index_by_v;"));
+  AssertLoggedWaitFor(
+      [this, index_table_name]() {
+        Result<YBTableInfo> index_table_info = client_->GetYBTableInfo(index_table_name);
+        return !index_table_info && index_table_info.status().IsNotFound();
+      },
+      10s, "waiting for index to be deleted");
 
   LOG(INFO)
       << "Inserting more rows -- No collision checking for a failed index.";
-  ASSERT_OK(session_.ExecuteQuery(
-      "insert into test_table (k, v) values (-1, 'one');"));
-  ASSERT_OK(session_.ExecuteQuery(
-      "insert into test_table (k, v) values (-3, 'three');"));
-  ASSERT_OK(session_.ExecuteQuery(
-      "insert into test_table (k, v) values (4, 'four');"));
-  ASSERT_OK(session_.ExecuteQuery(
-      "insert into test_table (k, v) values (-4, 'four');"));
-  ASSERT_OK(session_.ExecuteQuery(
-      "insert into test_table (k, v) values (5, 'five');"));
-  ASSERT_OK(session_.ExecuteQuery(
-      "insert into test_table (k, v) values (-5, 'five');"));
+  AssertLoggedWaitFor(
+      [this]() {
+        return session_.ExecuteQuery("insert into test_table (k, v) values (-1, 'one');").ok();
+      },
+      10s, "insert after unique index creation failed.");
+  AssertLoggedWaitFor(
+      [this]() {
+        return session_.ExecuteQuery("insert into test_table (k, v) values (-3, 'three');").ok();
+      },
+      10s, "insert after unique index creation failed.");
+  AssertLoggedWaitFor(
+      [this]() {
+        return session_.ExecuteQuery("insert into test_table (k, v) values (4, 'four');").ok();
+      },
+      10s, "insert after unique index creation failed.");
+  AssertLoggedWaitFor(
+      [this]() {
+        return session_.ExecuteQuery("insert into test_table (k, v) values (-4, 'four');").ok();
+      },
+      10s, "insert after unique index creation failed.");
+  AssertLoggedWaitFor(
+      [this]() {
+        return session_.ExecuteQuery("insert into test_table (k, v) values (5, 'five');").ok();
+      },
+      10s, "insert after unique index creation failed.");
+  AssertLoggedWaitFor(
+      [this]() {
+        return session_.ExecuteQuery("insert into test_table (k, v) values (-5, 'five');").ok();
+      },
+      10s, "insert after unique index creation failed.");
 }
 
 TEST_F_EX(
@@ -1466,16 +1495,15 @@ void DoTestCreateUniqueIndexWithOnlineWrites(CppCassandraDriverTestIndex* test,
 
   auto main_table_size =
       ASSERT_RESULT(GetTableSize(&test->session_, "test_table"));
-  auto index_table_size =
-      ASSERT_RESULT(GetTableSize(&test->session_, "test_table_index_by_v"));
+  auto index_table_size_result = GetTableSize(&test->session_, "test_table_index_by_v");
 
   if (!create_index_failed) {
-    EXPECT_EQ(main_table_size, index_table_size);
+    EXPECT_TRUE(index_table_size_result);
+    EXPECT_EQ(main_table_size, *index_table_size_result);
   } else {
     LOG(INFO) << "create index failed. "
-              << "main_table_size " << main_table_size
-              << " is allowed to differ from "
-              << "index_table_size " << index_table_size;
+              << "main_table_size " << main_table_size << " is allowed to differ from "
+              << "index_table_size_result " << index_table_size_result;
   }
   if (delete_before_insert) {
     // Expect both the create index, and the duplicate insert to succeed.
@@ -1602,15 +1630,12 @@ TEST_F_EX(CppCassandraDriverTest, TestDeleteAndCreateIndex, CppCassandraDriverTe
     auto prepared = ASSERT_RESULT(table.PrepareInsert(&session, 10s));
     int32_t key = 0;
     constexpr int32_t kMaxKeys = 10000;
-    CoarseBackoffWaiter waiter(CoarseMonoClock::TimePoint::max(), 2500ms);
     while (!stop) {
       key = (key + 1) % kMaxKeys;
       auto statement = prepared.Bind();
       ColumnsType tuple(key, key);
       table.BindInsert(&statement, tuple);
       WARN_NOT_OK(session.Execute(statement), "Insert failed.");
-      SleepFor(MonoDelta::FromMilliseconds(500));
-      waiter.Wait();
     }
   });
 

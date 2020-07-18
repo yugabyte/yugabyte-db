@@ -498,18 +498,13 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   IndexInfoPB index_info_to_update;
   if (!indexes_to_delete.empty()) {
     index_info_to_update = indexes_to_delete[0];
-    VLOG(3) << "Deleting the index entry for " << yb::ToString(index_info_to_update);
-    // TODO(Amit): #4039 Delete the index after ensuring that there is no pending txn.
-    Status s;
-    WARN_NOT_OK(
-        (s = catalog_manager->DeleteIndexInfoFromTable(
-             indexed_table->id(), index_info_to_update.table_id())),
-        yb::Format(
-            "failed to delete index_info for $0 from $1", index_info_to_update.table_id(),
-            indexed_table->id()));
-    if (s.ok()) {
-      catalog_manager->SendAlterTableRequest(indexed_table);
-    }
+    VLOG(3) << "Deleting the index and the entry in the indexed table for "
+        << yb::ToString(index_info_to_update);
+    DeleteTableRequestPB req;
+    DeleteTableResponsePB resp;
+    req.mutable_table()->set_table_id(index_info_to_update.table_id());
+    req.set_is_index_table(true);
+    RETURN_NOT_OK(catalog_manager->DeleteTableInternal(&req, &resp, nullptr));
     return Status::OK();
   }
 
