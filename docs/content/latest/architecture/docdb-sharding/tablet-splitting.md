@@ -2,7 +2,7 @@
 title: Tablet splitting
 headerTitle: Tablet splitting
 linkTitle: Tablet splitting
-description: Learn about tablet splitting mechanisms for resharding data, including pre-splitting, manual, and automatic.
+description: Learn about tablet splitting mechanisms for resharding data, including presplitting, manual, and automatic.
 menu:
   latest:
     identifier: docdb-tablet-splitting
@@ -44,7 +44,7 @@ Some tables start off small, with only a few shards. But, if these tables grow v
 
 DocDB allows reshard data by splitting tablets using the following three mechanisms:
 
-* **Pre-splitting tablets:** All tables created in DocDB can be split into the desired number of tablets at creation time.
+* **Presplitting tablets:** All tables created in DocDB can be split into the desired number of tablets at creation time.
 
 * **Manual tablet splitting:** The tablets in a running cluster can be split manually at runtime by the user.
 
@@ -52,9 +52,9 @@ DocDB allows reshard data by splitting tablets using the following three mechani
 
 The following sections give details on how to split tablets using these three approaches.
 
-## Pre-splitting tablets
+## Presplitting tablets
 
-At creation time, you can pre-split a table split into the desired number of tablets. YugabyteDB supports pre-splitting tablets for both *range-sharded* and *hash-sharded* tables. The number of tablets can be specified in one of two ways:
+At creation time, you can presplit a table split into the desired number of tablets. YugabyteDB supports presplitting tablets for both *range-sharded* and *hash-sharded* tables. The number of tablets can be specified in one of two ways:
 
 * **Desired number of tablets:** In this case, the table is created with the desired number of tablets.
 * **Desired number of tablets per node:** In this case, the total number of tablets the table is split into is computed as follows:
@@ -65,7 +65,7 @@ At creation time, you can pre-split a table split into the desired number of tab
 
 {{< note title="Note" >}}
 
-In order to pre-split a table into a desired number of tablets, you need the start key and end key for each tablet. This makes pre-splitting slightly different for hash-sharded and range-sharded tables.
+In order to presplit a table into a desired number of tablets, you need the start key and end key for each tablet. This makes presplitting slightly different for hash-sharded and range-sharded tables.
 
 {{</note >}}
 
@@ -99,9 +99,9 @@ CREATE TABLE customers (
 
 ### Range-sharded tables
 
-In range-sharded tables, the start and end key for each tablet is not immediately known since this depends on the column type and the intended usage. For example, if the primary key is a `percentage NUMBER` column where the range of values is in the `[0, 100]` range, pre-splitting on the entire `NUMBER` space would not be effective.
+In range-sharded tables, the start and end key for each tablet is not immediately known since this depends on the column type and the intended usage. For example, if the primary key is a `percentage NUMBER` column where the range of values is in the `[0, 100]` range, presplitting on the entire `NUMBER` space would not be effective.
 
-For this reason, in order to pre-split range sharded tables, it is necessary to explicitly specify the split points. These explicit split points can be specified as shown below.
+For this reason, in order to presplit range sharded tables, it is necessary to explicitly specify the split points. These explicit split points can be specified as shown below.
 
 ```
 CREATE TABLE customers (
@@ -299,5 +299,5 @@ The following assumes `curl` and `jq` are installed.
 diff -C1 after-load.json after-run.json | grep tablet_id | sort | uniq
 ```
 
-10. The list of tablets accessed can be compared with `http://127.0.0.1:9000/tablets` to make sure no pre-split tablets have been accessed.
+10. The list of tablets accessed can be compared with `http://127.0.0.1:9000/tablets` to make sure no presplit tablets have been accessed.
 

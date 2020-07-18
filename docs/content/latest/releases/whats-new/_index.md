@@ -87,7 +87,7 @@ New results are now available for benchmarking the performance of the YSQL API u
 
 - Support pre-splitting using [CREATE INDEX...SPLIT INTO](../../api/ysql/commands/ddl_create_index/#split-into) for range-partitioned table indexes. For details, see [Pre-splitting](../../architecture/docdb-sharding/tablet-splitting/#pre-splitting) [#4235](https://github.com/yugabyte/yugabyte-db/issues/4235)
 - Fix crash for nested `SELECT` statements that involve null pushdown on system tables. [#4685](https://github.com/yugabyte/yugabyte-db/issues/4685)
-- Fix wrong sorting order in pre-split tables. [#4651](https://github.com/yugabyte/yugabyte-db/issues/4651)
+- Fix wrong sorting order in presplit tables. [#4651](https://github.com/yugabyte/yugabyte-db/issues/4651)
 - To help track down unoptimized (or "slow") queries, use the new `yb-tserver` [`--ysql_log_min_duration_statement`](../../reference/configuration/yb-tserver/#ysql-log-min-duration-statement). [#4817](https://github.com/yugabyte/yugabyte-db/issues/4817)
 - Enhance the [`yb-admin list_tables`](../../admin/yb-admin/#list-tables) command with optional flags for listing tables with database type (`include_db_type`), table ID (`include_table_id`), and table type (`include_table_type`). This command replaces the deprecated `yb-admin list_tables_with_db_types` command. [#4546](https://github.com/yugabyte/yugabyte-db/issues/4546)
 - Add support for [`ALTER TABLE`](../../api/ysql/commands/ddl_alter_table/#) on colocated tables. [#4293](https://github.com/yugabyte/yugabyte-db/issues/4293)

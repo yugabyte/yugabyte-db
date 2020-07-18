@@ -114,7 +114,7 @@ The `SPLIT AT VALUES` feature is currently in [BETA](../../../../faq/general/#wh
 
 {{< /note >}}
 
-For range-partitioned tables, you can use the `SPLIT AT VALUES` clause to set split points to pre-split range-sharded tables.
+For range-partitioned tables, you can use the `SPLIT AT VALUES` clause to set split points to presplit range-sharded tables.
 
 **Example**
 
