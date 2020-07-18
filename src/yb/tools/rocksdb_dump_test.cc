@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <gtest/gtest.h>
 
@@ -23,18 +25,15 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/common/ql_value.h"
-#include "yb/docdb/docdb_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
-#include "yb/rpc/messenger.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tools/data_gen_util.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/date_time.h"
+#include "yb/util/file_system.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
@@ -56,15 +55,16 @@ using client::YBTableCreator;
 using client::YBTableName;
 using client::YBTable;
 
-static const char* const kTabletUtilToolName = "ldb";
-static const char* const kNamespace = "ldb_test_namespace";
+static const char* const kTabletUtilToolName = "rocksdb_dump";
+static const char* const kNamespace = "rocksdb_dump_test_namespace";
 static const char* const kTableName = "my_table";
 static constexpr int32_t kNumTablets = 1;
 static constexpr int32_t kNumTabletServers = 1;
+static const char* const kRandomFileName = "randomfilename";
 
-class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
+class RocksDbDumpTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
-  YBTabletUtilTest() : random_(0) {
+  RocksDbDumpTest() : random_(0) {
   }
 
   void SetUp() override {
@@ -135,21 +135,25 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 };
 
 
-TEST_F(YBTabletUtilTest, VerifySingleKeyIsFound) {
+TEST_F(RocksDbDumpTest, VerifySingleKeyIsFound) {
   string output;
   ASSERT_OK(WriteData());
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAll));
   string db_path = ASSERT_RESULT(GetTabletDbPath());
 
+  string output_path = strings::Substitute(
+      "$0/$1", ASSERT_RESULT(Env::Default()->GetTestDirectory()), kRandomFileName);
+
   vector<string> argv = {
     GetToolPath(kTabletUtilToolName),
-    "dump",
-    "--compression_type=snappy",
-    "--db=" + db_path
+    "--db_path",
+    db_path,
+    "--dump_location",
+    output_path
   };
-  ASSERT_OK(Subprocess::Call(argv, &output, false /* read_stderr */));
-
-  ASSERT_NE(output.find("Keys in range: 1"), string::npos);
+  // Running the rocksdb_dump without failure means the tool was able to parse the persisted db
+  // state correctly.
+  ASSERT_OK(Subprocess::Call(argv));
 }
 
 } // namespace tools

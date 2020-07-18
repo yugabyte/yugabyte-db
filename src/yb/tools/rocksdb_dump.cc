@@ -34,8 +34,10 @@ int main() {
 #else
 
 #include <gflags/gflags.h>
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/rocksdb/convenience.h"
 #include "yb/rocksdb/db_dump_tool.h"
+#include "yb/tablet/tablet_options.h"
 
 DEFINE_string(db_path, "", "Path to the db that will be dumped");
 DEFINE_string(dump_location, "", "Path to where the dump file location");
@@ -68,6 +70,10 @@ int main(int argc, char** argv) {
     }
     db_options = parsed_options;
   }
+
+  yb::tablet::TabletOptions t_options;
+  yb::docdb::InitRocksDBOptions(
+      &db_options, "" /* log_prefix */, nullptr /* statistics */, t_options);
 
   rocksdb::DbDumpTool tool;
   if (!tool.Run(dump_options, db_options)) {
