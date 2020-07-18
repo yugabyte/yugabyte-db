@@ -251,8 +251,6 @@ ADD_YB_ROCKSDB_TOOL(db_stress)
 ADD_YB_ROCKSDB_TOOL(write_stress)
 ADD_YB_ROCKSDB_TOOL(db_repl_stress)
 target_link_libraries(db_repl_stress rocksdb_test_util)
-add_executable(rocksdb_dump tools/dump/rocksdb_dump.cc)
-target_link_libraries(rocksdb_dump rocksdb_tools)
 add_executable(rocksdb_undump tools/dump/rocksdb_undump.cc)
 target_link_libraries(rocksdb_undump rocksdb_tools)
 
