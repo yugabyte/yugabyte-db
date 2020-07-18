@@ -72,13 +72,11 @@ static int MasterMain(int argc, char** argv) {
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", kMasterDefaultPort);
   FLAGS_webserver_port = kMasterDefaultWebPort;
 
-
-  auto host_name = GetHostname();
-  if (host_name.ok()) {
-    FLAGS_metric_node_name = (*host_name) + ":" + std::to_string(FLAGS_webserver_port);
-  }
-  else {
-      LOG(INFO) << "Failed to get current host name, keeping default metric_node_name: " << host_name.status();
+  string host_name;
+  if (GetHostname(&host_name).ok()) {
+    FLAGS_metric_node_name = (host_name) + ":" + std::to_string(kMasterDefaultWebPort);
+  } else {
+      LOG(INFO) << "Failed to get master's host name, keeping default metric_node_name";
   }
 
   FLAGS_default_memory_limit_to_ram_ratio = 0.10;
