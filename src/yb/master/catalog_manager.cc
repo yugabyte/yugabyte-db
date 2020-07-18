@@ -3891,7 +3891,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   if (l->data().pb.has_fully_applied_schema()) {
     // An AlterTable is in progress; fully_applied_schema is the last
     // schema that has reached every TS.
-    CHECK(l->data().pb.state() == SysTablesEntryPB::ALTERING);
+    DCHECK(l->data().pb.state() == SysTablesEntryPB::ALTERING);
     resp->mutable_schema()->CopyFrom(l->data().pb.fully_applied_schema());
     resp->set_version(l->data().pb.fully_applied_schema_version());
     resp->mutable_indexes()->CopyFrom(l->data().pb.fully_applied_indexes());
