@@ -248,6 +248,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS DeleteTable(const DeleteTableRequestPB* req,
                              DeleteTableResponsePB* resp,
                              rpc::RpcContext* rpc);
+  CHECKED_STATUS DeleteTableInternal(
+      const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc);
 
   // Get the information about an in-progress delete operation.
   CHECKED_STATUS IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
@@ -829,7 +831,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Delete index info from the indexed table.
   CHECKED_STATUS MarkIndexInfoFromTableForDeletion(
-      const TableId& indexed_table_id, const TableId& index_table_id, DeleteTableResponsePB* resp);
+      const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
+      DeleteTableResponsePB* resp);
 
   // Delete index info from the indexed table.
   CHECKED_STATUS DeleteIndexInfoFromTable(
