@@ -98,11 +98,11 @@ Using this qualifier will create a temporary table. Temporary tables are only vi
 
 For hash-sharded tables, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the table. The hash range is then evenly split across those tablets.
 
-Pre-splitting tablets, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
+Presplitting tablets, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 
-By default, YugabyteDB pre-splits a table in `ysql_num_shards_per_tserver * num_of_tserver` shards. The `SPLIT INTO` clause can be used to override that setting on a per-table basis.
+By default, YugabyteDB presplits a table in `ysql_num_shards_per_tserver * num_of_tserver` shards. The `SPLIT INTO` clause can be used to override that setting on a per-table basis.
 
 {{< /note >}}
 
