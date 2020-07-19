@@ -1419,6 +1419,8 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   RETURN_NOT_OK(SchemaFromPB(resp.schema(), schema.get()));
   info->schema.Reset(std::move(schema));
   info->schema.set_version(resp.version());
+  info->schema.set_is_compatible_with_previous_version(
+      resp.is_compatible_with_previous_version());
   RETURN_NOT_OK(PartitionSchema::FromPB(resp.partition_schema(),
                                         GetSchema(&info->schema),
                                         &info->partition_schema));
