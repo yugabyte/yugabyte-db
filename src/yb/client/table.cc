@@ -409,7 +409,8 @@ size_t FindPartitionStartIndex(const TablePartitionList& partitions,
                                size_t group_by) {
   auto it = std::lower_bound(partitions.begin(), partitions.end(), partition_key);
   if (it == partitions.end() || *it > partition_key) {
-    DCHECK(it != partitions.begin());
+    DCHECK(it != partitions.begin()) << "Could not find partition start while looking for "
+        << partition_key << " in " << yb::ToString(partitions);
     --it;
   }
   return group_by <= 1 ? it - partitions.begin() :
