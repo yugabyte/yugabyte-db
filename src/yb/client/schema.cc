@@ -440,11 +440,13 @@ YBSchema& YBSchema::operator=(YBSchema&& other) {
 void YBSchema::CopyFrom(const YBSchema& other) {
   schema_.reset(new Schema(*other.schema_));
   version_ = other.version();
+  is_compatible_with_previous_version_ = other.is_compatible_with_previous_version();
 }
 
 void YBSchema::MoveFrom(YBSchema&& other) {
   schema_ = std::move(other.schema_);
   version_ = other.version();
+  is_compatible_with_previous_version_ = other.is_compatible_with_previous_version();
 }
 
 void YBSchema::Reset(std::unique_ptr<Schema> schema) {
@@ -530,6 +532,14 @@ size_t YBSchema::num_hash_key_columns() const {
 
 size_t YBSchema::num_range_key_columns() const {
   return schema_->num_range_key_columns();
+}
+
+bool YBSchema::is_compatible_with_previous_version() const {
+  return is_compatible_with_previous_version_;
+}
+
+void YBSchema::set_is_compatible_with_previous_version(bool is_compatible) {
+  is_compatible_with_previous_version_ = is_compatible;
 }
 
 uint32_t YBSchema::version() const {

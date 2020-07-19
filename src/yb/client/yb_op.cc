@@ -230,6 +230,8 @@ static std::unique_ptr<YBqlWriteOp> NewYBqlWriteOp(const shared_ptr<YBTable>& ta
   req->set_query_id(op->GetQueryId());
 
   req->set_schema_version(table->schema().version());
+  req->set_is_compatible_with_previous_version(
+      table->schema().is_compatible_with_previous_version());
 
   return op;
 }
@@ -383,6 +385,8 @@ std::unique_ptr<YBqlReadOp> YBqlReadOp::NewSelect(const shared_ptr<YBTable>& tab
   req->set_query_id(op->GetQueryId());
 
   req->set_schema_version(table->schema().version());
+  req->set_is_compatible_with_previous_version(
+      table->schema().is_compatible_with_previous_version());
 
   return op;
 }

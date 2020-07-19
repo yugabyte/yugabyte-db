@@ -340,6 +340,7 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
 
     if (permissions_updated) {
       indexed_table_pb.set_version(indexed_table_pb.version() + 1);
+      indexed_table_pb.set_updates_only_index_permissions(true);
     } else {
       VLOG(1) << "Index permissions update skipped, leaving schema_version at "
               << indexed_table_pb.version();
@@ -449,6 +450,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     TRACE("Locking indexed table");
     VLOG(1) << ("Locking indexed table");
     auto l = indexed_table->LockForRead();
+    VLOG(1) << ("Locked indexed table");
     if (current_version != l->data().pb.version()) {
       LOG(WARNING) << "Somebody launched the next version before we got to it.";
       return Status::OK();
@@ -515,6 +517,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     }
 
     if (permissions_updated.ok() && *permissions_updated) {
+      VLOG(1) << "Sending alter table request with updated permissions";
       catalog_manager->SendAlterTableRequest(indexed_table);
       return Status::OK();
     }

@@ -99,6 +99,7 @@ auto SetupRequest(const T& op, const YBSchema& schema) {
   req->set_request_id(0);
   req->set_query_id(reinterpret_cast<int64_t>(op.get()));
   req->set_schema_version(schema.version());
+  req->set_is_compatible_with_previous_version(schema.is_compatible_with_previous_version());
   return req;
 }
 

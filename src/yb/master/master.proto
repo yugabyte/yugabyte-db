@@ -404,15 +404,20 @@ message SysTablesEntryPB {
 
   optional bool colocated = 25 [ default = false ]; // Is this a colocated table?
 
-  // For index backfill/schema related changes.
-  // When a schema change is going on, we want to make sure that the master returns the "older"
-  // fully applied version until all the tablets have moved on to the newer version.
   optional uint32 fully_applied_schema_version = 23;
   repeated IndexInfoPB fully_applied_indexes = 26;
   optional IndexInfoPB fully_applied_index_info = 27;
 
   // Optional: Table dependent upon transaction success (abort removes table). Used by YSQL.
   optional TransactionMetadataPB transaction = 29;
+
+  // During an alter table, which involves no schema change but only updating
+  // a permission, is it sometimes acceptable for a client's request (which is
+  // prepared with the current schema) to be accepted by a tserver which is
+  // still running the previous version.
+  // This is typically set during alters that are caused due to index
+  // permissions being changed, when the table is backfilled.
+  optional bool updates_only_index_permissions = 31 [ default = false ];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -1201,6 +1206,8 @@ message GetTableSchemaResponsePB {
 
   // True if table is colocated.
   optional bool colocated = 13;
+
+  optional bool is_compatible_with_previous_version = 14 [default = false];
 }
 
 message GetColocatedTabletSchemaRequestPB {

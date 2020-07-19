@@ -1823,8 +1823,7 @@ TEST_F_EX(
 
   thread_holder.Stop();
   LOG(INFO) << "Total failed read operations " << failed_cnt << " out of " << read_cnt;
-  constexpr int32_t kMaxFailurePct = 20;
-  ASSERT_LE(failed_cnt.load(), kMaxFailurePct * read_cnt / 100.0);
+  ASSERT_EQ(failed_cnt.load(), 0);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestDeleteAndCreateIndex, CppCassandraDriverTestIndex) {

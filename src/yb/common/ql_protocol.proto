@@ -152,6 +152,7 @@ message QLWriteRequestPB {
 
   // Does this request correspond to backfilling an index table?
   optional bool is_backfill = 19 [default = false];
+  optional bool is_compatible_with_previous_version = 20 [ default = false ];
 }
 
 //-------------------------------------- Read request ----------------------------------------
@@ -240,6 +241,7 @@ message QLReadRequestPB {
 
   // Flag for reading aggregate values.
   optional bool is_aggregate = 19 [default = false];
+  optional bool is_compatible_with_previous_version = 22 [ default = false ];
 }
 
 //------------------------------ Response (for both read and write) -----------------------------
