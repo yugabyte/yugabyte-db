@@ -217,7 +217,7 @@ For details on the architecture design document, see [Automatic Re-sharding of D
 
 To enable automatic tablet splitting, use the `yb-master` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-master/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
 
-??? Need guidance and tips on what values to use.
+The lower the value for the threshold size, the more tablets will exist with the same amount of data.
 
 **Example**
 
@@ -273,31 +273,16 @@ core_workload_insertion_retry_limit=10
 
 5. Monitor the tablets splitting by going to the YugabyteDB Web UI at `http://localhost:7000/tablet-servers` and `http://127.0.0.1:9000/tablets`.
 
-6. After the data is loaded, save the per-tablet metrics into a file:
-
-The following assumes `curl` and `jq` are installed.
-
-```sh
-(curl -s http://127.0.0.1:9000/metrics && curl -s http://127.0.0.2:9000/metrics && curl -s http://127.0.0.3:9000/metrics) | jq -s '[flatten | .[] | select(.type == "tablet") as $tablet | .metrics[] | select(.name == "rocksdb_number_db_seek" and .value > 0) | { tablet_id: $tablet.id, rocksdb_number_db_seek: .value }] | sort_by (.tablet_id)' >after-load.json
-```
-
-7. Run the workload.
+6. Run the workload.
 
 ```sh
 ~/code/YCSB/bin/ycsb run jdbc -s -P ~/code/YCSB/db-local.properties -P ~/code/YCSB/workloads/workloada -p recordcount=500000 -p operationcount=1000000 -p threadcount=4
 ```
 
-8. After the workload is completed, save the per-tablet metrics into another file.
-
-```sh
-(curl -s http://127.0.0.1:9000/metrics && curl -s http://127.0.0.2:9000/metrics && curl -s http://127.0.0.3:9000/metrics) | jq -s '[flatten | .[] | select(.type == "tablet") as $tablet | .metrics[] | select(.name == "rocksdb_number_db_seek" and .value > 0) | { tablet_id: $tablet.id, rocksdb_number_db_seek: .value }] | sort_by (.tablet_id)' >after-run.json
-```
-
-9. Get the list of tablets accessed during the run phase of the workload.
+7. Get the list of tablets accessed during the run phase of the workload.
 
 ```sh
 diff -C1 after-load.json after-run.json | grep tablet_id | sort | uniq
 ```
 
-10. The list of tablets accessed can be compared with `http://127.0.0.1:9000/tablets` to make sure no presplit tablets have been accessed.
-
+8. The list of tablets accessed can be compared with `http://127.0.0.1:9000/tablets` to make sure no presplit tablets have been accessed.
