@@ -54,10 +54,8 @@ export default class RestoreBackup extends Component {
     const validationSchema = Yup.object().shape({
       restoreToUniverseUUID: Yup.string()
       .required('Restore To Universe is Required'),
-      restoreToKeyspace: Yup.string()
-      .required('Restore To Keyspace is Required'),
-      restoreToTableName: Yup.string()
-      .required('Restore To Tablename is Required'),
+      restoreToKeyspace: Yup.string().nullable(),
+      restoreToTableName: Yup.string().nullable(),
       storageConfigUUID: Yup.string()
       .required('Storage Config is Required'),
       storageLocation: Yup.string()
