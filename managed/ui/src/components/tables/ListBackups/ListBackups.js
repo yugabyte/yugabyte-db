@@ -44,7 +44,7 @@ export default class ListBackups extends Component {
 
   showMultiTableInfo = (row) => {
     const { universeTableTypes } = this.props;
-    if (row.backupList && Array.isArray(row.backupList)) {
+    if (Array.isArray(row.backupList) && row.backupList.length) {
       return row.backupList.map((backup, index) => {
         const tableName = backup.tableUUIDList ? backup.tableNameList.join(', ') : backup.tableName;
         const tableType = backup.tableUUIDList ? universeTableTypes[backup.tableUUIDList[0]] : universeTableTypes[backup.tableUUID];
