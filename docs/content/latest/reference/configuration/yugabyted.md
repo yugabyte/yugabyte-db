@@ -150,7 +150,7 @@ The IP address or localhost name to which `yugabyted` will listen.
 
 {{< note title="Note" >}}
 
-This feature is currently in [Beta](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+This feature is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 {{< /note >}}
 

@@ -18,7 +18,7 @@ This section will describe how to create a universe with both a primary and [rea
 
 ## Create the universe
 
-First, enter the following values to create a primary cluster on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/gcp) cloud provider. Click **Create Universe** and then enter the following intent.
+First, enter the following values to create a primary cluster on [GCP](../../deploy/configure-cloud-providers/gcp) cloud provider. Click **Create Universe** and then enter the following intent.
 
 - Enter a universe name: **helloworld3**
 - Enter the set of regions: **Oregon**

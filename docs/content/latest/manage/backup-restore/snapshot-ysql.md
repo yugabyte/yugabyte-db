@@ -145,7 +145,7 @@ Let’s destroy the existing cluster, create a new cluster and import the snapsh
 2. Import the snapshot metadata.
 
 ```sh
-./build/latest/bin/yb-admin import_snapshot snapshot/test.snapshot <database_name>
+./bin/yb-admin import_snapshot snapshot/test.snapshot <database_name>
 ```
 
 The output contains the mapping between the old tablet IDs and the new tablet IDs.
@@ -188,7 +188,7 @@ cp -r snapshot/tablet-27ce76cade8e4894a4f7ffa154b33c3b.snapshots/0d4b4935-2c95-4
 
 4. Restore the snapshot.
 
-To restore the snapshot, run the [`yb-admin restore_snapshot`](../../admin/yb-admin/#restore-snapshot) command.
+To restore the snapshot, run the [`yb-admin restore_snapshot`](../../../admin/yb-admin/#restore-snapshot) command.
 
 ```sh
 yb-admin restore_snapshot <snapshot_id>
