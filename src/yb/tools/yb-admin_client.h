@@ -322,7 +322,9 @@ static constexpr const char* kColumnSep = " \t";
 
 std::string RightPadToUuidWidth(const std::string &s);
 
-Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name);
+Result<TypedNamespaceName> ParseNamespaceName(
+    const std::string& full_namespace_name,
+    const YQLDatabase default_if_no_prefix = YQL_DATABASE_CQL);
 
 }  // namespace tools
 }  // namespace yb

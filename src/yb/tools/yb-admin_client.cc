@@ -191,7 +191,10 @@ const char* DatabasePrefix(YQLDatabase db) {
   return kDBTypePrefixUnknown;
 }
 
-Result<TypedNamespaceName> ResolveNamespaceName(const Slice& prefix, const Slice& name) {
+Result<TypedNamespaceName> ResolveNamespaceName(
+    const Slice& prefix,
+    const Slice& name,
+    const YQLDatabase default_if_no_prefix = YQL_DATABASE_CQL) {
   auto db_type = YQL_DATABASE_UNKNOWN;
   if (!prefix.empty()) {
     static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
@@ -209,7 +212,7 @@ Result<TypedNamespaceName> ResolveNamespaceName(const Slice& prefix, const Slice
       return STATUS_FORMAT(InvalidArgument, "Invalid db type name '$0'", prefix);
     }
   } else {
-    db_type = (name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS : YQL_DATABASE_CQL);
+    db_type = (name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS : default_if_no_prefix);
   }
   return TypedNamespaceName{.db_type = db_type, .name = name.cdata()};
 }
@@ -1748,9 +1751,10 @@ string RightPadToUuidWidth(const string &s) {
   return RightPadToWidth(s, kNumCharactersInUuid);
 }
 
-Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name) {
+Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name,
+                                              const YQLDatabase default_if_no_prefix) {
   const auto parts = SplitByDot(full_namespace_name);
-  return ResolveNamespaceName(parts.prefix, parts.value);
+  return ResolveNamespaceName(parts.prefix, parts.value, default_if_no_prefix);
 }
 
 }  // namespace tools
