@@ -45,8 +45,9 @@ public class BackupsController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
+    Universe universe;
     try {
-      Universe.get(universeUUID);
+      universe = Universe.get(universeUUID);
     } catch (RuntimeException re) {
       String errMsg = "Invalid Universe UUID: " + universeUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
@@ -78,14 +79,25 @@ public class BackupsController extends AuthenticatedController {
     LOG.info("Submitted task to restore table backup to {}.{}, task uuid = {}.",
         taskParams.keyspace, taskParams.tableName, taskUUID);
     newBackup.setTaskUUID(taskUUID);
-    CustomerTask.create(customer,
+    if (taskParams.tableName != null) {
+      CustomerTask.create(customer,
         universeUUID,
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Restore,
         taskParams.tableName);
-    LOG.info("Saved task uuid {} in customer tasks table for table {}.{}", taskUUID,
+      LOG.info("Saved task uuid {} in customer tasks table for table {}.{}", taskUUID,
         taskParams.keyspace, taskParams.tableName);
+    } else {
+      CustomerTask.create(customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Backup,
+        CustomerTask.TaskType.Restore,
+        universe.name);
+        LOG.info("Saved task uuid {} in customer tasks table for multi-table backup {}", taskUUID,
+            universe.name);
+    }
 
     ObjectNode resultNode = Json.newObject();
     resultNode.put("taskUUID", taskUUID.toString());
