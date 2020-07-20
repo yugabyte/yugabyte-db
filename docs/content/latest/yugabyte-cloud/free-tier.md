@@ -5,6 +5,8 @@ description: Free tier
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+aliases:
+  - /latest/deploy/yugabyte-cloud/free-tier/
 menu:
   latest:
     identifier: free-tier
@@ -23,10 +25,10 @@ The Free Tier level includes:
 - **Cluster:** One three-node YugabyteDB cluster
 - **Storage:** 5 GB
 - **High availability:** Across multiple availability zones
-- **Client APIs:** [YSQL](../../../api/ysql) and [YCQL](../../../api/ycql)
+- **Client APIs:** [YSQL](../../api/ysql) and [YCQL](../../api/ycql)
 - **Administration**: Yugabyte Cloud Console
 - **Upgrades:** New releases automatically applied
-- **Support:** [Slack community (yugabyte-db)](https://yugabyte-db.slack.com)
+- **Support:** [Slack community (yugabyte-db)](https://www.yugabyte.com/slack)
 
 {{< note title="Note" >}}
 

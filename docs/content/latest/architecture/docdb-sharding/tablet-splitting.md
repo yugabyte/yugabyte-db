@@ -207,7 +207,7 @@ There are a few important things to note here.
 
 {{< note title="Note" >}}
 
-This feature is currently in [BETA](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+This feature is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 {{< /note >}}
 
