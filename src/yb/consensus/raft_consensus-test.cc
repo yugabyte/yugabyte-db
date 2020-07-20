@@ -218,7 +218,7 @@ class RaftConsensusTest : public YBTest {
     fs_manager_.reset(new FsManager(env_.get(), test_path, "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());
-    ASSERT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
+    ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
     ASSERT_OK(Log::Open(LogOptions(),
                        kTestTablet,
                        fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
@@ -226,7 +226,8 @@ class RaftConsensusTest : public YBTest {
                        schema_,
                        0, // schema_version
                        nullptr, // metric_entity
-                       append_pool_.get(),
+                       log_thread_pool_.get(),
+                       log_thread_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                        &log_));
 
@@ -353,7 +354,7 @@ class RaftConsensusTest : public YBTest {
   RaftConfigPB config_;
   OpIdPB initial_id_;
   gscoped_ptr<FsManager> fs_manager_;
-  std::unique_ptr<ThreadPool> append_pool_;
+  std::unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<Log> log_;
   gscoped_ptr<PeerProxyFactory> proxy_factory_;
   scoped_refptr<server::Clock> clock_;

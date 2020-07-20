@@ -1352,7 +1352,8 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
       DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
                << yb::ToString(req);
       auto write_op = std::make_unique<QLWriteOperation>(
-          table_info->schema, table_info->index_map, unique_index_key_schema_.get_ptr(),
+          std::shared_ptr<Schema>(table_info, &table_info->schema),
+          table_info->index_map, unique_index_key_schema_.get_ptr(),
           *txn_op_ctx);
       auto status = write_op->Init(req, resp);
       if (!status.ok()) {

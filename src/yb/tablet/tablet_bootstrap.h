@@ -169,6 +169,8 @@ class TabletBootstrap {
   // Thread pool for append task for bootstrap.
   ThreadPool* append_pool_;
 
+  ThreadPool* allocation_pool_;
+
   // Statistics on the replay of entries in the log.
   struct Stats {
     std::string ToString() const;

@@ -525,6 +525,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;
 
+  // Thread pool for log allocation threads, shared between all tablets.
+  std::unique_ptr<ThreadPool> allocation_pool_;
+
   // Thread pool for read ops, that are run in parallel, shared between all tablets.
   std::unique_ptr<ThreadPool> read_pool_;
 

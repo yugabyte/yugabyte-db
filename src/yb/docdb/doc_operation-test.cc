@@ -103,8 +103,8 @@ class DocOperationTest : public DocDBTestBase {
                const HybridTime& hybrid_time = HybridTime::kMax,
                const TransactionOperationContextOpt& txn_op_context =
                    kNonTransactionalOperationContext) {
-    QLWriteOperation ql_write_op(schema, IndexMap(), nullptr /* unique_index_key_schema */,
-                                 txn_op_context);
+    QLWriteOperation ql_write_op(std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
+                                 IndexMap(), nullptr /* unique_index_key_schema */, txn_op_context);
     ASSERT_OK(ql_write_op.Init(ql_writereq_pb, ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     ASSERT_OK(ql_write_op.Apply(
