@@ -310,7 +310,7 @@ class AzBackupStorage(AbstractBackupStorage):
     def download_file_cmd(self, src, dest):
         src = "'{}'".format(src + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         dest = "'{}'".format(dest)
-        return ["{} {} {}".format(self._command_list_prefix(), src, dest)]
+        return ["{} {} {} {}".format(self._command_list_prefix(), src, dest, "--recursive")]
 
     def upload_dir_cmd(self, src, dest):
         # azcopy will download the top-level directory as well as the contents without "/*".
