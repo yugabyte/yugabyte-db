@@ -28,12 +28,14 @@ export default class RestoreBackup extends Component {
       const payload = {
         storageConfigUUID: values.storageConfigUUID,
         storageLocation:  values.storageLocation,
-        actionType: 'RESTORE',
-        // tableName: values.restoreToTableName,        
+        actionType: 'RESTORE',      
       };
       // TODO: Allow renaming of individual tables
-      if (values.keyspace !== initialValues.keyspace) {
+      if (values.restoreToKeyspace !== initialValues.restoreToKeyspace) {
         payload.keyspace = values.restoreToKeyspace;
+      }
+      if (values.restoreToTableName !== initialValues.restoreToTableName) {
+        payload.tableName = values.restoreToTableName;
       }
       if (values.backupList) {
         payload.backupList = values.backupList;
@@ -48,7 +50,7 @@ export default class RestoreBackup extends Component {
   }
 
   render() {
-    const { visible, onHide, universeList, storageConfigs, currentUniverse } = this.props;
+    const { backupInfo, visible, onHide, universeList, storageConfigs, currentUniverse } = this.props;
 
     // If the backup information is not provided, most likely we are trying to load the backup
     // from pre-existing location (specified by the user) into the current universe in context.
@@ -91,6 +93,12 @@ export default class RestoreBackup extends Component {
       ...this.props.initialValues,
       storageConfigUUID: hasBackupInfo ? storageOptions.find((element) => { return element.value === this.props.initialValues.storageConfigUUID;}) : ""
     };
+    // Disable table field if multi-table backup
+    const isMultiTableBackup = hasBackupInfo && (
+      (backupInfo.backupList && backupInfo.backupList.length) ||
+      (backupInfo.tableNameList && backupInfo.tableNameList.length > 1) ||
+      (backupInfo.keyspace && (!backupInfo.tableNameList || !backupInfo.tableNameList.length) && !backupInfo.tableUUID)
+    );
 
     return (
       <div className="universe-apps-modal" onClick={(e) => e.stopPropagation()}>
@@ -132,7 +140,7 @@ export default class RestoreBackup extends Component {
                 label={"Keyspace"} />
           <Field name="restoreToTableName"
                 component={YBFormInput}
-                disabled={true}
+                disabled={isMultiTableBackup}
                 label={"Table"}/>
         </YBModalForm>
       </div>
