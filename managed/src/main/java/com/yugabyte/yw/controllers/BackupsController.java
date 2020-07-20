@@ -100,15 +100,29 @@ public class BackupsController extends AuthenticatedController {
         taskParams.tableName);
       LOG.info("Saved task uuid {} in customer tasks table for table {}.{}", taskUUID,
         taskParams.keyspace, taskParams.tableName);
-    } else if (taskParams.backupList != null) {
+    } else if (taskParams.keyspace != null) {
+      CustomerTask.create(customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Backup,
+        CustomerTask.TaskType.Restore,
+        taskParams.keyspace);
+      LOG.info("Saved task uuid {} in customer tasks table for keyspace {}", taskUUID,
+        taskParams.keyspace);
+    } else {
       CustomerTask.create(customer,
         universeUUID,
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Restore,
         universe.name);
-      LOG.info("Saved task uuid {} in customer tasks table for universe backup {}", taskUUID,
-        universe.name);
+      if (taskParams.backupList != null) {
+        LOG.info("Saved task uuid {} in customer tasks table for universe backup {}", taskUUID,
+          universe.name);
+      } else {
+        LOG.info("Saved task uuid {} in customer tasks table for restore identical keyspace & tables in universe {}", taskUUID,
+          universe.name);
+      }
     }
 
     ObjectNode resultNode = Json.newObject();

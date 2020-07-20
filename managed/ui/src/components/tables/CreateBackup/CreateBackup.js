@@ -73,6 +73,7 @@ export default class CreateBackup extends Component {
           payload.keyspace = values.tableKeyspace.value;
           createUniverseBackup(universeUUID, payload);
         } else if (values.backupTableUUID.length > 1) {
+          payload.keyspace = values.tableKeyspace.value;
           payload.tableUUIDList = values.backupTableUUID;
           createUniverseBackup(universeUUID, payload);
         } else {
