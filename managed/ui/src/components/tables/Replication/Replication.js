@@ -3,6 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import moment from 'moment';
+import _ from 'lodash';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBPanelItem } from '../../panels';
@@ -56,7 +57,7 @@ export default class ListBackups extends Component {
     let latestStat = null;
     let latestTimestamp = null;
     let showMetrics = false;
-    if (metrics && metrics[GRAPH_TYPE]) {
+    if (_.get(metrics, `metrics.${GRAPH_TYPE}.${METRIC_NAME}.layout.yaxis.alias`, null)) {
       // Get alias 
       const metricAliases = metrics[GRAPH_TYPE][METRIC_NAME].layout.yaxis.alias;
       const displayName = metricAliases['async_replication_committed_lag_micros']
