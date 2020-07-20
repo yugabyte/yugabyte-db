@@ -1361,8 +1361,8 @@ std::string RaftConsensus::LeaderRequest::OpsRangeString() const {
   return ret;
 }
 
-void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req,
-                                                     LeaderRequest* deduplicated_req) {
+Status RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req,
+                                                       LeaderRequest* deduplicated_req) {
   const auto& last_committed = state_->GetCommittedOpIdUnlocked();
 
   // The leader's preceding id.
@@ -1389,7 +1389,11 @@ void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req
       // pendings set.
       scoped_refptr<ConsensusRound> round =
           state_->GetPendingOpByIndexOrNullUnlocked(leader_msg->id().index());
-      DCHECK(round);
+      if (!round) {
+        // Could happen if we received outdated leader request. So should just reject it.
+        return STATUS_FORMAT(IllegalState, "Round not found for index: $0",
+                             leader_msg->id().index());
+      }
 
       // If the OpIds match, i.e. if they have the same term and id, then this is just
       // duplicate, we skip...
@@ -1417,6 +1421,8 @@ void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req
                           << "   Dedup: " << deduplicated_req->preceding_op_id << "->"
                           << deduplicated_req->OpsRangeString();
   }
+
+  return Status::OK();
 }
 
 Status RaftConsensus::HandleLeaderRequestTermUnlocked(const ConsensusRequestPB* request,
@@ -1520,8 +1526,7 @@ Status RaftConsensus::CheckLeaderRequestOpIdSequence(
 Status RaftConsensus::CheckLeaderRequestUnlocked(ConsensusRequestPB* request,
                                                  ConsensusResponsePB* response,
                                                  LeaderRequest* deduped_req) {
-
-  DeduplicateLeaderRequestUnlocked(request, deduped_req);
+  RETURN_NOT_OK(DeduplicateLeaderRequestUnlocked(request, deduped_req));
 
   // This is an additional check for KUDU-639 that makes sure the message's index
   // and term are in the right sequence in the request, after we've deduplicated
