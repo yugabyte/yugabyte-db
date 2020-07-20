@@ -314,7 +314,7 @@ void OperationDriver::HandleFailure(Status status) {
     case REPLICATED:
     {
       LOG_WITH_PREFIX(FATAL) << "Cannot cancel operations that have already replicated"
-                             << ": " << status << " operation: " << ToString();
+                             << ": " << status << " operation:" << ToString();
     }
   }
 }

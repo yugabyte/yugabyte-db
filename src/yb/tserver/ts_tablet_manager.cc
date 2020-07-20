@@ -419,22 +419,15 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   // However, the effective upper bound is the number of replicas as each will
   // submit its own tasks via a dedicated token.
   CHECK_OK(ThreadPoolBuilder("raft")
-               .set_min_threads(1)
                .unlimited_threads()
                .Build(&raft_pool_));
   CHECK_OK(ThreadPoolBuilder("prepare")
-               .set_min_threads(1)
                .unlimited_threads()
                .Build(&tablet_prepare_pool_));
   CHECK_OK(ThreadPoolBuilder("append")
-               .set_min_threads(1)
                .unlimited_threads()
                .set_idle_timeout(MonoDelta::FromMilliseconds(10000))
                .Build(&append_pool_));
-  CHECK_OK(ThreadPoolBuilder("log-alloc")
-               .set_min_threads(1)
-               .unlimited_threads()
-               .Build(&allocation_pool_));
   ThreadPoolMetrics read_metrics = {
       METRIC_op_read_queue_length.Instantiate(server_->metric_entity()),
       METRIC_op_read_queue_time.Instantiate(server_->metric_entity()),
@@ -1394,7 +1387,6 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .tablet_init_data = tablet_init_data,
       .listener = tablet_peer->status_listener(),
       .append_pool = append_pool(),
-      .allocation_pool = allocation_pool_.get(),
       .retryable_requests = &retryable_requests,
     };
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);

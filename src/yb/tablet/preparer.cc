@@ -105,7 +105,8 @@ class PreparerImpl {
                          OperationDrivers::iterator end);
 };
 
-PreparerImpl::PreparerImpl(consensus::Consensus* consensus, ThreadPool* tablet_prepare_pool)
+PreparerImpl::PreparerImpl(consensus::Consensus* consensus,
+                                     ThreadPool* tablet_prepare_pool)
     : consensus_(consensus),
       tablet_prepare_pool_token_(tablet_prepare_pool
                                      ->NewToken(ThreadPool::ExecutionMode::SERIAL)) {

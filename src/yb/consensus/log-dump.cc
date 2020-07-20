@@ -272,8 +272,8 @@ Status FilterLogSegment(const string& segment_path) {
             << ": " << source_segment_size_bytes << " bytes";
   LOG(INFO) << "Target segment size: "
             << target_segment_size_bytes << " bytes";
-  gscoped_ptr<ThreadPool> log_thread_pool;
-  RETURN_NOT_OK(ThreadPoolBuilder("log").unlimited_threads().Build(&log_thread_pool));
+  gscoped_ptr<ThreadPool> append_pool;
+  RETURN_NOT_OK(ThreadPoolBuilder("append").unlimited_threads().Build(&append_pool));
 
   const OpId first_op_id_to_omit = { FLAGS_min_op_term_to_omit, FLAGS_min_op_index_to_omit };
   const auto first_op_id_to_omit_valid = first_op_id_to_omit.valid();
@@ -319,8 +319,7 @@ Status FilterLogSegment(const string& segment_path) {
       tablet_schema,
       segment_header.schema_version(),
       /* metric_entity */ nullptr,
-      log_thread_pool.get(),
-      log_thread_pool.get(),
+      append_pool.get(),
       /* cdc_min_replicated_index */ 0,
       &log));
 

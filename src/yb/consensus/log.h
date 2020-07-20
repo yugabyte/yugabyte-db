@@ -112,7 +112,6 @@ class Log : public RefCountedThreadSafe<Log> {
                              uint32_t schema_version,
                              const scoped_refptr<MetricEntity>& metric_entity,
                              ThreadPool *append_thread_pool,
-                             ThreadPool* allocation_thread_pool,
                              int64_t cdc_min_replicated_index,
                              scoped_refptr<Log> *log);
 
@@ -238,6 +237,10 @@ class Log : public RefCountedThreadSafe<Log> {
   // Returns 0 if the log is shut down.
   uint64_t OnDiskSize();
 
+  void ListenPostAppend(std::function<void()> listener) {
+    post_append_listener_ = std::move(listener);
+  }
+
   // Set the schema for the _next_ log segment.
   //
   // This method is thread-safe.
@@ -319,8 +322,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   Log(LogOptions options, std::string wal_dir, std::string tablet_id, std::string peer_uuid,
       const Schema& schema, uint32_t schema_version,
-      const scoped_refptr<MetricEntity>& metric_entity, ThreadPool* append_thread_pool,
-      ThreadPool* allocation_thread_pool);
+      const scoped_refptr<MetricEntity>& metric_entity, ThreadPool* append_thread_pool);
 
   Env* get_env() {
     return options_.env;
@@ -439,8 +441,6 @@ class Log : public RefCountedThreadSafe<Log> {
   // This variable is not accessed concurrently.
   yb::OpId last_appended_entry_op_id_;
 
-  yb::OpId last_submitted_op_id_;
-
   // A footer being prepared for the current segment.  When the segment is closed, it will be
   // written.
   LogSegmentFooterPB footer_builder_;
@@ -456,7 +456,7 @@ class Log : public RefCountedThreadSafe<Log> {
   std::unique_ptr<Appender> appender_;
 
   // A thread pool for asynchronously pre-allocating new log segments.
-  std::unique_ptr<ThreadPoolToken> allocation_token_;
+  gscoped_ptr<ThreadPool> allocation_pool_;
 
   // If true, sync on all appends.
   bool durable_wal_write_;
@@ -521,10 +521,6 @@ class LogEntryBatch {
  public:
   LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB&& entry_batch_pb);
   ~LogEntryBatch();
-
-  std::string ToString() const {
-    return Format("{ type: $0 state: $1 max_op_id: $2 }", type_, state_, MaxReplicateOpId());
-  }
 
  private:
   friend class Log;

@@ -111,69 +111,37 @@ void KernelStackWatchdog::RunThread() {
       break;
     }
 
-    std::vector<ThreadIdForStack> to_copy;
-    std::vector<std::pair<ThreadIdForStack, TLS::Data>> to_process;
     {
-      to_copy.clear();
-      to_process.resize(1);
-      {
-        MutexLock l(lock_);
-        for (const auto& map_entry : tls_by_tid_) {
-          if (map_entry.second->data_.TryCopySnapshot(&to_process.back().second)) {
-            to_process.back().first = map_entry.first;
-            to_process.emplace_back();
-          } else {
-            to_copy.push_back(map_entry.first);
-          }
-        }
-      }
+      MutexLock l(lock_);
+      MicrosecondsInt64 now = GetMonoTimeMicros();
 
-      while (to_process.size() > 1 || !to_copy.empty()) {
-        to_process.pop_back();
-        MicrosecondsInt64 now = GetMonoTimeMicros();
-        for (const auto& p : to_process) {
-          const auto& tls_copy = p.second;
-          for (int i = 0; i < tls_copy.depth_; i++) {
-            const TLS::Frame* frame = &tls_copy.frames_[i];
+      for (const TLSMap::value_type& map_entry : tls_by_tid_) {
+        auto p = map_entry.first;
+        const TLS::Data* tls = &map_entry.second->data_;
 
-            int paused_us = now - frame->start_time_;
-            if (paused_us > frame->threshold_us_) {
-              string kernel_stack;
-              Status s = GetKernelStack(p.first, &kernel_stack);
-              if (!s.ok()) {
-                // Can't read the kernel stack of the pid -- it's possible that the thread exited
-                // while we were iterating, so just ignore it.
-                kernel_stack = "(could not read kernel stack)";
-              }
+        TLS::Data tls_copy;
+        tls->SnapshotCopy(&tls_copy);
 
-              const auto user_stack = DumpThreadStack(p.first);
-              LOG_STRING(WARNING, log_collector_.get())
-                << "Thread " << p.first << " stuck at " << frame->status_
-                << " for " << paused_us / 1000 << "ms" << ":\n"
-                << "Kernel stack:\n" << kernel_stack << "\n"
-                << "User stack:\n" << user_stack;
+        for (int i = 0; i < tls_copy.depth_; i++) {
+          TLS::Frame* frame = &tls_copy.frames_[i];
+
+          int paused_ms = (now - frame->start_time_) / 1000;
+          if (paused_ms > frame->threshold_ms_) {
+            string kernel_stack;
+            Status s = GetKernelStack(p, &kernel_stack);
+            if (!s.ok()) {
+              // Can't read the kernel stack of the pid -- it's possible that the thread exited
+              // while we were iterating, so just ignore it.
+              kernel_stack = "(could not read kernel stack)";
             }
+
+            string user_stack = DumpThreadStack(p);
+            LOG_STRING(WARNING, log_collector_.get())
+              << "Thread " << p << " stuck at " << frame->status_
+              << " for " << paused_ms << "ms" << ":\n"
+              << "Kernel stack:\n" << kernel_stack << "\n"
+              << "User stack:\n" << user_stack;
           }
-        }
-        to_process.resize(1);
-        if (!to_copy.empty()) {
-          base::subtle::PauseCPU();
-          MutexLock l(lock_);
-          auto w = to_copy.begin();
-          for (auto tid : to_copy) {
-            auto it = tls_by_tid_.find(tid);
-            if (it == tls_by_tid_.end()) {
-              continue;
-            }
-            if (it->second->data_.TryCopySnapshot(&to_process.back().second)) {
-              to_process.back().first = tid;
-              to_process.emplace_back();
-            } else {
-              *w = tid;
-              ++w;
-            }
-          }
-          to_copy.erase(w, to_copy.end());
         }
       }
     }
@@ -194,21 +162,29 @@ KernelStackWatchdog::TLS::~TLS() {
   KernelStackWatchdog::GetInstance()->Unregister(this);
 }
 
-bool KernelStackWatchdog::TLS::Data::TryCopySnapshot(Data* copy) const {
-  Atomic32 v_0 = base::subtle::Acquire_Load(&seq_lock_);
-  // If the value is odd, then the thread is in the middle of modifying
-  // its TLS, and we have to spin.
-  if (v_0 & 1) {
-    return false;
-  }
-  ANNOTATE_IGNORE_READS_BEGIN();
-  memcpy(copy, this, sizeof(*copy));
-  ANNOTATE_IGNORE_READS_END();
-  Atomic32 v_1 = base::subtle::Release_Load(&seq_lock_);
+// Optimistic concurrency control approach to snapshot the value of another
+// thread's TLS, even though that thread might be changing it.
+//
+// Called by the watchdog thread to see if a target thread is currently in the
+// middle of a watched section.
+void KernelStackWatchdog::TLS::Data::SnapshotCopy(Data* copy) const {
+  while (true) {
+    Atomic32 v_0 = base::subtle::Acquire_Load(&seq_lock_);
+    if (v_0 & 1) {
+      // If the value is odd, then the thread is in the middle of modifying
+      // its TLS, and we have to spin.
+      base::subtle::PauseCPU();
+      continue;
+    }
+    ANNOTATE_IGNORE_READS_BEGIN();
+    memcpy(copy, this, sizeof(*copy));
+    ANNOTATE_IGNORE_READS_END();
+    Atomic32 v_1 = base::subtle::Release_Load(&seq_lock_);
 
-  // If the value hasn't changed since we started the copy, then
-  // we know that the copy was a consistent snapshot.
-  return v_1 == v_0;
+    // If the value hasn't changed since we started the copy, then
+    // we know that the copy was a consistent snapshot.
+    if (v_1 == v_0) break;
+  }
 }
 
 } // namespace yb

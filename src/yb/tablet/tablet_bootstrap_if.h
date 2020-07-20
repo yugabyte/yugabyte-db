@@ -116,7 +116,6 @@ struct BootstrapTabletData {
   TabletInitData tablet_init_data;
   TabletStatusListener* listener = nullptr;
   ThreadPool* append_pool = nullptr;
-  ThreadPool* allocation_pool = nullptr;
   consensus::RetryableRequests* retryable_requests = nullptr;
 };
 
