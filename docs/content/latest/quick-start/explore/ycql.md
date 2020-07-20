@@ -38,9 +38,9 @@ showAsideToc: true
   
 </ul>
 
-After [creating a local cluster](../../../quick-start/create-local-cluster/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql) API.
+After [creating a local cluster](../../create-local-cluster/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql) API.
 
-[**ycqlsh**](../../../admin/cqlsh/) is the command line shell for interacting with the YCQL API. You will use ycqlsh for this tutorial.
+[**ycqlsh**](../../../admin/ycqlsh/) is the command line shell for interacting with the YCQL API. You will use ycqlsh for this tutorial.
 
 ## 1. Connect with ycqlsh
 
@@ -157,3 +157,10 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 
 (4 rows)
 ```
+
+
+{{<tip title="Next step" >}}
+
+[Build an application](../../build-apps/)
+
+{{< /tip >}}

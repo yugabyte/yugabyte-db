@@ -5,6 +5,8 @@ description: Create clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+aliases:
+  - /latest/deploy/yugabyte-cloud/create-clusters/
 menu:
   latest:
     identifier: create-clusters

@@ -6,6 +6,8 @@ description: Configure Amazon Web Services (AWS) for YugabyteDB deployments usin
 aliases:
   - /yugabyte-platform/deploy/configure-cloud-providers/
   - /latest/yugabyte-platform/deploy/configure-cloud-providers/
+  - /latest/deploy/enterprise-edition/configure-cloud-providers/
+  - /latest/deploy/enterprise-edition/configure-cloud-providers/aws
 menu:
   latest:
     identifier: configure-cloud-providers-1-aws
