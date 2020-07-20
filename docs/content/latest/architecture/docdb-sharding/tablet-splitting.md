@@ -286,3 +286,15 @@ diff -C1 after-load.json after-run.json | grep tablet_id | sort | uniq
 ```
 
 8. The list of tablets accessed can be compared with `http://127.0.0.1:9000/tablets` to make sure no presplit tablets have been accessed.
+
+## Current tablet splitting limitations
+
+Presplitting tablets and automatic tablet splitting are in beta in YugabyteDB. Here are known limitations that are planned to be resolved in the next releases:
+
+* Presplit tablets remain in the system forever and are not deleted from the disk.
+* There is no upper bound on the number of tablets for the table when automatic tablet splitting is enabled.
+* During tablet splitting, client application can get an error from the driver and will need to retry the request.
+* If tablet splitting occurs during an ongoing distributed transaction, it could be aborted and need to be retried.
+Tablets created as a result of tablet splitting might be split later than they reach size threshold, because splitting of not yet fully compacted tablets is not yet implemented.
+Colocated tables could not be split.
+
