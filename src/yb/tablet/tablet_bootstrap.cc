@@ -354,7 +354,6 @@ TabletBootstrap::TabletBootstrap(const BootstrapTabletData& data)
       mem_tracker_(data.tablet_init_data.parent_mem_tracker),
       listener_(data.listener),
       append_pool_(data.append_pool),
-      allocation_pool_(data.allocation_pool),
       skip_wal_rewrite_(FLAGS_skip_wal_rewrite) {
 }
 
@@ -619,7 +618,6 @@ Status TabletBootstrap::OpenNewLog() {
                           metadata.schema_version(),
                           tablet_->GetMetricEntity(),
                           append_pool_,
-                          allocation_pool_,
                           metadata.cdc_min_replicated_index(),
                           &log_));
   // Disable sync temporarily in order to speed up appends during the bootstrap process.

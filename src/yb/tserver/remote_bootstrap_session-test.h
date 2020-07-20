@@ -96,7 +96,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   virtual void SetUp() override {
     ASSERT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
     ASSERT_OK(ThreadPoolBuilder("prepare").Build(&tablet_prepare_pool_));
-    ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
+    ASSERT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
     YBTabletTest::SetUp();
     SetUpTabletPeer();
     ASSERT_NO_FATALS(PopulateTablet());
@@ -120,8 +120,7 @@ class RemoteBootstrapTest : public YBTabletTest {
                        *tablet()->schema(),
                        0,  // schema_version
                        nullptr, // metric_entity
-                       log_thread_pool_.get(),
-                       log_thread_pool_.get(),
+                       append_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                        &log));
 
@@ -224,7 +223,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
   unique_ptr<ThreadPool> raft_pool_;
   unique_ptr<ThreadPool> tablet_prepare_pool_;
-  unique_ptr<ThreadPool> log_thread_pool_;
+  unique_ptr<ThreadPool> append_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
   scoped_refptr<RemoteBootstrapSession> session_;
   std::unique_ptr<rpc::Messenger> messenger_;

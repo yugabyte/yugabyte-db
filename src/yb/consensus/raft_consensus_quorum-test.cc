@@ -133,8 +133,7 @@ class RaftConsensusQuorumTest : public YBTest {
                               schema_,
                               0, // schema_version
                               nullptr, // metric_entity
-                              log_thread_pool_.get(),
-                              log_thread_pool_.get(),
+                              append_pool_.get(),
                               std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                               &log));
       logs_.push_back(log.get());
@@ -217,7 +216,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
   Status BuildConfig(int num) {
     RETURN_NOT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
-    RETURN_NOT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
+    RETURN_NOT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
     BuildInitialRaftConfigPB(num);
     RETURN_NOT_OK(BuildFsManagersAndLogs());
     BuildPeers();
@@ -555,7 +554,7 @@ class RaftConsensusQuorumTest : public YBTest {
   vector<FsManager*> fs_managers_;
   vector<scoped_refptr<Log> > logs_;
   unique_ptr<ThreadPool> raft_pool_;
-  unique_ptr<ThreadPool> log_thread_pool_;
+  unique_ptr<ThreadPool> append_pool_;
   gscoped_ptr<TestPeerMapManager> peers_;
   std::vector<std::unique_ptr<TestOperationFactory>> operation_factories_;
   scoped_refptr<server::Clock> clock_;

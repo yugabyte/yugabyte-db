@@ -85,7 +85,7 @@ class ConsensusPeersTest : public YBTest {
     messenger_ = ASSERT_RESULT(bld.Build());
     ASSERT_OK(ThreadPoolBuilder("test-raft-pool").Build(&raft_pool_));
     raft_pool_token_ = raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
-    ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
+    ASSERT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
 
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
@@ -97,8 +97,7 @@ class ConsensusPeersTest : public YBTest {
                        schema_,
                        0, // schema_version
                        NULL,
-                       log_thread_pool_.get(),
-                       log_thread_pool_.get(),
+                       append_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                        &log_));
     clock_.reset(new server::HybridClock());
@@ -125,7 +124,7 @@ class ConsensusPeersTest : public YBTest {
 
   void TearDown() override {
     ASSERT_OK(log_->WaitUntilAllFlushed());
-    log_thread_pool_->Shutdown();
+    append_pool_->Shutdown();
     raft_pool_->Shutdown();
     messenger_->Shutdown();
   }
@@ -169,7 +168,7 @@ class ConsensusPeersTest : public YBTest {
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
   gscoped_ptr<FsManager> fs_manager_;
-  unique_ptr<ThreadPool> log_thread_pool_;
+  unique_ptr<ThreadPool> append_pool_;
   scoped_refptr<Log> log_;
   gscoped_ptr<PeerMessageQueue> message_queue_;
   const Schema schema_;

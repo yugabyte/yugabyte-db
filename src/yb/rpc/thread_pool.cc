@@ -53,19 +53,14 @@ const std::string kRpcThreadCategory = "rpc_thread_pool";
 
 class Worker {
  public:
-  explicit Worker(ThreadPoolShare* share)
+  explicit Worker(ThreadPoolShare* share, size_t index)
       : share_(share) {
-  }
-
-  CHECKED_STATUS Start(size_t index) {
     auto name = strings::Substitute("rpc_tp_$0_$1", share_->options.name, index);
-    return yb::Thread::Create(kRpcThreadCategory, name, &Worker::Execute, this, &thread_);
+    CHECK_OK(yb::Thread::Create(kRpcThreadCategory, name, &Worker::Execute, this, &thread_));
   }
 
   ~Worker() {
-    if (thread_) {
-      thread_->Join();
-    }
+    thread_->Join();
   }
 
   Worker(const Worker& worker) = delete;
@@ -170,6 +165,9 @@ class ThreadPool::Impl {
                                              share_.options.queue_limit)) {
     LOG(INFO) << "Starting thread pool " << share_.options.ToString();
     workers_.reserve(share_.options.max_workers);
+    while (workers_.size() != share_.options.max_workers) {
+      workers_.emplace_back(nullptr);
+    }
   }
 
   const ThreadPoolOptions& options() const {
@@ -201,15 +199,7 @@ class ThreadPool::Impl {
     if (index < share_.options.max_workers) {
       std::lock_guard<std::mutex> lock(mutex_);
       if (!closing_) {
-        auto new_worker = std::make_unique<Worker>(&share_);
-        auto status = new_worker->Start(workers_.size());
-        if (status.ok()) {
-          workers_.push_back(std::move(new_worker));
-        } else if (workers_.empty()) {
-          LOG(FATAL) << "Unable to start first worker: " << status;
-        } else {
-          LOG(WARNING) << "Unable to start worker: " << status;
-        }
+        workers_[index].reset(new Worker(&share_, index));
       }
     } else {
       --created_workers_;
@@ -219,7 +209,7 @@ class ThreadPool::Impl {
 
   void Shutdown() {
     // Block creating new workers.
-    created_workers_ += share_.options.max_workers;
+    created_workers_ += workers_.size();
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (closing_) {
