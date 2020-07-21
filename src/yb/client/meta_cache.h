@@ -425,8 +425,10 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // are grouped by partitions group.
   struct LookupDataGroup {
     MPSCQueue<LookupData> lookups;
-    // Whether we started lookup for this group.
-    std::atomic<int64_t> running{0};
+    // 0 if the request is not yet sent
+    std::atomic<int64_t> running_request_number{0};
+
+    int64_t max_completed_request_number = 0;
 
     void Finished(int64_t request_no, const ToStringable& id, bool allow_absence = false);
   };
