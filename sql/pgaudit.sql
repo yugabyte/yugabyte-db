@@ -818,6 +818,18 @@ RESET ROLE;
 DROP TABLE public.t;
 DROP ROLE alice;
 
+--
+-- Test PARTITIONED table
+CREATE TABLE h(x int ,y int) PARTITION BY HASH(x);
+CREATE TABLE h_0 partition OF h FOR VALUES WITH ( MODULUS 2, REMAINDER 0);
+CREATE TABLE h_1 partition OF h FOR VALUES WITH ( MODULUS 2, REMAINDER 1);
+INSERT INTO h VALUES(1,1);
+SELECT * FROM h;
+SELECT * FROM h_0;
+CREATE INDEX h_idx ON h (x);
+DROP INDEX h_idx;
+DROP TABLE h;
+
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';
