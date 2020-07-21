@@ -14,7 +14,9 @@ showAsideToc: true
 
 ## Overview
 
-Tablet splitting enables *resharding* existing data in the cluster by changing the number of tablets at runtime. Here are some of the scenarios where this is useful.
+Tablet splitting is the *resharding* of data in the cluster by presplitting tables before data is added or by changing the number of tablets at runtime. In the sections below, three mechanisms for tablet splitting in YugabyteDB clusters are explained.
+
+Here are some of the scenarios where tablet splitting is useful.
 
 ### Range scans
 
