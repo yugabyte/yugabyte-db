@@ -167,9 +167,9 @@ class LogTestBase : public YBTest {
     clock_.reset(new server::HybridClock());
     ASSERT_OK(clock_->Init());
     FLAGS_log_min_seconds_to_retain = 0;
-    ASSERT_OK(ThreadPoolBuilder("append")
+    ASSERT_OK(ThreadPoolBuilder("log")
                  .unlimited_threads()
-                 .Build(&append_pool_));
+                 .Build(&log_thread_pool_));
   }
 
   void CleanTablet() {
@@ -186,7 +186,8 @@ class LogTestBase : public YBTest {
                        schema_with_ids,
                        0, // schema_version
                        metric_entity_.get(),
-                       append_pool_.get(),
+                       log_thread_pool_.get(),
+                       log_thread_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                        &log_));
     LOG(INFO) << "Sucessfully opened the log at " << tablet_wal_path_;
@@ -350,7 +351,7 @@ class LogTestBase : public YBTest {
   gscoped_ptr<FsManager> fs_manager_;
   gscoped_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
-  std::unique_ptr<ThreadPool> append_pool_;
+  std::unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<Log> log_;
   int64_t current_index_;
   LogOptions options_;

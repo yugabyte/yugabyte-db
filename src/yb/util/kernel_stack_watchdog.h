@@ -81,6 +81,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadlocal.h"
+#include "yb/util/tsan_util.h"
 
 #define SCOPED_WATCH_STACK(threshold_ms) \
   ScopedWatchKernelStack _stack_watcher(__FILE__ ":" AS_STRING(__LINE__), threshold_ms)
@@ -133,7 +134,7 @@ class KernelStackWatchdog {
       MicrosecondsInt64 start_time_;
 
       // The threshold of time beyond which the watchdog should emit warnings.
-      int threshold_ms_;
+      int threshold_us_;
 
       // A string explaining the state that the thread is in (typically a file:line string). This is
       // expected to be static storage and is not freed.
@@ -164,9 +165,8 @@ class KernelStackWatchdog {
       // watchdog arbitrarily since it isn't on any critical path.
       Atomic32 seq_lock_;
 
-      // Take a consistent snapshot of this data into 'dst'. This may block if the target thread is
-      // currently modifying its TLS.
-      void SnapshotCopy(Data* dst) const;
+      // Returns true if copy succeed, false otherwise.
+      bool TryCopySnapshot(Data* dst) const;
     };
     Data data_;
   };
@@ -233,10 +233,7 @@ class ScopedWatchKernelStack {
     KernelStackWatchdog::TLS::Frame* frame = &tls_data->frames_[tls_data->depth_++];
     DCHECK_LE(tls_data->depth_, KernelStackWatchdog::TLS::kMaxDepth);
     frame->start_time_ = GetMonoTimeMicros();
-#if defined(ADDRESS_SANITIZER) || defined(THREAD_SANITIZER)
-    threshold_ms *= 10;
-#endif
-    frame->threshold_ms_ = threshold_ms;
+    frame->threshold_us_ = threshold_ms * RegularBuildVsSanitizers(1000, 10000);
     frame->status_ = label;
 
     // "Release" the sequence lock. This resets the lock value to be even, so readers will proceed.
