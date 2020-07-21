@@ -291,7 +291,7 @@ diff -C1 after-load.json after-run.json | grep tablet_id | sort | uniq
 
 ## Current tablet splitting limitations
 
-Presplitting tablets and automatic tablet splitting are in beta in YugabyteDB. To follow the work-in-progress on tablet splitting, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
+Presplitting tablets and automatic tablet splitting are in beta. To follow the work-in-progress on tablet splitting, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
 
 Here are known limitations that are planned to be resolved in the next releases:
 
