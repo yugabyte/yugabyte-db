@@ -56,6 +56,7 @@ DECLARE_int64(TEST_simulate_free_space_bytes);
 DECLARE_int64(log_stop_retaining_min_disk_mb);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(update_metrics_interval_ms);
+DECLARE_bool(enable_collect_cdc_metrics);
 
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
@@ -486,6 +487,7 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
 TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  FLAGS_enable_collect_cdc_metrics = true;
 
   std::string tablet_id;
   GetTablet(&tablet_id);
@@ -542,6 +544,7 @@ TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
 TEST_F(CDCServiceTest, TestGetChanges) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  FLAGS_enable_collect_cdc_metrics = true;
 
   std::string tablet_id;
   GetTablet(&tablet_id);
@@ -718,6 +721,7 @@ class CDCServiceTestMultipleServersOneTablet : public CDCServiceTest {
 TEST_F_EX(CDCServiceTest, TestUpdateLagMetrics, CDCServiceTestMultipleServersOneTablet) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  FLAGS_enable_collect_cdc_metrics = true;
 
   std::string tablet_id;
   GetTablet(&tablet_id);
