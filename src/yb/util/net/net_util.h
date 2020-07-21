@@ -217,6 +217,9 @@ CHECKED_STATUS HostToAddresses(
 Result<IpAddress> HostToAddress(const std::string& host);
 boost::optional<IpAddress> TryFastResolve(const std::string& host);
 
+// Returns true if host_str is 0.0.0.0 or [::]
+bool IsWildcardAddress(const std::string& host_str);
+
 } // namespace yb
 
 #endif  // YB_UTIL_NET_NET_UTIL_H
