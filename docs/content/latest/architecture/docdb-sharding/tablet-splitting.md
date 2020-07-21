@@ -38,23 +38,23 @@ In use cases with a low-cardinality of the primary keys (or the secondary index)
 
 ### Small tables that become very large
 
-Some tables start off small, with only a few shards. But, if these tables grow very large, then nodes get added to the cluster continuously.  Scenarios are possible that the number of nodes exceeds the number of tablets. To effectively rebalance the cluster, tablet splitting is required.
+Some tables start off small, with only a few shards. If these tables grow very large, however, then nodes will be continuosly added to the cluster.  Scenarios are possible where the number of nodes exceeds the number of tablets. To effectively rebalance the cluster, tablet splitting is required.
 
 ## Approaches to tablet splitting
 
-DocDB allows reshard data by splitting tablets using the following three mechanisms:
+DocDB allows data resharding by splitting tablets using the following three mechanisms:
 
-* **Presplitting tablets:** All tables created in DocDB can be split into the desired number of tablets at creation time.
+* **[Presplitting tablets](#presplitting-tablets):** All tables created in DocDB can be split into the desired number of tablets at creation time.
 
-* **Manual tablet splitting:** The tablets in a running cluster can be split manually at runtime by the user.
+* **[Manual tablet splitting](#manual-tablet-splitting):** The tablets in a running cluster can be split manually at runtime by the user.
 
-* **Automatic tablet splitting:** The tablets in a running cluster are automatically split according to some policy by the database.
+* **[Automatic tablet splitting](#automatic-tablet-splitting):** The tablets in a running cluster are automatically split according to some policy by the database.
 
 The following sections give details on how to split tablets using these three approaches.
 
 ## Presplitting tablets
 
-At creation time, you can presplit a table split into the desired number of tablets. YugabyteDB supports presplitting tablets for both *range-sharded* and *hash-sharded* tables. The number of tablets can be specified in one of two ways:
+At creation time, you can presplit a table into the desired number of tablets. YugabyteDB supports presplitting tablets for both *range-sharded* and *hash-sharded* YSQL tables and hash-sharded YCQL tables. The number of tablets can be specified in one of two ways:
 
 * **Desired number of tablets:** In this case, the table is created with the desired number of tablets.
 * **Desired number of tablets per node:** In this case, the total number of tablets the table is split into is computed as follows:
@@ -94,14 +94,20 @@ CREATE TABLE customers (
 ) SPLIT INTO 16 TABLETS;
 ```
 
-* For YSQL API details, see [Create a table specifying the number of tablets](../../../api/ysql/commands/ddl_create_table/#create-a-table-specifying-the-number-of-tablets). 
-* For YCQL API details, see [YCQL `CREATE TABLE`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets).
+For YSQL API support, see:
+
+* [CREATE TABLE ... SPLIT INTO](../../../api/ysql/commands/ddl_create_table/#split-into) and the example, [Create a table specifying the number of tablets](../../../api/ysql/commands/ddl_create_table/#create-a-table-specifying-the-number-of-tablets).
+* [CREATE INDEX ... SPLIT INTO](../../../api/ysql/commands/ddl_create_index/#split-into) and the example, [Create an index specifying the number of tablets](../../../api/ysql/commands/ddl_create_index/#create-an-index-specifying-the-number-of-tablets).
+
+For YCQL API support, see:
+
+* [CREATE TABLE ... WITH tablets](../../../api/ycql/ddl_create_table/#table-properties) and the example, [Create a table specifying the number of tablets](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets).
 
 ### Range-sharded tables
 
-In range-sharded tables, the start and end key for each tablet is not immediately known since this depends on the column type and the intended usage. For example, if the primary key is a `percentage NUMBER` column where the range of values is in the `[0, 100]` range, presplitting on the entire `NUMBER` space would not be effective.
+In range-sharded YSQL tables, the start and end key for each tablet is not immediately known since this depends on the column type and the intended usage. For example, if the primary key is a `percentage NUMBER` column where the range of values is in the `[0, 100]` range, presplitting on the entire `NUMBER` space would not be effective.
 
-For this reason, in order to presplit range sharded tables, it is necessary to explicitly specify the split points. These explicit split points can be specified as shown below.
+For this reason, in order to presplit range-sharded tables, you must explicitly specify the split points. These explicit split points can be specified as shown below.
 
 ```
 CREATE TABLE customers (
@@ -120,33 +126,43 @@ CREATE TABLE customers (
 ) SPLIT AT ((1000), (2000), (3000), ... );
 ```
 
-## Manual tablet splitting
+For YSQL API details, see:
+
+* [CREATE TABLE ... SPLIT AT VALUES](../../../api/ysql/commands/ddl_create_table/#split-at-values) for use with range-partitioned tables.
+
+## Manual tablet splitting [BETA]
+
+{{< note title="Note" >}}
+
+Manual tablet splitting is currently in [BETA](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+{{< /note >}}
 
 Imagine there is a table with pre-existing data spread across a certain number of tablets. It is possible to split some or all of the tablets in this table manually. This is shown in the example below.
 
 ### Create a sample YSQL table
 
-First, create a three-node local cluster.
+1. Create a three-node local cluster.
 
-```bash
+```sh
 $ bin/yb-ctl --rf=3 create --num_shards_per_tserver=1
 ```
 
-Create a sample table and insert some data.
+2. Create a sample table and insert some data.
 
-```postgres
+```postgresql
 yugabyte=# CREATE TABLE t (k VARCHAR, v TEXT, PRIMARY KEY (k)) SPLIT INTO 1 TABLETS;
 ```
 
-Next, we insert some sample data (100K rows) into this table.
+3. Insert some sample data (100K rows) into this table.
 
-```postgres
+```postgresql
 yugabyte=# INSERT INTO t (k, v) 
              SELECT i::text, left(md5(random()::text), 4)
              FROM generate_series(1, 100000) s(i);
 ```
 
-```
+```postgresql
 yugabyte=# select count(*) from t;
  count
 --------
@@ -155,7 +171,7 @@ yugabyte=# select count(*) from t;
 
 ```
 
-### Verify a table has one tablet
+### Verify the table has one tablet
 
 In order to verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../../admin/yb-admin/#list-tablets) command.
 
@@ -163,7 +179,7 @@ In order to verify that the table `t` has only one tablet, list all the tablets 
 $ bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
 ```
 
-This produces the following output. Note the tablet UUID for use later to split this tablet.
+This produces the following output. Note the tablet UUID for later use, to split this tablet.
 
 ```
 Tablet UUID                       Range                         Leader
@@ -194,12 +210,12 @@ a89ecb84ad1b488b893b6e7762a6ca2a  key_start: "\177\377" key_end: ""     127.0.0.
 
 {{< note title="Important" >}}
 
-* The original tablet `9991368c4b85456988303cd65a3c6503` is no longer exists and has been replaced with two new tablets.
+* The original tablet `9991368c4b85456988303cd65a3c6503` no longer exists and has been replaced with two new tablets.
 * The tablet leaders are now spread across two nodes in order to evenly balance the tablets for the table across the nodes of the cluster.
 
 {{</note >}}
 
-## Automatic tablet splitting
+## Automatic tablet splitting [BETA]
 
 {{< note title="Note" >}}
 
@@ -289,12 +305,13 @@ diff -C1 after-load.json after-run.json | grep tablet_id | sort | uniq
 
 ## Current tablet splitting limitations
 
-Presplitting tablets and automatic tablet splitting are in beta in YugabyteDB. Here are known limitations that are planned to be resolved in the next releases:
+Presplitting tablets and automatic tablet splitting ([work-in-progress]()] are in beta in YugabyteDB. Here are known limitations that are planned to be resolved in the next releases:
 
 * Presplit tablets remain in the system forever and are not deleted from the disk.
 * There is no upper bound on the number of tablets for the table when automatic tablet splitting is enabled.
-* During tablet splitting, client application can get an error from the driver and will need to retry the request.
+* During tablet splitting, client applications can get an error from the driver and need to retry the request.
 * If tablet splitting occurs during an ongoing distributed transaction, it could be aborted and need to be retried.
-Tablets created as a result of tablet splitting might be split later than they reach size threshold, because splitting of not yet fully compacted tablets is not yet implemented.
-Colocated tables could not be split.
+* Because splitting of tablets that are not completely compacted is not yet implemented, tablets created by tablet splitting might be split after they reach the specified size threshold.
+* Colocated tables cannot be split.
+
 
