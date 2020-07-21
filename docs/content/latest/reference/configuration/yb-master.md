@@ -387,7 +387,7 @@ yb-admin --master_addresses <master-addresses> --tablet_split_size_threshold_byt
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *bytes*: The threshold size, in bytes, before each tablet should be split. Default value of `0` disables automatic tablet splitting.
+- *bytes*: The threshold size, in bytes, after which tablets should be split. Default value of `0` disables automatic tablet splitting.
 
 For details on automatic tablet splitting, see:
 

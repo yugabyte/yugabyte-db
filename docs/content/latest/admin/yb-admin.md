@@ -242,11 +242,11 @@ yb-admin -master_addresses <master-addresses> list_tablets_for_tablet_server <ts
 
 #### split_tablet
 
-Splits the specified hash-partitioned tablet and and computes the split point as the middle of tablet's partition range.
+Splits the specified hash-partitioned tablet and computes the split point as the middle of tablet's partition range.
 
 {{< note title="Note" >}}
 
-The `yb-admin split_tablet` command is not supported for use with range-partitioned tablets. To follow plans on this, see [GitHub #5166](https://github.com/yugabyte/yugabyte-db/issues/5166)
+The `yb-admin split_tablet` command is not yet supported for use with range-partitioned tablets. To follow plans on this, see [GitHub #5166](https://github.com/yugabyte/yugabyte-db/issues/5166)
 
 {{< /note >}}
 
