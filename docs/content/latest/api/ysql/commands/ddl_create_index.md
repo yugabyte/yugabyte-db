@@ -95,11 +95,11 @@ Specify one or more columns of the table and must be surrounded by parentheses.
 ### SPLIT INTO
 
 For hash-sharded indexes, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the index. The hash range is then evenly split across those tablets.
-Pre-splitting indexes, using `SPLIT INTO`, distributes index workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 tablets can provide higher write throughput on the index. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
+Presplitting indexes, using `SPLIT INTO`, distributes index workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 tablets can provide higher write throughput on the index. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 
-By default, YugabyteDB pre-splits an index into `ysql_num_shards_per_tserver * num_of_tserver` tablets. The `SPLIT INTO` clause can be used to override that setting on a per-index basis.
+By default, YugabyteDB presplits an index into `ysql_num_shards_per_tserver * num_of_tserver` tablets. The `SPLIT INTO` clause can be used to override that setting on a per-index basis.
 
 {{< /note >}}
 
