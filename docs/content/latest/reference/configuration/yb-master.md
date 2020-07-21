@@ -374,7 +374,7 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/comma
 
 {{< note title="Note" >}}
 
-Automatic tablet splitting is currently in [BETA](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+Automatic tablet splitting is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 {{< /note >}}
 

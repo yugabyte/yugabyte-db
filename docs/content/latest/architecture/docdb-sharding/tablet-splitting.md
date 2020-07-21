@@ -12,11 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Tablet splitting enables changing the number of tablets at runtime. This enables *resharding* the existing data in the cluster.
-
 ## Overview
 
-There are a number of scenarios where this is useful.
+Tablet splitting enables *resharding* existing data in the cluster by changing the number of tablets at runtime. Here are some of the scenarios where this is useful.
 
 ### Range scans
 
@@ -44,15 +42,21 @@ Some tables start off small, with only a few shards. If these tables grow very l
 
 DocDB allows data resharding by splitting tablets using the following three mechanisms:
 
-* **[Presplitting tablets](#presplitting-tablets):** All tables created in DocDB can be split into the desired number of tablets at creation time.
+* **[Presplitting tablets](#presplitting-tablets-beta):** All tables created in DocDB can be split into the desired number of tablets at creation time.
 
 * **[Manual tablet splitting](#manual-tablet-splitting):** The tablets in a running cluster can be split manually at runtime by the user.
 
-* **[Automatic tablet splitting](#automatic-tablet-splitting):** The tablets in a running cluster are automatically split according to some policy by the database.
+* **[Automatic tablet splitting](#automatic-tablet-splitting-beta):** The tablets in a running cluster are automatically split according to some policy by the database.
 
 The following sections give details on how to split tablets using these three approaches.
 
-## Presplitting tablets
+## Presplitting tablets [BETA]
+
+{{< note title="Note" >}}
+
+Manual tablet splitting is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+{{< /note >}}
 
 At creation time, you can presplit a table into the desired number of tablets. YugabyteDB supports presplitting tablets for both *range-sharded* and *hash-sharded* YSQL tables and hash-sharded YCQL tables. The number of tablets can be specified in one of two ways:
 
@@ -130,13 +134,7 @@ For YSQL API details, see:
 
 * [CREATE TABLE ... SPLIT AT VALUES](../../../api/ysql/commands/ddl_create_table/#split-at-values) for use with range-partitioned tables.
 
-## Manual tablet splitting [BETA]
-
-{{< note title="Note" >}}
-
-Manual tablet splitting is currently in [BETA](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
-{{< /note >}}
+## Manual tablet splitting
 
 Imagine there is a table with pre-existing data spread across a certain number of tablets. It is possible to split some or all of the tablets in this table manually. This is shown in the example below.
 
@@ -219,25 +217,23 @@ a89ecb84ad1b488b893b6e7762a6ca2a  key_start: "\177\377" key_end: ""     127.0.0.
 
 {{< note title="Note" >}}
 
-Automatic tablet splitting is currently in [BETA](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+Automatic tablet splitting is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 {{< /note >}}
 
-Automatic tablet splitting enables resharding of the data in a cluster automatically while online, and transparently to users, when a specified size threshold has been reached.
+Automatic tablet splitting enables resharding of data in a cluster automatically while online, and transparently to users, when a specified size threshold has been reached.
 
-For details on the architecture design document, see [Automatic Re-sharding of Data with Tablet Splitting]](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). While the broader feature is [work-in-progress](https://github.com/yugabyte/yugabyte-db/issues/1004), tablets can be automatically split for a few scenarios starting in the v2.2 release.
-
-??? Which scenarios are the "few scenarios" listed in the previous sentence?
+For details on the architecture design, see [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). While the broader feature is [work-in-progress](https://github.com/yugabyte/yugabyte-db/issues/1004), tablets can be automatically split for a few scenarios starting in the v2.2 release.
 
 ### Enable automatic tablet splitting
 
-To enable automatic tablet splitting, use the `yb-master` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-master/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
+To enable automatic tablet splitting, use the `yb-master` [`--tablet_split_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
 
 The lower the value for the threshold size, the more tablets will exist with the same amount of data.
 
 ### Example using a YCSB workload with automatic tablet splitting
 
-In the following example, a three-node cluster is created and uses a YCSB workload to demonstrate the use of automatic tablet splitting in a YSQL database. For details on using YCSB with YugabyteDB, see the [YCSB](../../benchmark/ycsb-jdbc/) section in the Benchmark guide.
+In the following example, a three-node cluster is created and uses a YCSB workload to demonstrate the use of automatic tablet splitting in a YSQL database. For details on using YCSB with YugabyteDB, see the [YCSB](../../../benchmark/ycsb-jdbc/) section in the Benchmark guide.
 
 1. Create a three-node cluster.
 

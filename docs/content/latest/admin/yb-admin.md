@@ -246,7 +246,7 @@ Splits the specified hash-partitioned tablet and and computes the split point as
 
 {{< note title="Note" >}}
 
-The `yb-admin split_tablet` command is not supported for use with range-partitioned tablets. To follow plans on this, see [GitHub issue #5166](https://github.com/yugabyte/yugabyte-db/issues/5166)
+The `yb-admin split_tablet` command is not supported for use with range-partitioned tablets. To follow plans on this, see [GitHub #5166](https://github.com/yugabyte/yugabyte-db/issues/5166)
 
 {{< /note >}}
 
@@ -256,8 +256,6 @@ split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *tablet_id_to_split*: The identifier of the tablet to split.
-
-For more information on tablet splitting, see
 
 For more information on tablet splitting, see:
 

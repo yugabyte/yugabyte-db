@@ -64,7 +64,7 @@ What happens when the “colocation” tablet containing all the tables of a dat
 
 ### Deferred constraints on foreign keys
 
-Foreign keys in YSQL now support the [DEFERRABLE INITIALLY IMMEDIATE](../../../api/ysql/commands/ddl_create_table/#foreign-key) and [DEFERRABLE INITIALLY DEFERRED](../../../api/ysql/commands/ddl_create_table/#foreign-key) clauses. Work on deferring additional constraints, including those for primary keys, is in progress. 
+Foreign keys in YSQL now support the [DEFERRABLE INITIALLY IMMEDIATE](../../api/ysql/commands/ddl_create_table/#foreign-key) and [DEFERRABLE INITIALLY DEFERRED](../../api/ysql/commands/ddl_create_table/#foreign-key) clauses. Work on deferring additional constraints, including those for primary keys, is in progress. 
 
 Application developers often declare constraints that their data must obey, leaving it to relational databases to enforce the rules. The end result is simpler application logic, lower error probability, and higher developer productivity. Automatic constraint enforcement is a powerful feature that should be leveraged whenever possible. There are times, however, when you need to temporarily defer enforcement. An example is during the data load of a relational schema where there are cyclic foreign key dependencies. Data migration tools usually defer the enforcement of foreign key dependencies to the end of a transaction by which data for all foreign keys would ideally be present.  This should also allow YSQL to power Django apps.
 
@@ -115,7 +115,7 @@ Most applications have a need to frequently evolve the database schema, while si
 
 ### Automatic tablet splitting [BETA]
 
-- YugabyteDB now supports automatic tablet splitting at runtime by changing the number of tablets based on size thresholds. For details, see the design document on [Automatic Resharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
+- YugabyteDB now supports automatic tablet splitting at runtime by changing the number of tablets based on size thresholds. For details, see [Tablet splitting](../../architecture/docdb-sharding/tablet-splitting) and [Automatic Resharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
 - To enable automatic tablet splitting, use the new `yb-master` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-master/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
 
 ### Other notable changes
