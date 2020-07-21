@@ -235,20 +235,6 @@ To enable automatic tablet splitting, use the `yb-master` [`--tablet_split_size_
 
 The lower the value for the threshold size, the more tablets will exist with the same amount of data.
 
-**Example**
-
-```sh
-
-```
-
-#### Use automatic tablet splitting with range-sharded tables
-
-???
-
-#### Use automatic tablet splitting with hash-sharded tables
-
-???
-
 ### Example using a YCSB workload with automatic tablet splitting
 
 In the following example, a three-node cluster is created and uses a YCSB workload to demonstrate the use of automatic tablet splitting in a YSQL database. For details on using YCSB with YugabyteDB, see the [YCSB](../../benchmark/ycsb-jdbc/) section in the Benchmark guide.
@@ -305,7 +291,9 @@ diff -C1 after-load.json after-run.json | grep tablet_id | sort | uniq
 
 ## Current tablet splitting limitations
 
-Presplitting tablets and automatic tablet splitting ([work-in-progress]()] are in beta in YugabyteDB. Here are known limitations that are planned to be resolved in the next releases:
+Presplitting tablets and automatic tablet splitting are in beta in YugabyteDB. To follow the work-in-progress on tablet splitting, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
+
+Here are known limitations that are planned to be resolved in the next releases:
 
 * Presplit tablets remain in the system forever and are not deleted from the disk.
 * There is no upper bound on the number of tablets for the table when automatic tablet splitting is enabled.
@@ -313,5 +301,3 @@ Presplitting tablets and automatic tablet splitting ([work-in-progress]()] are i
 * If tablet splitting occurs during an ongoing distributed transaction, it could be aborted and need to be retried.
 * Because splitting of tablets that are not completely compacted is not yet implemented, tablets created by tablet splitting might be split after they reach the specified size threshold.
 * Colocated tables cannot be split.
-
-
