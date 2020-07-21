@@ -490,12 +490,19 @@ void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
 
 Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly rpc_only) const {
   std::vector<HostPort> addrs = CHECK_NOTNULL(rpc_server())->GetRpcHostPort();
+  DCHECK_GE(addrs.size(), 1);
 
   // Fall back to hostname resolution if the rpc hostname is a wildcard.
-  if (addrs.size() > 1 || addrs[0].host() == kWildCardHostAddress || addrs[0].port() == 0) {
-    auto addrs = CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
-    RETURN_NOT_OK_PREPEND(AddHostPortPBs(addrs, reg->mutable_private_rpc_addresses()),
-                          "Failed to add RPC endpoints to registration");
+  if (addrs.size() != 1 || IsWildcardAddress(addrs[0].host()) || addrs[0].port() == 0) {
+    vector<Endpoint> endpoints =
+        CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
+    RETURN_NOT_OK_PREPEND(
+        AddHostPortPBs(endpoints, reg->mutable_private_rpc_addresses()),
+        "Failed to add RPC endpoints to registration");
+    for (const auto &addr : reg->private_rpc_addresses()) {
+      LOG(INFO) << " Using private rpc addresses: ( " << addr.ShortDebugString()
+                << " )";
+    }
   } else {
     HostPortsToPBs(addrs, reg->mutable_private_rpc_addresses());
     LOG(INFO) << "Using private ip address " << reg->private_rpc_addresses(0).host();
@@ -504,13 +511,23 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
   HostPortsToPBs(options_.broadcast_addresses, reg->mutable_broadcast_addresses());
 
   if (!rpc_only) {
-    std::vector<Endpoint> web_addrs;
-    RETURN_NOT_OK_PREPEND(
-        CHECK_NOTNULL(web_server())->GetBoundAddresses(&web_addrs),
-        "Unable to get bound HTTP addresses");
-    RETURN_NOT_OK_PREPEND(AddHostPortPBs(
-        web_addrs, reg->mutable_http_addresses()),
-        "Failed to add HTTP addresses to registration");
+    HostPort web_input_hp;
+    RETURN_NOT_OK(CHECK_NOTNULL(web_server())->GetInputHostPort(&web_input_hp));
+    if (IsWildcardAddress(web_input_hp.host()) || web_input_hp.port() == 0) {
+      std::vector<Endpoint> web_addrs;
+      RETURN_NOT_OK_PREPEND(
+          CHECK_NOTNULL(web_server())->GetBoundAddresses(&web_addrs),
+          "Unable to get bound HTTP addresses");
+      RETURN_NOT_OK_PREPEND(AddHostPortPBs(
+          web_addrs, reg->mutable_http_addresses()),
+          "Failed to add HTTP addresses to registration");
+      for (const auto &addr : reg->http_addresses()) {
+        LOG(INFO) << "Using http addresses: ( " << addr.ShortDebugString() << " )";
+      }
+    } else {
+      HostPortsToPBs({ web_input_hp }, reg->mutable_http_addresses());
+      LOG(INFO) << "Using http address " << reg->http_addresses(0).host();
+    }
   }
   reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud());
   reg->mutable_cloud_info()->set_placement_region(options_.placement_region());
