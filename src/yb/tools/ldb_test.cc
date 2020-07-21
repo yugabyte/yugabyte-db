@@ -76,38 +76,31 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
 
-    client_ = ASSERT_RESULT(YBClientBuilder()
-        .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
-        .Build());
-
+    YBSchema schema;
     YBSchemaBuilder b;
     b.AddColumn("k")->Type(INT64)->NotNull()->HashPrimaryKey();
-    ASSERT_OK(b.Build(&schema_));
+    ASSERT_OK(b.Build(&schema));
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
-    client_messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("Client").Build());
-    rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new master::MasterServiceProxy(&proxy_cache,
-                                                cluster_->leader_mini_master()->bound_rpc_addr()));
 
     // Create the namespace.
     ASSERT_OK(client_->CreateNamespace(kNamespace));
 
     // Create the table.
-    table_name_.reset(new YBTableName(YQL_DATABASE_CQL, kNamespace, kTableName));
-    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-    ASSERT_OK(table_creator->table_name(*table_name_.get())
+    const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, kTableName);
+    ASSERT_OK(client_
+        ->NewTableCreator()
+        ->table_name(table_name)
         .table_type(client::YBTableType::YQL_TABLE_TYPE)
-        .schema(&schema_)
+        .schema(&schema)
         .num_tablets(kNumTablets)
         .wait(true)
         .Create());
 
-    ASSERT_OK(client_->OpenTable(*table_name_, &table_));
+    ASSERT_OK(client_->OpenTable(table_name, &table_));
   }
 
   void DoTearDown() override {
-    client_messenger_->Shutdown();
     client_.reset();
     cluster_->Shutdown();
   }
@@ -118,53 +111,26 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
     auto session = client_->NewSession();
     session->SetTimeout(5s);
 
-    client::TableHandle table;
-    RETURN_NOT_OK(table.Open(*table_name_, client_.get()));
-    auto insert = table.NewInsertOp();
+    std::shared_ptr<client::YBqlWriteOp> insert(table_->NewQLWrite());
     auto req = insert->mutable_request();
-    GenerateDataForRow(schema_, 17 /* record_id */, &random_, req);
+    GenerateDataForRow(table_->schema(), 17 /* record_id */, &random_, req);
 
     RETURN_NOT_OK(session->Apply(insert));
     RETURN_NOT_OK(session->Flush());
     return Status::OK();
   }
 
-  string FormatDbPath(const string& root, const string& table_id, const string& tablet_id) {
-    return strings::Substitute(
-        "$0/yb-data/tserver/data/rocksdb/table-$1/tablet-$2",
-        root, table_id, tablet_id);
-  }
-
   Result<string> GetTabletDbPath() {
-    auto tablet_data_root = cluster_->GetTabletServerFsRoot(0);
-
-    master::GetTableLocationsRequestPB get_tablets_req;
-    master::GetTableLocationsResponsePB get_tablets_resp;
-    rpc::RpcController controller;
-
-    get_tablets_req.mutable_table()->set_table_name(table_name_->table_name());
-    get_tablets_req.mutable_table()->mutable_namespace_()->set_name(kNamespace);
-    get_tablets_req.set_max_returned_locations(kNumTablets);
-    RETURN_NOT_OK(proxy_->GetTableLocations(get_tablets_req, &get_tablets_resp, &controller));
-    if (get_tablets_resp.has_error()) {
-      return STATUS(InternalError, get_tablets_resp.ShortDebugString());
+    for (const auto& peer : cluster_->GetTabletPeers(0)) {
+      if (peer->table_type() == TableType::YQL_TABLE_TYPE) {
+        return peer->tablet_metadata()->rocksdb_dir();
+      }
     }
-    if (get_tablets_resp.tablet_locations_size() != kNumTablets) {
-      return STATUS_FORMAT(
-          InternalError,
-          "Unexpected number of tablets: $0.", get_tablets_resp.tablet_locations_size());
-    }
-
-    auto tablet_id = get_tablets_resp.tablet_locations(0).tablet_id();
-    return FormatDbPath(tablet_data_root, table_->id(), tablet_id);
+    return STATUS(IllegalState, "Did not find tablet peer with YCQL table");
   }
 
   std::unique_ptr<YBClient> client_;
-  YBSchema schema_;
-  std::unique_ptr<YBTableName> table_name_;
   std::shared_ptr<YBTable> table_;
-  std::unique_ptr<master::MasterServiceProxy> proxy_;
-  std::unique_ptr<rpc::Messenger> client_messenger_;
   Random random_;
 };
 
@@ -172,7 +138,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 TEST_F(YBTabletUtilTest, VerifySingleKeyIsFound) {
   string output;
   ASSERT_OK(WriteData());
-  ASSERT_OK(client_->FlushTable(*table_name_, 5 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAll));
   string db_path = ASSERT_RESULT(GetTabletDbPath());
 
   vector<string> argv = {

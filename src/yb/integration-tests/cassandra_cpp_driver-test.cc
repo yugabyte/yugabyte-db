@@ -1347,6 +1347,9 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexFails, CppCassandraDriver
   ASSERT_TRUE(!res.ok());
   ASSERT_TRUE(res.status().IsNotFound());
 
+  // Try the delete index
+  ASSERT_OK(session_.ExecuteQuery("drop index IF EXISTS test_table_index_by_v;"));
+
   LOG(INFO)
       << "Inserting more rows -- No collision checking for a failed index.";
   ASSERT_OK(session_.ExecuteQuery(

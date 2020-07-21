@@ -29,6 +29,8 @@ import Importer from './pages/Importer';
 import Certificates from './pages/Certificates';
 import Releases from './pages/Releases';
 import { isDefinedNotNull } from './utils/ObjectUtils';
+import { CreateUniverse } from './redesign/universes/CreateUniverse';
+import { EditUniverse } from './redesign/universes/EditUniverse';
 
 export const clearCredentials = () => {
   localStorage.removeItem('authToken');
@@ -136,6 +138,12 @@ export default (store) => {
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail}/>
         </Route>
+
+        <Route path="/new/universes">
+          <Route path="/new/universes/create" component={CreateUniverse} />
+          <Route path="/new/universes/:uuid/edit" component={EditUniverse} />
+        </Route>
+
         <Route path="/tasks" component={Tasks} >
           <IndexRoute component={TasksList}/>
           <Route path="/tasks/:taskUUID" component={TaskDetail}/>

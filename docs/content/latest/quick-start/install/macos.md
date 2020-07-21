@@ -157,7 +157,7 @@ sudo ifconfig lo0 alias 127.0.0.7
 To verify that the extra loopback addresses exist, run the following command.
 
 ```sh
-$ifconfig lo0
+$ ifconfig lo0
 ```
 
 You should see some output like the following:

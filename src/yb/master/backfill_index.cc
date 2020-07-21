@@ -328,14 +328,14 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
 
     if (permissions_updated) {
       indexed_table_pb.set_version(indexed_table_pb.version() + 1);
-      indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
-                                   Substitute("Alter table version=$0 ts=$1",
-                                              indexed_table_pb.version(),
-                                              LocalTimeAsString()));
     } else {
       VLOG(1) << "Index permissions update skipped, leaving schema_version at "
               << indexed_table_pb.version();
     }
+    indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
+                                 Substitute("Alter table version=$0 ts=$1",
+                                            indexed_table_pb.version(),
+                                            LocalTimeAsString()));
 
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating indexed table metadata on disk");

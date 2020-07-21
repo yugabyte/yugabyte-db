@@ -7,6 +7,7 @@ headcontent:
 image: /images/section_icons/api/yedis.png
 aliases:
   - /latest/api/redis
+  - /latest/api/yedis
 type: page
 section: MISC
 menu:
