@@ -646,15 +646,12 @@ class ClusterOptions:
             self.use_cassandra_authentication = args.use_cassandra_authentication
 
         if hasattr(args, "ip_start"):
-            if args.ip_start is not None:
-                self.ip_start = args.ip_start
-            elif hasattr(args, "listen_ip"):
-                # Only set listen_ip if ip_start is not given.
-                self.listen_ip = args.listen_ip
-                if (self.replication_factor == 1 and not self.listen_ip):
-                    self.listen_ip = '0.0.0.0'
-                if self.listen_ip and self.replication_factor > 1:
-                    raise RuntimeError("Invalid argument: listen_ip is only compatible with rf=1")
+            self.ip_start = args.ip_start
+
+        if hasattr(args, "listen_ip"):
+            self.listen_ip = args.listen_ip
+            if self.listen_ip and self.replication_factor > 1:
+                raise RuntimeError("Invalid argument: listen_ip is only compatible with rf=1")
 
         for arg in ["master_flags", "tserver_flags"]:
             try:
@@ -1128,7 +1125,7 @@ class ClusterControl:
                 help="We create separate directories and treat them as separate drives.")
 
             subparsers[cmd].add_argument(
-                "--ip_start", type=int,
+                "--ip_start", default=DEFAULT_IP_START, type=int,
                 help="Start index for IP address")
 
             subparsers[cmd].add_argument(
