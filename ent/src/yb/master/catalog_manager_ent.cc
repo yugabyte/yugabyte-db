@@ -939,15 +939,6 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 
   // Setup Index info.
   if (table_data->is_index()) {
-    // Demangle column names (expecting mangled names in the index only).
-    if (schema->table_properties().has_use_mangled_column_name() &&
-        schema->table_properties().use_mangled_column_name()) {
-      for (int i = 0; i < schema->columns_size(); ++i) {
-        ColumnSchemaPB* const column = schema->mutable_columns(i);
-        column->set_name(YcqlName::DemangleName(column->name()));
-      }
-    }
-
     TRACE("Looking up indexed table");
     // First of all try to attach to the new copy of the referenced table,
     // because the table restored from the snapshot is preferred.
@@ -959,22 +950,106 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
                 << meta.indexed_table_id() << " from the snapshot.";
       req.set_indexed_table_id(it->second.new_table_id);
     } else {
-      // Try to find the specified indexed table by id.
-      scoped_refptr<TableInfo> indexed_table = LockAndFindPtrOrNull(
-          *table_ids_map_, meta.indexed_table_id());
-
-      if (indexed_table != nullptr) {
-        LOG(INFO) << "Found old indexed table ID " << meta.indexed_table_id();
-        req.set_indexed_table_id(meta.indexed_table_id());
-      } else {
-        return STATUS(
-            InvalidArgument, Format("Indexed table not found by id: $0", meta.indexed_table_id()),
-            MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-      }
+      LOG(INFO) << "Try to use old indexed table ID " << meta.indexed_table_id();
+      req.set_indexed_table_id(meta.indexed_table_id());
     }
+
+    scoped_refptr<TableInfo> indexed_table;
+    {
+      SharedLock<LockType> l(lock_);
+      // Try to find the specified indexed table by id.
+      indexed_table = FindPtrOrNull(*table_ids_map_, req.indexed_table_id());
+    }
+
+    if (indexed_table == nullptr) {
+      return STATUS(
+          InvalidArgument, Format("Indexed table not found by id: $0", req.indexed_table_id()),
+          MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+    }
+
+    LOG(INFO) << "Found indexed table by ID " << req.indexed_table_id();
+    Schema indexed_schema;
+    RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
 
     req.set_is_local_index(meta.is_local_index());
     req.set_is_unique_index(meta.is_unique_index());
+    // Setup IndexInfoPB - self descriptor.
+    IndexInfoPB* const index_info_pb = req.mutable_index_info();
+    *index_info_pb = meta.index_info();
+    index_info_pb->clear_table_id();
+    index_info_pb->set_indexed_table_id(req.indexed_table_id());
+    map<ColumnIdRep, ColumnIdRep> col_ids_map; // Old column id -> new column id.
+
+    // Column ids can be changed during the indexed table recreation.
+    // Update the Column ids from the recreated indexed table schema.
+    for (int i = 0; i < index_info_pb->columns_size(); ++i) {
+      IndexInfoPB_IndexColumnPB* const column = index_info_pb->mutable_columns(i);
+      column->clear_column_id();
+
+      if (column->has_column_name()) {
+        const string name = column->column_name();
+        const ColumnId new_id = VERIFY_RESULT(indexed_schema.ColumnIdByName(
+           index_info_pb->use_mangled_column_name() ? YcqlName::DemangleName(name) : name));
+        col_ids_map[column->indexed_column_id()] = new_id.rep();
+        column->set_indexed_column_id(new_id.rep());
+      } else { // No name, keep the column ID as it is.
+        col_ids_map[column->indexed_column_id()] = column->indexed_column_id();
+      }
+    }
+
+    // Update column expressions.
+    for (int i = 0; i < index_info_pb->columns_size(); ++i) {
+      IndexInfoPB_IndexColumnPB* const column = index_info_pb->mutable_columns(i);
+      if (column->has_colexpr()) {
+        QLExpressionPB* const colexpr = column->mutable_colexpr();
+        if (colexpr->has_column_id()) {
+          LOG_IF(DFATAL, colexpr->expr_case() != QLExpressionPB::kColumnId)
+              << "Unexpected expression case: " << colexpr->expr_case();
+          map<ColumnIdRep, ColumnIdRep>::iterator it = col_ids_map.find(colexpr->column_id());
+          if (it == col_ids_map.end()) {
+            return STATUS(InvalidArgument,
+                          Format("Unknown column id in the column expression: $0",
+                                 colexpr->column_id()),
+                          MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+          }
+
+          colexpr->set_column_id(it->second);
+        } else {
+          // Other column expression cases are not supported yet.
+          // TODO: Support ExprCase::kJsonColumn = 9
+          return STATUS(NotSupported,
+                        Format("Restore is not yet supported for index by an expression "
+                               "of column: $0", colexpr->ShortDebugString()),
+                        MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+        }
+      }
+    }
+
+    for (int i = 0; i < index_info_pb->indexed_hash_column_ids_size(); ++i) {
+      map<ColumnIdRep, ColumnIdRep>::iterator it =
+          col_ids_map.find(index_info_pb->indexed_hash_column_ids(i));
+      if (it == col_ids_map.end()) {
+        return STATUS(InvalidArgument,
+                      Format("Unknown indexed hash column id in the index info: $0",
+                             index_info_pb->indexed_hash_column_ids(i)),
+                      MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+      }
+
+      index_info_pb->set_indexed_hash_column_ids(i, it->second);
+    }
+
+    for (int i = 0; i < index_info_pb->indexed_range_column_ids_size(); ++i) {
+      map<ColumnIdRep, ColumnIdRep>::iterator it =
+          col_ids_map.find(index_info_pb->indexed_range_column_ids(i));
+      if (it == col_ids_map.end()) {
+        return STATUS(InvalidArgument,
+                      Format("Unknown indexed range column id in the index info: $0",
+                             index_info_pb->indexed_range_column_ids(i)),
+                      MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+      }
+
+      index_info_pb->set_indexed_range_column_ids(i, it->second);
+    }
   }
 
   RETURN_NOT_OK(CreateTable(&req, &resp, /* RpcContext */nullptr));
