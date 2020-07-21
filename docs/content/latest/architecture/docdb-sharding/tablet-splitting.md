@@ -50,13 +50,7 @@ DocDB allows data resharding by splitting tablets using the following three mech
 
 The following sections give details on how to split tablets using these three approaches.
 
-## Presplitting tablets [BETA]
-
-{{< note title="Note" >}}
-
-Manual tablet splitting is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
-{{< /note >}}
+## Presplitting tablets
 
 At creation time, you can presplit a table into the desired number of tablets. YugabyteDB supports presplitting tablets for both *range-sharded* and *hash-sharded* YSQL tables and hash-sharded YCQL tables. The number of tablets can be specified in one of two ways:
 
@@ -134,7 +128,13 @@ For YSQL API details, see:
 
 * [CREATE TABLE ... SPLIT AT VALUES](../../../api/ysql/commands/ddl_create_table/#split-at-values) for use with range-partitioned tables.
 
-## Manual tablet splitting
+## Manual tablet splitting [BETA]
+
+{{< note title="Note" >}}
+
+Manual tablet splitting is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+{{< /note >}}
 
 Imagine there is a table with pre-existing data spread across a certain number of tablets. It is possible to split some or all of the tablets in this table manually. This is shown in the example below.
 
@@ -287,7 +287,7 @@ diff -C1 after-load.json after-run.json | grep tablet_id | sort | uniq
 
 ## Current tablet splitting limitations
 
-Presplitting tablets and automatic tablet splitting are in beta. To follow the work-in-progress on tablet splitting, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
+Manual and automatic tablet splitting are in beta. To follow the work-in-progress on tablet splitting, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
 
 Here are known limitations that are planned to be resolved in the next releases:
 
