@@ -114,6 +114,7 @@ class Log : public RefCountedThreadSafe<Log> {
                              uint32_t schema_version,
                              const scoped_refptr<MetricEntity>& metric_entity,
                              ThreadPool *append_thread_pool,
+                             ThreadPool* allocation_thread_pool,
                              int64_t cdc_min_replicated_index,
                              scoped_refptr<Log> *log,
                              CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
@@ -136,6 +137,9 @@ class Log : public RefCountedThreadSafe<Log> {
   // will be invoked.
   CHECKED_STATUS AsyncAppend(LogEntryBatch* entry,
                              const StatusCallback& callback);
+
+  CHECKED_STATUS TEST_AsyncAppendWithReplicates(
+      LogEntryBatch* entry, const ReplicateMsgs& replicates, const StatusCallback& callback);
 
   // Synchronously append a new entry to the log.  Log does not take ownership of the passed
   // 'entry'. If skip_wal_write is true, only update consensus metadata and LogIndex, skip write
@@ -244,10 +248,6 @@ class Log : public RefCountedThreadSafe<Log> {
   // Returns 0 if the log is shut down.
   uint64_t OnDiskSize();
 
-  void ListenPostAppend(std::function<void()> listener) {
-    post_append_listener_ = std::move(listener);
-  }
-
   // Set the schema for the _next_ log segment.
   //
   // This method is thread-safe.
@@ -335,6 +335,7 @@ class Log : public RefCountedThreadSafe<Log> {
       uint32_t schema_version,
       const scoped_refptr<MetricEntity>& metric_entity,
       ThreadPool* append_thread_pool,
+      ThreadPool* allocation_thread_pool,
       CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
 
   Env* get_env() {
@@ -454,6 +455,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // This variable is not accessed concurrently.
   yb::OpId last_appended_entry_op_id_;
 
+  yb::OpId last_submitted_op_id_;
+
   // A footer being prepared for the current segment.  When the segment is closed, it will be
   // written.
   LogSegmentFooterPB footer_builder_;
@@ -469,7 +472,7 @@ class Log : public RefCountedThreadSafe<Log> {
   std::unique_ptr<Appender> appender_;
 
   // A thread pool for asynchronously pre-allocating new log segments.
-  gscoped_ptr<ThreadPool> allocation_pool_;
+  std::unique_ptr<ThreadPoolToken> allocation_token_;
 
   // If true, sync on all appends.
   bool durable_wal_write_;
@@ -528,113 +531,6 @@ class Log : public RefCountedThreadSafe<Log> {
   CreateNewSegment create_new_segment_at_start_;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
-};
-
-// This class represents a batch of operations to be written and synced to the log. It is opaque to
-// the user and is managed by the Log class.
-class LogEntryBatch {
- public:
-  LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB&& entry_batch_pb);
-  ~LogEntryBatch();
-
- private:
-  friend class Log;
-  friend class MultiThreadedLogTest;
-
-  // Serializes contents of the entry to an internal buffer.
-  CHECKED_STATUS Serialize();
-
-  // Sets the callback that will be invoked after the entry is
-  // appended and synced to disk
-  void set_callback(const StatusCallback& cb) {
-    callback_ = cb;
-  }
-
-  // Returns the callback that will be invoked after the entry is
-  // appended and synced to disk.
-  const StatusCallback& callback() {
-    return callback_;
-  }
-
-  bool failed_to_append() const {
-    return state_ == kEntryFailedToAppend;
-  }
-
-  void set_failed_to_append() {
-    state_ = kEntryFailedToAppend;
-  }
-
-  // Mark the entry as reserved, but not yet ready to write to the log.
-  void MarkReserved();
-
-  // Mark the entry as ready to write to log.
-  void MarkReady();
-
-  // Returns a Slice representing the serialized contents of the entry.
-  Slice data() const {
-    DCHECK_EQ(state_, kEntrySerialized);
-    return Slice(buffer_);
-  }
-
-  bool flush_marker() const;
-
-  size_t count() const { return count_; }
-
-  // Returns the total size in bytes of the object.
-  size_t total_size_bytes() const {
-    return total_size_bytes_;
-  }
-
-  // The highest OpId of a REPLICATE message in this batch.
-  OpIdPB MaxReplicateOpId() const {
-    DCHECK_EQ(REPLICATE, type_);
-    int idx = entry_batch_pb_.entry_size() - 1;
-    DCHECK(entry_batch_pb_.entry(idx).replicate().IsInitialized());
-    return entry_batch_pb_.entry(idx).replicate().id();
-  }
-
-  void SetReplicates(const ReplicateMsgs& replicates) {
-    replicates_ = replicates;
-  }
-
-  // The type of entries in this batch.
-  const LogEntryTypePB type_;
-
-  // Contents of the log entries that will be written to disk.
-  LogEntryBatchPB entry_batch_pb_;
-
-  // Total size in bytes of all entries
-  uint32_t total_size_bytes_ = 0;
-
-  // Number of entries in 'entry_batch_pb_'
-  const size_t count_;
-
-  // The vector of refcounted replicates.  This makes sure there's at least a reference to each
-  // replicate message until we're finished appending.
-  ReplicateMsgs replicates_;
-
-  // Callback to be invoked upon the entries being written and synced to disk.
-  StatusCallback callback_;
-
-  // Buffer to which 'phys_entries_' are serialized by call to 'Serialize()'
-  faststring buffer_;
-
-  // Offset into the log file for this entry batch.
-  int64_t offset_;
-
-  // Segment sequence number for this entry batch.
-  uint64_t active_segment_sequence_number_;
-
-  enum LogEntryState {
-    kEntryInitialized,
-    kEntryReserved,
-    kEntryReady,
-    kEntrySerialized,
-    kEntryFailedToAppend
-  };
-  LogEntryState state_ = kEntryInitialized;
-
-  DISALLOW_COPY_AND_ASSIGN(LogEntryBatch);
 };
 
 }  // namespace log

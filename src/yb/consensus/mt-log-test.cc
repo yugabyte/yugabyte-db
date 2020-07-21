@@ -128,8 +128,8 @@ class MultiThreadedLogTest : public LogTestBase {
         ASSERT_OK(log_->Reserve(REPLICATE, &entry_batch_pb, &entry_batch));
       } // lock_guard scope
       auto cb = new CustomLatchCallback(&latch, &errors);
-      entry_batch->SetReplicates(batch_replicates);
-      ASSERT_OK(log_->AsyncAppend(entry_batch, cb->AsStatusCallback()));
+      ASSERT_OK(log_->TEST_AsyncAppendWithReplicates(
+          entry_batch, batch_replicates, cb->AsStatusCallback()));
     }
     LOG_TIMING(INFO, strings::Substitute("thread $0 waiting to append and sync $1 batches",
                                         thread_id, FLAGS_num_batches_per_thread)) {

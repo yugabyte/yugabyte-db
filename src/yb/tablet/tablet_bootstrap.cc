@@ -420,7 +420,8 @@ class TabletBootstrap {
         mem_tracker_(data.tablet_init_data.parent_mem_tracker),
         listener_(data.listener),
         append_pool_(data.append_pool),
-        skip_wal_rewrite_(FLAGS_skip_wal_rewrite),
+        allocation_pool_(data.allocation_pool),
+      skip_wal_rewrite_(FLAGS_skip_wal_rewrite) ,
         test_hooks_(data.test_hooks) {
   }
 
@@ -714,6 +715,7 @@ class TabletBootstrap {
                             metadata.schema_version(),
                             tablet_->GetMetricEntity(),
                             append_pool_,
+                            allocation_pool_,
                             metadata.cdc_min_replicated_index(),
                             &log_,
                             create_new_segment));
@@ -1556,6 +1558,8 @@ class TabletBootstrap {
 
   // Thread pool for append task for bootstrap.
   ThreadPool* append_pool_;
+
+  ThreadPool* allocation_pool_;
 
   // Statistics on the replay of entries in the log.
   struct Stats {

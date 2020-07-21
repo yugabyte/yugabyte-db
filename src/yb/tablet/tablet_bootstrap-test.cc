@@ -223,7 +223,8 @@ class BootstrapTest : public LogTestBase {
     BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = listener.get(),
-      .append_pool = append_pool_.get(),
+      .append_pool = log_thread_pool_.get(),
+      .allocation_pool = log_thread_pool_.get(),
       .retryable_requests = nullptr,
       .test_hooks = test_hooks_
     };
