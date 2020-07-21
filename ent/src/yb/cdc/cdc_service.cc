@@ -79,6 +79,8 @@ DEFINE_int32(update_min_cdc_indices_interval_secs, 60,
 DEFINE_int32(update_metrics_interval_ms, 1000,
              "How often to update xDC cluster metrics.");
 
+DEFINE_bool(enable_collect_cdc_metrics, false, "Enable collecting cdc metrics.");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -579,7 +581,10 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
 
   do {
     // Always update lag metrics, default every 1s.
-    UpdateLagMetrics();
+
+    if (FLAGS_enable_collect_cdc_metrics) {
+      UpdateLagMetrics();
+    }
 
     // If its not been 60s since the last peer update, continue.
     if (!FLAGS_enable_log_retention_by_op_idx || MonoTime::Now() - time_since_update_peers <
