@@ -28,13 +28,15 @@ export default class RestoreBackup extends Component {
       const payload = {
         storageConfigUUID: values.storageConfigUUID,
         storageLocation:  values.storageLocation,
-        actionType: 'RESTORE',
-        // tableName: values.restoreToTableName,        
+        actionType: 'RESTORE',   
       };
-      // TODO: Allow renaming of individual tables
-      if (values.keyspace !== initialValues.keyspace) {
+      if (values.restoreToTableName !== initialValues.restoreToTableName) {
+        payload.keyspace = values.restoreToKeyspace;
+        payload.tableName = values.restoreToTableName;
+      } else if (values.restoreToKeyspace !== initialValues.restoreToKeyspace) {
         payload.keyspace = values.restoreToKeyspace;
       }
+      
       onHide();
       restoreTableBackup(restoreToUniverseUUID, payload);
       browserHistory.push('/universes/' + restoreToUniverseUUID + "/backups");
@@ -45,7 +47,7 @@ export default class RestoreBackup extends Component {
   }
 
   render() {
-    const { visible, onHide, universeList, storageConfigs, currentUniverse } = this.props;
+    const { visible, onHide, universeList, storageConfigs, currentUniverse, backupInfo } = this.props;
 
     // If the backup information is not provided, most likely we are trying to load the backup
     // from pre-existing location (specified by the user) into the current universe in context.
@@ -84,6 +86,12 @@ export default class RestoreBackup extends Component {
       ...this.props.initialValues,
       storageConfigUUID: hasBackupInfo ? storageOptions.find((element) => { return element.value === this.props.initialValues.storageConfigUUID;}) : ""
     };
+    // Disable table field if multi-table backup
+    // Second line checks whether `tableNameList` is empty array
+    const isMultiTableBackup = hasBackupInfo && (
+      (backupInfo.tableNameList && backupInfo.tableNameList.length > 1) ||
+      (backupInfo.keyspace && (!backupInfo.tableNameList || !backupInfo.tableNameList.length) && !backupInfo.tableUUID)
+    );
 
     return (
       <div className="universe-apps-modal" onClick={(e) => e.stopPropagation()}>
@@ -123,7 +131,7 @@ export default class RestoreBackup extends Component {
                 label={"Keyspace"} />
           <Field name="restoreToTableName"
                 component={YBFormInput}
-                disabled={true}
+                disabled={isMultiTableBackup}
                 label={"Table"}/>
         </YBModalForm>
       </div>

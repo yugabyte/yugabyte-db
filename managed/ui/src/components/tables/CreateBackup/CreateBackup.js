@@ -52,7 +52,7 @@ export default class CreateBackup extends Component {
       createUniverseBackup,
       universeTables
     } = this.props;
-
+    
     if (isDefinedNotNull(values.storageConfigUUID)) {
       const payload = {
         "storageConfigUUID": values.storageConfigUUID,
@@ -61,7 +61,12 @@ export default class CreateBackup extends Component {
         "schedulingFrequency": isEmptyString(values.schedulingFrequency) ? null : values.schedulingFrequency,
         "cronExpression": isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
       };
-      if (isDefinedNotNull(values.backupTableUUID) && values.backupTableUUID.length) {
+      if (isDefinedNotNull(values.tableKeyspace) && values.tableKeyspace.value === "allkeyspaces") {
+        // Backup all tables in all keyspaces
+        // AC: v2.1.8 No transactional backup for universe
+        payload.transactionalBackup = false; 
+        createUniverseBackup(universeUUID, payload);
+      } else if (isDefinedNotNull(values.backupTableUUID) && values.backupTableUUID.length) {
         values.backupTableUUID = Array.isArray(values.backupTableUUID) ? 
           values.backupTableUUID.map(x => x.value) : [values.backupTableUUID.value];
         if (values.backupTableUUID[0] === "alltables") {
@@ -176,23 +181,25 @@ export default class CreateBackup extends Component {
             const isKeyspaceSelected = tableKeyspace && tableKeyspace.value;
             const universeBackupSelected = isKeyspaceSelected && tableKeyspace.value === 'allkeyspaces';
             const s3StorageSelected = storageConfigUUID && storageConfigUUID.label === 'S3 Storage';
-
-            const showTransactionalToggle = isKeyspaceSelected && 
+            const showTransactionalToggle = isKeyspaceSelected && !universeBackupSelected &&
               (!!isTableSelected && (backupTableUUID.length > 1 || backupTableUUID[0].value === 'alltables'));
 
             const displayedTables = [
               {
                 label: <b>All Tables in Keyspace</b>,
                 value: "alltables",
-              },
-              !universeBackupSelected && {
+              }
+            ];
+            
+            if (!universeBackupSelected) {
+              displayedTables.push({
                 label: "Tables",
                 value: 'tables',
                 options: isKeyspaceSelected ?
                   tableOptions.filter(option => option.keyspace === tableKeyspace.value) :
                   tableOptions
-              }
-            ];
+              });
+            }
             keyspaceOptions = [{
               label: <b>All Keyspaces</b>,
               value: "allkeyspaces",
