@@ -26,6 +26,12 @@ struct varlena;
 
 #endif
 
+/*
+ * Guc variable to log the protobuf string for every outgoing (DocDB) read/write request.
+ * See the "YB Debug utils" section in pg_yb_utils.h (as well as guc.c) for more information.
+ */
+extern bool yb_debug_log_docdb_requests;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
 extern YBCStatus YBCStatusOK;
