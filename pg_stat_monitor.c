@@ -1222,7 +1222,8 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	{
 		Datum		values[PG_STAT_STATEMENTS_COLS];
 		bool		nulls[PG_STAT_STATEMENTS_COLS];
-		int			i = 0;
+		int		i = 0;
+		int		kind;
 		Counters	tmp;
 		double		stddev;
 		int64		queryid = entry->key.queryid;
@@ -1276,7 +1277,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 
 		values[i++] = TimestampGetDatum(pgssBucketEntries[entry->key.bucket_id]->counters.current_time);
 
-		for (int kind = 0; kind < PGSS_NUMKIND; kind++)
+		for (kind = 0; kind < PGSS_NUMKIND; kind++)
 		{
 			values[i++] = Int64GetDatumFast(tmp.calls[kind].calls);
 			values[i++] = Float8GetDatumFast(tmp.time[kind].total_time);
