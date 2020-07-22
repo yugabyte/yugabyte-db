@@ -4,7 +4,7 @@ MarkupSafe==1.1.1
 PyJWT==1.7.1
 PyNaCl==1.4.0
 PyYAML==3.13
-Werkzeug==1.0.1
+Werkzeug==0.15.3
 adal==1.2.4
 ansible-vault==1.0.4
 ansible==2.2.3.0

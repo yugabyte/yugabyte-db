@@ -4,7 +4,7 @@ Jinja2==2.10
 MarkupSafe==1.1.0
 PyNaCl==1.3.0
 PyYAML==3.13
-Werkzeug==0.14.1
+Werkzeug==0.15.3
 ansible-vault==1.0.4
 ansible==2.2.3.0
 apache-libcloud==2.4.0
