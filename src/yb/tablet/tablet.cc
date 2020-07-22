@@ -878,7 +878,7 @@ bool Tablet::StartShutdown() {
   return true;
 }
 
-void Tablet::PreventCallbacksFromRocksDBs(bool disable_flush_on_shutdown) {
+void Tablet::PreventCallbacksFromRocksDBs(DisableFlushOnShutdown disable_flush_on_shutdown) {
   if (intents_db_) {
     intents_db_->ListenFilesChanged(nullptr);
     intents_db_->SetDisableFlushOnShutdown(disable_flush_on_shutdown);
@@ -912,12 +912,11 @@ void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
-  PreventCallbacksFromRocksDBs(is_drop_table);
-
   // Shutdown the RocksDB instance for this table, if present.
   // Destroy intents and regular DBs in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
-  WARN_NOT_OK(ResetRocksDBs(), "Failed to reset rocksdb during shutdown");
+  WARN_NOT_OK(ResetRocksDBs(Destroy::kFalse, DisableFlushOnShutdown(is_drop_table)),
+              "Failed to reset rocksdb during shutdown");
   state_ = kShutdown;
 
   // Release the mutex that prevents snapshot restore / truncate operations from running. Such
@@ -943,7 +942,9 @@ CHECKED_STATUS ResetRocksDB(
   return rocksdb::DestroyDB(dir, options);
 }
 
-Status Tablet::ResetRocksDBs(bool destroy) {
+Status Tablet::ResetRocksDBs(Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown) {
+  PreventCallbacksFromRocksDBs(disable_flush_on_shutdown);
+
   rocksdb::Options rocksdb_options;
   if (destroy) {
     InitRocksDBOptions(&rocksdb_options, LogPrefix());
@@ -2432,12 +2433,10 @@ Status Tablet::Truncate(TruncateOperationState *state) {
     return STATUS(IllegalState, "Tablet was shut down");
   }
 
-  PreventCallbacksFromRocksDBs(true);
-
   const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
   const string db_dir = regular_db_->GetName();
 
-  auto s = ResetRocksDBs(/* destroy= */ true);
+  auto s = ResetRocksDBs(Destroy::kTrue, DisableFlushOnShutdown::kTrue);
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
     return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());

@@ -211,7 +211,7 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   // Destroy DB object.
   // TODO: snapshot current DB and try to restore it in case of failure.
-  RETURN_NOT_OK(ResetRocksDBs(/* destroy= */ true));
+  RETURN_NOT_OK(ResetRocksDBs(Destroy::kTrue, DisableFlushOnShutdown::kTrue));
 
   auto s = CopyDirectory(&rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
   if (PREDICT_FALSE(!s.ok())) {

@@ -129,6 +129,8 @@ struct TransactionApplyData;
 using docdb::LockBatch;
 
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
+YB_STRONGLY_TYPED_BOOL(Destroy);
+YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 
 YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
 
@@ -654,11 +656,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Pause any new read/write operations and wait for all pending read/write operations to finish.
   ScopedRWOperationPause PauseReadWriteOperations(Stop stop = Stop::kFalse);
 
-  CHECKED_STATUS ResetRocksDBs(bool destroy = false);
+  CHECKED_STATUS ResetRocksDBs(Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown);
 
   CHECKED_STATUS DoEnableCompactions();
 
-  void PreventCallbacksFromRocksDBs(bool disable_flush_on_shutdown);
+  void PreventCallbacksFromRocksDBs(DisableFlushOnShutdown disable_flush_on_shutdown);
 
   std::string LogPrefix() const;
 
