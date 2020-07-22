@@ -207,6 +207,7 @@ public class InstanceType extends Model {
   public static class InstanceTypeDetails {
     public static final int DEFAULT_VOLUME_COUNT = 1;
     public static final int DEFAULT_GCP_VOLUME_SIZE_GB = 375;
+    public static final int DEFAULT_AZU_VOLUME_SIZE_GB = 250;
 
     public List<VolumeDetails> volumeDetailsList;
     public PublicCloudConstants.Tenancy tenancy;
@@ -234,6 +235,13 @@ public class InstanceType extends Model {
     public static InstanceTypeDetails createGCPDefault() {
       InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
       instanceTypeDetails.setVolumeDetailsList(DEFAULT_VOLUME_COUNT, DEFAULT_GCP_VOLUME_SIZE_GB,
+          VolumeType.SSD);
+      return instanceTypeDetails;
+    }
+
+    public static InstanceTypeDetails createAZUDefault() {
+      InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
+      instanceTypeDetails.setVolumeDetailsList(DEFAULT_VOLUME_COUNT, DEFAULT_AZU_VOLUME_SIZE_GB,
           VolumeType.SSD);
       return instanceTypeDetails;
     }
