@@ -38,6 +38,8 @@ using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),
                  "Directory where all postgres process will writes their PIDs and executable name");
 
+bool yb_debug_log_docdb_requests = false;
+
 namespace yb {
 
 namespace {
