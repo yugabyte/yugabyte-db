@@ -41,8 +41,8 @@ class AzureCloud(AbstractCloud):
 
     def network_bootstrap(self, args):
         # hardcoded for now but will eventually read in from custom_payload
-        print json.dumps({"westus2": {"security_group": [{"id": "", "name": "yb-us-west-2-sg"}],
-                          "vpc_id": "", "zones": {"1": "", "2": "", "3": ""}}})
+        print(json.dumps({"westus2": {"security_group": [{"id": "", "name": "yb-us-west-2-sg"}],
+                          "vpc_id": "", "zones": {"1": "", "2": "", "3": ""}}}))
 
     def create_instance(self, args, adminSSH):
         vmName = args.search_pattern
