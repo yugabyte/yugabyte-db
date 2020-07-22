@@ -895,6 +895,13 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION exists_property(agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 --
 -- function for typecasting an agtype value to another agtype value
 --

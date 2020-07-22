@@ -55,12 +55,14 @@
 #define FUNC_TOFLOAT    {"toFloat",    "tofloat",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
 #define FUNC_TOINTEGER  {"toInteger",  "tointeger",  ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
 #define FUNC_TYPE       {"type",       "type",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_EXISTS     {"exists",     "exists_property", AGTYPEOID, 0, 0, BOOLOID, 1, 1, false}
 
 /* supported functions */
 #define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
                              FUNC_STARTID, FUNC_ENDID, FUNC_LAST, FUNC_LENGTH, \
                              FUNC_PROPERTIES, FUNC_SIZE, FUNC_STARTNODE, \
-                             FUNC_TOINTEGER, FUNC_TOBOOLEAN, FUNC_TOFLOAT}
+                             FUNC_TOINTEGER, FUNC_TOBOOLEAN, FUNC_TOFLOAT, \
+                             FUNC_EXISTS}
 
 /* structure for supported function signatures */
 typedef struct function_signature

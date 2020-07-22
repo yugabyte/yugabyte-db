@@ -583,6 +583,83 @@ ERROR:  variable `x` does not exist
 LINE 2:  $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(x)) RETURN u, e...
                                                     ^
 --
+-- Tests for EXISTS(property)
+--
+-- dump all vertices
+SELECT * FROM cypher('cypher_match', $$MATCH (u) RETURN u $$) AS (u agtype);
+                                         u                                          
+------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "v", "properties": {"i": 0}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex
+ {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
+ {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+ {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+ {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex
+ {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex
+ {"id": 2251799813685249, "label": "v3", "properties": {"id": "initial"}}::vertex
+ {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
+ {"id": 2251799813685251, "label": "v3", "properties": {"id": "end"}}::vertex
+ {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
+(13 rows)
+
+-- select vertices with id as a property
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS(u.id) RETURN u $$)
+AS (u agtype);
+                                         u                                          
+------------------------------------------------------------------------------------
+ {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
+ {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+ {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+ {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex
+ {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex
+ {"id": 2251799813685249, "label": "v3", "properties": {"id": "initial"}}::vertex
+ {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
+ {"id": 2251799813685251, "label": "v3", "properties": {"id": "end"}}::vertex
+ {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
+(10 rows)
+
+-- select vertices without id as a property
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE NOT EXISTS(u.id) RETURN u $$)
+AS (u agtype);
+                                   u                                   
+-----------------------------------------------------------------------
+ {"id": 844424930131969, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "v", "properties": {"i": 0}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex
+(3 rows)
+
+-- select vertices without id as a property but with a property i
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE NOT EXISTS(u.id) AND EXISTS(u.i) RETURN u $$)
+AS (u agtype);
+                                   u                                   
+-----------------------------------------------------------------------
+ {"id": 844424930131970, "label": "v", "properties": {"i": 0}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex
+(2 rows)
+
+-- select vertices with id as a property and have a self loop
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS(u.id) AND EXISTS((u)-[]->(u)) RETURN u$$)
+AS (u agtype);
+                                         u                                          
+------------------------------------------------------------------------------------
+ {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
+(1 row)
+
+-- should give an error
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS(u) RETURN u$$)
+AS (u agtype);
+ERROR:  syntax error at or near ")"
+LINE 2:  $$MATCH (u) WHERE EXISTS(u) RETURN u$$)
+                                   ^
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);

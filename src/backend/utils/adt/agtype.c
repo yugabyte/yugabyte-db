@@ -4223,3 +4223,36 @@ Datum type(PG_FUNCTION_ARGS)
 
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
+
+PG_FUNCTION_INFO_V1(exists_property);
+/*
+ * Executor function for EXISTS(property).
+ *
+ * Note: For most executor functions we want to return SQL NULL for NULL input.
+ *       However, in this case, NULL means false - it was not found.
+ */
+Datum exists_property(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_value = NULL;
+
+    /* check for NULL, NULL is FALSE */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_BOOL(false);
+
+    /* get the argument */
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+
+    /* check for a scalar AGTV_NULL */
+    if (AGT_ROOT_IS_SCALAR(agt_arg))
+    {
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        /* again, if NULL, NULL is FALSE */
+        if (agtv_value->type == AGTV_NULL)
+            PG_RETURN_BOOL(false);
+    }
+
+    /* otherwise, we have something, and something is TRUE */
+    PG_RETURN_BOOL(true);
+}

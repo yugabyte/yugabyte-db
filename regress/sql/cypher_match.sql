@@ -307,6 +307,38 @@ SELECT * FROM cypher('cypher_match',
 AS (u agtype, e agtype, v agtype);
 
 --
+-- Tests for EXISTS(property)
+--
+
+-- dump all vertices
+SELECT * FROM cypher('cypher_match', $$MATCH (u) RETURN u $$) AS (u agtype);
+
+-- select vertices with id as a property
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS(u.id) RETURN u $$)
+AS (u agtype);
+
+-- select vertices without id as a property
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE NOT EXISTS(u.id) RETURN u $$)
+AS (u agtype);
+
+-- select vertices without id as a property but with a property i
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE NOT EXISTS(u.id) AND EXISTS(u.i) RETURN u $$)
+AS (u agtype);
+
+-- select vertices with id as a property and have a self loop
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS(u.id) AND EXISTS((u)-[]->(u)) RETURN u$$)
+AS (u agtype);
+
+-- should give an error
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS(u) RETURN u$$)
+AS (u agtype);
+
+--
 -- Clean up
 --
 

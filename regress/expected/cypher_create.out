@@ -375,14 +375,14 @@ SELECT * FROM cypher_create.e_var;
 SELECT * FROM ag_label;
        name       | graph | id | kind |            relation            
 ------------------+-------+----+------+--------------------------------
- _ag_label_vertex | 17003 |  1 | v    | cypher_create._ag_label_vertex
- _ag_label_edge   | 17003 |  2 | e    | cypher_create._ag_label_edge
- v                | 17003 |  3 | v    | cypher_create.v
- e                | 17003 |  4 | e    | cypher_create.e
- n_var            | 17003 |  5 | v    | cypher_create.n_var
- e_var            | 17003 |  6 | e    | cypher_create.e_var
- n_other_node     | 17003 |  7 | v    | cypher_create.n_other_node
- b_var            | 17003 |  8 | e    | cypher_create.b_var
+ _ag_label_vertex | 17005 |  1 | v    | cypher_create._ag_label_vertex
+ _ag_label_edge   | 17005 |  2 | e    | cypher_create._ag_label_edge
+ v                | 17005 |  3 | v    | cypher_create.v
+ e                | 17005 |  4 | e    | cypher_create.e
+ n_var            | 17005 |  5 | v    | cypher_create.n_var
+ e_var            | 17005 |  6 | e    | cypher_create.e_var
+ n_other_node     | 17005 |  7 | v    | cypher_create.n_other_node
+ b_var            | 17005 |  8 | e    | cypher_create.b_var
 (8 rows)
 
 --Validate every vertex has the correct label

@@ -129,6 +129,7 @@
 %type <node> expr expr_opt expr_atom expr_literal map list
 %type <node> expr_var expr_func expr_func_norm expr_func_subexpr
 %type <list> expr_list expr_list_opt map_keyval_list_opt map_keyval_list
+%type <node> property_value
 
 /* names */
 %type <string> property_key_name var_name var_name_opt label_name
@@ -1030,6 +1031,17 @@ expr_func_subexpr:
             n->subselect = (Node *) sub;
             n->location = @1;
             $$ = (Node *) n;
+        }
+    | EXISTS '(' property_value ')'
+        {
+            $$ = make_function_expr("exists", list_make1($3), @2);
+        }
+    ;
+
+property_value:
+    expr_var '.' property_key_name
+        {
+            $$ = append_indirection($1, (Node *)makeString($3));
         }
     ;
 
