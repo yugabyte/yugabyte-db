@@ -456,6 +456,12 @@ public class UniverseController extends AuthenticatedController {
       for (Cluster c : taskParams.clusters) {
         Provider provider = Provider.find.byId(UUID.fromString(c.userIntent.provider));
         c.userIntent.providerType = CloudType.valueOf(provider.code);
+        if (
+          c.userIntent.providerType.equals(CloudType.onprem) &&
+            provider.getConfig().containsKey("USE_HOSTNAME")
+        ) {
+          c.userIntent.useHostname = Boolean.parseBoolean(provider.getConfig().get("USE_HOSTNAME"));
+        }
         updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       }
 
@@ -485,8 +491,14 @@ public class UniverseController extends AuthenticatedController {
                 primaryCluster.userIntent.enableClientToNodeEncrypt) {
           if (taskParams.rootCA == null) {
             taskParams.rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix,
-                    customerUUID, appConfig.getString("yb.storage.path"),
-                    primaryCluster.userIntent.enableClientToNodeEncrypt);
+                    customerUUID, appConfig.getString("yb.storage.path"));
+          }
+          // If client encryption is enabled, generate the client cert file for each node.
+          if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
+            CertificateHelper.createClientCertificate(taskParams.rootCA,
+                String.format(CertificateHelper.CERT_PATH, appConfig.getString("yb.storage.path"),
+                              customerUUID.toString(), taskParams.rootCA.toString()),
+                CertificateHelper.DEFAULT_CLIENT, null, null);
           }
           // Set the flag to mark the universe as using TLS enabled and therefore not allowing
           // insecure connections.

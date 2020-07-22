@@ -182,6 +182,19 @@ public class Users extends Model {
   }
 
   /**
+   * Validate if the email and password combination is valid, we use this to authenticate
+   * the Users.
+   *
+   * @param email
+   * @param password
+   * @return Authenticated Users Info
+   */
+  public static Users getByEmail(String email) {
+    Users user = Users.find.where().eq("email", email).findUnique();
+    return user;
+  }
+
+  /**
    * Create a random auth token for the Users and store it in the DB.
    *
    * @return authToken

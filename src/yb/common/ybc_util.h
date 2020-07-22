@@ -39,6 +39,7 @@ void YBCFreeStatus(YBCStatus s);
 size_t YBCStatusMessageLen(YBCStatus s);
 const char* YBCStatusMessageBegin(YBCStatus s);
 const char* YBCStatusCodeAsCString(YBCStatus s);
+char* DupYBStatusMessage(YBCStatus status, bool message_only);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 
@@ -55,6 +56,8 @@ CHECKED_YBCSTATUS YBCInit(
     const char* argv0,
     YBCPAllocFn palloc_fn,
     YBCCStringToTextWithLenFn cstring_to_text_with_len_fn);
+
+CHECKED_YBCSTATUS YBCInitGFlags(const char* argv0);
 
 // From glog's log_severity.h:
 // const int GLOG_INFO = 0, GLOG_WARNING = 1, GLOG_ERROR = 2, GLOG_FATAL = 3;

@@ -17,6 +17,8 @@
 
 #include <deque>
 
+#include <boost/optional.hpp>
+
 #include "yb/util/locks.h"
 #include "yb/client/yb_op.h"
 #include "yb/yql/pggate/pg_session.h"
@@ -262,6 +264,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Process the result set in server response.
   Result<std::list<PgDocResult>> ProcessResponseResult();
 
+  void SetReadTime();
+
  private:
   CHECKED_STATUS SendRequest(bool force_non_bufferable);
 
@@ -421,6 +425,12 @@ class PgDocReadOp : public PgDocOp {
   // Set the row_mark_type field of our read request based on our exec control parameter.
   void SetRowMark();
 
+  // Set the read_time for our read request based on our exec control parameter.
+  void SetReadTime();
+
+  // Set the partition key for our read request based on our exec control paramater.
+  void SetPartitionKey();
+
   // Clone the template into actual requests to be sent to server.
   std::unique_ptr<client::YBPgsqlOp> CloneFromTemplate() override {
     return template_op_->DeepCopy();
@@ -459,6 +469,9 @@ class PgDocReadOp : public PgDocOp {
   // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
   // this will be initialized to [[1], [2, 3], [4, 5, 6], [7]]
   std::vector<std::vector<const PgsqlExpressionPB*>> partition_exprs_;
+
+  // The partition key identifying the sole tablet to read from.
+  boost::optional<std::string> partition_key_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -477,6 +490,9 @@ class PgDocWriteOp : public PgDocOp {
                const PgTableDesc::ScopedRefPtr& table_desc,
                const PgObjectId& relation_id,
                std::unique_ptr<client::YBPgsqlWriteOp> write_op);
+
+  // Set write time.
+  void SetWriteTime(const HybridTime& write_time);
 
  private:
   // Process response implementation.

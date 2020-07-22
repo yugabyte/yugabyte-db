@@ -625,6 +625,15 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   if (wait && resp.has_table_id()) {
     RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.table_id(), deadline));
   }
+  if (wait && resp.has_indexed_table()) {
+    auto res = WaitUntilIndexPermissionsAtLeast(
+        client, resp.indexed_table().table_id(), resp.table_id(), deadline,
+        IndexPermissions::INDEX_PERM_NOT_USED);
+    if (!res && !res.status().IsNotFound()) {
+      LOG(WARNING) << "Waiting for the index to be deleted from the indexed table, got " << res;
+      return res.status();
+    }
+  }
 
   // Return indexed table name if requested.
   if (resp.has_indexed_table() && indexed_table_name != nullptr) {
@@ -1682,13 +1691,18 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
       deadline,
       "Waiting for index to have desired permissions",
       "Timed out waiting for proper index permissions",
-      [&] (CoarseTimePoint deadline, bool* retry) -> Status {
-        IndexPermissions actual_index_permissions = VERIFY_RESULT(GetIndexPermissions(
-            client,
-            table_id,
-            index_id,
-            deadline));
-        *retry = (actual_index_permissions < target_index_permissions);
+      [&](CoarseTimePoint deadline, bool* retry) -> Status {
+        Result<IndexPermissions> result = GetIndexPermissions(client, table_id, index_id, deadline);
+        // Treat NotFound as success if we are looking for INDEX_PERM_NOT_USED.
+        if (!result && result.status().IsNotFound() &&
+            target_index_permissions == IndexPermissions::INDEX_PERM_NOT_USED) {
+          LOG(INFO) << "Waiting to delete index " << index_id << " from table " << table_id
+                    << " got " << result.ToString();
+          *retry = false;
+          return Status::OK();
+        }
+        IndexPermissions actual_index_permissions = VERIFY_RESULT(result);
+        *retry = actual_index_permissions < target_index_permissions;
         return Status::OK();
       }));
   // Now, the index permissions are guaranteed to be at (or beyond) the target.  Query again to

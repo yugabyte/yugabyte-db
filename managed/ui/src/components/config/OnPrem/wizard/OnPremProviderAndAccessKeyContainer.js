@@ -14,7 +14,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
         const formSubmitVals = {
           provider: {
             name: formData.name,
-            config: { YB_HOME_DIR: formData.homeDir }
+            config: { YB_HOME_DIR: formData.homeDir, USE_HOSTNAME: formData.useHostnames.toString() }
           },
           key: {
             code: formData.name.toLowerCase().replace(/ /g, "-") + "-key",

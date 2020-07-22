@@ -176,7 +176,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   std::unique_ptr<client::YBTableAlterer> NewTableAlterer(const client::YBTableName& table_name);
   std::unique_ptr<client::YBTableAlterer> NewTableAlterer(const string table_id);
   CHECKED_STATUS DropTable(const PgObjectId& table_id);
-  CHECKED_STATUS DropIndex(const PgObjectId& index_id);
+  CHECKED_STATUS DropIndex(
+      const PgObjectId& index_id,
+      client::YBTableName* indexed_table_name = nullptr,
+      bool wait = true);
   CHECKED_STATUS TruncateTable(const PgObjectId& table_id);
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);
@@ -303,6 +306,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       const PgObjectId& table_id,
       const PgObjectId& index_id,
       const IndexPermissions& target_index_permissions);
+
+  CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
 
  private:
   CHECKED_STATUS FlushBufferedOperationsImpl();

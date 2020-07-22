@@ -97,6 +97,11 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   // Task completion time, may be !Initialized().
   virtual MonoTime completion_timestamp() const = 0;
 
+  // Whether task was started by the LB.
+  virtual bool started_by_lb() const {
+    return false;
+  }
+
  protected:
   static bool IsStateTerminal(MonitoredTaskState state) {
     return state == MonitoredTaskState::kComplete ||

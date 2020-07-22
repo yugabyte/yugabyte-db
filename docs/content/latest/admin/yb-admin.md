@@ -255,11 +255,35 @@ Forces the master leader to step down. The specified YB-Master node will take it
 **Syntax**
 
 ```sh
-yb-admin -master_addresses <master-addresses> master_leader_stepdown <new_leader_id>
+yb-admin -master_addresses <master-addresses> master_leader_stepdown [ <new_leader_id> ]
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *new_leader_id*: The identifier (ID) of the new YB-Master leader.
+- *new_leader_id*: (Optional) The identifier (ID) of the new YB-Master leader. If not specified, the new leader is automatically elected.
+
+#### ysql_catalog_version
+
+Prints the current YSQL schema catalog version.
+
+**Syntax**
+
+```sh
+yb-admin -master_addresses <master-addresses> ysql_catalog_version
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+
+**Example**
+
+```sh
+yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> ysql_catalog_version
+```
+
+The version output displays:
+
+```
+Version:1
+```
 
 ---
 
@@ -267,24 +291,33 @@ yb-admin -master_addresses <master-addresses> master_leader_stepdown <new_leader
 
 #### list_tables
 
-Prints a list of all tables.
+Prints a list of all tables. Optionally, include the database type, table ID, and the table type.
 
 **Syntax**
+
+```sh
+yb-admin -master_addresses <master-addresses> list_tables [ include_db_type ] [ include_table_id ] [ include_table_type ]
+```
 
 ```sh
 yb-admin -master_addresses <master-addresses> list_tables
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- `include_db_type`: (Optional) Add this flag to include the database type for each table.
+- `include_table_id`: (Optional) Add this flag to include the table ID for each table.
+- `include_table_type`: (Optional) Add this flag to include the table type for each table.
 
-Returns tables in the following format:
+Returns tables in the following format, depending on the flags used:
 
 ```
-<namespace>.<table_name>
+<db_type>.<namespace>.<table_name> table_id table_type
 ```
 
-- *namespace*: Name of the database or keyspace.
-- *table_name*: Name of the table.
+- *db_type*: The type of database. Valid values include `ysql`, `ycql`, `yedis`, and `unknown`.
+- *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
+- *table_name*: The name of the table.
+- *table_type*: The type of table. Valid values include `catalog`, `table`, `index`, and `other`.
 
 {{< note title="Tip" >}}
 
@@ -321,45 +354,6 @@ template1.pg_inherits
 ...
 ```
 
-#### list_tables_with_db_types
-
-Prints a list of all tables, prefixed by the database type (`ysql`, `ycql`, or `yedis`)
-
-**Syntax**
-
-```sh
-yb-admin -master_addresses <master-addresses> list_tables_with_db_types
-```
-
-- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-
-Returns tables in the following format:
-
-```
-<db_type>.<namespace>.<table_name>
-```
-
-**Example**
-
-```sh
-$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_tables_with_db_types
-```
-
-```
-ycql.system_schema.indexes
-ycql.system_schema.keyspaces
-ycql.system_schema.sys.catalog
-ycql.system_schema.tables
-ycql.system_schema.triggers
-ycql.system_schema.types
-ycql.system_schema.views
-ysql.postgres.sql_features
-ysql.postgres.sql_implementation_info
-ysql.postgres.sql_languages
-ysql.postgres.sql_packages
-...
-```
-
 #### compact_table
 
 Triggers manual compaction on a table.
@@ -389,6 +383,29 @@ Compaction complete: SUCCESS
 
 ### Backup and snapshot commands
 
+#### create_database_snapshot
+
+Creates a snapshot of the specified YSQL database.
+
+**Syntax**
+
+```sh
+yb-admin -master_addresses <master-addresses> create_database_snapshot <database_name>
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *database*: The name of the database or keyspace.
+
+When this command runs, a `snapshot_id` is generated and printed.
+
+**Example**
+
+```sh
+$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_database_snapshot
+```
+
+To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list_snapshots) command.
+
 #### list_snapshots
 
 Prints a list of all snapshot IDs,  restoration IDs, and states. Optionally, prints details (including keyspaces, tables, and indexes) in JSON format.
@@ -396,11 +413,12 @@ Prints a list of all snapshot IDs,  restoration IDs, and states. Optionally, pri
 **Syntax**
 
 ```sh
-yb-admin -master_addresses <master-addresses> list_snapshots [ show_details ]
+yb-admin -master_addresses <master-addresses> list_snapshots [ show_details ] [ not_show_restored ]
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - `show_details`: (Optional) Print snapshot details, including the keyspaces, tables, and indexes.
+- `not_show_restored`: (Optional) Do not show successful "restorations" (that is, `COMPLETE`). Useful to see a list of only uncompleted or failed restore operations.
 
 Possible `state` values for creating and restoring snapshots:
 
@@ -462,7 +480,7 @@ f566b03b-b85e-41a0-b903-875cd305c1c5 	COMPLETE
 
 #### create_snapshot
 
-Creates a snapshot of the specified tables and their indexes. Prior to v.2.1.8, indexes were not automatically included. You can specify multiple tables, even from different keyspaces.
+Creates a snapshot of the specified YCQL tables and their indexes. Prior to v.2.1.8, indexes were not automatically included. You can specify multiple tables, even from different keyspaces.
 
 **Syntax**
 
@@ -534,7 +552,7 @@ Restoration UUID                 	State
 
 #### export_snapshot
 
-Generates a metadata file for the given snapshot, listing all the relevant internal UUIDs for various objects (table, tablet, etc.).
+Generates a metadata file for the specified snapshot, listing all the relevant internal UUIDs for various objects (table, tablet, etc.).
 
 **Syntax**
 
@@ -652,11 +670,10 @@ Sets the preferred availability zones (AZs) and regions.
 
 {{< note title="Note" >}}
 
-When nodes in the the "preferred" availability zones and regions are alive and healthy, 
-the tablet leaders are placed on nodes in those zones and regions. 
-By default, all nodes are eligible to have tablet leaders.
-Having all tablet leaders reside in 1 region will 
-reduce the number of network hops that the db must do to write transactions and thus increase performance and lowering latency.
+- When nodes in the the "preferred" availability zones and regions are alive and healthy, the tablet leaders are placed on nodes in those zones and regions.
+By default, all nodes are eligible to have tablet leaders. Having all tablet leaders reside in a single region will reduce the number of network hops for the database to write transactions and thus increase performance and lowering latency.
+
+- By default, the transaction tablet leaders will not respect these preferred zones and will be balanced across all nodes. In the transaction path, there is a roundtrip from the user to the transaction status tablet serving the transaction - if the leader closest to the user is used rather than forcing a roundtrip to the preferred zone, then there will be efficiency improvements.
 
 {{< /note >}}
 
@@ -669,7 +686,6 @@ yb-admin -master_addresses <master-addresses> set_preferred_zones <cloud.region.
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *cloud.region.zone*: Specifies the cloud, region, and zone. Default value is `cloud1.datacenter1.rack1`.
 
-
 Suppose you have a deployment with regions: `gcp.us-east4.us-east4-b`, `gcp.asia-northeast1.asia-northeast1-c`,
  `gcp.us-west1.us-west1-c`. Looking at the cluster config:
 
@@ -677,7 +693,7 @@ Suppose you have a deployment with regions: `gcp.us-east4.us-east4-b`, `gcp.asia
 $ curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-We have a sample config:
+Here is a sample configuration:
 
 ```
 replication_info {

@@ -1,12 +1,20 @@
 // Copyright (c) YugaByte, Inc.
-export const ROOT_URL = process.env.REACT_APP_YUGAWARE_API_URL ||
-  (process.env.NODE_ENV === 'development' ? 'http://localhost:9000/api/v1' : '/api/v1');
+import _ from 'lodash';
 
-export const MAP_SERVER_URL = process.env.NODE_ENV === 'development'
+export const IN_DEVELOPMENT_MODE = process.env.NODE_ENV === 'development';
+
+// NOTE: when using REACT_APP_YUGAWARE_API_URL at local development - after login with SSO it will
+// set auth cookies for API host domain and redirect to API host root instead of localhost:3000/
+// Need to manually set "userId", "customerId" and "PLAY_SESSION" cookies for localhost:3000
+export const ROOT_URL = process.env.REACT_APP_YUGAWARE_API_URL ||
+  (IN_DEVELOPMENT_MODE ? 'http://localhost:9000/api/v1' : '/api/v1');
+
+export const MAP_SERVER_URL = IN_DEVELOPMENT_MODE
   ? `https://s3-us-west-2.amazonaws.com/${process.env.REACT_APP_YB_MAP_URL}/map`
   : '/static/map';
 
-export const IN_DEVELOPMENT_MODE = process.env.NODE_ENV === 'development';
+// get SSO flag from global config loaded in index.html before UI app started
+export const USE_SSO = _.get(window, 'YB_Platform_Config.use_oauth', false);
 
 // TODO : probably fetch the provider metadata (name and code from backend)
 export const PROVIDER_TYPES = [

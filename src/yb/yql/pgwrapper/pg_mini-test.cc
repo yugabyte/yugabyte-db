@@ -48,11 +48,11 @@ DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
-DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_bool(rocksdb_use_logging_iterator);
+DECLARE_int32(pgsql_proxy_webserver_port);
 
 namespace yb {
 namespace pgwrapper {
@@ -72,7 +72,6 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
     FLAGS_enable_ysql = true;
     FLAGS_hide_pg_catalog_table_creation_logs = true;
     FLAGS_master_auto_run_initdb = true;
-    FLAGS_retryable_rpc_single_call_timeout_ms = 30000;
     FLAGS_pggate_rpc_timeout_secs = 120;
     FLAGS_ysql_num_shards_per_tserver = 1;
 
@@ -91,12 +90,15 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
         yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
         pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
         pg_ts->server()->GetSharedMemoryFd()));
+
     pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
     pg_process_conf.force_disable_log_file = true;
+    FLAGS_pgsql_proxy_webserver_port = cluster_->AllocateFreePort();
 
     LOG(INFO) << "Starting PostgreSQL server listening on "
               << pg_process_conf.listen_addresses << ":" << pg_process_conf.pg_port << ", data: "
-              << pg_process_conf.data_dir;
+              << pg_process_conf.data_dir
+              << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
 
     BeforePgProcessStart();
     pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf);

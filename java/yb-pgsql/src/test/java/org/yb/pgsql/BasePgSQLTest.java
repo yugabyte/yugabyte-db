@@ -189,11 +189,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   protected Map<String, String> getMasterAndTServerFlags() {
-    Map<String, String> flagMap = new TreeMap<>();
-    flagMap.put(
-        "retryable_rpc_single_call_timeout_ms",
-        String.valueOf(getRetryableRpcSingleCallTimeoutMs()));
-    return flagMap;
+    return new TreeMap<>();
   }
 
   protected Integer getYsqlPrefetchLimit() {
@@ -776,6 +772,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       return elems.get(index);
     }
 
+    Boolean getBoolean(int index) {
+      return (Boolean) elems.get(index);
+    }
+
     Integer getInt(int index) {
       return (Integer) elems.get(index);
     }
@@ -984,25 +984,23 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  /*
-   * Returns whether or not this select statement uses index.
-   */
-  protected boolean useIndex(String stmt, String index) throws SQLException {
-    try (Statement statement = connection.createStatement()) {
-      try (ResultSet rs = statement.executeQuery("EXPLAIN " + stmt)) {
-        assert(rs.getMetaData().getColumnCount() == 1); // Expecting one string column.
-        while (rs.next()) {
-          if (rs.getString(1).contains("Index Scan using " + index)) {
-            return true;
-          }
+  /** Whether or not this select statement uses index. */
+  protected boolean doesUseIndex(String stmt, String index) throws SQLException {
+    try (Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery("EXPLAIN " + stmt)) {
+      assert (rs.getMetaData().getColumnCount() == 1); // Expecting one string column.
+      while (rs.next()) {
+        if (rs.getString(1).contains("Index Scan using " + index)
+            || rs.getString(1).contains("Index Only Scan using " + index)) {
+          return true;
         }
-        return false;
       }
+      return false;
     }
   }
 
-  /*
-   * Returns whether or not this select statement requires filtering by Postgres (i.e. not all
+  /**
+   * Whether or not this select statement requires filtering by Postgres (i.e. not all
    * conditions can be pushed down to YugaByte).
    */
   protected boolean needsPgFiltering(String stmt) throws SQLException {

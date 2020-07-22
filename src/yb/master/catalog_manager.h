@@ -588,6 +588,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
                                            AreLeadersOnPreferredOnlyResponsePB* resp);
 
+  // Check that transaction tablet leaders are spread amongst tservers.
+  CHECKED_STATUS AreTransactionLeadersSpread(const AreTransactionLeadersSpreadRequestPB* req,
+                                             AreTransactionLeadersSpreadResponsePB* resp);
+
   // Return the placement uuid of the primary cluster containing this master.
   string placement_uuid() const;
 
@@ -646,6 +650,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   EncryptionManager& encryption_manager() {
     return *encryption_manager_;
   }
+
+  CHECKED_STATUS SplitTablet(
+      const TabletId& tablet_id, const std::string& split_encoded_key,
+      const std::string& split_partition_key);
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   CHECKED_STATUS SplitTablet(
@@ -906,7 +914,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                   DeferredAssignmentActions* deferred,
                                   TabletInfos* new_tablets);
 
-  CHECKED_STATUS HandleTabletSchemaVersionReport(TabletInfo *tablet, uint32_t version);
+  CHECKED_STATUS HandleTabletSchemaVersionReport(TabletInfo *tablet, uint32_t version,
+                                                 const scoped_refptr<TableInfo>& table = nullptr);
 
   // Send the create tablet requests to the selected peers of the consensus configurations.
   // The creation is async, and at the moment there is no error checking on the
@@ -1045,6 +1054,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Returns TabletInfo for registered tablet.
   Result<TabletInfo*> RegisterNewTabletForSplit(
       const TabletInfo& source_tablet_info, const PartitionPB& partition);
+
+  Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id);
+
+  CHECKED_STATUS DoSplitTablet(
+      const scoped_refptr<TabletInfo>& source_tablet_info, const std::string& split_encoded_key,
+      const std::string& split_partition_key);
 
   // Splits tablet using specified split_hash_code as a split point.
   CHECKED_STATUS DoSplitTablet(

@@ -136,12 +136,13 @@ Result<InetAddress> PickResolvedAddress(
   if (error) {
     return STATUS_FORMAT(NetworkError, "Resolve failed $0: $1", host, error.message());
   }
-  std::vector<InetAddress> addresses, addresses_v6;
+  std::vector<IpAddress> addresses;
   for (const auto& entry : entries) {
-    auto& dest = entry.endpoint().address().is_v4() ? addresses : addresses_v6;
-    dest.emplace_back(entry.endpoint().address());
+    addresses.push_back(entry.endpoint().address());
+    VLOG(3) << "Resolved address " << entry.endpoint().address().to_string()
+            << " for host " << host;
   }
-  addresses.insert(addresses.end(), addresses_v6.begin(), addresses_v6.end());
+  FilterAddresses(FLAGS_net_address_filter, &addresses);
   if (addresses.empty()) {
     return STATUS_FORMAT(NetworkError, "No endpoints resolved for: $0", host);
   }
@@ -151,7 +152,9 @@ Result<InetAddress> PickResolvedAddress(
                  << yb::ToString(addresses.front());
   }
 
-  return addresses.front();
+  VLOG(3) << "Returned address " << addresses[0].to_string() << " for host "
+          << host;
+  return InetAddress(addresses.front());
 }
 
 

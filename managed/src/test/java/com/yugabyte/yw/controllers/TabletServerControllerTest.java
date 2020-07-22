@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
@@ -38,23 +39,11 @@ import com.yugabyte.yw.models.Universe;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 
-public class TabletServerControllerTest extends WithApplication {
-  private YBClientService mockService;
+public class TabletServerControllerTest extends FakeDBApplication {
   private TabletServerController tabletController;
   private YBClient mockClient;
   private ListTabletServersResponse mockResponse;
-  private ApiHelper mockApiHelper;
   private HostAndPort testHostAndPort = HostAndPort.fromString("0.0.0.0").withDefaultPort(11);
-
-  @Override
-  protected Application provideApplication() {
-    mockApiHelper = mock(ApiHelper.class);
-    mockService = mock(YBClientService.class);
-    return new GuiceApplicationBuilder()
-            .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
-            .overrides(bind(YBClientService.class).toInstance(mockService))
-            .build();
-  }
 
   @Before
   public void setUp() throws Exception {

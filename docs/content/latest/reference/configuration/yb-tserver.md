@@ -132,7 +132,7 @@ In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, 
 
 Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
-Default: `0.0.0.0:9100`
+Default: `""`
 
 ##### --use_private_ip
 
@@ -406,7 +406,6 @@ To specify fine-grained access control over who can access the server, use [`--y
 
 Default: `0.0.0.0:5433`
 
-
 ##### --pgsql_proxy_webserver_port
 
 Specifies the web server port for YSQL metrics monitoring.
@@ -457,6 +456,14 @@ YugabyteDB supports only two transaction isolation levels: `REPEATABLE READ` (ak
 
 {{< /note >}}
 
+##### --ysql_disable_index_backfill
+
+Set this flag to `false` to enabled online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
+
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+
+Default: `true`
+
 ##### --ysql_log_statement
 
 Specifies the types of YSQL statements that should be logged. 
@@ -464,6 +471,12 @@ Specifies the types of YSQL statements that should be logged.
 Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/trunctate, etc), and `all` (all statements).
 
 Default: `none`
+
+#### --ysql_log_min_duration_statement
+
+Logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. Setting the value to `0` prints all statement durations. You can use this flag to help track down unoptimized (or "slow") queries.
+
+Default: `-1` (disables logging statement durations)
 
 ##### --ysql_log_min_messages
 
@@ -492,7 +505,6 @@ Default: `0.0.0.0:9042` (`127.0.0.1:9042`)
 Specifies the port for monitoring YCQL metrics.
 
 Default: `12000`
-
 
 ##### --cql_table_is_transactional_by_default
 

@@ -108,7 +108,7 @@ TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id
     : tablet_id_(std::move(tablet_id)),
       table_(table),
       last_update_time_(MonoTime::Now()),
-      reported_schema_version_(0) {}
+      reported_schema_version_({}) {}
 
 TabletInfo::~TabletInfo() {
 }
@@ -178,18 +178,22 @@ MonoTime TabletInfo::last_update_time() const {
   return last_update_time_;
 }
 
-bool TabletInfo::set_reported_schema_version(uint32_t version) {
+bool TabletInfo::set_reported_schema_version(const TableId& table_id, uint32_t version) {
   std::lock_guard<simple_spinlock> l(lock_);
-  if (version > reported_schema_version_) {
-    reported_schema_version_ = version;
+  if (reported_schema_version_.count(table_id) == 0 ||
+      version > reported_schema_version_[table_id]) {
+    reported_schema_version_[table_id] = version;
     return true;
   }
   return false;
 }
 
-uint32_t TabletInfo::reported_schema_version() const {
+uint32_t TabletInfo::reported_schema_version(const TableId& table_id) {
   std::lock_guard<simple_spinlock> l(lock_);
-  return reported_schema_version_;
+  if (reported_schema_version_.count(table_id) == 0) {
+    return 0;
+  }
+  return reported_schema_version_[table_id];
 }
 
 bool TabletInfo::colocated() const {
@@ -367,10 +371,10 @@ void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletI
 bool TableInfo::IsAlterInProgress(uint32_t version) const {
   shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
-    if (e.second->reported_schema_version() < version) {
+    if (e.second->reported_schema_version(table_id_) < version) {
       VLOG(3) << "Table " << table_id_ << " ALTER in progress due to tablet "
               << e.second->ToString() << " because reported schema "
-              << e.second->reported_schema_version() << " < expected " << version;
+              << e.second->reported_schema_version(table_id_) << " < expected " << version;
       return true;
     }
   }
@@ -406,6 +410,13 @@ void TableInfo::SetCreateTableErrorStatus(const Status& status) {
 Status TableInfo::GetCreateTableErrorStatus() const {
   shared_lock<decltype(lock_)> l(lock_);
   return create_table_error_;
+}
+
+std::size_t TableInfo::NumLBTasks() const {
+  shared_lock<decltype(lock_)> l(lock_);
+  return std::count_if(pending_tasks_.begin(),
+                       pending_tasks_.end(),
+                       [](auto task) { return task->started_by_lb(); });
 }
 
 std::size_t TableInfo::NumTasks() const {

@@ -33,6 +33,10 @@ DEFINE_bool(enable_load_balancing,
             true,
             "Choose whether to enable the load balancing algorithm, to move tablets around.");
 
+DEFINE_bool(transaction_tables_use_preferred_zones,
+            false,
+            "Choose whether transaction tablet leaders respect preferred zones.");
+
 DEFINE_int32(leader_balance_threshold,
              0,
              "Number of leaders per each tablet server to balance below. If this is configured to "
@@ -187,6 +191,11 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     LOG(INFO) << "Load balancing is not enabled.";
     return;
   }
+
+  if (!FLAGS_transaction_tables_use_preferred_zones) {
+    VLOG(1) << "Transaction tables will not respect leadership affinity.";
+  }
+
   std::unique_ptr<enterprise::Options> options_unique_ptr;
   if (options == nullptr) {
     options_unique_ptr = std::make_unique<enterprise::Options>();
@@ -204,6 +213,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
   int pending_add_replica_tasks = 0;
   int pending_remove_replica_tasks = 0;
   int pending_stepdown_leader_tasks = 0;
+  bool is_txn_table;
 
   for (const auto& table : GetTableMap()) {
     const TableId& table_id = table.first;
@@ -241,6 +251,9 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     }
     state_ = it->second.get();
 
+    is_txn_table = table.second->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
+    state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
+
     // Prepare the in-memory structures.
     auto handle_analyze_tablets = AnalyzeTabletsUnlocked(table.first);
     if (!handle_analyze_tablets.ok()) {
@@ -274,6 +287,10 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       VLOG(5) << "Load balancing table " << table.first;
     }
     state_ = it->second.get();
+
+    is_txn_table = table.second->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
+    state_->use_preferred_zones_ = !is_txn_table ||
+                                   FLAGS_transaction_tables_use_preferred_zones;
 
     // Output parameters are unused in the load balancer, but useful in testing.
     TabletId out_tablet_id;
@@ -333,17 +350,10 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
   uint32_t table_tasks = 0;
   for (const auto& table : GetTableMap()) {
-    table_tasks += table.second->NumTasks();
+    table_tasks += table.second->NumLBTasks();
   }
 
-  uint32_t tserver_tasks = 0;
-  TSDescriptorVector ts_descs;
-  GetAllReportedDescriptors(&ts_descs);
-  for (const auto& ts_desc : ts_descs) {
-    tserver_tasks += ts_desc->NumTasks();
-  }
-
-  struct ActivityInfo ai {table_tasks, tserver_tasks, master_errors};
+  struct ActivityInfo ai {table_tasks, master_errors};
 
   // Update circular buffer summary.
 
@@ -351,8 +361,8 @@ void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
     num_idle_runs_++;
   } else {
     VLOG(1) <<
-      Substitute("Load balancer has $0 table tasks, $1 tserver tasks, and $2 master errors",
-          table_tasks, tserver_tasks, master_errors);
+      Substitute("Load balancer has $0 table tasks and $1 master errors",
+          table_tasks, master_errors);
   }
 
   if (cbuf_activities_.full()) {

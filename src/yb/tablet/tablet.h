@@ -202,6 +202,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS EnableCompactions(ScopedRWOperationPause* operation_pause);
 
+  Result<std::string> BackfillIndexesForYsql(
+      const std::vector<IndexInfo>& indexes,
+      const std::string& backfill_from,
+      const CoarseTimePoint deadline,
+      const HybridTime read_time,
+      const HostPort& pgsql_proxy_bind_address,
+      const std::string& database_name);
   Result<std::string> BackfillIndexes(const std::vector<IndexInfo>& indexes,
                                       const std::string& backfill_from,
                                       const CoarseTimePoint deadline,
@@ -465,13 +472,29 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   }
 
   yb::SchemaPtr GetSchema(const std::string& table_id = "") const override {
-    auto table_info = CHECK_RESULT (metadata_->GetTableInfo(table_id));
+    if (table_id.empty()) {
+      return metadata_->schema();
+    }
+    auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
     return yb::SchemaPtr(table_info, &table_info->schema);
+  }
+
+  Schema GetKeySchema(const std::string& table_id = "") const {
+    if (table_id.empty()) {
+      return key_schema_;
+    }
+    auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
+    return table_info->schema.CreateKeyProjection();
   }
 
   const common::YQLStorageIf& QLStorage() const override {
     return *ql_storage_;
   }
+
+  // Provide a way for write operations to wait when tablet schema is
+  // being changed.
+  ScopedRWOperationPause PauseWritePermits(CoarseTimePoint deadline);
+  ScopedRWOperation GetPermitToWrite(CoarseTimePoint deadline);
 
   // Used from tests
   const std::shared_ptr<rocksdb::Statistics>& rocksdb_statistics() const {
@@ -490,7 +513,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   docdb::DocDB doc_db() const { return { regular_db_.get(), intents_db_.get(), &key_bounds_ }; }
 
-  Result<std::string> GetEncodedMiddleDocKey() const;
+  // Returns approximate middle key for tablet split:
+  // - for hash-based partitions: encoded hash code in order to split by hash code.
+  // - for range-based partitions: encoded doc key in order to split by row.
+  Result<std::string> GetEncodedMiddleSplitKey() const;
 
   std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
 
@@ -602,6 +628,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   friend class TabletPeerTest;
   friend class ScopedReadOperation;
   friend class TabletComponent;
+
+  class RegularRocksDbListener;
 
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
@@ -759,6 +787,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //
   // This is marked mutable because read path member functions (which are const) are using this.
   mutable RWOperationCounter pending_op_counter_;
+
+  // Used by Alter/Schema-change ops to pause new write ops from being submitted.
+  RWOperationCounter write_ops_being_submitted_counter_;
 
   std::unique_ptr<TransactionCoordinator> transaction_coordinator_;
 

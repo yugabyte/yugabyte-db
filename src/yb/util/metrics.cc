@@ -318,10 +318,14 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer) const 
     prometheus_attr = attrs;
     // This is tablet_id in the case of tablet, but otherwise names the server type, eg: yb.master
     prometheus_attr["metric_id"] = id_;
+  } else if (strcmp(prototype_->name(), "cdc") == 0) {
+    prometheus_attr["table_id"] = attrs["table_id"];
+    prometheus_attr["table_name"] = attrs["table_name"];
+    prometheus_attr["stream_id"] = attrs["stream_id"];
   } else {
     return Status::OK();
   }
-  // This is currently tablet / server / cluster.
+  // This is currently tablet / server / cluster / cdc.
   prometheus_attr["metric_type"] = prototype_->name();
   prometheus_attr["exported_instance"] = FLAGS_metric_node_name;
 
@@ -725,6 +729,46 @@ CHECKED_STATUS Counter::WriteForPrometheus(
   return writer->WriteSingleEntry(attr, prototype_->name(), value());
 }
 
+//
+// MillisLag
+//
+
+scoped_refptr<MillisLag> MillisLagPrototype::Instantiate(
+    const scoped_refptr<MetricEntity>& entity) {
+  return entity->FindOrCreateMillisLag(this);
+}
+
+MillisLag::MillisLag(const MillisLagPrototype* proto) : Metric(proto) {
+}
+
+Status MillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions& opts) const {
+  writer->StartObject();
+
+  prototype_->WriteFields(writer, opts);
+
+  writer->String("value");
+  writer->Int64(lag_ms());
+
+  writer->EndObject();
+  return Status::OK();
+}
+
+Status MillisLag::WriteForPrometheus(
+    PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const {
+  return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms());
+}
+
+Status AtomicMillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions& opts) const {
+  writer->StartObject();
+
+  prototype_->WriteFields(writer, opts);
+
+  writer->String("value");
+  writer->Int64(this->lag_ms());
+
+  writer->EndObject();
+  return Status::OK();
+}
 
 /////////////////////////////////////////////////
 // HistogramPrototype

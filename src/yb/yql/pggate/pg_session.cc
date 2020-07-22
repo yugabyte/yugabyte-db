@@ -409,7 +409,6 @@ PgSession::PgSession(
   // Sets the timeout for each rpc as well as the whole operation to
   // 'FLAGS_pg_yb_session_timeout_ms'.
   session_->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
-  session_->SetSingleRpcTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
 
   session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
@@ -712,8 +711,14 @@ Status PgSession::DropTable(const PgObjectId& table_id) {
   return client_->DeleteTable(table_id.GetYBTableId());
 }
 
-Status PgSession::DropIndex(const PgObjectId& index_id) {
-  return client_->DeleteIndexTable(index_id.GetYBTableId());
+Status PgSession::DropIndex(
+    const PgObjectId& index_id,
+    client::YBTableName* indexed_table_name,
+    bool wait) {
+  return client_->DeleteIndexTable(
+      index_id.GetYBTableId(),
+      indexed_table_name,
+      wait);
 }
 
 Status PgSession::TruncateTable(const PgObjectId& table_id) {
@@ -944,7 +949,6 @@ Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool 
 
 void PgSession::SetTimeout(const int timeout_ms) {
   session_->SetTimeout(MonoDelta::FromMilliseconds(timeout_ms));
-  session_->SetSingleRpcTimeout(MonoDelta::FromMilliseconds(timeout_ms));
 }
 
 Result<IndexPermissions> PgSession::WaitUntilIndexPermissionsAtLeast(
@@ -955,6 +959,10 @@ Result<IndexPermissions> PgSession::WaitUntilIndexPermissionsAtLeast(
       table_id.GetYBTableId(),
       index_id.GetYBTableId(),
       target_index_permissions);
+}
+
+Status PgSession::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
+  return client_->AsyncUpdateIndexPermissions(indexed_table_id.GetYBTableId());
 }
 
 }  // namespace pggate

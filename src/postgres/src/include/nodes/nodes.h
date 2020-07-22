@@ -359,6 +359,7 @@ typedef enum NodeTag
 	T_LockStmt,
 	T_ConstraintsSetStmt,
 	T_ReindexStmt,
+	T_BackfillIndexStmt,
 	T_CheckPointStmt,
 	T_CreateSchemaStmt,
 	T_AlterDatabaseStmt,
@@ -476,6 +477,7 @@ typedef enum NodeTag
 	T_PartitionCmd,
 	T_VacuumRelation,
 	T_OptSplit,
+	T_RowBounds,
 
 	/*
 	 * TAGS FOR REPLICATION GRAMMAR PARSE NODES (replnodes.h)

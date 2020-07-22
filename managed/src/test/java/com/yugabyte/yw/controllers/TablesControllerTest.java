@@ -52,6 +52,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -94,14 +95,13 @@ import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
 
-public class TablesControllerTest extends WithApplication {
+public class TablesControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(TablesControllerTest.class);
   private YBClientService mockService;
   private TablesController tablesController;
   private YBClient mockClient;
   private ListTablesResponse mockListTablesResponse;
   private GetTableSchemaResponse mockSchemaResponse;
-  private Commissioner mockCommissioner;
 
   private Schema getFakeSchema() {
     List<ColumnSchema> columnSchemas = new LinkedList<>();
@@ -110,15 +110,6 @@ public class TablesControllerTest extends WithApplication {
         .hashKey(true)
         .build());
     return new Schema(columnSchemas);
-  }
-
-  @Override
-  protected Application provideApplication() {
-    mockCommissioner = mock(Commissioner.class);
-    return new GuiceApplicationBuilder()
-        .configure((Map) Helpers.inMemoryDatabase())
-        .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
-        .build();
   }
 
   @Before
@@ -494,8 +485,6 @@ public class TablesControllerTest extends WithApplication {
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertErrorNodeValue(resultJson, "storageConfigUUID", "This field is required");
-    assertErrorNodeValue(resultJson, "keyspace", "This field is required");
-    assertErrorNodeValue(resultJson, "tableName", "This field is required");
     assertErrorNodeValue(resultJson, "actionType", "This field is required");
     assertAuditEntry(0, customer.uuid);
   }

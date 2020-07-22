@@ -303,6 +303,18 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
       TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
       auto l = table_description.table_info->LockForRead();
 
+      if (table_description.table_info->is_index()) {
+        return STATUS(InvalidArgument, "Expected table, but found index",
+                      table_description.table_info->id(),
+                      MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+      }
+
+      if (l->data().table_type() == PGSQL_TABLE_TYPE) {
+        return STATUS(InvalidArgument, "Getting indexes for YSQL table is not supported",
+                      table_description.table_info->id(),
+                      MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
+      }
+
       for (const auto& index_info : l->data().pb.indexes()) {
         LOG_IF(DFATAL, table_description.table_info->id() != index_info.indexed_table_id())
                 << "Wrong indexed table id in index descriptor";
@@ -452,7 +464,8 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
     }
   }
 
-  return snapshot_coordinator_.ListSnapshots(txn_snapshot_id, resp);
+  return snapshot_coordinator_.ListSnapshots(
+      txn_snapshot_id, req->list_deleted_snapshots(), resp);
 }
 
 Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRequestPB* req,
@@ -791,7 +804,10 @@ void CatalogManager::DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
   for (const ExternalTableSnapshotDataMap::value_type& entry : tables_data) {
     const TableId& old_id = entry.first;
     const TableId& new_id = entry.second.new_table_id;
-    if (new_id.empty() || new_id == old_id) {
+    const TableType type = entry.second.table_entry_pb.table_type();
+
+    // Do not delete YSQL objects - it must be deleted via PG API.
+    if (new_id.empty() || new_id == old_id || type == TableType::PGSQL_TABLE_TYPE) {
       continue;
     }
 
@@ -805,8 +821,11 @@ void CatalogManager::DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
 
   for (const NamespaceMap::value_type& entry : namespace_map) {
     const NamespaceId& old_id = entry.first;
-    const NamespaceId& new_id = entry.second;
-    if (new_id.empty() || new_id == old_id) {
+    const NamespaceId& new_id = entry.second.first;
+    const YQLDatabase& db_type = entry.second.second;
+
+    // Do not delete YSQL objects - it must be deleted via PG API.
+    if (new_id.empty() || new_id == old_id || db_type == YQL_DATABASE_PGSQL) {
       continue;
     }
 
@@ -886,11 +905,14 @@ Status CatalogManager::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* r
 }
 
 Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
-                                            NamespaceMap* ns_map) {
+                                            NamespaceMap* namespace_map) {
   LOG_IF(DFATAL, entry.type() != SysRowEntry::NAMESPACE)
       << "Unexpected entry type: " << entry.type();
 
   SysNamespaceEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
+  const YQLDatabase db_type = GetDatabaseType(meta);
+  NamespaceData& ns_data = (*namespace_map)[entry.id()];
+  ns_data.second = db_type;
 
   TRACE("Looking up namespace");
   scoped_refptr<NamespaceInfo> ns;
@@ -900,24 +922,40 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
   }
 
   if (ns != nullptr && ns->name() == meta.name()) {
-    (*ns_map)[entry.id()] = entry.id();
+    ns_data.first = entry.id();
     return Status::OK();
   }
 
-  CreateNamespaceRequestPB req;
-  CreateNamespaceResponsePB resp;
-  req.set_name(meta.name());
-  const Status s = CreateNamespace(&req, &resp, nullptr);
+  if (db_type == YQL_DATABASE_PGSQL) {
+    // YSQL database must be created via external call. Find it by name.
+    {
+      SharedLock<LockType> l(lock_);
+      ns = FindPtrOrNull(namespace_names_mapper_[db_type], meta.name());
+    }
 
-  if (!s.ok() && !s.IsAlreadyPresent()) {
-    return s.CloneAndAppend("Failed to create namespace");
+    if (ns == nullptr) {
+      return STATUS(InvalidArgument, "YSQL database must exist", meta.name(),
+                    MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
+    }
+
+    auto ns_lock = ns->LockForRead();
+    ns_data.first = ns->id();
+  } else {
+    CreateNamespaceRequestPB req;
+    CreateNamespaceResponsePB resp;
+    req.set_name(meta.name());
+    const Status s = CreateNamespace(&req, &resp, nullptr);
+
+    if (!s.ok() && !s.IsAlreadyPresent()) {
+      return s.CloneAndAppend("Failed to create namespace");
+    }
+
+    if (s.IsAlreadyPresent()) {
+      LOG(INFO) << "Using existing namespace " << meta.name() << ": " << resp.id();
+    }
+
+    ns_data.first = resp.id();
   }
-
-  if (s.IsAlreadyPresent()) {
-    LOG(INFO) << "Using existing namespace " << meta.name() << ": " << resp.id();
-  }
-
-  (*ns_map)[entry.id()] = resp.id();
   return Status::OK();
 }
 
@@ -989,7 +1027,7 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   return Status::OK();
 }
 
-Status CatalogManager::ImportTableEntry(const NamespaceMap& ns_map,
+Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
                                         const ExternalTableSnapshotDataMap& table_map,
                                         ExternalTableSnapshotData* table_data) {
   const SysTablesEntryPB& meta = DCHECK_NOTNULL(table_data)->table_entry_pb;
@@ -997,9 +1035,10 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& ns_map,
   table_data->old_namespace_id = meta.namespace_id();
   LOG_IF(DFATAL, table_data->old_namespace_id.empty()) << "No namespace id";
 
-  LOG_IF(DFATAL, ns_map.find(table_data->old_namespace_id) == ns_map.end())
+  LOG_IF(DFATAL, namespace_map.find(table_data->old_namespace_id) == namespace_map.end())
       << "Namespace not found: " << table_data->old_namespace_id;
-  const NamespaceId new_namespace_id = ns_map.find(table_data->old_namespace_id)->second;
+  const NamespaceId new_namespace_id =
+      namespace_map.find(table_data->old_namespace_id)->second.first;
   LOG_IF(DFATAL, new_namespace_id.empty()) << "No namespace id";
 
   scoped_refptr<TableInfo> table;
@@ -1017,7 +1056,39 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& ns_map,
   }
 
   if (table == nullptr) {
-    RETURN_NOT_OK(RecreateTable(new_namespace_id, table_map, table_data));
+    if (table_data->table_entry_pb.table_type() == TableType::PGSQL_TABLE_TYPE) {
+      // YSQL table must be created via external call. Find it by name.
+      // Expecting the table name is unique in the YSQL database.
+      SharedLock<LockType> l(lock_);
+      DCHECK(table_data->new_table_id.empty());
+
+      for (const auto& entry : *table_ids_map_) {
+        const auto& table_info = *entry.second;
+        auto ltm = table_info.LockForRead();
+
+        if (new_namespace_id == table_info.namespace_id() &&
+            meta.name() == ltm->data().name() &&
+            ((table_data->is_index() && IsUserIndexUnlocked(table_info)) ||
+                (!table_data->is_index() && IsUserTableUnlocked(table_info)))) {
+          // Found the new YSQL table by name.
+          if (table_data->new_table_id.empty()) {
+              table_data->new_table_id = entry.first;
+          } else if (table_data->new_table_id != entry.first) {
+            return STATUS(InvalidArgument,
+                          Format("Found 2 YSQL tables with the same name: $0 - $1, $2",
+                                 meta.name(), table_data->new_table_id, entry.first),
+                          MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+          }
+        }
+      }
+
+      if (table_data->new_table_id.empty()) {
+        return STATUS(InvalidArgument, Format("YSQL table not found: $0", meta.name()),
+                      MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+      }
+    } else {
+      RETURN_NOT_OK(RecreateTable(new_namespace_id, table_map, table_data));
+    }
 
     TRACE("Looking up new table");
     SharedLock<LockType> l(lock_);
@@ -2229,7 +2300,7 @@ void CatalogManager::GetTableSchemaCallback(
     return;
   }
 
-  auto result = info->schema.Equals(resp.schema());
+  auto result = info->schema.EquivalentForDataCopy(resp.schema());
   if (!result.ok() || !*result) {
     LOG(ERROR) << "Source and target schemas don't match: Source: " << info->table_id
                << ", Target: " << resp.identifier().table_id()

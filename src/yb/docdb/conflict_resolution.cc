@@ -413,12 +413,6 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 };
 
 
-Result<boost::optional<DocKeyHash>> FetchDocKeyHash(const Slice& encoded_key) {
-  DocKey key;
-  RETURN_NOT_OK(key.DecodeFrom(encoded_key, DocKeyPart::kUpToHash));
-  return key.has_hash() ? key.hash() : boost::optional<DocKeyHash>();
-}
-
 using IntentTypesContainer = std::map<KeyBuffer, IntentTypeSet>;
 
 class IntentProcessor {
@@ -461,7 +455,7 @@ class StrongConflictChecker {
   {}
 
   CHECKED_STATUS Check(const Slice& intent_key) {
-    const auto hash = VERIFY_RESULT(FetchDocKeyHash(intent_key));
+    const auto hash = VERIFY_RESULT(DecodeDocKeyHash(intent_key));
     if (PREDICT_FALSE(!value_iter_.Initialized() || hash != value_iter_hash_)) {
       value_iter_ = CreateRocksDBIterator(
           resolver_.doc_db().regular,

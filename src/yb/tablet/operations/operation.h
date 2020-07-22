@@ -45,10 +45,13 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/util/auto_release_pool.h"
 #include "yb/util/locks.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/status.h"
 #include "yb/util/memory/arena.h"
 
 namespace yb {
+
+struct OpId;
 
 namespace tablet {
 
@@ -231,6 +234,11 @@ class OperationState {
   void CompleteWithStatus(const Status& status) const;
   void SetError(const Status& status, tserver::TabletServerErrorPB::Code code) const;
 
+  // Initialize operation at leader side.
+  // op_id - operation id.
+  // committed_op_id - current committed operation id.
+  void LeaderInit(const OpId& op_id, const OpId& committed_op_id);
+
   virtual ~OperationState();
 
  protected:
@@ -314,9 +322,16 @@ class ExclusiveSchemaOperationStateBase : public OperationState {
   // Release the acquired schema lock.
   void ReleaseSchemaLock();
 
+  void UsePermitToken(ScopedRWOperationPause&& token) {
+    permit_token_ = std::move(token);
+  }
+
  private:
   // The lock held on the tablet's schema_lock_.
   std::unique_lock<rw_semaphore> schema_lock_;
+
+  // Used to pause write operations from being accepted while alter is in progress.
+  ScopedRWOperationPause permit_token_;
 };
 
 template <class Request>

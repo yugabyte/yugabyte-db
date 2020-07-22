@@ -50,6 +50,10 @@ message TabletStatusPB {
   // DEPRECATED.
   optional bytes end_key = 6;
   optional int64 estimated_on_disk_size = 7;
+  optional int64 consensus_metadata_disk_size = 11;
+  optional int64 wal_files_disk_size = 12;
+  optional int64 sst_files_disk_size = 13;
+  optional int64 uncompressed_sst_files_disk_size = 14;
   optional PartitionPB partition = 9;
 }
 

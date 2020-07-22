@@ -74,6 +74,10 @@
   } \
 } while (0)
 
+#ifdef EXPECT_OK
+#undef EXPECT_OK
+#endif
+
 #define EXPECT_OK(status) do { \
     auto&& _s = (status); \
     if (_s.ok()) { \
@@ -212,6 +216,9 @@
 
 #define CURRENT_TEST_CASE_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->test_case_name()
+
+#define CURRENT_TEST_CASE_AND_TEST_NAME_STR() \
+  (std::string(CURRENT_TEST_CASE_NAME()) + '.' + CURRENT_TEST_NAME())
 
 #ifdef __APPLE__
 #define YB_DISABLE_TEST_ON_MACOS(test_name) BOOST_PP_CAT(DISABLED_, test_name)

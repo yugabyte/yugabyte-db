@@ -395,6 +395,10 @@ Result<PgTableDesc::ScopedRefPtr> PgApiImpl::LoadTable(const PgObjectId& table_i
   return pg_session_->LoadTable(table_id);
 }
 
+void PgApiImpl::InvalidateTableCache(const PgObjectId& table_id) {
+  pg_session_->InvalidateTableCache(table_id);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewCreateTable(const char *database_name,
@@ -631,11 +635,12 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const PgObjectId& base_table_id,
                                  bool is_shared_index,
                                  bool is_unique_index,
+                                 const bool skip_index_backfill,
                                  bool if_not_exist,
                                  PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgCreateIndex>(
       pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
-      is_shared_index, is_unique_index, if_not_exist);
+      is_shared_index, is_unique_index, skip_index_backfill, if_not_exist);
   RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
@@ -654,11 +659,18 @@ Status PgApiImpl::CreateIndexAddColumn(PgStatement *handle, const char *attr_nam
 }
 
 Status PgApiImpl::CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tablets) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
+  SCHECK(PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX),
+         InvalidArgument,
+         "Invalid statement handle");
   return down_cast<PgCreateIndex*>(handle)->SetNumTablets(num_tablets);
+}
+
+Status PgApiImpl::CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
+                                         YBCPgTypeEntity **types, uint64_t *data) {
+  SCHECK(PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX),
+      InvalidArgument,
+      "Invalid statement handle");
+  return down_cast<PgCreateIndex*>(handle)->AddSplitRow(num_cols, types, data);
 }
 
 Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
@@ -693,6 +705,10 @@ Result<IndexPermissions> PgApiImpl::WaitUntilIndexPermissionsAtLeast(
       table_id,
       index_id,
       target_index_permissions);
+}
+
+Status PgApiImpl::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
+  return pg_session_->AsyncUpdateIndexPermissions(indexed_table_id);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -814,6 +830,14 @@ Status PgApiImpl::InsertStmtSetUpsertMode(PgStatement *handle) {
   return Status::OK();
 }
 
+Status PgApiImpl::InsertStmtSetWriteTime(PgStatement *handle, const HybridTime write_time) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  RETURN_NOT_OK(down_cast<PgInsert*>(handle)->SetWriteTime(write_time));
+  return Status::OK();
+}
 
 // Update ------------------------------------------------------------------------------------------
 

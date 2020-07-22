@@ -394,22 +394,47 @@ DefineIndex(Oid relationId,
 						INDEX_MAX_KEYS)));
 
 	/*
-	 * An index build should be concurent when
+	 * An index build should be concurent when all of the following hold:
 	 * - index backfill is enabled
 	 * - the index is secondary
 	 * - the indexed table is not temporary
+	 * - we are not in bootstrap mode
 	 * Otherwise, it should not be concurrent.  This logic works because
-	 * - primary keys can't be altered after `CREATE TABLE`, so there is no
-	 *   need for index backfill.
+	 * - primary key indexes are on the main table, and index backfill doesn't
+	 *   apply to them.
 	 * - temporary tables cannot have concurrency issues when building indexes.
+	 * - system table indexes created during initdb cannot have concurrency
+	 *   issues.
+	 * Concurrent index build is currently disabled for
+	 * - indexes in nested DDL
+	 * - unique indexes
+	 * - system table indexes (implied by disallowing on bootstrap mode)
 	 */
 	stmt->concurrent = (!YBCGetDisableIndexBackfill()
 						&& !stmt->primary
-						&& IsYBRelationById(relationId));
-	if (stmt->concurrent)
-		ereport(LOG,
-				(errmsg("creating index concurrently for table with oid %d",
-						relationId)));
+						&& IsYBRelationById(relationId) &&
+						!IsBootstrapProcessingMode());
+	/* Use fast path create index when in nested DDL.  This is desired
+	 * when there would be no concurrency issues (e.g. `CREATE TABLE
+	 * ... (... UNIQUE (...))`).  However, there may be cases where it
+	 * is unsafe to use the fast path.  For now, just use the fast path
+	 * in all cases.
+	 * TODO(jason): support backfill for nested DDL, and use the online
+	 * path for the appropriate statements (issue #4786).
+	 */
+	if (stmt->concurrent && YBGetDdlNestingLevel() > 1)
+		stmt->concurrent = false;
+	/*
+	 * Backfilling unique indexes is currently not supported.  This is desired
+	 * when there would be no concurrency issues (e.g. `CREATE TABLE ... (...
+	 * UNIQUE (...))`).  However, it is not desired in cases where there could
+	 * be concurrency issues (e.g. `CREATE UNIQUE INDEX ...`, `ALTER TABLE ...
+	 * ADD UNIQUE (...)`).  For now, just use the fast path in all cases.
+	 * TODO(jason): support backfill for unique indexes, and use the online
+	 * path for the appropriate statements (issue #4899).
+	 */
+	if (stmt->concurrent && stmt->unique)
+		stmt->concurrent = false;
 
 	/*
 	 * Only SELECT ... FOR UPDATE/SHARE are allowed while doing a standard
@@ -428,6 +453,14 @@ DefineIndex(Oid relationId,
 	 */
 	lockmode = stmt->concurrent ? ShareUpdateExclusiveLock : ShareLock;
 	rel = heap_open(relationId, lockmode);
+
+	/*
+	 * Ensure that system tables don't go through online schema change.  This
+	 * is curently guaranteed because
+	 * - initdb (bootstrap mode) is prevented from being concurrent
+	 * - users cannot create indexes on system tables
+	 */
+	Assert(!(stmt->concurrent && IsSystemRelation(rel)));
 
 	relationId = RelationGetRelid(rel);
 	namespaceId = RelationGetNamespace(rel);
@@ -906,7 +939,8 @@ DefineIndex(Oid relationId,
 					 coloptions, reloptions,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
-					 &createdConstraintId, stmt->split_options);
+					 &createdConstraintId, stmt->split_options,
+					 !stmt->concurrent);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
@@ -1186,6 +1220,7 @@ DefineIndex(Oid relationId,
 	 * TODO(jason): retry backfill or revert schema changes instead of failing
 	 * through HandleYBStatus.
 	 */
+	HandleYBStatus(YBCPgAsyncUpdateIndexPermissions(MyDatabaseId, relationId));
 	elog(LOG, "waiting for YB_INDEX_PERM_WRITE_AND_DELETE");
 	HandleYBStatus(YBCPgWaitUntilIndexPermissionsAtLeast(MyDatabaseId,
 														 relationId,
@@ -1214,10 +1249,13 @@ DefineIndex(Oid relationId,
 	YBIncrementDdlNestingLevel();
 	StartTransactionCommand();
 
+	/* TODO(jason): handle exclusion constraints, possibly not here. */
+
 	/*
 	 * TODO(jason): retry backfill or revert schema changes instead of failing
 	 * through HandleYBStatus.
 	 */
+	HandleYBStatus(YBCPgAsyncUpdateIndexPermissions(MyDatabaseId, relationId));
 	elog(LOG, "waiting for Yugabyte index read permission");
 	HandleYBStatus(YBCPgWaitUntilIndexPermissionsAtLeast(MyDatabaseId,
 														 relationId,
@@ -1228,9 +1266,6 @@ DefineIndex(Oid relationId,
 	 * TODO(jason): handle bad actual_index_permissions, like
 	 * YB_INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING.
 	 */
-
-	/* We should now definitely not be advertising any xmin. */
-	Assert(MyPgXact->xmin == InvalidTransactionId);
 
 	/*
 	 * Index can now be marked valid -- update its pg_index entry
@@ -2648,4 +2683,61 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 		/* make our updates visible */
 		CommandCounterIncrement();
 	}
+}
+
+void
+BackfillIndex(BackfillIndexStmt *stmt)
+{
+	IndexInfo  *indexInfo;
+	ListCell   *cell;
+	Oid			heapId;
+	Oid			indexId;
+	Relation	heapRel;
+	Relation	indexRel;
+
+	if (YBCGetDisableIndexBackfill())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("backfill is not enabled")));
+
+	/*
+	 * Examine oid list.  Currently, we only allow it to be a single oid, but
+	 * later it should handle multiple oids of indexes on the same indexed
+	 * table.
+	 * TODO(jason): fix from here downwards for issue #4785.
+	 */
+	if (list_length(stmt->oid_list) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("only a single oid is allowed in BACKFILL INDEX (see"
+						" issue #4785)")));
+
+	foreach(cell, stmt->oid_list)
+	{
+		indexId = lfirst_oid(cell);
+	}
+
+	heapId = IndexGetRelation(indexId, false);
+	// TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock?
+	heapRel = heap_open(heapId, ShareLock);
+	indexRel = index_open(indexId, ShareLock);
+
+	indexInfo = BuildIndexInfo(indexRel);
+	/*
+	 * The index should be ready for writes because it should be on the
+	 * BACKFILLING permission.
+	 */
+	Assert(indexInfo->ii_ReadyForInserts);
+	indexInfo->ii_Concurrent = true;
+	indexInfo->ii_BrokenHotChain = false;
+
+	index_backfill(heapRel,
+				   indexRel,
+				   indexInfo,
+				   false,
+				   &stmt->read_time,
+				   stmt->row_bounds);
+
+	index_close(indexRel, ShareLock);
+	heap_close(heapRel, ShareLock);
 }

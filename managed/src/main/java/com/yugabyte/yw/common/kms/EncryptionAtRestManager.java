@@ -105,12 +105,6 @@ public class EncryptionAtRestManager {
         EncryptionAtRestService keyService;
         KmsConfig kmsConfig;
         byte[] universeKeyRef = null;
-        Universe universe = Universe.get(universeUUID);
-        if (universe == null) {
-            String errMsg = String.format("Invalid Universe UUID: %s", universeUUID.toString());
-            LOG.error(errMsg);
-            throw new IllegalArgumentException(errMsg);
-        }
         try {
             kmsConfig = KmsConfig.get(configUUID);
             keyService = getServiceInstance(kmsConfig.keyProvider.name());

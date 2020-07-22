@@ -26,7 +26,6 @@
 using namespace std::literals;
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);
-DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(transaction_not_found);
@@ -758,7 +757,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
   // will be able to find YSQL tables
   const auto tables = ASSERT_RESULT(client->ListTables());
   for (const auto& t : tables) {
-    if (t.namespace_name() == "postgres" && t.table_name() == table_name) {
+    if (t.namespace_type() == YQLDatabase::YQL_DATABASE_PGSQL && t.table_name() == table_name) {
       table_found = true;
       ASSERT_OK(client->GetTableSchema(t, &schema, &partition_schema));
       const auto& columns = schema.columns();
@@ -767,6 +766,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
       for (size_t i = 0; i < expected_column_names.size(); ++i) {
         ASSERT_EQ(columns[i].name(), expected_column_names[i]);
       }
+      break;
     }
   }
   ASSERT_TRUE(table_found);
@@ -1331,6 +1331,533 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
     ASSERT_EQ(entry.second, kNumDatabases);
   }
   ASSERT_EQ(ts_loads.size(), 3);
+}
+
+// Override the base test to start a cluster with index backfill enabled.
+class PgLibPqTestIndexBackfill : public PgLibPqTest {
+ public:
+  PgLibPqTestIndexBackfill() {
+    more_master_flags.push_back("--ysql_disable_index_backfill=false");
+    more_tserver_flags.push_back("--ysql_disable_index_backfill=false");
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.insert(
+        std::end(options->extra_master_flags),
+        std::begin(more_master_flags),
+        std::end(more_master_flags));
+    options->extra_tserver_flags.insert(
+        std::end(options->extra_tserver_flags),
+        std::begin(more_tserver_flags),
+        std::end(more_tserver_flags));
+  }
+
+ protected:
+  std::vector<std::string> more_master_flags;
+  std::vector<std::string> more_tserver_flags;
+};
+
+// Make sure that backfill works.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillSimple),
+          PgLibPqTestIndexBackfill) {
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (c char, i int, p point)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('a', 0, '(1, 2)')", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('y', -5, '(0, -2)')", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('b', 100, '(868, 9843)')", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (c ASC)", kTableName));
+
+  // Index scan to verify contents of index table.
+  const std::string query = Format("SELECT * FROM $0 ORDER BY c", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  auto res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 3);
+  std::array<int, 3> values = {
+    ASSERT_RESULT(GetInt32(res.get(), 0, 1)),
+    ASSERT_RESULT(GetInt32(res.get(), 1, 1)),
+    ASSERT_RESULT(GetInt32(res.get(), 2, 1)),
+  };
+  ASSERT_EQ(values[0], 0);
+  ASSERT_EQ(values[1], 100);
+  ASSERT_EQ(values[2], -5);
+}
+
+// Make sure that partial indexes work for index backfill.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillPartial),
+          PgLibPqTestIndexBackfill) {
+  constexpr int kNumRows = 7;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(-1, -$1, -1))",
+      kTableName,
+      kNumRows));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (i ASC) WHERE j > -5", kTableName));
+
+  // Index scan to verify contents of index table.
+  {
+    const std::string query = Format("SELECT j from $0 WHERE j > -3 ORDER BY i", kTableName);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+    auto res = ASSERT_RESULT(conn.Fetch(query));
+    ASSERT_EQ(PQntuples(res.get()), 2);
+    ASSERT_EQ(PQnfields(res.get()), 1);
+    std::array<int, 2> values = {
+      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+    };
+    ASSERT_EQ(values[0], -1);
+    ASSERT_EQ(values[1], -2);
+  }
+  {
+    const std::string query = Format(
+        "SELECT i from $0 WHERE j > -5 ORDER BY i DESC LIMIT 2",
+        kTableName);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+    auto res = ASSERT_RESULT(conn.Fetch(query));
+    ASSERT_EQ(PQntuples(res.get()), 2);
+    ASSERT_EQ(PQnfields(res.get()), 1);
+    std::array<int, 2> values = {
+      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+    };
+    ASSERT_EQ(values[0], 4);
+    ASSERT_EQ(values[1], 3);
+  }
+}
+
+// Make sure that expression indexes work for index backfill.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillExpression),
+          PgLibPqTestIndexBackfill) {
+  constexpr int kNumRows = 9;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
+      kTableName,
+      kNumRows));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 ((j % i))", kTableName));
+
+  // Index scan to verify contents of index table.
+  const std::string query = Format(
+      "SELECT j, i, j % i as mod from $0 WHERE j % i = 2 ORDER BY i",
+      kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  auto res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 2);
+  ASSERT_EQ(PQnfields(res.get()), 3);
+  std::array<std::array<int, 3>, 2> values = {{
+    {
+      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+      ASSERT_RESULT(GetInt32(res.get(), 0, 1)),
+      ASSERT_RESULT(GetInt32(res.get(), 0, 2)),
+    },
+    {
+      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+      ASSERT_RESULT(GetInt32(res.get(), 1, 1)),
+      ASSERT_RESULT(GetInt32(res.get(), 1, 2)),
+    },
+  }};
+  ASSERT_EQ(values[0][0], 14);
+  ASSERT_EQ(values[0][1], 4);
+  ASSERT_EQ(values[0][2], 2);
+  ASSERT_EQ(values[1][0], 18);
+  ASSERT_EQ(values[1][1], 8);
+  ASSERT_EQ(values[1][2], 2);
+}
+
+// Make sure that unique indexes work when index backfill is enabled (skips backfill for now)
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillUnique),
+          PgLibPqTestIndexBackfill) {
+  constexpr int kNumRows = 3;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
+      kTableName,
+      kNumRows));
+  // Add row that would make j not unique.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (99, 11)",
+      kTableName,
+      kNumRows));
+
+  // Create unique index without failure.
+  ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (i ASC)", kTableName));
+  // Index scan to verify contents of index table.
+  const std::string query = Format(
+      "SELECT * from $0 ORDER BY i",
+      kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  auto res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 4);
+  ASSERT_EQ(PQnfields(res.get()), 2);
+
+  // Create unique index with failure.
+  Status status = conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (j ASC)", kTableName);
+  ASSERT_NOK(status);
+  auto msg = status.message().ToBuffer();
+  ASSERT_TRUE(msg.find("duplicate key value") != std::string::npos) << status;
+}
+
+// Make sure that indexes created in postgres nested DDL work and skip backfill (optimization).
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillNestedDdl),
+          PgLibPqTestIndexBackfill) {
+  constexpr int kNumRows = 3;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int, UNIQUE (j))", kTableName));
+
+  // Make sure that the index create was not multi-stage.
+  std::string table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  Synchronizer sync;
+  ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(table_info->schema.version(), 1);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
+      kTableName,
+      kNumRows));
+
+  // Add row that violates unique constraint on j.
+  Status status = conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (99, 11)",
+      kTableName,
+      kNumRows);
+  ASSERT_NOK(status);
+  auto msg = status.message().ToBuffer();
+  ASSERT_TRUE(msg.find("duplicate key value") != std::string::npos) << status;
+}
+
+// Make sure that drop index works when index backfill is enabled (skips online schema migration for
+// now)
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillDrop),
+          PgLibPqTestIndexBackfill) {
+  constexpr int kNumRows = 5;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kIndexName = "i";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
+      kTableName,
+      kNumRows));
+
+  // Create index.
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
+
+  // Drop index.
+  ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", kIndexName));
+
+  // Ensure index is not used for scan.
+  const std::string query = Format(
+      "SELECT * from $0 ORDER BY i",
+      kTableName);
+  ASSERT_FALSE(ASSERT_RESULT(conn.HasIndexScan(query)));
+}
+
+// Make sure deletes to nonexistent rows look like noops to clients.  This may seem too obvious to
+// necessitate a test, but logic for backfill is special in that it wants nonexistent index deletes
+// to be applied for the backfill process to use them.  This test guards against that logic being
+// implemented incorrectly.
+TEST_F_EX(PgLibPqTest,
+    YB_DISABLE_TEST_IN_TSAN(BackfillNonexistentDelete),
+    PgLibPqTestIndexBackfill) {
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY)", kTableName));
+
+  // Delete to nonexistent row should return no rows.
+  auto res = ASSERT_RESULT(conn.FetchFormat("DELETE FROM $0 WHERE i = 1 RETURNING i", kTableName));
+  ASSERT_EQ(PQntuples(res.get()), 0);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+}
+
+// Override the index backfill test to have slower backfill-related operations
+class PgLibPqTestIndexBackfillSlow : public PgLibPqTestIndexBackfill {
+ public:
+  PgLibPqTestIndexBackfillSlow() {
+    more_master_flags.push_back("--TEST_slowdown_backfill_alter_table_rpcs_ms=7000");
+    more_tserver_flags.push_back("--TEST_slowdown_backfill_by_ms=7000");
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.insert(
+        std::end(options->extra_master_flags),
+        std::begin(more_master_flags),
+        std::end(more_master_flags));
+    options->extra_tserver_flags.insert(
+        std::end(options->extra_tserver_flags),
+        std::begin(more_tserver_flags),
+        std::end(more_tserver_flags));
+  }
+};
+
+// Make sure that read time (and write time) for backfill works.  Simulate this situation:
+//   Session A                                    Session B
+//   --------------------------                   ---------------------------------
+//   CREATE INDEX
+//   - DELETE_ONLY perm
+//   - WRITE_DELETE perm
+//   - BACKFILL perm
+//     - get safe time for read
+//                                                UPDATE a row of the indexed table
+//     - do the actual backfill
+//   - READ_WRITE_DELETE perm
+// The backfill should use the values before update when writing to the index.  The update should
+// write and delete to the index because of permissions.  Since backfill writes with an ancient
+// timestamp, the update should appear to have happened after the backfill.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillReadTime),
+          PgLibPqTestIndexBackfillSlow) {
+  const std::string kIndexName = "rn_idx";
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "rn";
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int, PRIMARY KEY (i ASC))", kTableName));
+  for (auto pair = std::make_pair(0, 10); pair.first < 6; ++pair.first, ++pair.second) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2)",
+                                 kTableName,
+                                 pair.first,
+                                 pair.second));
+  }
+
+  std::vector<std::thread> threads;
+  threads.emplace_back([&] {
+    auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName));
+    {
+      // Index scan to verify contents of index table.
+      const std::string query = Format("SELECT * FROM $0 WHERE j = 113", kTableName);
+      ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+      auto res = ASSERT_RESULT(conn.Fetch(query));
+      auto lines = PQntuples(res.get());
+      ASSERT_EQ(1, lines);
+      auto columns = PQnfields(res.get());
+      ASSERT_EQ(2, columns);
+      auto key = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+      ASSERT_EQ(key, 3);
+      // Make sure that the update is visible.
+      auto value = ASSERT_RESULT(GetInt32(res.get(), 0, 1));
+      ASSERT_EQ(value, 113);
+    }
+  });
+  threads.emplace_back([&] {
+    // Sleep to avoid querying for index too early.
+    std::this_thread::sleep_for(7s * 2);
+
+    std::string table_id =
+        ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
+    std::string index_id =
+        ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kIndexName));
+
+    // Wait for backfill stage.
+    {
+      IndexPermissions actual_permissions =
+          ASSERT_RESULT(client->WaitUntilIndexPermissionsAtLeast(
+            table_id,
+            index_id,
+            IndexPermissions::INDEX_PERM_DO_BACKFILL));
+      ASSERT_LE(actual_permissions, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE)
+          << "index creation failed";
+      ASSERT_NE(actual_permissions, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE)
+          << "index finished backfilling too quickly";
+    }
+
+    // Give the backfill stage enough time to get a read time.
+    // TODO(jason): come up with some way to wait until the read time is chosen rather than relying
+    // on a brittle sleep.
+    std::this_thread::sleep_for(5s);
+
+    auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+    ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = 3", kTableName));
+
+    // It should still be in the backfill stage, hopefully before the actual backfill started.
+    {
+      IndexPermissions actual_permissions =
+          ASSERT_RESULT(client->GetIndexPermissions(
+            table_id,
+            index_id));
+      ASSERT_EQ(
+          actual_permissions,
+          IndexPermissions::INDEX_PERM_DO_BACKFILL);
+    }
+  });
+
+  for (auto& thread : threads) {
+    thread.join();
+  }
+}
+
+// Make sure that updates at each stage of multi-stage index create work.  Simulate this situation:
+//   Session A                                    Session B
+//   --------------------------                   ---------------------------------
+//   CREATE INDEX
+//   - DELETE_ONLY perm
+//                                                UPDATE a row of the indexed table
+//   - WRITE_DELETE perm
+//                                                UPDATE a row of the indexed table
+//   - BACKFILL perm
+//                                                UPDATE a row of the indexed table
+//   - READ_WRITE_DELETE perm
+//                                                UPDATE a row of the indexed table
+// Updates should succeed and get written to the index.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillPermissions),
+          PgLibPqTestIndexBackfillSlow) {
+  const auto kGetTableIdWaitTime = 10s;
+  const auto kThreadWaitTime = 60s;
+  const std::array<std::pair<IndexPermissions, int>, 4> permission_key_pairs = {
+    std::make_pair(IndexPermissions::INDEX_PERM_DELETE_ONLY, 2),
+    std::make_pair(IndexPermissions::INDEX_PERM_WRITE_AND_DELETE, 3),
+    std::make_pair(IndexPermissions::INDEX_PERM_DO_BACKFILL, 4),
+    std::make_pair(IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE, 5),
+  };
+  const std::string kIndexName = "rn_idx";
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "rn";
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int, PRIMARY KEY (i ASC))", kTableName));
+  for (auto pair = std::make_pair(0, 10); pair.first < 6; ++pair.first, ++pair.second) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2)",
+                                 kTableName,
+                                 pair.first,
+                                 pair.second));
+  }
+
+  auto wait_for_perm =
+      [&](const TableId& table_id,
+          const TableId &index_id,
+          const IndexPermissions& target_permission) -> Status {
+        IndexPermissions actual_permission =
+            VERIFY_RESULT(client->WaitUntilIndexPermissionsAtLeast(
+              table_id,
+              index_id,
+              target_permission));
+        if (actual_permission > target_permission) {
+          return STATUS(RuntimeError, "Exceeded target permission");
+        } else {
+          return Status::OK();
+        }
+      };
+  auto assert_perm =
+      [&](const TableId& table_id,
+          const TableId &index_id,
+          const IndexPermissions& target_permission) {
+        IndexPermissions actual_permission =
+            ASSERT_RESULT(client->GetIndexPermissions(
+              table_id,
+              index_id));
+        ASSERT_EQ(
+            actual_permission,
+            target_permission);
+      };
+
+  std::atomic<int> updates(0);
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&] {
+    auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName));
+  });
+  thread_holder.AddThreadFunctor([&] {
+    // Wait to avoid querying for index too early.
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          if (GetTableIdByTableName(client.get(), kNamespaceName, kIndexName).ok()) {
+            return true;
+          } else {
+            return false;
+          }
+        },
+        kGetTableIdWaitTime,
+        "Wait to get index table id by name"));
+
+    std::string table_id =
+        ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
+    std::string index_id =
+        ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kIndexName));
+
+    for (auto pair : permission_key_pairs) {
+      IndexPermissions permission = pair.first;
+      int key = pair.second;
+
+      ASSERT_OK(wait_for_perm(table_id, index_id, permission));
+
+      // Create a new connection every loop iteration to avoid stale table cache issues.
+      // TODO(jason): no longer create new connections after closing issue #4828 (move this outside
+      // the loop).
+      auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+      LOG(INFO) << "running UPDATE on i = " << key;
+      ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = $1", kTableName, key));
+
+      assert_perm(table_id, index_id, permission);
+      updates++;
+    }
+  });
+
+  thread_holder.WaitAndStop(kThreadWaitTime);
+
+  ASSERT_EQ(updates.load(std::memory_order_acquire), permission_key_pairs.size());
+
+  for (auto pair : permission_key_pairs) {
+    int expected_key = pair.second;
+
+    // Verify contents of index table.
+    const std::string query = Format(
+        "WITH j_idx AS (SELECT * FROM $0 ORDER BY j) SELECT j FROM j_idx WHERE i = $1",
+        kTableName,
+        expected_key);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+    auto res = ASSERT_RESULT(conn.Fetch(query));
+    int lines = PQntuples(res.get());
+    ASSERT_EQ(1, lines);
+    int columns = PQnfields(res.get());
+    ASSERT_EQ(1, columns);
+    // Make sure that the update is visible.
+    int value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    ASSERT_EQ(value, expected_key + 110);
+  }
 }
 
 } // namespace pgwrapper

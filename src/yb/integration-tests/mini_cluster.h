@@ -238,7 +238,6 @@ class MiniCluster : public MiniClusterBase {
   Ports master_web_ports_;
   Ports tserver_rpc_ports_;
   Ports tserver_web_ports_;
-  uint16_t next_port_ = 0;
 
   MiniMasters mini_masters_;
   MiniTabletServers mini_tablet_servers_;

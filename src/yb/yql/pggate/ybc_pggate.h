@@ -135,6 +135,11 @@ YBCStatus YBCPgReserveOids(YBCPgOid database_oid,
 
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version);
 
+void YBCPgInvalidateTableCache(
+    const YBCPgOid database_oid,
+    const YBCPgOid table_oid);
+YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
+
 // TABLE -------------------------------------------------------------------------------------------
 // Create and drop table "database_name.schema_name.table_name()".
 // - When "schema_name" is NULL, the table "database_name.table_name" is created.
@@ -200,6 +205,9 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              bool *is_primary,
                              bool *is_hash);
 
+YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
+                                  YBCPgTableProperties *properties);
+
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row);
 
 YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle);
@@ -222,6 +230,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               YBCPgOid table_oid,
                               bool is_shared_index,
                               bool is_unique_index,
+                              const bool skip_index_backfill,
                               bool if_not_exist,
                               YBCPgStatement *handle);
 
@@ -230,6 +239,9 @@ YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name
                                     bool is_desc, bool is_nulls_first);
 
 YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_tablets);
+
+YBCStatus YBCPgCreateIndexAddSplitRow(YBCPgStatement handle, int num_cols,
+                                      YBCPgTypeEntity **types, uint64_t *data);
 
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 
@@ -246,6 +258,10 @@ YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
     const YBCPgOid index_oid,
     const uint32_t target_index_permissions,
     uint32_t *actual_index_permissions);
+
+YBCStatus YBCPgAsyncUpdateIndexPermissions(
+    const YBCPgOid database_oid,
+    const YBCPgOid indexed_table_oid);
 
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)
@@ -334,6 +350,8 @@ YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
 YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 
 YBCStatus YBCPgInsertStmtSetUpsertMode(YBCPgStatement handle);
+
+YBCStatus YBCPgInsertStmtSetWriteTime(YBCPgStatement handle, const uint64_t write_time);
 
 // UPDATE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,

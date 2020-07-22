@@ -661,7 +661,10 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
                 // should_remove_existing_entry to true, and if the CH flag is on (return both
                 // elements changed and elements added), increment return_value.
                 double score_to_remove = subdoc_reverse.GetDouble();
-                if (score_to_remove != kv.subkey(i).double_subkey()) {
+                // If incr option is set, we add the increment to the existing score.
+                double score_to_add = request_.set_request().sorted_set_options().incr() ?
+                    score_to_remove + kv.subkey(i).double_subkey() : kv.subkey(i).double_subkey();
+                if (score_to_remove != score_to_add) {
                   should_remove_existing_entry = true;
                   if (request_.set_request().sorted_set_options().ch()) {
                     return_value++;

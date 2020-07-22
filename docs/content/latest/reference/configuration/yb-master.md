@@ -110,7 +110,7 @@ In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, 
 
 Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
-Default: `0.0.0.0:7100`
+Default: `""`
 
 ##### --use_private_ip
 
@@ -369,6 +369,19 @@ Default: `8`
 On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/commands/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
 
 {{< /note >}}
+
+#### --tablet_split_size_threshold_bytes
+
+Enables dynamic tablet splitting and sets the threshold on tablet size, in bytes, before each tablet splits.
+
+**Syntax**
+
+```sh
+yb-admin --master_addresses <master-addresses> --tablet_split_size_threshold_bytes <bytes>
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *bytes*: The threshold size, in bytes, before each tablet should be split. Default value is `0`, Default value of `0` disables dynamic tablet splitting.
 
 ---
 

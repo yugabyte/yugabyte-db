@@ -938,7 +938,7 @@ string ExternalMiniCluster::GetTabletServerAddresses() const {
     if (!peer_addrs.empty()) {
       peer_addrs += ",";
     }
-    peer_addrs += Format("$0:$1", ts->bind_host(), ts->rpc_port());
+    peer_addrs += HostPortToString(ts->bind_host(), ts->rpc_port());
   }
   return peer_addrs;
 }
@@ -1360,8 +1360,8 @@ int ExternalMiniCluster::tablet_server_index_by_uuid(const std::string& uuid) co
   return -1;
 }
 
-vector<ExternalDaemon*> ExternalMiniCluster::master_daemons() const {
-  vector<ExternalDaemon*> results;
+vector<ExternalMaster*> ExternalMiniCluster::master_daemons() const {
+  vector<ExternalMaster*> results;
   for (const scoped_refptr<ExternalMaster>& master : masters_) {
     results.push_back(master.get());
   }

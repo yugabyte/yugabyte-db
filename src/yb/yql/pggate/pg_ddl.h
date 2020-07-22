@@ -137,13 +137,13 @@ class PgCreateTable : public PgDdl {
                 bool if_not_exist,
                 bool add_primary_key,
                 const bool colocated);
-  virtual ~PgCreateTable();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLE; }
 
   // For PgCreateIndex: the indexed (base) table id and if this is a unique index.
   virtual boost::optional<const PgObjectId&> indexed_table_id() const { return boost::none; }
   virtual bool is_unique_index() const { return false; }
+  virtual const bool skip_index_backfill() const { return false; }
 
   CHECKED_STATUS AddColumn(const char *attr_name,
                            int attr_num,
@@ -166,9 +166,9 @@ class PgCreateTable : public PgDdl {
   }
 
   // Specify the number of tablets explicitly.
-  virtual CHECKED_STATUS SetNumTablets(int32_t num_tablets);
+  CHECKED_STATUS SetNumTablets(int32_t num_tablets);
 
-  virtual CHECKED_STATUS AddSplitRow(int num_cols, YBCPgTypeEntity **types, uint64_t *data);
+  CHECKED_STATUS AddSplitRow(int num_cols, YBCPgTypeEntity **types, uint64_t *data);
 
   // Execute.
   virtual CHECKED_STATUS Exec();
@@ -181,6 +181,8 @@ class PgCreateTable : public PgDdl {
                                        bool is_range,
                                        ColumnSchema::SortingType sorting_type =
                                            ColumnSchema::SortingType::kNotSpecified);
+
+  virtual size_t PrimaryKeyRangeColumnCount() const;
 
  private:
   Result<std::vector<std::string>> BuildSplitRows(const client::YBSchema& schema);
@@ -265,8 +267,8 @@ class PgCreateIndex : public PgCreateTable {
                 const PgObjectId& base_table_id,
                 bool is_shared_index,
                 bool is_unique_index,
+                const bool skip_index_backfill,
                 bool if_not_exist);
-  virtual ~PgCreateIndex();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_INDEX; }
 
@@ -276,6 +278,10 @@ class PgCreateIndex : public PgCreateTable {
 
   bool is_unique_index() const override {
     return is_unique_index_;
+  }
+
+  const bool skip_index_backfill() const override {
+    return skip_index_backfill_;
   }
 
   // Execute.
@@ -290,11 +296,15 @@ class PgCreateIndex : public PgCreateTable {
                                ColumnSchema::SortingType sorting_type) override;
 
  private:
+  size_t PrimaryKeyRangeColumnCount() const override;
+
   CHECKED_STATUS AddYBbasectidColumn();
 
   const PgObjectId base_table_id_;
   bool is_unique_index_ = false;
+  bool skip_index_backfill_ = false;
   bool ybbasectid_added_ = false;
+  size_t primary_key_range_column_count_ = 0;
 };
 
 class PgDropIndex : public PgDropTable {

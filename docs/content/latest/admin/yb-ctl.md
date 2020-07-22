@@ -178,7 +178,7 @@ Default: `false`
 
 ##### --listen_ip
 
-Allows a 1-node RF1 cluster to listen on an address different than the default of `127.0.0.1`. For example, setting this to `0.0.0.0` enables the external access of the database APIs and admin UIs. This flag is not applicable to multi-node clusters.
+ Specifies the IP address, or port, for a 1-node cluster to listen on. To enable external access of the YugabyteDB APIs and administration ports, set the value to `0.0.0.0`. Note that this flag is not applicable to multi-node clusters.
 
 Default: `127.0.0.1`
 
@@ -319,7 +319,7 @@ Following is the output shown for a 3-node RF3 cluster.
 ----------------------------------------------------------------------------------------------------
 | Node Count: 3 | Replication Factor: 3                                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
 | YCQL Shell          : bin/ycqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
@@ -329,7 +329,7 @@ Following is the output shown for a 3-node RF3 cluster.
 ----------------------------------------------------------------------------------------------------
 | Node 1: yb-tserver (pid 27389), yb-master (pid 27380)                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
 | YCQL Shell          : bin/ycqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
@@ -340,7 +340,7 @@ Following is the output shown for a 3-node RF3 cluster.
 ----------------------------------------------------------------------------------------------------
 | Node 2: yb-tserver (pid 27392), yb-master (pid 27383)                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql://127.0.0.2:5433/postgres                                  |
+| JDBC                : jdbc:postgresql://127.0.0.2:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh -h 127.0.0.2                                                    |
 | YCQL Shell          : bin/ycqlsh 127.0.0.2                                                        |
 | YEDIS Shell         : bin/redis-cli -h 127.0.0.2                                                 |
@@ -351,7 +351,7 @@ Following is the output shown for a 3-node RF3 cluster.
 ----------------------------------------------------------------------------------------------------
 | Node 3: yb-tserver (pid 27395), yb-master (pid 27386)                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql://127.0.0.3:5433/postgres                                  |
+| JDBC                : jdbc:postgresql://127.0.0.3:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh -h 127.0.0.3                                                    |
 | YCQL Shell          : bin/ycqlsh 127.0.0.3                                                        |
 | YEDIS Shell         : bin/redis-cli -h 127.0.0.3                                                 |

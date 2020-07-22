@@ -86,15 +86,26 @@ public class Backup extends Model {
   // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>/table-keyspace.table_name.table_uuid
   private void updateStorageLocation(BackupTableParams params) {
     CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
-    params.storageLocation = String.format("univ-%s/backup-%s-%d/table-%s.%s",
+    if (params.tableUUIDList != null) {
+      params.storageLocation = String.format("univ-%s/backup-%s-%d/multi-table-%s",
+        params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
+        params.keyspace);
+    } else if (params.tableName == null && params.keyspace != null) {
+      params.storageLocation = String.format("univ-%s/backup-%s-%d/keyspace-%s",
+        params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
+        params.keyspace);
+    } else {
+      params.storageLocation = String.format("univ-%s/backup-%s-%d/table-%s.%s",
         params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
         params.keyspace, params.tableName);
-    if (params.tableUUID != null) {
-      params.storageLocation = String.format("%s-%s",
+      if (params.tableUUID != null) {
+        params.storageLocation = String.format("%s-%s",
           params.storageLocation,
           params.tableUUID.toString().replace("-", "")
-      );
+        );
+      }
     }
+
     if (customerConfig != null) {
       // TODO: These values, S3 vs NFS / S3_BUCKET vs NFS_PATH come from UI right now...
       JsonNode storageNode = customerConfig.getData().get("BACKUP_LOCATION");
@@ -112,7 +123,14 @@ public class Backup extends Model {
     backup.backupUUID = UUID.randomUUID();
     backup.customerUUID = customerUUID;
     backup.state = BackupState.InProgress;
-    if (params.storageLocation == null) {
+    if (params.backupList != null) {
+      // In event of universe backup
+      for (BackupTableParams childBackup : params.backupList) {
+        if (childBackup.storageLocation == null) {
+          backup.updateStorageLocation(childBackup);
+        }
+      }
+    } else if (params.storageLocation == null) {
       // We would derive the storage location based on the parameters
       backup.updateStorageLocation(params);
     }

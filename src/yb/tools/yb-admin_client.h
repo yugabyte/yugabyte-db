@@ -94,9 +94,9 @@ class ClusterAdminClient {
   // Creates an admin client for host/port combination e.g.,
   // "localhost" or "127.0.0.1:7050" with the given timeout.
   // If certs_dir is non-empty, caller will init the yb_client_.
-  ClusterAdminClient(std::string addrs, int64_t timeout_millis);
+  ClusterAdminClient(std::string addrs, MonoDelta timeout);
 
-  ClusterAdminClient(const HostPort& init_master_addr, int64_t timeout_millis);
+  ClusterAdminClient(const HostPort& init_master_addr, MonoDelta timeout);
 
   virtual ~ClusterAdminClient();
 
@@ -125,7 +125,9 @@ class ClusterAdminClient {
   CHECKED_STATUS DumpMasterState(bool to_console);
 
   // List all the tables.
-  CHECKED_STATUS ListTables(bool include_db_type, bool include_table_id);
+  CHECKED_STATUS ListTables(bool include_db_type,
+                            bool include_table_id,
+                            bool include_table_type);
 
   // List all tablets of this table
   CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets);
@@ -222,6 +224,8 @@ class ClusterAdminClient {
   Result<TableNameResolver> BuildTableNameResolver();
 
   Result<std::string> GetMasterLeaderUuid();
+
+  CHECKED_STATUS GetYsqlCatalogVersion();
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

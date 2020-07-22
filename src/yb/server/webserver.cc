@@ -135,7 +135,11 @@ bool Webserver::IsSecure() const {
 Status Webserver::BuildListenSpec(string* spec) const {
   std::vector<Endpoint> addrs;
   RETURN_NOT_OK(ParseAddressList(http_address_, 80, &addrs));
-
+  if (addrs.empty()) {
+    return STATUS_FORMAT(
+      ConfigurationError,
+      "No IPs available for address $0", http_address_);
+  }
   std::vector<string> parts;
   for (const auto& addr : addrs) {
     // Mongoose makes sockets with 's' suffixes accept SSL traffic only
@@ -143,6 +147,7 @@ Status Webserver::BuildListenSpec(string* spec) const {
   }
 
   JoinStrings(parts, ",", spec);
+  LOG(INFO) << "Webserver listen spec is " << *spec;
   return Status::OK();
 }
 

@@ -129,8 +129,10 @@ ThreadPool* Proxy::GetCallbackThreadPool(
     case InvokeCallbackMode::kReactorThread:
       return nullptr;
       break;
-    case InvokeCallbackMode::kThreadPool:
-      return &context_->CallbackThreadPool();
+    case InvokeCallbackMode::kThreadPoolNormal:
+      return &context_->CallbackThreadPool(ServicePriority::kNormal);
+    case InvokeCallbackMode::kThreadPoolHigh:
+      return &context_->CallbackThreadPool(ServicePriority::kHigh);
   }
   FATAL_INVALID_ENUM_VALUE(InvokeCallbackMode, invoke_callback_mode);
 }
@@ -168,6 +170,10 @@ void Proxy::DoAsyncRequest(const RemoteMethod* method,
     // field.
     NotifyFailed(controller, s);
     return;
+  }
+
+  if (controller->timeout().Initialized() && controller->timeout() > 3600s) {
+    LOG(DFATAL) << "Too big timeout specified: " << controller->timeout();
   }
 
   if (call_local_service_) {

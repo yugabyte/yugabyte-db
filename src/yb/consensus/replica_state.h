@@ -330,7 +330,7 @@ class ReplicaState {
   // API to dump pending transactions. Added to debug ENG-520.
   void DumpPendingOperationsUnlocked();
 
-  void NewIdUnlocked(OpId* id);
+  yb::OpId NewIdUnlocked();
 
   // Used when, for some reason, an operation that failed before it could be considered
   // a part of the state machine. Basically restores the id gen to the state it was before

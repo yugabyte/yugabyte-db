@@ -220,27 +220,6 @@ YBShouldReportErrorStatus()
 	return cached_value;
 }
 
-char* DupYBStatusMessage(YBCStatus status, bool message_only) {
-  const char* code_as_cstring = YBCStatusCodeAsCString(status);
-  size_t code_strlen = strlen(code_as_cstring);
-	size_t status_len = YBCStatusMessageLen(status);
-	size_t sz = code_strlen + status_len + 3;
-	if (message_only) {
-		sz -= 2 + code_strlen;
-	}
-	char* msg_buf = palloc(sz);
-	char* pos = msg_buf;
-	if (!message_only) {
-		memcpy(msg_buf, code_as_cstring, code_strlen);
-		pos += code_strlen;
-		*pos++ = ':';
-		*pos++ = ' ';
-	}
-	memcpy(pos, YBCStatusMessageBegin(status), status_len);
-	pos[status_len] = 0;
-	return msg_buf;
-}
-
 void
 HandleYBStatus(YBCStatus status)
 {
@@ -746,6 +725,12 @@ YBIsInitDbAlreadyDone()
 
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static int ddl_nesting_level = 0;
+
+int
+YBGetDdlNestingLevel()
+{
+	return ddl_nesting_level;
+}
 
 void
 YBIncrementDdlNestingLevel()

@@ -295,6 +295,10 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
   return result;
 }
 
+void PgDocOp::SetReadTime() {
+  read_time_ = exec_params_.read_time;
+}
+
 //-------------------------------------------------------------------------------------------------
 
 PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
@@ -309,6 +313,8 @@ void PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   template_op_->mutable_request()->set_return_paging_state(true);
   SetRequestPrefetchLimit();
   SetRowMark();
+  SetReadTime();
+  SetPartitionKey();
 }
 
 Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {
@@ -624,6 +630,13 @@ Status PgDocReadOp::ProcessResponsePagingState() {
     }
   }
 
+  // If partition key of tablet to scan is specified, then we should be done.  This is because,
+  // curently, only `BACKFILL INDEX ... PARTITION ...` statements set `partition_key`, and they scan
+  // a single tablet.
+  if (partition_key_) {
+    has_more_data = false;
+  }
+
   if (has_more_data || send_count < active_op_count_) {
     // Move inactive ops to the end of pgsql_ops_ to make room for new set of arguments.
     MoveInactiveOpsOutside();
@@ -669,6 +682,20 @@ void PgDocReadOp::SetRowMark() {
     req->clear_row_mark_type();
   } else {
     req->set_row_mark_type(static_cast<yb::RowMarkType>(exec_params_.rowmark));
+  }
+}
+
+void PgDocReadOp::SetReadTime() {
+  PgDocOp::SetReadTime();
+  if (read_time_) {
+    template_op_->SetReadTime(ReadHybridTime::FromUint64(read_time_));
+  }
+}
+
+void PgDocReadOp::SetPartitionKey() {
+  if (exec_params_.partition_key != NULL) {
+    partition_key_ = a2b_hex(exec_params_.partition_key);
+    template_op_->SetPartitionKey(partition_key_.get());
   }
 }
 
@@ -744,6 +771,11 @@ Status PgDocWriteOp::CreateRequests() {
   VLOG_IF(1, response_.InProgress()) << __PRETTY_FUNCTION__ << ": Sending request for " << this;
   return Status::OK();
 }
+
+void PgDocWriteOp::SetWriteTime(const HybridTime& write_time) {
+  write_op_->SetWriteTime(write_time);
+}
+
 
 }  // namespace pggate
 }  // namespace yb

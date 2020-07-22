@@ -194,6 +194,7 @@ Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb, TableId primary_table_id
   rocksdb_dir = pb.rocksdb_dir();
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
+  has_been_fully_compacted = pb.has_been_fully_compacted();
   return LoadTablesFromPB(pb.tables(), primary_table_id);
 }
 
@@ -210,6 +211,7 @@ void KvStoreInfo::ToPB(TableId primary_table_id, KvStoreInfoPB* pb) const {
   } else {
     pb->set_upper_bound_key(upper_bound_key);
   }
+  pb->set_has_been_fully_compacted(has_been_fully_compacted);
 
   // Putting primary table first, then all other tables.
   const auto& it = tables.find(primary_table_id);
@@ -347,6 +349,10 @@ CHECKED_STATUS MakeTableNotFound(const TableId& table_id, const RaftGroupId& raf
 
 Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(const std::string& table_id) const {
   std::lock_guard<MutexType> lock(data_mutex_);
+  return GetTableInfoUnlocked(table_id);
+}
+
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(const std::string& table_id) const {
   const auto& tables = kv_store_.tables;
   const auto id = !table_id.empty() ? table_id : primary_table_id_;
   const auto iter = tables.find(id);
@@ -645,18 +651,33 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
 void RaftGroupMetadata::SetSchema(const Schema& schema,
                                   const IndexMap& index_map,
                                   const std::vector<DeletedColumn>& deleted_cols,
-                                  const uint32_t version) {
+                                  const uint32_t version,
+                                  const TableId& table_id) {
   DCHECK(schema.has_column_ids());
   std::lock_guard<MutexType> lock(data_mutex_);
-  TableInfoPtr new_table_info = std::make_shared<TableInfo>(*primary_table_info_unlocked(),
-                                                           schema,
-                                                           index_map,
-                                                           deleted_cols,
-                                                           version);
-  VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating to Schema version " << version
-                      << " from \n" << yb::ToString(kv_store_.tables[primary_table_id_])
+  TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
+  auto result = GetTableInfoUnlocked(target_table_id);
+  DCHECK(result.ok());
+  TableInfoPtr new_table_info = std::make_shared<TableInfo>(*result.get(),
+                                                            schema,
+                                                            index_map,
+                                                            deleted_cols,
+                                                            version);
+  if (target_table_id != primary_table_id_) {
+    if (schema.table_properties().is_ysql_catalog_table()) {
+      Uuid cotable_id;
+      CHECK_OK(cotable_id.FromHexString(target_table_id));
+      new_table_info->schema.set_cotable_id(cotable_id);
+    } else {
+      auto result = CHECK_RESULT(GetPgsqlTableOid(target_table_id));
+      new_table_info->schema.set_pgtable_id(result);
+    }
+  }
+  VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
+                      << " to Schema version " << version
+                      << " from \n" << yb::ToString(kv_store_.tables[target_table_id])
                       << " to \n" << yb::ToString(new_table_info);
-  kv_store_.tables[primary_table_id_].swap(new_table_info);
+  kv_store_.tables[target_table_id].swap(new_table_info);
 }
 
 void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_schema) {
@@ -666,11 +687,12 @@ void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_sche
   tables[primary_table_id_]->partition_schema = partition_schema;
 }
 
-void RaftGroupMetadata::SetTableName(const string& table_name) {
+void RaftGroupMetadata::SetTableName(const string& table_name, const TableId& table_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
-  DCHECK(tables.find(primary_table_id_) != tables.end());
-  tables[primary_table_id_]->table_name = table_name;
+  auto& id = table_id.empty() ? primary_table_id_ : table_id;
+  DCHECK(tables.find(id) != tables.end());
+  tables[id]->table_name = table_name;
 }
 
 void RaftGroupMetadata::AddTable(const std::string& table_id,
@@ -714,13 +736,13 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
           << new_table_info->ToString() << ", old table info: " << existing_table.ToString();
     }
   }
-  VLOG_WITH_PREFIX(1) << " Updating to Schema version " << schema_version
-                      << " from \n" << yb::ToString(tables[table_id])
-                      << " to \n" << yb::ToString(new_table_info);
+  VLOG_WITH_PREFIX(1) << "Updating to Schema version " << schema_version
+                      << " from\n" << yb::ToString(tables[table_id])
+                      << "\nto\n" << yb::ToString(new_table_info);
   tables[table_id].swap(new_table_info);
 }
 
-void RaftGroupMetadata::RemoveTable(const std::string& table_id) {
+void RaftGroupMetadata::RemoveTable(const TableId& table_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   tables.erase(table_id);
@@ -821,6 +843,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
   metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
+  metadata->kv_store_.has_been_fully_compacted = false;
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
   metadata->tablet_data_state_ = TABLET_DATA_UNKNOWN;

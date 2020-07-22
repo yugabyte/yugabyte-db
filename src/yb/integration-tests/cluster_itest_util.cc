@@ -780,6 +780,36 @@ Status StartElection(const TServerDetails* replica,
   return Status::OK();
 }
 
+Status RequestVote(const TServerDetails* replica,
+                   const std::string& tablet_id,
+                   const std::string& candidate_uuid,
+                   int64_t candidate_term,
+                   const consensus::OpId& last_logged_opid,
+                   boost::optional<bool> ignore_live_leader,
+                   boost::optional<bool> is_pre_election,
+                   const MonoDelta& timeout) {
+  DSCHECK(last_logged_opid.IsInitialized(), Uninitialized, "Last logged op id is uninitialized");
+  consensus::VoteRequestPB req;
+  req.set_dest_uuid(replica->uuid());
+  req.set_tablet_id(tablet_id);
+  req.set_candidate_uuid(candidate_uuid);
+  req.set_candidate_term(candidate_term);
+  *req.mutable_candidate_status()->mutable_last_received() = last_logged_opid;
+  if (ignore_live_leader) req.set_ignore_live_leader(*ignore_live_leader);
+  if (is_pre_election) req.set_preelection(*is_pre_election);
+  consensus::VoteResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout);
+  RETURN_NOT_OK(replica->consensus_proxy->RequestConsensusVote(req, &resp, &rpc));
+  if (resp.has_vote_granted() && resp.vote_granted())
+    return Status::OK();
+  if (resp.has_error())
+    return StatusFromPB(resp.error().status());
+  if (resp.has_consensus_error())
+    return StatusFromPB(resp.consensus_error().status());
+  return STATUS(IllegalState, "Unknown error (vote not granted)");
+}
+
 Status LeaderStepDown(
     const TServerDetails* replica,
     const string& tablet_id,

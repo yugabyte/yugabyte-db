@@ -38,6 +38,7 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 
 namespace yb {
 namespace client {
@@ -139,6 +140,7 @@ class BackupTxnTest : public TransactionTestBase {
     master::ListSnapshotsRequestPB req;
     master::ListSnapshotsResponsePB resp;
 
+    req.set_list_deleted_snapshots(true);
     if (!snapshot_id.IsNil()) {
       req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
     }
@@ -342,10 +344,10 @@ TEST_F(BackupTxnTest, Delete) {
 
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
     auto snapshots = VERIFY_RESULT(ListSnapshots());
-    if (snapshots.empty()) {
+    SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
+    if (snapshots[0].entry().state(), SysSnapshotEntryPB::DELETED) {
       return true;
     }
-    SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
     SCHECK_EQ(snapshots[0].entry().state(), SysSnapshotEntryPB::DELETING, IllegalState,
               "Wrong snapshot state");
     return false;
@@ -367,6 +369,12 @@ TEST_F(BackupTxnTest, Delete) {
     }
     return true;
   }, kWaitTimeout * kTimeMultiplier, "Delete on tablets"));
+
+  SetAtomicFlag(1000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    return VERIFY_RESULT(ListSnapshots()).empty();
+  }, kWaitTimeout * kTimeMultiplier, "Snapshot cleanup"));
 }
 
 TEST_F(BackupTxnTest, ImportMeta) {

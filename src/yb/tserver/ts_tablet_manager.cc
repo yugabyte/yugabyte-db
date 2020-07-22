@@ -218,6 +218,9 @@ DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeou
              "Default timeout for the YBClient embedded into the tablet server that is used "
              "for distributed transactions.");
 
+DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
+            "Set to true to prioritize bootstrapping transaction status tablets first.");
+
 namespace yb {
 namespace tserver {
 
@@ -549,7 +552,7 @@ Status TSTabletManager::Init() {
 
   InitLocalRaftPeerPB();
 
-  vector<RaftGroupMetadataPtr> metas;
+  deque<RaftGroupMetadataPtr> metas;
 
   // First, load all of the tablet metadata. We do this before we start
   // submitting the actual OpenTablet() tasks so that we don't have to compete
@@ -566,8 +569,18 @@ Status TSTabletManager::Init() {
     RegisterDataAndWalDir(
         fs_manager_, meta->table_id(), meta->raft_group_id(), meta->data_root_dir(),
         meta->wal_root_dir());
-    metas.push_back(meta);
+    if (FLAGS_enable_restart_transaction_status_tablets_first) {
+      // Prioritize bootstrapping transaction status tablets first.
+      if (meta->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
+        metas.push_front(meta);
+      } else {
+        metas.push_back(meta);
+      }
+    } else {
+      metas.push_back(meta);
+    }
   }
+
   MonoDelta elapsed = MonoTime::Now().GetDeltaSince(start);
   LOG(INFO) << "Loaded metadata for " << tablet_ids.size() << " tablet in "
             << elapsed.ToMilliseconds() << " ms";
@@ -1517,6 +1530,8 @@ void TSTabletManager::CompleteShutdown() {
   {
     std::lock_guard<RWMutex> l(mutex_);
     tablet_map_.clear();
+
+    std::lock_guard<std::mutex> dir_assignment_lock(dir_assignment_mutex_);
     table_data_assignment_map_.clear();
     table_wal_assignment_map_.clear();
 
@@ -1959,7 +1974,7 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
   }
   LOG(INFO) << "Get and update data/wal directory assignment map for table: " \
             << table_id << " and tablet " << tablet_id;
-  MutexLock l(dir_assignment_lock_);
+  std::lock_guard<std::mutex> dir_assignment_lock(dir_assignment_mutex_);
   // Initialize the map if the directory mapping does not exist.
   auto data_root_dirs = fs_manager->GetDataRootDirs();
   CHECK(!data_root_dirs.empty()) << "No data root directories found";
@@ -2022,7 +2037,7 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
   }
   LOG(INFO) << "Update data/wal directory assignment map for table: "
             << table_id << " and tablet " << tablet_id;
-  MutexLock l(dir_assignment_lock_);
+  std::lock_guard<std::mutex> dir_assignment_lock(dir_assignment_mutex_);
   // Initialize the map if the directory mapping does not exist.
   auto data_root_dirs = fs_manager->GetDataRootDirs();
   CHECK(!data_root_dirs.empty()) << "No data root directories found";
@@ -2067,7 +2082,7 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
   }
 }
 
-TSTabletManager::TableDiskAssignmentMap* TSTabletManager::GetTableDiskAssignmentMap(
+TSTabletManager::TableDiskAssignmentMap* TSTabletManager::GetTableDiskAssignmentMapUnlocked(
     TabletDirType dir_type) {
   switch (dir_type) {
     case TabletDirType::kData:
@@ -2080,7 +2095,9 @@ TSTabletManager::TableDiskAssignmentMap* TSTabletManager::GetTableDiskAssignment
 
 Result<const std::string&> TSTabletManager::GetAssignedRootDirForTablet(
     TabletDirType dir_type, const TableId& table_id, const TabletId& tablet_id) {
-  TableDiskAssignmentMap* table_assignment_map = GetTableDiskAssignmentMap(dir_type);
+  std::lock_guard<std::mutex> dir_assignment_lock(dir_assignment_mutex_);
+
+  TableDiskAssignmentMap* table_assignment_map = GetTableDiskAssignmentMapUnlocked(dir_type);
   auto tablets_by_root_dir = table_assignment_map->find(table_id);
   if (tablets_by_root_dir == table_assignment_map->end()) {
     return STATUS_FORMAT(
@@ -2106,7 +2123,7 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
   }
   LOG(INFO) << "Unregister data/wal directory assignment map for table: "
             << table_id << " and tablet " << tablet_id;
-  MutexLock l(dir_assignment_lock_);
+  std::lock_guard<std::mutex> lock(dir_assignment_mutex_);
   auto table_data_assignment_iter = table_data_assignment_map_.find(table_id);
   if (table_data_assignment_iter == table_data_assignment_map_.end()) {
     // It is possible that we can't find an assignment for the table if the operations followed in

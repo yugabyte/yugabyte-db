@@ -1,0 +1,13 @@
+# src/test/regress/yb_pg_random_schedule
+#
+####################################################################################################
+# This includes tests for Random Functions
+####################################################################################################
+
+# Chain of dependencies for `yb_pg_random`
+test: yb_pg_create_function_1
+test: yb_pg_create_type
+test: yb_pg_create_table
+test: yb_pg_copy
+
+test: random
