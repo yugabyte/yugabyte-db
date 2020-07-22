@@ -5669,15 +5669,15 @@ restart:
 		if (IsProjectionFunctionalIndex(indexDesc))
 		{
 			projindexes = bms_add_member(projindexes, indexno);
-			pull_varattnos(indexExpressions, 1, &projindexattrs);
+			pull_varattnos_min_attr(indexExpressions, 1, &projindexattrs, attr_offset + 1);
 		}
 		else
 		{
 			/* Collect all attributes used in expressions, too */
-			pull_varattnos(indexExpressions, 1, &indexattrs);
+			pull_varattnos_min_attr(indexExpressions, 1, &indexattrs, attr_offset + 1);
 		}
 		/* Collect all attributes in the index predicate, too */
-		pull_varattnos(indexPredicate, 1, &indexattrs);
+		pull_varattnos_min_attr(indexPredicate, 1, &indexattrs, attr_offset + 1);
 
 		index_close(indexDesc, AccessShareLock);
 		indexno += 1;

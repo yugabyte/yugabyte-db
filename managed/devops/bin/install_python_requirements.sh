@@ -65,6 +65,19 @@ else
   log "Installing ybops package"
   install_ybops_package
 
+  log "Changing virtualenv absolute paths to dynamic paths"
+  # Change shebangs to use local python instead of absolute python path - required for our Jenkins
+  # pipeline and packaging (e.g. "/tmp/python_virtual_env/bin/python" -> "/usr/bin/env python")
+  LC_ALL=C find $virtualenv_dir ! -name '*.pyc' -type f -exec sed -i.yb_tmp \
+    -e "1s|${virtualenv_dir}/bin/python|/usr/bin/env python|" {} \; -exec rm {}.yb_tmp \;
+
+  # Change VIRTUAL_ENV variable to be dynamic. Instead of hardcoding the path to the vitualenv
+  # directory, the VIRTUAL_ENV variable should print the filepath of the directory two above it.
+  new_venv_assignment='VIRTUAL_ENV="$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}" )")" \&\& pwd -P)"'
+  sed -i.yb_tmp \
+    -e "s|VIRTUAL_ENV=\"${virtualenv_dir}\"|${new_venv_assignment}|" $virtualenv_dir/bin/activate
+  rm $virtualenv_dir/bin/activate.yb_tmp
+
   if should_use_virtual_env; then
     log "Expecting there to be no differences between the output of 'pip freeze' and the contents" \
         "of $FROZEN_REQUIREMENTS_FILE"
@@ -85,19 +98,6 @@ else
 fi
 
 if [[ $should_create_package == "1" ]]; then
-  log "Changing virtualenv absolute paths to dynamic paths"
-  # Change shebangs to use local python instead of absolute python path - required for our Jenkins
-  # pipeline and packaging (e.g. "/tmp/python_virtual_env/bin/python" -> "/usr/bin/env python")
-  LC_ALL=C find $virtualenv_dir ! -name '*.pyc' -type f -exec sed -i.yb_tmp \
-    -e "1s|${virtualenv_dir}/bin/python|/usr/bin/env python|" {} \; -exec rm {}.yb_tmp \;
-
-  # Change VIRTUAL_ENV variable to be dynamic. Instead of hardcoding the path to the vitualenv
-  # directory, the VIRTUAL_ENV variable should print the filepath of the directory two above it.
-  new_venv_assignment='VIRTUAL_ENV="$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}" )")" \&\& pwd -P)"'
-  sed -i.yb_tmp \
-    -e "s|VIRTUAL_ENV=\"${virtualenv_dir}\"|${new_venv_assignment}|" $virtualenv_dir/bin/activate
-  rm $virtualenv_dir/bin/activate.yb_tmp
-
   log "Creating virtualenv package $virtualenv_package"
   create_virtualenv_package
 fi

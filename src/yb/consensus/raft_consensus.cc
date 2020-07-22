@@ -155,6 +155,12 @@ METRIC_DEFINE_lag(tablet, follower_lag_ms,
                   "The amount of time since the last UpdateConsensus request from the "
                   "leader.");
 
+METRIC_DEFINE_gauge_int64(tablet, is_raft_leader,
+                          "Is tablet raft leader",
+                          yb::MetricUnit::kUnits,
+                          "Keeps track whether tablet is raft leader"
+                          "1 indicates that the tablet is raft leader");
+
 METRIC_DEFINE_histogram(
   tablet, dns_resolve_latency_during_update_raft_config,
   "yb.consensus.RaftConsensus.UpdateRaftConfig DNS Resolve",
@@ -335,6 +341,8 @@ RaftConsensus::RaftConsensus(
                                                     cmeta->current_term())),
       follower_last_update_time_ms_metric_(
           metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms)),
+      is_raft_leader_metric_(metric_entity->FindOrCreateGauge(&METRIC_is_raft_leader,
+                                                              static_cast<int64_t>(0))),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type),
       update_raft_config_dns_latency_(
@@ -397,7 +405,7 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
 
     RETURN_NOT_OK(state_->InitCommittedOpIdUnlocked(yb::OpId::FromPB(info.last_committed_id)));
 
-    queue_->Init(state_->GetLastReceivedOpIdUnlocked().ToPB<OpId>());
+    queue_->Init(state_->GetLastReceivedOpIdUnlocked().ToPB<OpIdPB>());
   }
 
   {
@@ -944,6 +952,8 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 
   peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
 
+  is_raft_leader_metric_->set_value(1);
+
   return Status::OK();
 }
 
@@ -974,6 +984,8 @@ Status RaftConsensus::BecomeReplicaUnlocked(
   queue_->SetNonLeaderMode();
 
   peer_manager_->Close();
+
+  is_raft_leader_metric_->set_value(0);
 
   return Status::OK();
 }
@@ -1087,8 +1099,7 @@ void RaftConsensus::MajorityReplicatedNumSSTFilesChanged(
 }
 
 void RaftConsensus::UpdateMajorityReplicated(
-    const MajorityReplicatedData& majority_replicated_data,
-    OpId* committed_op_id) {
+    const MajorityReplicatedData& majority_replicated_data, OpIdPB* committed_op_id) {
   TEST_PAUSE_IF_FLAG(TEST_pause_update_majority_replicated);
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
@@ -1340,8 +1351,8 @@ std::string RaftConsensus::LeaderRequest::OpsRangeString() const {
   ret.reserve(100);
   ret.push_back('[');
   if (!messages.empty()) {
-    const OpId& first_op = (*messages.begin())->id();
-    const OpId& last_op = (*messages.rbegin())->id();
+    const OpIdPB& first_op = (*messages.begin())->id();
+    const OpIdPB& last_op = (*messages.rbegin())->id();
     strings::SubstituteAndAppend(&ret, "$0.$1-$2.$3",
                                  first_op.term(), first_op.index(),
                                  last_op.term(), last_op.index());
@@ -1350,8 +1361,8 @@ std::string RaftConsensus::LeaderRequest::OpsRangeString() const {
   return ret;
 }
 
-void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req,
-                                                     LeaderRequest* deduplicated_req) {
+Status RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req,
+                                                       LeaderRequest* deduplicated_req) {
   const auto& last_committed = state_->GetCommittedOpIdUnlocked();
 
   // The leader's preceding id.
@@ -1378,7 +1389,11 @@ void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req
       // pendings set.
       scoped_refptr<ConsensusRound> round =
           state_->GetPendingOpByIndexOrNullUnlocked(leader_msg->id().index());
-      DCHECK(round);
+      if (!round) {
+        // Could happen if we received outdated leader request. So should just reject it.
+        return STATUS_FORMAT(IllegalState, "Round not found for index: $0",
+                             leader_msg->id().index());
+      }
 
       // If the OpIds match, i.e. if they have the same term and id, then this is just
       // duplicate, we skip...
@@ -1406,6 +1421,8 @@ void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req
                           << "   Dedup: " << deduplicated_req->preceding_op_id << "->"
                           << deduplicated_req->OpsRangeString();
   }
+
+  return Status::OK();
 }
 
 Status RaftConsensus::HandleLeaderRequestTermUnlocked(const ConsensusRequestPB* request,
@@ -1509,8 +1526,7 @@ Status RaftConsensus::CheckLeaderRequestOpIdSequence(
 Status RaftConsensus::CheckLeaderRequestUnlocked(ConsensusRequestPB* request,
                                                  ConsensusResponsePB* response,
                                                  LeaderRequest* deduped_req) {
-
-  DeduplicateLeaderRequestUnlocked(request, deduped_req);
+  RETURN_NOT_OK(DeduplicateLeaderRequestUnlocked(request, deduped_req));
 
   // This is an additional check for KUDU-639 that makes sure the message's index
   // and term are in the right sequence in the request, after we've deduplicated
@@ -1931,7 +1947,7 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB
   // It's possible that the leader didn't send us any new data -- it might be a completely
   // duplicate request. In that case, we don't need to update LastReceived at all.
   if (!deduped_req.messages.empty()) {
-    OpId last_appended = deduped_req.messages.back()->id();
+    OpIdPB last_appended = deduped_req.messages.back()->id();
     TRACE(Substitute("Updating last received op as $0", last_appended.ShortDebugString()));
     state_->UpdateLastReceivedOpIdUnlocked(last_appended);
   } else if (state_->GetLastReceivedOpIdUnlocked().index < deduped_req.preceding_op_id.index) {
@@ -2057,7 +2073,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   }
 
   // Candidate must have last-logged OpId at least as large as our own to get our vote.
-  consensus::OpId local_last_logged_opid;
+  OpIdPB local_last_logged_opid;
   GetLatestOpIdFromLog().ToPB(&local_last_logged_opid);
   if (OpIdLessThan(request->candidate_status().last_received(), local_last_logged_opid)) {
     return RequestVoteRespondLastOpIdTooOld(local_last_logged_opid, request, response);
@@ -2531,7 +2547,7 @@ Status RaftConsensus::RequestVoteRespondAlreadyVotedForOther(const VoteRequestPB
   return Status::OK();
 }
 
-Status RaftConsensus::RequestVoteRespondLastOpIdTooOld(const OpId& local_last_logged_opid,
+Status RaftConsensus::RequestVoteRespondLastOpIdTooOld(const OpIdPB& local_last_logged_opid,
                                                        const VoteRequestPB* request,
                                                        VoteResponsePB* response) {
   auto message_suffix = Format(
@@ -2665,7 +2681,7 @@ void RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
   // that are present in active_config but have no connections. When the queue is in LEADER
   // mode, it checks that all registered peers are a part of the active config.
   peer_manager_->ClosePeersNotInConfig(active_config);
-  queue_->SetLeaderMode(state_->GetCommittedOpIdUnlocked().ToPB<OpId>(),
+  queue_->SetLeaderMode(state_->GetCommittedOpIdUnlocked().ToPB<OpIdPB>(),
                         state_->GetCurrentTermUnlocked(),
                         active_config);
 
@@ -3058,7 +3074,7 @@ void RaftConsensus::UpdateCDCConsumerOpId(const yb::OpId& op_id) {
 
 void RaftConsensus::RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg,
                                             bool should_exists) {
-  std::unique_ptr<OpId> op_id(replicate_msg->release_id());
+  std::unique_ptr<OpIdPB> op_id(replicate_msg->release_id());
   state_->CancelPendingOperation(*op_id, should_exists);
 }
 

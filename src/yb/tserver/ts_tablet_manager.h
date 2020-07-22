@@ -458,6 +458,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void LogCacheGC(MemTracker* log_cache_mem_tracker, size_t required);
 
+  // Check that the the global and per-table RBS limits are respected if flags
+  // TEST_crash_if_remote_bootstrap_sessions_greater_than and
+  // TEST_crash_if_remote_bootstrap_sessions_per_table_greater_than are non-zero.
+  // Used only for tests.
+  void MaybeDoChecksForTests(const TableId& table_id);
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -518,6 +524,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;
+
+  // Thread pool for log allocation threads, shared between all tablets.
+  std::unique_ptr<ThreadPool> allocation_pool_;
 
   // Thread pool for read ops, that are run in parallel, shared between all tablets.
   std::unique_ptr<ThreadPool> read_pool_;

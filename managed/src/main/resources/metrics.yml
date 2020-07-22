@@ -1919,6 +1919,7 @@ tserver_rpc_queue_size_redis:
 
 tserver_async_replication_lag_micros:
   metric: ""
+  operator: "/ 1000"
   function: "max without (table_id, table_name, stream_id)"
   filters:
     saved_name: "async_replication_sent_lag_micros|async_replication_committed_lag_micros"
@@ -1928,5 +1929,5 @@ tserver_async_replication_lag_micros:
       type: "date"
     yaxis:
       alias:
-        "async_replication_sent_lag_micros": "Sent Lag (Microseconds)"
-        "async_replication_committed_lag_micros": "Committed Lag (Microseconds)"
+        "async_replication_sent_lag_micros": "Sent Lag (Milliseconds)"
+        "async_replication_committed_lag_micros": "Committed Lag (Milliseconds)"

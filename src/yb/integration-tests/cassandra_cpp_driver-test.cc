@@ -1347,6 +1347,9 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexFails, CppCassandraDriver
   ASSERT_TRUE(!res.ok());
   ASSERT_TRUE(res.status().IsNotFound());
 
+  // Try the delete index
+  ASSERT_OK(session_.ExecuteQuery("drop index IF EXISTS test_table_index_by_v;"));
+
   LOG(INFO)
       << "Inserting more rows -- No collision checking for a failed index.";
   ASSERT_OK(session_.ExecuteQuery(
@@ -1752,16 +1755,19 @@ TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestI
     }
   }
 
-  {
+  for (;;) {
     constexpr int kBatchKey = 42;
-    CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
-    auto statement1 = prepared.Bind();
-    table.BindInsert(&statement1, ColumnsType(kBatchKey, -100));
-    batch.Add(&statement1);
-    auto statement2 = prepared.Bind();
-    table.BindInsert(&statement2, ColumnsType(kBatchKey, -200));
-    batch.Add(&statement2);
-    ASSERT_OK(session_.ExecuteBatch(batch));
+
+    auto insert_status = session_.ExecuteQuery(Format(
+        "BEGIN TRANSACTION "
+        "INSERT INTO key_value (key, value) VALUES ($0, $1);"
+        "INSERT INTO key_value (key, value) VALUES ($0, $2);"
+        "END TRANSACTION;",
+        kBatchKey, -100, -200));
+    if (!insert_status.ok()) {
+      LOG(INFO) << "Insert failed: " << insert_status;
+      continue;
+    }
 
     for (;;) {
       auto result = session_.ExecuteWithResult("select * from index_by_value");
@@ -1770,17 +1776,27 @@ TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestI
         continue;
       }
       auto iterator = result->CreateIterator();
+      int num_bad = 0;
+      int num_good = 0;
       while (iterator.Next()) {
         auto row = iterator.Row();
         auto key = row.Value(0).As<int>();
         auto value = row.Value(1).As<int>();
         if (value < 0) {
+          LOG(INFO) << "Key: " << key << ", value: " << value;
           ASSERT_EQ(key, kBatchKey);
-          ASSERT_EQ(value, -200);
+          if (value == -200) {
+            ++num_good;
+          } else {
+            ++num_bad;
+          }
         }
       }
+      ASSERT_EQ(num_good, 1);
+      ASSERT_EQ(num_bad, 0);
       break;
     }
+    break;
   }
 }
 

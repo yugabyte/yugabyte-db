@@ -1407,7 +1407,7 @@ TEST_F_EX(PgLibPqTest,
 
   // Index scan to verify contents of index table.
   {
-    const std::string query = Format("SELECT j from $0 WHERE j > -3 ORDER BY i", kTableName);
+    const std::string query = Format("SELECT j FROM $0 WHERE j > -3 ORDER BY i", kTableName);
     ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
     auto res = ASSERT_RESULT(conn.Fetch(query));
     ASSERT_EQ(PQntuples(res.get()), 2);
@@ -1421,7 +1421,7 @@ TEST_F_EX(PgLibPqTest,
   }
   {
     const std::string query = Format(
-        "SELECT i from $0 WHERE j > -5 ORDER BY i DESC LIMIT 2",
+        "SELECT i FROM $0 WHERE j > -5 ORDER BY i DESC LIMIT 2",
         kTableName);
     ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
     auto res = ASSERT_RESULT(conn.Fetch(query));
@@ -1455,7 +1455,7 @@ TEST_F_EX(PgLibPqTest,
 
   // Index scan to verify contents of index table.
   const std::string query = Format(
-      "SELECT j, i, j % i as mod from $0 WHERE j % i = 2 ORDER BY i",
+      "SELECT j, i, j % i as mod FROM $0 WHERE j % i = 2 ORDER BY i",
       kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
   auto res = ASSERT_RESULT(conn.Fetch(query));
@@ -1506,7 +1506,7 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (i ASC)", kTableName));
   // Index scan to verify contents of index table.
   const std::string query = Format(
-      "SELECT * from $0 ORDER BY i",
+      "SELECT * FROM $0 ORDER BY i",
       kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
   auto res = ASSERT_RESULT(conn.Fetch(query));
@@ -1583,7 +1583,7 @@ TEST_F_EX(PgLibPqTest,
 
   // Ensure index is not used for scan.
   const std::string query = Format(
-      "SELECT * from $0 ORDER BY i",
+      "SELECT * FROM $0 ORDER BY i",
       kTableName);
   ASSERT_FALSE(ASSERT_RESULT(conn.HasIndexScan(query)));
 }
@@ -1593,8 +1593,8 @@ TEST_F_EX(PgLibPqTest,
 // to be applied for the backfill process to use them.  This test guards against that logic being
 // implemented incorrectly.
 TEST_F_EX(PgLibPqTest,
-    YB_DISABLE_TEST_IN_TSAN(BackfillNonexistentDelete),
-    PgLibPqTestIndexBackfill) {
+          YB_DISABLE_TEST_IN_TSAN(BackfillNonexistentDelete),
+          PgLibPqTestIndexBackfill) {
   const std::string kNamespaceName = "yugabyte";
   const std::string kTableName = "t";
 
@@ -1606,6 +1606,39 @@ TEST_F_EX(PgLibPqTest,
   auto res = ASSERT_RESULT(conn.FetchFormat("DELETE FROM $0 WHERE i = 1 RETURNING i", kTableName));
   ASSERT_EQ(PQntuples(res.get()), 0);
   ASSERT_EQ(PQnfields(res.get()), 1);
+}
+
+// Make sure that index backfill on large tables backfills all data.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillLarge),
+          PgLibPqTestIndexBackfill) {
+  constexpr int kNumRows = 10000;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+
+  // Insert bunch of rows.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1))",
+      kTableName,
+      kNumRows));
+
+  // Create index.
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (i ASC)", kTableName));
+
+  // All rows should be in the index.
+  const std::string query = Format(
+      "SELECT COUNT(*) FROM $0 WHERE i > 0",
+      kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  auto res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 1);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  int actual_num_rows = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  ASSERT_EQ(actual_num_rows, kNumRows);
 }
 
 // Override the index backfill test to have slower backfill-related operations

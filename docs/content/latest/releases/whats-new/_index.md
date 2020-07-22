@@ -64,7 +64,7 @@ What happens when the “colocation” tablet containing all the tables of a dat
 
 ### Deferred constraints on foreign keys
 
-Foreign keys in YSQL now support the [DEFERRABLE INITIALLY IMMEDIATE](../../../api/ysql/commands/ddl_create_table/#foreign-key) and [DEFERRABLE INITIALLY DEFERRED](../../../api/ysql/commands/ddl_create_table/#foreign-key) clauses. Work on deferring additional constraints, including those for primary keys, is in progress. 
+Foreign keys in YSQL now support the [DEFERRABLE INITIALLY IMMEDIATE](../../api/ysql/commands/ddl_create_table/#foreign-key) and [DEFERRABLE INITIALLY DEFERRED](../../api/ysql/commands/ddl_create_table/#foreign-key) clauses. Work on deferring additional constraints, including those for primary keys, is in progress. 
 
 Application developers often declare constraints that their data must obey, leaving it to relational databases to enforce the rules. The end result is simpler application logic, lower error probability, and higher developer productivity. Automatic constraint enforcement is a powerful feature that should be leveraged whenever possible. There are times, however, when you need to temporarily defer enforcement. An example is during the data load of a relational schema where there are cyclic foreign key dependencies. Data migration tools usually defer the enforcement of foreign key dependencies to the end of a transaction by which data for all foreign keys would ideally be present.  This should also allow YSQL to power Django apps.
 
@@ -76,8 +76,8 @@ See it in action by following the updated [Quick start](../../quick-start). For 
 
 ### Automatic tablet splitting [BETA]
 
-- YugabyteDB now supports automatic tablet splitting, resharding your data by changing the number of tablets at runtime. For details, see [Automatic Resharding of Data with Tablet Splitting]https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
-- To enable dynamic tablet splitting, use the new `yb-tserver` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-tserver/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
+- YugabyteDB now supports automatic tablet splitting, resharding your data by changing the number of tablets at runtime. For details, see [Tablet splitting](../../architecture/docdb-sharding/tablet-splitting) and [Automatic Resharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
+- To enable automatic tablet splitting, use the new `yb-master` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-master/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
 
 ### TPC-C benchmarking
 
@@ -85,9 +85,9 @@ New results are now available for benchmarking the performance of the YSQL API u
 
 ### Other notable changes
 
-- Support pre-splitting using [CREATE INDEX...SPLIT INTO](../../api/ysql/commands/ddl_create_index/#split-into) for range-partitioned table indexes. For details, see [Pre-splitting](../../architecture/docdb-sharding/tablet-splitting/#pre-splitting) [#4235](https://github.com/yugabyte/yugabyte-db/issues/4235)
+- Support presplitting using [CREATE INDEX...SPLIT INTO](../../api/ysql/commands/ddl_create_index/#split-into) for range-partitioned table indexes. For details, see [Presplitting](../../architecture/docdb-sharding/tablet-splitting/#presplitting) [#4235](https://github.com/yugabyte/yugabyte-db/issues/4235)
 - Fix crash for nested `SELECT` statements that involve null pushdown on system tables. [#4685](https://github.com/yugabyte/yugabyte-db/issues/4685)
-- Fix wrong sorting order in pre-split tables. [#4651](https://github.com/yugabyte/yugabyte-db/issues/4651)
+- Fix wrong sorting order in presplit tables. [#4651](https://github.com/yugabyte/yugabyte-db/issues/4651)
 - To help track down unoptimized (or "slow") queries, use the new `yb-tserver` [`--ysql_log_min_duration_statement`](../../reference/configuration/yb-tserver/#ysql-log-min-duration-statement). [#4817](https://github.com/yugabyte/yugabyte-db/issues/4817)
 - Enhance the [`yb-admin list_tables`](../../admin/yb-admin/#list-tables) command with optional flags for listing tables with database type (`include_db_type`), table ID (`include_table_id`), and table type (`include_table_type`). This command replaces the deprecated `yb-admin list_tables_with_db_types` command. [#4546](https://github.com/yugabyte/yugabyte-db/issues/4546)
 - Add support for [`ALTER TABLE`](../../api/ysql/commands/ddl_alter_table/#) on colocated tables. [#4293](https://github.com/yugabyte/yugabyte-db/issues/4293)
@@ -107,7 +107,7 @@ YugabyteDB supports [distributed backup and restore of YCQL databases and tables
 ### Online index backfills
 
 - YugabyteDB can now build indexes on non-empty tables while online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can now use the YCQL [CREATE INDEX](../../api/ycql/ddl_create_index/#synopsis) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-- In YCQL, backfilling an index while online is enabled by default. To disable, set the `yb-tserver` [`--ycql_disable_index_backfill`](../../reference/configuration/yb-tserver/#ycql-disable-index-backfill) flag to `false` when starting YB-TServers. Note: Do not use this flag in a production cluster yet. For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) [#2301](https://github.com/yugabyte/yugabyte-db/issues/2301) and [#4708](https://github.com/yugabyte/yugabyte-db/issues/4708)
+- In YCQL, backfilling an index while online is enabled by default. To disable, set the `yb-tserver` [`--ycql_disable_index_backfill`](../../reference/configuration/yb-tserver/#ycql-disable-index-backfill) flag to `false` when starting YB-TServers. For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). [#2301](https://github.com/yugabyte/yugabyte-db/issues/2301) and [#4708](https://github.com/yugabyte/yugabyte-db/issues/4708)
 
 ### Online schema changes for YCQL [BETA]
 
@@ -115,18 +115,14 @@ Most applications have a need to frequently evolve the database schema, while si
 
 ### Automatic tablet splitting [BETA]
 
-- YugabyteDB now supports automatic tablet splitting at runtime by changing the number of tablets based on size thresholds. For details, see the design document on [Automatic Resharding of Data with Tablet Splitting]https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
-- To enable automatic tablet splitting, use the new `yb-tserver` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-tserver/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
+- YugabyteDB now supports automatic tablet splitting at runtime by changing the number of tablets based on size thresholds. For details, see [Tablet splitting](../../architecture/docdb-sharding/tablet-splitting) and [Automatic Resharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004), [#1461](https://github.com/yugabyte/yugabyte-db/issues/1461), and [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
+- To enable automatic tablet splitting, use the new `yb-master` [`--tablet_split_size_threshold_bytes`](../../reference/configuration/yb-master/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
 
 ### Other notable changes
 
 - Throttle YCQL calls when soft memory limit is reached. Two new flags, `throttle_cql_calls_on_soft_memory_limit` and `throttle_cql_calls_policy` can be used to control it. [#4973](https://github.com/yugabyte/yugabyte-db/issues/4973)
 - Implements a password cache to allow connections to be created more quickly from recently used accounts. Helps reduce high CPU usage when using YCQL authorization. [#4596](https://github.com/yugabyte/yugabyte-db/issues/4596)
-
-### Other notable changes
-
-- Implement YCQL call throttling when soft memory limit is reached. Two new flags available to manage throttling: `throttle_cql_calls_on_soft_memory_limit` and `throttle_cql_calls_policy` [#4973](https://github.com/yugabyte/yugabyte-db/issues/4973)
-- Fix "column doesn't exist" error when an index is created on a column which is a prefix of another column. [#4881](https://github.com/yugabyte/yugabyte-db/issues/4881)
+- Fix `column doesn't exist` error when an index is created on a column which is a prefix of another column. [#4881](https://github.com/yugabyte/yugabyte-db/issues/4881)
 - Fix crashes when using ORDER BY for non-existent column with index scan. [#4908](https://github.com/yugabyte/yugabyte-db/issues/4908)
 
 ## System improvements

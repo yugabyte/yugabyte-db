@@ -3,6 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import moment from 'moment';
+import _ from 'lodash';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBPanelItem } from '../../panels';
@@ -56,7 +57,7 @@ export default class ListBackups extends Component {
     let latestStat = null;
     let latestTimestamp = null;
     let showMetrics = false;
-    if (metrics && metrics[GRAPH_TYPE]) {
+    if (_.get(metrics, `metrics.${GRAPH_TYPE}.${METRIC_NAME}.layout.yaxis.alias`, null)) {
       // Get alias 
       const metricAliases = metrics[GRAPH_TYPE][METRIC_NAME].layout.yaxis.alias;
       const displayName = metricAliases['async_replication_committed_lag_micros']
@@ -79,13 +80,11 @@ export default class ListBackups extends Component {
           </div>
         </div>;
       }
-      let resourceNumber = <YBResourceCount size={latestStat} kind="&mu;s" inline={true} />;
-      if (latestStat > 60000000) {
-        resourceNumber = <YBResourceCount size={(latestStat / 60000000.00).toFixed(4)} kind="min" inline={true} />;
-      } else if (latestStat > 1000000) {
-        resourceNumber = <YBResourceCount size={(latestStat / 1000000.00).toFixed(4)} kind="s" inline={true} />;
+      let resourceNumber = <YBResourceCount size={latestStat} kind="ms" inline={true} />;
+      if (latestStat > 60000) {
+        resourceNumber = <YBResourceCount size={(latestStat / 60000.00).toFixed(4)} kind="min" inline={true} />;
       } else if (latestStat > 1000) {
-        resourceNumber = <YBResourceCount size={latestStat / 1000.00} kind="ms" inline={true} />;
+        resourceNumber = <YBResourceCount size={(latestStat / 1000.00).toFixed(4)} kind="s" inline={true} />;
       }
       recentStatBlock = <div className="metric-block">
         <h3>Current Replication Lag</h3>

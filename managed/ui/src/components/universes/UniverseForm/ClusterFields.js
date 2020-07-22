@@ -61,7 +61,7 @@ const initialState = {
   assignPublicIP: true,
   hasInstanceTypeChanged: false,
   useTimeSync: false,
-  enableYSQL: false,
+  enableYSQL: true,
   enableNodeToNodeEncrypt: false,
   enableClientToNodeEncrypt: false,
   enableEncryptionAtRest: false

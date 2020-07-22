@@ -791,7 +791,7 @@ Status ExternalMiniCluster::GetNumMastersAsSeenBy(ExternalMaster* master, int* n
 }
 
 Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
-  consensus::OpId start_opid;
+  OpIdPB start_opid;
   RETURN_NOT_OK(GetLastOpIdForLeader(&start_opid));
   LOG(INFO) << "Start OPID : " << start_opid.ShortDebugString();
 
@@ -822,7 +822,7 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
 Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
     const MonoDelta& timeout,
     consensus::OpIdType opid_type,
-    vector<consensus::OpId>* op_ids) {
+    vector<OpIdPB>* op_ids) {
   GetLastOpIdRequestPB opid_req;
   GetLastOpIdResponsePB opid_resp;
   opid_req.set_tablet_id(yb::master::kSysCatalogTabletId);
@@ -847,7 +847,7 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
   auto deadline = CoarseMonoClock::Now() + opts_.timeout.ToSteadyDuration();
 
   for (int i = 1;; i++) {
-    vector<consensus::OpId> ids;
+    vector<OpIdPB> ids;
     Status s = GetLastOpIdForEachMasterPeer(opts_.timeout, consensus::COMMITTED_OPID, &ids);
 
     if (s.ok()) {
@@ -904,7 +904,7 @@ Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master
   return Status::OK();
 }
 
-Status ExternalMiniCluster::GetLastOpIdForLeader(consensus::OpId* opid) {
+Status ExternalMiniCluster::GetLastOpIdForLeader(OpIdPB* opid) {
   ExternalMaster* leader = GetLeaderMaster();
   auto leader_master_sock = leader->bound_rpc_addr();
   std::shared_ptr<ConsensusServiceProxy> leader_proxy =

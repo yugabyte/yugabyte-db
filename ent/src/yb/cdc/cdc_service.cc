@@ -79,6 +79,8 @@ DEFINE_int32(update_min_cdc_indices_interval_secs, 60,
 DEFINE_int32(update_metrics_interval_ms, 1000,
              "How often to update xDC cluster metrics.");
 
+DEFINE_bool(enable_collect_cdc_metrics, false, "Enable collecting cdc metrics.");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -472,16 +474,48 @@ void CDCServiceImpl::UpdateLagMetrics() {
     SharedLock<decltype(mutex_)> l(mutex_);
     tablet_checkpoints = tablet_checkpoints_;
   }
-  for (auto it = tablet_checkpoints.begin(); it != tablet_checkpoints.end(); it++) {
+
+  client::TableHandle table;
+  auto s = table.Open(kCdcStateTableName, async_client_init_->client());
+  if (!s.ok()) {
+    // It is possible that this runs before the cdc_state table is created. This is
+    // ok. It just means that this is the first time the cluster starts.
+    YB_LOG_EVERY_N_SECS(WARNING, 30) << "Unable to open table " << kCdcStateTableName.table_name()
+                                     << " for metrics update.";
+    return;
+  }
+
+  std::unordered_set<ProducerTabletInfo, ProducerTabletInfo::Hash> tablets_in_cdc_state_table;
+  client::TableIteratorOptions options;
+  options.columns = std::vector<string>{master::kCdcTabletId, master::kCdcStreamId};
+  bool failed = false;
+  options.error_handler = [&failed](const Status& status) {
+    YB_LOG_EVERY_N_SECS(WARNING, 30) << "Scan of table " << kCdcStateTableName.table_name()
+                                     << " failed: " << status << ". Could not update metrics.";
+    failed = true;
+  };
+  // First go through tablets in the cdc_state table and update metrics for each one.
+  for (const auto& row : client::TableRange(table, options)) {
+    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
+    auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
     std::shared_ptr<tablet::TabletPeer> tablet_peer;
-    Status s = tablet_manager_->GetTabletPeer(it->tablet_id(), &tablet_peer);
-    if (s.IsNotFound() ||
-        tablet_peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
-      // We either couldn't find the tablet or we're not the leader for this tablet, skip.
+    Status s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
+    if (s.IsNotFound()) {
       continue;
     }
-    auto tablet_metric = GetCDCTabletMetrics(it->producer_tablet_info, tablet_peer);
-    if (tablet_metric) {
+
+    ProducerTabletInfo tablet_info = {"" /* universe_uuid */, stream_id, tablet_id};
+    tablets_in_cdc_state_table.insert(tablet_info);
+    auto tablet_metric = GetCDCTabletMetrics(tablet_info, tablet_peer);
+    if (!tablet_metric) {
+      continue;
+    }
+    if (tablet_peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
+      // Set lag to 0 because we're not the leader for this tablet anymore, which means another peer
+      // is responsible for tracking this tablet's lag.
+      tablet_metric->async_replication_sent_lag_micros->set_value(0);
+      tablet_metric->async_replication_committed_lag_micros->set_value(0);
+    } else {
       // Get the physical time of the last committed record on producer.
       auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
 
@@ -492,6 +526,29 @@ void CDCServiceImpl::UpdateLagMetrics() {
           last_replicated_micros - last_sent_micros);
       tablet_metric->async_replication_committed_lag_micros->set_value(
           last_replicated_micros - last_committed_micros);
+    }
+  }
+  if (failed) {
+    return;
+  }
+
+  // Now, go through tablets in tablet_checkpoints_ and set lag to 0 for all tablets we're no
+  // longer replicating.
+  for (auto it = tablet_checkpoints.begin(); it != tablet_checkpoints.end(); it++) {
+    ProducerTabletInfo tablet_info = {"" /* universe_uuid */, it->stream_id(), it->tablet_id()};
+    if (tablets_in_cdc_state_table.find(tablet_info) == tablets_in_cdc_state_table.end()) {
+      // We're no longer replicating this tablet, so set lag to 0.
+      std::shared_ptr<tablet::TabletPeer> tablet_peer;
+      Status s = tablet_manager_->GetTabletPeer(it->tablet_id(), &tablet_peer);
+      if (s.IsNotFound()) {
+        continue;
+      }
+      auto tablet_metric = GetCDCTabletMetrics(it->producer_tablet_info, tablet_peer);
+      if (!tablet_metric) {
+        continue;
+      }
+      tablet_metric->async_replication_sent_lag_micros->set_value(0);
+      tablet_metric->async_replication_committed_lag_micros->set_value(0);
     }
   }
 }
@@ -524,7 +581,10 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
 
   do {
     // Always update lag metrics, default every 1s.
-    UpdateLagMetrics();
+
+    if (FLAGS_enable_collect_cdc_metrics) {
+      UpdateLagMetrics();
+    }
 
     // If its not been 60s since the last peer update, continue.
     if (!FLAGS_enable_log_retention_by_op_idx || MonoTime::Now() - time_since_update_peers <

@@ -760,7 +760,16 @@ Status MetaCache::ProcessTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
     const std::string* partition_group_start,
     int64_t request_no) {
-  VLOG(2) << "Processing master response " << AsString(locations);
+  if (VLOG_IS_ON(2)) {
+    auto group_start =
+        partition_group_start ? Slice(*partition_group_start).ToDebugHexString() : "<NULL>";
+    for (const auto& loc : locations) {
+      for (const auto& table_id : loc.table_ids()) {
+        VLOG_WITH_FUNC(2) << loc.tablet_id() << ", " << table_id << "/" << group_start;
+      }
+    }
+    VLOG_WITH_FUNC(4) << AsString(locations) << ", " << group_start;
+  }
 
   RETURN_NOT_OK(CheckTabletLocations(locations));
 
@@ -1325,7 +1334,7 @@ bool MetaCache::DoLookupTabletByKey(
     lookups_group->lookups.Push(new LookupData(callback, deadline, &partition_start));
     request_no = lookup_serial_.fetch_add(1, std::memory_order_acq_rel);
     int64_t expected = 0;
-    if (!lookups_group->running.compare_exchange_strong(
+    if (!lookups_group->running_request_number.compare_exchange_strong(
             expected, request_no, std::memory_order_acq_rel)) {
       VLOG_WITH_FUNC(4)
           << "Lookup is already running for table: " << table->ToString()
@@ -1413,7 +1422,8 @@ bool MetaCache::DoLookupTabletById(
     lookup->lookups.Push(new LookupData(callback, deadline, nullptr));
     request_no = lookup_serial_.fetch_add(1, std::memory_order_acq_rel);
     int64_t expected = 0;
-    if (!lookup->running.compare_exchange_strong(expected, request_no, std::memory_order_acq_rel)) {
+    if (!lookup->running_request_number.compare_exchange_strong(
+            expected, request_no, std::memory_order_acq_rel)) {
       VLOG_WITH_FUNC(4) << "Lookup already running for tablet: " << tablet_id;
       return true;
     }
@@ -1466,19 +1476,19 @@ void MetaCache::ReleaseMasterLookupPermit() {
 void MetaCache::LookupDataGroup::Finished(
     int64_t request_no, const ToStringable& id, bool allow_absence) {
   int64_t expected = request_no;
-  if (!running.compare_exchange_strong(expected, 0, std::memory_order_acq_rel)) {
-    if (expected == 0 && !allow_absence) {
-      LOG(DFATAL) << "Lookup was not running for " << id.ToString();
+  if (!running_request_number.compare_exchange_strong(expected, 0, std::memory_order_acq_rel)) {
+    if ((expected == 0 && max_completed_request_number <= request_no) && !allow_absence) {
+      LOG(DFATAL) << "Lookup was not running for " << id.ToString() << ", expected: " << request_no;
     } else {
       LOG(INFO)
           << "Finished lookup for " << id.ToString() << ": " << request_no << ", while "
           << expected << " was running, could happen during tablet split";
     }
   } else {
-    VLOG_WITH_FUNC(4) << "Finished lookup for " << id.ToString() << ", no: " << request_no;
+    max_completed_request_number = std::max(max_completed_request_number, request_no);
+    VLOG_WITH_FUNC(2) << "Finished lookup for " << id.ToString() << ", no: " << request_no;
   }
 }
-
 
 } // namespace internal
 } // namespace client

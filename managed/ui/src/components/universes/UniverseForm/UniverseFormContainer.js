@@ -225,7 +225,7 @@ function mapStateToProps(state, ownProps) {
       "accessKeyCode": "yugabyte-default",
       "assignPublicIP":  true,
       "useTimeSync": false,
-      "enableYSQL": false,
+      "enableYSQL": true,
       "enableNodeToNodeEncrypt": false,
       "enableClientToNodeEncrypt": false,
       "enableEncryptionAtRest": false,
@@ -238,7 +238,7 @@ function mapStateToProps(state, ownProps) {
       "isMultiAZ": true,
       "assignPublicIP":  true,
       "useTimeSync": false,
-      "enableYSQL": false,
+      "enableYSQL": true,
       "enableNodeToNodeEncrypt": false,
       "enableClientToNodeEncrypt": false
     }

@@ -4,6 +4,8 @@ headerTitle: Connect to clusters
 linkTitle: Connect to clusters
 description: Connect to clusters in Yugabyte Cloud using locally installed YugabyteDB clients.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+aliases:
+  - /latest/deploy/yugabyte-cloud/connect-to-clusters/
 menu:
   latest:
     identifier: connect-to-clusters
@@ -17,19 +19,19 @@ You can connect to YugabyteDB clusters in Yugabyte Cloud with YugabyteDB clients
 
 You can use the following YugabyteDB clients (locally installed) to connect to your remote clusters in Yugabyte Cloud:
 
-- [YSQL shell (`ysqlsh`)](../../../admin/ysqlsh/)
-- [YCQL shell (`ycqlsh`)](../../../admin/ycqlsh/)
+- [YSQL shell (`ysqlsh`)](../../admin/ysqlsh/)
+- [YCQL shell (`ycqlsh`)](../../admin/ycqlsh/)
 
 {{< note title="Note" >}}
 
 To use the YugabyteDB CLIs to connect to your remote Yugabyte Cloud clusters, you must have a local installation of
-YugabyteDB. If you do not have a local installation, see [Install YugabyteDB](../../../quick-start/install/).
+YugabyteDB. If you do not have a local installation, see [Install YugabyteDB](../../quick-start/install/).
 
 {{< /note >}}
 
 ## Connect using the YSQL shell (ysqlsh)
 
-Follow these steps to connect to your remote cluster using the [YSQL shell (`ysqlsh`)](../../../admin/ysqlsh/):
+Follow these steps to connect to your remote cluster using the [YSQL shell (`ysqlsh`)](../../admin/ysqlsh/):
 
 1. Log into Yugabyte Cloud and click **Cluster** in the navigation bar. The list of available clusters appears.
 2. Click **Go to cluster** for your cluster. The Yugabyte Cloud Console appears.
@@ -57,11 +59,11 @@ Follow these steps to connect to your remote cluster using the [YSQL shell (`ysq
     yugabyte=#
     ```
 
-The local [YSQL shell (`ysqlsh`)](../../../admin/ysqlsh/) opens connected to the remote cluster.
+The local [YSQL shell (`ysqlsh`)](../../admin/ysqlsh/) opens connected to the remote cluster.
 
 ## Connect using the YCQL shell (ycqlsh)
 
-Follow these steps to connect to your remote cluster using the [YCQL shell (`ycqlsh`)](../../../admin/cqlsh/):
+Follow these steps to connect to your remote cluster using the [YCQL shell (`ycqlsh`)](../../admin/ycqlsh/):
 
 1. Log into Yugabyte Cloud and click **Cluster** in the navigation bar. The list of available clusters appears.
 2. Click **Go to cluster** for your cluster. The Yugabyte Cloud Console appears.
@@ -89,7 +91,7 @@ Follow these steps to connect to your remote cluster using the [YCQL shell (`ycq
     admin@ycqlsh>
     ```
 
-The local [YCQL shell (`ycqlsh`)](../../../admin/cqlsh/) opens connected to the remote cluster.
+The local [YCQL shell (`ycqlsh`)](../../admin/ycqlsh/) opens connected to the remote cluster.
 
 ## Connect using third party clients
 
@@ -103,12 +105,12 @@ To see the host, port, username, and password required to connect:
 2. Click **Connect**. The **Connect** dialog appears, displaying the host, port, and user credentials for the default user (`admin`).
 3. To get the user credentials for a different user, click **Database Access** and then click **INFO** for that user.
 
-For detailed steps for configuring popular third party tools, see [Third party tools](../../../tools/). In that section, configuration steps
+For detailed steps for configuring popular third party tools, see [Third party tools](../../tools/). In that section, configuration steps
 are included for the following tools:
 
-- [DBeaver](../../../tools/dbeaver)
-- [DbSchema](../../../tools/dbschema)
-- [pgAdmin](../../../tools/pgadmin)
-- [SQL Workbench/J](../../../tools/sql-workbench)
-- [TablePlus](../../../tools/tableplus)
-- [Visual Studio Workbench](../../../tools/visualstudioworkbench)
+- [DBeaver](../../tools/dbeaver)
+- [DbSchema](../../tools/dbschema)
+- [pgAdmin](../../tools/pgadmin)
+- [SQL Workbench/J](../../tools/sql-workbench)
+- [TablePlus](../../tools/tableplus)
+- [Visual Studio Workbench](../../tools/visualstudioworkbench)

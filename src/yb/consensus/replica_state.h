@@ -122,7 +122,7 @@ class ReplicaState {
 
   ~ReplicaState();
 
-  CHECKED_STATUS StartUnlocked(const OpId& last_in_wal);
+  CHECKED_STATUS StartUnlocked(const OpIdPB& last_in_wal);
 
   // Should be used only to assert that the update_lock_ is held.
   bool IsLocked() const WARN_UNUSED_RESULT;
@@ -279,9 +279,8 @@ class ReplicaState {
   // completes, if not).
   //
   // If this advanced the committed index, sets *committed_op_id_changed to true.
-  CHECKED_STATUS UpdateMajorityReplicatedUnlocked(const OpId& majority_replicated,
-                                                  OpId* committed_op_id,
-                                                  bool* committed_op_id_changed);
+  CHECKED_STATUS UpdateMajorityReplicatedUnlocked(
+      const OpIdPB& majority_replicated, OpIdPB* committed_op_id, bool* committed_op_id_changed);
 
   // Advances the committed index.
   // This is a no-op if the committed index has not changed.
@@ -310,7 +309,7 @@ class ReplicaState {
 
   // Updates the last received operation.
   // This must be called under a lock.
-  void UpdateLastReceivedOpIdUnlocked(const OpId& op_id);
+  void UpdateLastReceivedOpIdUnlocked(const OpIdPB& op_id);
 
   // Returns the last received op id. This must be called under the lock.
   const yb::OpId& GetLastReceivedOpIdUnlocked() const;
@@ -320,7 +319,7 @@ class ReplicaState {
 
   // Returns the id of the latest pending transaction (i.e. the one with the
   // latest index). This must be called under the lock.
-  OpId GetLastPendingOperationOpIdUnlocked() const;
+  OpIdPB GetLastPendingOperationOpIdUnlocked() const;
 
   // Used by replicas to cancel pending transactions. Pending transaction are those
   // that have completed prepare/replicate but are waiting on the LEADER's commit
@@ -339,11 +338,11 @@ class ReplicaState {
   // the queue refused to add any more operations.
   // should_exists indicates whether we expect that this operation is already added.
   // Used for debugging purposes only.
-  void CancelPendingOperation(const OpId& id, bool should_exist);
+  void CancelPendingOperation(const OpIdPB& id, bool should_exist);
 
   // Accessors for pending election op id. These must be called under a lock.
-  const OpId& GetPendingElectionOpIdUnlocked() { return pending_election_opid_; }
-  void SetPendingElectionOpIdUnlocked(const OpId& opid) { pending_election_opid_ = opid; }
+  const OpIdPB& GetPendingElectionOpIdUnlocked() { return pending_election_opid_; }
+  void SetPendingElectionOpIdUnlocked(const OpIdPB& opid) { pending_election_opid_ = opid; }
   void ClearPendingElectionOpIdUnlocked() { pending_election_opid_.Clear(); }
 
   std::string ToString() const;
@@ -497,7 +496,7 @@ class ReplicaState {
   yb::OpId split_op_id_;
 
   // If set, a leader election is pending upon the specific op id commitment to this peer's log.
-  OpId pending_election_opid_;
+  OpIdPB pending_election_opid_;
 
   State state_ = State::kInitialized;
 

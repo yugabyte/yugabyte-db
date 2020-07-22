@@ -447,6 +447,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   NamespaceName GetNamespaceName(const scoped_refptr<TableInfo>& table) const;
 
   // Is the table a system table?
+  bool IsSystemTable(const TableInfo& table) const;
   bool IsSystemTableUnlocked(const TableInfo& table) const REQUIRES_SHARED(lock_);
 
   // Is the table a user created table?

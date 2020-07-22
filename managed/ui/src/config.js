@@ -20,6 +20,7 @@ export const USE_SSO = _.get(window, 'YB_Platform_Config.use_oauth', false);
 export const PROVIDER_TYPES = [
   { code: "aws", name: "Amazon", label: "Amazon Web Services" },
   { code: "docker", name: "Docker Localhost", label: "Docker" },
+  { code: "azu", name: "Azure", label: "Microsoft Azure"},
   { code: "gcp", name: "Google", label: "Google Cloud" },
   { code: "onprem", name: "On Premises", label: "On-Premises Datacenter"},
   { code: "kubernetes", name: "Kubernetes", label: "Kubernetes"},

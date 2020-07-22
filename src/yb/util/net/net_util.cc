@@ -612,6 +612,12 @@ Result<IpAddress> HostToAddress(const std::string& host) {
   return addr;
 }
 
+bool IsWildcardAddress(const std::string& host_str) {
+  boost::system::error_code ec;
+  auto addr = IpAddress::from_string(host_str, ec);
+  return !ec && addr.is_unspecified();
+}
+
 boost::optional<IpAddress> TryFastResolve(const std::string& host) {
   boost::system::error_code ec;
   auto addr = IpAddress::from_string(host, ec);
