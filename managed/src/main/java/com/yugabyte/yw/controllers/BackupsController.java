@@ -84,6 +84,11 @@ public class BackupsController extends AuthenticatedController {
       String errMsg = "Invalid StorageConfig UUID: " + taskParams.storageConfigUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
+    if (taskParams.tableName != null && taskParams.keyspace == null) {
+      String errMsg = "Restore table request must specify keyspace.";
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+
     taskParams.universeUUID = universeUUID;
 
     Backup newBackup = Backup.create(customerUUID, taskParams);
