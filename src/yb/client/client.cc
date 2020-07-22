@@ -1285,7 +1285,8 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   }
 
   if (update_tablets_cache) {
-    data_->meta_cache_->ProcessTabletLocations(tablets, nullptr /* partition_group_start */);
+    RETURN_NOT_OK(data_->meta_cache_->ProcessTabletLocations(
+        tablets, /* partition_group_start= */ nullptr, /* request_no= */ 0));
   }
 
   return Status::OK();

@@ -378,7 +378,7 @@ bool TabletInvoker::Done(Status* status) {
     if (status->IsTryAgain() || status->IsExpired() || status->IsAlreadyPresent()) {
       YB_LOG_EVERY_N_SECS(INFO, 1) << log_status;
     } else {
-      LOG(WARNING) << log_status;
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << log_status;
     }
     rpc_->Failed(*status);
   }
