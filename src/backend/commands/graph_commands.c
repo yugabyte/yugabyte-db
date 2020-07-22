@@ -17,6 +17,8 @@
 #include "postgres.h"
 
 #include "access/xact.h"
+#include "access/genam.h"
+#include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/objectaddress.h"
 #include "commands/defrem.h"
@@ -30,7 +32,9 @@
 #include "nodes/pg_list.h"
 #include "nodes/value.h"
 #include "parser/parser.h"
+#include "utils/fmgroids.h"
 #include "utils/relcache.h"
+#include "utils/rel.h"
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
@@ -318,3 +322,56 @@ static void rename_graph(const Name graph_name, const Name new_name)
     ereport(NOTICE,
             (errmsg("graph \"%s\" renamed to \"%s\"", oldname, newname)));
 }
+
+// returns a list containing the name of every graph in the database
+List *get_graphnames(void)
+{
+    TupleTableSlot *slot;
+    Relation ag_graph;
+    SysScanDesc scan_desc;
+    HeapTuple tuple;
+    List *graphnames = NIL;
+    char *str;
+
+    ag_graph = heap_open(ag_graph_relation_id(), RowExclusiveLock);
+    scan_desc = systable_beginscan(ag_graph, ag_graph_name_index_id(), true,
+                                   NULL, 0, NULL);
+
+    slot = MakeTupleTableSlot(RelationGetDescr(ag_graph));
+
+    for (;;)
+    {
+        tuple = systable_getnext(scan_desc);
+        if (!HeapTupleIsValid(tuple))
+            break;
+
+        ExecClearTuple(slot);
+        ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+
+        slot_getallattrs(slot);
+
+        str = DatumGetCString(slot->tts_values[0]);
+        graphnames = lappend(graphnames, str);
+    }
+
+    ExecDropSingleTupleTableSlot(slot);
+    systable_endscan(scan_desc);
+    heap_close(ag_graph, RowExclusiveLock);
+
+    return graphnames;
+}
+
+// deletes all the graphs in the list.
+void drop_graphs(List *graphnames)
+{
+    ListCell *lc;
+
+    foreach(lc, graphnames)
+    {
+        char *graphname = lfirst(lc);
+
+        DirectFunctionCall2(
+            drop_graph, CStringGetDatum(graphname), BoolGetDatum(true));
+    }
+}
+

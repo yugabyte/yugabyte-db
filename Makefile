@@ -60,7 +60,8 @@ REGRESS = scan \
           expr \
           cypher_create \
           cypher_match \
-          cypher_with
+          cypher_with \
+          drop
 
 ag_regress_dir = $(srcdir)/regress
 REGRESS_OPTS = --load-extension=age --inputdir=$(ag_regress_dir) --outputdir=$(ag_regress_dir) --temp-instance=$(ag_regress_dir)/instance --port=61958

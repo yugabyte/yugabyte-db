@@ -20,27 +20,125 @@
 #include "catalog/objectaccess.h"
 #include "catalog/pg_class_d.h"
 #include "catalog/pg_namespace_d.h"
+#include "commands/defrem.h"
+#include "tcop/utility.h"
 #include "utils/lsyscache.h"
 
 #include "catalog/ag_catalog.h"
+#include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "catalog/ag_namespace.h"
 #include "utils/ag_cache.h"
 
 static object_access_hook_type prev_object_access_hook;
+static ProcessUtility_hook_type prev_process_utility_hook;
+static bool prev_object_hook_is_set;
 
 static void object_access(ObjectAccessType access, Oid class_id, Oid object_id,
                           int sub_id, void *arg);
+void ag_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString,
+                            ProcessUtilityContext context, ParamListInfo params,
+                            QueryEnvironment *queryEnv, DestReceiver *dest,
+                            char *completionTag);
+
+static bool is_age_drop(PlannedStmt *pstmt);
+static void drop_age_extension(DropStmt *stmt);
 
 void object_access_hook_init(void)
 {
     prev_object_access_hook = object_access_hook;
     object_access_hook = object_access;
+    prev_object_hook_is_set = true;
 }
 
 void object_access_hook_fini(void)
 {
-    object_access_hook = prev_object_access_hook;
+    if (prev_object_hook_is_set)
+    {
+        object_access_hook = prev_object_access_hook;
+        prev_object_access_hook = NULL;
+        prev_object_hook_is_set = false;
+    }
+
+}
+
+void process_utility_hook_init(void)
+{
+    prev_process_utility_hook = ProcessUtility_hook;
+    ProcessUtility_hook = ag_ProcessUtility_hook;
+}
+
+void process_utility_hook_fini(void)
+{
+    ProcessUtility_hook = prev_process_utility_hook;
+}
+
+/*
+ * When Postgres tries to drop AGE using the standard logic, two issues occur:
+ *
+ * 1. The schema that graphs in stored in are not dropped.
+ *
+ * 2. While dropping ag_catalog, the object hook is run. Which uses the
+ * information in the indexes and tables being dropped. To prevent an error
+ * from being thrown, we need to disable the object_access_hook before dropping
+ * the extension.
+ */
+void ag_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString,
+                             ProcessUtilityContext context, ParamListInfo params,
+                             QueryEnvironment *queryEnv, DestReceiver *dest,
+                             char *completionTag)
+{
+    if (is_age_drop(pstmt))
+        drop_age_extension((DropStmt *)pstmt->utilityStmt);
+    else if (prev_process_utility_hook)
+        (*prev_process_utility_hook) (pstmt, queryString, context, params,
+                                      queryEnv, dest, completionTag);
+    else
+        standard_ProcessUtility(pstmt, queryString, context, params, queryEnv,
+                                dest, completionTag);
+}
+
+static void drop_age_extension(DropStmt *stmt)
+{
+    // Remove all graphs
+    drop_graphs(get_graphnames());
+
+    // Remove the object access hook
+    object_access_hook_fini();
+
+    /*
+     * Run Postgres' logic to perform the remaining work to drop the
+     * extension.
+     */
+    RemoveObjects(stmt);
+}
+
+// Check to see if the Utility Command is to drop the AGE Extension.
+static bool is_age_drop(PlannedStmt *pstmt)
+{
+    ListCell *lc;
+    DropStmt *drop_stmt;
+
+    if (!IsA(pstmt->utilityStmt, DropStmt))
+        return false;
+
+    drop_stmt = (DropStmt *)pstmt->utilityStmt;
+
+    foreach(lc, drop_stmt->objects)
+    {
+        Node *obj = lfirst(lc);
+
+        if (IsA(obj, String))
+        {
+            Value *val = (Value *)obj;
+            char *str = val->val.str;
+
+            if (!pg_strcasecmp(str, "age"))
+                return true;
+        }
+    }
+
+    return false;
 }
 
 /*
