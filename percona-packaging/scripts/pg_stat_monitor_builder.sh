@@ -389,14 +389,6 @@ build_source_deb(){
     mv ${TARFILE} percona-pg-stat-monitor_${VERSION}.orig.tar.gz
     cd ${BUILDDIR}
 
-    cd debian
-    rm -rf changelog
-    echo "percona-pg-stat-monitor (${VERSION}-${RELEASE}) unstable; urgency=low" >> changelog
-    echo "  * Initial Release." >> changelog
-    echo " -- Oleksandr Miroshnychenko <alex.miroshnychenko@percona.com> $(date -R)" >> changelog
-
-    cd ../
-
     dch -D unstable --force-distribution -v "${VERSION}-${RELEASE}" "Update to new percona-pg-stat-monitor version ${VERSION}"
     dpkg-buildpackage -S
     cd ../
@@ -469,7 +461,7 @@ RPM_RELEASE=1
 DEB_RELEASE=1
 REVISION=0
 BRANCH="master"
-REPO="https://github.com/Percona-Lab/pg_stat_monitor.git"
+REPO="https://github.com/Percona/pg_stat_monitor.git"
 PRODUCT=percona-pg-stat-monitor
 DEBUG=0
 parse_arguments PICK-ARGS-FROM-ARGV "$@"
