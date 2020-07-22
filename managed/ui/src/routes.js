@@ -53,7 +53,7 @@ function validateSession(store, replacePath, callback) {
         store.dispatch(insecureLoginResponse(response));
         localStorage.setItem('apiToken', response.payload.data.apiToken);
         localStorage.setItem('customerId', response.payload.data.customerUUID);
-
+        localStorage.setItem('userId', response.payload.data.userUUID);
         // Show the intro modal if OSS version
         if (localStorage.getItem('__yb_new_user__') == null) {
           localStorage.setItem('__yb_new_user__', true);
