@@ -163,6 +163,8 @@ public enum TaskType {
 
   KubernetesWaitForPod("subtasks.KubernetesWaitForPod"),
 
+  KubernetesCheckNumPod("subtasks.KubernetesCheckNumPod"),
+
   @Deprecated
   CopyEncryptionKeyFile("subtasks.CopyEncryptionKeyFile"),
 

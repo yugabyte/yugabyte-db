@@ -39,14 +39,14 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-public class KubernetesWaitForPod extends AbstractTaskBase {
+public class KubernetesCheckNumPod extends AbstractTaskBase {
   public enum CommandType {
-    WAIT_FOR_POD;
+    WAIT_FOR_PODS;
 
     public String getSubTaskGroupName() {
       switch (this) {
-        case WAIT_FOR_POD:
-          return UserTaskDetails.SubTaskGroupType.KubernetesWaitForPod.name();
+        case WAIT_FOR_PODS:
+          return UserTaskDetails.SubTaskGroupType.KubernetesCheckNumPod.name();
       }
       return null;
     }
@@ -78,25 +78,25 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     // We use the nodePrefix as Helm Chart's release name,
     // so we would need that for any sort helm operations.
     public String nodePrefix;
-    public String podName = null;
+    public int podNum = 0;
     public Map<String, String> config = null;
   }
 
-  protected KubernetesWaitForPod.Params taskParams() {
-    return (KubernetesWaitForPod.Params)taskParams;
+  protected KubernetesCheckNumPod.Params taskParams() {
+    return (KubernetesCheckNumPod.Params)taskParams;
   }
 
   @Override
   public void run() {
     // TODO: add checks for the shell process handler return values.
     switch (taskParams().commandType) {
-      case WAIT_FOR_POD:
+      case WAIT_FOR_PODS:
         int iters = 0;
-        String status;
+        boolean status;
         do {
-          status = waitForPod();
+          status = waitForPods();
           iters++;
-          if (status.equals("Running")) {
+          if (status) {
             break;
           }
           try {
@@ -104,35 +104,26 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
           } catch (InterruptedException ex) {
             // Do nothing
           }
-        } while (!status.equals("Running") && iters < MAX_ITERS);
+        } while (!status && iters < MAX_ITERS);
         if (iters > MAX_ITERS) {
-          throw new RuntimeException("Pod " + taskParams().podName + " creation taking too long.");
+          throw new RuntimeException("Pods' start taking too long.");
         }
         break;
     }
   }
 
-  // Waits for pods as well as the containers inside the pod.
-  private String waitForPod() {
+  // Wait for the correct number of pods to be in the call.
+  private boolean waitForPods() {
     Map<String, String> config = taskParams().config;
     if (taskParams().config == null) {
       config = Provider.get(taskParams().providerUUID).getConfig();
     }
-    ShellResponse podResponse = kubernetesManager.getPodStatus(config, taskParams().nodePrefix,
-        taskParams().podName);
-    JsonNode podInfo = parseShellResponseAsJson(podResponse);
-    JsonNode statusNode = podInfo.path("status");
-    String status = statusNode.get("phase").asText();
-    JsonNode podConditions = statusNode.path("conditions");
-    ArrayList conditions = Json.fromJson(podConditions, ArrayList.class);
-    Iterator iter = conditions.iterator();
-    while (iter.hasNext()) {
-      JsonNode info = Json.toJson(iter.next());
-      String statusContainer = info.path("status").asText();
-      if (statusContainer.equals("False")) {
-        status = "Not Ready";
-      }
+    ShellResponse podResponse = kubernetesManager.getPodInfos(config, taskParams().nodePrefix);
+    JsonNode podInfos = parseShellResponseAsJson(podResponse);
+    if (podInfos.path("items").size() == taskParams().podNum) {
+      return true;
+    } else {
+      return false;
     }
-    return status;
   }
 }
