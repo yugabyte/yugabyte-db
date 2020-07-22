@@ -670,7 +670,11 @@ YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level)
 //------------------------------------------------------------------------------
 // YB Debug utils.
 
-bool yb_debug_mode = false;
+bool yb_debug_report_error_stacktrace = false;
+
+bool yb_debug_log_catcache_events = false;
+
+bool yb_debug_log_internal_restarts = false;
 
 const char*
 YBDatumToString(Datum datum, Oid typid)

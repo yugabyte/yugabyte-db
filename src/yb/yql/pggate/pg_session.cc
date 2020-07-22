@@ -275,6 +275,10 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
       RETURN_NOT_OK(pg_session_.FlushBufferedOperationsImpl());
       buffered_keys.insert(RowIdentifier(wop));
     }
+    if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
+      LOG(INFO) << "Buffering operation: " << op->ToString();
+    }
+
     buffered_ops_.push_back({std::move(op), relation_id});
     // Flush buffers in case limit of operations in single RPC exceeded.
     return PREDICT_TRUE(buffered_keys.size() < FLAGS_ysql_session_max_batch_size)
@@ -310,6 +314,9 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
     // Session must not be changed as all operations belong to single session
     // (transactional or non-transactional)
     DCHECK_EQ(yb_session_.get(), session);
+  }
+  if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
+    LOG(INFO) << "Applying operation : " << op->ToString();
   }
   return yb_session_->Apply(std::move(op));
 }
@@ -864,7 +871,11 @@ Status PgSession::FlushBufferedOperationsImpl(const PgsqlOpBuffer& ops, bool tra
     DCHECK(transactional);
     session->SetInTxnLimit(HybridTime(clock_->Now().ToUint64()));
   }
-
+  if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
+    LOG(INFO) << "Flushing buffered operations, using "
+              << (transactional ? " transactional" : "non-transactional")
+              << "session (num ops: " << ops.size() << ")";
+  }
   for (auto buffered_op : ops) {
     const auto& op = buffered_op.operation;
     DCHECK_EQ(ShouldHandleTransactionally(*op), transactional)
