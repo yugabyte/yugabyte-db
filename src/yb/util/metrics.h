@@ -39,7 +39,7 @@
 // Summary
 // ------------------------------------------------------------
 //
-// This API provides a basic set of metrics primitives along the lines of the Code Hale's
+// This API provides a basic set of metrics primitives along the lines of the Coda Hale's
 // metrics library along with JSON formatted output of running metrics.
 //
 // The metrics system has a few main concepts in its data model:
@@ -52,7 +52,7 @@
 // Metric prototypes are defined statically using the METRIC_DEFINE_*(...) macros. This
 // allows us to easily enumerate a full list of every metric that might be emitted from a
 // server, thus allowing auto-generation of metric metadata for integration with
-// monitoring systems such as Cloudera Manager.
+// monitoring systems such as Prometheus.
 //
 // Metric Entity Prototypes
 // ------------------------
@@ -67,7 +67,7 @@
 // -----------------------
 // Each defined Metric Entity Type serves as a prototype allowing instantiation of a
 // MetricEntity object. Each instance then has its own unique set of metrics. For
-// example, in the case of YB, we define a Metric Entity Type called 'tablet', and the
+// example, we define a Metric Entity Type called 'tablet', and the
 // Tablet Server instantiates one MetricEntity instance per tablet that it hosts.
 //
 // MetricEntity instances are instantiated within a MetricRegistry, and each instance is

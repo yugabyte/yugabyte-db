@@ -365,10 +365,6 @@ std::string MakeTabletLogPrefix(
 
 } // namespace
 
-string DocDbOpIds::ToString() const {
-  return Format("{ regular: $0 intents: $1 }", regular, intents);
-}
-
 class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
  public:
   RegularRocksDbListener(Tablet* tablet, const std::string& log_prefix)

@@ -69,9 +69,10 @@ using namespace std::literals;
 #define TOKENPASTE2(x, y) TOKENPASTE(x, y)
 
 #define ASSERT_OPID_EQ(left, right) \
-  OpId TOKENPASTE2(_left, __LINE__) = (left); \
-  OpId TOKENPASTE2(_right, __LINE__) = (right); \
-  if (!consensus::OpIdEquals(TOKENPASTE2(_left, __LINE__), TOKENPASTE2(_right, __LINE__))) \
+  ::yb::OpIdPB TOKENPASTE2(_left, __LINE__) = (left); \
+  ::yb::OpIdPB TOKENPASTE2(_right, __LINE__) = (right); \
+  if (!::yb::consensus::OpIdEquals(TOKENPASTE2(_left, __LINE__), \
+                                   TOKENPASTE2(_right, __LINE__))) \
     FAIL() << "Expected: " << TOKENPASTE2(_right, __LINE__).ShortDebugString() << "\n" \
            << "Value: " << TOKENPASTE2(_left, __LINE__).ShortDebugString() << "\n"
 

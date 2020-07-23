@@ -186,7 +186,7 @@ class TransactionParticipant : public TransactionStatusManager {
     const consensus::OpId& op_id;
     HybridTime hybrid_time;
     bool sealed = false;
-    AlreadyApplied already_applied;
+    AlreadyAppliedToRegularDB already_applied_to_regular_db;
 
     std::string ToString() const;
   };

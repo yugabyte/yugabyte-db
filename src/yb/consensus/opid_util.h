@@ -39,6 +39,8 @@
 #include <string>
 #include <utility>
 
+#include "yb/util/opid.h"
+
 namespace yb {
 
 class OpIdPB;
@@ -124,7 +126,8 @@ std::string OpIdToString(const OpId& id);
 
 std::string OpsRangeString(const ConsensusRequestPB& req);
 
-OpId MakeOpId(int64_t term, int64_t index);
+OpIdPB MakeOpId(int64_t term, int64_t index);
+OpIdPB MakeOpIdPB(const yb::OpId& op_id);
 
 }  // namespace consensus
 

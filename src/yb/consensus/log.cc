@@ -344,7 +344,8 @@ Status Log::Open(const LogOptions &options,
                  const scoped_refptr<MetricEntity>& metric_entity,
                  ThreadPool* append_thread_pool,
                  int64_t cdc_min_replicated_index,
-                 scoped_refptr<Log>* log) {
+                 scoped_refptr<Log>* log,
+                 CreateNewSegment create_new_segment) {
 
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(wal_dir)),
                         Substitute("Failed to create table wal dir $0", DirName(wal_dir)));
@@ -359,16 +360,23 @@ Status Log::Open(const LogOptions &options,
                                      schema,
                                      schema_version,
                                      metric_entity,
-                                     append_thread_pool));
+                                     append_thread_pool,
+                                     create_new_segment));
   RETURN_NOT_OK(new_log->Init());
   log->swap(new_log);
   return Status::OK();
 }
 
 Log::Log(
-    LogOptions options, string wal_dir, string tablet_id, string peer_uuid, const Schema& schema,
-    uint32_t schema_version, const scoped_refptr<MetricEntity>& metric_entity,
-    ThreadPool* append_thread_pool)
+    LogOptions options,
+    string wal_dir,
+    string tablet_id,
+    string peer_uuid,
+    const Schema& schema,
+    uint32_t schema_version,
+    const scoped_refptr<MetricEntity>& metric_entity,
+    ThreadPool* append_thread_pool,
+    CreateNewSegment create_new_segment)
     : options_(std::move(options)),
       wal_dir_(std::move(wal_dir)),
       tablet_id_(std::move(tablet_id)),
@@ -385,7 +393,8 @@ Log::Log(
       allocation_state_(kAllocationNotStarted),
       metric_entity_(metric_entity),
       on_disk_size_(0),
-      log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)) {
+      log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)),
+      create_new_segment_at_start_(create_new_segment) {
   set_wal_retention_secs(options.retention_secs);
   CHECK_OK(ThreadPoolBuilder("log-alloc").set_max_threads(1).Build(&allocation_pool_));
   if (metric_entity_) {
@@ -431,13 +440,9 @@ Status Log::Init() {
     YB_LOG_FIRST_N(INFO, 1) << "durable_wal_write is turned off. Buffered IO will be used for WAL.";
   }
 
-  // We always create a new segment when the log starts.
-  RETURN_NOT_OK(AsyncAllocateSegment());
-  RETURN_NOT_OK(allocation_status_.Get());
-  RETURN_NOT_OK(SwitchToAllocatedSegment());
-
-  RETURN_NOT_OK(appender_->Init());
-  log_state_ = kLogWriting;
+  if (create_new_segment_at_start_) {
+    RETURN_NOT_OK(EnsureInitialNewSegmentAllocated());
+  }
   return Status::OK();
 }
 
@@ -469,7 +474,7 @@ Status Log::RollOver() {
 
   DCHECK_EQ(allocation_state(), kAllocationFinished);
 
-  LOG_WITH_PREFIX(INFO) << Format("Last appended opid in segment $0: $1", active_segment_->path(),
+  LOG_WITH_PREFIX(INFO) << Format("Last appended OpId in segment $0: $1", active_segment_->path(),
                                   last_appended_entry_op_id_.ToString());
 
   RETURN_NOT_OK(Sync());
@@ -675,6 +680,24 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
 Status Log::AllocateSegmentAndRollOver() {
   RETURN_NOT_OK(AsyncAllocateSegment());
   return RollOver();
+}
+
+Status Log::EnsureInitialNewSegmentAllocated() {
+  if (log_state_ == LogState::kLogWriting) {
+    // New segment already created.
+    return Status::OK();
+  }
+  if (log_state_ != LogState::kLogInitialized) {
+    return STATUS_FORMAT(
+        IllegalState, "Unexpected log state in EnsureInitialNewSegmentAllocated: $0", log_state_);
+  }
+  RETURN_NOT_OK(AsyncAllocateSegment());
+  RETURN_NOT_OK(allocation_status_.Get());
+  RETURN_NOT_OK(SwitchToAllocatedSegment());
+
+  RETURN_NOT_OK(appender_->Init());
+  log_state_ = LogState::kLogWriting;
+  return Status::OK();
 }
 
 Status Log::Sync() {
