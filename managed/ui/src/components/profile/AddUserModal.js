@@ -53,7 +53,8 @@ class AddUserModal extends Component {
         onSubmit={(values) => {
           this.handleSubmitForm(values);
         }}
-        render={props => (
+      >
+        {props => (
           <YBModal visible={modalVisible} formName={"EncryptionForm"} onHide={onHide}
             onFormSubmit={props.handleSubmit} submitLabel={'Submit'} cancelLabel={'Close'}
             showCancelButton={true} title={ "Add User" }
@@ -96,7 +97,8 @@ class AddUserModal extends Component {
               </Row>
             </div>
           </YBModal>
-        )} />
+        )}
+      </Formik>
     );
   }
 }
