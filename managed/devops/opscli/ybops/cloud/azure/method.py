@@ -27,6 +27,8 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
 
     def add_extra_args(self):
         super(AzureCreateInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--volume_type", choices=["Premium_LRS"], default="Premium_LRS",
+                                 help="Volume type for volumes on EBS-backed instances.")
 
     def preprocess_args(self, args):
         super(AzureCreateInstancesMethod, self).preprocess_args(args)
