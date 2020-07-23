@@ -41,6 +41,8 @@
 #include "yb/gutil/port.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/opid.h"
+
 namespace yb {
 namespace consensus {
 
@@ -174,6 +176,10 @@ OpId MakeOpId(int64_t term, int64_t index) {
   ret.set_term(term);
   LOG_IF(DFATAL, term < 0 || index < 0) << "MakeOpId: negative term/index: " << OpIdToString(ret);
   return ret;
+}
+
+OpIdPB MakeOpIdPB(const yb::OpId& op_id) {
+  return MakeOpId(op_id.term, op_id.index);
 }
 
 } // namespace consensus

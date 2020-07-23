@@ -70,6 +70,7 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
@@ -153,13 +154,6 @@ inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
 }
 
 class WriteOperation;
-
-struct DocDbOpIds {
-  OpId regular;
-  OpId intents;
-
-  std::string ToString() const;
-};
 
 using AddTableListener = std::function<Status(const TableInfo&)>;
 using DocWriteOperationCallback =

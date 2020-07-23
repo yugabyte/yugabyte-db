@@ -1269,7 +1269,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     TransactionApplyData apply_data = {
         data.leader_term, id, data.op_id, commit_time, data.hybrid_time, data.sealed,
         data.state.tablets(0) };
-    if (!data.already_applied) {
+    if (!data.already_applied_to_regular_db) {
       return ProcessApply(apply_data);
     }
     if (!data.sealed) {
@@ -1492,8 +1492,7 @@ OneWayBitmap TransactionParticipant::TEST_TransactionReplicatedBatches(
 }
 
 std::string TransactionParticipant::ReplicatedData::ToString() const {
-  return Format("{ leader_term: $0 state: $1 op_id: $2 hybrid_time: $3 already_applied: $4 }",
-               leader_term, state, op_id, hybrid_time, already_applied);
+  return YB_STRUCT_TO_STRING(leader_term, state, op_id, hybrid_time, already_applied_to_regular_db);
 }
 
 void TransactionParticipant::StartShutdown() {

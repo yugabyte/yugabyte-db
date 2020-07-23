@@ -51,6 +51,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/restart_safe_clock.h"
+#include "yb/util/tostring.h"
 
 // Used by other classes, now part of the API.
 DECLARE_bool(durable_wal_write);
@@ -143,11 +144,11 @@ struct ReadEntriesResult {
 };
 
 struct FirstEntryMetadata {
-  yb::OpId committed_op_id;
-  RestartSafeCoarseTimePoint mono_time;
+  yb::OpId op_id;
+  RestartSafeCoarseTimePoint entry_time;
 
   std::string ToString() const {
-    return Format("{ committed_op_id: $0 mono_time: $1 }", committed_op_id, mono_time);
+    return YB_STRUCT_TO_STRING(op_id, entry_time);
   }
 };
 
@@ -196,7 +197,9 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   //
   // All gathered information is returned in result.
   // In case of failure status field of result is not ok.
-  ReadEntriesResult ReadEntries();
+  //
+  // Will stop after reading max_entries_to_read entries.
+  ReadEntriesResult ReadEntries(int64_t max_entries_to_read = std::numeric_limits<int64_t>::max());
 
   // Reads the metadata of the first entry in the segment
   Result<FirstEntryMetadata> ReadFirstEntryMetadata();

@@ -195,7 +195,7 @@ TYPED_TEST(TestTablet, TestFlushedOpId) {
   // Insert & flush one row to start index counting.
   ASSERT_OK(this->InsertTestRow(&writer, 0, 333));
   ASSERT_OK(tablet->Flush(FlushMode::kSync));
-  OpId id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+  auto id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
   const int64_t start_index = id.index;
 
   this->InsertTestRows(1, kCount, 555);
