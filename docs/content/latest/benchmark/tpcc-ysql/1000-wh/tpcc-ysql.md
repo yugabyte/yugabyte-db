@@ -24,7 +24,7 @@ $ ./tpccbenchmark --create=true --load=true \
     </tr>
     <tr>
       <td>Loading Time</td>
-      <td>~10 hours</td>
+      <td>~5.5 hours</td>
     </tr>
     <tr>
       <td>Data Set Size</td>
@@ -55,12 +55,50 @@ $ ./tpccbenchmark --create=true --load=true --execute=true \
 
 ## 4. TPC-C Benchmark Results
 
+<table>
+  <tbody>
+    <tr>
+      <td>Cluster</td>
+      <td>3 nodes of type `c5d.4xlarge`</td>
+    </tr>
+    <tr>
+      <td>TPMC</td>
+      <td>12,563.07</td>
+    </tr>
+    <tr>
+      <td>Efficiency</td>
+      <td>97.69%</td>
+    </tr>
+    <tr>
+      <td>Latencies</td>
+      <td>
+        New Order<br />
+        Avg: 325.378 msecs, p99: 3758.859 msecs<br />
+        Payment<br />
+        Avg: 277.539 msecs, p99: 12667.048 msecs<br />
+        OrderStatus<br />
+        Avg: 174.173 msecs, p99: 4968.783 msecs<br />
+        Delivery<br />
+        Avg: 310.19 msecs, p99: 5259.951 msecs<br />
+        StockLevel<br />
+        Avg: 652.827 msecs, p99: 8455.325 msecs
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
 Once the execution is done the TPM-C number along with the efficiency is printed.
 
 ```
-18:40:39,804 (DBWorkload.java:895) INFO  - Rate limited reqs/s: Results(nanoSeconds=1800000299412, measuredRequests=842650) = 468.13881101867906 requests/sec
-18:40:39,804 (DBWorkload.java:900) INFO  - Num New Order transactions : 377707, time seconds: 1800
-18:40:39,804 (DBWorkload.java:901) INFO  - TPM-C: 12590
-18:40:39,804 (DBWorkload.java:902) INFO  - Efficiency : 97.90046656298601
-18:40:39,806 (DBWorkload.java:737) INFO  - Output Raw data into file: results/oltpbench.csv
+17:18:58,728 (DBWorkload.java:955) INFO  - Throughput: Results(nanoSeconds=1800000716759, measuredRequests=842216) = 467.8975914612168 requests/sec reqs/sec
+17:18:58,728 (DBWorkload.java:956) INFO  - Num New Order transactions : 376892, time seconds: 1800
+17:18:58,728 (DBWorkload.java:957) INFO  - TPM-C: 12,563.07
+17:18:58,728 (DBWorkload.java:958) INFO  - Efficiency : 97.69%
+17:18:59,006 (DBWorkload.java:983) INFO  - NewOrder, Avg Latency: 325.378 msecs, p99 Latency: 3758.859 msecs
+17:18:59,138 (DBWorkload.java:983) INFO  - Payment, Avg Latency: 277.539 msecs, p99 Latency: 12667.048 msecs
+17:18:59,147 (DBWorkload.java:983) INFO  - OrderStatus, Avg Latency: 174.173 msecs, p99 Latency: 4968.783 msecs
+17:18:59,166 (DBWorkload.java:983) INFO  - Delivery, Avg Latency: 310.19 msecs, p99 Latency: 5259.951 msecs
+17:18:59,182 (DBWorkload.java:983) INFO  - StockLevel, Avg Latency: 652.827 msecs, p99 Latency: 8455.325 msecs
+17:18:59,183 (DBWorkload.java:792) INFO  - Output Raw data into file: results/oltpbench.csv
 ```
