@@ -130,10 +130,8 @@ export default class UserProfileForm extends Component {
             setSubmitting(false);
             this.setState({statusUpdated: true});
           }}
-          render={({
-            handleSubmit,
-            isSubmitting,
-          }) => (
+        >
+          {({ handleSubmit, isSubmitting }) => (
             <Form name="EditCustomerProfile" onSubmit={handleSubmit}>
               <Row>
                 <Col md={6} sm={12}>
@@ -199,7 +197,7 @@ export default class UserProfileForm extends Component {
               </div>
             </Form>
           )}
-        />
+        </Formik>
       </div>
     );
   }

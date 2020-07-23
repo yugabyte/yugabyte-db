@@ -84,26 +84,24 @@ class LoginForm extends Component {
                 this.submitLogin(values);
                 setSubmitting(false);
               }}
-              render={({
-                         handleSubmit,
-                         isSubmitting
-                       }) => (
-                         <Form onSubmit={handleSubmit}>
-                           <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
-                             {<strong>{JSON.stringify(authToken.error)}</strong>}
-                           </div>
+            >
+              {({ handleSubmit, isSubmitting }) => (
+                <Form onSubmit={handleSubmit}>
+                  <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
+                    {<strong>{JSON.stringify(authToken.error)}</strong>}
+                  </div>
 
-                           <div className="clearfix">
-                             <Field name="email" placeholder="Email Address" type="text" component={YBFormInput} />
-                             <Field name="password" placeholder="Password" type="password" component={YBFormInput} />
-                           </div>
-                           <div className="clearfix">
-                             <YBButton btnType="submit" disabled={isSubmitting || getPromiseState(authToken).isLoading()}
+                  <div className="clearfix">
+                    <Field name="email" placeholder="Email Address" type="text" component={YBFormInput} />
+                    <Field name="password" placeholder="Password" type="password" component={YBFormInput} />
+                  </div>
+                  <div className="clearfix">
+                    <YBButton btnType="submit" disabled={isSubmitting || getPromiseState(authToken).isLoading()}
                               btnClass="btn btn-orange" btnText="Login"/>
-                           </div>
-                         </Form>
+                  </div>
+                </Form>
               )}
-            />
+            </Formik>
           )}
         </div>
       </div>

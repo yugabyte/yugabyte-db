@@ -193,7 +193,8 @@ class CreateKubernetesConfiguration extends Component {
               };
               this.createProviderConfig(payload, setSubmitting);
             }}
-            render={props => (
+          >
+            {props => (
               <form name="kubernetesConfigForm"
                     onSubmit={props.handleSubmit}>
                 <div className="editor-container">
@@ -276,7 +277,7 @@ class CreateKubernetesConfiguration extends Component {
                 </div>
               </form>
             )}
-          />
+          </Formik>
         </div>
       </div>
     );
