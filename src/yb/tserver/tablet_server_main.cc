@@ -146,7 +146,7 @@ int TabletServerMain(int argc, char** argv) {
 
   string host_name;
   if (GetHostname(&host_name).ok()) {
-    FLAGS_metric_node_name = (host_name) + ":" + std::to_string(TabletServer::kDefaultWebPort);
+    FLAGS_metric_node_name = strings::Substitute("$0:$1", host_name, TabletServer::kDefaultWebPort);
   } else {
       LOG(INFO) << "Failed to get tablet's host name, keeping default metric_node_name";
   }

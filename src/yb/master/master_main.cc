@@ -74,7 +74,7 @@ static int MasterMain(int argc, char** argv) {
 
   string host_name;
   if (GetHostname(&host_name).ok()) {
-    FLAGS_metric_node_name = (host_name) + ":" + std::to_string(kMasterDefaultWebPort);
+    FLAGS_metric_node_name = strings::Substitute("$0:$1", host_name, kMasterDefaultWebPort);
   } else {
       LOG(INFO) << "Failed to get master's host name, keeping default metric_node_name";
   }
