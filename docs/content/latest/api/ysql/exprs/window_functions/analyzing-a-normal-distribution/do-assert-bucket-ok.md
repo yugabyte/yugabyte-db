@@ -2,7 +2,7 @@
 title: do_assert_bucket_ok
 linkTitle: do_assert_bucket_ok
 headerTitle: do_assert_bucket_ok
-description: DO/assert block to test that bucket() gives the correct results
+description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window fucntions documentation.
 menu:
   latest:
     identifier: do-assert-bucket-ok

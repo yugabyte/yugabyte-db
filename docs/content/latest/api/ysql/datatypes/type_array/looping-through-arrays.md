@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: looping-through-arrays
     parent: api-ysql-datatypes-array
-    weight: 10
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---

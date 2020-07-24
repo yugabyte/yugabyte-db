@@ -2,7 +2,7 @@
 title: do_populate_results.sql
 linkTitle: do_populate_results.sql
 headerTitle: do_populate_results.sql
-description: Create the function that creates the histogram output.
+description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window fucntions documentation.
 menu:
   latest:
     identifier: do-populate-results

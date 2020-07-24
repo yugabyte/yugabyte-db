@@ -2,7 +2,7 @@
 title: dp-results
 linkTitle: dp-results
 headerTitle: Output from running do_ntile(), do_percent_rank(), and do_cume_dist() on t4.dp_score
-description: dp-results
+description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window fucntions documentation (reports of results).
 menu:
   latest:
     identifier: dp-results

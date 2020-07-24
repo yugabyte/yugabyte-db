@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: array-of-domains
     parent: api-ysql-datatypes-array
-    weight: 10
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---

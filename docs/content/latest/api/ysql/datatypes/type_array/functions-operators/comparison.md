@@ -7,6 +7,7 @@ menu:
   latest:
     identifier: array-comparison
     parent: array-functions-operators
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---
@@ -426,7 +427,7 @@ This section demonstrates each of the rules that the [Containment and overlap op
 
 ```postgresql
 -- Any two arrays can be compared without error if they have the same data type.
--- Insensitive to the geom. properties.
+-- Insensitive to the geometric properties.
 do $body$
 declare
   a constant int[] := '[2:3][4:5]={{10, 20}, {30, 40}}';

@@ -2,7 +2,7 @@
 title: YSQL window functions
 linkTitle: Window functions
 headerTitle: Window functions
-description: Window functions operate on a row set that's defined, in general, as an ordered window within a containing restriction defined by a subquery. They calculate a value for each row in the window by consulting values from other rows in the window.
+description: This major section escribes the synatx and semantics of all of the Window functions that YSQL supports. These operate on a row set that's defined, in general, as an ordered window within a containing restriction defined by a subquery. They calculate a value for each row in the window by consulting values from other rows in the window.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:

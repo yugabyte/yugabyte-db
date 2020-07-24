@@ -2,7 +2,7 @@
 title: cr_bucket_dedicated_code.sql
 linkTitle: cr_bucket_dedicated_code.sql
 headerTitle: cr_bucket_dedicated_code.sql
-description: Create the bucket() function using dedicated original code.
+description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window fucntions documentation.
 menu:
   latest:
     identifier: cr-bucket-dedicated-code

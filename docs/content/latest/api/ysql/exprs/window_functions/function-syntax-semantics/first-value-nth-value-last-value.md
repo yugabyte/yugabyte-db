@@ -2,7 +2,7 @@
 title: first_value(), nth_value(), last_value()
 linkTitle: first_value(), nth_value(), last_value()
 headerTitle: first_value(), nth_value(), last_value()
-description: The SQL window functions first_value(), nth_value(), last_value()
+description: Describes the functionlity of the YSQL window functions first_value(), nth_value(), last_value().
 menu:
   latest:
     identifier: first-value-nth-value-last-value
