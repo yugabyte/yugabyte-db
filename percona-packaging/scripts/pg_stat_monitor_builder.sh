@@ -224,12 +224,14 @@ install_deps() {
         fi
         apt-get update
 
-        LLVM_EXISTS=$(grep -c "apt.llvm.org" /etc/apt/sources.list)
-        if [ "${LLVM_EXISTS}" == 0 ]; then
-            wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
-            echo "deb http://apt.llvm.org/${OS_NAME}/ llvm-toolchain-${OS_NAME}-7 main" >> /etc/apt/sources.list
-            echo "deb-src http://apt.llvm.org/${OS_NAME}/ llvm-toolchain-${OS_NAME}-7 main" >> /etc/apt/sources.list
-            apt-get update
+        if [[ "${OS_NAME}" != "focal" ]]; then
+            LLVM_EXISTS=$(grep -c "apt.llvm.org" /etc/apt/sources.list)
+            if [ "${LLVM_EXISTS}" == 0 ]; then
+                wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
+                echo "deb http://apt.llvm.org/${OS_NAME}/ llvm-toolchain-${OS_NAME}-7 main" >> /etc/apt/sources.list
+                echo "deb-src http://apt.llvm.org/${OS_NAME}/ llvm-toolchain-${OS_NAME}-7 main" >> /etc/apt/sources.list
+                apt-get update
+            fi
         fi
 
         PKGLIST+=" percona-postgresql-${PG_RELEASE} debconf debhelper clang-7 devscripts dh-exec dh-systemd git wget libkrb5-dev libssl-dev percona-postgresql-common percona-postgresql-server-dev-all"
