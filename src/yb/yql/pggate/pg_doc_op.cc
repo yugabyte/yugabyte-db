@@ -587,7 +587,7 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
 
 // When postgres requests to scan a specific partition, set the partition parameter accordingly.
 Status PgDocReadOp::SetScanPartitionBoundary() {
-  SCHECK_NE(exec_params_.partition_key, nullptr, Uninitialized, "expected non-null partition_key");
+  SCHECK(exec_params_.partition_key != nullptr, Uninitialized, "expected non-null partition_key");
 
   const std::vector<std::string>& partition_keys = table_desc_->table()->GetPartitions();
   const auto& partition_key = std::find(
