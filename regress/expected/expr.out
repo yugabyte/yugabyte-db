@@ -2084,6 +2084,74 @@ ERROR:  unrecognized or unsupported function
 LINE 1: SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (re...
                                       ^
 --
+-- reverse(string)
+--
+SELECT * FROM cypher('expr', $$
+    RETURN reverse("gnirts a si siht")
+$$) AS (results agtype);
+      results       
+--------------------
+ "this is a string"
+(1 row)
+
+SELECT * FROM reverse('gnirts a si siht');
+     reverse      
+------------------
+ this is a string
+(1 row)
+
+SELECT * FROM reverse('gnirts a si siht'::text);
+     reverse      
+------------------
+ this is a string
+(1 row)
+
+SELECT * FROM reverse('gnirts a si siht'::cstring);
+      reverse       
+--------------------
+ "this is a string"
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN reverse(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM reverse(null);
+ reverse 
+---------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN reverse(true)
+$$) AS (results agtype);
+ERROR:  reverse() unsuppoted argument agtype 5
+SELECT * FROM reverse(true);
+ERROR:  reverse() unsuppoted argument type 16
+SELECT * FROM cypher('expr', $$
+    RETURN reverse(3.14)
+$$) AS (results agtype);
+ERROR:  reverse() unsuppoted argument agtype 4
+SELECT * FROM reverse(3.14);
+ERROR:  reverse() unsuppoted argument type 1700
+SELECT * FROM cypher('expr', $$
+    RETURN reverse()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM reverse();
+ERROR:  function reverse() does not exist
+LINE 1: SELECT * FROM reverse();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

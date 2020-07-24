@@ -910,6 +910,14 @@ STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION reverse(variadic "any")
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 --
 -- function for typecasting an agtype value to another agtype value
 --

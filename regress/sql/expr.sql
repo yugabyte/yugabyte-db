@@ -905,7 +905,6 @@ SELECT * FROM toString(false);
 SELECT * FROM toString('a string');
 SELECT * FROM toString('a cstring'::cstring);
 SELECT * FROM toString('a text string'::text);
-
 -- agtypes
 SELECT * FROM toString(agtype_in('3'));
 SELECT * FROM toString(agtype_in('3.14'));
@@ -914,16 +913,41 @@ SELECT * FROM toString(agtype_in('3.14::numeric'));
 SELECT * FROM toString(agtype_in('true'));
 SELECT * FROM toString(agtype_in('false'));
 SELECT * FROM toString(agtype_in('"a string"'));
-
 SELECT * FROM cypher('expr', $$ RETURN toString(3.14::numeric) $$) AS (results agtype);
-
 -- should return null
 SELECT * FROM toString(NULL);
 SELECT * FROM toString(agtype_in(null));
-
 -- should fail
 SELECT * FROM toString();
 SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (results agtype);
+
+--
+-- reverse(string)
+--
+SELECT * FROM cypher('expr', $$
+    RETURN reverse("gnirts a si siht")
+$$) AS (results agtype);
+SELECT * FROM reverse('gnirts a si siht');
+SELECT * FROM reverse('gnirts a si siht'::text);
+SELECT * FROM reverse('gnirts a si siht'::cstring);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN reverse(null)
+$$) AS (results agtype);
+SELECT * FROM reverse(null);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN reverse(true)
+$$) AS (results agtype);
+SELECT * FROM reverse(true);
+SELECT * FROM cypher('expr', $$
+    RETURN reverse(3.14)
+$$) AS (results agtype);
+SELECT * FROM reverse(3.14);
+SELECT * FROM cypher('expr', $$
+    RETURN reverse()
+$$) AS (results agtype);
+SELECT * FROM reverse();
 
 --
 -- Cleanup
