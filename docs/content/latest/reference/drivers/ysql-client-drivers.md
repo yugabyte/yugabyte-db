@@ -12,9 +12,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following API client library drivers are supported for use with the [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql/).
+The [Yugabyte Structured Query Language (YSQL) API](../../api/ysql) builds upon and extends a fork of the query layer from PostgreSQL v11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
 
-For tutorials on building a sample application with the following API client drivers, click the relevant link included below for each driver.
+For details on PostgreSQL feature support in YSQL, see [What Features Does YSQL Support?](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/YSQL-Features-Supported.md)
+
+Yugabyte and third party API client library drivers listed below are supported for developing applications that connect to and interact with the YSQL API.
+
+For help using these drivers with YSQL, ask questions in the [Slack community](https://yugabyte-db.slack.com).
+
+If you encounter an issue or want to file an enhancement request, [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new/choose).
 
 ## C/C++
 
@@ -22,7 +28,7 @@ For tutorials on building a sample application with the following API client dri
 
 The [libqxx](http://pqxx.org/development/libpqxx/) is the official C++ client API for PostgreSQL.
 
-For details and documentation, see the [`jvt/libpqxx` README](https://github.com/jtv/libpqxx#readme) and the [`libpqxx` ReadTheDocs](https://libpqxx.readthedocs.io/en/latest/).
+For details and documentation, see [`jvt/libpqxx` README](https://github.com/jtv/libpqxx#readme) and [`libpqxx` ReadTheDocs](https://libpqxx.readthedocs.io/en/latest/).
 
 For a tutorial on building a sample C++ application with this driver, see [Build a C++ application](../../quick-start/build-apps/cpp/ysql/).
 
@@ -50,8 +56,6 @@ $ ./configure
 $ make
 $ make install
 ```
-
-The `libpqxx` driver is ready for use building a C++ application for YugabyteDB.
 
 ## C\#
 
@@ -177,7 +181,4 @@ To install `pg` driver, run the following [`gem install`](https://guides.rubygem
 
 ```sh
 $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config
-
-
-
 ```
