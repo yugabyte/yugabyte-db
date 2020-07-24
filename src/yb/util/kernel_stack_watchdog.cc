@@ -57,8 +57,7 @@ DEFINE_STATIC_THREAD_LOCAL(KernelStackWatchdog::TLS,
                            KernelStackWatchdog, tls_);
 
 KernelStackWatchdog::KernelStackWatchdog()
-  : log_collector_(nullptr),
-    finish_(1) {
+  : finish_(1) {
   CHECK_OK(Thread::Create(
       "kernel-watchdog", "kernel-watcher", std::bind(&KernelStackWatchdog::RunThread, this),
       &thread_));
@@ -69,30 +68,28 @@ KernelStackWatchdog::~KernelStackWatchdog() {
   CHECK_OK(ThreadJoiner(thread_.get()).Join());
 }
 
-void KernelStackWatchdog::SaveLogsForTests(bool save_logs) {
-  MutexLock l(lock_);
-  if (save_logs) {
-    log_collector_.reset(new vector<string>());
-  } else {
-    log_collector_.reset();
+void KernelStackWatchdog::TEST_SaveLogs() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!log_collector_) {
+    log_collector_ = std::make_unique<std::vector<std::string>>();
   }
 }
 
-vector<string> KernelStackWatchdog::LoggedMessagesForTests() const {
-  MutexLock l(lock_);
-  CHECK(log_collector_) << "Must call SaveLogsForTests(true) first";
+vector<string> KernelStackWatchdog::TEST_LoggedMessages() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  CHECK(log_collector_) << "Must call TEST_SaveLogs() first";
   return *log_collector_;
 }
 
 void KernelStackWatchdog::Register(TLS* tls) {
   auto tid = Thread::CurrentThreadIdForStack();
-  MutexLock l(lock_);
+  std::lock_guard<std::mutex> lock(mutex_);
   InsertOrDie(&tls_by_tid_, tid, tls);
 }
 
 void KernelStackWatchdog::Unregister(TLS* tls) {
   auto tid = Thread::CurrentThreadIdForStack();
-  MutexLock l(lock_);
+  std::lock_guard<std::mutex> lock(mutex_);
   CHECK(tls_by_tid_.erase(tid));
 }
 
@@ -113,11 +110,12 @@ void KernelStackWatchdog::RunThread() {
 
     std::vector<ThreadIdForStack> to_copy;
     std::vector<std::pair<ThreadIdForStack, TLS::Data>> to_process;
+    std::vector<std::string>* log_collector = nullptr;
     {
       to_copy.clear();
       to_process.resize(1);
       {
-        MutexLock l(lock_);
+        std::lock_guard<std::mutex> lock(mutex_);
         for (const auto& map_entry : tls_by_tid_) {
           if (map_entry.second->data_.TryCopySnapshot(&to_process.back().second)) {
             to_process.back().first = map_entry.first;
@@ -126,6 +124,7 @@ void KernelStackWatchdog::RunThread() {
             to_copy.push_back(map_entry.first);
           }
         }
+        log_collector = log_collector_.get();
       }
 
       while (to_process.size() > 1 || !to_copy.empty()) {
@@ -147,7 +146,7 @@ void KernelStackWatchdog::RunThread() {
               }
 
               const auto user_stack = DumpThreadStack(p.first);
-              LOG_STRING(WARNING, log_collector_.get())
+              LOG_STRING(WARNING, log_collector)
                 << "Thread " << p.first << " stuck at " << frame->status_
                 << " for " << paused_us / 1000 << "ms" << ":\n"
                 << "Kernel stack:\n" << kernel_stack << "\n"
@@ -158,7 +157,7 @@ void KernelStackWatchdog::RunThread() {
         to_process.resize(1);
         if (!to_copy.empty()) {
           base::subtle::PauseCPU();
-          MutexLock l(lock_);
+          std::lock_guard<std::mutex> lock(mutex_);
           auto w = to_copy.begin();
           for (auto tid : to_copy) {
             auto it = tls_by_tid_.find(tid);

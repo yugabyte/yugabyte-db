@@ -75,7 +75,9 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/singleton.h"
+#include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/mutex.h"
 #include "yb/util/monotime.h"
@@ -98,14 +100,10 @@ class KernelStackWatchdog {
   }
 
   // Instead of logging through glog, log warning messages into a vector.
-  //
-  // If 'save_logs' is true, will start saving to the vector, and forget any
-  // previously logged messages.
-  // If 'save_logs' is false, disables this functionality.
-  void SaveLogsForTests(bool save_logs);
+  void TEST_SaveLogs();
 
-  // Return any log messages saved since the last call to SaveLogsForTests(true).
-  std::vector<std::string> LoggedMessagesForTests() const;
+  // Return any log messages saved since the last call to TEST_SaveLogs().
+  std::vector<std::string> TEST_LoggedMessages() const;
 
  private:
   friend class Singleton<KernelStackWatchdog>;
@@ -190,13 +188,13 @@ class KernelStackWatchdog {
   DECLARE_STATIC_THREAD_LOCAL(TLS, tls_);
 
   typedef std::unordered_map<ThreadIdForStack, TLS*> TLSMap;
-  TLSMap tls_by_tid_;
+  TLSMap tls_by_tid_ GUARDED_BY(mutex_);
 
   // If non-NULL, warnings will be emitted into this vector instead of glog.  Used by tests.
-  gscoped_ptr<std::vector<std::string> > log_collector_;
+  std::unique_ptr<std::vector<std::string>> log_collector_ GUARDED_BY(mutex_);
 
   // Lock protecting tls_by_tid_ and log_collector_.
-  mutable Mutex lock_;
+  mutable std::mutex mutex_;
 
   // The watchdog thread itself.
   scoped_refptr<Thread> thread_;
