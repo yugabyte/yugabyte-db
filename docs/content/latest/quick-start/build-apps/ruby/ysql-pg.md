@@ -40,7 +40,7 @@ showAsideToc: true
   </li>
 </ul>
 
-## Install the pg driver gem
+## Install the pg driver
 
 Install the Ruby PostgreSQL driver (`pg`) using the following command. You can get further details for the driver [here](https://bitbucket.org/ged/ruby-pg/wiki/Home).
 

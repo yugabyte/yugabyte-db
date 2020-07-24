@@ -138,12 +138,43 @@ $ npm install pg
 
 ### php-pgsql
 
+`php-pgsql`
 
-For a tutorial on building a sample Node.js application that uses `node-postgres`, see [Build a Node.js application](../../quick-start/build-apps/php/ysql/).
+For a tutorial on building a sample Node.js application that uses `php-pgsql`, see [Build a Node.js application](../../quick-start/build-apps/php/ysql/).
 
+#### Install the php-pgsql driver
+
+To enable PostgreSQL support using `php-pgsql`, see [Installing/Configuring] in the PHP documentation.
 
 ## Python
 
+### psycopg
+
+[Psycopg](https://www.psycopg.org/) is the popular PostgreSQL database adapter for the Python programming language and is a wrapper for `libpq`, the official PostgreSQL client library.
+
+For details on using psycopg, see [Psycopg documentation](https://www.psycopg.org/docs/).
+
+For a tutorial on building a sample Python application that uses `psycopg2`, see [Build a Python application](../../quick-start/build-apps/python/ysql/).
+
+#### Install psycopg2
+
+To install the `psycopg2` binary package, run the following pip install` command:
+
+```sh
+$ pip3 install psycopg2
+```
+
 ## Ruby
 
-## Scala
+### Ruby PostgreSQL driver (pg)
+
+https://docs.yugabyte.com/latest/quick-start/build-apps/ruby/ysql-pg/
+
+### Install the pg driver
+
+To install `pg` driver, run the following `gem install` command:
+
+```sh
+$ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config
+
+```
