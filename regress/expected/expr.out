@@ -1954,6 +1954,136 @@ ERROR:  unrecognized or unsupported function
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 --
+-- toString()
+--
+-- PG types
+SELECT * FROM toString(3);
+ tostring 
+----------
+ "3"
+(1 row)
+
+SELECT * FROM toString(3.14);
+ tostring 
+----------
+ "3.14"
+(1 row)
+
+SELECT * FROM toString(3.14::float);
+ tostring 
+----------
+ "3.14"
+(1 row)
+
+SELECT * FROM toString(3.14::numeric);
+ tostring 
+----------
+ "3.14"
+(1 row)
+
+SELECT * FROM toString(true);
+ tostring 
+----------
+ "true"
+(1 row)
+
+SELECT * FROM toString(false);
+ tostring 
+----------
+ "false"
+(1 row)
+
+SELECT * FROM toString('a string');
+  tostring  
+------------
+ "a string"
+(1 row)
+
+SELECT * FROM toString('a cstring'::cstring);
+  tostring   
+-------------
+ "a cstring"
+(1 row)
+
+SELECT * FROM toString('a text string'::text);
+    tostring     
+-----------------
+ "a text string"
+(1 row)
+
+-- agtypes
+SELECT * FROM toString(agtype_in('3'));
+ tostring 
+----------
+ "3"
+(1 row)
+
+SELECT * FROM toString(agtype_in('3.14'));
+ tostring 
+----------
+ "3.14"
+(1 row)
+
+SELECT * FROM toString(agtype_in('3.14::float'));
+ tostring 
+----------
+ "3.14"
+(1 row)
+
+SELECT * FROM toString(agtype_in('3.14::numeric'));
+ tostring 
+----------
+ "3.14"
+(1 row)
+
+SELECT * FROM toString(agtype_in('true'));
+ tostring 
+----------
+ "true"
+(1 row)
+
+SELECT * FROM toString(agtype_in('false'));
+ tostring 
+----------
+ "false"
+(1 row)
+
+SELECT * FROM toString(agtype_in('"a string"'));
+  tostring  
+------------
+ "a string"
+(1 row)
+
+SELECT * FROM cypher('expr', $$ RETURN toString(3.14::numeric) $$) AS (results agtype);
+ results 
+---------
+ "3.14"
+(1 row)
+
+-- should return null
+SELECT * FROM toString(NULL);
+ tostring 
+----------
+ 
+(1 row)
+
+SELECT * FROM toString(agtype_in(null));
+ tostring 
+----------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM toString();
+ERROR:  function tostring() does not exist
+LINE 1: SELECT * FROM toString();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (re...
+                                      ^
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

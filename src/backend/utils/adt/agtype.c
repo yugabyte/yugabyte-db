@@ -4256,3 +4256,106 @@ Datum exists_property(PG_FUNCTION_ARGS)
     /* otherwise, we have something, and something is TRUE */
     PG_RETURN_BOOL(true);
 }
+
+PG_FUNCTION_INFO_V1(tostring);
+
+Datum tostring(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    char *string = NULL;
+    Oid type;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs > 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("toString() only supports one argument")));
+
+    /* check for null */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /*
+     * toString() supports integer, float, numeric, text, cstring, boolean or
+     * the agtype integer, float, numeric, string, boolean input
+     */
+    arg = args[0];
+    type = types[0];
+
+    if (type != AGTYPEOID)
+    {
+        if (type == INT2OID)
+            string = DatumGetCString(DirectFunctionCall1(int8out,
+                Int64GetDatum((int64) DatumGetInt16(arg))));
+        else if (type == INT4OID)
+            string = DatumGetCString(DirectFunctionCall1(int8out,
+                Int64GetDatum((int64) DatumGetInt32(arg))));
+        else if (type == INT8OID)
+            string = DatumGetCString(DirectFunctionCall1(int8out, arg));
+        else if (type == FLOAT4OID)
+            string = DatumGetCString(DirectFunctionCall1(float8out, arg));
+        else if (type == FLOAT8OID)
+            string = DatumGetCString(DirectFunctionCall1(float8out, arg));
+        else if (type == NUMERICOID)
+            string = DatumGetCString(DirectFunctionCall1(numeric_out, arg));
+        else if (type == CSTRINGOID)
+            string = DatumGetCString(arg);
+        else if (type == TEXTOID)
+            string = text_to_cstring(DatumGetTextPP(arg));
+        else if (type == BOOLOID)
+            string = DatumGetBool(arg) ? "true" : "false";
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toString() unsuppoted argument type %d",
+                                   type)));
+    }
+    else
+    {
+        agtype *agt_arg;
+        agtype_value *agtv_value;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toString() only supports scalar arguments")));
+
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        if (agtv_value->type == AGTV_NULL)
+            PG_RETURN_NULL();
+        else if (agtv_value->type == AGTV_INTEGER)
+            string = DatumGetCString(DirectFunctionCall1(int8out,
+                Int64GetDatum(agtv_value->val.int_value)));
+        else if (agtv_value->type == AGTV_FLOAT)
+            string = DatumGetCString(DirectFunctionCall1(float8out,
+                Float8GetDatum(agtv_value->val.float_value)));
+        else if (agtv_value->type == AGTV_STRING)
+            string = pnstrdup(agtv_value->val.string.val,
+                              agtv_value->val.string.len);
+        else if (agtv_value->type == AGTV_NUMERIC)
+            string = DatumGetCString(DirectFunctionCall1(numeric_out,
+                PointerGetDatum(agtv_value->val.numeric)));
+        else if (agtv_value->type == AGTV_BOOL)
+            string = (agtv_value->val.boolean) ? "true" : "false";
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toString() unsuppoted argument agtype %d",
+                                   agtv_value->type)));
+    }
+
+    /* build the result */
+    agtv_result.type = AGTV_STRING;
+    agtv_result.val.string.val = string;
+    agtv_result.val.string.len = strlen(string);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}

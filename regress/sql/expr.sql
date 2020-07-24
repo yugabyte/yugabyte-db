@@ -892,6 +892,40 @@ SELECT * FROM cypher('expr', $$
 $$) AS (length agtype);
 
 --
+-- toString()
+--
+
+-- PG types
+SELECT * FROM toString(3);
+SELECT * FROM toString(3.14);
+SELECT * FROM toString(3.14::float);
+SELECT * FROM toString(3.14::numeric);
+SELECT * FROM toString(true);
+SELECT * FROM toString(false);
+SELECT * FROM toString('a string');
+SELECT * FROM toString('a cstring'::cstring);
+SELECT * FROM toString('a text string'::text);
+
+-- agtypes
+SELECT * FROM toString(agtype_in('3'));
+SELECT * FROM toString(agtype_in('3.14'));
+SELECT * FROM toString(agtype_in('3.14::float'));
+SELECT * FROM toString(agtype_in('3.14::numeric'));
+SELECT * FROM toString(agtype_in('true'));
+SELECT * FROM toString(agtype_in('false'));
+SELECT * FROM toString(agtype_in('"a string"'));
+
+SELECT * FROM cypher('expr', $$ RETURN toString(3.14::numeric) $$) AS (results agtype);
+
+-- should return null
+SELECT * FROM toString(NULL);
+SELECT * FROM toString(agtype_in(null));
+
+-- should fail
+SELECT * FROM toString();
+SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (results agtype);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
