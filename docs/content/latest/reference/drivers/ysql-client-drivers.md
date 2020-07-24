@@ -97,7 +97,7 @@ The `pq` driver is ready for building Go applications that use YugabyteDB.
 
 ## Java
 
-### PostgreSQL JDBC Driver
+### PostgreSQL JDBC Driver (PgJDBC)
 
 The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official PostgreSQL driver.
 
@@ -105,11 +105,45 @@ For a tutorial on building a sample Go application with this driver, see [Build 
 
 ### Install the PostgreSQL JDBC Driver
 
-To down
+To download binary JAR files, go to the [PostgreSQL JDBC Driver download page](https://jdbc.postgresql.org/download.html).  Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
+
+For the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository Search](https://search.maven.org/artifact/org.postgresql/postgresql/42.2.14.jre7/jar).
+
+### YugabyteDB JDBC driver [BETA]
+
+The [YugabyteDB JDBC driver](https://jdbc.postgresql.org/) is based on the [PostgreSQL JDBC Driver (PgJDBC)](#postgresql-jdbc-driver) and incorporates all of the functionality and behavior of that driver. The YugabyteDB JDBC driver extends PgJDBC and adds support for distributed SQL databases created in YugabyteDB universes, including cluster awareness, connection pooling, and load balancing.
+
+For details, see the [YugabyteDB JDBC Driver](../yugabytedb-jdbc-driver) page.
+
+## Node.JS
 
 
+### node-postgres
 
-### YugabyteDB JDBC driver
+[`node-postgres`](https://node-postgres.com/) is a collection of Node.js modules for interacting with PostgreSQL databases.
+
+For details on installing and using node-postgres, see the [node-postgres documentation].
+
+For a tutorial on building a sample Node.js application that uses `node-postgres`, see [Build a Node.js application](../../quick-start/build-apps/nodejs/ysql-pg/).
+
+#### Install the node-postgres (pg) driver
+
+To install the `node-postgres` and any packages it depends on, run the following [`npm install`](https://docs.npmjs.com/cli/install.html) command:
+
+```sh
+$ npm install pg
+```
+
+## PHP
+
+### php-pgsql
 
 
+For a tutorial on building a sample Node.js application that uses `node-postgres`, see [Build a Node.js application](../../quick-start/build-apps/php/ysql/).
 
+
+## Python
+
+## Ruby
+
+## Scala
