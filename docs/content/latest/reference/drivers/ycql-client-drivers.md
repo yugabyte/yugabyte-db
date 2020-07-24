@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: ycql-client-libraries
     parent: drivers
-    weight: 2941
+    weight: 2942
 aliases:
   - /latest/reference/connectors/yugabytedb-jdbc-driver
 isTocNested: true

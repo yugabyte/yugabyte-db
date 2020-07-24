@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: spring-data-yugabytedb
     parent: drivers
-    weight: 2940
+    weight: 2943
 aliases:
   - /latest/reference/connectors/spring-data-yugabytedb
 isTocNested: true

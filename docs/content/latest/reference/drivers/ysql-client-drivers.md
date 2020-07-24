@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: ysql-client-libraries
     parent: drivers
-    weight: 2942
+    weight: 2940
 isTocNested: true
 showAsideToc: true
 ---
@@ -26,11 +26,11 @@ If you encounter an issue or want to file an enhancement request, [file a GitHub
 
 ### libpqxx
 
-The [libqxx](http://pqxx.org/development/libpqxx/) is the official C++ client API for PostgreSQL.
+The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ client API for PostgreSQL.
 
 For details and documentation, see [`jvt/libpqxx` README](https://github.com/jtv/libpqxx#readme) and [`libpqxx` ReadTheDocs](https://libpqxx.readthedocs.io/en/latest/).
 
-For a tutorial on building a sample C++ application with this driver, see [Build a C++ application](../../quick-start/build-apps/cpp/ysql/).
+For a tutorial on building a sample C++ application with `libpqxx`, see [Build a C++ application](../../../quick-start/build-apps/cpp/ysql/).
 
 #### Install the libpqxx driver
 
@@ -42,7 +42,7 @@ To build and install the libpqxx driver for use with YugabyteDB, follow these st
 $ git clone https://github.com/jtv/libpqxx.git
 ```
 
-2. For dependencies on the PostgreSQL binaries, add the PostgreSQL `bin` directory to the command path.
+2. For dependencies on the PostgreSQL binaries, add the PostgreSQL `bin` directory to the command path by running the following command.
 
 ```sh
 $ export PATH=$PATH:<yugabyte-install-dir>/postgres/bin
@@ -65,7 +65,7 @@ $ make install
 
 For details on installing and using Npgsql, see [Npgsql documentation](https://www.npgsql.org/doc/).
 
-To follow a tutorial on building a sample C# application with this driver, see [Build a C++ application](../../quick-start/build-apps/csharp/ysql/).
+To follow a tutorial on building a sample C# application with Npgsql, see [Build a C++ application](../../../quick-start/build-apps/csharp/ysql/).
 
 #### Install the driver
 
@@ -75,11 +75,7 @@ To install Npgsql in your Visual Studio project, follow the steps below.
 
 2. Right-click on **Packages** and click **Add Packages**.
 
-![Add Package](/images/develop/client-drivers/csharp/visual-studio-add-package.png)
-
 3. Search for `Npgsql` and click **Add Package**.
-
-The `Npgsql` driver is ready for building C# applications that use YugabyteDB.
 
 ## Go
 
@@ -87,7 +83,7 @@ The `Npgsql` driver is ready for building C# applications that use YugabyteDB.
 
 The [Go PostgreSQL driver package (`pq`)](https://pkg.go.dev/github.com/lib/pq?tab=doc) is a Go PostgreSQL driver for the `database/sql` package.
 
-For a tutorial on building a sample Go application with this driver, see [Build a Go application](../../quick-start/build-apps/go/ysql/) and click **YSQL-PQ**.
+For a tutorial on building a sample Go application with `pq`, see [Build a Go application](../../../quick-start/build-apps/go/ysql-pq).
 
 ### Install the pq driver
 
@@ -97,27 +93,27 @@ To install the package locally, run the following [`go get`](https://golang.org/
 $ go get github.com/lib/pq
 ```
 
-The `pq` driver is ready for building Go applications that use YugabyteDB.
+The `pq` driver is ready for building Go applications that connect to and interact with YugabyteDB.
 
 ## Java
 
 ### PostgreSQL JDBC Driver (PgJDBC)
 
-The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official PostgreSQL driver.
+The [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) is the official PostgreSQL driver.
 
-For a tutorial on building a sample Go application with this driver, see [Build a Java application](../../quick-start/build-apps/java/ysql/) and click **YSQL-JDBC**.
+For a tutorial on building a sample Go application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql/) and click **YSQL-JDBC**.
 
 ### Install the PostgreSQL JDBC Driver
 
-To download binary JAR files, go to the [PostgreSQL JDBC Driver download page](https://jdbc.postgresql.org/download.html).  Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
+To download binary JAR files, go to [PostgreSQL JDBC Driver – Downloads](https://jdbc.postgresql.org/download.html).  Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
 
-For the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository Search](https://search.maven.org/artifact/org.postgresql/postgresql/42.2.14.jre7/jar).
+To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository Search](https://search.maven.org/artifact/org.postgresql/postgresql/42.2.14.jre7/jar).
 
-### YugabyteDB JDBC driver [BETA]
+### YugabyteDB JDBC Driver [BETA]
 
-The [YugabyteDB JDBC driver](https://jdbc.postgresql.org/) is based on the [PostgreSQL JDBC Driver (PgJDBC)](#postgresql-jdbc-driver) and incorporates all of the functionality and behavior of that driver. The YugabyteDB JDBC driver extends PgJDBC and adds support for distributed SQL databases created in YugabyteDB universes, including cluster awareness, connection pooling, and load balancing.
+The [YugabyteDB JDBC Driver](https://jdbc.postgresql.org/) is based on the [PostgreSQL JDBC Driver (PgJDBC)](#postgresql-jdbc-driver) and incorporates all of the functionality and behavior of that driver. The YugabyteDB JDBC driver extends PgJDBC to add support for features important for distributed SQL databases created in YugabyteDB universes: cluster awareness, connection pooling, and load balancing.
 
-For details, see the [YugabyteDB JDBC Driver](../yugabytedb-jdbc-driver) page.
+For details, see [YugabyteDB JDBC Driver](../yugabytedb-jdbc-driver) in this section.
 
 ## Node.JS
 
@@ -127,7 +123,7 @@ For details, see the [YugabyteDB JDBC Driver](../yugabytedb-jdbc-driver) page.
 
 For details on installing and using node-postgres, see the [node-postgres documentation].
 
-For a tutorial on building a sample Node.js application that uses `node-postgres`, see [Build a Node.js application](../../quick-start/build-apps/nodejs/ysql-pg/).
+For a tutorial on building a sample Node.js application with `node-postgres`, see [Build a Node.js application](../../../quick-start/build-apps/nodejs/ysql-pg/).
 
 #### Install the node-postgres (pg) driver
 
@@ -143,7 +139,7 @@ $ npm install pg
 
 `php-pgsql`
 
-For a tutorial on building a sample Node.js application that uses `php-pgsql`, see [Build a Node.js application](../../quick-start/build-apps/php/ysql/).
+For a tutorial on building a sample Node.js application with `php-pgsql`, see [Build a Node.js application](../../../quick-start/build-apps/php/ysql/).
 
 #### Install the php-pgsql driver
 
@@ -157,9 +153,9 @@ To enable PostgreSQL support using `php-pgsql`, see [Installing/Configuring] in 
 
 For details on using psycopg, see [Psycopg documentation](https://www.psycopg.org/docs/).
 
-For a tutorial on building a sample Python application that uses `psycopg2`, see [Build a Python application](../../quick-start/build-apps/python/ysql/).
+For a tutorial on building a sample Python application that uses `psycopg2`, see [Build a Python application](../../../quick-start/build-apps/python/ysql-psycopg2).
 
-#### Install psycopg2
+#### Install the psycopg2 binary
 
 To install the `psycopg2` binary package, run the following pip install` command:
 
@@ -171,9 +167,9 @@ $ pip3 install psycopg2
 
 ### Ruby PostgreSQL Driver (pg)
 
-The Ruby PostgreSQL Driver (`pg`) is the Ruby interface for PostgreSQL databases and supports the functions defined in the libpq C library. 
+The Ruby PostgreSQL Driver (`pg`) is the Ruby interface for PostgreSQL databases and supports the functions defined in the `libpq` C library.
 
-https://docs.yugabyte.com/latest/quick-start/build-apps/ruby/ysql-pg/
+For a tutorial on building a sample Ruby application with `pg`, see [Build a Ruby application](../../../quick-start/build-apps/ruby/ysql-pg).
 
 ### Install the pg driver
 
