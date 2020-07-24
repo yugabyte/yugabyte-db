@@ -336,7 +336,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(1, resp.errors_size());
     ASSERT_STR_CONTAINS(resp.errors(0).ShortDebugString(),
-                        "code: NOT_FOUND message: \"Tablet deleted: Table deleted");
+                        "code: NOT_FOUND message: \"Unknown tablet");
   }
 
   // 4) The master 'dump-entities' page should not list the deleted table or tablets.
