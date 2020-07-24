@@ -55,23 +55,20 @@ class StackWatchdogTest : public YBTest {
  public:
   void SetUp() override {
     YBTest::SetUp();
-    KernelStackWatchdog::GetInstance()->SaveLogsForTests(true);
+    KernelStackWatchdog::GetInstance()->TEST_SaveLogs();
     ANNOTATE_BENIGN_RACE(&FLAGS_hung_task_check_interval_ms,
                          "Integer flag change should be safe");
     FLAGS_hung_task_check_interval_ms = 10;
   }
 };
 
-// The KernelStackWatchdog is only enabled on Linux, since we can't get kernel
-// stack traces on other platforms.
-#if defined(__linux__)
 TEST_F(StackWatchdogTest, TestWatchdog) {
   vector<string> log;
   {
     SCOPED_WATCH_STACK(20);
     for (int i = 0; i < 50; i++) {
       SleepFor(MonoDelta::FromMilliseconds(100));
-      log = KernelStackWatchdog::GetInstance()->LoggedMessagesForTests();
+      log = KernelStackWatchdog::GetInstance()->TEST_LoggedMessages();
       // Wait for several samples, since it's possible that we get unlucky
       // and the watchdog sees us just before or after a sleep.
       if (log.size() > 5) {
@@ -83,7 +80,6 @@ TEST_F(StackWatchdogTest, TestWatchdog) {
   ASSERT_STR_CONTAINS(s, "TestWatchdog_Test::TestBody()");
   ASSERT_STR_CONTAINS(s, "SleepForNanoseconds");
 }
-#endif
 
 // Test that SCOPED_WATCH_STACK scopes can be nested.
 TEST_F(StackWatchdogTest, TestNestedScopes) {
@@ -96,7 +92,7 @@ TEST_F(StackWatchdogTest, TestNestedScopes) {
       SCOPED_WATCH_STACK(20); line2 = __LINE__;
       for (int i = 0; i < 50; i++) {
         SleepFor(MonoDelta::FromMilliseconds(100));
-        log = KernelStackWatchdog::GetInstance()->LoggedMessagesForTests();
+        log = KernelStackWatchdog::GetInstance()->TEST_LoggedMessages();
         if (log.size() > 3) {
           break;
         }
