@@ -2,7 +2,7 @@
 title: Build a Java application that uses YCQL
 headerTitle: Build a Java application
 linkTitle: Java
-description: Build a Java application that uses YCQL.
+description: Build a sample Java application with the Yugabyte Java Driver for YCQL.
 menu:
   latest:
     parent: build-apps
@@ -37,7 +37,7 @@ showAsideToc: true
 
 ## Maven
 
-To build your Java application using the YugabyteDB Cassandra driver, add the following Maven dependency to your application:
+To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:
 
 ```mvn
 <dependency>
@@ -47,18 +47,19 @@ To build your Java application using the YugabyteDB Cassandra driver, add the fo
 </dependency>
 ```
 
-## Working Example
+## Create a sample Java application
 
 ### Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
-- installed JDK version 1.8+ and maven 3.3+
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
+- installed JDK version 1.8 or later.
+- installed Maven 3.3 or later.
 
 ### Create the Maven build file
 
-Create a maven build file `pom.xml` and add the following content into it.
+Create a Maven build file, named `pom.xml`, and copy the following content into it.
 
 ```mvn
 <?xml version="1.0"?>
@@ -108,7 +109,7 @@ Create a maven build file `pom.xml` and add the following content into it.
 </project>
 ```
 
-### Write a sample application
+### Write a sample Java application
 
 Create the appropriate directory structure as expected by Maven.
 
