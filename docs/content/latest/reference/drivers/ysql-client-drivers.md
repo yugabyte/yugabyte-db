@@ -117,7 +117,6 @@ For details, see the [YugabyteDB JDBC Driver](../yugabytedb-jdbc-driver) page.
 
 ## Node.JS
 
-
 ### node-postgres
 
 [`node-postgres`](https://node-postgres.com/) is a collection of Node.js modules for interacting with PostgreSQL databases.
@@ -166,15 +165,19 @@ $ pip3 install psycopg2
 
 ## Ruby
 
-### Ruby PostgreSQL driver (pg)
+### Ruby PostgreSQL Driver (pg)
+
+The Ruby PostgreSQL Driver (`pg`) is the Ruby interface for PostgreSQL databases and supports the functions defined in the libpq C library. 
 
 https://docs.yugabyte.com/latest/quick-start/build-apps/ruby/ysql-pg/
 
 ### Install the pg driver
 
-To install `pg` driver, run the following `gem install` command:
+To install `pg` driver, run the following [`gem install`](https://guides.rubygems.org/command-reference/#gem-install) command:
 
 ```sh
 $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config
+
+
 
 ```
