@@ -134,7 +134,7 @@ export default class AlertProfileForm extends Component {
             setSubmitting(false);
 
             // default form to new values to avoid unwanted validation of smtp fields when they are hidden
-            resetForm({ values });
+            resetForm(values);
           }}
         >
           {({ values, handleChange, handleSubmit, isSubmitting }) => (
