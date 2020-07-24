@@ -212,6 +212,7 @@ DEFINE_bool(master_tombstone_evicted_tablet_replicas, true,
             "Whether the Master should tombstone (delete) tablet replicas that "
             "are no longer part of the latest reported raft config.");
 TAG_FLAG(master_tombstone_evicted_tablet_replicas, hidden);
+DECLARE_bool(master_ignore_deleted_on_load);
 
 // Temporary.  Can be removed after long-run testing.
 DEFINE_bool(master_ignore_stale_cstate, true,
@@ -4420,7 +4421,12 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         // truly unknown in the event of a serious misconfiguration, such as a
         // tserver heartbeating to the wrong cluster. Therefore, it should be
         // reasonable to ignore it and wait for an operator fix the situation.
-        LOG(WARNING) << "Ignoring report from unknown tablet " << tablet_id;
+        if (FLAGS_master_ignore_deleted_on_load &&
+            report.tablet_data_state() == TABLET_DATA_DELETED) {
+          VLOG(1) << "Ignoring report from unknown tablet " << tablet_id;
+        } else {
+          LOG(WARNING) << "Ignoring report from unknown tablet " << tablet_id;
+        }
         continue;
       }
       if (!tablet->table() || FindOrNull(*table_ids_map_, tablet->table()->id()) == nullptr) {
