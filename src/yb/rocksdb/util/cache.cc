@@ -462,7 +462,7 @@ class LRUCache {
   }
 
   // Whether to reject insertion if cache reaches its full capacity.
-  bool strict_capacity_limit_;
+  bool strict_capacity_limit_ = false;
 
   // mutex_ protects the following state.
   // We don't count mutex_ as the cache's internal state so semantically we
@@ -877,8 +877,8 @@ class ShardedLRUCache : public Cache {
     shards_ = new LRUCache[num_shards];
     const size_t per_shard = (capacity + (num_shards - 1)) / num_shards;
     for (int s = 0; s < num_shards; s++) {
-      shards_[s].SetCapacity(per_shard);
       shards_[s].SetStrictCapacityLimit(strict_capacity_limit);
+      shards_[s].SetCapacity(per_shard);
     }
   }
 
