@@ -80,6 +80,7 @@ class TestDescriptor:
 
         self.is_jvm_based = False
         is_mvn_compatible_descriptor = False
+
         if len(self.descriptor_str.split('#')) == 2:
             self.is_jvm_based = True
             # Could be Scala, but as of 08/2018 we only have Java tests in the repository.
