@@ -1342,8 +1342,10 @@ class TabletBootstrap {
       return Status::OK();
     }
 
-    RETURN_NOT_OK_PREPEND(tablet_->ApplyRowOperations(&operation_state),
-                          "ApplyRowOperations failed");
+    auto apply_status = tablet_->ApplyRowOperations(&operation_state);
+    // Failure is regular case, since could happen because transaction was aborted, while
+    // replicating its intents.
+    LOG_IF(INFO, !apply_status.ok()) << "Apply operation failed: " << apply_status;
 
     tablet_->mvcc_manager()->Replicated(hybrid_time);
     return Status::OK();
