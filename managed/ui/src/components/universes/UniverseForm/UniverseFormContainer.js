@@ -39,11 +39,11 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     submitCreateUniverse: (values) => {
-      dispatch(createUniverse(values)).then((response) => {
-        dispatch(createUniverseResponse(response.payload));
+      return dispatch(createUniverse(values)).then((response) => {
         dispatch(getTlsCertificates()).then((response) => {
           dispatch(getTlsCertificatesResponse(response.payload));
         });
+        return dispatch(createUniverseResponse(response.payload));
       });
     },
 
