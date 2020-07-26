@@ -853,6 +853,10 @@ pg_decode_begin_txn_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, UInt64GetDatum(txn->final_lsn)));
 		appendStringInfo(ctx->out, ",\"lsn\":\"%s\"", lsn_str);
 		pfree(lsn_str);
+
+		lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, UInt64GetDatum(txn->end_lsn)));
+		appendStringInfo(ctx->out, ",\"nextlsn\":\"%s\"", lsn_str);
+		pfree(lsn_str);
 	}
 
 	appendStringInfoChar(ctx->out, '}');
@@ -930,6 +934,10 @@ pg_decode_commit_txn_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	{
 		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, UInt64GetDatum(commit_lsn)));
 		appendStringInfo(ctx->out, ",\"lsn\":\"%s\"", lsn_str);
+		pfree(lsn_str);
+
+		lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, UInt64GetDatum(txn->end_lsn)));
+		appendStringInfo(ctx->out, ",\"nextlsn\":\"%s\"", lsn_str);
 		pfree(lsn_str);
 	}
 
