@@ -138,7 +138,7 @@ class ClusterLoadBalancer {
   // is optional. When neither adding nor removing peer, it means just moving a leader from one
   // tablet server to another. If new_leader_ts_uuid is empty, a server will be picked by random
   // to be the new leader. Also takes in the role of the tablet for the creation flow.
-  virtual void SendReplicaChanges(
+  virtual Status SendReplicaChanges(
       scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
       const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid = "");
 
