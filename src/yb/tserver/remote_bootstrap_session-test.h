@@ -141,7 +141,9 @@ class RemoteBootstrapTest : public YBTabletTest {
             &RemoteBootstrapTest::TabletPeerStateChangedCallback,
             Unretained(this),
             tablet()->tablet_id()),
-        &metric_registry_, nullptr /* tablet_splitter */));
+        &metric_registry_,
+        nullptr /* tablet_splitter */,
+        std::shared_future<client::YBClient*>()));
 
     // TODO similar to code in tablet_peer-test, consider refactor.
     RaftConfigPB config;
@@ -161,7 +163,6 @@ class RemoteBootstrapTest : public YBTabletTest {
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(
         tablet(),
-        std::shared_future<client::YBClient*>(),
         nullptr /* server_mem_tracker */,
         messenger_.get(),
         proxy_cache_.get(),
