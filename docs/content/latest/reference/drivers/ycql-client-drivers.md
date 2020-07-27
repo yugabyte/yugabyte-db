@@ -50,9 +50,31 @@ For a tutorial on building a sample Go application with this driver, see [Build 
 
 ## Java
 
-### Yugabyte Java Driver for YCQL
+### Yugabyte Java Driver for YCQL (4.6.0-yb-x)
 
-The [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver) is based on the [DataStax Java Driver for Apache Cassandra](https://github.com/datastax/java-driver) and requires the Maven dependency shown below.
+The newer [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.6.0-yb-x/manual/core) is based on the [DataStax Java Driver for Apache Cassandra (v4.6)](https://github.com/datastax/java-driver) and requires the Maven dependency shown below.
+
+For details, see the [README](https://github.com/yugabyte/cassandra-java-driver/blob/3.8.0-yb-x/README.md) in our GitHub repository.
+
+For a tutorial on building a sample Java application with this driver, see [Build a Java application](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ycql/).
+
+To install Yugabyte Java Driver for YCQL (v4.6)
+
+To build Java applications with this driver, you must add the following Maven dependency to your application:
+
+```mvn
+<dependency>
+  <groupId>com.yugabyte</groupId>
+  <artifactId>java-driver-core</artifactId>
+  <version>4.6.0-yb-6</version>
+</dependency>
+```
+
+https://search.maven.org/artifact/com.yugabyte/java-driver-core/4.6.0-yb-6/jar
+
+### Yugabyte Java Driver for YCQL (3.8.0-yb-x)
+
+The [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver) is based on the [DataStax Java Driver for Apache Cassandra v.3.2](https://github.com/datastax/java-driver) and requires the Maven dependency shown below.
 
 For details, see the [README](https://github.com/yugabyte/cassandra-java-driver/blob/3.8.0-yb-x/README.md) in our GitHub repository.
 
@@ -62,7 +84,7 @@ To build Java applications with this driver, you must add the following Maven de
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>cassandra-driver-core</artifactId>
-  <version>3.2.0-yb-18</version>
+  <version>3.8.0-yb-5</version>
 </dependency>
 ```
 

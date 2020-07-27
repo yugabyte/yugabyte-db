@@ -43,7 +43,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>cassandra-driver-core</artifactId>
-  <version>3.2.0-yb-18</version>
+  <version>3.8.0-yb-5</version>
 </dependency>
 ```
 
@@ -74,13 +74,11 @@ Create a Maven build file, named `pom.xml`, and copy the following content into 
   <version>1.0</version>
   <packaging>jar</packaging>
 
-  <dependencies>
-    <dependency>
-      <groupId>com.yugabyte</groupId>
-      <artifactId>cassandra-driver-core</artifactId>
-      <version>3.2.0-yb-18</version>
-    </dependency>
-  </dependencies>
+ <dependency>
+   <groupId>com.yugabyte</groupId>
+   <artifactId>java-driver-core</artifactId>
+   <version>4.6.0-yb-6</version>
+ </dependency>
 
   <build>
     <plugins>
