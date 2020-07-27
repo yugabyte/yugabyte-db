@@ -2,7 +2,7 @@
 title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
 linkTitle: Java
-description: Build a simple Java application that uses YSQL.
+description: Build a sample Java application with the PostgreSQL JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
 aliases:
   - /develop/client-drivers/java/
   - /latest/develop/client-drivers/java/
@@ -42,13 +42,13 @@ showAsideToc: true
 
 ## Maven
 
-To build your Java application using the [PostgreSQL JDBC driver](https://jdbc.postgresql.org/), add the following Maven dependency to your application:
+To build your Java application with the [PostgreSQL JDBC driver](https://jdbc.postgresql.org/), add the following Maven dependency to your application:
 
 ```mvn
 <dependency>
   <groupId>org.postgresql</groupId>
   <artifactId>postgresql</artifactId>
-  <version>42.2.8</version>
+  <version>4.2.2.14</version>
 </dependency>
 ```
 
@@ -56,15 +56,15 @@ To build your Java application using the [PostgreSQL JDBC driver](https://jdbc.p
 
 ### Prerequisites
 
-This tutorial assumes that you have:
+This tutorial assumes that:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in the [Quick Start guide](../../../../quick-start/).
+- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in the [Quick Start guide](../../../../quick-start/).
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
-### Create the Maven build file
+### Create the project's POM
 
-Create a maven build file `pom.xml` and add the following content into it.
+Create a file, named `pom.xml`, and then copy the following content into it. The Project Object Model (POM) includes configuration information required to build the project. You can change the PostgreSQL dependency version, depending on the PostgreSQL JDBC driver you want to use.
 
 ```mvn
 <?xml version="1.0"?>
@@ -83,7 +83,7 @@ Create a maven build file `pom.xml` and add the following content into it.
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <version>42.2.5</version>
+      <version>4.2.2.14</version>
     </dependency>
   </dependencies>
 
@@ -181,15 +181,19 @@ public class YBCqlHelloWorld {
 }
 ```
 
-### Build and run the application
+### Build the project
 
-To build the application, run the following command.
+To build the project, run the following `mvn package` command.
 
 ```sh
 $ mvn package
 ```
 
-To run the program, run the following command.
+You should see a `BUILD SUCCESS` message.
+
+### Run the application
+
+To run the application , run the following command.
 
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBSqlHelloWorld

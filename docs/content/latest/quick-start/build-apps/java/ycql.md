@@ -40,14 +40,14 @@ showAsideToc: true
 To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:
 
 ```mvn
-<dependency>
-  <groupId>com.yugabyte</groupId>
-  <artifactId>cassandra-driver-core</artifactId>
-  <version>3.8.0-yb-5</version>
-</dependency>
+ <dependency>
+   <groupId>com.yugabyte</groupId>
+   <artifactId>java-driver-core</artifactId>
+   <version>4.6.0-yb-6</version>
+ </dependency>
 ```
 
-## Create a sample Java application
+## Create the sample Java application
 
 ### Prerequisites
 
@@ -57,9 +57,9 @@ This tutorial assumes that you have:
 - installed JDK version 1.8 or later.
 - installed Maven 3.3 or later.
 
-### Create the Maven build file
+### Create the project's POM
 
-Create a Maven build file, named `pom.xml`, and copy the following content into it.
+Create a file, named `pom.xml`, and then copy the following content into it. The Project Object Model (POM) includes configuration information required to build the project.
 
 ```mvn
 <?xml version="1.0"?>
@@ -118,71 +118,66 @@ $ mkdir -p src/main/java/com/yugabyte/sample/apps
 Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YBCqlHelloWorld.java`.
 
 ```java
-package com.yugabyte.sample.apps;
-
+package com.yugabytedb.samples;
+import java.net.InetSocketAddress;
 import java.util.List;
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
-
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.core.cql.Row;
 public class YBCqlHelloWorld {
-  public static void main(String[] args) {
-    try {
-      // Create a Cassandra client.
-      Cluster cluster = Cluster.builder()
-                               .addContactPoint("127.0.0.1")
-                               .build();
-      Session session = cluster.connect();
-
-      // Create keyspace 'ybdemo' if it does not exist.
-      String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS ybdemo;";
-      ResultSet createKeyspaceResult = session.execute(createKeyspace);
-      System.out.println("Created keyspace ybdemo");
-
-      // Create table 'employee' if it does not exist.
-      String createTable = "CREATE TABLE IF NOT EXISTS ybdemo.employee (id int PRIMARY KEY, " +
-                                                                       "name varchar, " +
-                                                                       "age int, " +
-                                                                       "language varchar);";
-      ResultSet createResult = session.execute(createTable);
-      System.out.println("Created table employee");
-
-      // Insert a row.
-      String insert = "INSERT INTO ybdemo.employee (id, name, age, language)" +
-                                          " VALUES (1, 'John', 35, 'Java');"; 
-      ResultSet insertResult = session.execute(insert);
-      System.out.println("Inserted data: " + insert);
-
-      // Query the row and print out the result.
-      String select = "SELECT name, age, language FROM ybdemo.employee WHERE id = 1;";
-      ResultSet selectResult = session.execute(select);
-      List<Row> rows = selectResult.all();
-      String name = rows.get(0).getString(0);
-      int age = rows.get(0).getInt(1);
-      String language = rows.get(0).getString(2);
-      System.out.println("Query returned " + rows.size() + " row: " +
-                         "name=" + name + ", age=" + age + ", language: " + language);
-
-      // Close the client.
-      session.close();
-      cluster.close();
-    } catch (Exception e) {
-        System.err.println("Error: " + e.getMessage());
+    public static void main(String[] args) {
+        try {
+            // Create a YCQL client.
+            CqlSession session = CqlSession
+                .builder()
+                .addContactPoint(new InetSocketAddress("127.0.0.1", 9042))
+                .withLocalDatacenter("datacenter1")
+                .build();
+            // Create keyspace 'ybdemo' if it does not exist.
+            String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS ybdemo;";
+            session.execute(createKeyspace);
+            System.out.println("Created keyspace ybdemo");
+            // Create table 'employee', if it does not exist.
+            String createTable = "CREATE TABLE IF NOT EXISTS ybdemo.employee (id int PRIMARY KEY, " + "name varchar, " +
+                "age int, " + "language varchar);";
+            session.execute(createTable);
+            System.out.println("Created table employee");
+            // Insert a row.
+            String insert = "INSERT INTO ybdemo.employee (id, name, age, language)" +
+                " VALUES (1, 'John', 35, 'Java');";
+            session.execute(insert);
+            System.out.println("Inserted data: " + insert);
+            // Query the row and print out the result.
+            String select = "SELECT name, age, language FROM ybdemo.employee WHERE id = 1;";
+            ResultSet selectResult = session.execute(select);
+            List < Row > rows = selectResult.all();
+            String name = rows.get(0).getString(0);
+            int age = rows.get(0).getInt(1);
+            String language = rows.get(0).getString(2);
+            System.out.println("Query returned " + rows.size() + " row: " + "name=" + name + ", age=" + age +
+                ", language: " + language);
+            // Close the client.
+            session.close();
+        } catch (Exception e) {
+            System.err.println("Error: " + e.getMessage());
+        }
     }
-  }
 }
 ```
 
-### Build and run the application
+### Build the project
 
-To build the application, just run the following command.
+To build the project, run the following `mvn package` command.
 
 ```sh
 $ mvn package
 ```
 
-To run the program, run the following command.
+You should see a `BUILD SUCCESS` message.
+
+### Run the application
+
+To use the application, run the following command.
 
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBCqlHelloWorld
