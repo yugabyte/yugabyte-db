@@ -50,7 +50,7 @@ For a tutorial on building a sample Go application with this driver, see [Build 
 
 ## Java
 
-### Yugabyte Java Driver for YCQL (4.6.0-yb-x)
+### Yugabyte Java Driver for YCQL (`4.6.0-yb-x`)
 
 The newer [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.6.0-yb-x/manual/core) is based on the [DataStax Java Driver for Apache Cassandra (v4.6)](https://github.com/datastax/java-driver) and requires the Maven dependency shown below.
 
