@@ -58,8 +58,6 @@ For details, see the [README](https://github.com/yugabyte/cassandra-java-driver/
 
 For a tutorial on building a sample Java application with this driver, see [Build a Java application](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ycql/).
 
-To install Yugabyte Java Driver for YCQL (v4.6)
-
 To build Java applications with this driver, you must add the following Maven dependency to your application:
 
 ```mvn
@@ -70,7 +68,7 @@ To build Java applications with this driver, you must add the following Maven de
 </dependency>
 ```
 
-https://search.maven.org/artifact/com.yugabyte/java-driver-core/4.6.0-yb-6/jar
+For details, see the [Maven repository contents](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/4.6.0-yb-6).
 
 ### Yugabyte Java Driver for YCQL (`3.8.0-yb-x`)
 
@@ -88,7 +86,7 @@ To build Java applications with this driver, you must add the following Maven de
 </dependency>
 ```
 
-For a tutorial on building a sample Java application with this driver, see [Build a Java application](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ycql/).
+For details, see the [Maven repository contents](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.8.0-yb-5).
 
 ## NodeJS
 
