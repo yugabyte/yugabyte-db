@@ -654,6 +654,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // TODO(bogdan): Eventually schedule on a threadpool in a followup refactor.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task);
 
+  // Time since this peer became master leader. Caller should verify that it is leader before.
+  MonoDelta TimeSinceElectedLeader();
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -686,7 +689,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
   //
-  // Executes LoadSysCatalogDataTask below.
+  // Executes LoadSysCatalogDataTask below and marks the current time as time since leader.
   CHECKED_STATUS ElectedAsLeaderCb();
 
   // Loops and sleeps until one of the following conditions occurs:
@@ -1222,6 +1225,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TasksTracker> jobs_tracker_;
 
   std::unique_ptr<EncryptionManager> encryption_manager_;
+
+  MonoTime time_elected_leader_;
 
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id);

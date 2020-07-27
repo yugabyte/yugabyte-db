@@ -2132,6 +2132,9 @@ Status ExternalMaster::Start(bool shell_mode) {
   flags.Add("rpc_bind_addresses", rpc_bind_address_);
   flags.Add("webserver_interface", "localhost");
   flags.Add("webserver_port", http_port_);
+  // Default master args to make sure we don't wait to trigger new LB tasks upon master leader
+  // failover.
+  flags.Add("load_balancer_initial_delay_secs", 0);
   // On first start, we need to tell the masters their list of expected peers.
   // For 'shell' master, there is no master addresses.
   if (!shell_mode) {
