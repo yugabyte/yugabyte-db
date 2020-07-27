@@ -145,7 +145,7 @@ For a tutorial on building a sample Node.js application with `node-postgres`, se
 
 #### Install the node-postgres (pg) driver
 
-To install the `node-postgres` and any packages it depends on, run the following [`npm install`](https://docs.npmjs.com/cli/install.html) command:
+To install `node-postgres` and any packages it depends on, run the following [`npm install`](https://docs.npmjs.com/cli/install.html) command:
 
 ```sh
 $ npm install pg
