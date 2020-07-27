@@ -58,7 +58,7 @@ DEFINE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_table,
              "number of remote bootstraps across the cluster is still limited by the flag "
              "load_balancer_max_concurrent_tablet_remote_bootstraps. This flag is meant to prevent "
              "a single table use all the available remote bootstrap sessions and starving other "
-             "tables");
+             "tables.");
 
 DEFINE_int32(load_balancer_max_over_replicated_tablets,
              1,
@@ -75,9 +75,17 @@ DEFINE_int32(load_balancer_max_concurrent_removals,
              "load balancer.");
 
 DEFINE_int32(load_balancer_max_concurrent_moves,
+             10,
+             "Maximum number of tablet leaders on tablet servers (across the cluster) to move in "
+             "any one run of the load balancer.");
+
+DEFINE_int32(load_balancer_max_concurrent_moves_per_table,
              1,
-             "Maximum number of tablet leaders on tablet servers to move in any one run of the "
-             "load balancer.");
+             "Maximum number of tablet leaders per table to move in any one run of the load "
+             "balancer. The maximum number of tablet leader moves across the cluster is still "
+             "limited by the flag load_balancer_max_concurrent_moves. This flag is meant to "
+             "prevent a single table from using all of the leader moves quota and starving "
+             "other tables.");
 
 DEFINE_int32(load_balancer_num_idle_runs,
              5,
@@ -330,7 +338,14 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     }
 
     // Handle tablet servers with too many leaders.
-    for ( ; remaining_leader_moves > 0; --remaining_leader_moves) {
+    // Check the current pending tasks per table to ensure we don't trigger the same task.
+    int table_remaining_leader_moves = state_->options_->kMaxConcurrentLeaderMovesPerTable;
+    set_remaining(state_->pending_stepdown_leader_tasks_[table.first].size(),
+                  &table_remaining_leader_moves);
+    // Keep track of both the global and per table limit on number of moves.
+    for ( ;
+         remaining_leader_moves > 0 && table_remaining_leader_moves > 0;
+         --remaining_leader_moves, --table_remaining_leader_moves) {
       auto handle_leader = HandleLeaderMoves(&out_tablet_id, &out_from_ts, &out_to_ts);
       if (!handle_leader.ok()) {
         LOG(WARNING) << "Skipping leader moves for " << table.first << ": "

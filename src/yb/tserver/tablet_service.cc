@@ -221,6 +221,9 @@ DECLARE_uint64(transaction_min_running_check_interval_ms);
 DEFINE_test_flag(int32, txn_status_table_tablet_creation_delay_ms, 0,
                  "Extra delay to slowdown creation of transaction status table tablet.");
 
+DEFINE_test_flag(int32, leader_stepdown_delay_ms, 0,
+                 "Amount of time to delay before starting a leader stepdown change.");
+
 namespace yb {
 namespace tserver {
 
@@ -2277,6 +2280,12 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
                                           LeaderStepDownResponsePB* resp,
                                           RpcContext context) {
   LOG(INFO) << "Received Leader stepdown RPC: " << req->ShortDebugString();
+
+  if (PREDICT_FALSE(FLAGS_TEST_leader_stepdown_delay_ms > 0)) {
+    LOG(INFO) << "Delaying leader stepdown for "
+              << FLAGS_TEST_leader_stepdown_delay_ms << " ms.";
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_leader_stepdown_delay_ms));
+  }
 
   RpcScope scope(tablet_manager_, "LeaderStepDown", req, resp, &context);
   if (!scope) {
