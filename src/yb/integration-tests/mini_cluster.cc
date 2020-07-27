@@ -81,6 +81,7 @@ DECLARE_int32(ts_consensus_svc_num_threads);
 DECLARE_int32(ts_remote_bootstrap_svc_num_threads);
 DECLARE_int32(replication_factor);
 DECLARE_string(use_private_ip);
+DECLARE_int32(load_balancer_initial_delay_secs);
 
 namespace yb {
 
@@ -171,6 +172,9 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   // This dictates the RF of newly created tables.
   SetAtomicFlag(num_ts_initial_ >= 3 ? 3 : 1, &FLAGS_replication_factor);
   FLAGS_memstore_size_mb = 16;
+  // Default master args to make sure we don't wait to trigger new LB tasks upon master leader
+  // failover.
+  FLAGS_load_balancer_initial_delay_secs = 0;
 
   // start the masters
   RETURN_NOT_OK_PREPEND(StartMasters(),
