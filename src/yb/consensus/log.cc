@@ -60,7 +60,6 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/kernel_stack_watchdog.h"
 #include "yb/util/logging.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/metrics.h"
@@ -356,8 +355,6 @@ Status Log::Appender::Init() {
 }
 
 void Log::Appender::ProcessBatch(LogEntryBatch* entry_batch) {
-  LongOperationTracker long_operation_tracker("ProcessBatch", 1s);
-
   // A callback function to TaskStream is expected to process the accumulated batch of entries.
   if (entry_batch == nullptr) {
     // Here, we do sync and call callbacks.
@@ -427,7 +424,8 @@ void Log::Appender::GroupWork() {
   } else {
     TRACE_EVENT0("log", "Callbacks");
     VLOG_WITH_PREFIX(2) << "Synchronized " << sync_batch_.size() << " entry batches";
-    SCOPED_WATCH_STACK(FLAGS_consensus_log_scoped_watch_delay_callback_threshold_ms);
+    LongOperationTracker long_operation_tracker(
+        "Log callback", FLAGS_consensus_log_scoped_watch_delay_callback_threshold_ms * 1ms);
     for (std::unique_ptr<LogEntryBatch>& entry_batch : sync_batch_) {
       if (PREDICT_TRUE(!entry_batch->failed_to_append() && !entry_batch->callback().is_null())) {
         entry_batch->callback().Run(Status::OK());
@@ -741,7 +739,8 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
 
     LOG_SLOW_EXECUTION(WARNING, 50, "Append to log took a long time") {
       SCOPED_LATENCY_METRIC(metrics_, append_latency);
-      SCOPED_WATCH_STACK(FLAGS_consensus_log_scoped_watch_delay_append_threshold_ms);
+      LongOperationTracker long_operation_tracker(
+          "Log append", FLAGS_consensus_log_scoped_watch_delay_append_threshold_ms * 1ms);
 
       RETURN_NOT_OK(active_segment_->WriteEntryBatch(entry_batch_data));
     }
