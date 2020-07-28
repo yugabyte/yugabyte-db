@@ -2152,6 +2152,109 @@ LINE 1: SELECT * FROM reverse();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
+-- toUpper() and toLower()
+--
+SELECT * FROM cypher('expr', $$
+    RETURN toUpper('to uppercase')
+$$) AS (toUpper agtype);
+    toupper     
+----------------
+ "TO UPPERCASE"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toLower('TO LOWERCASE')
+$$) AS (toLower agtype);
+    tolower     
+----------------
+ "to lowercase"
+(1 row)
+
+SELECT * FROM touppercase('text'::text);
+ touppercase 
+-------------
+ "TEXT"
+(1 row)
+
+SELECT * FROM touppercase('cstring'::cstring);
+ touppercase 
+-------------
+ "CSTRING"
+(1 row)
+
+SELECT * FROM tolowercase('TEXT'::text);
+ tolowercase 
+-------------
+ "text"
+(1 row)
+
+SELECT * FROM tolowercase('CSTRING'::cstring);
+ tolowercase 
+-------------
+ "cstring"
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toUpper(null)
+$$) AS (toUpper agtype);
+ toupper 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toLower(null)
+$$) AS (toLower agtype);
+ tolower 
+---------
+ 
+(1 row)
+
+SELECT * FROM touppercase(null);
+ touppercase 
+-------------
+ 
+(1 row)
+
+SELECT * FROM tolowercase(null);
+ tolowercase 
+-------------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toUpper(true)
+$$) AS (toUpper agtype);
+ERROR:  touppercase() unsuppoted argument agtype 5
+SELECT * FROM cypher('expr', $$
+    RETURN toUpper()
+$$) AS (toUpper agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN toLower(true)
+$$) AS (toLower agtype);
+ERROR:  tolowercase() unsuppoted argument agtype 5
+SELECT * FROM cypher('expr', $$
+    RETURN toLower()
+$$) AS (toLower agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM touppercase();
+ERROR:  function touppercase() does not exist
+LINE 1: SELECT * FROM touppercase();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM tolowercase();
+ERROR:  function tolowercase() does not exist
+LINE 1: SELECT * FROM tolowercase();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

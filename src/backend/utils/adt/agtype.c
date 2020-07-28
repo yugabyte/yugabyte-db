@@ -4449,3 +4449,183 @@ Datum reverse(PG_FUNCTION_ARGS)
 
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
+
+PG_FUNCTION_INFO_V1(touppercase);
+
+Datum touppercase(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    char *string = NULL;
+    char *result = NULL;
+    int string_len;
+    Oid type;
+    int i;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs > 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("touppercase() only supports one argument")));
+
+    /* check for null */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /* touppercase() supports text, cstring, or the agtype string input */
+    arg = args[0];
+    type = types[0];
+    if (type != AGTYPEOID)
+    {
+        if (type == CSTRINGOID)
+            string = DatumGetCString(arg);
+        else if (type == TEXTOID)
+            string = text_to_cstring(DatumGetTextPP(arg));
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("touppercase() unsuppoted argument type %d",
+                                   type)));
+        string_len = strlen(string);
+    }
+    else
+    {
+        agtype *agt_arg;
+        agtype_value *agtv_value;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("touppercase() only supports scalar arguments")));
+
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        /* check for agtype null */
+        if (agtv_value->type == AGTV_NULL)
+            PG_RETURN_NULL();
+        if (agtv_value->type == AGTV_STRING)
+        {
+            string = agtv_value->val.string.val;
+            string_len = agtv_value->val.string.len;
+        }
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("touppercase() unsuppoted argument agtype %d",
+                                   agtv_value->type)));
+    }
+
+    /* if we have an empty string, return null */
+    if (string_len == 0)
+        PG_RETURN_NULL();
+
+    /* allocate the new string */
+    result = palloc(string_len);
+
+    /* upcase the string */
+    for (i = 0; i < string_len; i++)
+        result[i] = pg_toupper(string[i]);
+
+    /* build the result */
+    agtv_result.type = AGTV_STRING;
+    agtv_result.val.string.val = result;
+    agtv_result.val.string.len = string_len;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(tolowercase);
+
+Datum tolowercase(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    char *string = NULL;
+    char *result = NULL;
+    int string_len;
+    Oid type;
+    int i;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs > 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("tolowercase() only supports one argument")));
+
+    /* check for null */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /* tolowercase() supports text, cstring, or the agtype string input */
+    arg = args[0];
+    type = types[0];
+    if (type != AGTYPEOID)
+    {
+        if (type == CSTRINGOID)
+            string = DatumGetCString(arg);
+        else if (type == TEXTOID)
+            string = text_to_cstring(DatumGetTextPP(arg));
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("tolowercase() unsuppoted argument type %d",
+                                   type)));
+        string_len = strlen(string);
+    }
+    else
+    {
+        agtype *agt_arg;
+        agtype_value *agtv_value;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("tolowercase() only supports scalar arguments")));
+
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        /* check for agtype null */
+        if (agtv_value->type == AGTV_NULL)
+            PG_RETURN_NULL();
+        if (agtv_value->type == AGTV_STRING)
+        {
+            string = agtv_value->val.string.val;
+            string_len = agtv_value->val.string.len;
+        }
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("tolowercase() unsuppoted argument agtype %d",
+                                   agtv_value->type)));
+    }
+
+    /* if we have an empty string, return null */
+    if (string_len == 0)
+        PG_RETURN_NULL();
+
+    /* allocate the new string */
+    result = palloc(string_len);
+
+    /* downcase the string */
+    for (i = 0; i < string_len; i++)
+        result[i] = pg_tolower(string[i]);
+
+    /* build the result */
+    agtv_result.type = AGTV_STRING;
+    agtv_result.val.string.val = result;
+    agtv_result.val.string.len = string_len;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}

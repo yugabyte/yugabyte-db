@@ -950,6 +950,44 @@ $$) AS (results agtype);
 SELECT * FROM reverse();
 
 --
+-- toUpper() and toLower()
+--
+SELECT * FROM cypher('expr', $$
+    RETURN toUpper('to uppercase')
+$$) AS (toUpper agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toLower('TO LOWERCASE')
+$$) AS (toLower agtype);
+SELECT * FROM touppercase('text'::text);
+SELECT * FROM touppercase('cstring'::cstring);
+SELECT * FROM tolowercase('TEXT'::text);
+SELECT * FROM tolowercase('CSTRING'::cstring);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toUpper(null)
+$$) AS (toUpper agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toLower(null)
+$$) AS (toLower agtype);
+SELECT * FROM touppercase(null);
+SELECT * FROM tolowercase(null);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toUpper(true)
+$$) AS (toUpper agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toUpper()
+$$) AS (toUpper agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toLower(true)
+$$) AS (toLower agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toLower()
+$$) AS (toLower agtype);
+SELECT * FROM touppercase();
+SELECT * FROM tolowercase();
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
