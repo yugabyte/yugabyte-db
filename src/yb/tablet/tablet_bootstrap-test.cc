@@ -862,8 +862,8 @@ TEST_F(BootstrapTest, RandomizedInput) {
   // (skip_wal_rewrite mode).
   FLAGS_retryable_request_timeout_secs = 0;
 
-  const auto kNumIter = 400;
-  const auto kNumEntries = 1500;
+  const auto kNumIter = NonTsanVsTsan(400, 150);
+  const auto kNumEntries = NonTsanVsTsan(1500, 500);
   for (int iteration = 1; iteration <= kNumIter; ++iteration) {
     LOG(INFO) << "Starting test iteration " << iteration;
     SCOPED_TRACE(Format("Test iteration $0", iteration));
