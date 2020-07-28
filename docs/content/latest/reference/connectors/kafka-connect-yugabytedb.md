@@ -31,8 +31,8 @@ The Kafka Connect YugabyteDB Sink Connector delivers data from Kafka topics into
 
 For building and using this project, the following tools must be installed on your system.
 
-- JDK - 1.8 or later.
-- Maven - 3.3 or later.
+- JDK 1.8 or later.
+- Maven 3.3 or later.
 - Clone this repository into `~/yb-kafka/yb-kafka-connector/` directory.
 
 ### Setup and use
