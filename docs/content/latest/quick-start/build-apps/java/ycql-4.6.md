@@ -2,7 +2,7 @@
 title: Build a Java application that uses YCQL
 headerTitle: Build a Java application
 linkTitle: Java
-description: Build a sample Java application with the Yugabyte Java Driver for YCQL.
+description: Build a sample Java application with the Yugabyte Java Driver for YCQL v4.6.
 menu:
   latest:
     parent: build-apps
@@ -28,31 +28,35 @@ showAsideToc: true
     </a>
   </li>
   <li>
-    <a href="/latest/quick-start/build-apps/java/ycql" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/java/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/latest/quick-start/build-apps/java/ycql-4.6" class="nav-link">
+    <a href="/latest/quick-start/build-apps/java/ycql-4.6" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL (4.6)
     </a>
   </li>
 </ul>
 
+{{< note title="Note" >}}
+
+The Yugabyte Java Driver for YCQL used in this tutorial is currently a release candidate and is not recommended yet for production environments.
+
+{{< /note >}}
+
 ## Maven
 
 To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:
 
 ```mvn
-   <dependencies>
-    <dependency>
-      <groupId>com.yugabyte</groupId>
-      <artifactId>cassandra-driver-core</artifactId>
-      <version>3.8.0-yb-5</version>
-    </dependency>
-  </dependencies>
+ <dependency>
+   <groupId>com.yugabyte</groupId>
+   <artifactId>java-driver-core</artifactId>
+   <version>4.6.0-yb-6</version>
+ </dependency>
 ```
 
 ## Create the sample Java application
@@ -82,13 +86,11 @@ Create a file, named `pom.xml`, and then copy the following content into it. The
   <version>1.0</version>
   <packaging>jar</packaging>
 
-  <dependencies>
-    <dependency>
-      <groupId>com.yugabyte</groupId>
-      <artifactId>cassandra-driver-core</artifactId>
-      <version>3.8.0-yb-5</version>
-    </dependency>
-  </dependencies>
+ <dependency>
+   <groupId>com.yugabyte</groupId>
+   <artifactId>java-driver-core</artifactId>
+   <version>4.6.0-yb-6</version>
+ </dependency>
 
   <build>
     <plugins>
@@ -128,59 +130,50 @@ $ mkdir -p src/main/java/com/yugabyte/sample/apps
 Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YBCqlHelloWorld.java`.
 
 ```java
-package com.yugabyte.sample.apps;
-
+package com.yugabytedb.samples;
+import java.net.InetSocketAddress;
 import java.util.List;
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
-
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.core.cql.Row;
 public class YBCqlHelloWorld {
-  public static void main(String[] args) {
-    try {
-      // Create a Cassandra client.
-      Cluster cluster = Cluster.builder()
-                               .addContactPoint("127.0.0.1")
-                               .build();
-      Session session = cluster.connect();
-
-      // Create keyspace 'ybdemo' if it does not exist.
-      String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS ybdemo;";
-      ResultSet createKeyspaceResult = session.execute(createKeyspace);
-      System.out.println("Created keyspace ybdemo");
-
-      // Create table 'employee' if it does not exist.
-      String createTable = "CREATE TABLE IF NOT EXISTS ybdemo.employee (id int PRIMARY KEY, " +
-                                                                       "name varchar, " +
-                                                                       "age int, " +
-                                                                       "language varchar);";
-      ResultSet createResult = session.execute(createTable);
-      System.out.println("Created table employee");
-
-      // Insert a row.
-      String insert = "INSERT INTO ybdemo.employee (id, name, age, language)" +
-                                          " VALUES (1, 'John', 35, 'Java');"; 
-      ResultSet insertResult = session.execute(insert);
-      System.out.println("Inserted data: " + insert);
-
-      // Query the row and print out the result.
-      String select = "SELECT name, age, language FROM ybdemo.employee WHERE id = 1;";
-      ResultSet selectResult = session.execute(select);
-      List<Row> rows = selectResult.all();
-      String name = rows.get(0).getString(0);
-      int age = rows.get(0).getInt(1);
-      String language = rows.get(0).getString(2);
-      System.out.println("Query returned " + rows.size() + " row: " +
-                         "name=" + name + ", age=" + age + ", language: " + language);
-
-      // Close the client.
-      session.close();
-      cluster.close();
-    } catch (Exception e) {
-        System.err.println("Error: " + e.getMessage());
+    public static void main(String[] args) {
+        try {
+            // Create a YCQL client.
+            CqlSession session = CqlSession
+                .builder()
+                .addContactPoint(new InetSocketAddress("127.0.0.1", 9042))
+                .withLocalDatacenter("datacenter1")
+                .build();
+            // Create keyspace 'ybdemo' if it does not exist.
+            String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS ybdemo;";
+            session.execute(createKeyspace);
+            System.out.println("Created keyspace ybdemo");
+            // Create table 'employee', if it does not exist.
+            String createTable = "CREATE TABLE IF NOT EXISTS ybdemo.employee (id int PRIMARY KEY, " + "name varchar, " +
+                "age int, " + "language varchar);";
+            session.execute(createTable);
+            System.out.println("Created table employee");
+            // Insert a row.
+            String insert = "INSERT INTO ybdemo.employee (id, name, age, language)" +
+                " VALUES (1, 'John', 35, 'Java');";
+            session.execute(insert);
+            System.out.println("Inserted data: " + insert);
+            // Query the row and print out the result.
+            String select = "SELECT name, age, language FROM ybdemo.employee WHERE id = 1;";
+            ResultSet selectResult = session.execute(select);
+            List < Row > rows = selectResult.all();
+            String name = rows.get(0).getString(0);
+            int age = rows.get(0).getInt(1);
+            String language = rows.get(0).getString(2);
+            System.out.println("Query returned " + rows.size() + " row: " + "name=" + name + ", age=" + age +
+                ", language: " + language);
+            // Close the client.
+            session.close();
+        } catch (Exception e) {
+            System.err.println("Error: " + e.getMessage());
+        }
     }
-  }
 }
 ```
 
