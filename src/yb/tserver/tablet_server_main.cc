@@ -148,7 +148,7 @@ int TabletServerMain(int argc, char** argv) {
   if (GetHostname(&host_name).ok()) {
     FLAGS_metric_node_name = strings::Substitute("$0:$1", host_name, TabletServer::kDefaultWebPort);
   } else {
-      LOG(INFO) << "Failed to get tablet's host name, keeping default metric_node_name";
+    LOG(INFO) << "Failed to get tablet's host name, keeping default metric_node_name";
   }
   // Do not sync GLOG to disk for INFO, WARNING.
   // ERRORs, and FATALs will still cause a sync to disk.

@@ -76,7 +76,7 @@ static int MasterMain(int argc, char** argv) {
   if (GetHostname(&host_name).ok()) {
     FLAGS_metric_node_name = strings::Substitute("$0:$1", host_name, kMasterDefaultWebPort);
   } else {
-      LOG(INFO) << "Failed to get master's host name, keeping default metric_node_name";
+    LOG(INFO) << "Failed to get master's host name, keeping default metric_node_name";
   }
 
   FLAGS_default_memory_limit_to_ram_ratio = 0.10;
