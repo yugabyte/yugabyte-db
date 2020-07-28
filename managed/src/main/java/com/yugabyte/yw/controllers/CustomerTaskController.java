@@ -58,8 +58,8 @@ public class CustomerTaskController extends AuthenticatedController {
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
     Query<CustomerTask> customerTaskQuery = CustomerTask.find.where()
-        .eq("customer_uuid", customerUUID)
-        .orderBy("create_time desc");
+      .eq("customer_uuid", customerUUID)
+      .orderBy("create_time desc");
 
     if (targetUUID != null) {
       customerTaskQuery.where().eq("target_uuid", targetUUID);
@@ -70,29 +70,37 @@ public class CustomerTaskController extends AuthenticatedController {
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
     for (CustomerTask task : pendingTasks) {
-      CustomerTaskFormData taskData = new CustomerTaskFormData();
+      try {
+        CustomerTaskFormData taskData = new CustomerTaskFormData();
 
-      JsonNode taskProgress = commissioner.getStatus(task.getTaskUUID());
-      // If the task progress API returns error, we will log it and not add that task to
-      // to the task list for UI rendering.
-      if (taskProgress.has("error")) {
-        LOG.error("Error fetching Task Progress for " + task.getTaskUUID() + ", Error: " + taskProgress.get("error"));
-      } else {
-        taskData.percentComplete = taskProgress.get("percent").asInt();
-        taskData.status = taskProgress.get("status").asText();
-        taskData.id = task.getTaskUUID();
-        taskData.title = task.getFriendlyDescription();
-        taskData.createTime = task.getCreateTime();
-        taskData.completionTime = task.getCompletionTime();
-        taskData.target = task.getTarget().name();
-        taskData.type = task.getType().name();
-        taskData.targetUUID = task.getTargetUUID();
+        JsonNode taskProgress = commissioner.getStatus(task.getTaskUUID());
+        // If the task progress API returns error, we will log it and not add that task
+        // to the task list for UI rendering.
+        if (taskProgress.has("error")) {
+          LOG.error("Error fetching Task Progress for " + task.getTaskUUID() +
+            ", Error: " + taskProgress.get("error"));
+        } else {
+          taskData.percentComplete = taskProgress.get("percent").asInt();
+          taskData.status = taskProgress.get("status").asText();
+          taskData.id = task.getTaskUUID();
+          taskData.title = task.getFriendlyDescription();
+          taskData.createTime = task.getCreateTime();
+          taskData.completionTime = task.getCompletionTime();
+          taskData.target = task.getTarget().name();
+          taskData.type = task.getType().name();
+          taskData.targetUUID = task.getTargetUUID();
 
-        List<CustomerTaskFormData> taskList = taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
-        taskList.add(taskData);
-        taskListMap.put(task.getTargetUUID(), taskList);
+          List<CustomerTaskFormData> taskList = taskListMap.getOrDefault(task.getTargetUUID(),
+            new ArrayList<>());
+          taskList.add(taskData);
+          taskListMap.put(task.getTargetUUID(), taskList);
+        }
+      } catch(RuntimeException e) {
+        LOG.error("Error fetching Task Progress for " +  task.getTaskUUID() +
+          ", TaskInfo with that taskUUID not found");
       }
     }
+    
     return taskListMap;
   }
 
