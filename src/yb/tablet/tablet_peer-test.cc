@@ -132,7 +132,9 @@ class TabletPeerTest : public YBTabletTest,
             &TabletPeerTest::TabletPeerStateChangedCallback,
             Unretained(this),
             tablet()->tablet_id()),
-        &metric_registry_, nullptr /* tablet_splitter */));
+        &metric_registry_,
+        nullptr, // tablet_splitter
+        std::shared_future<client::YBClient*>()));
 
     // Make TabletPeer use the same LogAnchorRegistry as the Tablet created by the harness.
     // TODO: Refactor TabletHarness to allow taking a LogAnchorRegistry, while also providing
@@ -163,7 +165,6 @@ class TabletPeerTest : public YBTabletTest,
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
-                                           std::shared_future<client::YBClient*>(),
                                            nullptr /* server_mem_tracker */,
                                            messenger_.get(),
                                            proxy_cache_.get(),

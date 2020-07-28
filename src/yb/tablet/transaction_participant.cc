@@ -1060,6 +1060,11 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
 
     start_latch_.Wait();
+    if (closing_.load(std::memory_order_acquire)) {
+      LOG_WITH_PREFIX(INFO) << __func__ << ": closing, not starting transaction status resolution";
+      return;
+    }
+    LOG_WITH_PREFIX(INFO) << __func__ << ": starting transaction status resolution";
     status_resolver_.Start(CoarseTimePoint::max());
   }
 

@@ -1602,7 +1602,12 @@ CHECKED_STATUS BootstrapTabletImpl(
     scoped_refptr<log::Log>* rebuilt_log,
     consensus::ConsensusBootstrapInfo* results) {
   TabletBootstrap tablet_bootstrap(data);
-  return tablet_bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, results);
+  auto bootstrap_status = tablet_bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, results);
+  if (!bootstrap_status.ok()) {
+    LOG(WARNING) << "T " << (*rebuilt_tablet ? (*rebuilt_tablet)->tablet_id() : "N/A")
+                 << " Tablet bootstrap failed: " << bootstrap_status;
+  }
+  return bootstrap_status;
 }
 
 } // namespace tablet
