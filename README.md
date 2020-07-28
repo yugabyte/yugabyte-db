@@ -87,7 +87,8 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Improving day 2 operations of Yugabyte Platform | PROGRESS  |  v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4420) |  |
 | [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) | PROGRESS  |  v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1958) | This feature will be done in two phases: supporting PostgreSQL partitions followed by geo-placement support for partitions |
 | Improve TPC-C benchmarking | PROGRESS  | v2.3  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3226) |  |
-| Support transactions with large batches of operations during data loads | PLANNING  |   |  |  |
+| Improvements to [automatic tablet splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PLANNING  | v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |
+| Support transactions with large batches of operations during data loads | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/5241)
 | Transparently restart transactions | PLANNING  |   |  | This should decrease the incidence of transaction restart errors seen in various scenarios |
 
 
@@ -97,9 +98,8 @@ The following items are being planned as additions to the roadmap
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
-| YSQL query optimizer improvements | PLANNING  |   |  |  |
-| Support advanced features with [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) | PLANNING  |   |  | Support the following in colocated tables: `ALTER` table, xCluster replication, transactional backups, 2DC replication, multiple colocation groups support, index rebuild |
-| Performance improvements for [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) | PLANNING  |   |  | Pushdown joins, geo-distributed perf by routing queries to colocated tablet leader, ability to pull out fast growing tables out of colocation groups |
+| Improve YSQL query performance | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) |  |
+| Make [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) default for YSQL | PLANNING  |  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5239)  |  |
 | Point in time restores | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/1820) |  |
 | Support Kafka as source and sink | PLANNING |  |  | Support source and sink for both YSQL and YSQL |
 | Follower reads in YSQL | PLANNING |  |  | Ability to perform follower reads for YSQL and transactional tables in YCQL. Note that this is currently supported for scenarios without distributed transactions.  |
