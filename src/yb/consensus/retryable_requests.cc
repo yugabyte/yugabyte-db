@@ -228,7 +228,7 @@ class RetryableRequests::Impl {
     if (data.request_id() < client_retryable_requests.min_running_request_id) {
       round->NotifyReplicationFinished(
           STATUS_FORMAT(
-              Expired, "Request id $0 is below than min running $1", data.request_id(),
+              Expired, "Request id $0 is less than min running $1", data.request_id(),
               client_retryable_requests.min_running_request_id),
           round->bound_term(), nullptr /* applied_op_ids */);
       return false;

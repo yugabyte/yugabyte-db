@@ -515,10 +515,8 @@ Status ReplicaState::CancelPendingOperations() {
     }
 
     LOG_WITH_PREFIX(INFO) << "Trying to abort " << pending_operations_.size()
-                          << " pending operations.";
+                          << " pending operations because of shutdown.";
     auto abort_status = STATUS(Aborted, "Operation aborted");
-    LOG_WITH_PREFIX(INFO) << "Aborting "  << pending_operations_.size()
-                          << " operations because of shutdown";
     int i = 0;
     for (const auto& round : pending_operations_) {
       // We cancel only operations whose applies have not yet been triggered.
