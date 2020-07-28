@@ -392,7 +392,7 @@ source     | num_user_signups
 
 ```postgresql
 yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
-          FROM users, orders WHERE users.id=orders.user_id
+          FROM users LEFT JOIN orders ON users.id=orders.user_id
           GROUP BY source
           ORDER BY total_sales DESC;
 ```
@@ -417,8 +417,7 @@ Let us answer the questions below by creating a view.
 ```postgresql
 yb_demo=# CREATE VIEW channel AS
             (SELECT source, ROUND(SUM(orders.total)) AS total_sales
-             FROM users, orders
-             WHERE users.id=orders.user_id
+             FROM users LEFT JOIN orders ON users.id=orders.user_id
              GROUP BY source
              ORDER BY total_sales DESC);
 ```
