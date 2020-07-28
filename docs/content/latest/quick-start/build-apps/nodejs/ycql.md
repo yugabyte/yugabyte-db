@@ -1,5 +1,5 @@
 ---
-title: Build a Node.JS application that uses YCQL
+title: Build a Node.js application that uses YCQL
 headerTitle: Build a Node.js application
 linkTitle: Node.js
 description: Build a sample Node.js application with the Yugabyte Node.js driver for YCQL.

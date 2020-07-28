@@ -30,7 +30,7 @@ showAsideToc: true
 To build a Scala application using the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), you must add the following `sbt` (Scala build tool) dependency to your application:
 
 ```sbt
-libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.2.0-yb-19"
+libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-5"
 ```
 
 ## Working Example
@@ -39,8 +39,9 @@ libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.2.0-yb-19"
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
-- installed Scala version 2.12+ and sbt 1.3.8+
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](../../../../api/ycql/quick-start/).
+- installed Scala version 2.12 or later.
+- installed sbt 1.3.8  or later.
 
 ### Create the sbt build file
 
