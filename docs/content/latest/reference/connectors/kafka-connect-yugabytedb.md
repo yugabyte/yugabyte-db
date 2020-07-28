@@ -108,7 +108,7 @@ Any latest version can be used — this is an example.
     Finally, run the Kafka Connect YugabyteDB Sink Connector in standalone mode:
 
     ```sh
-    $ ~/yb-kafka/kafka_2.11-2.0.0/bin/connect-standalone.sh ~/yb-kafka/yb-kafka-connector/resourcesexamples/kafka.connect.properties ~/yb-kafka/yb-kafka-connector/resources/examplesyugabyte.sink.properties
+    $ ~/yb-kafka/kafka_2.12-2.5.0/bin/connect-standalone.sh ~/yb-kafka/yb-kafka-connector/resourcesexamples/kafka.connect.properties ~/yb-kafka/yb-kafka-connector/resources/examplesyugabyte.sink.properties
     ```
 
     *Notes*:
@@ -137,6 +137,7 @@ Any latest version can be used — this is an example.
    ```postgresql
    demo=# select * from demo.test_table;
    ```
+
    ```
    key | value | ts
    ----+-------+---------------------------------
