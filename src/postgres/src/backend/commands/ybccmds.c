@@ -102,7 +102,8 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 	HandleYBStatus(YBCPgNewDropDatabase(dbname,
 										dboid,
 										&handle));
-	HandleYBStatus(YBCPgExecDropDatabase(handle));
+        bool not_found = false;
+        HandleYBStatusIgnoreNotFound(YBCPgExecDropDatabase(handle), &not_found);
 }
 
 void
