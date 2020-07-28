@@ -130,7 +130,7 @@ $ mkdir -p src/main/java/com/yugabyte/sample/apps
 Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YBCqlHelloWorld.java`.
 
 ```java
-package com.yugabytedb.samples;
+package com.yugabytedb.sample.apps;
 import java.net.InetSocketAddress;
 import java.util.List;
 import com.datastax.oss.driver.api.core.CqlSession;
