@@ -298,7 +298,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
 
     String tserverAssertLocalTablet = "--assert_local_tablet_server_selected=true";
     String tserverAssertReadsRejectedBecauseStaleFollower =
-        "--assert_reads_from_follower_rejected_because_of_staleness";
+        "--TEST_assert_reads_from_follower_rejected_because_of_staleness";
     String tserverRejectUpdateReplicaRequests =
         "--follower_reject_update_consensus_requests_seconds=300";
 
