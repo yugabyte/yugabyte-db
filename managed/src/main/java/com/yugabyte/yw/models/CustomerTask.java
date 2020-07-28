@@ -216,6 +216,11 @@ public class CustomerTask extends Model {
     return th;
   }
 
+  public static CustomerTask get(Long id) {
+    return CustomerTask.find.where()
+      .idEq(id).findUnique();
+  }
+
   public String getFriendlyDescription() {
     StringBuilder sb = new StringBuilder();
     sb.append(type.toString(completionTime != null));
