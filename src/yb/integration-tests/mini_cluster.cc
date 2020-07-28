@@ -265,7 +265,7 @@ Status MiniCluster::RestartSync() {
     CHECK_OK(master_server->WaitForCatalogManagerInit());
   }
 
-  RETURN_NOT_OK_PREPEND(WaitForTabletServerCount(num_tablet_servers()),
+  RETURN_NOT_OK_PREPEND(WaitForAllTabletServers(),
                         "Waiting for tablet servers to start");
   running_ = true;
   return Status::OK();
@@ -447,6 +447,10 @@ Status MiniCluster::WaitForReplicaCount(const string& tablet_id,
   }
   return STATUS(TimedOut, Substitute("Tablet $0 never reached expected replica count $1",
                                      tablet_id, expected_count));
+}
+
+Status MiniCluster::WaitForAllTabletServers() {
+  return WaitForTabletServerCount(num_tablet_servers());
 }
 
 Status MiniCluster::WaitForTabletServerCount(int count) {
