@@ -99,6 +99,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 
+import org.pac4j.play.CallbackController;
+import org.pac4j.play.store.PlayCacheSessionStore;
+import org.pac4j.play.store.PlaySessionStore;
+
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.runners.MockitoJUnitRunner;
@@ -133,6 +137,8 @@ public class UniverseControllerTest extends WithApplication {
   private YsqlQueryExecutor mockYsqlQueryExecutor;
   private YcqlQueryExecutor mockYcqlQueryExecutor;
   private ShellProcessHandler mockShellProcessHandler;
+  protected CallbackController mockCallbackController;
+  protected PlayCacheSessionStore mockSessionStore;
 
   @Override
   protected Application provideApplication() {
@@ -146,6 +152,8 @@ public class UniverseControllerTest extends WithApplication {
     mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
     mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
     mockShellProcessHandler = mock(ShellProcessHandler.class);
+    mockCallbackController = mock(CallbackController.class);
+    mockSessionStore = mock(PlayCacheSessionStore.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
@@ -156,6 +164,8 @@ public class UniverseControllerTest extends WithApplication {
         .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor))
         .overrides(bind(YcqlQueryExecutor.class).toInstance(mockYcqlQueryExecutor))
         .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
+        .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
+        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
         .build();
   }
 

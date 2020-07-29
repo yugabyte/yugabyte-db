@@ -88,8 +88,10 @@ readonly YB_JENKINS_NFS_HOME_DIR=/n/jenkins
 # In our NFS environment, we keep Linuxbrew builds in this directory.
 readonly SHARED_LINUXBREW_BUILDS_DIR="$YB_JENKINS_NFS_HOME_DIR/linuxbrew"
 # Locally cached copies
-readonly LOCAL_THIRDPARTY_DIRS="/opt/yb-build/thirdparty"
-readonly LOCAL_LINUXBREW_DIRS="/opt/yb-build/brew"
+readonly YB_BUILD_DIR="/opt/yb-build"
+readonly LOCAL_THIRDPARTY_DIRS="$YB_BUILD_DIR/thirdparty"
+readonly LOCAL_LINUXBREW_DIRS="$YB_BUILD_DIR/brew"
+readonly LOCAL_DOWNLOAD_DIR="${LOCAL_DOWNLOAD_DIR:-$YB_BUILD_DIR/download_cache}"
 
 # The assumed number of cores per build worker. This is used in the default make parallelism level
 # calculation in yb_build.sh. This does not have to be the exact number of cores per worker, but
@@ -1054,7 +1056,9 @@ download_and_extract_archive() {
           (
             set -x
             "$YB_SRC_ROOT/python/yb/download_and_extract_archive.py" \
-              --url "$url" --dest-dir-parent "${dest_dir_parent}"
+              --url "$url" \
+              --dest-dir-parent "$dest_dir_parent" \
+              --local-cache-dir "$LOCAL_DOWNLOAD_DIR"
           )
         else
           log "[Host $(hostname)] $FLOCK_MSG $lock_path but directory $dest_dir already exists."
@@ -1066,6 +1070,17 @@ download_and_extract_archive() {
 }
 
 download_thirdparty() {
+  if [[ ! -w $YB_BUILD_DIR ]]; then
+    echo >&2 "
+  ERROR:  Cannot download pre-built thirdparty dependencies.
+          Due to embedded paths, they must be installed under: $YB_BUILD_DIR
+
+          Option 1) To enable downloading: sudo mkdir -m 777 $YB_BUILD_DIR
+
+          Option 2) To build dependencies from source, use build option --ndltp
+    "
+    fatal "Cannot download pre-built thirdparty dependencies."
+  fi
   download_and_extract_archive "$YB_THIRDPARTY_URL" "$LOCAL_THIRDPARTY_DIRS"
   if [[ -n ${YB_THIRDPARTY_DIR:-} &&
         $YB_THIRDPARTY_DIR != "$extracted_dir" ]]; then

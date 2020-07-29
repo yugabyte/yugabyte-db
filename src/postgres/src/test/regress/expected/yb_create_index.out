@@ -174,11 +174,11 @@ INSERT INTO t1 VALUES (1, 3, 11, 11);
 ERROR:  duplicate key value violates unique constraint "t1_v1_v2_idx"
 INSERT INTO t1 VALUES (1, 3, 11, 13), (2, 1, 12, 13), (2, 2, 12, 14);
 EXPLAIN (COSTS OFF) SELECT * FROM t1 ORDER BY h, r;
-        QUERY PLAN
---------------------------
+      QUERY PLAN
+----------------------
  Sort
    Sort Key: h, r
-   ->  Foreign Scan on t1
+   ->  Seq Scan on t1
 (3 rows)
 
 SELECT * FROM t1 ORDER BY h, r;
@@ -207,11 +207,11 @@ SELECT * FROM t1 WHERE h = 1 ORDER BY r;
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
-        QUERY PLAN
---------------------------
+       QUERY PLAN
+-------------------------
  Sort
    Sort Key: h, r
-   ->  Foreign Scan on t1
+   ->  Seq Scan on t1
          Filter: (h > 1)
 (4 rows)
 
@@ -260,7 +260,7 @@ EXPLAIN (COSTS OFF) SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.
                    QUERY PLAN
 -------------------------------------------------
  Nested Loop
-   ->  Foreign Scan on t1
+   ->  Seq Scan on t1
    ->  Index Scan using t2_pkey on t2
          Index Cond: ((h = t1.h) AND (r = t1.r))
 (4 rows)
@@ -326,11 +326,11 @@ EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY k;
 (4 rows)
 
 EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY k;
-               QUERY PLAN
------------------------------------------
+             QUERY PLAN
+-------------------------------------
  Sort
    Sort Key: k
-   ->  Foreign Scan on null_unique_index
+   ->  Seq Scan on null_unique_index
          Filter: (k IS NOT NULL)
 (4 rows)
 
@@ -385,10 +385,10 @@ SELECT * FROM null_unique_index ORDER BY v;
 
 INSERT INTO null_unique_index values (NULL, 2), (3, 3), (NULL, 5);
 EXPLAIN(COSTS OFF) UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
-               QUERY PLAN
------------------------------------------
+             QUERY PLAN
+-------------------------------------
  Update on null_unique_index
-   ->  Foreign Scan on null_unique_index
+   ->  Seq Scan on null_unique_index
          Filter: (k IS NOT NULL)
 (3 rows)
 
@@ -536,20 +536,20 @@ Indexes:
 -- the other case to force the use of sequential scan on the base table.
 UPDATE test_include SET c2 = 22 WHERE c1 = 2;
 EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
-             QUERY PLAN
-------------------------------------
+           QUERY PLAN
+--------------------------------
  Sort
    Sort Key: c2
-   ->  Foreign Scan on test_include
+   ->  Seq Scan on test_include
          Filter: (c1 > 0)
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test_include ORDER BY c2;
-             QUERY PLAN
-------------------------------------
+           QUERY PLAN
+--------------------------------
  Sort
    Sort Key: c2
-   ->  Foreign Scan on test_include
+   ->  Seq Scan on test_include
 (3 rows)
 
 SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
@@ -661,11 +661,11 @@ INSERT INTO test_method VALUES
   (2, 1, 1, 2, 10, 20);
 -- Test scans using different indexes. Verify order by.
 EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY h1, h2;
-            QUERY PLAN
------------------------------------
+          QUERY PLAN
+-------------------------------
  Sort
    Sort Key: h1, h2
-   ->  Foreign Scan on test_method
+   ->  Seq Scan on test_method
 (3 rows)
 
 SELECT * FROM test_method ORDER BY h1, h2;
@@ -700,11 +700,11 @@ SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY r1, r2;
-            QUERY PLAN
------------------------------------
+          QUERY PLAN
+-------------------------------
  Sort
    Sort Key: r1, r2
-   ->  Foreign Scan on test_method
+   ->  Seq Scan on test_method
 (3 rows)
 
 SELECT * FROM test_method ORDER BY r1, r2;
@@ -723,11 +723,11 @@ SELECT * FROM test_method ORDER BY r1, r2;
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
-            QUERY PLAN
------------------------------------
+          QUERY PLAN
+-------------------------------
  Sort
    Sort Key: v1, v2
-   ->  Foreign Scan on test_method
+   ->  Seq Scan on test_method
          Filter: (v1 > 5)
 (4 rows)
 

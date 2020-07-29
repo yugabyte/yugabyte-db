@@ -25,7 +25,7 @@ export default class OnPremProviderAndAccessKey extends Component {
     const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;
     const {nameHelpContent, userHelpContent, pkHelpContent,
            passwordlessSudoHelp, airGapInstallHelp, homeDirHelp,
-           portHelpContent} = constants;
+           portHelpContent, useHostnameHelp} = constants;
     const isReadOnly = this.props.isEditProvider;
 
     return (
@@ -43,6 +43,9 @@ export default class OnPremProviderAndAccessKey extends Component {
                 <Field name="sshPort" component={YBNumericInput} label="SSH Port" insetError={true}
                        isReadOnly={isReadOnly} infoContent={portHelpContent}
                        infoTitle="SSH Port" />
+                <Field name="useHostnames" component={YBToggle}
+                       label="Use Hostnames" defaultChecked={false} isReadOnly={isReadOnly}
+                       infoContent={useHostnameHelp} infoTitle="Use Hostnames"/>
                 <Field name="passwordlessSudoAccess" component={YBToggle}
                        label="Passwordless Sudo" defaultChecked={true} isReadOnly={isReadOnly}
                        infoContent={passwordlessSudoHelp} infoTitle="Passwordless Sudo"/>

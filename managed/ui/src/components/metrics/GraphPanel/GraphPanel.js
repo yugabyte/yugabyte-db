@@ -78,7 +78,8 @@ const panelTypes = {
     metrics: [
       "cql_server_rpc_per_second",
       "cql_sql_latency",
-      "cql_server_rpc_p99"
+      "cql_server_rpc_p99",
+      "tserver_async_replication_lag_micros"
     ]},
   yedis_ops: {title: "YEDIS Ops and Latency",
     metrics: [

@@ -83,6 +83,7 @@ namespace tablet {
 const int64 kNoDurableMemStore = -1;
 const std::string kIntentsSubdir = "intents";
 const std::string kIntentsDBSuffix = ".intents";
+const std::string kSnapshotsDirSuffix = ".snapshots";
 
 // ============================================================================
 //  Raft group metadata
@@ -194,6 +195,7 @@ Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb, TableId primary_table_id
   rocksdb_dir = pb.rocksdb_dir();
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
+  has_been_fully_compacted = pb.has_been_fully_compacted();
   return LoadTablesFromPB(pb.tables(), primary_table_id);
 }
 
@@ -210,6 +212,7 @@ void KvStoreInfo::ToPB(TableId primary_table_id, KvStoreInfoPB* pb) const {
   } else {
     pb->set_upper_bound_key(upper_bound_key);
   }
+  pb->set_has_been_fully_compacted(has_been_fully_compacted);
 
   // Putting primary table first, then all other tables.
   const auto& it = tables.find(primary_table_id);
@@ -387,7 +390,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   docdb::InitRocksDBOptions(
       &rocksdb_options, log_prefix, nullptr /* statistics */, tablet_options);
 
-  const auto& rocksdb_dir = kv_store_.rocksdb_dir;
+  const auto& rocksdb_dir = this->rocksdb_dir();
   LOG(INFO) << "Destroying regular db at: " << rocksdb_dir;
   rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir, rocksdb_options);
 
@@ -402,7 +405,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     LOG_IF(WARNING, !s.ok()) << "Unable to delete rocksdb data directory " << rocksdb_dir;
   }
 
-  const auto intents_dir = rocksdb_dir + kIntentsDBSuffix;
+  const auto intents_dir = this->intents_rocksdb_dir();
   if (fs_manager_->env()->FileExists(intents_dir)) {
     status = rocksdb::DestroyDB(intents_dir, rocksdb_options);
 
@@ -417,6 +420,12 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   if (fs_manager_->env()->FileExists(intents_dir)) {
     auto s = fs_manager_->env()->DeleteRecursively(intents_dir);
     LOG_IF(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
+  }
+
+  const auto snapshots_dir = this->snapshots_dir();
+  if (fs_manager_->env()->FileExists(snapshots_dir)) {
+    auto s = fs_manager_->env()->DeleteRecursively(snapshots_dir);
+    LOG_IF(WARNING, !s.ok()) << "Unable to delete snapshots directory " << snapshots_dir;
   }
 
   // Flushing will sync the new tablet_data_state_ to disk and will now also
@@ -661,6 +670,16 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                                             index_map,
                                                             deleted_cols,
                                                             version);
+  if (target_table_id != primary_table_id_) {
+    if (schema.table_properties().is_ysql_catalog_table()) {
+      Uuid cotable_id;
+      CHECK_OK(cotable_id.FromHexString(target_table_id));
+      new_table_info->schema.set_cotable_id(cotable_id);
+    } else {
+      auto result = CHECK_RESULT(GetPgsqlTableOid(target_table_id));
+      new_table_info->schema.set_pgtable_id(result);
+    }
+  }
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
                       << " to Schema version " << version
                       << " from \n" << yb::ToString(kv_store_.tables[target_table_id])
@@ -831,6 +850,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
   metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
+  metadata->kv_store_.has_been_fully_compacted = false;
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
   metadata->tablet_data_state_ = TABLET_DATA_UNKNOWN;

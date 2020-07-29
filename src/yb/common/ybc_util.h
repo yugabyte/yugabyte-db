@@ -26,6 +26,12 @@ struct varlena;
 
 #endif
 
+/*
+ * Guc variable to log the protobuf string for every outgoing (DocDB) read/write request.
+ * See the "YB Debug utils" section in pg_yb_utils.h (as well as guc.c) for more information.
+ */
+extern bool yb_debug_log_docdb_requests;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
 extern YBCStatus YBCStatusOK;
@@ -56,6 +62,8 @@ CHECKED_YBCSTATUS YBCInit(
     const char* argv0,
     YBCPAllocFn palloc_fn,
     YBCCStringToTextWithLenFn cstring_to_text_with_len_fn);
+
+CHECKED_YBCSTATUS YBCInitGFlags(const char* argv0);
 
 // From glog's log_severity.h:
 // const int GLOG_INFO = 0, GLOG_WARNING = 1, GLOG_ERROR = 2, GLOG_FATAL = 3;

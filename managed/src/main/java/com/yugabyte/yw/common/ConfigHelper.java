@@ -21,6 +21,8 @@ public class ConfigHelper {
     AWSInstanceTypeMetadata,
     GCPRegionMetadata,
     GCPInstanceTypeMetadata,
+    AZURegionMetadata,
+    AZUInstanceTypeMetadata,
     DockerRegionMetadata,
     DockerInstanceTypeMetadata,
     SoftwareReleases,
@@ -88,6 +90,8 @@ public class ConfigHelper {
         return getConfig(ConfigType.GCPRegionMetadata);
       case docker:
         return getConfig(ConfigType.DockerRegionMetadata);
+      case azu:
+        return getConfig(ConfigType.AZURegionMetadata);
       default:
         return Collections.emptyMap();
     }

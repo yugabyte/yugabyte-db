@@ -366,7 +366,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
 
   for (auto& data_provider : data_providers_) {
-    data_provider->AddData(&req);
+    data_provider->AddData(last_hb_response_, &req);
   }
 
   RpcController rpc;
@@ -586,9 +586,10 @@ const std::string& HeartbeatDataProvider::LogPrefix() const {
   return server_.LogPrefix();
 }
 
-void PeriodicalHeartbeatDataProvider::AddData(master::TSHeartbeatRequestPB* req) {
+void PeriodicalHeartbeatDataProvider::AddData(
+    const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) {
   if (prev_run_time_ + period_ < CoarseMonoClock::Now()) {
-    DoAddData(req);
+    DoAddData(last_resp, req);
     prev_run_time_ = CoarseMonoClock::Now();
   }
 }

@@ -293,7 +293,7 @@ TEST_P(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
     ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
     ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
-    consensus::OpId op_id;
+    OpIdPB op_id;
     ASSERT_OK(cluster_->GetLastOpIdForLeader(&op_id));
     ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(static_cast<int>(op_id.index())));
 

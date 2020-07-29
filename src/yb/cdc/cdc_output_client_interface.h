@@ -32,7 +32,7 @@ namespace cdc {
 
 struct OutputClientResponse {
   Status status;
-  consensus::OpId last_applied_op_id;
+  OpIdPB last_applied_op_id;
 };
 
 class CDCOutputClient {

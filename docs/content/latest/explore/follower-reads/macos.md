@@ -40,8 +40,6 @@ With YugabyteDB, you can use follower reads to lower read latencies since the DB
 
 YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers. This means that if the follower hasn't heard from the leader for the specified amount of time, the read request will be forwarded to the leader. This is particularly useful when the tablet follower is located far away from the tablet leader. To enable this feature, you will need to create your cluster with the custom tserver flag `max_stale_read_bound_time_ms`. See [Creating a local cluster with custom flags](../../../admin/yb-ctl/) for instructions on how to do this.
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../../quick-start/install/) guide.
-
 ## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.

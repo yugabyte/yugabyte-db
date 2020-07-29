@@ -255,6 +255,7 @@ class PgApiImpl {
                                 const PgObjectId& table_id,
                                 bool is_shared_index,
                                 bool is_unique_index,
+                                const bool skip_index_backfill,
                                 bool if_not_exist,
                                 PgStatement **handle);
 
@@ -279,6 +280,8 @@ class PgApiImpl {
       const PgObjectId& table_id,
       const PgObjectId& index_id,
       const IndexPermissions& target_index_permissions);
+
+  CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
 
   //------------------------------------------------------------------------------------------------
   // All DML statements
@@ -357,6 +360,8 @@ class PgApiImpl {
   CHECKED_STATUS ExecInsert(PgStatement *handle);
 
   CHECKED_STATUS InsertStmtSetUpsertMode(PgStatement *handle);
+
+  CHECKED_STATUS InsertStmtSetWriteTime(PgStatement *handle, const HybridTime write_time);
 
   //------------------------------------------------------------------------------------------------
   // Update.

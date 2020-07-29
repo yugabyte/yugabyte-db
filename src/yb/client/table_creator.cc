@@ -149,6 +149,11 @@ YBTableCreator& YBTableCreator::is_unique_index(bool is_unique_index) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::skip_index_backfill(const bool skip_index_backfill) {
+  skip_index_backfill_ = skip_index_backfill;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::use_mangled_column_name(bool value) {
   index_info_.set_use_mangled_column_name(value);
   return *this;
@@ -252,6 +257,7 @@ Status YBTableCreator::Create() {
     req.set_indexed_table_id(index_info_.indexed_table_id());
     req.set_is_local_index(index_info_.is_local());
     req.set_is_unique_index(index_info_.is_unique());
+    req.set_skip_index_backfill(skip_index_backfill_);
   }
 
   auto deadline = CoarseMonoClock::Now() +
@@ -275,6 +281,17 @@ Status YBTableCreator::Create() {
   if (wait_) {
     RETURN_NOT_OK(client_->data_->WaitForCreateTableToFinish(
         client_, YBTableName(), table_id_, deadline));
+    if (s.ok() && table_type_ == TableType::YQL_TABLE_TYPE && index_info_.has_indexed_table_id()) {
+      auto index_perm = client_->data_->GetIndexPermissions(
+          client_, index_info_.indexed_table_id(), table_id_, deadline);
+      VLOG(1) << "GetIndexPermissions returned " << index_perm;
+      // If we know that the backfill has failed, then return an error.
+      // Timeout is not considered an error because ycql does not wait for the backfill
+      // to complete.
+      if (!index_perm && index_perm.status().IsNotFound()) {
+        return STATUS(RemoteError, "Create/backfill index failed.");
+      }
+    }
   }
 
   if (s.ok() && !FLAGS_client_suppress_created_logs) {

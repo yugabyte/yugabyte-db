@@ -230,6 +230,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               YBCPgOid table_oid,
                               bool is_shared_index,
                               bool is_unique_index,
+                              const bool skip_index_backfill,
                               bool if_not_exist,
                               YBCPgStatement *handle);
 
@@ -257,6 +258,10 @@ YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
     const YBCPgOid index_oid,
     const uint32_t target_index_permissions,
     uint32_t *actual_index_permissions);
+
+YBCStatus YBCPgAsyncUpdateIndexPermissions(
+    const YBCPgOid database_oid,
+    const YBCPgOid indexed_table_oid);
 
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)
@@ -345,6 +350,8 @@ YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
 YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 
 YBCStatus YBCPgInsertStmtSetUpsertMode(YBCPgStatement handle);
+
+YBCStatus YBCPgInsertStmtSetWriteTime(YBCPgStatement handle, const uint64_t write_time);
 
 // UPDATE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,

@@ -22,11 +22,11 @@ import subprocess
 import time
 import json
 from argparse import RawDescriptionHelpFormatter
+from boto.utils import get_instance_metadata
 from multiprocessing.pool import ThreadPool
 
 import os
 import re
-from six import iteritems
 
 TABLET_UUID_LEN = 32
 UUID_RE_STR = '[0-9a-f-]{32,36}'
@@ -252,7 +252,7 @@ def check_uuid(uuid_str):
 
 
 def random_string(length):
-    return ''.join(random.choice(string.lowercase) for i in range(length))
+    return ''.join(random.choice(string.ascii_lowercase) for i in range(length))
 
 
 def strip_dir(dir_path):
@@ -345,7 +345,7 @@ class AzBackupStorage(AbstractBackupStorage):
     def download_file_cmd(self, src, dest):
         src = "'{}'".format(src + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         dest = "'{}'".format(dest)
-        return ["{} {} {}".format(self._command_list_prefix(), src, dest)]
+        return ["{} {} {} {}".format(self._command_list_prefix(), src, dest, "--recursive")]
 
     def upload_dir_cmd(self, src, dest):
         # azcopy will download the top-level directory as well as the contents without "/*".
@@ -469,6 +469,24 @@ class KubernetesDetails():
         self.env_config["KUBECONFIG"] = config_map[self.namespace]
 
 
+def get_instance_profile_credentials():
+    result = ()
+    iam_credentials_endpoint = 'meta-data/iam/security-credentials/'
+    metadata = get_instance_metadata(timeout=1, num_retries=1, data=iam_credentials_endpoint)
+    if metadata:
+        instance_credentials = metadata.values()[0]
+        if isinstance(instance_credentials, dict):
+            try:
+                access_key = instance_credentials['AccessKeyId']
+                secret_key = instance_credentials['SecretAccessKey']
+                token = instance_credentials['Token']
+                result = access_key, secret_key, token
+            except KeyError as e:
+                logging.info("Could not find {} in instance metadata".format(e))
+
+    return result
+
+
 class YBBackup:
     def __init__(self):
         self.leader_master_ip = ''
@@ -504,6 +522,8 @@ class YBBackup:
                     env = os.environ.copy()
                 subprocess_result = subprocess.check_output(args, stderr=subprocess.STDOUT,
                                                             env=env, **kwargs)
+                if not isinstance(subprocess_result, str):
+                    subprocess_result = subprocess_result.decode('utf-8')
 
                 if self.args.verbose:
                     logging.info(
@@ -641,11 +661,18 @@ class YBBackup:
         self.cloud_cfg_file_path = os.path.join(self.get_tmp_dir(), CLOUD_CFG_FILE_NAME)
         if self.is_s3():
             if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
+                metadata = get_instance_profile_credentials()
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
-                    s3_cfg.write('[default]\n' +
-                                 'access_key = ' + '\n' +
-                                 'secret_key = ' + '\n' +
-                                 'security_token = ' + '\n')
+                    if metadata:
+                        s3_cfg.write('[default]\n' +
+                                     'access_key = ' + metadata[0] + '\n' +
+                                     'secret_key = ' + metadata[1] + '\n' +
+                                     'security_token = ' + metadata[2] + '\n')
+                    else:
+                        s3_cfg.write('[default]\n' +
+                                     'access_key = ' + '\n' +
+                                     'secret_key = ' + '\n' +
+                                     'security_token = ' + '\n')
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
                     s3_cfg.write('[default]\n' +
@@ -1083,8 +1110,9 @@ class YBBackup:
                         ip = args[i + 1]
 
                 if ip == tserver_ip:
+                    logging.info("Found data directories on server {}: {}".format(ip, fs_data_dirs))
                     return fs_data_dirs
-        raise BackupException("Unable find find data directories for {}".format(tserver_ip))
+        raise BackupException("Unable find data directories on server {}".format(tserver_ip))
 
     def generate_snapshot_dirs(self, data_dir_by_tserver, snapshot_id,
                                tablets_by_tserver_ip, table_ids):
@@ -1102,7 +1130,8 @@ class YBBackup:
         tserver_ip_to_tablet_id_to_snapshot_dirs = {}
         deleted_tablets_by_tserver_ip = {}
 
-        for tserver_ip, tablets in tablets_by_tserver_ip.iteritems():
+        for tserver_ip in tablets_by_tserver_ip:
+            tablets = tablets_by_tserver_ip[tserver_ip]
             tablet_dirs = []
             data_dirs = data_dir_by_tserver[tserver_ip]
             deleted_tablets = deleted_tablets_by_tserver_ip.setdefault(tserver_ip, set())
@@ -1228,8 +1257,9 @@ class YBBackup:
             directories for that tablet id that we found.
         """
         tserver_ip_to_tablet_id_to_snapshot_dirs = {}
-        for (data_dir, snapshot_id_unused, tserver_ip), snapshot_dirs in \
-                iteritems(find_snapshot_dir_results):
+        for key in find_snapshot_dir_results:
+            (data_dir, snapshot_id_unused, tserver_ip) = key
+            snapshot_dirs = find_snapshot_dir_results[key]
             assert snapshot_id_unused == snapshot_id
             tablet_id_to_snapshot_dirs =\
                 tserver_ip_to_tablet_id_to_snapshot_dirs.setdefault(tserver_ip, {})
@@ -1385,10 +1415,11 @@ class YBBackup:
         :param snapshot_metadata: In case of downloading files from cloud to restore a backup,
             this is the snapshot metadata stored in cloud for the backup.
         """
-        for tserver_ip, tablet_id_to_snapshot_dirs in \
-                iteritems(tserver_ip_to_tablet_id_to_snapshot_dirs):
+        for tserver_ip in tserver_ip_to_tablet_id_to_snapshot_dirs:
+            tablet_id_to_snapshot_dirs = tserver_ip_to_tablet_id_to_snapshot_dirs[tserver_ip]
             tablet_ids_with_data_dirs = set()
-            for tablet_id, snapshot_dirs in iteritems(tablet_id_to_snapshot_dirs):
+            for tablet_id in tablet_id_to_snapshot_dirs:
+                snapshot_dirs = tablet_id_to_snapshot_dirs[tablet_id]
                 if len(snapshot_dirs) > 1:
                     raise BackupException(
                         ('Found multiple snapshot directories on tserver {} for snapshot id '
@@ -1501,16 +1532,16 @@ class YBBackup:
         else:
             self.create_remote_tmp_dir(self.get_leader_master_ip())
 
-        if self.is_ysql_keyspace():
+        is_ysql = self.is_ysql_keyspace()
+        if is_ysql:
             sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
             db_name = keyspace_name(self.args.keyspace[0])
-        else:
-            sql_dump_path = None
+            start_version = self.get_ysql_catalog_version()
 
         stored_keyspaces = self.args.keyspace
         stored_tables = self.args.table
         num_retry = CREATE_METAFILES_MAX_RETRIES
-        start_version = self.get_ysql_catalog_version()
+
         while num_retry > 0:
             num_retry = num_retry - 1
 
@@ -1523,22 +1554,25 @@ class YBBackup:
                     logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
                     atexit.register(self.delete_created_snapshot, snapshot_id)
 
-            if sql_dump_path:
+            if is_ysql:
                 logging.info("Creating ysql dump for DB '{}' to {}".format(db_name, sql_dump_path))
-                self.run_ysql_dump(['--include-yb-metadata', '--create', '--schema-only',
+                self.run_ysql_dump(['--include-yb-metadata', '--serializable-deferrable',
+                                    '--create', '--schema-only',
                                     '--dbname=' + db_name, '--file=' + sql_dump_path])
 
-            final_version = self.get_ysql_catalog_version()
-            logging.info('Catalog versions: {} - {}'.format(start_version, final_version))
-            if final_version == start_version:
-                break  # Ok. No table schema changes during meta data creating.
-            else:
-                # wait_for_snapshot() can update the variables - restore them back.
-                self.args.keyspace = stored_keyspaces
-                self.args.table = stored_tables
+                final_version = self.get_ysql_catalog_version()
+                logging.info('Catalog versions: {} - {}'.format(start_version, final_version))
+                if final_version == start_version:
+                    break  # Ok. No table schema changes during meta data creating.
+                else:
+                    # wait_for_snapshot() can update the variables - restore them back.
+                    self.args.keyspace = stored_keyspaces
+                    self.args.table = stored_tables
 
-                start_version = final_version
-                logging.info('Retry creating metafiles ({} retries left)'.format(num_retry))
+                    start_version = final_version
+                    logging.info('Retry creating metafiles ({} retries left)'.format(num_retry))
+            else:
+                break  # Ok. No need to retry for YCQL.
 
         if num_retry == 0:
             raise BackupException("Couldn't create metafiles due to catalog changes")
@@ -1549,7 +1583,7 @@ class YBBackup:
         self.upload_metadata_and_checksum(metadata_path,
                                           os.path.join(snapshot_filepath, METADATA_FILE_NAME))
 
-        if sql_dump_path:
+        if is_ysql:
             self.upload_metadata_and_checksum(sql_dump_path,
                                               os.path.join(snapshot_filepath, SQL_DUMP_FILE_NAME))
 
@@ -1754,7 +1788,7 @@ class YBBackup:
         """
 
         tablets_by_tserver_ip = {}
-        for new_id, old_id in snapshot_metadata['tablet'].iteritems():
+        for new_id in snapshot_metadata['tablet']:
             output = self.run_yb_admin(['list_tablet_servers', new_id])
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
@@ -1773,7 +1807,8 @@ class YBBackup:
         tablets_by_tserver_union = copy.deepcopy(tablets_by_tserver_ip_old)
         tablets_by_tserver_delta = {}
 
-        for ip, tablets in tablets_by_tserver_ip_new.iteritems():
+        for ip in tablets_by_tserver_ip_new:
+            tablets = tablets_by_tserver_ip_new[ip]
             if ip in tablets_by_tserver_ip_old:
                 if not (tablets_by_tserver_ip_old[ip] >= tablets):
                     tablets_by_tserver_union[ip].update(tablets)
@@ -1799,7 +1834,8 @@ class YBBackup:
                 data_dir_by_tserver, snapshot_id, tablets_by_tserver_to_download, table_ids)
 
         # Remove deleted tablets from the list of planned to be downloaded tablets.
-        for tserver_ip, deleted_tablets in tserver_to_deleted_tablets.iteritems():
+        for tserver_ip in tserver_to_deleted_tablets:
+            deleted_tablets = tserver_to_deleted_tablets[tserver_ip]
             tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
 
         parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd)
@@ -1811,9 +1847,10 @@ class YBBackup:
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
         results = parallel_downloads.run(pool)
 
-        for k, v in results.iteritems():
-            if v.strip() != 'correct':
-                raise BackupException('Check-sum for "{}" is {}'.format(k, v.strip()))
+        for k in results:
+            v = results[k].strip()
+            if v != 'correct':
+                raise BackupException('Check-sum for "{}" is {}'.format(k, v))
 
         return tserver_to_deleted_tablets
 
@@ -1859,7 +1896,8 @@ class YBBackup:
                 snapshot_metadata, tablets_by_tserver_to_download, snapshot_id, table_ids)
 
             # Remove deleted tablets from the list of all tablets.
-            for tserver_ip, deleted_tablets in tserver_to_deleted_tablets.iteritems():
+            for tserver_ip in tserver_to_deleted_tablets:
+                deleted_tablets = tserver_to_deleted_tablets[tserver_ip]
                 all_tablets_by_tserver[tserver_ip] -= deleted_tablets
 
             tablets_by_tserver_new = self.find_tablet_replicas(snapshot_metadata)

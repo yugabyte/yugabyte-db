@@ -1763,7 +1763,7 @@ cql_yb_local_vs_remote:
   function: "rate|avg"
   range: "1m"
   filters:
-    export_type: "cql_export"
+    export_type: "cql_export|tserver_export"
     service_type: "read|write"
     service_method: "local|remote"
   group_by: "service_method,service_type"
@@ -1783,7 +1783,7 @@ cql_yb_latency:
   function: "irate|avg"
   range: "1m"
   filters:
-    export_type: "cql_export"
+    export_type: "cql_export|tserver_export"
     service_type: "read|write"
     service_method: "local|remote"
   group_by: "service_method,service_type"
@@ -1919,6 +1919,7 @@ tserver_rpc_queue_size_redis:
 
 tserver_async_replication_lag_micros:
   metric: ""
+  operator: "/ 1000"
   function: "max without (table_id, table_name, stream_id)"
   filters:
     saved_name: "async_replication_sent_lag_micros|async_replication_committed_lag_micros"
@@ -1928,5 +1929,5 @@ tserver_async_replication_lag_micros:
       type: "date"
     yaxis:
       alias:
-        "async_replication_sent_lag_micros": "Sent Lag (Microseconds)"
-        "async_replication_committed_lag_micros": "Committed Lag (Microseconds)"
+        "async_replication_sent_lag_micros": "Sent Lag (Milliseconds)"
+        "async_replication_committed_lag_micros": "Committed Lag (Milliseconds)"

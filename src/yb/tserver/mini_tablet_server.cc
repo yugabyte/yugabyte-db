@@ -67,7 +67,6 @@ using std::pair;
 
 using yb::consensus::Consensus;
 using yb::consensus::ConsensusOptions;
-using yb::consensus::OpId;
 using yb::consensus::RaftPeerPB;
 using yb::consensus::RaftConfigPB;
 using yb::log::Log;

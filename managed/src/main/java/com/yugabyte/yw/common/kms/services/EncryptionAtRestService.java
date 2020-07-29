@@ -93,7 +93,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
             }
             result = ref;
         } catch (Exception e) {
-            LOG.error("Error occured attempting to create encryption key", e);
+            LOG.error("Error occurred attempting to create encryption key", e);
         }
         return result;
     }
@@ -119,7 +119,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
             }
             result = ref;
         } catch (Exception e) {
-            LOG.error("Error occured attempting to rotate encryption key", e);
+            LOG.error("Error occurred attempting to rotate encryption key", e);
         }
 
         return result;
@@ -138,7 +138,6 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
             byte[] keyRef,
             EncryptionAtRestConfig config
     ) {
-        byte[] keyVal = null;
         if (keyRef == null) {
             String errMsg = String.format(
                     "Retrieve key could not find a key ref for universe %s...",
@@ -148,7 +147,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
             return null;
         }
         // Attempt to retrieve cached entry
-        keyVal = EncryptionAtRestUtil.getUniverseKeyCacheEntry(universeUUID, keyRef);
+        byte[] keyVal = EncryptionAtRestUtil.getUniverseKeyCacheEntry(universeUUID, keyRef);
         // Retrieve through KMS provider if no cache entry exists
         if (keyVal == null) {
             LOG.debug("Universe key cache entry empty. Retrieving key from service");

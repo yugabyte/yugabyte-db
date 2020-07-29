@@ -220,6 +220,19 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
                                        const tserver::TabletServerErrorPB* error_code) {
   if (ErrorCode(error_code) == tserver::TabletServerErrorPB::STALE_FOLLOWER) {
     VLOG(1) << "Stale follower for " << command_->ToString() << " just retry";
+  } else if (ErrorCode(error_code) == tserver::TabletServerErrorPB::NOT_THE_LEADER) {
+    VLOG(1) << "Not the leader for " << command_->ToString()
+            << " retrying with a different replica";
+    // In the past we were marking a replica as failed whenever an error was returned. The problem
+    // with this approach is that not all type of errors mean that the replica has failed. Some
+    // errors like NOT_THE_LEADER are only specific to certain type of requests (Write and
+    // UpdateTransaction RPCs), but other type of requests don't need to be sent to the leader
+    // (consistent prefix reads). So instead of marking a replica as failed for all the RPCs (since
+    // the RemoteTablet object is shared across all the rpcs in the same batcher), this remote
+    // tablet server is marked as a follower so that it's not used during a retry for requests that
+    // need to contact the leader only. This has the same effect as marking the replica as failed
+    // for this specific RPC, but without affecting other RPCs.
+    followers_.insert(current_ts_);
   } else {
     VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason
             << ", old replica: " << yb::ToString(current_ts_);
@@ -366,7 +379,7 @@ bool TabletInvoker::Done(Status* status) {
     if (status->IsTryAgain() || status->IsExpired() || status->IsAlreadyPresent()) {
       YB_LOG_EVERY_N_SECS(INFO, 1) << log_status;
     } else {
-      LOG(WARNING) << log_status;
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << log_status;
     }
     rpc_->Failed(*status);
   }

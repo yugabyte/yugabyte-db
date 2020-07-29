@@ -33,15 +33,6 @@ void PgWrapperTestBase::SetUp() {
   ExternalMiniClusterOptions opts;
   opts.enable_ysql = true;
 
-  // TODO Increase the rpc timeout (from 2500) to not time out for long master queries (i.e. for
-  // Postgres system tables). Should be removed once the long lock issue is fixed.
-  const int kSingleCallTimeoutMs = NonTsanVsTsan(10000, 30000);
-  const string rpc_flag_str =
-      "--retryable_rpc_single_call_timeout_ms=" + std::to_string(kSingleCallTimeoutMs);
-  opts.extra_master_flags.emplace_back(rpc_flag_str);
-
-  opts.extra_tserver_flags.emplace_back(rpc_flag_str);
-
   // With ysql_num_shards_per_tserver=1 and 3 tservers we'll be creating 3 tablets per table, which
   // is enough for most tests.
   opts.extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");

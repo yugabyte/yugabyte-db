@@ -40,6 +40,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import org.pac4j.play.CallbackController;
+import org.pac4j.play.store.PlayCacheSessionStore;
+import org.pac4j.play.store.PlaySessionStore;
+
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -73,12 +77,19 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   int numNodes = 3;
   Map<String, String> config= new HashMap<String, String>();
 
+  protected CallbackController mockCallbackController;
+  protected PlayCacheSessionStore mockSessionStore;
+
   @Override
   protected Application provideApplication() {
     kubernetesManager = mock(KubernetesManager.class);
+    mockCallbackController = mock(CallbackController.class);
+    mockSessionStore = mock(PlayCacheSessionStore.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(KubernetesManager.class).toInstance(kubernetesManager))
+        .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
+        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
         .build();
   }
 
@@ -95,8 +106,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUniverse = updateUniverseDetails("small");
     defaultCert = CertificateInfo.get(CertificateHelper.createRootCA(
         defaultUniverse.getUniverseDetails().nodePrefix,
-        defaultProvider.customerUUID, "/tmp/certs",
-        true));
+        defaultProvider.customerUUID, "/tmp/certs"));
     defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
   }

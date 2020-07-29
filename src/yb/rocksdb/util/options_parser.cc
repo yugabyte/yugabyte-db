@@ -767,7 +767,7 @@ Status RocksDBOptionsParser::VerifyBlockBasedTableFactory(
     return STATUS(Corruption,
         "[RocksDBOptionsParser]: Inconsistent TableFactory class type");
   }
-  if (base_tf == nullptr) {
+  if (base_tf == nullptr || file_tf == nullptr) {
     return Status::OK();
   }
 

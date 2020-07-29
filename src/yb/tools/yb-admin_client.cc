@@ -32,6 +32,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include <array>
+#include <iomanip>
 #include <sstream>
 #include <type_traits>
 
@@ -41,6 +42,8 @@
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/tti/has_member_function.hpp>
+
+#include <google/protobuf/util/json_util.h>
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
@@ -92,6 +95,7 @@ using std::cout;
 using std::endl;
 
 using google::protobuf::RepeatedPtrField;
+using google::protobuf::util::MessageToJsonString;
 
 using client::YBClientBuilder;
 using client::YBTableName;
@@ -187,7 +191,10 @@ const char* DatabasePrefix(YQLDatabase db) {
   return kDBTypePrefixUnknown;
 }
 
-Result<TypedNamespaceName> ResolveNamespaceName(const Slice& prefix, const Slice& name) {
+Result<TypedNamespaceName> ResolveNamespaceName(
+    const Slice& prefix,
+    const Slice& name,
+    const YQLDatabase default_if_no_prefix = YQL_DATABASE_CQL) {
   auto db_type = YQL_DATABASE_UNKNOWN;
   if (!prefix.empty()) {
     static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
@@ -205,7 +212,7 @@ Result<TypedNamespaceName> ResolveNamespaceName(const Slice& prefix, const Slice
       return STATUS_FORMAT(InvalidArgument, "Invalid db type name '$0'", prefix);
     }
   } else {
-    db_type = (name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS : YQL_DATABASE_CQL);
+    db_type = (name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS : default_if_no_prefix);
   }
   return TypedNamespaceName{.db_type = db_type, .name = name.cdata()};
 }
@@ -422,14 +429,14 @@ std::vector<client::YBTableName>& TableNameResolver::values() {
   return impl_->values();
 }
 
-ClusterAdminClient::ClusterAdminClient(string addrs, int64_t timeout_millis)
+ClusterAdminClient::ClusterAdminClient(string addrs, MonoDelta timeout)
     : master_addr_list_(std::move(addrs)),
-      timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
+      timeout_(timeout),
       initted_(false) {}
 
-ClusterAdminClient::ClusterAdminClient(const HostPort& init_master_addr, int64_t timeout_millis)
+ClusterAdminClient::ClusterAdminClient(const HostPort& init_master_addr, MonoDelta timeout)
     : init_master_addr_(init_master_addr),
-      timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
+      timeout_(timeout),
       initted_(false) {}
 
 ClusterAdminClient::~ClusterAdminClient() {
@@ -756,36 +763,9 @@ Status ClusterAdminClient::GetIsLoadBalancerIdle() {
 }
 
 Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
-  vector<string> tablet_ids, ranges;
-  RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
-  master::GetTabletLocationsRequestPB req;
-  for (const auto& tablet_id : tablet_ids) {
-    req.add_tablet_ids(tablet_id);
-  }
-  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::GetTabletLocations,
-      master_proxy_.get(), req));
-
-  unordered_map<string, int> leader_counts;
+  unordered_map<string, int> leader_counts = VERIFY_RESULT(GetLeaderCounts(table_name));
   int total_leader_count = 0;
-  for (const auto& locs : resp.tablet_locations()) {
-    for (const auto& replica : locs.replicas()) {
-      const auto uuid = replica.ts_info().permanent_uuid();
-      switch(replica.role()) {
-        case RaftPeerPB::LEADER:
-          // If this is a leader, increment leader counts.
-          ++leader_counts[uuid];
-          ++total_leader_count;
-          break;
-        case RaftPeerPB::FOLLOWER:
-          // If this is a follower, touch the leader count entry also so that tablet server with
-          // followers only and 0 leader will be accounted for still.
-          leader_counts[uuid];
-          break;
-        default:
-          break;
-      }
-    }
-  }
+  for (const auto& lc : leader_counts) { total_leader_count += lc.second; }
 
   // Calculate the standard deviation and adjusted deviation percentage according to the best and
   // worst-case scenarios. Best-case distribution is when leaders are evenly distributed and
@@ -822,6 +802,40 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   }
 
   return Status::OK();
+}
+
+Result<unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
+    const client::YBTableName& table_name) {
+  vector<string> tablet_ids, ranges;
+  RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
+  master::GetTabletLocationsRequestPB req;
+  for (const auto& tablet_id : tablet_ids) {
+    req.add_tablet_ids(tablet_id);
+  }
+  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::GetTabletLocations,
+      master_proxy_.get(), req));
+
+  unordered_map<string, int> leader_counts;
+  for (const auto& locs : resp.tablet_locations()) {
+    for (const auto& replica : locs.replicas()) {
+      const auto uuid = replica.ts_info().permanent_uuid();
+      switch(replica.role()) {
+        case RaftPeerPB::LEADER:
+          // If this is a leader, increment leader counts.
+          ++leader_counts[uuid];
+          break;
+        case RaftPeerPB::FOLLOWER:
+          // If this is a follower, touch the leader count entry also so that tablet server with
+          // followers only and 0 leader will be accounted for still.
+          leader_counts[uuid];
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  return leader_counts;
 }
 
 Status ClusterAdminClient::SetupRedisTable() {
@@ -1619,7 +1633,9 @@ Status ClusterAdminClient::ModifyPlacementInfo(
 
 Status ClusterAdminClient::GetUniverseConfig() {
   const auto cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
-  cout << "Config: \r\n"  << cluster_config.cluster_config().DebugString() << endl;
+  std::string output;
+  MessageToJsonString(cluster_config.cluster_config(), &output);
+  cout << output << endl;
   return Status::OK();
 }
 
@@ -1735,9 +1751,10 @@ string RightPadToUuidWidth(const string &s) {
   return RightPadToWidth(s, kNumCharactersInUuid);
 }
 
-Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name) {
+Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name,
+                                              const YQLDatabase default_if_no_prefix) {
   const auto parts = SplitByDot(full_namespace_name);
-  return ResolveNamespaceName(parts.prefix, parts.value);
+  return ResolveNamespaceName(parts.prefix, parts.value, default_if_no_prefix);
 }
 
 }  // namespace tools

@@ -76,7 +76,6 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MakeOpId;
 using consensus::MinimumOpId;
-using consensus::OpId;
 using consensus::OpIdEquals;
 using consensus::RaftPeerPB;
 using consensus::WRITE_OP;
@@ -132,7 +131,9 @@ class TabletPeerTest : public YBTabletTest,
             &TabletPeerTest::TabletPeerStateChangedCallback,
             Unretained(this),
             tablet()->tablet_id()),
-        &metric_registry_, nullptr /* tablet_splitter */));
+        &metric_registry_,
+        nullptr, // tablet_splitter
+        std::shared_future<client::YBClient*>()));
 
     // Make TabletPeer use the same LogAnchorRegistry as the Tablet created by the harness.
     // TODO: Refactor TabletHarness to allow taking a LogAnchorRegistry, while also providing
@@ -151,19 +152,18 @@ class TabletPeerTest : public YBTabletTest,
                                         consensus::kMinimumTerm,
                                         &cmeta));
 
-    ASSERT_OK(ThreadPoolBuilder("append")
+    ASSERT_OK(ThreadPoolBuilder("log")
                  .unlimited_threads()
-                 .Build(&append_pool_));
+                 .Build(&log_thread_pool_));
     scoped_refptr<Log> log;
     ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
                         tablet()->metadata()->wal_dir(), tablet()->metadata()->fs_manager()->uuid(),
                         *tablet()->schema(), tablet()->metadata()->schema_version(),
-                        metric_entity_.get(), append_pool_.get(),
+                        metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
                         tablet()->metadata()->cdc_min_replicated_index(), &log));
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
-                                           std::shared_future<client::YBClient*>(),
                                            nullptr /* server_mem_tracker */,
                                            messenger_.get(),
                                            proxy_cache_.get(),
@@ -280,7 +280,7 @@ class TabletPeerTest : public YBTabletTest,
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::unique_ptr<ThreadPool> raft_pool_;
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
-  std::unique_ptr<ThreadPool> append_pool_;
+  std::unique_ptr<ThreadPool> log_thread_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
 };
 

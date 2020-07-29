@@ -108,6 +108,7 @@ message BackfillIndexRequestPB {
 
   required bytes tablet_id = 2;
 
+  // Indexes on the _same table_ to backfill.
   repeated IndexInfoPB indexes = 3;
 
   optional uint32 schema_version = 4;
@@ -118,6 +119,9 @@ message BackfillIndexRequestPB {
   optional bytes end_key = 7;
 
   optional fixed64 propagated_hybrid_time = 8;
+
+  // Currently only used for YSQL.
+  optional string namespace_name = 9;
 }
 
 message BackfillIndexResponsePB {

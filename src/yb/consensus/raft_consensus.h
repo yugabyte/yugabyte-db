@@ -201,8 +201,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // can cause consensus to deadlock.
   ReplicaState* GetReplicaStateForTests();
 
-  void UpdateMajorityReplicatedInTests(const OpId &majority_replicated,
-                                       OpId *committed_index) {
+  void UpdateMajorityReplicatedInTests(const OpIdPB&majority_replicated, OpIdPB*committed_index) {
     UpdateMajorityReplicated({ majority_replicated,
                                CoarseTimePoint::min(),
                                HybridTime::kMin.GetPhysicalValueMicros() },
@@ -290,10 +289,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   CHECKED_STATUS CheckIsActiveLeaderAndHasLease() const override;
 
-  MonoTime TimeSinceLastMessageFromLeader() override {
-    return last_message_from_leader_time_;
-  }
-
  private:
   friend class ReplicaState;
   friend class RaftConsensusQuorumTest;
@@ -308,8 +303,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Updates the committed_index and triggers the Apply()s for whatever
   // operations were pending.
   // This is idempotent.
-  void UpdateMajorityReplicated(const MajorityReplicatedData& data,
-                                OpId* committed_op_id) override;
+  void UpdateMajorityReplicated(
+      const MajorityReplicatedData& data, OpIdPB* committed_op_id) override;
 
   void NotifyTermChange(int64_t term) override;
 
@@ -383,8 +378,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // haven't appended to our log yet.
   // On return 'deduplicated_req' is instantiated with only the new messages
   // and the correct preceding id.
-  void DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req,
-                                        LeaderRequest* deduplicated_req);
+  CHECKED_STATUS DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req,
+                                                  LeaderRequest* deduplicated_req);
 
   // Handles a request from a leader, refusing the request if the term is lower than
   // ours or stepping down if it's higher.
@@ -464,7 +459,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                                 VoteResponsePB* response);
 
   // Respond to VoteRequest that the candidate's last-logged OpId is too old.
-  CHECKED_STATUS RequestVoteRespondLastOpIdTooOld(const OpId& local_last_opid,
+  CHECKED_STATUS RequestVoteRespondLastOpIdTooOld(const OpIdPB& local_last_opid,
                                                   const VoteRequestPB* request,
                                                   VoteResponsePB* response);
 
@@ -631,14 +626,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   Random rng_;
 
-  MonoTime last_message_from_leader_time_ = MonoTime::kUninitialized;
-
   std::shared_ptr<rpc::PeriodicTimer> failure_detector_;
 
   // If any RequestVote() RPC arrives before this hybrid time,
   // the request will be ignored. This prevents abandoned or partitioned
   // nodes from disturbing the healthy leader.
-  MonoTime withhold_votes_until_;
+  std::atomic<MonoTime> withhold_votes_until_;
 
   // UUID of new desired leader during stepdown.
   TabletServerId protege_leader_uuid_;
@@ -667,8 +660,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   AtomicBool shutdown_;
 
   scoped_refptr<Counter> follower_memory_pressure_rejections_;
-  scoped_refptr<AtomicGauge<int64_t> > term_metric_;
-
+  scoped_refptr<AtomicGauge<int64_t>> term_metric_;
+  scoped_refptr<AtomicMillisLag> follower_last_update_time_ms_metric_;
+  scoped_refptr<AtomicGauge<int64_t>> is_raft_leader_metric_;
   std::shared_ptr<MemTracker> parent_mem_tracker_;
 
   TableType table_type_;

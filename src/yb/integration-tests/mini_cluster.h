@@ -202,6 +202,10 @@ class MiniCluster : public MiniClusterBase {
   CHECKED_STATUS WaitForTabletServerCount(int count,
                                   std::vector<std::shared_ptr<master::TSDescriptor> >* descs);
 
+  // Wait for all tablet servers to be registered. Returns Status::TimedOut if the desired count is
+  // not achieved within kRegistrationWaitTimeSeconds.
+  CHECKED_STATUS WaitForAllTabletServers();
+
   uint16_t AllocateFreePort() {
     return port_picker_.AllocateFreePort();
   }
@@ -238,7 +242,6 @@ class MiniCluster : public MiniClusterBase {
   Ports master_web_ports_;
   Ports tserver_rpc_ports_;
   Ports tserver_web_ports_;
-  uint16_t next_port_ = 0;
 
   MiniMasters mini_masters_;
   MiniTabletServers mini_tablet_servers_;

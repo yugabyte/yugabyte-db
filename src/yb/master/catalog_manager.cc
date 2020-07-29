@@ -201,7 +201,7 @@ DEFINE_int32(catalog_manager_report_batch_size, 1,
             "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
 TAG_FLAG(catalog_manager_report_batch_size, advanced);
 
-DEFINE_int32(master_failover_catchup_timeout_ms, 30 * 1000,  // 30 sec
+DEFINE_int32(master_failover_catchup_timeout_ms, 30 * 1000 * yb::kTimeMultiplier,  // 30 sec
              "Amount of time to give a newly-elected leader master to load"
              " the previous master's metadata and become active. If this time"
              " is exceeded, the node crashes.");
@@ -254,7 +254,7 @@ DEFINE_uint64(metrics_snapshots_table_num_tablets, 0,
     "Number of tablets to use when creating the metrics snapshots table."
     "0 to use the same default num tablets as for regular tables.");
 
-DEFINE_bool(disable_index_backfill, true,  // Temporarily disabled until all diffs land.
+DEFINE_bool(disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YCQL indexes.");
 TAG_FLAG(disable_index_backfill, runtime);
 TAG_FLAG(disable_index_backfill, hidden);
@@ -312,7 +312,6 @@ using consensus::ConsensusMetadata;
 using consensus::ConsensusServiceProxy;
 using consensus::ConsensusStatePB;
 using consensus::GetConsensusRole;
-using consensus::OpId;
 using consensus::RaftPeerPB;
 using consensus::StartRemoteBootstrapRequestPB;
 using rpc::RpcContext;
@@ -486,6 +485,16 @@ size_t GetNameMapperIndex(YQLDatabase db_type) {
   return 0;
 }
 
+bool IsIndexBackfillEnabled(TableType table_type, bool is_transactional) {
+  // Fetch the runtime flag to prevent any issues from the updates to flag while processing.
+  const bool disabled =
+      (table_type == PGSQL_TABLE_TYPE
+          ? GetAtomicFlag(&FLAGS_ysql_disable_index_backfill)
+          : GetAtomicFlag(&FLAGS_disable_index_backfill) ||
+      (!is_transactional && GetAtomicFlag(&FLAGS_disable_index_backfill_for_non_txn_tables)));
+  return !disabled;
+}
+
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
@@ -598,6 +607,7 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
 }
 
 Status CatalogManager::ElectedAsLeaderCb() {
+  time_elected_leader_ = MonoTime::Now();
   return worker_pool_->SubmitClosure(
       Bind(&CatalogManager::LoadSysCatalogDataTask, Unretained(this)));
 }
@@ -1604,6 +1614,12 @@ Status CatalogManager::TEST_SplitTablet(
 Status CatalogManager::DoSplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, const std::string& split_encoded_key,
     const std::string& split_partition_key) {
+  if (source_tablet_info->colocated()) {
+    return STATUS_FORMAT(
+        IllegalState, "Tablet splitting is not supported for colocated tables, tablet_id: $0",
+        source_tablet_info->tablet_id());
+  }
+
   constexpr auto kNumSplitParts = 2;
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = CreateNewTabletsPartition(
@@ -2148,12 +2164,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // For index table, populate the index info.
   IndexInfoPB index_info;
 
-  // Fetch the runtime flag to prevent any issues from the updates to flag while processing.
-  const bool disable_index_backfill =
-      (is_pg_table ? GetAtomicFlag(&FLAGS_ysql_disable_index_backfill)
-                   : GetAtomicFlag(&FLAGS_disable_index_backfill) ||
-                         (!is_transactional &&
-                          GetAtomicFlag(&FLAGS_disable_index_backfill_for_non_txn_tables)));
+  const bool index_backfill_enabled =
+      IsIndexBackfillEnabled(orig_req->table_type(), is_transactional);
   if (req.has_index_info()) {
     // Current message format.
     index_info.CopyFrom(req.index_info());
@@ -2179,7 +2191,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  if ((req.has_index_info() || req.has_indexed_table_id()) && !disable_index_backfill) {
+  if ((req.has_index_info() || req.has_indexed_table_id()) &&
+      index_backfill_enabled &&
+      !req.skip_index_backfill()) {
     // Start off the index table with major compactions disabled. We need this to preserve
     // the delete markers until the backfill process is completed.
     // No need to set index_permissions in the index table.
@@ -2316,8 +2330,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // For index table, insert index info in the indexed table.  However, for backwards compatibility,
   // don't insert index info for YSQL tables.
   if ((req.has_index_info() || req.has_indexed_table_id()) &&
-      !(is_pg_table && disable_index_backfill)) {
-    if (!disable_index_backfill) {
+      (index_backfill_enabled || !is_pg_table)) {
+    if (index_backfill_enabled && !req.skip_index_backfill()) {
       index_info.set_index_permissions(INDEX_PERM_DELETE_ONLY);
     }
     s = AddIndexInfoToTable(indexed_table, index_info, resp);
@@ -2626,6 +2640,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   TRACE("Locking table");
   auto l = table->LockForRead();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
+  const auto& pb = l->data().pb;
 
   // 2. Verify if the create is in-progress.
   TRACE("Verify if the table creation is in progress for $0", table->ToString());
@@ -2636,24 +2651,58 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   // MasterErrorPB::UNKNOWN_ERROR.
   RETURN_NOT_OK(table->GetCreateTableErrorStatus());
 
-  // 4. For index table, check if alter schema is done on the indexed table also.
-  if (resp->done() && PROTO_IS_INDEX(l->data().pb)) {
-    IsAlterTableDoneRequestPB alter_table_req;
-    IsAlterTableDoneResponsePB alter_table_resp;
-    alter_table_req.mutable_table()->set_table_id(PROTO_GET_INDEXED_TABLE_ID(l->data().pb));
-    const Status s = IsAlterTableDone(&alter_table_req, &alter_table_resp);
-    if (!s.ok()) {
-      resp->mutable_error()->Swap(alter_table_resp.mutable_error());
-      return s;
+  // 4. For index table:
+  //   a. If backfill is enabled, check if an index is present in indexed table's index map.
+  //   b. Otherwise check if alter schema is done on the indexed table as well.
+  // TODO(alex, amit): While (4.a) sounds like it should be enabled for both YSQL and YCQL,
+  //    currently it makes YCQL index backfill unstable - which is indicated by intermittent
+  //    failures of various tests under CppCassandraDriverTest - mostly TestCreateIndex.
+  if (resp->done() && PROTO_IS_INDEX(pb)) {
+    // TODO(alex, jason): This is a quick fix to make sure we treat unique index as non-backfilling.
+    //    We should remove this once we've implemented #4899.
+    bool is_unique_index = pb.has_index_info() && pb.index_info().is_unique();
+    auto& indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(pb);
+    if (pb.table_type() == PGSQL_TABLE_TYPE &&
+        !is_unique_index &&
+        IsUserCreatedTable(*table) &&
+        IsIndexBackfillEnabled(pb.table_type(),
+                               pb.schema().table_properties().is_transactional())) {
+      GetTableSchemaRequestPB get_schema_req;
+      GetTableSchemaResponsePB get_schema_resp;
+      get_schema_req.mutable_table()->set_table_id(indexed_table_id);
+      const Status s = GetTableSchema(&get_schema_req, &get_schema_resp);
+      if (!s.ok()) {
+        resp->mutable_error()->Swap(get_schema_resp.mutable_error());
+        return s;
+      }
+
+      resp->set_done(false);
+      for (const auto& index : get_schema_resp.indexes()) {
+        if (index.has_table_id() && index.table_id() == table->id()) {
+          resp->set_done(true);
+          break;
+        }
+      }
+    } else {
+      // TODO(alex, amit): We probably should be fine doing something like (a) case here, since we
+      //                   shouldn't care if other indexes are being created
+      IsAlterTableDoneRequestPB alter_table_req;
+      IsAlterTableDoneResponsePB alter_table_resp;
+      alter_table_req.mutable_table()->set_table_id(indexed_table_id);
+      const Status s = IsAlterTableDone(&alter_table_req, &alter_table_resp);
+      if (!s.ok()) {
+        resp->mutable_error()->Swap(alter_table_resp.mutable_error());
+        return s;
+      }
+      resp->set_done(alter_table_resp.done());
     }
-    resp->set_done(alter_table_resp.done());
   }
 
   // If this is a transactional table we are not done until the transaction status table is created.
   // However, if we are currently initializing the system catalog snapshot, we don't create the
   // transactions table.
   if (!FLAGS_create_initial_sys_catalog_snapshot &&
-      resp->done() && l->data().pb.schema().table_properties().is_transactional()) {
+      resp->done() && pb.schema().table_properties().is_transactional()) {
     RETURN_NOT_OK(IsTransactionStatusTableCreated(resp));
   }
 
@@ -2666,7 +2715,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   }
 
   // If this is a colocated table and there is a pending AddTableToTablet task then we are not done.
-  if (resp->done() && l->data().pb.colocated()) {
+  if (resp->done() && pb.colocated()) {
     resp->set_done(!table->HasTasks(MonitoredTask::Type::ASYNC_ADD_TABLE_TO_TABLET));
   }
 
@@ -3063,7 +3112,8 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
 }
 
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
-    const TableId& indexed_table_id, const TableId& index_table_id, DeleteTableResponsePB* resp) {
+    const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
+    DeleteTableResponsePB* resp) {
   // Lookup the indexed table and verify if it exists.
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
@@ -3082,18 +3132,12 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     resp_indexed_table->set_table_name(indexed_table->name());
     resp_indexed_table->set_table_id(indexed_table_id);
   }
-  const bool is_pg_table = indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
-  // We don't need to handle user enforced txns separately here because there
-  // is no additional wait.
-  const bool disable_index_backfill = (
-      is_pg_table ? GetAtomicFlag(&FLAGS_ysql_disable_index_backfill)
-                  : GetAtomicFlag(&FLAGS_disable_index_backfill));
-  if (disable_index_backfill) {
-    RETURN_NOT_OK(DeleteIndexInfoFromTable(indexed_table_id, index_table_id));
-  } else {
+  if (multi_stage) {
     RETURN_NOT_OK(MultiStageAlterTable::UpdateIndexPermission(
         this, indexed_table,
         {{index_table_id, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING}}));
+  } else {
+    RETURN_NOT_OK(DeleteIndexInfoFromTable(indexed_table_id, index_table_id));
   }
 
   // Actual Deletion of the index info will happen asynchronously after all the
@@ -3142,6 +3186,45 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   return Status::OK();
 }
 
+Status CatalogManager::DeleteTable(
+    const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing DeleteTable request from " << RequestorString(rpc) << ": "
+            << req->ShortDebugString();
+
+  RETURN_NOT_OK(CheckOnline());
+
+  if (req->is_index_table()) {
+    TRACE("Looking up index");
+    TableIdentifierPB table_identifier = req->table();
+    scoped_refptr<TableInfo> table;
+    RETURN_NOT_OK(FindTable(table_identifier, &table));
+    if (table == nullptr) {
+      Status s = STATUS(NotFound, "The object does not exist", table_identifier.ShortDebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+    }
+    TableId table_id = table->id();
+    resp->set_table_id(table_id);
+    TableId indexed_table_id;
+    {
+      auto l = table->LockForRead();
+      indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(l->data().pb);
+    }
+    scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
+    // We don't need to handle user enforced txns separately here because there
+    // is no additional wait.
+    // TODO(jason): use FLAGS_ysql_disable_index_backfill when closing issue #4936.
+    const bool is_pg_table = indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
+    const bool disable_index_backfill =
+        (is_pg_table ? true : GetAtomicFlag(&FLAGS_disable_index_backfill));
+    if (!disable_index_backfill) {
+      return MarkIndexInfoFromTableForDeletion(
+          indexed_table_id, table_id, /* multi_stage */ true, resp);
+    }
+  }
+
+  return DeleteTableInternal(req, resp, rpc);
+}
+
 // Delete a Table
 //  - Update the table state to "DELETING".
 //  - Issue DeleteTablet tasks to all said tablets.
@@ -3155,14 +3238,8 @@ Status CatalogManager::DeleteIndexInfoFromTable(
 // We are lazy about deletions.
 //
 // IMPORTANT: If modifying, consider updating DeleteYsqlDBTables(), the bulk deletion API.
-Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
-                                   DeleteTableResponsePB* resp,
-                                   rpc::RpcContext* rpc) {
-  LOG(INFO) << "Servicing DeleteTable request from " << RequestorString(rpc) << ": "
-            << req->ShortDebugString();
-
-  RETURN_NOT_OK(CheckOnline());
-
+Status CatalogManager::DeleteTableInternal(
+    const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc) {
   vector<scoped_refptr<TableInfo>> tables;
   vector<unique_ptr<TableInfo::lock_type>> table_locks;
 
@@ -3304,7 +3381,7 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
     }
   } else if (update_indexed_table) {
     s = MarkIndexInfoFromTableForDeletion(
-        PROTO_GET_INDEXED_TABLE_ID(l->data().pb), table->id(), resp);
+        PROTO_GET_INDEXED_TABLE_ID(l->data().pb), table->id(), /* multi_stage */ false, resp);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute("An error occurred while deleting index info: $0",
                                        s.ToString()));
@@ -3665,8 +3742,11 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     has_changes = true;
   }
 
-  // Skip empty requests...
   if (!has_changes) {
+    if (req->has_force_send_alter_request() && req->force_send_alter_request()) {
+      SendAlterTableRequest(table, req);
+    }
+    // Skip empty requests...
     return Status::OK();
   }
 
@@ -3783,8 +3863,27 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
   //   not get executed.
   {
     std::lock_guard<LockType> l(lock_);
+    auto table_lock = table->LockForWrite();
+
+    auto& table_pb = table_lock->mutable_data()->pb;
+    table_pb.set_partitions_version(table_pb.partitions_version() + 1);
+
+    RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
+    // If we crash here - we will have new partitions version with the same set of tablets which
+    // is harmless.
+    // If we first save new_tablet to syscatalog and then crash - we would have table with old
+    // partitions version, but new set of tablets which would break invariant that table partitions
+    // set is not changed within the same partitions version.
+    // TODO: rework this after https://github.com/yugabyte/yugabyte-db/issues/4912 is implemented.
+    RETURN_NOT_OK(sys_catalog_->AddItem(new_tablet, leader_ready_term()));
+
     table->AddTablet(new_tablet);
+    // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
+    // committed TabletInfo from the `table` ?
     new_tablet->mutable_metadata()->CommitMutation();
+
+    table_lock->Commit();
+
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
   }
@@ -3820,7 +3919,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   if (l->data().pb.has_fully_applied_schema()) {
     // An AlterTable is in progress; fully_applied_schema is the last
     // schema that has reached every TS.
-    CHECK(l->data().pb.state() == SysTablesEntryPB::ALTERING);
+    DCHECK(l->data().pb.state() == SysTablesEntryPB::ALTERING);
     resp->mutable_schema()->CopyFrom(l->data().pb.fully_applied_schema());
     resp->set_version(l->data().pb.fully_applied_schema_version());
     resp->mutable_indexes()->CopyFrom(l->data().pb.fully_applied_indexes());
@@ -4060,6 +4159,11 @@ NamespaceName CatalogManager::GetNamespaceNameUnlocked(
 
 NamespaceName CatalogManager::GetNamespaceName(const scoped_refptr<TableInfo>& table) const {
   return GetNamespaceName(table->namespace_id());
+}
+
+bool CatalogManager::IsSystemTable(const TableInfo& table) const {
+  SharedLock<LockType> l(lock_);
+  return IsSystemTableUnlocked(table);
 }
 
 bool CatalogManager::IsSystemTableUnlocked(const TableInfo& table) const {
@@ -6190,18 +6294,20 @@ void CatalogManager::GetPendingServerTasksUnlocked(
     const TableId &table_uuid,
     TabletToTabletServerMap *add_replica_tasks_map,
     TabletToTabletServerMap *remove_replica_tasks_map,
-    TabletToTabletServerMap *stepdown_leader_tasks) {
+    TabletToTabletServerMap *stepdown_leader_tasks_map) {
 
   auto table = GetTableInfoUnlocked(table_uuid);
   for (const auto& task : table->GetTasks()) {
     TabletToTabletServerMap* outputMap = nullptr;
-    TabletId tablet_id;
     if (task->type() == MonitoredTask::ASYNC_ADD_SERVER) {
       outputMap = add_replica_tasks_map;
     } else if (task->type() == MonitoredTask::ASYNC_REMOVE_SERVER) {
       outputMap = remove_replica_tasks_map;
     } else if (task->type() == MonitoredTask::ASYNC_TRY_STEP_DOWN) {
-      outputMap = stepdown_leader_tasks;
+      // Store new_leader_uuid instead of change_config_ts_uuid.
+      auto raft_task = static_cast<AsyncTryStepDown*>(task.get());
+      (*stepdown_leader_tasks_map)[raft_task->tablet_id()] = raft_task->new_leader_uuid();
+      continue;
     }
     if (outputMap) {
       auto raft_task = static_cast<CommonInfoForRaftTask*>(task.get());
@@ -6987,7 +7093,9 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
     }
   }
 
-  resp->set_table_type(table->metadata().state().pb.table_type());
+  resp->set_table_type(l->data().pb.table_type());
+  resp->set_partitions_version(l->data().pb.partitions_version());
+
   return Status::OK();
 }
 
@@ -7166,6 +7274,10 @@ void CatalogManager::SetLoadBalancerEnabled(bool is_enabled) {
 
 bool CatalogManager::IsLoadBalancerEnabled() {
   return load_balance_policy_->IsLoadBalancerEnabled();
+}
+
+MonoDelta CatalogManager::TimeSinceElectedLeader() {
+  return MonoTime::Now() - time_elected_leader_;
 }
 
 Status CatalogManager::GoIntoShellMode() {

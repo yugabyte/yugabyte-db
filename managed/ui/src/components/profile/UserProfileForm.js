@@ -41,8 +41,8 @@ export default class UserProfileForm extends Component {
     const hasProfileChanged = getPromiseState(customerProfile) !== getPromiseState(nextProps.customerProfile) &&
                               (getPromiseState(nextProps.customerProfile).isSuccess() || getPromiseState(nextProps.customerProfile).isError());
     if (this.state.statusUpdated && hasProfileChanged) {
-        handleProfileUpdate(nextProps.customerProfile.data);
-        this.setState({statusUpdated: false});
+      handleProfileUpdate(nextProps.customerProfile.data);
+      this.setState({statusUpdated: false});
     }
   }
 
@@ -130,10 +130,8 @@ export default class UserProfileForm extends Component {
             setSubmitting(false);
             this.setState({statusUpdated: true});
           }}
-          render={({
-            handleSubmit,
-            isSubmitting,
-          }) => (
+        >
+          {({ handleSubmit, isSubmitting }) => (
             <Form name="EditCustomerProfile" onSubmit={handleSubmit}>
               <Row>
                 <Col md={6} sm={12}>
@@ -199,7 +197,7 @@ export default class UserProfileForm extends Component {
               </div>
             </Form>
           )}
-        />
+        </Formik>
       </div>
     );
   }

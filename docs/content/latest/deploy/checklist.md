@@ -105,7 +105,7 @@ Below is a minimal list of default ports (along with the network access required
 
 - To use the database from the app, the following ports need to be accessible from the app (or CLIs).
 
-      9042 for YSQL
+      5433 for YSQL
       9042 for YCQL
       6379 for YEDIS
 

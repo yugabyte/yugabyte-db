@@ -224,8 +224,8 @@ class Messenger : public ProxyContext {
 
   const Protocol* DefaultProtocol() override { return listen_protocol_; }
 
-  rpc::ThreadPool& CallbackThreadPool() override {
-    return ThreadPool(ServicePriority::kNormal);
+  rpc::ThreadPool& CallbackThreadPool(ServicePriority priority) override {
+    return ThreadPool(priority);
   }
 
   CHECKED_STATUS QueueEventOnAllReactors(

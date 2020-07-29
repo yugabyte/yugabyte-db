@@ -17,6 +17,8 @@
 
 #include <deque>
 
+#include <boost/optional.hpp>
+
 #include "yb/util/locks.h"
 #include "yb/client/yb_op.h"
 #include "yb/yql/pggate/pg_session.h"
@@ -262,6 +264,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Process the result set in server response.
   Result<std::list<PgDocResult>> ProcessResponseResult();
 
+  void SetReadTime();
+
  private:
   CHECKED_STATUS SendRequest(bool force_non_bufferable);
 
@@ -406,6 +410,9 @@ class PgDocReadOp : public PgDocOp {
   //     Create parallel request for SELECT COUNT().
   CHECKED_STATUS PopulateParallelSelectCountOps();
 
+  // Set partition boundaries to a given partition.
+  CHECKED_STATUS SetScanPartitionBoundary();
+
   // Process response from DocDB.
   Result<std::list<PgDocResult>> ProcessResponseImpl() override;
 
@@ -420,6 +427,9 @@ class PgDocReadOp : public PgDocOp {
 
   // Set the row_mark_type field of our read request based on our exec control parameter.
   void SetRowMark();
+
+  // Set the read_time for our read request based on our exec control parameter.
+  void SetReadTime();
 
   // Clone the template into actual requests to be sent to server.
   std::unique_ptr<client::YBPgsqlOp> CloneFromTemplate() override {
@@ -477,6 +487,9 @@ class PgDocWriteOp : public PgDocOp {
                const PgTableDesc::ScopedRefPtr& table_desc,
                const PgObjectId& relation_id,
                std::unique_ptr<client::YBPgsqlWriteOp> write_op);
+
+  // Set write time.
+  void SetWriteTime(const HybridTime& write_time);
 
  private:
   // Process response implementation.

@@ -47,6 +47,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/client_error.h"
 #include "yb/client/error_collector.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
@@ -163,12 +164,6 @@ void Batcher::SetTimeout(MonoDelta timeout) {
   CHECK_GE(timeout, MonoDelta::kZero);
   std::lock_guard<decltype(mutex_)> lock(mutex_);
   timeout_ = timeout;
-}
-
-void Batcher::SetSingleRpcTimeout(MonoDelta timeout) {
-  CHECK_GE(timeout, MonoDelta::kZero);
-  std::lock_guard<decltype(mutex_)> lock(mutex_);
-  single_rpc_timeout_ = timeout;
 }
 
 bool Batcher::HasPendingOperations() const {
@@ -326,7 +321,9 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   }
 
   AddInFlightOp(in_flight_op);
-  VLOG_WITH_PREFIX(3) << "Looking up tablet for " << in_flight_op->yb_op->ToString();
+  VLOG_WITH_PREFIX(3) << "Looking up tablet for " << in_flight_op->yb_op->ToString()
+                      << " partition key: "
+                      << Slice(in_flight_op->partition_key).ToDebugHexString();
 
   if (yb_op->tablet()) {
     TabletLookupFinished(std::move(in_flight_op), yb_op->tablet());
@@ -371,7 +368,15 @@ void Batcher::CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Stat
 void Batcher::MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s) {
   CHECK_EQ(1, ops_.erase(in_flight_op)) << "Could not remove op " << in_flight_op->ToString()
                                         << " from in-flight list";
-
+  if (ClientError(s) == ClientErrorCode::kTablePartitionsAreStale) {
+    // MetaCache returns ClientErrorCode::kTablePartitionsAreStale error for tablet lookup request
+    // in case GetTabletLocations from master returns newer version of table partitions.
+    // Since MetaCache has no write access to YBTable, it just returns an error which we receive
+    // here and mark the table partitions as stale, so they will be refetched on retry.
+    // TODO(tsplit): handle splitting-related retries on YB level instead of returning back to
+    // client app/driver.
+    in_flight_op->yb_op->MarkTablePartitionsAsStale();
+  }
   CombineErrorUnlocked(in_flight_op, s);
 }
 
@@ -636,13 +641,11 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
                     hybrid_time_for_write_, std::move(ops)};
   switch (op_group) {
     case OpGroup::kWrite:
-      return std::make_shared<WriteRpc>(&data, single_rpc_timeout_);
+      return std::make_shared<WriteRpc>(&data);
     case OpGroup::kLeaderRead:
-      return std::make_shared<ReadRpc>(&data, YBConsistencyLevel::STRONG, single_rpc_timeout_);
+      return std::make_shared<ReadRpc>(&data, YBConsistencyLevel::STRONG);
     case OpGroup::kConsistentPrefixRead:
-      return std::make_shared<ReadRpc>(&data,
-                                       YBConsistencyLevel::CONSISTENT_PREFIX,
-                                       single_rpc_timeout_);
+      return std::make_shared<ReadRpc>(&data, YBConsistencyLevel::CONSISTENT_PREFIX);
   }
   FATAL_INVALID_ENUM_VALUE(OpGroup, op_group);
 }

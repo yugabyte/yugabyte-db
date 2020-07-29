@@ -8,6 +8,8 @@
 
 # Session specific API
 POST    /login                                                                 com.yugabyte.yw.controllers.SessionController.login()
+GET     /platform_config                                                 	   com.yugabyte.yw.controllers.SessionController.getPlatformConfig()
+GET     /third_party_login                                                     com.yugabyte.yw.controllers.SessionController.thirdPartyLogin()
 GET     /insecure_login                                                        com.yugabyte.yw.controllers.SessionController.insecure_login()
 PUT     /customers/:cUUID/security                                             com.yugabyte.yw.controllers.SessionController.set_security(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/api_token                                            com.yugabyte.yw.controllers.SessionController.api_token(cUUID: java.util.UUID)
@@ -174,3 +176,7 @@ DELETE /customers/:cUUID/users/:uUUID                                          c
 GET    /customers/:cUUID/users/:uUUID/audit_trail                              com.yugabyte.yw.controllers.AuditController.list(cUUID: java.util.UUID, uUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/audit_info                               com.yugabyte.yw.controllers.AuditController.getTaskAudit(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/audit_user                               com.yugabyte.yw.controllers.AuditController.getUserFromTask(cUUID: java.util.UUID, tUUID: java.util.UUID)
+
+GET    /callback                                                               @org.pac4j.play.CallbackController.callback()
+POST   /callback                                                               @org.pac4j.play.CallbackController.callback()
+GET    /third_party_logout                                                     @org.pac4j.play.LogoutController.logout()

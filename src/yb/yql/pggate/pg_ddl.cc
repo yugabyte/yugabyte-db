@@ -21,6 +21,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/docdb/doc_key.h"
@@ -283,9 +284,16 @@ Status PgCreateTable::Exec() {
   // For index, set indexed (base) table id.
   if (indexed_table_id()) {
     table_creator->indexed_table_id(indexed_table_id()->GetYBTableId());
-  }
-  if (is_unique_index()) {
-    table_creator->is_unique_index(true);
+    if (is_unique_index()) {
+      table_creator->is_unique_index(true);
+    }
+    if (skip_index_backfill()) {
+      table_creator->skip_index_backfill(true);
+    } else if (!FLAGS_ysql_disable_index_backfill) {
+      // For online index backfill, don't wait for backfill to finish because waiting on index
+      // permissions is done anyway.
+      table_creator->wait(false);
+    }
   }
 
   const Status s = table_creator->Create();
@@ -360,12 +368,14 @@ PgCreateIndex::PgCreateIndex(PgSession::ScopedRefPtr pg_session,
                              const PgObjectId& base_table_id,
                              bool is_shared_index,
                              bool is_unique_index,
+                             const bool skip_index_backfill,
                              bool if_not_exist)
     : PgCreateTable(pg_session, database_name, schema_name, index_name, index_id,
                     is_shared_index, if_not_exist, false /* add_primary_key */,
                     true /* colocated */),
       base_table_id_(base_table_id),
-      is_unique_index_(is_unique_index) {
+      is_unique_index_(is_unique_index),
+      skip_index_backfill_(skip_index_backfill) {
 }
 
 size_t PgCreateIndex::PrimaryKeyRangeColumnCount() const {
@@ -437,8 +447,13 @@ PgDropIndex::~PgDropIndex() {
 }
 
 Status PgDropIndex::Exec() {
-  Status s = pg_session_->DropIndex(table_id_);
+  client::YBTableName indexed_table_name;
+  Status s = pg_session_->DropIndex(table_id_, &indexed_table_name);
+  DSCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
+  PgObjectId index_table_id(indexed_table_name.table_id());
+
   pg_session_->InvalidateTableCache(table_id_);
+  pg_session_->InvalidateTableCache(index_table_id);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     return Status::OK();
   }

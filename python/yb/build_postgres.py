@@ -396,6 +396,7 @@ class PostgresBuilder:
                 '--with-extra-version=-YB-' + self.get_yb_version(),
                 '--enable-depend',
                 '--with-openssl',
+                '--with-libedit-preferred',
                 '--with-includes=' + self.openssl_include_dir,
                 '--with-libraries=' + self.openssl_lib_dir,
                 # We're enabling debug symbols for all types of builds.

@@ -635,11 +635,12 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const PgObjectId& base_table_id,
                                  bool is_shared_index,
                                  bool is_unique_index,
+                                 const bool skip_index_backfill,
                                  bool if_not_exist,
                                  PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgCreateIndex>(
       pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
-      is_shared_index, is_unique_index, if_not_exist);
+      is_shared_index, is_unique_index, skip_index_backfill, if_not_exist);
   RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
@@ -704,6 +705,10 @@ Result<IndexPermissions> PgApiImpl::WaitUntilIndexPermissionsAtLeast(
       table_id,
       index_id,
       target_index_permissions);
+}
+
+Status PgApiImpl::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
+  return pg_session_->AsyncUpdateIndexPermissions(indexed_table_id);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -825,6 +830,14 @@ Status PgApiImpl::InsertStmtSetUpsertMode(PgStatement *handle) {
   return Status::OK();
 }
 
+Status PgApiImpl::InsertStmtSetWriteTime(PgStatement *handle, const HybridTime write_time) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  RETURN_NOT_OK(down_cast<PgInsert*>(handle)->SetWriteTime(write_time));
+  return Status::OK();
+}
 
 // Update ------------------------------------------------------------------------------------------
 

@@ -56,7 +56,7 @@ We will explore automatic sharding inside YugabyteDB by creating these tables:
 - Use a replication factor (RF) of `1`. This will make it easier to understand how automatic sharding is achieved independent of data replication.
 - Insert entries one by one, and examine which how the data gets distributed across the various nodes.
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../../quick-start/install/) guide.
+This tutorial uses the [yb-ctl](../../../admin/yb-ctl) local cluster management utility.
 
 ## 1. Create a universe
 
@@ -99,7 +99,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | Node Count: 3 | Replication Factor: 1                                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                 |
 | YSQL                : ./bin/ysqlsh                                                               |
 | YCQL                : ./bin/ycqlsh 127.0.0.1 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |

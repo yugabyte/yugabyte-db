@@ -998,6 +998,83 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
   *output << "</table>\n";
 }
 
+void MasterPathHandlers::GetLeaderlessTablets(TabletInfos* leaderless_tablets) {
+  leaderless_tablets->clear();
+
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  vector<scoped_refptr<TableInfo>> tables;
+  master_->catalog_manager()->GetAllTables(&tables, /* includeOnlyRunningTables */ true);
+
+  for (const auto& table : tables) {
+    if (master_->catalog_manager()->IsSystemTable(*table.get())) {
+      continue;
+    }
+    TabletInfos ts;
+    table->GetAllTablets(&ts);
+
+    for (TabletInfoPtr t : ts) {
+      TabletInfo::ReplicaMap rm;
+      t.get()->GetReplicaLocations(&rm);
+
+      auto has_leader = std::any_of(
+        rm.begin(), rm.end(),
+        [](const auto &item) { return item.second.role == consensus::RaftPeerPB::LEADER; });
+
+      if (!has_leader) {
+        leaderless_tablets->push_back(t);
+      }
+    }
+  }
+}
+
+void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& req,
+                                                  Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  TabletInfos ts;
+  GetLeaderlessTablets(&ts);
+
+  *output << "<h3>Leaderless Tablets</h3>\n";
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th></tr>\n";
+
+  for (TabletInfoPtr t : ts) {
+    *output << Substitute(
+        "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><th>$3</th></tr>\n",
+        EscapeForHtmlToString(t->table()->id()),
+        EscapeForHtmlToString(t->table()->name()),
+        EscapeForHtmlToString(t->table()->id()),
+        EscapeForHtmlToString(t.get()->tablet_id()));
+  }
+
+  *output << "</table>\n";
+}
+
+void MasterPathHandlers::HandleGetReplicationStatus(const Webserver::WebRequest& req,
+                                                    Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  TabletInfos ts;
+  GetLeaderlessTablets(&ts);
+
+  jw.StartObject();
+  jw.String("leaderless_tablets");
+  jw.StartArray();
+
+  for (TabletInfoPtr t : ts) {
+    jw.StartObject();
+    jw.String("table_uuid");
+    jw.String(t->table()->id());
+    jw.String("tablet_uuid");
+    jw.String(t.get()->tablet_id());
+    jw.EndObject();
+  }
+
+  jw.EndArray();
+  jw.EndObject();
+}
+
 void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                                      Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
@@ -1493,6 +1570,11 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/tasks", "Tasks",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       false);
+  cb = std::bind(&MasterPathHandlers::HandleTabletReplicasPage, this, _1, _2);
+  server->RegisterPathHandler(
+      "/tablet-replication", "Tablet Replication Health",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      false);
 
   // JSON Endpoints
   cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
@@ -1502,6 +1584,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
   cb = std::bind(&MasterPathHandlers::HandleHealthCheck, this, _1, _2);
   server->RegisterPathHandler(
       "/api/v1/health-check", "Cluster Health Check",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  cb = std::bind(&MasterPathHandlers::HandleGetReplicationStatus, this, _1, _2);
+  server->RegisterPathHandler(
+      "/api/v1/tablet-replication", "Tablet Replication Health",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
   server->RegisterPathHandler(

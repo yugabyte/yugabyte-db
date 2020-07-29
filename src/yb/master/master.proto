@@ -346,6 +346,9 @@ message SysTablesEntryPB {
   // The table's partitioning schema.
   optional PartitionSchemaPB partition_schema = 9;
 
+  // The table's partitions version. Incremented each time partitions change.
+  optional uint32 partitions_version = 28;
+
   // The next column ID to assign to newly added columns in this table.
   // This prevents column ID reuse.
   optional int32 next_column_id = 8;
@@ -668,6 +671,12 @@ message TServerMetricsPB {
   optional uint64 num_sst_files = 7;
 }
 
+message TabletForSplitPB {
+  required bytes tablet_id = 1;
+  required bytes split_partition_key = 2;
+  required bytes split_encoded_key = 3;
+}
+
 // Heartbeat sent from the tablet-server to the master
 // to establish liveness and report back any status changes.
 message TSHeartbeatRequestPB {
@@ -698,6 +707,9 @@ message TSHeartbeatRequestPB {
   optional int32 leader_count = 7;
 
   optional int32 cluster_config_version = 8;
+
+  // List of candidate tablets for split based on tablet splitting strategy and settings.
+  repeated TabletForSplitPB tablets_for_split = 9;
 }
 
 message TSHeartbeatResponsePB {
@@ -740,6 +752,8 @@ message TSHeartbeatResponsePB {
   optional cdc.ConsumerRegistryPB consumer_registry = 12;
 
   optional int32 cluster_config_version = 13;
+
+  optional int64 tablet_split_size_threshold_bytes = 14;
 }
 
 message TSInformationPB {
@@ -778,7 +792,7 @@ message TabletLocationsPB {
   // Table ids for all the tables on this tablet.
   repeated bytes table_ids = 8;
 
-  // For tablets which are results of splitting we set this to split parent split_depth + 1.
+  // See SysTabletsEntryPB for field with the same name.
   optional uint64 split_depth = 9;
 }
 
@@ -840,6 +854,8 @@ message CreateTableRequestPB {
   optional bytes indexed_table_id = 9; // Indexed table id of this index.
   optional bool is_local_index = 10 [ default = false ];  // Is a local index?
   optional bool is_unique_index = 11 [ default = false ]; // Is a unique index?
+  optional bool skip_index_backfill = 18 [ default = false ]; // Skip online schema migration for
+                                                              // index?
 
   // For RBAC.
   optional string creator_role_name = 12;
@@ -973,6 +989,9 @@ message GetTableLocationsResponsePB {
 
   repeated TabletLocationsPB tablet_locations = 2;
   optional TableType table_type = 3;
+
+  // See SysTabletsEntryPB for field with the same name.
+  optional uint32 partitions_version = 4;
 }
 
 message AlterTableRequestPB {
@@ -1017,6 +1036,11 @@ message AlterTableRequestPB {
   optional NamespaceIdentifierPB new_namespace = 4;
   optional TablePropertiesPB alter_properties = 5;
   optional uint32 wal_retention_secs = 6;
+
+  // If set to true, SendAlterTableRequest will be sent even if no changes are specified in this
+  // request.
+  // This is useful to trigger index permissions update.
+  optional bool force_send_alter_request = 7 [default = false];
 }
 
 message AlterTableResponsePB {

@@ -274,10 +274,29 @@ void YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level);
 // YB Debug utils.
 
 /**
- * YSQL variable that can be used to enable/disable yugabyte debug mode.
- * e.g. 'SET yb_debug_mode=true'.
+ * YSQL guc variables that can be used to toggle yugabyte debug features.
+ * e.g. 'SET yb_debug_report_error_stacktrace=true' and
+ *      'RESET yb_debug_report_error_stacktrace'.
+ * See also the corresponding entries in guc.c.
  */
-extern bool yb_debug_mode;
+
+/* Add stacktrace information to every YSQL error. */
+extern bool yb_debug_report_error_stacktrace;
+
+/* Log cache misses and cache refresh events. */
+extern bool yb_debug_log_catcache_events;
+
+/*
+ * Log automatic statement (or transaction) restarts such as read-restarts and
+ * schema-version restarts (e.g. catalog version mismatch errors).
+ */
+extern bool yb_debug_log_internal_restarts;
+
+/*
+ * See also ybc_util.h which contains additional such variable declarations for
+ * variables that are (also) used in the pggate layer.
+ * Currently: yb_debug_log_docdb_requests.
+ */
 
 /*
  * Get a string representation of a datum (given its type).
@@ -294,6 +313,7 @@ extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
  */
 bool YBIsInitDbAlreadyDone();
 
+int YBGetDdlNestingLevel();
 void YBIncrementDdlNestingLevel();
 void YBDecrementDdlNestingLevel(bool success);
 

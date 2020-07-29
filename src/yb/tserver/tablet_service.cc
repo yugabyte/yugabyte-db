@@ -140,7 +140,8 @@ DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/wri
 DEFINE_int32(max_stale_read_bound_time_ms, 0, "If we are allowed to read from followers, "
              "specify the maximum time a follower can be behind by using the last message received "
              "from the leader. If set to zero, a read can be served by a follower regardless of "
-             "when was the last time it received a message from the leader.");
+             "when was the last time it received a message from the leader or how far behind this"
+             "follower is.");
 TAG_FLAG(max_stale_read_bound_time_ms, evolving);
 TAG_FLAG(max_stale_read_bound_time_ms, runtime);
 
@@ -171,7 +172,7 @@ DEFINE_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, evolving);
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, runtime);
 
-DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 5000,
+DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 0,
              "Operations that are received by the tserver, and have decided how "
              "the indexes need to be updated (based on the IndexPermission), will "
              "not be added to the list of current transactions until they are "
@@ -182,7 +183,7 @@ DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 5000,
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, runtime);
 
-DEFINE_int32(index_backfill_wait_for_old_txns_ms, 10000,
+DEFINE_int32(index_backfill_wait_for_old_txns_ms, 0,
              "Index backfill needs to wait for transactions that started before the "
              "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
              "backfilling the index. This is the max time that the GetSafeTime call will "
@@ -213,11 +214,15 @@ DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
 
 DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC fail.");
 
+DECLARE_bool(disable_alter_vs_write_mutual_exclusion);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_min_running_check_interval_ms);
 
 DEFINE_test_flag(int32, txn_status_table_tablet_creation_delay_ms, 0,
                  "Extra delay to slowdown creation of transaction status table tablet.");
+
+DEFINE_test_flag(int32, leader_stepdown_delay_ms, 0,
+                 "Amount of time to delay before starting a leader stepdown change.");
 
 namespace yb {
 namespace tserver {
@@ -733,8 +738,38 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  Result<string> resume_from = tablet.peer->tablet()->BackfillIndexes(
-      indexes_to_backfill, req->start_key(), deadline, read_at);
+  Result<string> resume_from = STATUS(InternalError, "placeholder");
+  if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
+    if (!req->has_namespace_name()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS(
+              InvalidArgument,
+              "Attempted backfill on YSQL table without supplying database name"),
+          TabletServerErrorPB::OPERATION_NOT_SUPPORTED,
+          &context);
+      return;
+    }
+    // TODO(jason): handle missing pgsql_proxy_bind_address (I think it is possible when disabling
+    // YSQL).
+    resume_from = tablet.peer->tablet()->BackfillIndexesForYsql(
+        indexes_to_backfill,
+        req->start_key(),
+        deadline,
+        read_at,
+        server_->pgsql_proxy_bind_address(),
+        req->namespace_name());
+  } else if (tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE) {
+    resume_from = tablet.peer->tablet()->BackfillIndexes(
+        indexes_to_backfill, req->start_key(), deadline, read_at);
+  } else {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(InvalidArgument, "Attempted backfill on tablet of invalid table type"),
+        TabletServerErrorPB::OPERATION_NOT_SUPPORTED,
+        &context);
+    return;
+  }
   DVLOG(1) << "Tablet " << tablet.peer->tablet_id()
            << ". Backfilled indexes for : " << yb::ToString(index_ids)
            << " got " << resume_from.ToString();
@@ -834,15 +869,32 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
           << " version=" << schema_version << " current-schema=" << tablet_schema.ToString()
           << " to request-schema=" << req_schema.ToString()
           << " for table ID=" << table_info->table_id;
+  ScopedRWOperationPause pause_writes;
+  if (tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE &&
+      !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
+    // For schema change operations we will have to pause the write operations
+    // until the schema change is done. This will be done synchronously.
+    pause_writes = tablet.peer->tablet()->PauseWritePermits(context.GetClientDeadline());
+    if (!pause_writes.ok()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_SUBSTITUTE(
+              TryAgain, "Could not lock the tablet against write operations for schema change"),
+          TabletServerErrorPB::UNKNOWN_ERROR, &context);
+      return;
+    }
+  }
   auto operation_state = std::make_unique<ChangeMetadataOperationState>(
       tablet.peer->tablet(), tablet.peer->log(), req);
 
   operation_state->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+  operation_state->UsePermitToken(std::move(pause_writes));
 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
-  tablet.peer->Submit(std::make_unique<tablet::ChangeMetadataOperation>(
-      std::move(operation_state)), tablet.leader_term);
+  tablet.peer->Submit(
+      std::make_unique<tablet::ChangeMetadataOperation>(std::move(operation_state)),
+      tablet.leader_term);
 }
 
 #define VERIFY_RESULT_OR_RETURN(expr) \
@@ -1467,29 +1519,25 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
     if (PREDICT_FALSE(!s.ok())) {
       if (FLAGS_max_stale_read_bound_time_ms > 0) {
         shared_ptr <consensus::Consensus> consensus = tablet_peer->shared_consensus();
-        if (consensus->TimeSinceLastMessageFromLeader() != MonoTime::kUninitialized) {
-          if (MonoTime::Now().GetDeltaSince(
-              consensus->TimeSinceLastMessageFromLeader()).ToMilliseconds() >
-              FLAGS_max_stale_read_bound_time_ms) {
-            SetupErrorAndRespond(resp->mutable_error(), STATUS(IllegalState, "Stale follower"),
-                                 TabletServerErrorPB::STALE_FOLLOWER, context);
-            return false;
-          } else if (PREDICT_FALSE(
-              FLAGS_TEST_assert_reads_from_follower_rejected_because_of_staleness)) {
-            LOG(FATAL) << "--TEST_assert_reads_from_follower_rejected_because_of_staleness is true,"
-                       << " but peer " << tablet_peer->permanent_uuid()
-                       << " for tablet: " << req->tablet_id()
-                       << " is not stale. Time since last update from leader: "
-                       << MonoTime::Now().GetDeltaSince(
-                           consensus->TimeSinceLastMessageFromLeader()).ToMilliseconds();
-          }
-        } else {
-          // If we haven't received a ping from the leader, we shouldn't serve read requests.
-          SetupErrorAndRespond(
-              resp->mutable_error(),
-              STATUS(IllegalState, "Haven't received a ping from the leader"),
-              TabletServerErrorPB::STALE_FOLLOWER, context);
+        // TODO(hector): This safe time could be reused by the read operation.
+        auto safe_time_micros = tablet_peer->tablet()->mvcc_manager()->SafeTimeForFollower(
+            HybridTime::kMin, CoarseTimePoint::min()).GetPhysicalValueMicros();
+        auto now_micros = server_->Clock()->Now().GetPhysicalValueMicros();
+        auto follower_staleness_ms = (now_micros - safe_time_micros) / 1000;
+        if (follower_staleness_ms > FLAGS_max_stale_read_bound_time_ms) {
+          SetupErrorAndRespond(resp->mutable_error(), STATUS(IllegalState, "Stale follower"),
+                               TabletServerErrorPB::STALE_FOLLOWER, context);
           return false;
+        } else if (PREDICT_FALSE(
+            FLAGS_TEST_assert_reads_from_follower_rejected_because_of_staleness)) {
+          LOG(FATAL) << "--TEST_assert_reads_from_follower_rejected_because_of_staleness is true,"
+                     << " but peer " << tablet_peer->permanent_uuid()
+                     << " for tablet: " << req->tablet_id()
+                     << " is not stale. Time since last update from leader: "
+                     << follower_staleness_ms;
+        } else {
+          VLOG(3) << "Reading from follower with staleness (ms): "
+                  << follower_staleness_ms;
         }
       }
     } else {
@@ -2232,6 +2280,12 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
                                           LeaderStepDownResponsePB* resp,
                                           RpcContext context) {
   LOG(INFO) << "Received Leader stepdown RPC: " << req->ShortDebugString();
+
+  if (PREDICT_FALSE(FLAGS_TEST_leader_stepdown_delay_ms > 0)) {
+    LOG(INFO) << "Delaying leader stepdown for "
+              << FLAGS_TEST_leader_stepdown_delay_ms << " ms.";
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_leader_stepdown_delay_ms));
+  }
 
   RpcScope scope(tablet_manager_, "LeaderStepDown", req, resp, &context);
   if (!scope) {

@@ -78,11 +78,19 @@ class NetUtilTest : public YBTest {
 
 TEST(SockaddrTest, Test) {
   boost::system::error_code ec;
-  auto address = IpAddress::from_string("1.1.1.1", ec);
+  const auto& kRegularAddr = "1.1.1.1";
+  auto address = IpAddress::from_string(kRegularAddr, ec);
   ASSERT_FALSE(ec);
   Endpoint endpoint(address, 12345);
   ASSERT_EQ("1.1.1.1:12345", ToString(endpoint));
   ASSERT_EQ(12345, endpoint.port());
+
+  ASSERT_FALSE(IsWildcardAddress(kRegularAddr));
+  const auto kWildcardAddr1 = "0.0.0.0";
+  ASSERT_TRUE(IsWildcardAddress(kWildcardAddr1));
+  const auto kWildcardAddr2 = "::";
+  ASSERT_TRUE(IsWildcardAddress(kWildcardAddr2));
+  ASSERT_FALSE(IsWildcardAddress("::1"));
 }
 
 TEST_F(NetUtilTest, TestParseAddresses) {

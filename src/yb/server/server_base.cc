@@ -129,9 +129,6 @@ struct CommonMemTrackers {
 
 std::unique_ptr<CommonMemTrackers> common_mem_trackers;
 
-static const string kWildCardHostAddressV6 = "::";
-static const string kWildCardHostAddressV4 = "0.0.0.0";
-
 } // anonymous namespace
 
 std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
@@ -491,10 +488,10 @@ void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
 
 Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly rpc_only) const {
   std::vector<HostPort> addrs = CHECK_NOTNULL(rpc_server())->GetRpcHostPort();
+  DCHECK_GE(addrs.size(), 1);
 
   // Fall back to hostname resolution if the rpc hostname is a wildcard.
-  if (addrs.size() > 1 || addrs[0].host() == kWildCardHostAddressV4 ||
-      addrs[0].host() == kWildCardHostAddressV6 || addrs[0].port() == 0) {
+  if (addrs.size() != 1 || IsWildcardAddress(addrs[0].host()) || addrs[0].port() == 0) {
     vector<Endpoint> endpoints =
         CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
     RETURN_NOT_OK_PREPEND(
@@ -513,15 +510,22 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
   HostPortsToPBs(options_.broadcast_addresses, reg->mutable_broadcast_addresses());
 
   if (!rpc_only) {
-    std::vector<Endpoint> web_addrs;
-    RETURN_NOT_OK_PREPEND(
-        CHECK_NOTNULL(web_server())->GetBoundAddresses(&web_addrs),
-        "Unable to get bound HTTP addresses");
-    RETURN_NOT_OK_PREPEND(AddHostPortPBs(
-        web_addrs, reg->mutable_http_addresses()),
-        "Failed to add HTTP addresses to registration");
-    for (const auto &addr : reg->http_addresses()) {
-      LOG(INFO) << "Using http addresses: ( " << addr.ShortDebugString() << " )";
+    HostPort web_input_hp;
+    RETURN_NOT_OK(CHECK_NOTNULL(web_server())->GetInputHostPort(&web_input_hp));
+    if (IsWildcardAddress(web_input_hp.host()) || web_input_hp.port() == 0) {
+      std::vector<Endpoint> web_addrs;
+      RETURN_NOT_OK_PREPEND(
+          CHECK_NOTNULL(web_server())->GetBoundAddresses(&web_addrs),
+          "Unable to get bound HTTP addresses");
+      RETURN_NOT_OK_PREPEND(AddHostPortPBs(
+          web_addrs, reg->mutable_http_addresses()),
+          "Failed to add HTTP addresses to registration");
+      for (const auto &addr : reg->http_addresses()) {
+        LOG(INFO) << "Using http addresses: ( " << addr.ShortDebugString() << " )";
+      }
+    } else {
+      HostPortsToPBs({ web_input_hp }, reg->mutable_http_addresses());
+      LOG(INFO) << "Using http address " << reg->http_addresses(0).host();
     }
   }
   reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud());
@@ -576,10 +580,10 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-list-ul", "Threads", "/threadz");
 }
 
-
-void RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
+Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
   // RPCs in Progress.
   DisplayIconTile(output, "fa-tasks", "Server RPCs", "/rpcz");
+  return Status::OK();
 }
 
 Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
@@ -593,7 +597,7 @@ Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
   *output << "</div> <!-- row -->\n";
   *output << "<h2> RPCs In Progress </h2>";
   *output << "<div class='row debug-tiles'>\n";
-  DisplayRpcIcons(output);
+  RETURN_NOT_OK(DisplayRpcIcons(output));
   *output << "</div> <!-- row -->\n";
   return Status::OK();
 }

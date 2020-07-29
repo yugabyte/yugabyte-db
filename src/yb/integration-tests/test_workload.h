@@ -47,6 +47,7 @@ struct TestWorkloadOptions {
   int num_write_threads = 4;
   int num_read_threads = 0;
   int write_batch_size = 50;
+  int write_interval_millis = 0;
   int ttl = -1;
   MonoDelta default_rpc_timeout = std::chrono::seconds(60);
   std::chrono::milliseconds write_timeout = std::chrono::seconds(20);
@@ -93,6 +94,10 @@ class TestWorkload {
 
   void set_write_batch_size(int s) {
     options_.write_batch_size = s;
+  }
+
+  void set_write_interval_millis(int t) {
+    options_.write_interval_millis = t;
   }
 
   void set_ttl(int ttl) {

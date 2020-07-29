@@ -20,8 +20,9 @@ ScopedRWOperationPause TabletComponent::PauseReadWriteOperations() {
   return tablet_.PauseReadWriteOperations();
 }
 
-Status TabletComponent::ResetRocksDBs(bool destroy) {
-  return tablet_.ResetRocksDBs(destroy);
+Status TabletComponent::ResetRocksDBs(
+    Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown) {
+  return tablet_.ResetRocksDBs(destroy, disable_flush_on_shutdown);
 }
 
 Status TabletComponent::OpenRocksDBs() {

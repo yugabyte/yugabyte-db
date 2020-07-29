@@ -50,6 +50,9 @@ class CQLMetrics : public ql::QLMetrics {
 
   scoped_refptr<AtomicGauge<int64_t>> cql_processors_alive_;
   scoped_refptr<Counter> cql_processors_created_;
+
+  scoped_refptr<AtomicGauge<int64_t>> parsers_alive_;
+  scoped_refptr<Counter> parsers_created_;
 };
 
 
@@ -128,6 +131,8 @@ class CQLProcessor : public ql::QLProcessor {
 
   // Statement executed callback.
   ql::StatementExecutedCallback statement_executed_cb_;
+
+  ScopedTrackedConsumption consumption_;
 
   //----------------------------------------------------------------------------------------------
 

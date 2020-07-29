@@ -109,11 +109,16 @@ function(DETECT_BREW)
   if(NOT APPLE)
     set(LINUXBREW_DIR "$ENV{YB_LINUXBREW_DIR}")
     if("${LINUXBREW_DIR}" STREQUAL "")
-      set(LINUXBREW_DIR "$ENV{HOME}/.linuxbrew-yb-build")
+      if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt")
+        file(STRINGS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt" LINUXBREW_DIR)
+      else()
+        set(LINUXBREW_DIR "$ENV{HOME}/.linuxbrew-yb-build")
+      endif()
     endif()
     if(EXISTS "${LINUXBREW_DIR}/bin" AND
        EXISTS "${LINUXBREW_DIR}/lib")
       message("Linuxbrew found at ${LINUXBREW_DIR}")
+      set(ENV{YB_LINUXBREW_DIR} "${LINUXBREW_DIR}")
       set(USING_LINUXBREW TRUE)
     else()
       message("Not using Linuxbrew: no valid Linuxbrew installation found at "
@@ -439,7 +444,12 @@ message("YB_SRC_ROOT: ${YB_SRC_ROOT}")
 
 set(YB_THIRDPARTY_DIR "$ENV{YB_THIRDPARTY_DIR}")
 if("${YB_THIRDPARTY_DIR}" STREQUAL "")
-  set(YB_THIRDPARTY_DIR "${YB_SRC_ROOT}/thirdparty")
+  if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/thirdparty_path.txt")
+    file(STRINGS "${CMAKE_CURRENT_BINARY_DIR}/thirdparty_path.txt" YB_THIRDPARTY_DIR)
+  else()
+    set(YB_THIRDPARTY_DIR "${YB_SRC_ROOT}/thirdparty")
+  endif()
+  set(ENV{YB_THIRDPARTY_DIR} "${YB_THIRDPARTY_DIR}")
 endif()
 message("YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR}")
 
@@ -513,6 +523,11 @@ set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY true)
 # environment variables correctly.
 if ("${YB_NO_REBUILD_THIRDPARTY}" STREQUAL "1")
   set(ENV{NO_REBUILD_THIRDPARTY} "1")
+else()
+  # Do not try building thirdparty outside our source location
+  if(NOT "${YB_THIRDPARTY_DIR}" STREQUAL "${YB_SRC_ROOT}/thirdparty")
+    set(ENV{NO_REBUILD_THIRDPARTY} "1")
+  endif()
 endif()
 
 INIT_COMPILER_TYPE()
@@ -1685,6 +1700,8 @@ endif()
 
 message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
 
+set(PQ_SHARED_LIB
+    "${YB_BUILD_ROOT}/postgres/lib/libpq${YB_SHARED_LIBRARY_SUFFIX}")
 set(YB_PGBACKEND_SHARED_LIB 
     "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend${YB_SHARED_LIBRARY_SUFFIX}")
 

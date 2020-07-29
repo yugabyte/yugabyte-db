@@ -5,6 +5,7 @@ import { reduxForm } from 'redux-form';
 import {OnPremProviderAndAccessKey} from '../../../config';
 import {setOnPremConfigData} from '../../../../actions/cloud';
 import {isDefinedNotNull, isNonEmptyObject, isNonEmptyArray} from '../../../../utils/ObjectUtils';
+import _ from 'lodash';
 
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {
@@ -14,7 +15,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
         const formSubmitVals = {
           provider: {
             name: formData.name,
-            config: { YB_HOME_DIR: formData.homeDir }
+            config: { YB_HOME_DIR: formData.homeDir, USE_HOSTNAME: _.get(formData, "useHostnames", false).toString() }
           },
           key: {
             code: formData.name.toLowerCase().replace(/ /g, "-") + "-key",

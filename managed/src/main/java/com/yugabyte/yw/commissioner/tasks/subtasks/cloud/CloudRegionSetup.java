@@ -65,6 +65,7 @@ public class CloudRegionSetup extends CloudTaskBase {
         // Intentional fallthrough as both AWS and GCP should be covered the same way.
         case aws:
         case gcp:
+        case azu:
           // Setup default image, if no custom one was specified.
           String defaultImage = queryHelper.getDefaultImage(region);
           if (defaultImage == null || defaultImage.isEmpty()) {
@@ -100,6 +101,7 @@ public class CloudRegionSetup extends CloudTaskBase {
         zoneSubnets.forEach((zone, subnet) ->
             region.zones.add(AvailabilityZone.create(region, zone, zone, subnet)));
         break;
+      case azu:
       case gcp:
         ObjectNode customPayload = Json.newObject();
         ObjectNode perRegionMetadata = Json.newObject();
