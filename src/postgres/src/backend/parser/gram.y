@@ -9672,6 +9672,16 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 					n->missing_ok = false;
 					$$ = (Node *)n;
 				}
+			| ALTER TABLEGROUP name RENAME TO name
+				{
+					parser_ybc_beta_feature(@1, "tablegroup");
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_TABLEGROUP;
+					n->subname = $3;
+					n->newname = $6;
+					n->missing_ok = false;
+					$$ = (Node *)n;
+				}
 			| ALTER TABLESPACE name RENAME TO name
 				{
 					parser_ybc_not_support(@1, "ALTER TABLESPACE");
@@ -10263,6 +10273,15 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
 					n->objectType = OBJECT_TYPE;
 					n->object = (Node *) $3;
+					n->newowner = $6;
+					$$ = (Node *)n;
+				}
+			| ALTER TABLEGROUP name OWNER TO RoleSpec
+				{
+					parser_ybc_beta_feature(@1, "tablegroup");
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_TABLEGROUP;
+					n->object = (Node *) makeString($3);
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}

@@ -49,4 +49,7 @@ extern char *get_tablegroup_name(Oid grp_oid);
 
 extern void RemoveTableGroupById(Oid grp_oid);
 
+extern ObjectAddress RenameTablegroup(const char *oldname, const char *newname);
+extern ObjectAddress AlterTablegroupOwner(const char *grpname, Oid newOwnerId);
+
 #endif							/* TABLEGROUP_H */

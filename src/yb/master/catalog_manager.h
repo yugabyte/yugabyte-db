@@ -368,7 +368,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // List all the current tablegroups for a namespace.
   CHECKED_STATUS ListTablegroups(const ListTablegroupsRequestPB* req,
-                                 ListTablegroupsResponsePB* resp);
+                                 ListTablegroupsResponsePB* resp,
+                                 rpc::RpcContext* rpc);
 
   bool HasTablegroups();
 
