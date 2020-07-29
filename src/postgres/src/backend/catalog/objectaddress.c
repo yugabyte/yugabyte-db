@@ -1872,16 +1872,20 @@ get_object_address_defacl(List *object, bool missing_ok)
 		case DEFACLOBJ_NAMESPACE:
 			objtype_str = "schemas";
 			break;
+		case DEFACLOBJ_TABLEGROUP:
+			objtype_str = "tablegroups";
+			break;
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("unrecognized default ACL object type \"%c\"", objtype),
-					 errhint("Valid object types are \"%c\", \"%c\", \"%c\", \"%c\", \"%c\".",
+					 errhint("Valid object types are \"%c\", \"%c\", \"%c\", \"%c\", \"%c\", \"%c\".",
 							 DEFACLOBJ_RELATION,
 							 DEFACLOBJ_SEQUENCE,
 							 DEFACLOBJ_FUNCTION,
 							 DEFACLOBJ_TYPE,
-							 DEFACLOBJ_NAMESPACE)));
+							 DEFACLOBJ_NAMESPACE,
+							 DEFACLOBJ_TABLEGROUP)));
 	}
 
 	/*
@@ -3459,6 +3463,13 @@ getObjectDescription(const ObjectAddress *object)
 										 _("default privileges on new schemas belonging to role %s"),
 										 rolename);
 						break;
+					case DEFACLOBJ_TABLEGROUP:
+						// Cannot set default perms for tablegroups on a per-schema level. Must be per-db.
+						Assert(!nspname);
+						appendStringInfo(&buffer,
+										 _("default privileges on new tablegroups belonging to role %s"),
+										 rolename);
+						break;
 					default:
 						/* shouldn't get here */
 						if (nspname)
@@ -5016,6 +5027,10 @@ getObjectIdentityParts(const ObjectAddress *object,
 					case DEFACLOBJ_NAMESPACE:
 						appendStringInfoString(&buffer,
 											   " on schemas");
+						break;
+					case DEFACLOBJ_TABLEGROUP:
+						appendStringInfoString(&buffer,
+											   " on tablegroups");
 						break;
 				}
 
