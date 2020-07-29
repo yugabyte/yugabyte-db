@@ -85,6 +85,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_compaction_filter_intents.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/key_bytes.h"
@@ -2938,8 +2939,8 @@ std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
   return docdb::DocDBDebugDumpToStr(doc_db());
 }
 
-template <class T>
-void Tablet::TEST_DocDBDumpToContainer(IncludeIntents include_intents, T* out) {
+void Tablet::TEST_DocDBDumpToContainer(
+    IncludeIntents include_intents, std::unordered_set<std::string>* out) {
   if (!regular_db_) return;
 
   if (!include_intents) {
@@ -2948,12 +2949,6 @@ void Tablet::TEST_DocDBDumpToContainer(IncludeIntents include_intents, T* out) {
 
   return docdb::DocDBDebugDumpToContainer(doc_db(), out);
 }
-
-template void Tablet::TEST_DocDBDumpToContainer(
-    IncludeIntents include_intents, std::unordered_set<std::string>* out);
-
-template void Tablet::TEST_DocDBDumpToContainer(
-    IncludeIntents include_intents, std::vector<std::string>* out);
 
 size_t Tablet::TEST_CountRegularDBRecords() {
   if (!regular_db_) return 0;
