@@ -113,6 +113,7 @@ static void ExecGrant_Function(InternalGrant *grantStmt);
 static void ExecGrant_Language(InternalGrant *grantStmt);
 static void ExecGrant_Largeobject(InternalGrant *grantStmt);
 static void ExecGrant_Namespace(InternalGrant *grantStmt);
+static void ExecGrant_Tablegroup(InternalGrant *grantStmt);
 static void ExecGrant_Tablespace(InternalGrant *grantStmt);
 static void ExecGrant_Type(InternalGrant *grantStmt);
 
@@ -616,6 +617,9 @@ ExecGrantStmt_oids(InternalGrant *istmt)
 		case OBJECT_SCHEMA:
 			ExecGrant_Namespace(istmt);
 			break;
+		case OBJECT_TABLEGROUP:
+			ExecGrant_Tablegroup(istmt);
+			break;
 		case OBJECT_TABLESPACE:
 			ExecGrant_Tablespace(istmt);
 			break;
@@ -748,6 +752,16 @@ objectNamesToOids(ObjectType objtype, List *objnames)
 
 				routid = LookupFuncWithArgs(OBJECT_ROUTINE, func, false);
 				objects = lappend_oid(objects, routid);
+			}
+			break;
+		case OBJECT_TABLEGROUP:
+			foreach(cell, objnames)
+			{
+				char	   *grpname = strVal(lfirst(cell));
+				Oid				grpoid;
+
+				grpoid = get_tablegroup_oid(grpname, false);
+				objects = lappend_oid(objects, grpoid);
 			}
 			break;
 		case OBJECT_TABLESPACE:
@@ -1020,6 +1034,10 @@ ExecAlterDefaultPrivilegesStmt(ParseState *pstate, AlterDefaultPrivilegesStmt *s
 			all_privileges = ACL_ALL_RIGHTS_FUNCTION;
 			errormsg = gettext_noop("invalid privilege type %s for routine");
 			break;
+		case OBJECT_TABLEGROUP:
+			all_privileges = ACL_ALL_RIGHTS_TABLEGROUP;
+			errormsg = gettext_noop("invalid privilege type %s for tablegroup");
+			break;
 		case OBJECT_TYPE:
 			all_privileges = ACL_ALL_RIGHTS_TYPE;
 			errormsg = gettext_noop("invalid privilege type %s for type");
@@ -1223,6 +1241,16 @@ SetDefaultACL(InternalDefaultACL *iacls)
 			objtype = DEFACLOBJ_NAMESPACE;
 			if (iacls->all_privs && this_privileges == ACL_NO_RIGHTS)
 				this_privileges = ACL_ALL_RIGHTS_SCHEMA;
+			break;
+
+		case OBJECT_TABLEGROUP:
+			if (OidIsValid(iacls->nspid))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_GRANT_OPERATION),
+						 errmsg("cannot use IN SCHEMA clause when using GRANT/REVOKE ON TABLEGROUPS")));
+			objtype = DEFACLOBJ_TABLEGROUP;
+			if (iacls->all_privs && this_privileges == ACL_NO_RIGHTS)
+				this_privileges = ACL_ALL_RIGHTS_TABLEGROUP;
 			break;
 
 		default:
@@ -1451,6 +1479,9 @@ RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid)
 			case DEFACLOBJ_NAMESPACE:
 				iacls.objtype = OBJECT_SCHEMA;
 				break;
+			case DEFACLOBJ_TABLEGROUP:
+				iacls.objtype = OBJECT_TABLEGROUP;
+				break;
 			default:
 				/* Shouldn't get here */
 				elog(ERROR, "unexpected default ACL type: %d",
@@ -1499,6 +1530,8 @@ RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid)
 			case NamespaceRelationId:
 				istmt.objtype = OBJECT_SCHEMA;
 				break;
+			case TableGroupRelationId:
+				istmt.objtype = OBJECT_TABLEGROUP;
 			case TableSpaceRelationId:
 				istmt.objtype = OBJECT_TABLESPACE;
 				break;
@@ -3006,6 +3039,125 @@ ExecGrant_Namespace(InternalGrant *istmt)
 		updateAclDependencies(NamespaceRelationId, HeapTupleGetOid(tuple), 0,
 							  ownerId,
 							  noldmembers, oldmembers,
+							  nnewmembers, newmembers);
+
+		ReleaseSysCache(tuple);
+
+		pfree(new_acl);
+
+		/* prevent error when processing duplicate objects */
+		CommandCounterIncrement();
+	}
+
+	heap_close(relation, RowExclusiveLock);
+}
+
+static void
+ExecGrant_Tablegroup(InternalGrant *istmt)
+{
+	Relation	relation;
+	ListCell   *cell;
+
+	if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
+		istmt->privileges = ACL_ALL_RIGHTS_TABLEGROUP;
+
+	relation = heap_open(TableGroupRelationId, RowExclusiveLock);
+
+	foreach(cell, istmt->objects)
+	{
+		Oid			grpId = lfirst_oid(cell);
+		Form_pg_tablegroup pg_tablegroup_tuple;
+		Datum		aclDatum;
+		bool		isNull;
+		AclMode		avail_goptions;
+		AclMode		this_privileges;
+		Acl		   *old_acl;
+		Acl		   *new_acl;
+		Oid			grantorId;
+		Oid			ownerId;
+		HeapTuple	newtuple;
+		Datum		values[Natts_pg_tablegroup];
+		bool		nulls[Natts_pg_tablegroup];
+		bool		replaces[Natts_pg_tablegroup];
+		int			noldmembers;
+		int			nnewmembers;
+		Oid		   *oldmembers;
+		Oid		   *newmembers;
+		HeapTuple	tuple;
+
+		tuple = SearchSysCache1(TABLEGROUPOID, ObjectIdGetDatum(grpId));
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for tablegroup %u", grpId);
+
+		pg_tablegroup_tuple = (Form_pg_tablegroup) GETSTRUCT(tuple);
+
+		/*
+		 * Get owner ID and working copy of existing ACL. If there's no ACL,
+		 * substitute the proper default.
+		 */
+		ownerId = pg_tablegroup_tuple->grpowner;
+		aclDatum = heap_getattr(tuple, Anum_pg_tablegroup_grpacl,
+								RelationGetDescr(relation), &isNull);
+		if (isNull)
+		{
+			old_acl = acldefault(OBJECT_TABLEGROUP, ownerId);
+			/* There are no old member roles according to the catalogs */
+			noldmembers = 0;
+			oldmembers = NULL;
+		}
+		else
+		{
+			old_acl = DatumGetAclPCopy(aclDatum);
+			/* Get the roles mentioned in the existing ACL */
+			noldmembers = aclmembers(old_acl, &oldmembers);
+		}
+
+		/* Determine ID to do the grant as, and available grant options */
+		select_best_grantor(GetUserId(), istmt->privileges,
+							old_acl, ownerId,
+							&grantorId, &avail_goptions);
+
+		/*
+		 * Restrict the privileges to what we can actually grant, and emit the
+		 * standards-mandated warning and error messages.
+		 */
+		this_privileges =
+				restrict_and_check_grant(istmt->is_grant, avail_goptions,
+										 istmt->all_privs, istmt->privileges,
+										 grpId, grantorId, OBJECT_TABLEGROUP,
+										 NameStr(pg_tablegroup_tuple->grpname),
+										 0, NULL);
+
+		/*
+		 * Generate new ACL.
+		 */
+		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
+									   istmt->grant_option, istmt->behavior,
+									   istmt->grantees, this_privileges,
+									   grantorId, ownerId);
+
+		/*
+		 * We need the members of both old and new ACLs so we can correct the
+		 * shared dependency information.
+		 */
+		nnewmembers = aclmembers(new_acl, &newmembers);
+
+		/* finished building new ACL value, now insert it */
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+		MemSet(replaces, false, sizeof(replaces));
+
+		replaces[Anum_pg_tablegroup_grpacl - 1] = true;
+		values[Anum_pg_tablegroup_grpacl - 1] = PointerGetDatum(new_acl);
+
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
+									 nulls, replaces);
+
+		CatalogTupleUpdate(relation, &newtuple->t_self, newtuple);
+
+		/* Update the shared dependency ACL info */
+		updateAclDependencies(TableGroupRelationId, HeapTupleGetOid(tuple), 0,
+							  ownerId, noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
 		ReleaseSysCache(tuple);
@@ -5613,6 +5765,10 @@ get_user_default_acl(ObjectType objtype, Oid ownerId, Oid nsp_oid)
 
 		case OBJECT_SCHEMA:
 			defaclobjtype = DEFACLOBJ_NAMESPACE;
+			break;
+
+		case OBJECT_TABLEGROUP:
+			defaclobjtype = DEFACLOBJ_TABLEGROUP;
 			break;
 
 		default:

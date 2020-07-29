@@ -90,6 +90,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	HeapTuple	tuple;
 	Oid			tablegroupoid;
 	Oid			ownerId;
+	Acl		   *grpacl = NULL;
 
 	if (!TablegroupCatalogExists)
 	{
@@ -139,7 +140,13 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	values[Anum_pg_tablegroup_grpname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->tablegroupname));
 	values[Anum_pg_tablegroup_grpowner - 1] = ObjectIdGetDatum(ownerId);
-	nulls[Anum_pg_tablegroup_grpacl - 1] = true;
+
+	/* Get default permissions and set up grpacl */
+	grpacl = get_user_default_acl(OBJECT_TABLEGROUP, ownerId, InvalidOid);
+	if (grpacl != NULL)
+		values[Anum_pg_tablegroup_grpacl - 1] = PointerGetDatum(grpacl);
+	else
+		nulls[Anum_pg_tablegroup_grpacl - 1] = true;
 
 	/* Generate new proposed grpoptions (text array) */
 	/* For now no grpoptions. Will be part of Interleaved/Copartitioned */
