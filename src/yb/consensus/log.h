@@ -159,10 +159,6 @@ class Log : public RefCountedThreadSafe<Log> {
   // fsync of log entries is enabled).
   CHECKED_STATUS WaitUntilAllFlushed();
 
-  // Kick off an asynchronous task that pre-allocates a new log-segment, setting
-  // 'allocation_status_'. To wait for the result of the task, use allocation_status_.Get().
-  CHECKED_STATUS AsyncAllocateSegment() EXCLUDES(allocation_mutex_);
-
   // The closure submitted to allocation_pool_ to allocate a new segment.
   void SegmentAllocationTask();
 
@@ -394,10 +390,16 @@ class Log : public RefCountedThreadSafe<Log> {
   // Helper method to get the segment sequence to GC based on the provided min_op_idx.
   CHECKED_STATUS GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const;
 
-  const SegmentAllocationState allocation_state() EXCLUDES(allocation_mutex_) {
-    SharedLock<decltype(allocation_mutex_)> shared_lock(allocation_mutex_);
-    return allocation_state_;
+  // Kick off an asynchronous task that pre-allocates a new log-segment, setting
+  // 'allocation_status_'. To wait for the result of the task, use allocation_status_.Get().
+  CHECKED_STATUS AsyncAllocateSegment() REQUIRES(allocation_mutex_);
+
+  SegmentAllocationState allocation_state() EXCLUDES(allocation_mutex_) {
+    return allocation_state_.load(std::memory_order_acquire);
   }
+
+  bool NeedNewSegment(uint32_t entry_batch_bytes);
+  CHECKED_STATUS RollOverIfNecessary(uint32_t entry_batch_bytes) EXCLUDES(allocation_mutex_);
 
   LogOptions options_;
 
@@ -500,8 +502,10 @@ class Log : public RefCountedThreadSafe<Log> {
   Promise<Status> allocation_status_;
 
   // Read-write lock to protect 'allocation_state_'.
-  mutable boost::shared_mutex allocation_mutex_;
-  SegmentAllocationState allocation_state_ GUARDED_BY(allocation_mutex_);
+  mutable std::mutex allocation_mutex_;
+  std::condition_variable allocation_cond_;
+  std::atomic<SegmentAllocationState> allocation_state_;
+  bool allocation_requested_ GUARDED_BY(allocation_mutex_) = false;
 
   scoped_refptr<MetricEntity> metric_entity_;
   gscoped_ptr<LogMetrics> metrics_;
