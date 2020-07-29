@@ -37,6 +37,7 @@
 #include "commands/event_trigger.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
+#include "commands/tablegroup.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -577,6 +578,42 @@ DefineIndex(Oid relationId,
 	}
 
 	/*
+	 * Select tablegroup to use. Default to the tablegroup of the indexed table.
+	 * If no tablegroup for the indexed table then set to InvalidOid (no tablegroup).
+	 * TODO(vivek/jason): Allow indexes to opt out of tablegroups (currently disabled from grammar).
+	 */
+	Oid tablegroupId = InvalidOid;
+	if (TablegroupCatalogExists)
+		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
+
+	/*
+	 * Check permissions for tablegroup. To create an index within a tablegroup, a user must
+	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
+	 */
+	if (OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
+	{
+		AclResult  aclresult;
+
+		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, OBJECT_TABLEGROUP,
+						   get_tablegroup_name(tablegroupId));
+	}
+
+	/*
+	 * Prepend to stmt->options to be parsed for reloptions if tablegroupId is valid.
+	 * We set this here instead of in parse_utilcmd since we need to do the above
+	 * preprocessing and RBAC checks first. This still happens before transformReloptions
+	 * so this option is included in the reloptions text array.
+	 */
+	if (OidIsValid(tablegroupId))
+	{
+		stmt->options = lcons(makeDefElem("tablegroup",
+										  (Node *) makeInteger(tablegroupId), -1),
+										  stmt->options);
+	}
+
+	/*
 	 * Force shared indexes into the pg_global tablespace.  This is a bit of a
 	 * hack but seems simpler than marking them in the BKI commands.  On the
 	 * other hand, if it's not shared, don't allow it to be placed there.
@@ -940,7 +977,7 @@ DefineIndex(Oid relationId,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
-					 !stmt->concurrent);
+					 !stmt->concurrent, tablegroupId);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
