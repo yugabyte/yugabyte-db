@@ -1,1 +1,1 @@
-https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v20200625021759-2dafffee0f/yugabyte-db-thirdparty-v20200625021759-2dafffee0f-centos.tar.gz
+https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v20200702220612-73d9c4da5c/yugabyte-db-thirdparty-v20200702220612-73d9c4da5c-centos.tar.gz
