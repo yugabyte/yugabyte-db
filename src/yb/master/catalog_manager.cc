@@ -4879,7 +4879,8 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
 }
 
 Status CatalogManager::ListTablegroups(const ListTablegroupsRequestPB* req,
-                                       ListTablegroupsResponsePB* resp) {
+                                       ListTablegroupsResponsePB* resp,
+                                       rpc::RpcContext* rpc) {
   RETURN_NOT_OK(CheckOnline());
 
   SharedLock<LockType> l(lock_);
