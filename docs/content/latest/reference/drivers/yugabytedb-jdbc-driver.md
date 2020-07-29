@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: yugabytedb-jdbc-driver
     parent: drivers
-    weight: 2920
+    weight: 2941
 aliases:
   - /latest/reference/connectors/yugabytedb-jdbc-driver
 isTocNested: true
