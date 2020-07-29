@@ -619,6 +619,7 @@ AlterObjectNamespace_oid(Oid classId, Oid objid, Oid nspOid,
 		case OCLASS_SCHEMA:
 		case OCLASS_ROLE:
 		case OCLASS_DATABASE:
+		case OCLASS_TBLGROUP:
 		case OCLASS_TBLSPACE:
 		case OCLASS_FDW:
 		case OCLASS_FOREIGN_SERVER:

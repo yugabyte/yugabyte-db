@@ -50,6 +50,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
+#include "catalog/pg_tablegroup.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_ts_config.h"
@@ -61,6 +62,7 @@
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
 #include "commands/proclang.h"
+#include "commands/tablegroup.h"
 #include "commands/tablespace.h"
 #include "foreign/foreign.h"
 #include "miscadmin.h"
@@ -268,6 +270,9 @@ restrict_and_check_grant(bool is_grant, AclMode avail_goptions, bool all_privs,
 			break;
 		case OBJECT_SCHEMA:
 			whole_mask = ACL_ALL_RIGHTS_SCHEMA;
+			break;
+		case OBJECT_TABLEGROUP:
+			whole_mask = ACL_ALL_RIGHTS_TABLEGROUP;
 			break;
 		case OBJECT_TABLESPACE:
 			whole_mask = ACL_ALL_RIGHTS_TABLESPACE;
@@ -491,6 +496,10 @@ ExecuteGrantStmt(GrantStmt *stmt)
 		case OBJECT_ROUTINE:
 			all_privileges = ACL_ALL_RIGHTS_FUNCTION;
 			errormsg = gettext_noop("invalid privilege type %s for routine");
+			break;
+		case OBJECT_TABLEGROUP:
+			all_privileges = ACL_ALL_RIGHTS_TABLEGROUP;
+			errormsg = gettext_noop("invalid privilege type %s for tablegroup");
 			break;
 		case OBJECT_TABLESPACE:
 			all_privileges = ACL_ALL_RIGHTS_TABLESPACE;
@@ -3445,6 +3454,9 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_TABLE:
 						msg = gettext_noop("permission denied for table %s");
 						break;
+					case OBJECT_TABLEGROUP:
+						msg = gettext_noop("permission denied for tablegroup %s");
+						break;
 					case OBJECT_TABLESPACE:
 						msg = gettext_noop("permission denied for tablespace %s");
 						break;
@@ -3576,6 +3588,9 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_STATISTIC_EXT:
 						msg = gettext_noop("must be owner of statistics object %s");
 						break;
+					case OBJECT_TABLEGROUP:
+						msg = gettext_noop("must be owner of tablegroup %s");
+						break;
 					case OBJECT_TABLESPACE:
 						msg = gettext_noop("must be owner of tablespace %s");
 						break;
@@ -3699,6 +3714,8 @@ pg_aclmask(ObjectType objtype, Oid table_oid, AttrNumber attnum, Oid roleid,
 			elog(ERROR, "grantable rights not supported for statistics objects");
 			/* not reached, but keep compiler quiet */
 			return ACL_NO_RIGHTS;
+		case OBJECT_TABLEGROUP:
+			return pg_tablegroup_aclmask(table_oid, roleid, mask, how);
 		case OBJECT_TABLESPACE:
 			return pg_tablespace_aclmask(table_oid, roleid, mask, how);
 		case OBJECT_FDW:
@@ -4244,6 +4261,68 @@ pg_namespace_aclmask(Oid nsp_oid, Oid roleid,
 }
 
 /*
+ * Exported routine for examining a user's privileges for a tablegroup
+ */
+AclMode
+pg_tablegroup_aclmask(Oid grp_oid, Oid roleid,
+					  AclMode mask, AclMaskHow how)
+{
+	AclMode		result;
+	HeapTuple	tuple;
+	Datum		aclDatum;
+	bool		isNull;
+	Acl		   *acl;
+	Oid			ownerId;
+
+	// First check that the pg_tablegroup catalog actually exists.
+	if (!TablegroupCatalogExists) {
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Tablegroup system catalog does not exist.")));
+	}
+
+	/* Superusers bypass all permission checking. */
+	if (superuser_arg(roleid))
+		return mask;
+
+	/*
+	 * Get the tablegroup's ACL from pg_tablegroup
+	 */
+	tuple = SearchSysCache1(TABLEGROUPOID, ObjectIdGetDatum(grp_oid));
+	if (!HeapTupleIsValid(tuple))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+		 			 errmsg("tablegroup with OID %u does not exist", grp_oid)));
+
+	ownerId = ((Form_pg_tablegroup) GETSTRUCT(tuple))->grpowner;
+
+	aclDatum = SysCacheGetAttr(TABLEGROUPOID, tuple,
+							   Anum_pg_tablegroup_grpacl, &isNull);
+
+	if (isNull)
+	{
+		/* No ACL, so build default ACL */
+		acl = acldefault(OBJECT_TABLEGROUP, ownerId);
+		aclDatum = (Datum) 0;
+	}
+	else
+	{
+		/* detoast ACL if necessary */
+		acl = DatumGetAclP(aclDatum);
+	}
+
+	result = aclmask(acl, roleid, ownerId, mask, how);
+
+	/* if we have a detoasted copy, free it */
+	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
+		pfree(acl);
+
+	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+/*
  * Exported routine for examining a user's privileges for a tablespace
  */
 AclMode
@@ -4696,6 +4775,18 @@ pg_namespace_aclcheck(Oid nsp_oid, Oid roleid, AclMode mode)
 }
 
 /*
+ * Exported routine for checking a user's access privileges to a tablegroup
+ */
+AclResult
+pg_tablegroup_aclcheck(Oid grp_oid, Oid roleid, AclMode mode)
+{
+	if (pg_tablegroup_aclmask(grp_oid, roleid, mode, ACLMASK_ANY) != 0)
+		return ACLCHECK_OK;
+	else
+		return ACLCHECK_NO_PRIV;
+}
+
+/*
  * Exported routine for checking a user's access privileges to a tablespace
  */
 AclResult
@@ -4945,6 +5036,40 @@ pg_namespace_ownercheck(Oid nsp_oid, Oid roleid)
 	ReleaseSysCache(tuple);
 
 	return has_privs_of_role(roleid, ownerId);
+}
+
+/*
+ * Ownership check for a tablegroup (specified by OID).
+ */
+bool
+pg_tablegroup_ownercheck(Oid grp_oid, Oid roleid)
+{
+	HeapTuple	grptuple;
+	Oid			grpowner;
+
+	// Ensure that the pg_tablegroup catalog actually exists.
+	if (!TablegroupCatalogExists) {
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Tablegroup system catalog does not exist.")));
+	}
+
+	/* Superusers bypass all permission checking. */
+	if (superuser_arg(roleid))
+		return true;
+
+	/* Search syscache for pg_tablegroup */
+	grptuple = SearchSysCache1(TABLEGROUPOID, ObjectIdGetDatum(grp_oid));
+	if (!HeapTupleIsValid(grptuple))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("tablegroup with OID %u does not exist", grp_oid)));
+
+	grpowner = ((Form_pg_tablegroup) GETSTRUCT(grptuple))->grpowner;
+
+	ReleaseSysCache(grptuple);
+
+	return has_privs_of_role(roleid, grpowner);
 }
 
 /*

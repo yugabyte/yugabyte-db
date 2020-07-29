@@ -28,6 +28,7 @@
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_tablegroup.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
 #ifdef CATCACHE_STATS
@@ -951,6 +952,10 @@ CatalogCacheInitializeCache(CatCache *cache)
 
 	CatalogCacheInitializeCache_DEBUG1;
 
+	// skip for TableGroupRelationId if not in snapshot
+	// TODO: remove this (as well as the include) when initdb upgrade is enabled
+	if (cache->cc_reloid == TableGroupRelationId && !TablegroupCatalogExists)
+		return;
 	relation = heap_open(cache->cc_reloid, AccessShareLock);
 
 	/*

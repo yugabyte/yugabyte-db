@@ -36,6 +36,7 @@
 #include "catalog/ybctype.h"
 #include "commands/dbcommands.h"
 #include "commands/ybccmds.h"
+#include "commands/tablegroup.h"
 
 #include "access/htup_details.h"
 #include "utils/lsyscache.h"
@@ -380,7 +381,8 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 }
 
 void
-YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, Oid namespaceId)
+YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
+							 Oid relationId, Oid namespaceId, Oid tablegroupId)
 {
 	if (relkind != RELKIND_RELATION)
 	{
@@ -430,6 +432,11 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 
 		if (strcmp(def->defname, "colocated") == 0)
 		{
+			if (stmt->tablegroupname)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot use \'colocated=true/false\' with tablegroup")));
+
 			bool colocated_relopt = defGetBoolean(def);
 			if (MyDatabaseColocated)
 				colocated = colocated_relopt;
@@ -680,7 +687,8 @@ YBCCreateIndex(const char *indexName,
 			   Oid indexId,
 			   Relation rel,
 			   OptSplit *split_options,
-			   const bool skip_index_backfill)
+			   const bool skip_index_backfill,
+			   Oid tablegroupId)
 {
 	char *db_name	  = get_database_name(MyDatabaseId);
 	char *schema_name = get_namespace_name(RelationGetNamespace(rel));

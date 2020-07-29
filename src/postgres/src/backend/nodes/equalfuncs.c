@@ -1239,6 +1239,7 @@ _equalCreateStmt(const CreateStmt *a, const CreateStmt *b)
 	COMPARE_NODE_FIELD(options);
 	COMPARE_SCALAR_FIELD(oncommit);
 	COMPARE_STRING_FIELD(tablespacename);
+	COMPARE_STRING_FIELD(tablegroupname);
 	COMPARE_SCALAR_FIELD(if_not_exists);
 
 	return true;
@@ -1328,6 +1329,7 @@ _equalIndexStmt(const IndexStmt *a, const IndexStmt *b)
 	COMPARE_SCALAR_FIELD(relationId);
 	COMPARE_STRING_FIELD(accessMethod);
 	COMPARE_STRING_FIELD(tableSpace);
+	COMPARE_STRING_FIELD(tablegroupname);
 	COMPARE_NODE_FIELD(indexParams);
 	COMPARE_NODE_FIELD(indexIncludingParams);
 	COMPARE_NODE_FIELD(options);
@@ -1780,6 +1782,21 @@ _equalDiscardStmt(const DiscardStmt *a, const DiscardStmt *b)
 {
 	COMPARE_SCALAR_FIELD(target);
 
+	return true;
+}
+
+static bool
+_equalCreateTableGroupStmt(const CreateTableGroupStmt *a, const CreateTableGroupStmt *b)
+{
+	COMPARE_STRING_FIELD(tablegroupname);
+	COMPARE_NODE_FIELD(options);
+	return true;
+}
+
+static bool
+_equalDropTableGroupStmt(const DropTableGroupStmt *a, const DropTableGroupStmt *b)
+{
+	COMPARE_STRING_FIELD(tablegroupname);
 	return true;
 }
 
@@ -3421,6 +3438,12 @@ equal(const void *a, const void *b)
 			break;
 		case T_DiscardStmt:
 			retval = _equalDiscardStmt(a, b);
+			break;
+		case T_CreateTableGroupStmt:
+			retval = _equalCreateTableGroupStmt(a, b);
+			break;
+		case T_DropTableGroupStmt:
+			retval = _equalDropTableGroupStmt(a, b);
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _equalCreateTableSpaceStmt(a, b);

@@ -411,6 +411,23 @@ YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
   return YBCStatusOK();
 }
 
+YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
+                           const YBCPgOid table_oid,
+                           bool *exists) {
+  const PgObjectId table_id(database_oid, table_oid);
+  const auto result = pgapi->LoadTable(table_id);
+
+  if (result.ok()) {
+    *exists = true;
+    return YBCStatusOK();
+  } else if (result.status().IsNotFound()) {
+    *exists = false;
+    return YBCStatusOK();
+  } else {
+    return ToYBCStatus(result.status());
+  }
+}
+
 // Index Operations -------------------------------------------------------------------------------
 
 YBCStatus YBCPgNewCreateIndex(const char *database_name,
