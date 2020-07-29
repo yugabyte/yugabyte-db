@@ -62,6 +62,7 @@ set(DOCDB_SRCS
         deadline_info.cc
         doc_boundary_values_extractor.cc
         docdb.cc
+        docdb_debug.cc
         docdb_pgapi.cc
         docdb_util.cc
         doc_ttl_util.cc
