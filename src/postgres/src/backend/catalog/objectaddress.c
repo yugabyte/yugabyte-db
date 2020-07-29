@@ -49,6 +49,7 @@
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
+#include "catalog/pg_tablegroup.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_trigger.h"
@@ -65,6 +66,7 @@
 #include "commands/policy.h"
 #include "commands/proclang.h"
 #include "commands/tablespace.h"
+#include "commands/tablegroup.h"
 #include "commands/trigger.h"
 #include "foreign/foreign.h"
 #include "funcapi.h"
@@ -339,6 +341,18 @@ static const ObjectPropertyType ObjectProperty[] =
 		Anum_pg_class_relacl,
 		OBJECT_TABLE,
 		true
+	},
+	{
+		TableGroupRelationId,
+		TablegroupOidIndexId,
+		TABLEGROUPOID,
+		-1,
+		Anum_pg_tablegroup_grpname,
+		InvalidAttrNumber,
+		Anum_pg_tablegroup_grpowner,
+		Anum_pg_tablegroup_grpacl,
+		OBJECT_TABLEGROUP,
+		false
 	},
 	{
 		TableSpaceRelationId,
@@ -663,6 +677,10 @@ static const struct object_type_map
 	{
 		"database", OBJECT_DATABASE
 	},
+	/* OCLASS_TBLGROUP */
+	{
+		"tablegroup", OBJECT_TABLEGROUP
+	},
 	/* OCLASS_TBLSPACE */
 	{
 		"tablespace", OBJECT_TABLESPACE
@@ -868,6 +886,7 @@ get_object_address(ObjectType objtype, Node *object,
 				break;
 			case OBJECT_DATABASE:
 			case OBJECT_EXTENSION:
+			case OBJECT_TABLEGROUP:
 			case OBJECT_TABLESPACE:
 			case OBJECT_ROLE:
 			case OBJECT_SCHEMA:
@@ -1135,6 +1154,11 @@ get_object_address_unqualified(ObjectType objtype,
 		case OBJECT_EXTENSION:
 			address.classId = ExtensionRelationId;
 			address.objectId = get_extension_oid(name, missing_ok);
+			address.objectSubId = 0;
+			break;
+		case OBJECT_TABLEGROUP:
+			address.classId = TableGroupRelationId;
+			address.objectId = get_tablegroup_oid(name, missing_ok);
 			address.objectSubId = 0;
 			break;
 		case OBJECT_TABLESPACE:
@@ -2144,6 +2168,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 		case OBJECT_ROLE:
 		case OBJECT_SCHEMA:
 		case OBJECT_SUBSCRIPTION:
+		case OBJECT_TABLEGROUP:
 		case OBJECT_TABLESPACE:
 			if (list_length(name) != 1)
 				ereport(ERROR,
@@ -2366,6 +2391,7 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 					aclcheck_error_type(ACLCHECK_NOT_OWNER, typeid);
 			}
 			break;
+		case OBJECT_TABLEGROUP:
 		case OBJECT_TABLESPACE:
 			if (!pg_tablespace_ownercheck(address.objectId, roleid))
 				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
@@ -3280,6 +3306,17 @@ getObjectDescription(const ObjectAddress *object)
 				break;
 			}
 
+		case OCLASS_TBLGROUP:
+			{
+				char	   *tblgroup;
+				tblgroup = get_tablegroup_name(object->objectId);
+				if (!tblgroup)
+					elog(ERROR, "cache lookup failed for tablegroup %u",
+						 object->objectId);
+				appendStringInfo(&buffer, _("tablegroup %s"), tblgroup);
+				break;
+			}
+
 		case OCLASS_TBLSPACE:
 			{
 				char	   *tblspace;
@@ -4020,6 +4057,10 @@ getObjectTypeDescription(const ObjectAddress *object)
 
 		case OCLASS_DATABASE:
 			appendStringInfoString(&buffer, "database");
+			break;
+
+		case OCLASS_TBLGROUP:
+			appendStringInfoString(&buffer, "tablegroup");
 			break;
 
 		case OCLASS_TBLSPACE:
@@ -4820,6 +4861,20 @@ getObjectIdentityParts(const ObjectAddress *object,
 					*objname = list_make1(datname);
 				appendStringInfoString(&buffer,
 									   quote_identifier(datname));
+				break;
+			}
+
+		case OCLASS_TBLGROUP:
+			{
+				char	   *tblgroup;
+				tblgroup = get_tablegroup_name(object->objectId);
+				if (!tblgroup)
+					elog(ERROR, "cache lookup failed for tablegroup %u",
+						 object->objectId);
+				if (objname)
+					*objname = list_make1(tblgroup);
+				appendStringInfoString(&buffer,
+									   quote_identifier(tblgroup));
 				break;
 			}
 

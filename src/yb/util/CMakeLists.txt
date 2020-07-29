@@ -183,7 +183,6 @@ set(UTIL_SRCS
   init.cc
   jsonreader.cc
   jsonwriter.cc
-  kernel_stack_watchdog.cc
   locks.cc
   logging.cc
   malloc.cc
@@ -408,7 +407,6 @@ endif()
 ADD_YB_TEST(slice-test)
 ADD_YB_TEST(spinlock_profiling-test)
 ADD_YB_TEST(split-test)
-ADD_YB_TEST(stack_watchdog-test)
 ADD_YB_TEST(stats/iostats_context_test)
 ADD_YB_TEST(status-test)
 ADD_YB_TEST(stol_utils-test)

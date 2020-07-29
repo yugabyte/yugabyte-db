@@ -89,6 +89,11 @@ DEFINE_bool(ysql_beta_feature_roles, false,
 DEFINE_bool(ysql_beta_feature_extension, false,
             "Whether to enable the 'extension' ysql beta feature");
 
+DEFINE_bool(ysql_beta_feature_tablegroup, false,
+            "Whether to enable the incomplete 'tablegroup' ysql beta feature");
+
+TAG_FLAG(ysql_beta_feature_tablegroup, hidden);
+
 DEFINE_bool(ysql_enable_manual_sys_table_txn_ctl, false,
             "Enable manual transaction control for YSQL system tables. Mostly needed for testing. "
             "This flag should go away once full transactional DDL is implemented.");

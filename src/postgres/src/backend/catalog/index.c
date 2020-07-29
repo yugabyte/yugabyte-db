@@ -783,7 +783,8 @@ index_create(Relation heapRelation,
 			 bool is_internal,
 			 Oid *constraintId,
 			 OptSplit *split_options,
-			 const bool skip_index_backfill)
+			 const bool skip_index_backfill,
+			 Oid tablegroupId)
 {
 	Oid			heapRelationId = RelationGetRelid(heapRelation);
 	Relation	pg_class;
@@ -985,7 +986,8 @@ index_create(Relation heapRelation,
 					   indexRelationId,
 					   heapRelation,
 					   split_options,
-					   skip_index_backfill);
+					   skip_index_backfill,
+					   tablegroupId);
 	}
 
 	/*

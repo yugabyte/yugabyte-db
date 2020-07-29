@@ -12,6 +12,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -40,7 +41,7 @@ public class AppInit {
   @Inject
   public AppInit(Environment environment, Application application,
                  ConfigHelper configHelper, ReleaseManager releaseManager,
-                 AWSInitializer awsInitializer) {
+                 AWSInitializer awsInitializer, CustomerTaskManager taskManager) {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
@@ -114,6 +115,9 @@ public class AppInit {
 
       // initialize prometheus exports
       DefaultExports.initialize();
+
+      // Fail incomplete tasks
+      taskManager.failAllPendingTasks();
 
       Logger.info("AppInit completed");
    }
