@@ -21,8 +21,8 @@ This section covers the set of YCQL built-in functions that work on the date and
 
 Use these functions to return the current system date and time in UTC time zone.
 
-- They take in no arguments.
-- The return value is a `DATE`, `TIME`, or `TIMESTAMP` respectively.
+- They take no arguments.
+- The return value is a `DATE`, `TIME`, or `TIMESTAMP`, respectively.
 
 ### Examples
 
