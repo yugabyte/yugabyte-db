@@ -7,7 +7,7 @@ menu:
   latest:
     parent: build-apps
     name: Java
-    identifier: java-3
+    identifier: java-46
     weight: 550
 type: page
 isTocNested: true
@@ -36,7 +36,7 @@ showAsideToc: true
   <li>
     <a href="/latest/quick-start/build-apps/java/ycql-4.6" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.6)
+      YCQL (4.6) [BETA]
     </a>
   </li>
 </ul>
