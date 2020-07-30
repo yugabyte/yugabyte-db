@@ -2,7 +2,7 @@
 title: cr_show_t4.sql
 linkTitle: cr_show_t4.sql
 headerTitle: cr_show_t4.sql
-description: Create a function to compute some basic facts about table t4.
+description: cr_show_t4.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: cr-show-t4

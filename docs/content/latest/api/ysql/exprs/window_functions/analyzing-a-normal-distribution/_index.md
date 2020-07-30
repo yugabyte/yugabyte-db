@@ -2,7 +2,7 @@
 title: percent_rank(), cume_dist() and ntile() on a normal distribution
 linkTitle: Analyzing a normal distribution
 headerTitle: Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()
-description: Comparing and contrasting percent_rank(), cume_dist() and ntile() on large sets of normally distributed values
+description: Compare and contrast the window functions percent_rank(), cume_dist(), and ntile() on large sets of normally distributed values.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -73,7 +73,7 @@ The steps that are described in the next section should all be run at the `ysqls
 
 It's best to create a dedicated user for the purpose of running this code that owns no other objects.
 
-Each of the the `.sql` scripts is presented on a dedicated page. (You can see all of these in the order in which they are to be run in the navigation bar.) Each page starts with a sentence like this:
+Each of the `.sql` scripts is presented on a dedicated page. (You can see all of these in the order in which they are to be run in the navigation bar.) Each page starts with a sentence like this:
 
 > Save this script as `<some name>.sql`.
 
