@@ -580,6 +580,16 @@ void StepDownRandomTablet(MiniCluster* cluster) {
   }
 }
 
+std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const string& table_id) {
+  std::unordered_set<string> tablet_ids;
+  for (auto peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+    if (peer->tablet_metadata()->table_id() == table_id) {
+      tablet_ids.insert(peer->tablet_id());
+    }
+  }
+  return tablet_ids;
+}
+
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(MiniCluster* cluster, ListPeersFilter filter) {
   switch (filter) {
     case ListPeersFilter::kAll:
@@ -620,6 +630,17 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
   }
 
   return result;
+}
+
+Status WaitUntilTabletHasLeader(
+    MiniCluster* cluster, const string& tablet_id, MonoTime deadline) {
+  return Wait([cluster, &tablet_id] {
+    auto tablet_peers = ListTabletPeers(cluster, [&tablet_id](auto peer) {
+      return peer->tablet_id() == tablet_id
+          && peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+    });
+    return tablet_peers.size() == 1;
+  }, deadline, "Waiting for election in tablet " + tablet_id);
 }
 
 Status WaitForLeaderOfSingleTablet(
