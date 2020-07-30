@@ -46,6 +46,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 
+#include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_double(TEST_respond_write_failed_probability);
@@ -106,6 +107,7 @@ class QLStressTest : public QLDmlTestBase {
     CompleteSchemaBuilder(&b);
 
     ASSERT_OK(table_.Create(kTableName, NumTablets(), client_.get(), &b));
+    ASSERT_OK(WaitForTabletLeaders());
   }
 
   virtual void CompleteSchemaBuilder(YBSchemaBuilder* b) {}
@@ -117,6 +119,14 @@ class QLStressTest : public QLDmlTestBase {
   virtual void InitSchemaBuilder(YBSchemaBuilder* builder) {
     builder->AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
     builder->AddColumn(kValueColumn)->Type(STRING);
+  }
+
+  CHECKED_STATUS WaitForTabletLeaders() {
+    const MonoTime deadline = MonoTime::Now() + 10s * kTimeMultiplier;
+    for (const auto& tablet_id : ListTabletIdsForTable(cluster_.get(), table_->id())) {
+      RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster_.get(), tablet_id, deadline));
+    }
+    return Status::OK();
   }
 
   YBqlWriteOpPtr InsertRow(const YBSessionPtr& session,
