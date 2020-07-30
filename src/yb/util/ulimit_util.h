@@ -29,18 +29,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_ULIMIT_INFO_H
-#define YB_UTIL_ULIMIT_INFO_H
+#ifndef YB_UTIL_ULIMIT_UTIL_H
+#define YB_UTIL_ULIMIT_UTIL_H
 
 #include <string>
+#include "yb/util/status.h"
 
 namespace yb {
 
 // Static functions related to fetching information about the current build.
-class UlimitInfo {
+class UlimitUtil {
  public:
   static std::string GetUlimitInfo();
+
+  // Initialize process resource soft limits based on recommended defaults. Set each soft limit
+  // to at most the hard limit of the system for that resource.
+  static void InitUlimits();
 };
 
 } // namespace yb
-#endif /* YB_UTIL_ULIMIT_INFO_H */
+#endif /* YB_UTIL_ULIMIT_UTIL_H */
