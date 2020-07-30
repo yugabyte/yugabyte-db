@@ -50,7 +50,8 @@ A date is represented using a 32-bit unsigned integer representing the number of
 
 Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values as an integer (days since epoch) or in the following string format:
 
-```yyyy-mm-dd
+```
+yyyy-mm-dd
 ```
 
 - `yyyy`: four digit year.
@@ -65,7 +66,8 @@ Values of the `time` data type are encoded as 64-bit signed integers representin
 
 Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values in the following string format, where milliseconds (`f`) are optional:
 
-```hh:mm:ss[.fff]
+```
+hh:mm:ss[.fff]
 ```
 
 - `HH`: two digit hour, using a 24-hour clock.
@@ -81,7 +83,8 @@ Values of the `timestamp` data type combines date, time, and time zone, in ISO 8
 
 Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values in the following string format, where milliseconds (`f`) are optional:
 
-```yyyy-mm-dd[ (T| )HH:MM:SS[.fff]][(+|-)NNNN]
+```
+yyyy-mm-dd[ (T| )HH:MM:SS[.fff]][(+|-)NNNN]
 ```
 
 Required date (`yyyy-mm-dd`) where:
