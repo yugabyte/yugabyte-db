@@ -154,7 +154,8 @@ TabletPeer::TabletPeer(
     const std::string& permanent_uuid,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     MetricRegistry* metric_registry,
-    TabletSplitter* tablet_splitter)
+    TabletSplitter* tablet_splitter,
+    const std::shared_future<client::YBClient*>& client_future)
     : meta_(meta),
       tablet_id_(meta->raft_group_id()),
       local_peer_pb_(local_peer_pb),
@@ -167,7 +168,8 @@ TabletPeer::TabletPeer(
       permanent_uuid_(permanent_uuid),
       preparing_operations_counter_(operation_tracker_.LogPrefix()),
       metric_registry_(metric_registry),
-      tablet_splitter_(tablet_splitter) {}
+      tablet_splitter_(tablet_splitter),
+      client_future_(client_future) {}
 
 TabletPeer::~TabletPeer() {
   std::lock_guard<simple_spinlock> lock(lock_);
@@ -178,7 +180,6 @@ TabletPeer::~TabletPeer() {
 
 Status TabletPeer::InitTabletPeer(
     const TabletPtr& tablet,
-    const std::shared_future<client::YBClient*>& client_future,
     const std::shared_ptr<MemTracker>& server_mem_tracker,
     Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
@@ -203,7 +204,6 @@ Status TabletPeer::InitTabletPeer(
           IllegalState, "Invalid tablet state for init: $0", RaftGroupStatePB_Name(state));
     }
     tablet_ = tablet;
-    client_future_ = client_future;
     proxy_cache_ = proxy_cache;
     log_ = log;
     // "Publish" the log pointer so it can be retrieved using the log() accessor.

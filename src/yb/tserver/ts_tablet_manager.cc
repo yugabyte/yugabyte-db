@@ -1155,9 +1155,14 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
     const RaftGroupMetadataPtr& meta, RegisterTabletPeerMode mode) {
   TabletPeerPtr tablet_peer(new tablet::TabletPeer(
-      meta, local_peer_pb_, scoped_refptr<server::Clock>(server_->clock()), fs_manager_->uuid(),
+      meta,
+      local_peer_pb_,
+      scoped_refptr<server::Clock>(server_->clock()),
+      fs_manager_->uuid(),
       Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->raft_group_id()),
-      metric_registry_, this));
+      metric_registry_,
+      this,
+      async_client_init_->get_client_future()));
   RETURN_NOT_OK(RegisterTablet(meta->raft_group_id(), tablet_peer, mode));
   return tablet_peer;
 }
@@ -1335,13 +1340,13 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   yb::OpId split_op_id;
 
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
-  if (CompareAndSetFlag(&FLAGS_TEST_force_single_tablet_failure,
-                        true /* expected */, false /* val */)) {
-    LOG(ERROR) << "Setting the state of a tablet to FAILED";
-    tablet_peer->SetFailed(STATUS(InternalError, "Setting tablet to failed state for test",
-                                  tablet_id));
-    return;
-  }
+    if (CompareAndSetFlag(&FLAGS_TEST_force_single_tablet_failure,
+                          true /* expected */, false /* val */)) {
+      LOG(ERROR) << "Setting the state of a tablet to FAILED";
+      tablet_peer->SetFailed(STATUS(InternalError, "Setting tablet to failed state for test",
+                                    tablet_id));
+      return;
+    }
 
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
     // partially created tablet here?
@@ -1390,7 +1395,6 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     TRACE("Initializing tablet peer");
     auto s = tablet_peer->InitTabletPeer(
         tablet,
-        async_client_init_->get_client_future(),
         server_->mem_tracker(),
         server_->messenger(),
         &server_->proxy_cache(),
