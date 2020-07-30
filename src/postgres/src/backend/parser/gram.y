@@ -11863,7 +11863,11 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 		;
 
 using_clause:
-				USING from_list						{ $$ = $2; }
+			USING from_list
+				{
+					parser_ybc_signal_unsupported(@1, "USING clause in DELETE", 738);
+					$$ = $2;
+				}
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
@@ -11959,6 +11963,9 @@ UpdateStmt: opt_with_clause UPDATE relation_expr_opt_alias
 					n->relation = $3;
 					n->targetList = $5;
 					n->fromClause = $6;
+					if (n->fromClause != NULL) {
+						parser_ybc_signal_unsupported(@1, "FROM clause in UPDATE", 738);
+					}
 					n->whereClause = $7;
 					n->returningList = $8;
 					n->withClause = $1;
