@@ -22,13 +22,13 @@ You can read more about these notions in the PostgreSQL documentation here:
 
 - Section [43.3.5. Record Types](https://www.postgresql.org/docs/11/plpgsql-declarations.html#PLPGSQL-DECLARATION-RECORDS)
 
-You need first to understand how to write a literal for a _"row"_ type value before you can understand, as the [The literal for an array of "row" type values](../array-of-rows/) section explains, how to write the literal for an array of such values.
+You need first to understand how to write a literal for a _"row"_ type value before you can understand, as [The literal for an array of "row" type values](../array-of-rows/) explains, how to write the literal for an array of such values.
 
-This section uses the same approach as the [The literal for an array of primitive values](../array-of-primitive-values/) section: first it states the rules; and then it illustrates these with examples.
+This section uses the same approach as [The literal for an array of primitive values](../array-of-primitive-values/): first it states the rules; and then it illustrates these with examples.
 
 ## Statement of the rules
 
-Just as in the [Statement of the rules](../array-of-primitive-values/#statement-of-the-rules) subsection in the _"The literal for an array of primitive values"_ section, the statement of these rules depends on understanding the notion of the canonical form of a literal.
+Just as in [Statement of the rules](../array-of-primitive-values/#statement-of-the-rules) in the _"The literal for an array of primitive values"_ section, the statement of these rules depends on understanding the notion of the canonical form of a literal.
 
 If you follow the rules that are stated here, and illustrated in the demonstrations below, then you will always produce a syntactically valid literal which expresses the semantics that you intend. It turns out that many other variants, especially for `text[]` values, are legal and can produce the result that you intend. However, the rules that govern these exotic uses will not be documented because it is always sufficient to create your literals in canonical form.
 
@@ -76,7 +76,7 @@ select v1::text as text_typecast from t where k = 1
 ```
 The keyword `ROW` names the _"row"_ type constructor function. It is optional, but is used here for emphasis.
 
-The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in the section [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest). 
+The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest). 
 
 Notice that, in this example, the `SELECT` statement is terminated by the `\gset` metacommand on the next line rather than by the usual semicolon. The `\gset` metacommand is silent. The `\echo` metacommand shows this:
 
@@ -117,7 +117,7 @@ As promised, the canonical form of the _"row"_ type literal does indeed recreate
 
 ### "Row" type with text fields
 
-Use the [_"Row"_ type with `int` fields](./#row-type-with-text-fields) example as a template for this and the subsequent sections. The example sets array values each of which, apart from the single character `a`, needs some discussion. These are the characters (or, in one case, character sequence), listed here "bare" and with ten spaces between each:
+Use [_"Row"_ type with `int` fields](./#row-type-with-text-fields) as a template for this and the subsequent sections. The example sets array values each of which, apart from the single character `a`, needs some discussion. These are the characters (or, in one case, character sequence), listed here "bare" and with ten spaces between each:
 ```
      a       '       a b       ()       ,       "       \       null
 ```
@@ -298,4 +298,4 @@ begin
 end;
 $body$;
 ```
-You can use the _"row"_ type constructor as an expression in the [`array[]` value constructor](../../array-constructor)). But, of course, you can use only the literal for a _"row"_ type value within the the _literal_ for an array. The section [The literal for an array of _"row"_ type values](../array-of-rows/) explains this.
+You can use the _"row"_ type constructor as an expression in the [`array[]` value constructor](../../array-constructor)). But, of course, you can use only the literal for a _"row"_ type value within the _literal_ for an array. [The literal for an array of _"row"_ type values](../array-of-rows/) explains this.

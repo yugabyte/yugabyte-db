@@ -34,7 +34,7 @@ An array is, by definition, a rectilinear N-dimensional set of "cells". You can 
 Sometimes, a ragged structure is useful. Here's an example:
 - a one-dimensional array of "payload" one-dimensional arrays, each of which might have a different length
 
-This structure is crucially different from a rectilinear two-dimensional array. A `DOMAIN` lets you create such a structure by providing the means to give the payload array data type a name. The section [Using an array of `DOMAIN` values](./array-of-domains/) shows how to do this.
+This structure is crucially different from a rectilinear two-dimensional array. A `DOMAIN` lets you create such a structure by providing the means to give the payload array data type a name. [Using an array of `DOMAIN` values](./array-of-domains/) shows how to do this.
 {{< /note >}}
 
 A value within an array is specified by a tuple of _index_ values, like this (for a four-dimensional array):
@@ -91,7 +91,7 @@ create table t2(
   one_dimensional_array int[],
   two_dimensional_array int[10][10]);
 ```
-Notice that it appears, optionally, to let you specify how many values each dimension holds. (The Standard syntax allows the specification of the length of just one dimension.) However, these apparent declarations of intent, too, are silently ignored. Moreover, even the _dimensionality_ is ignored. The value, in a particular row, in a table column with an array data type (or its cousin, a variable in a PL/pgSQL program) can hold an array value of _any_ dimensionality. This is demonstrated by example in the section [Multidimensional array of `int` values](./literals/array-of-primitive-values/#multidimensional-array-of-int-values). This means that declaring an array using the reserved word `array`, which apparently lets you define only a one-dimensional array, and declaring an array using `[]`, which apparently lets you define array of any dimensionality, where one, some, or all of the dimensions are nominally constrained, are entirely equivalent.
+Notice that it appears, optionally, to let you specify how many values each dimension holds. (The Standard syntax allows the specification of the length of just one dimension.) However, these apparent declarations of intent, too, are silently ignored. Moreover, even the _dimensionality_ is ignored. The value, in a particular row, in a table column with an array data type (or its cousin, a variable in a PL/pgSQL program) can hold an array value of _any_ dimensionality. This is demonstrated by example in [Multidimensional array of `int` values](./literals/array-of-primitive-values/#multidimensional-array-of-int-values). This means that declaring an array using the reserved word `array`, which apparently lets you define only a one-dimensional array, and declaring an array using `[]`, which apparently lets you define array of any dimensionality, where one, some, or all of the dimensions are nominally constrained, are entirely equivalent.
 
 The possibility that that different rows in the same table column can hold array values of different dimensionality is explained by picturing the implementation. Array values are held, in an opaque internal representation, as a linear "ribbon" of suitably delimited values of the array's data type. The array's actual dimensionality, and the upper and lower bound of the index along each dimension, is suitably represented in a header. This information is used, in a trivial arithmetic formula, to translate an address specification like `arr[13][7][5][17]` into the position of the value, as a single integer, along the ribbon of values. Understanding this explains why, except for the special case of a one-dimensional array, the dimensionality and the bounds of an array value are fixed at creation time. It also explains why a few of the array functions are supported only for one-dimensional arrays.
 
@@ -130,7 +130,7 @@ Because _"v"_ has no constraint, it can be `NULL`, just like when its data type 
 update t set v = v||'{null}'::int[] where k = 2;
 select k, v, array_dims(v) as dims from t where k = 2;
 ```
-The `||` operator is explained in the section [Array concatenation functions and operators](./functions-operators/concatenation/#the-160-160-160-160-operator). The query shows this:
+The `||` operator is explained in [Array concatenation functions and operators](./functions-operators/concatenation/#the-160-160-160-160-operator). The query shows this:
 
 ```
  k |      v      | dims  
@@ -281,11 +281,11 @@ It produces this result (after manually stripping the _"INFO:"_ prompts):
 ```
 This approach isn't practical for an array with higher dimensionality or for a two-dimensional array whose second dimension is large. Rather, this code is included here to show how you can address individual elements. The names of the implicitly declared `FOR` loop variables _"row"_ and _"col"_ correspond intuitively to how the values are laid out in the literal that defines the array value. The nested loops are designed to visit the values in so-called row-major order (the last subscript varies most rapidly).
 
-The term _"row-major order"_ is explained in the section [Joint semantics](./functions-operators/properties/#joint-semantics) within the section _"Functions for reporting the geometric properties of an array"_.
+The term _"row-major order"_ is explained in [Joint semantics](./functions-operators/properties/#joint-semantics) within the section _"Functions for reporting the geometric properties of an array"_.
 
 When, for example, the values of same-dimensioned multidimensional arrays are compared, they are visited in this order and compared pairwise in just the same way that scalar values are compared.
 
-**Note:** The term "_row-major order"_ is explained in the [Joint semantics](./functions-operators/properties/#joint-semantics)) section within the _"Functions for reporting the geometric properties of an array"_ section. it contains a an example PL/pgSQL procedure that shows how to traverse an arbitrary two-dimensional array's values, where the lower bounds and lengths along each dimension are unknown beforehand, in this order.
+**Note:** The term "_row-major order"_ is explained in [Joint semantics](./functions-operators/properties/#joint-semantics)) within the _"Functions for reporting the geometric properties of an array"_ section. it contains a an example PL/pgSQL procedure that shows how to traverse an arbitrary two-dimensional array's values, where the lower bounds and lengths along each dimension are unknown beforehand, in this order.
 
 Notice that, in the example above, the first value in each dimension has index value 1. This is the case when an array value is created using a literal and you say nothing about the index values. The next example shows how you can control where the index values for each dimension start and end.
 ```postgresql
@@ -314,7 +314,7 @@ In this syntax, `[2:4]` says that the index runs from 2 through 4 on the first d
 ```
 Notice that if you access an element whose index values put it outside the ranges of the defined values, then, as mentioned, you silently get `NULL`.
 
-The values in an array are stored by laying out their internal representations consecutively in row-major order. This term is explained in the [Joint semantics](./functions-operators/properties/#joint-semantics)) section within the _"Functions for reporting the geometric properties of an array"_ section. Because every value has the same data type, this means that a value of interest can be addressed quickly, without index support, by calculating its offset. The value itself knows its dimensions. This explains how arrays of different dimensionality can be stored in a single table column. Even when the representations are of variable length (as is the case with, for example, `text` values), each knows its length so that the value boundaries can be calculated.
+The values in an array are stored by laying out their internal representations consecutively in row-major order. This term is explained in [Joint semantics](./functions-operators/properties/#joint-semantics)) within the _"Functions for reporting the geometric properties of an array"_ section. Because every value has the same data type, this means that a value of interest can be addressed quickly, without index support, by calculating its offset. The value itself knows its dimensions. This explains how arrays of different dimensionality can be stored in a single table column. Even when the representations are of variable length (as is the case with, for example, `text` values), each knows its length so that the value boundaries can be calculated.
 
 ## Uses of arrays
 
@@ -326,7 +326,7 @@ A trained machine learning model is likely to be either a single array with mayb
 
 In these uses, your requirement is to persist the data and then to retrieve it (possibly retrieving just a slice) for programmatic analysis of the kind for which SQL is at best cumbersome or at worst inappropriate. For example, a one-dimensional array might be used to represent a path on a horizontal surface, where the value is a row representing the _(x, y)_ coordinate pair, and you might want to fit a curve through the data points to smooth out measurement inaccuracies. The [GPS trip data](./#example-use-case-gps-trip-data) use case, described below, typifies this use of arrays.
 
-Some use cases call for a multidimensional _ragged_ array-like structure. Such a structure doesn't qualify for the name "array" because it isn't rectilinear. The note above points to the [Using an array of `DOMAIN` values](./array-of-domains/) section which shows how to implement such a ragged structure.
+Some use cases call for a multidimensional _ragged_ array-like structure. Such a structure doesn't qualify for the name "array" because it isn't rectilinear. The note above points to [Using an array of `DOMAIN` values](./array-of-domains/) which shows how to implement such a ragged structure.
 
 ## Example use case: GPS trip data
 
@@ -369,7 +369,7 @@ For example, in the classic _"orders"_ and _"order_lines"_ design, an order line
 
 It's different with GPS data. The resolution of modern devices is so fine (typically just a few paces, as mentioned) that it's hugely unlikely that two different GPS data points would have the same position. It's even less likely that different point would share the same heart rate and all the other facts that are recorded at each position. In other words it's inconceivable that a query like the example given for the *"orders"* use case (_find the trips, by any user, that all share a common GPS data point_) would be useful. Moreover, all typical uses require fetching a trip and all its GPS data in a single query. One obvious example is to plot the transit of a lap on a map. Another example is to compute the generous containing envelope for a lap so that the set of coinciding lap envelopes can be discovered and analyzed to generate leader board reports and the like. SQL is not up to this kind of computation. Rather, you need procedural code—either in a stored procedure or in a client-side program.
 
-The is use case is taken one step, by using a ragged array-like structure, in the section [Example use case: GPS trip data (revisited)](./array-of-domains/#example-use-case-gps-trip-data-revisited).
+The is use case is taken one step, by using a ragged array-like structure, in [Example use case: GPS trip data (revisited)](./array-of-domains/#example-use-case-gps-trip-data-revisited).
 
 ## Organization of the remaining array functionality content
 

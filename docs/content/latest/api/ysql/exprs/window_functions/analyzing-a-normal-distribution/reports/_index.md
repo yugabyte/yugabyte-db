@@ -2,7 +2,7 @@
 title: Reports
 linkTitle: Reports
 headerTitle: Reports
-description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window fucntions documentation (reports of results).
+description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation (reports of results).
 image: /images/section_icons/api/ysql.png
 menu:
   latest:

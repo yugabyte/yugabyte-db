@@ -2,7 +2,7 @@
 title: cr_dp_views.sql
 linkTitle: cr_dp_views.sql
 headerTitle: cr_dp_views.sql
-description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window fucntions documentation.
+description: cr_dp_views.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: cr-dp-views

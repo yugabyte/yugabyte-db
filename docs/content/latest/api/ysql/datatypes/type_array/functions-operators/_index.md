@@ -61,7 +61,7 @@ The `array[]` constructor, and the three functions, create an array from scratch
 ## Operators to test whether a value is in an array
 
 These operators require that the [LHS](https://en.wikipedia.org/wiki/Sides_of_an_equation) is a scalar and that
-the the [RHS](https://en.wikipedia.org/wiki/Sides_of_an_equation) is an array of that LHS's data type.
+the [RHS](https://en.wikipedia.org/wiki/Sides_of_an_equation) is an array of that LHS's data type.
 
 | Operator | 1-d only? | Description |
 | ---- | ---- | ---- |

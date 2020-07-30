@@ -2,7 +2,7 @@
 title: lag(), lead()
 linkTitle: lag(), lead()
 headerTitle: lag(), lead()
-description: Describes the functionlity of the YSQL window functions lag(), lead()
+description: Describes the functionality of the YSQL window functions lag(), lead()
 menu:
   latest:
     identifier: lag-lead

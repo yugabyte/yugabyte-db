@@ -80,9 +80,9 @@ It produces this result:
  {"(1,dog)","(2,cat)","(3,ant)"}
 ```
 
-You recognize this as the text of the literal that represents an array of tuples that are shape-compatible with _"type rt"_. The underlying notions that explain what is seen here are explained in the section [The non-lossy round trip: value to `text` typecast and back to value](../../literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value).
+You recognize this as the text of the literal that represents an array of tuples that are shape-compatible with _"type rt"_. The underlying notions that explain what is seen here are explained in [The non-lossy round trip: value to `text` typecast and back to value](../../literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value).
 
-Recall from the [`array[]` constructor](../../array-constructor/) section that this value doesn't encode the type name. In fact, you could typecast it to any shape compatible type.
+Recall from [`array[]` constructor](../../array-constructor/) that this value doesn't encode the type name. In fact, you could typecast it to any shape compatible type.
 
 You can understand the effect of `array_agg()` thus:
 
@@ -113,7 +113,7 @@ Each of the three _"select... as arr"_ queries above produces the same result, a
 
 To prepare for the demonstration of `unnest()`, save the single-valued result from the most recent of the three queries (but any one of them would do) into a `ysqlsh` variable by using the `\gset` metacommand. This takes a single argument, conventionally spelled with a trailing underscore (for example, _"result&#95;"_) and re-runs the `SELECT` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `SELECT` doesn't return a single row, then you get a clear error.) In general, when the `SELECT` list has _N_ members, called _"c1"_ through _"cN"_, each of these values is stored in automatically-created variables called _"result&#95;c1"_ through _"result&#95;cN"_.
 
-if you aren't already familiar with the `\gset` metacommand, you can read a brief account of how it works in the section [Meta-commands](../../../../../../admin/ysqlsh/#meta-commands) within the major section on `ysqlsh`.
+if you aren't already familiar with the `\gset` metacommand, you can read a brief account of how it works in [Meta-commands](../../../../../../admin/ysqlsh/#meta-commands) within the major section on `ysqlsh`.
 
 Immediately after running the _"with... select array_agg(...) as arr..."_ query above, do this:
 
@@ -317,7 +317,7 @@ It produces this result:
    9
 ```
 
-This `SETOF` result lists all of the input array's "leaf" values in row-major order. This term is explained in the [Joint semantics](./functions-operators/properties/#joint-semantics)) section within the _"Functions for reporting the geometric properties of an array"_ section.
+This `SETOF` result lists all of the input array's "leaf" values in row-major order. This term is explained in [Joint semantics](./functions-operators/properties/#joint-semantics)) within the _"Functions for reporting the geometric properties of an array"_ section.
 
 Notice that, for the multidimensional case, the original input to `array_agg()` was _not_, therefore, regained. This point is emphasized by aggregating the result:
 
@@ -351,7 +351,7 @@ It produces this result:
  1,2,3,4,5,6,7,8,9
 ```
 
-See the section [Looping through arrays in PL/pgSQL](../../looping-through-arrays/). This shows how you can use the `FOREACH` loop in procedural code, with an appropriate value for the `SLICE` operand, to unnest an array into a set of subarrays whose dimensionality you can choose. At one end of the range, you can mimmic `unnest()` and produce scalar values. At the other end of the range, you can produce a set of arrays with dimensionality `n - 1` where `n` is the dimensionality of the input array.
+See [Looping through arrays in PL/pgSQL](../../looping-through-arrays/). This shows how you can use the `FOREACH` loop in procedural code, with an appropriate value for the `SLICE` operand, to unnest an array into a set of subarrays whose dimensionality you can choose. At one end of the range, you can mimmic `unnest()` and produce scalar values. At the other end of the range, you can produce a set of arrays with dimensionality `n - 1` where `n` is the dimensionality of the input array.
 
 ## Realistic use case
 
@@ -548,7 +548,7 @@ order by
 master_pk, seq;
 ```
 
-The result is identical to what the _"original&#95;data"_ view represents. But rather than relying on visual inspection, can check that the _"new&#95;data"_ view and the the _"original&#95;data"_ view represent the identical result by using SQL thus:
+The result is identical to what the _"original&#95;data"_ view represents. But rather than relying on visual inspection, can check that the _"new&#95;data"_ view and the _"original&#95;data"_ view represent the identical result by using SQL thus:
 
 ```plpgsql
 with
@@ -696,7 +696,7 @@ return value:      SETOF integer
 
 ### Semantics
 
-The second input parameter specifies the dimension along which the index values should be generated. The third, optional, input parameter controls the ordering of the values. The default value `TRUE` means generate the index values in ascending order from the lower index bound to the upper index bound; and the value `FALSE` means generate the the index values in descending order from the upper index bound to the lower index bound.
+The second input parameter specifies the dimension along which the index values should be generated. The third, optional, input parameter controls the ordering of the values. The default value `TRUE` means generate the index values in ascending order from the lower index bound to the upper index bound; and the value `FALSE` means generate the index values in descending order from the upper index bound to the lower index bound.
 
 Here is a simple example:
 
@@ -746,7 +746,7 @@ select array_upper(array[17, 42, 53], 1) + 1 - generate_series(
 as subscript;
 ```
 
-The following example creates a procedure that compares the results of `generate_subscripts()` and `generate_series()`, when the latter is invoked in a way that will produce the same results as the former. The procedure's input parameter lets you specify along which dimension you want to generate the index values. To emphasize how much easier it is to write the `generate_subscripts()` invocation, the test uses the reverse index order option. The array is constructed using the array literal notation (see the section [Multidimensional array of `int` values](../../literals/array-of-primitive-values/#multidimensional-array-of-int-values)) that explicitly sets the lower index bound along each of the array's three dimensions. The [`array_agg()`](./#array-agg-first-overload) function is used to aggregate the results from each approach so that they can be compared simply by using the [`=` operator](../comparison/#the-160-160-160-160-and-160-160-160-160-operators).
+The following example creates a procedure that compares the results of `generate_subscripts()` and `generate_series()`, when the latter is invoked in a way that will produce the same results as the former. The procedure's input parameter lets you specify along which dimension you want to generate the index values. To emphasize how much easier it is to write the `generate_subscripts()` invocation, the test uses the reverse index order option. The array is constructed using the array literal notation (see [Multidimensional array of `int` values](../../literals/array-of-primitive-values/#multidimensional-array-of-int-values)) that explicitly sets the lower index bound along each of the array's three dimensions. [`array_agg()`](./#array-agg-first-overload) is used to aggregate the results from each approach so that they can be compared simply by using the [`=` operator](../comparison/#the-160-160-160-160-and-160-160-160-160-operators).
 
 ```plpgsql
 create or replace procedure p(dim in int)
@@ -991,6 +991,6 @@ You could generalize this approach for an array of any dimensionality. However, 
 
 ### Comparing the functionality brought by generate_subscripts() with that brought by the FOREACH loop
 
-See the section [Looping through arrays in PL/pgSQL](../../looping-through-arrays/).
+See [Looping through arrays in PL/pgSQL](../../looping-through-arrays/).
 
 The `FOREACH` loop brings dedicated syntax for looping over the contents of an array. The loop construct uses the `SLICE` keyword to specify the subset of the array's elements over which you want to iterate. Typically you specify that the iterand is an array with fewer dimensions than the array over which you iterate. Because this functionality is intrinsic to the `FOREACH` loop, and because it would be very hard to write the SQL statement that produces this kind of slicing, you should use the `FOREACH` loop when you have this kind of requirement. If you want to consume the output in a surrounding SQL statement, you can use `FOREACH` in a PL/pgSQL table function that returns a `SETOF` the sub-array that you need. You specify the `RETURNS` clause of such a table function using the `TABLE` keyword.

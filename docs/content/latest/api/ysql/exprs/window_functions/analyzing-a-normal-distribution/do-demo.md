@@ -2,7 +2,7 @@
 title: do_demo.sql
 linkTitle: do_demo.sql
 headerTitle: do_demo.sql
-description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window fucntions documentation.
+description: do_demo.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: do-demo

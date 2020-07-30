@@ -2,7 +2,7 @@
 title: do_clean_start.sql
 linkTitle: do_clean_start.sql
 headerTitle: do_clean_start.sql
-description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window fucntions documentation.
+description: do_clean_start.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: do-clean-start

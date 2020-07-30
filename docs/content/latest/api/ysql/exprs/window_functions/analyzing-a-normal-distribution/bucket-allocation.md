@@ -2,7 +2,7 @@
 title: Bucket allocation scheme
 linkTitle: Bucket allocation scheme
 headerTitle: The bucket allocation scheme
-description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window fucntions documentation.
+description: The bucket allocation scheme. Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: bucket-allocation
