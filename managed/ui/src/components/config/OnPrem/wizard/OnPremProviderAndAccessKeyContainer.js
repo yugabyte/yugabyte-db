@@ -37,7 +37,9 @@ const mapStateToProps = (state, ownProps) => {
   let initialFormValues = {
     sshPort: 54422,
     passwordlessSudoAccess: true,
-    airGapInstall: false
+    airGapInstall: false,
+    useHostnames: false,
+    homeDir: ""
   };
   const {cloud: {onPremJsonFormData}} = state;
   if (ownProps.isEditProvider && isNonEmptyObject(onPremJsonFormData)) {
@@ -49,6 +51,8 @@ const mapStateToProps = (state, ownProps) => {
       sshPort: onPremJsonFormData.key.sshPort,
       passwordlessSudoAccess: onPremJsonFormData.key.passwordlessSudoAccess,
       airGapInstall: onPremJsonFormData.key.airGapInstall,
+      useHostnames: _.get(onPremJsonFormData, "provider.config.USE_HOSTNAME", "false") === "true",
+      homeDir: _.get(onPremJsonFormData, "provider.config.YB_HOME_DIR", ""),
       machineTypeList : onPremJsonFormData.instanceTypes.map(function (item) {
         return {
           code: item.instanceTypeCode,
@@ -92,7 +96,7 @@ const validate = values => {
 
 const onPremProviderConfigForm = reduxForm({
   form: 'onPremConfigForm',
-  fields: ['name', 'sshUser', 'sshPort', 'privateKeyContent', 'passwordlessSudoAccess', 'airGapInstall'],
+  fields: ['name', 'sshUser', 'sshPort', 'privateKeyContent', 'passwordlessSudoAccess', 'airGapInstall', 'useHostnames', 'homeDir'],
   validate,
   destroyOnUnmount: false,
   enableReinitialize: true,
