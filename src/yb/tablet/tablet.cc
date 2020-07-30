@@ -423,11 +423,21 @@ Tablet::Tablet(const TabletInitData& data)
     auto rocksdb_statistics = rocksdb_statistics_;
     metric_entity_->AddExternalJsonMetricsCb(
         [rocksdb_statistics](JsonWriter* jw, const MetricJsonOptions& opts) {
+      // Assume all rocksdb statistics are at "info" level.
+      if (MetricLevel::kInfo < opts.level) {
+        return;
+      }
+
       EmitRocksDbMetricsAsJson(rocksdb_statistics, jw, opts);
     });
 
     metric_entity_->AddExternalPrometheusMetricsCb(
-        [rocksdb_statistics, attrs](PrometheusWriter* pw) {
+        [rocksdb_statistics, attrs](PrometheusWriter* pw, const MetricPrometheusOptions& opts) {
+      // Assume all rocksdb statistics are at "info" level.
+      if (MetricLevel::kInfo < opts.level) {
+        return;
+      }
+
       auto s = EmitRocksDbMetricsAsPrometheus(rocksdb_statistics, pw, attrs);
       if (!s.ok()) {
         YB_LOG_EVERY_N(WARNING, 100) << "Failed to get Prometheus metrics: " << s.ToString();

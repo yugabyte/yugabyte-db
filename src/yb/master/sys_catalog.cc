@@ -712,7 +712,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
     std::unique_ptr<GaugePrototype<uint64>> counter_gauge =
         std::make_unique<OwningGaugePrototype<uint64>>(
             "server", id, description, yb::MetricUnit::kEntries, description,
-            yb::EXPOSE_AS_COUNTER);
+            yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
     visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
         std::move(counter_gauge), static_cast<uint64>(0) /* initial_value */);
   }
@@ -723,7 +723,8 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
     string description = id + " metric for SysCatalogTable::Visit";
     std::unique_ptr<GaugePrototype<uint64>> duration_gauge =
         std::make_unique<OwningGaugePrototype<uint64>>(
-            "server", id, description, yb::MetricUnit::kMilliseconds, description);
+            "server", id, description, yb::MetricUnit::kMilliseconds, description,
+            yb::MetricLevel::kInfo);
     visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
         std::move(duration_gauge), static_cast<uint64>(0) /* initial_value */);
   }

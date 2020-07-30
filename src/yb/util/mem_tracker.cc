@@ -209,7 +209,7 @@ class MemTracker::TrackerMetrics {
         std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
           metric_entity_->prototype().name(), std::move(name),
           CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
-          CreateMetricDescription(mem_tracker))),
+          CreateMetricDescription(mem_tracker), yb::MetricLevel::kInfo)),
         mem_tracker.consumption());
   }
 
