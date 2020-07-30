@@ -18,7 +18,7 @@ This section uses the same approach as these sections: [The literal for an array
 
 ## Statement of the rules
 
-Just as in the [Statement of the rules](../array-of-primitive-values/#statement-of-the-rules) section that stated the rules for literals for an array of primitive values, the statement of these rules depends on understanding the notion of the canonical form of a literal.
+Just as in [Statement of the rules](../array-of-primitive-values/#statement-of-the-rules) that stated the rules for literals for an array of primitive values, the statement of these rules depends on understanding the notion of the canonical form of a literal.
 
 If you follow the rules that are stated here and illustrated in the demonstration below, then you will always produce a syntactically valid literal which expresses the semantics that you intend. There are many other legal variants—especially because of the freedoms for `text[]` values. This can also produce the result that you intend. However, these rules will not be documented because it is always sufficient to create your literals in canonical form.
 
@@ -26,7 +26,7 @@ The sufficient set of rules can be stated tersely:
 
 - Start off with the opening left curly brace.
 
-- First, prepare the literal for each _"row"_ type value according to the rules set out in the [The literal for a _"row"_ type value](../row/) section.
+- First, prepare the literal for each _"row"_ type value according to the rules set out in [The literal for a _"row"_ type value](../row/).
 
 - Then, understand that when these are used within the literal for _"row"_ type value within the literal for an array, the _"row"_ must itself be surrounded with double quotes, just like is the rule for, say, `timestamp` values or `text` values that include spaces or other troublesome characters.
 
@@ -40,7 +40,7 @@ The sufficient set of rules can be stated tersely:
 
 - Finish off with the closing right curly brace.
 
-These rules are presented in the [Pseudocode for generating the literal for a one-dimensional array of "row" type values](./#pseudocode-for-generating-the-literal-for-a-one-dimensional-array-of-row-type-values) section.
+These rules are presented in [Pseudocode for generating the literal for a one-dimensional array of "row" type values](./#pseudocode-for-generating-the-literal-for-a-one-dimensional-array-of-row-type-values).
 
 ## Example to illustrate the rules
 
@@ -180,7 +180,7 @@ With some effort, you'll see that this is indeed the properly formed canonical r
 
 ## Multidimensional array of "row" type values
 
-You can work out the rules for a multidimensional array of _"row"_ type values, should you need these, by straightforward induction from what has already been explained this enclosing [Create an array value using a literal](../../literals/) section.
+You can work out the rules for a multidimensional array of _"row"_ type values, should you need these, by straightforward induction from what has already been explained this enclosing section.
 
 ## Pseudocode for generating the literal for a one-dimensional array of "row" type values
 

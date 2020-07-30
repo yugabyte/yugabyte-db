@@ -2,7 +2,7 @@
 title: cr_histogram.sql
 linkTitle: cr_histogram.sql
 headerTitle: cr_histogram.sql
-description: Create the function that creates the histogram output.
+description: cr_histogram.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: cr-histogram

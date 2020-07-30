@@ -2,7 +2,7 @@
 title: do_report_results.sql
 linkTitle: do_report_results.sql
 headerTitle: do_report_results.sql
-description: Create the function that creates the histogram output.
+description: do_report_results.sql - Create the function that creates the histogram output.
 menu:
   latest:
     identifier: do-report-results

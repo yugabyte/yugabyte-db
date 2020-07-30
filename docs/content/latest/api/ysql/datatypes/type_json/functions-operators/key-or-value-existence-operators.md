@@ -132,7 +132,7 @@ where the left hand value is a primitive JSON _string_, has no practical utility
 
 ## The&#160; &#160;?|&#160; &#160;operator
 
-**Purpose:** If the left-hand JSON value is an _object_, test if it has _at least one_ key-value pair where the key name is present in the right-hand list of scalar `text` values. If the the left-hand JSON value is an _array_, test if it has _at least one_ _string_ value that is present in the right-hand list of scalar `text` values.
+**Purpose:** If the left-hand JSON value is an _object_, test if it has _at least one_ key-value pair where the key name is present in the right-hand list of scalar `text` values. If the left-hand JSON value is an _array_, test if it has _at least one_ _string_ value that is present in the right-hand list of scalar `text` values.
 
 **Signature:**
 

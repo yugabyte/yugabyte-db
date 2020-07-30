@@ -7,6 +7,7 @@ menu:
   latest:
     identifier: array-concatenation
     parent: array-functions-operators
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---

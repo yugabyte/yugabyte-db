@@ -2,7 +2,7 @@
 title: cr_do_ntile.sql
 linkTitle: cr_do_ntile.sql
 headerTitle: cr_do_ntile.sql
-description: Create the function that creates the histogram output.
+description: cr_do_ntile.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: cr-do-ntile

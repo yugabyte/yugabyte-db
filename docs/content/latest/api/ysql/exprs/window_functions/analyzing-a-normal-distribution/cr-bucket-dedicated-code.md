@@ -2,7 +2,7 @@
 title: cr_bucket_dedicated_code.sql
 linkTitle: cr_bucket_dedicated_code.sql
 headerTitle: cr_bucket_dedicated_code.sql
-description: Create the bucket() function using dedicated original code.
+description: cr_bucket_dedicated_code.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: cr-bucket-dedicated-code
@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 Save this script as `cr_bucket_dedicated_code.sql`.
 ```postgresql
--- This approach implements the the required "open-closed" interval
+-- This approach implements the required "open-closed" interval
 -- bucket semantics directly. See the test
 --
 --   where scaled_val > lb and scaled_val <= ub
