@@ -97,7 +97,7 @@ In order to be able to provision EC2 instances with YugabyteDB, the Yugabyte Pla
 - Allow Yugabyte Platform to create and manage [KeyPairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, the Yugabyte Platform will create KeyPairs across all the regions you choose to setup and store the relevant private key part of these locally in order to SSH into future EC2 instances.
 - Use your own already existing KeyPairs. For this you will need to provide the name of the KeyPair, as well as the private key content and the corresponding SSH user. **Note that currently, all this info must be the same across all the regions you choose to provision!**
 
-## Enabling Hosted Zones
+## Enabling hosted zones
 
 Integrating with hosted zones can make YugabyteDB universes easily discoverable. The Yugabyte Platform can integrate with Route53 to provide you managed CNAME entries for your YugabyteDB universes, which will be updated as you change the set of nodes, to include all the relevant ones for each of your universes.
 
@@ -130,7 +130,8 @@ One really important note if you choose to provide your own VPC information: **i
 - VPC Peering Connections must be established in an N x N matrix, such that every VPC in every region you configure must be peered to every other VPC in every other region.
 - Routing Table entries in every regional VPC should route traffic to every other VPC CIDR block across the PeeringConnection to that respective VPC. This must match the Subnets that you provided during the configuration step.
 - Security Groups in each VPC can be hardened by only opening up the relevant ports to the CIDR blocks of the VPCs from which you are expecting traffic.
-- Lastly, if you deploy Yugabyte Platform in a different VPC than the ones in which you intend to deploy YugabyteDB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up Routing Table entries in the source VPC (Yugabyte Platform) and allowing one further CIDR block (or public IP) ingress rule on the Security Groups for the YugabyteDB nodes (to allow traffic from the Yugabyte Platform or its VPC).
+- If you deploy Yugabyte Platform in a different VPC than the ones in which you intend to deploy YugabyteDB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up Routing Table entries in the source VPC (Yugabyte Platform) and allowing one further CIDR block (or public IP) ingress rule on the Security Groups for the YugabyteDB nodes (to allow traffic from the Yugabyte Platform or its VPC).
+- When a public IP address is not enabled on a universe, a network address translation (NAT) gateway or device is required. You must configure the NAT gateway before creating the VPC that you add to the Yugabyte Platform Admin UI. For more information, see [NAT](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat.html) and [Tutorial: Creating a VPC with Public and Private Subnets for Your Clusters](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/create-public-private-vpc.html) in the AWS documentation.
 
 ## Final notes
 
