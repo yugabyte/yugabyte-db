@@ -1101,6 +1101,9 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_EVENT_TRIGGER:
 			/* no support for event triggers on event triggers */
 			return false;
+		case OBJECT_TABLEGROUP:
+			/* no support for event triggers on tablegroups */
+			return false;
 		case OBJECT_ACCESS_METHOD:
 		case OBJECT_AGGREGATE:
 		case OBJECT_AMOP:
@@ -1174,6 +1177,9 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 			return false;
 		case OCLASS_EVENT_TRIGGER:
 			/* no support for event triggers on event triggers */
+			return false;
+		case OCLASS_TBLGROUP:
+			/* no support for event triggers on tablegroups */
 			return false;
 		case OCLASS_CLASS:
 		case OCLASS_PROC:
@@ -2273,6 +2279,7 @@ stringify_grant_objtype(ObjectType objtype)
 		case OBJECT_STATISTIC_EXT:
 		case OBJECT_SUBSCRIPTION:
 		case OBJECT_TABCONSTRAINT:
+		case OBJECT_TABLEGROUP: // TODO: support GRANT for TABLEGROUP
 		case OBJECT_TRANSFORM:
 		case OBJECT_TRIGGER:
 		case OBJECT_TSCONFIGURATION:
@@ -2355,6 +2362,7 @@ stringify_adefprivs_objtype(ObjectType objtype)
 		case OBJECT_STATISTIC_EXT:
 		case OBJECT_SUBSCRIPTION:
 		case OBJECT_TABCONSTRAINT:
+		case OBJECT_TABLEGROUP: // TODO: support GRANT for TABLEGROUP
 		case OBJECT_TRANSFORM:
 		case OBJECT_TRIGGER:
 		case OBJECT_TSCONFIGURATION:

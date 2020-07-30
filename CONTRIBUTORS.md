@@ -100,3 +100,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [Abdallah](https://github.com/AbdallahKhaled93)
 * [ngov17](https://github.com/ngov17)
 * [Adm28](https://github.com/Adm28)
+* [vikramrajsitpal](https://github.com/vikramrajsitpal)

@@ -53,6 +53,8 @@ public class Module extends AbstractModule {
     bind(YsqlQueryExecutor.class).asEagerSingleton();
     bind(YcqlQueryExecutor.class).asEagerSingleton();
 
+    bind(PlaySessionStore.class).to(PlayCacheSessionStore.class);
+
     // We only needed to bind below ones for Platform mode.
     if (config.getString("yb.mode", "PLATFORM").equals("PLATFORM")) {
       bind(SwamperHelper.class).asEagerSingleton();
@@ -72,7 +74,7 @@ public class Module extends AbstractModule {
       bind(EncryptionAtRestManager.class).asEagerSingleton();
       bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
       bind(SetUniverseKey.class).asEagerSingleton();
-      bind(PlaySessionStore.class).to(PlayCacheSessionStore.class);
+      bind(CustomerTaskManager.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
       callbackController.setDefaultUrl(config.getString("yb.url", ""));

@@ -2,7 +2,6 @@
 title: JSONB data type [YCQL]
 headerTitle: JSONB
 linkTitle: JSONB
-summary: JSONB type
 description: Use the JSONB data type to efficiently model json data. This data type makes it easy to model JSON data which does not have a set schema and might change often.
 menu:
   latest:

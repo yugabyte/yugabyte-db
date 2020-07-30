@@ -1417,6 +1417,7 @@ public class UniverseController extends AuthenticatedController {
       TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
       if (taskInfo != null) {
         taskInfo.setTaskState(TaskInfo.State.Failure);
+        taskInfo.save();
       }
     }
   }

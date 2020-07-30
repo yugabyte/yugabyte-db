@@ -670,7 +670,11 @@ YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level)
 //------------------------------------------------------------------------------
 // YB Debug utils.
 
-bool yb_debug_mode = false;
+bool yb_debug_report_error_stacktrace = false;
+
+bool yb_debug_log_catcache_events = false;
+
+bool yb_debug_log_internal_restarts = false;
 
 const char*
 YBDatumToString(Datum datum, Oid typid)
@@ -780,6 +784,7 @@ static bool IsTransactionalDdlStatement(NodeTag node_tag) {
 		case T_CreateStmt:
 		case T_CreateSubscriptionStmt:
 		case T_CreateTableAsStmt:
+		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreateTransformStmt:
 		case T_CreateTrigStmt:
@@ -791,6 +796,7 @@ static bool IsTransactionalDdlStatement(NodeTag node_tag) {
 		case T_DropRoleStmt:
 		case T_DropStmt:
 		case T_DropSubscriptionStmt:
+		case T_DropTableGroupStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropUserMappingStmt:
 		case T_DropdbStmt:

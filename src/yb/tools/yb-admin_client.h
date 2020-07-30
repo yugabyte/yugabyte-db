@@ -177,6 +177,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS ListLeaderCounts(const client::YBTableName& table_name);
 
+  Result<unordered_map<string, int>> GetLeaderCounts(const client::YBTableName& table_name);
+
   CHECKED_STATUS SetupRedisTable();
 
   CHECKED_STATUS DropRedisTable();
@@ -320,7 +322,9 @@ static constexpr const char* kColumnSep = " \t";
 
 std::string RightPadToUuidWidth(const std::string &s);
 
-Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name);
+Result<TypedNamespaceName> ParseNamespaceName(
+    const std::string& full_namespace_name,
+    const YQLDatabase default_if_no_prefix = YQL_DATABASE_CQL);
 
 }  // namespace tools
 }  // namespace yb

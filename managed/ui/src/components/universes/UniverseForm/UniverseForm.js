@@ -102,8 +102,9 @@ class UniverseForm extends Component {
     const { type } = this.props;
     setTimeout(this.props.fetchCustomerTasks, 2000);
     if (type === "Create") {
-      this.createUniverse();
-      this.transitionToDefaultRoute();
+      this.createUniverse().then(() => {
+        this.transitionToDefaultRoute();
+      });
     } else if (type === "Async") {
       const { universe: { currentUniverse: { data: { universeDetails }}}} = this.props;
       const readOnlyCluster = universeDetails && getReadOnlyCluster(universeDetails.clusters);
@@ -177,19 +178,19 @@ class UniverseForm extends Component {
   }
 
   createUniverse = () => {
-    const { formValues, universe } = this.props;    
+    const { formValues, universe } = this.props;
     if (isNonEmptyObject(formValues['primary'])) {
       const { universeConfigTemplate } = universe;
       const primaryCluster = getPrimaryCluster(universeConfigTemplate.data.clusters);
       if (formValues['primary'].universeName !== primaryCluster.userIntent.universeName) {
         // Universe name is out of sync, send a configure call
         const universeTaskParams = _.cloneDeep(universeConfigTemplate.data);
-        this.updateTaskParams(universeTaskParams, this.getCurrentUserIntent('primary'), 'primary', false)
+        this.updateTaskParams(universeTaskParams, this.getCurrentUserIntent('primary'), 'primary', false);
         return this.props.submitConfigureUniverse(universeTaskParams).then(response => {
-          this.props.submitCreateUniverse(_.merge(this.getFormPayload(), response.payload.data));
+          return this.props.submitCreateUniverse(_.merge(this.getFormPayload(), response.payload.data));
         });
       }
-      this.props.submitCreateUniverse(this.getFormPayload());
+      return this.props.submitCreateUniverse(this.getFormPayload());
     }
   }
 
@@ -509,7 +510,7 @@ class UniverseForm extends Component {
       reset: this.props.reset, fetchUniverseMetadata: this.props.fetchUniverseMetadata,
       fetchCustomerTasks: this.props.fetchCustomerTasks,
       getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
-      fetchCurrentUniverse: this.props.fetchCurrentUniverse, location: this.props.location,      
+      fetchCurrentUniverse: this.props.fetchCurrentUniverse, location: this.props.location,
     };
 
     if (this.state.currentView === "Primary") {

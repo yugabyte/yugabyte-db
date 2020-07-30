@@ -17,26 +17,16 @@ showAsideToc: true
 isTocNested: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="/latest/benchmark/tpcc-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-</ul>
-
 ## Overview
 Follow the steps below to run the open-source [oltpbench](https://github.com/oltpbenchmark/oltpbench) TPC-C workload against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
 
 ### Results at a glance
 | Warehouses| TPMC | Efficiency (approx) | Cluster Details
 -------------|-----------|------------|------------|
-10   | 127   | 98.75% | 3 nodes of type `c5d.large` (2 vCPUs)
-100  | 1273  | 98.98% | 3 nodes of type `c5d.4xlarge` (16 vCPUs)
-1000 | 12590 | 97.90% | 3 nodes of type `c5d.4xlarge` (16 vCPUs)
+10    | 127      | 98.75%   | 3 nodes of type `c5d.large` (2 vCPUs)
+100   | 1,271.77 | 98.89%   | 3 nodes of type `c5d.4xlarge` (16 vCPUs)
+1000  | 12563.07 | 97.90%   | 3 nodes of type `c5d.4xlarge` (16 vCPUs)
+10000 | 125163.2 | 97.35%   | 30 nodes of type `c5d.4xlarge` (16 vCPUs)
 
 All the nodes in the cluster were in the same zone. The benchmark VM was the same type as the nodes in the cluster and was deployed in the same zone as the DB cluster. Each test was run for `30 minutes` after the loading of the data.
 
@@ -48,7 +38,7 @@ To download the TPC-C binaries, run the following commands.
 
 ```sh
 $ cd $HOME
-$ wget https://github.com/yugabyte/tpcc/releases/download/1.2/tpcc.tar.gz
+$ wget https://github.com/yugabyte/tpcc/releases/download/1.3/tpcc.tar.gz
 $ tar -zxvf tpcc.tar.gz
 $ cd tpcc
 ```
@@ -95,6 +85,11 @@ Other options like username, password, port, etc. can be changed using the confi
       1000 Warehouses
     </a>
   </li>
+  <li>
+    <a href="#10000-wh" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
+      10,000 Warehouses
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -106,6 +101,9 @@ Other options like username, password, port, etc. can be changed using the confi
   </div>
   <div id="1000-wh" class="tab-pane fade" role="tabpanel" aria-labelledby="1000-wh-tab">
     {{% includeMarkdown "1000-wh/tpcc-ysql.md" /%}}
+  </div>
+  <div id="10000-wh" class="tab-pane fade" role="tabpanel" aria-labelledby="10000-wh-tab">
+    {{% includeMarkdown "10000-wh/tpcc-ysql.md" /%}}
   </div>
 </div>
 

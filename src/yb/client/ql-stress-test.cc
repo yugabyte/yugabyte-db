@@ -52,7 +52,6 @@ DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_bool(allow_preempting_compactions);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
 DECLARE_bool(enable_ondisk_compression);
-DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_bool(TEST_combine_batcher_errors);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
@@ -194,7 +193,7 @@ class QLStressTest : public QLDmlTestBase {
 
   void TestRetryWrites(bool restarts);
 
-  bool CheckRetryableRequestsCounts(size_t* total_entries, size_t* total_leaders);
+  bool CheckRetryableRequestsCountsAndLeaders(size_t total_leaders, size_t* total_entries);
 
   void AddWriter(
       std::string value_prefix, std::atomic<int>* key, TestThreadHolder* thread_holder,
@@ -235,9 +234,10 @@ TEST_F(QLStressTest, LargeNumberOfTables) {
   }
 }
 
-bool QLStressTest::CheckRetryableRequestsCounts(size_t* total_entries, size_t* total_leaders) {
+bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
+      size_t expected_leaders, size_t* total_entries) {
+  size_t total_leaders = 0;
   *total_entries = 0;
-  *total_leaders = 0;
   bool result = true;
   size_t replicated_limit = FLAGS_detect_duplicates_for_retryable_requests ? 1 : 0;
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
@@ -253,16 +253,22 @@ bool QLStressTest::CheckRetryableRequestsCounts(size_t* total_entries, size_t* t
               << ", entries: " << tablet_entries
               << ", running: " << request_counts.running
               << ", replicated: " << request_counts.replicated
-              << ", leader: " << leader;
+              << ", leader: " << leader
+              << ", term: " << raft_consensus->LeaderTerm();
     if (leader) {
       *total_entries += tablet_entries;
-      ++*total_leaders;
+      ++total_leaders;
     }
     // Last write request could be rejected as duplicate, so followers would not be able to
     // cleanup replicated requests.
     if (request_counts.running != 0 || (leader && request_counts.replicated > replicated_limit)) {
       result = false;
     }
+  }
+
+  if (total_leaders != expected_leaders) {
+    LOG(INFO) << "Expected " << expected_leaders << " leaders, found " << total_leaders;
+    return false;
   }
 
   if (result && FLAGS_detect_duplicates_for_retryable_requests) {
@@ -365,12 +371,11 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   }
 
   size_t total_entries = 0;
-  size_t total_leaders = 0;
+  size_t expected_leaders = table_.table()->GetPartitions().size();
   ASSERT_OK(WaitFor(
-      std::bind(&QLStressTest::CheckRetryableRequestsCounts, this, &total_entries, &total_leaders),
-      15s, "Retryable requests cleanup"));
-
-  ASSERT_EQ(total_leaders, table_.table()->GetPartitions().size());
+      std::bind(&QLStressTest::CheckRetryableRequestsCountsAndLeaders, this,
+                expected_leaders, &total_entries),
+      15s, "Retryable requests cleanup and leader wait"));
 
   // We have 2 entries per row.
   if (FLAGS_detect_duplicates_for_retryable_requests) {

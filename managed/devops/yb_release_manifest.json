@@ -62,6 +62,7 @@
   ],
   "vars/cloud": [
     "vars/cloud/aws.yml",
+    "vars/cloud/azu.yml",
     "vars/cloud/gcp.yml",
     "vars/cloud/onprem.yml"
   ]

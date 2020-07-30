@@ -136,7 +136,8 @@ export default class AlertProfileForm extends Component {
             // default form to new values to avoid unwanted validation of smtp fields when they are hidden
             resetForm(values);
           }}
-          render={({ values, handleChange, handleSubmit, isSubmitting }) => (
+        >
+          {({ values, handleChange, handleSubmit, isSubmitting }) => (
             <Form name="EditCustomerProfile" onSubmit={handleSubmit}>
               <Row>
                 <Col md={6} sm={12}>
@@ -298,7 +299,7 @@ export default class AlertProfileForm extends Component {
               </div>
             </Form>
           )}
-        />
+        </Formik>
       </div>
     );
   }

@@ -1344,8 +1344,10 @@ class TabletBootstrap {
       return Status::OK();
     }
 
-    RETURN_NOT_OK_PREPEND(tablet_->ApplyRowOperations(&operation_state),
-                          "ApplyRowOperations failed");
+    auto apply_status = tablet_->ApplyRowOperations(&operation_state);
+    // Failure is regular case, since could happen because transaction was aborted, while
+    // replicating its intents.
+    LOG_IF(INFO, !apply_status.ok()) << "Apply operation failed: " << apply_status;
 
     tablet_->mvcc_manager()->Replicated(hybrid_time);
     return Status::OK();
@@ -1604,7 +1606,12 @@ CHECKED_STATUS BootstrapTabletImpl(
     scoped_refptr<log::Log>* rebuilt_log,
     consensus::ConsensusBootstrapInfo* results) {
   TabletBootstrap tablet_bootstrap(data);
-  return tablet_bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, results);
+  auto bootstrap_status = tablet_bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, results);
+  if (!bootstrap_status.ok()) {
+    LOG(WARNING) << "T " << (*rebuilt_tablet ? (*rebuilt_tablet)->tablet_id() : "N/A")
+                 << " Tablet bootstrap failed: " << bootstrap_status;
+  }
+  return bootstrap_status;
 }
 
 } // namespace tablet

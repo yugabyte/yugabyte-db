@@ -53,7 +53,7 @@ class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
   void CheckSnapshotsInSrc() {
     // Check folders on sending side.
     src_rocksdb_dir_ = tablet_peer_->tablet()->metadata()->rocksdb_dir();
-    src_top_snapshots_dir_ = tablet::TabletSnapshots::SnapshotsDirName(src_rocksdb_dir_);
+    src_top_snapshots_dir_ = tablet_peer_->tablet()->metadata()->snapshots_dir();
 
     ASSERT_TRUE(env_->FileExists(src_rocksdb_dir_));
     ASSERT_TRUE(env_->FileExists(src_top_snapshots_dir_));
@@ -111,7 +111,7 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadSnapshotFiles) {
   TabletStatusListener listener(meta_);
 
   const string rocksdb_dir = meta_->rocksdb_dir();
-  const string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir);
+  const string top_snapshots_dir = meta_->snapshots_dir();
   ASSERT_FALSE(env_->FileExists(rocksdb_dir));
 
   ASSERT_OK(client_->FetchAll(&listener));
@@ -147,7 +147,7 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadSnapshotFilesFailure) {
   TabletStatusListener listener(meta_);
 
   const string rocksdb_dir = meta_->rocksdb_dir();
-  const string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir);
+  const string top_snapshots_dir = meta_->snapshots_dir();
 
 
   ASSERT_OK(client_->FetchAll(&listener));

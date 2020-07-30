@@ -762,8 +762,6 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestMan
 
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn1.Execute("SET yb_debug_mode = true"));
-  ASSERT_OK(conn2.Execute("SET yb_debug_mode = true"));
 
   size_t commit1_fail_count = 0;
   size_t commit2_fail_count = 0;

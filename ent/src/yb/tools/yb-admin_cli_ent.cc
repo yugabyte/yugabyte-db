@@ -112,7 +112,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
           return ClusterAdminCli::kInvalidArguments;
         }
 
-        const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[2]));
+        const TypedNamespaceName database =
+            VERIFY_RESULT(ParseNamespaceName(args[2], YQL_DATABASE_PGSQL));
         SCHECK_EQ(
             database.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
             Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));

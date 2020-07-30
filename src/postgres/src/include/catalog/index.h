@@ -72,7 +72,8 @@ extern Oid index_create(Relation heapRelation,
 			 bool is_internal,
 			 Oid *constraintId,
 			 OptSplit *split_options,
-			 const bool skip_index_backfill);
+			 const bool skip_index_backfill,
+			 Oid tablegroupId);
 
 #define	INDEX_CONSTR_CREATE_MARK_AS_PRIMARY	(1 << 0)
 #define	INDEX_CONSTR_CREATE_DEFERRABLE		(1 << 1)

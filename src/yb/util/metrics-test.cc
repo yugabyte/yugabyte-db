@@ -372,6 +372,7 @@ TEST_F(MetricsTest, TestDumpJsonPrototypes) {
     "            \"type\": \"gauge\",\n"
     "            \"unit\": \"bytes\",\n"
     "            \"description\": \"Test Gauge 2\",\n"
+    "            \"level\": \"info\",\n"
     "            \"entity_type\": \"test_entity\"\n"
     "        }";
   ASSERT_STR_CONTAINS(json, expected);

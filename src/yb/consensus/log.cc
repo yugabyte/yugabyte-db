@@ -60,7 +60,6 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/kernel_stack_watchdog.h"
 #include "yb/util/logging.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/metrics.h"
@@ -356,8 +355,6 @@ Status Log::Appender::Init() {
 }
 
 void Log::Appender::ProcessBatch(LogEntryBatch* entry_batch) {
-  LongOperationTracker long_operation_tracker("ProcessBatch", 1s);
-
   // A callback function to TaskStream is expected to process the accumulated batch of entries.
   if (entry_batch == nullptr) {
     // Here, we do sync and call callbacks.
@@ -427,7 +424,8 @@ void Log::Appender::GroupWork() {
   } else {
     TRACE_EVENT0("log", "Callbacks");
     VLOG_WITH_PREFIX(2) << "Synchronized " << sync_batch_.size() << " entry batches";
-    SCOPED_WATCH_STACK(FLAGS_consensus_log_scoped_watch_delay_callback_threshold_ms);
+    LongOperationTracker long_operation_tracker(
+        "Log callback", FLAGS_consensus_log_scoped_watch_delay_callback_threshold_ms * 1ms);
     for (std::unique_ptr<LogEntryBatch>& entry_batch : sync_batch_) {
       if (PREDICT_TRUE(!entry_batch->failed_to_append() && !entry_batch->callback().is_null())) {
         entry_batch->callback().Run(Status::OK());
@@ -579,10 +577,11 @@ Status Log::Init() {
 }
 
 Status Log::AsyncAllocateSegment() {
-  std::lock_guard<decltype(allocation_mutex_)> lock_guard(allocation_mutex_);
-  CHECK_EQ(allocation_state_, kAllocationNotStarted);
+  SCHECK_EQ(
+      allocation_state_.load(std::memory_order_acquire), kAllocationNotStarted, AlreadyPresent,
+      "Allocation already running");
   allocation_status_.Reset();
-  allocation_state_ = kAllocationInProgress;
+  allocation_state_.store(kAllocationInProgress, std::memory_order_release);
   return allocation_token_->SubmitClosure(Bind(&Log::SegmentAllocationTask, Unretained(this)));
 }
 
@@ -702,6 +701,83 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
   return Status::OK();
 }
 
+bool Log::NeedNewSegment(uint32_t entry_batch_bytes) {
+  return (active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_;
+}
+
+Status Log::RollOverIfNecessary(uint32_t entry_batch_bytes) {
+  // If the size of this entry overflows the current segment, get a new one.
+  auto allocation_state = this->allocation_state();
+  if (allocation_state == kAllocationNotStarted) {
+    if (!NeedNewSegment(entry_batch_bytes)) {
+      return Status::OK();
+    }
+  }
+  enum class Outcome {
+    kNotDefined,
+    kRunRollOver,
+    kWaitRollOver,
+    kDoNothing,
+  };
+  Outcome outcome = Outcome::kNotDefined;
+  {
+    std::lock_guard<std::mutex> lock(allocation_mutex_);
+    switch (allocation_state) {
+      case kAllocationNotStarted: {
+          if (!NeedNewSegment(entry_batch_bytes)) {
+            return Status::OK();
+          }
+          LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
+                                << "Starting new segment allocation. ";
+          auto status = AsyncAllocateSegment();
+          if (!status.ok()) {
+            if (!status.IsAlreadyPresent()) {
+              return status;
+            }
+            outcome = Outcome::kWaitRollOver;
+          } else if (options_.async_preallocate_segments) {
+            allocation_requested_ = true;
+            outcome = Outcome::kDoNothing;
+          } else {
+            outcome = Outcome::kRunRollOver;
+          }
+        } break;
+      case kAllocationFinished: {
+          if (!allocation_requested_) {
+            outcome = Outcome::kWaitRollOver;
+          } else {
+            outcome = Outcome::kRunRollOver;
+            allocation_requested_ = false;
+          }
+        } break;
+      case kAllocationInProgress: {
+        VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
+        outcome = allocation_requested_ ? Outcome::kDoNothing : Outcome::kWaitRollOver;
+      } break;
+    }
+  }
+  switch (outcome) {
+    case Outcome::kNotDefined:
+      FATAL_INVALID_ENUM_VALUE(SegmentAllocationState, allocation_state);
+      return Status::OK();
+    case Outcome::kRunRollOver:
+      LOG_SLOW_EXECUTION(WARNING, 50, "Log roll took a long time") {
+        return RollOver();
+      }
+      return Status::OK();
+    case Outcome::kWaitRollOver: {
+        std::unique_lock<std::mutex> lock(allocation_mutex_);
+        allocation_cond_.wait(lock, [this] {
+          return allocation_state_.load(std::memory_order_acquire) == kAllocationNotStarted;
+        });
+      }
+      return Status::OK();
+    case Outcome::kDoNothing:
+      return Status::OK();
+  }
+  FATAL_INVALID_ENUM_VALUE(Outcome, outcome);
+}
+
 Status Log::DoAppend(LogEntryBatch* entry_batch,
                      bool caller_owns_operation,
                      bool skip_wal_write) {
@@ -717,31 +793,14 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
       return Status::OK();
     }
 
-    // if the size of this entry overflows the current segment, get a new one
-    if (allocation_state() == kAllocationNotStarted) {
-      if ((active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_) {
-        LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
-                              << "Starting new segment allocation. ";
-        RETURN_NOT_OK(AsyncAllocateSegment());
-        if (!options_.async_preallocate_segments) {
-          LOG_SLOW_EXECUTION(WARNING, 50, "Log roll took a long time") {
-            RETURN_NOT_OK(RollOver());
-          }
-        }
-      }
-    } else if (allocation_state() == kAllocationFinished) {
-      LOG_SLOW_EXECUTION(WARNING, 50, "Log roll took a long time") {
-        RETURN_NOT_OK(RollOver());
-      }
-    } else {
-      VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
-    }
+    RETURN_NOT_OK(RollOverIfNecessary(entry_batch_bytes));
 
     int64_t start_offset = active_segment_->written_offset();
 
     LOG_SLOW_EXECUTION(WARNING, 50, "Append to log took a long time") {
       SCOPED_LATENCY_METRIC(metrics_, append_latency);
-      SCOPED_WATCH_STACK(FLAGS_consensus_log_scoped_watch_delay_append_threshold_ms);
+      LongOperationTracker long_operation_tracker(
+          "Log append", FLAGS_consensus_log_scoped_watch_delay_append_threshold_ms * 1ms);
 
       RETURN_NOT_OK(active_segment_->WriteEntryBatch(entry_batch_data));
     }
@@ -813,7 +872,10 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
 }
 
 Status Log::AllocateSegmentAndRollOver() {
-  RETURN_NOT_OK(AsyncAllocateSegment());
+  {
+    std::lock_guard<std::mutex> lock(allocation_mutex_);
+    RETURN_NOT_OK(AsyncAllocateSegment());
+  }
   return RollOver();
 }
 
@@ -826,7 +888,10 @@ Status Log::EnsureInitialNewSegmentAllocated() {
     return STATUS_FORMAT(
         IllegalState, "Unexpected log state in EnsureInitialNewSegmentAllocated: $0", log_state_);
   }
-  RETURN_NOT_OK(AsyncAllocateSegment());
+  {
+    std::lock_guard<std::mutex> lock(allocation_mutex_);
+    RETURN_NOT_OK(AsyncAllocateSegment());
+  }
   RETURN_NOT_OK(allocation_status_.Get());
   RETURN_NOT_OK(SwitchToAllocatedSegment());
 
@@ -1286,8 +1351,10 @@ Status Log::PreAllocateNewSegment() {
   }
 
   {
-    std::lock_guard<boost::shared_mutex> lock_guard(allocation_mutex_);
-    allocation_state_ = kAllocationFinished;
+    std::lock_guard<std::mutex> lock(allocation_mutex_);
+    // We implement something like shared lock for allocation_state_, so modifications should be
+    // done while holding the mutex.
+    allocation_state_.store(kAllocationFinished, std::memory_order_release);
   }
   return Status::OK();
 }
@@ -1351,8 +1418,10 @@ Status Log::SwitchToAllocatedSegment() {
 
   {
     std::lock_guard<decltype(allocation_mutex_)> lock_guard(allocation_mutex_);
-    allocation_state_ = kAllocationNotStarted;
+    allocation_state_.store(kAllocationNotStarted, std::memory_order_release);
   }
+  // Notify roll over waiters.
+  allocation_cond_.notify_all();
 
   return Status::OK();
 }

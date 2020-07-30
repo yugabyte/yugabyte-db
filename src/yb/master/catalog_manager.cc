@@ -607,6 +607,7 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
 }
 
 Status CatalogManager::ElectedAsLeaderCb() {
+  time_elected_leader_ = MonoTime::Now();
   return worker_pool_->SubmitClosure(
       Bind(&CatalogManager::LoadSysCatalogDataTask, Unretained(this)));
 }
@@ -3111,7 +3112,8 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
 }
 
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
-    const TableId& indexed_table_id, const TableId& index_table_id, DeleteTableResponsePB* resp) {
+    const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
+    DeleteTableResponsePB* resp) {
   // Lookup the indexed table and verify if it exists.
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
@@ -3130,19 +3132,12 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     resp_indexed_table->set_table_name(indexed_table->name());
     resp_indexed_table->set_table_id(indexed_table_id);
   }
-  const bool is_pg_table = indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
-  // We don't need to handle user enforced txns separately here because there
-  // is no additional wait.
-  // TODO(jason): use FLAGS_ysql_disable_index_backfill when closing issue #4936.
-  const bool disable_index_backfill = (
-      is_pg_table ? true
-                  : GetAtomicFlag(&FLAGS_disable_index_backfill));
-  if (disable_index_backfill) {
-    RETURN_NOT_OK(DeleteIndexInfoFromTable(indexed_table_id, index_table_id));
-  } else {
+  if (multi_stage) {
     RETURN_NOT_OK(MultiStageAlterTable::UpdateIndexPermission(
         this, indexed_table,
         {{index_table_id, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING}}));
+  } else {
+    RETURN_NOT_OK(DeleteIndexInfoFromTable(indexed_table_id, index_table_id));
   }
 
   // Actual Deletion of the index info will happen asynchronously after all the
@@ -3191,6 +3186,45 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   return Status::OK();
 }
 
+Status CatalogManager::DeleteTable(
+    const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing DeleteTable request from " << RequestorString(rpc) << ": "
+            << req->ShortDebugString();
+
+  RETURN_NOT_OK(CheckOnline());
+
+  if (req->is_index_table()) {
+    TRACE("Looking up index");
+    TableIdentifierPB table_identifier = req->table();
+    scoped_refptr<TableInfo> table;
+    RETURN_NOT_OK(FindTable(table_identifier, &table));
+    if (table == nullptr) {
+      Status s = STATUS(NotFound, "The object does not exist", table_identifier.ShortDebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+    }
+    TableId table_id = table->id();
+    resp->set_table_id(table_id);
+    TableId indexed_table_id;
+    {
+      auto l = table->LockForRead();
+      indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(l->data().pb);
+    }
+    scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
+    // We don't need to handle user enforced txns separately here because there
+    // is no additional wait.
+    // TODO(jason): use FLAGS_ysql_disable_index_backfill when closing issue #4936.
+    const bool is_pg_table = indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
+    const bool disable_index_backfill =
+        (is_pg_table ? true : GetAtomicFlag(&FLAGS_disable_index_backfill));
+    if (!disable_index_backfill) {
+      return MarkIndexInfoFromTableForDeletion(
+          indexed_table_id, table_id, /* multi_stage */ true, resp);
+    }
+  }
+
+  return DeleteTableInternal(req, resp, rpc);
+}
+
 // Delete a Table
 //  - Update the table state to "DELETING".
 //  - Issue DeleteTablet tasks to all said tablets.
@@ -3204,14 +3238,8 @@ Status CatalogManager::DeleteIndexInfoFromTable(
 // We are lazy about deletions.
 //
 // IMPORTANT: If modifying, consider updating DeleteYsqlDBTables(), the bulk deletion API.
-Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
-                                   DeleteTableResponsePB* resp,
-                                   rpc::RpcContext* rpc) {
-  LOG(INFO) << "Servicing DeleteTable request from " << RequestorString(rpc) << ": "
-            << req->ShortDebugString();
-
-  RETURN_NOT_OK(CheckOnline());
-
+Status CatalogManager::DeleteTableInternal(
+    const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc) {
   vector<scoped_refptr<TableInfo>> tables;
   vector<unique_ptr<TableInfo::lock_type>> table_locks;
 
@@ -3353,7 +3381,7 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
     }
   } else if (update_indexed_table) {
     s = MarkIndexInfoFromTableForDeletion(
-        PROTO_GET_INDEXED_TABLE_ID(l->data().pb), table->id(), resp);
+        PROTO_GET_INDEXED_TABLE_ID(l->data().pb), table->id(), /* multi_stage */ false, resp);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute("An error occurred while deleting index info: $0",
                                        s.ToString()));
@@ -6266,18 +6294,20 @@ void CatalogManager::GetPendingServerTasksUnlocked(
     const TableId &table_uuid,
     TabletToTabletServerMap *add_replica_tasks_map,
     TabletToTabletServerMap *remove_replica_tasks_map,
-    TabletToTabletServerMap *stepdown_leader_tasks) {
+    TabletToTabletServerMap *stepdown_leader_tasks_map) {
 
   auto table = GetTableInfoUnlocked(table_uuid);
   for (const auto& task : table->GetTasks()) {
     TabletToTabletServerMap* outputMap = nullptr;
-    TabletId tablet_id;
     if (task->type() == MonitoredTask::ASYNC_ADD_SERVER) {
       outputMap = add_replica_tasks_map;
     } else if (task->type() == MonitoredTask::ASYNC_REMOVE_SERVER) {
       outputMap = remove_replica_tasks_map;
     } else if (task->type() == MonitoredTask::ASYNC_TRY_STEP_DOWN) {
-      outputMap = stepdown_leader_tasks;
+      // Store new_leader_uuid instead of change_config_ts_uuid.
+      auto raft_task = static_cast<AsyncTryStepDown*>(task.get());
+      (*stepdown_leader_tasks_map)[raft_task->tablet_id()] = raft_task->new_leader_uuid();
+      continue;
     }
     if (outputMap) {
       auto raft_task = static_cast<CommonInfoForRaftTask*>(task.get());
@@ -7244,6 +7274,10 @@ void CatalogManager::SetLoadBalancerEnabled(bool is_enabled) {
 
 bool CatalogManager::IsLoadBalancerEnabled() {
   return load_balance_policy_->IsLoadBalancerEnabled();
+}
+
+MonoDelta CatalogManager::TimeSinceElectedLeader() {
+  return MonoTime::Now() - time_elected_leader_;
 }
 
 Status CatalogManager::GoIntoShellMode() {

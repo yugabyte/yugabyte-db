@@ -58,8 +58,8 @@ public class CustomerTaskController extends AuthenticatedController {
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
     Query<CustomerTask> customerTaskQuery = CustomerTask.find.where()
-        .eq("customer_uuid", customerUUID)
-        .orderBy("create_time desc");
+      .eq("customer_uuid", customerUUID)
+      .orderBy("create_time desc");
 
     if (targetUUID != null) {
       customerTaskQuery.where().eq("target_uuid", targetUUID);
@@ -91,7 +91,7 @@ public class CustomerTaskController extends AuthenticatedController {
           taskData.targetUUID = task.getTargetUUID();
 
           List<CustomerTaskFormData> taskList = taskListMap.getOrDefault(task.getTargetUUID(),
-                                                                         new ArrayList<>());
+            new ArrayList<>());
           taskList.add(taskData);
           taskListMap.put(task.getTargetUUID(), taskList);
         }

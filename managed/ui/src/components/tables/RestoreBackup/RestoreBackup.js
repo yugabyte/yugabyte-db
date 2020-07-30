@@ -29,16 +29,14 @@ export default class RestoreBackup extends Component {
         storageConfigUUID: values.storageConfigUUID,
         storageLocation:  values.storageLocation,
         actionType: 'RESTORE',      
-      };
-      // TODO: Allow renaming of individual tables
-      if (values.restoreToKeyspace !== initialValues.restoreToKeyspace) {
-        payload.keyspace = values.restoreToKeyspace;
-      }
-      if (values.restoreToTableName !== initialValues.restoreToTableName) {
-        payload.tableName = values.restoreToTableName;
-      }
+      };   
       if (values.backupList) {
         payload.backupList = values.backupList;
+      } else if (values.restoreToTableName !== initialValues.restoreToTableName) {
+        payload.tableName = values.restoreToTableName;
+        payload.keyspace = values.restoreToKeyspace;
+      } else if (values.restoreToKeyspace !== initialValues.restoreToKeyspace) {
+        payload.keyspace = values.restoreToKeyspace;
       }
       onHide();
       restoreTableBackup(restoreToUniverseUUID, payload);
@@ -93,9 +91,11 @@ export default class RestoreBackup extends Component {
       ...this.props.initialValues,
       storageConfigUUID: hasBackupInfo ? storageOptions.find((element) => { return element.value === this.props.initialValues.storageConfigUUID;}) : ""
     };
+    const isUniverseBackup = hasBackupInfo && Array.isArray(backupInfo.backupList) && backupInfo.backupList.length;
+
     // Disable table field if multi-table backup
     const isMultiTableBackup = hasBackupInfo && (
-      (backupInfo.backupList && backupInfo.backupList.length) ||
+      isUniverseBackup ||
       (backupInfo.tableNameList && backupInfo.tableNameList.length > 1) ||
       (backupInfo.keyspace && (!backupInfo.tableNameList || !backupInfo.tableNameList.length) && !backupInfo.tableUUID)
     );
@@ -136,7 +136,8 @@ export default class RestoreBackup extends Component {
           <Field name="restoreToUniverseUUID" component={YBFormSelect}
                 label={"Universe"} options={universeOptions} />
           <Field name="restoreToKeyspace"
-                component={YBFormInput}                
+                component={YBFormInput} 
+                disabled={isUniverseBackup}               
                 label={"Keyspace"} />
           <Field name="restoreToTableName"
                 component={YBFormInput}

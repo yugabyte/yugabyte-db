@@ -32,7 +32,7 @@ class TabletComponent {
  protected:
   ScopedRWOperationPause PauseReadWriteOperations();
 
-  CHECKED_STATUS ResetRocksDBs(bool destroy = false);
+  CHECKED_STATUS ResetRocksDBs(Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown);
 
   CHECKED_STATUS OpenRocksDBs();
 

@@ -54,7 +54,7 @@ Yugabyte products incorporate third party software, which includes the copyright
 |  zlib compression | 1.2.11 | Zlib |
 |  RocksDB (significantly modified) | Based on version e8e6cf0173849ee323cf6972121a179d085505b1 | Apache-2.0 |
 |  Apache Kudu (significantly modified) | Based on version 1ad16aa0b742a75b86152cd7034f150674070606 | Apache-2.0 |
-|  Cassandra (DataStax) Java driver with Yugabyte modifications | 3.2.0-yb-17 | Apache-2.0 |
+|  Cassandra (DataStax) Java driver with Yugabyte modifications | 3.9.0-yb-5 | Apache-2.0 |
 |  autoconf | 2.69 | GPL-2.0 |
 |  automake | 1.15.1 | GPL-2.0 |
 |  flex | 2.6.4 | BSD-2-Clause |

@@ -248,6 +248,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS DeleteTable(const DeleteTableRequestPB* req,
                              DeleteTableResponsePB* resp,
                              rpc::RpcContext* rpc);
+  CHECKED_STATUS DeleteTableInternal(
+      const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc);
 
   // Get the information about an in-progress delete operation.
   CHECKED_STATUS IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
@@ -668,6 +670,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // TODO(bogdan): Eventually schedule on a threadpool in a followup refactor.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task);
 
+  // Time since this peer became master leader. Caller should verify that it is leader before.
+  MonoDelta TimeSinceElectedLeader();
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -700,7 +705,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
   //
-  // Executes LoadSysCatalogDataTask below.
+  // Executes LoadSysCatalogDataTask below and marks the current time as time since leader.
   CHECKED_STATUS ElectedAsLeaderCb();
 
   // Loops and sleeps until one of the following conditions occurs:
@@ -829,7 +834,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Delete index info from the indexed table.
   CHECKED_STATUS MarkIndexInfoFromTableForDeletion(
-      const TableId& indexed_table_id, const TableId& index_table_id, DeleteTableResponsePB* resp);
+      const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
+      DeleteTableResponsePB* resp);
 
   // Delete index info from the indexed table.
   CHECKED_STATUS DeleteIndexInfoFromTable(
@@ -1247,6 +1253,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TasksTracker> jobs_tracker_;
 
   std::unique_ptr<EncryptionManager> encryption_manager_;
+
+  MonoTime time_elected_leader_;
 
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(lock_);

@@ -117,6 +117,7 @@ class BackupTxnTest : public TransactionTestBase {
     controller.set_timeout(60s);
     req.set_restoration_id(restoration_id.data(), restoration_id.size());
     RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshotRestorations(req, &resp, &controller));
+    LOG(INFO) << "Restoration: " << resp.ShortDebugString();
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }

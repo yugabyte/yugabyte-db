@@ -58,8 +58,7 @@ std::string SnapshotOperationState::GetSnapshotDir(const string& top_snapshots_d
 
 bool SnapshotOperationState::CheckOperationRequirements() {
   if (operation() == TabletSnapshotOpRequestPB::RESTORE) {
-    const string top_snapshots_dir =
-        TabletSnapshots::SnapshotsDirName(tablet()->metadata()->rocksdb_dir());
+    const string top_snapshots_dir = tablet()->metadata()->snapshots_dir();
     const string snapshot_dir = GetSnapshotDir(top_snapshots_dir);
     Status s = tablet()->rocksdb_env().FileExists(snapshot_dir);
 

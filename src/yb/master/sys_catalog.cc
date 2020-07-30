@@ -480,10 +480,14 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   auto tablet_peer = std::make_shared<tablet::TabletPeer>(
-      metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
+      metadata,
+      local_peer_pb_,
+      scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
       Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()),
-      metric_registry_, nullptr /* tablet_splitter */);
+      metric_registry_,
+      nullptr /* tablet_splitter */,
+      master_->async_client_initializer().get_client_future());
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
@@ -544,7 +548,6 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   RETURN_NOT_OK_PREPEND(
       tablet_peer()->InitTabletPeer(
           tablet,
-          master_->async_client_initializer().get_client_future(),
           master_->mem_tracker(),
           master_->messenger(),
           &master_->proxy_cache(),
@@ -709,7 +712,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
     std::unique_ptr<GaugePrototype<uint64>> counter_gauge =
         std::make_unique<OwningGaugePrototype<uint64>>(
             "server", id, description, yb::MetricUnit::kEntries, description,
-            yb::EXPOSE_AS_COUNTER);
+            yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
     visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
         std::move(counter_gauge), static_cast<uint64>(0) /* initial_value */);
   }
@@ -720,7 +723,8 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
     string description = id + " metric for SysCatalogTable::Visit";
     std::unique_ptr<GaugePrototype<uint64>> duration_gauge =
         std::make_unique<OwningGaugePrototype<uint64>>(
-            "server", id, description, yb::MetricUnit::kMilliseconds, description);
+            "server", id, description, yb::MetricUnit::kMilliseconds, description,
+            yb::MetricLevel::kInfo);
     visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
         std::move(duration_gauge), static_cast<uint64>(0) /* initial_value */);
   }
