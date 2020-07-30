@@ -1,8 +1,9 @@
 ---
 title: Date and time functions [YCQL]
 headerTitle: Date and time functions
-linkTitle: Date and time
-summary: Functions that work on data types related to date and time.
+title: Date and time functions [YCQL]
+headerTitle: Date and time functions
+linkTitle: Date and time 
 description: Use date and time functions to work on date and time data types.
 menu:
   latest:
