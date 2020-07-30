@@ -124,7 +124,7 @@ init_guc(void)
 	};
 #endif	
 	
-	DefineCustomIntVariable("pg_stat_monitor.max",
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_max",
 							"Sets the maximum number of statements tracked by pg_stat_monitor.",
 							NULL,
 							&PGSM_MAX,
@@ -137,7 +137,7 @@ init_guc(void)
 							NULL,
 							NULL);
 
-	DefineCustomIntVariable("pg_stat_monitor.query_max_len",
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_query_max_len",
 							"Sets the maximum length of query",
 							NULL,
 							&PGSM_QUERY_MAX_LEN,
@@ -150,7 +150,7 @@ init_guc(void)
 							NULL,
 							NULL);
 
-	DefineCustomEnumVariable("pg_stat_monitor.track",
+	DefineCustomEnumVariable("pg_stat_monitor.pgsm_track",
 							 "Selects which statements are tracked by pg_stat_monitor.",
 							 NULL,
 							 &PGSM_TRACK,
@@ -162,7 +162,7 @@ init_guc(void)
 							 NULL,
 							 NULL);
 
-	DefineCustomBoolVariable("pg_stat_monitor.track_utility",
+	DefineCustomBoolVariable("pg_stat_monitor.pgsm_track_utility",
 							 "Selects whether utility commands are tracked by pg_stat_monitor.",
 							 NULL,
 							 (bool*)&PGSM_TRACK_UTILITY,
@@ -173,7 +173,7 @@ init_guc(void)
 							 NULL,
 							 NULL);
 
-	DefineCustomBoolVariable("pg_stat_monitor.normalized_query",
+	DefineCustomBoolVariable("pg_stat_monitor.pgsm_normalized_query",
 							 "Selects whether save query in normalized format.",
 							 NULL,
 							 (bool*)&PGSM_NORMALIZED_QUERY,
@@ -184,7 +184,7 @@ init_guc(void)
 							 NULL,
 							 NULL);
 
-	DefineCustomIntVariable("pg_stat_monitor.pgsm_max_buckets ",
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_max_buckets",
 							"Sets the maximum number of buckets.",
 							NULL,
 							&PGSM_MAX_BUCKETS,
@@ -197,7 +197,7 @@ init_guc(void)
 							NULL,
 							NULL);
 
-	DefineCustomIntVariable("pg_stat_monitor.bucket_time",
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_bucket_time",
 							"Sets the time in seconds per bucket.",
 							NULL,
 							&PGSM_BUCKET_TIME,
@@ -211,7 +211,7 @@ init_guc(void)
 							NULL);
 
 
-	DefineCustomIntVariable("pg_stat_monitor.pgsm_object_cache ",
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_object_cache",
 							"Sets the maximum number of object cache",
 							NULL,
 							&PGSM_OBJECT_CACHE,
@@ -250,7 +250,7 @@ init_guc(void)
 							NULL,
 							NULL);
 
-	DefineCustomIntVariable("pg_stat_monitor.pgsm_query_shared_buffer.",
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_query_shared_buffer",
 							"Sets the shared_buffer size",
 							NULL,
 							&PGSM_QUERY_BUF_SIZE,
@@ -262,6 +262,7 @@ init_guc(void)
 							NULL,
 							NULL,
 							NULL);
+
 	DefineCustomBoolVariable("pg_stat_monitor.pgsm_track_planning",
 							 "Selects whether track planning statistics.",
 							 NULL,
