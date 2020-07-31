@@ -268,6 +268,7 @@ SELECT * FROM vistest order by 1;
  b
 (2 rows)
 
+-- SAVEPOINT s1;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV;
 SELECT * FROM vistest order by 1;
@@ -286,6 +287,18 @@ SELECT * FROM vistest order by 1;
 (2 rows)
 
 BEGIN;
+TRUNCATE vistest;
+COPY vistest FROM stdin CSV;
+SELECT * FROM vistest order by 1;
+ a
+----
+ a2
+ b
+(2 rows)
+
+-- SAVEPOINT s1;
+TRUNCATE vistest;
+COPY vistest FROM stdin CSV;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV ;
 SELECT * FROM vistest order by 1;
@@ -320,11 +333,14 @@ COPY vistest FROM stdin CSV;
 COMMIT;
 BEGIN;
 TRUNCATE vistest;
+-- SAVEPOINT s1;
 COPY vistest FROM stdin CSV;
 COMMIT;
 BEGIN;
 INSERT INTO vistest VALUES ('z');
+-- SAVEPOINT s1;
 TRUNCATE vistest;
+-- ROLLBACK TO SAVEPOINT s1;
 COPY vistest FROM stdin CSV;
 COMMIT;
 CREATE FUNCTION truncate_in_subxact() RETURNS VOID AS

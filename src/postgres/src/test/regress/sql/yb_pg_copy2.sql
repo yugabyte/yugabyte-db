@@ -192,10 +192,10 @@ COPY vistest FROM stdin CSV;
 a1
 b
 \.
-
 -- SAVEPOINT from original copy2.sql removed. See https://github.com/YugaByte/yugabyte-db/issues/1125.
 -- COPY FREEZE from original removed. See: https://github.com/yugabyte/yugabyte-db/issues/5156 
 SELECT * FROM vistest order by 1;
+-- SAVEPOINT s1;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV;
 d1
@@ -204,7 +204,20 @@ e
 SELECT * FROM vistest order by 1;
 COMMIT;
 SELECT * FROM vistest order by 1;
+
 BEGIN;
+TRUNCATE vistest;
+COPY vistest FROM stdin CSV;
+a2
+b
+\.
+SELECT * FROM vistest order by 1;
+-- SAVEPOINT s1;
+TRUNCATE vistest;
+COPY vistest FROM stdin CSV;
+d2
+e
+\.
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV ;
 d2
@@ -231,6 +244,7 @@ g
 COMMIT;
 BEGIN;
 TRUNCATE vistest;
+-- SAVEPOINT s1;
 COPY vistest FROM stdin CSV;
 m
 k
@@ -238,7 +252,9 @@ k
 COMMIT;
 BEGIN;
 INSERT INTO vistest VALUES ('z');
+-- SAVEPOINT s1;
 TRUNCATE vistest;
+-- ROLLBACK TO SAVEPOINT s1;
 COPY vistest FROM stdin CSV;
 d3
 e
