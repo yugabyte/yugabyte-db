@@ -210,29 +210,28 @@ public class TestPgDelete extends BasePgSQLTest {
     createSimpleTable(tableName2);
 
     // Fill in the helper table:
-     try (Statement insert_stmt = connection.createStatement()) {
+    try (Statement insert_stmt = connection.createStatement()) {
       insert_stmt.execute("INSERT INTO test_helper(h, r, vi, vs) VALUES(1, 0.5, 10, 'v')");
-     }
+    }
     
     List<Row> expectedRows = new ArrayList<>();
     try (Statement insert_stmt = connection.createStatement()) {
       String insert_format = "INSERT INTO %s(h, r, vi, vs) VALUES(%d, %f, %d, '%s')";
       for (long h = 0; h < 5; h++) {
-          String insert_text = String.format(insert_format, tableName1,
+        String insert_text = String.format(insert_format, tableName1,
                                              h, h + 0.5, h * 10 + h, "v" + h );
-          if (h == 1) {
-            // Constructing rows to be returned by DELETE.
-            expectedRows.add(new Row(h, h + 0.5 , h * 10 + h, "v" + h, 1, 0.5, 10, "v"));
-          }
-          insert_stmt.execute(insert_text);
+        if (h == 1) {
+          // Constructing rows to be returned by DELETE.
+          expectedRows.add(new Row(h, h + 0.5 , h * 10 + h, "v" + h, 1, 0.5, 10, "v"));
+        }
+        insert_stmt.execute(insert_text);
       }
     }
 
     try (Statement delete_stmt = connection.createStatement()) {
-        // Testing USING in Delete with RETURNING clause.
+      // Testing USING in Delete with RETURNING clause.
       delete_stmt.execute("DELETE FROM " + tableName1 + " USING " + tableName2 +
-                                        " WHERE test_delete_using.h = test_helper.h " +
-                                         "RETURNING *");
+                          " WHERE " + tableName1 + ".h  = " + tableName2 + ".h RETURNING *");
 
       // Verify RETURNING clause.
       ResultSet returning = delete_stmt.getResultSet();
