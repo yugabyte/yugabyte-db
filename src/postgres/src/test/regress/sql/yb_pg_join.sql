@@ -89,7 +89,7 @@ SELECT '' AS "xxx", tx.ii, tx.jj, tx.kk
     AS tx (ii, jj, tt, ii2, kk) order by 1, 2, 3, 4;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL CROSS JOIN J2_TBL a CROSS JOIN J2_TBL b order by 1, 2, 3, 4,5, 6, 7, 8;
+  FROM J1_TBL CROSS JOIN J2_TBL a CROSS JOIN J2_TBL b order by 1, 2, 3, 4, 5, 6, 7, 8;
 
 
 --
@@ -365,7 +365,9 @@ rollback;
 --
 -- regression test: be sure we cope with proven-dummy append rels
 -- 
---table b is not defined in original postgres join.sql We define it here.
+-- Table b requires yb_pg_inherits which is not supported by YB.
+-- See: https://github.com/yugabyte/yugabyte-db/issues/1129
+-- TODO: remove below line once yb_pg_inherits is supported.
 create temp table b (aa int, bb int);
 explain (costs off)
 select aa, bb, unique1, unique1
@@ -376,7 +378,7 @@ select aa, bb, unique1, unique1
   from tenk1 right join b on aa = unique1
   where bb < bb and bb is null;
 
-  drop table b;
+drop table b;
 
 --
 -- regression test: check handling of empty-FROM subquery underneath outer join
@@ -548,11 +550,13 @@ reset enable_mergejoin;
 create temp table tt3(f1 int, f2 text);
 insert into tt3 select x, repeat('xyzzy', 100) from generate_series(1,10000) x;
 create index tt3i on tt3(f1);
+-- analyze tt3;
 -- All 'analyze' statements from original postgres test removed. 
 -- See: https://github.com/yugabyte/yugabyte-db/issues/1420
 
 create temp table tt4(f1 int);
 insert into tt4 values (0),(1),(9999);
+-- analyze tt4;
 
 
 SELECT a.f1
@@ -1673,6 +1677,7 @@ select v.* from
   lateral (select x.q1,y.q1 union all select x.q2,y.q2) v(vx,vy) order by 1, 2;
 create temp table dual();
 insert into dual default values;
+  -- analyze dual;
 
 select v.* from
   (int8_tbl x left join (select q1,(select coalesce(q2,0)) q2 from int8_tbl) y on x.q2 = y.q1)
@@ -1875,6 +1880,9 @@ insert into fkest1 select x/10, x%10 from generate_series(1,1000) x;
 alter table fkest1
   add constraint fkest1_a_b_fkey foreign key (a,b) references fkest;
 
+-- analyze fkest;
+-- analyze fkest1;
+
 
 explain (costs off)
 select *
@@ -1898,6 +1906,9 @@ insert into j1 values(1),(2),(3);
 insert into j2 values(1),(2),(3);
 insert into j3 values(1),(1);
 
+-- analyze j1;
+-- analyze j2;
+-- analyze j3;
 
 -- ensure join is properly marked as unique
 explain (verbose, costs off)
@@ -2014,6 +2025,7 @@ where exists (select 1 from tenk1 t3
 
 -- ... unless it actually is unique
 create table j3 as select unique1, tenthous from onek;
+-- vacuum analyze j3;
 create unique index on j3(unique1, tenthous);
 
 explain (verbose, costs off)
@@ -2084,7 +2096,8 @@ $$;
 create table simple as
   select generate_series(1, 20000) AS id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 --  ALTER TABLE SET not supported. See https://github.com/YugaByte/yugabyte-db/issues/1124  
---alter table simple set (parallel_workers = 2);
+-- alter table simple set (parallel_workers = 2);
+-- analyze simple;
 
 
 -- Make a relation whose size we will under-estimate.  We want stats
@@ -2093,6 +2106,7 @@ create table bigger_than_it_looks as
   select generate_series(1, 20000) as id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 --alter table bigger_than_it_looks set (autovacuum_enabled = 'false');
 --alter table bigger_than_it_looks set (parallel_workers = 2);
+-- analyze bigger_than_it_looks
 update pg_class set reltuples = 1000 where relname = 'bigger_than_it_looks';
 
 -- Make a relation whose size we underestimate and that also has a
@@ -2101,6 +2115,7 @@ update pg_class set reltuples = 1000 where relname = 'bigger_than_it_looks';
 create table extremely_skewed (id int, t text);
 --alter table extremely_skewed set (autovacuum_enabled = 'false');
 --alter table extremely_skewed set (parallel_workers = 2);
+-- analyze extremely_skewed;
 insert into extremely_skewed
   select 42 as id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   from generate_series(1, 20000);
@@ -2118,19 +2133,21 @@ create table wide as select generate_series(1, 2) as id, rpad('', 320000, 'x') a
 
 -- non-parallel
 -- All SAVEPOINT from original join.sql removed. See https://github.com/YugaByte/yugabyte-db/issues/1125.
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 0;
 set local work_mem = '4MB';
 explain (costs off)
-  select count(*) from simple r join simple s using (id);
 select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
+select original > 1 as initially_multibatch, final > o  select count(*) from simple r join simple s using (id);
+riginal as increased_batches
   from hash_join_batches(
 $$
   select count(*) from simple r join simple s using (id);
 $$);
-
+-- rollback to settings;
 
 -- parallel with parallel-oblivious hash join
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 set local work_mem = '4MB';
 set local enable_parallel_hash = off;
@@ -2142,10 +2159,10 @@ select original > 1 as initially_multibatch, final > original as increased_batch
 $$
   select count(*) from simple r join simple s using (id);
 $$);
-
+-- rollback to settings;
 
 -- parallel with parallel-aware hash join
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 set local work_mem = '4MB';
 set local enable_parallel_hash = on;
@@ -2157,14 +2174,14 @@ select original > 1 as initially_multibatch, final > original as increased_batch
 $$
   select count(*) from simple r join simple s using (id);
 $$);
-
+-- rollback to settings;
 
 -- The "good" case: batches required, but we plan the right number; we
 -- plan for some number of batches, and we stick to that number, and
 -- peak memory usage says within our work_mem budget
 
 -- non-parallel
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 0;
 set local work_mem = '128kB';
 explain (costs off)
@@ -2175,10 +2192,10 @@ select original > 1 as initially_multibatch, final > original as increased_batch
 $$
   select count(*) from simple r join simple s using (id);
 $$);
-
+-- rollback to settings;
 
 -- parallel with parallel-oblivious hash join
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 set local work_mem = '128kB';
 set local enable_parallel_hash = off;
@@ -2190,10 +2207,10 @@ select original > 1 as initially_multibatch, final > original as increased_batch
 $$
   select count(*) from simple r join simple s using (id);
 $$);
-
+--rollback to settings;
 
 -- parallel with parallel-aware hash join
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 set local work_mem = '192kB';
 set local enable_parallel_hash = on;
@@ -2205,7 +2222,7 @@ select original > 1 as initially_multibatch, final > original as increased_batch
 $$
   select count(*) from simple r join simple s using (id);
 $$);
-
+-- rollback to settings;
 
 -- The "bad" case: during execution we need to increase number of
 -- batches; in this case we plan for 1 batch, and increase at least a
@@ -2213,7 +2230,7 @@ $$);
 -- budget
 
 -- non-parallel
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 0;
 set local work_mem = '128kB';
 explain (costs off)
@@ -2224,10 +2241,10 @@ select original > 1 as initially_multibatch, final > original as increased_batch
 $$
   select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
 $$);
-
+-- rollback to settings;
 
 -- parallel with parallel-oblivious hash join
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 set local work_mem = '128kB';
 set local enable_parallel_hash = off;
@@ -2239,10 +2256,10 @@ select original > 1 as initially_multibatch, final > original as increased_batch
 $$
   select count(*) from simple r join bigger_than_it_looks s using (id);
 $$);
-
+-- rollback to settings;
 
 -- parallel with parallel-aware hash join
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 1;
 set local work_mem = '192kB';
 set local enable_parallel_hash = on;
@@ -2254,7 +2271,7 @@ select original > 1 as initially_multibatch, final > original as increased_batch
 $$
   select count(*) from simple r join bigger_than_it_looks s using (id);
 $$);
-
+-- rollback to settings;
 
 -- The "ugly" case: increasing the number of batches during execution
 -- doesn't help, so stop trying to fit in work_mem and hope for the
@@ -2263,7 +2280,7 @@ $$);
 -- right through the work_mem budget and hope for the best...
 
 -- non-parallel
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 0;
 set local work_mem = '128kB';
 explain (costs off)
@@ -2273,10 +2290,10 @@ select * from hash_join_batches(
 $$
   select count(*) from simple r join extremely_skewed s using (id);
 $$);
-
+-- rollback to settings;
 
 -- parallel with parallel-oblivious hash join
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 set local work_mem = '128kB';
 set local enable_parallel_hash = off;
@@ -2287,10 +2304,10 @@ select * from hash_join_batches(
 $$
   select count(*) from simple r join extremely_skewed s using (id);
 $$);
-
+-- rollback to settings;
 
 -- parallel with parallel-aware hash join
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 1;
 set local work_mem = '128kB';
 set local enable_parallel_hash = on;
@@ -2301,12 +2318,12 @@ select * from hash_join_batches(
 $$
   select count(*) from simple r join extremely_skewed s using (id);
 $$);
-
+-- rollback to settings;
 
 -- A couple of other hash join tests unrelated to work_mem management.
 
 -- Check that EXPLAIN ANALYZE has data even if the leader doesn't participate
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 set local work_mem = '4MB';
 set local parallel_leader_participation = off;
@@ -2314,18 +2331,18 @@ select * from hash_join_batches(
 $$
   select count(*) from simple r join simple s using (id);
 $$);
-
+-- rollback to settings;
 
 -- Exercise rescans.  We'll turn off parallel_leader_participation so
 -- that we can check that instrumentation comes back correctly.
 
 create table join_foo as select generate_series(1, 3) as id, 'xxxxx'::text as t;
---alter table join_foo set (parallel_workers = 0);
+alter table join_foo set (parallel_workers = 0);
 create table join_bar as select generate_series(1, 10000) as id, 'xxxxx'::text as t;
---alter table join_bar set (parallel_workers = 2);
+alter table join_bar set (parallel_workers = 2);
 
 -- multi-batch with rescan, parallel-oblivious
-
+-- savepoint settings;
 set enable_parallel_hash = off;
 set parallel_leader_participation = off;
 set min_parallel_table_scan_size = 0;
@@ -2349,10 +2366,10 @@ $$
     left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
     on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
 $$);
-
+-- rollback to settings;
 
 -- single-batch with rescan, parallel-oblivious
-
+-- savepoint settings;
 set enable_parallel_hash = off;
 set parallel_leader_participation = off;
 set min_parallel_table_scan_size = 0;
@@ -2376,10 +2393,10 @@ $$
     left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
     on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
 $$);
-
+-- rollback to settings;
 
 -- multi-batch with rescan, parallel-aware
-
+-- savepoint settings;
 set enable_parallel_hash = on;
 set parallel_leader_participation = off;
 set min_parallel_table_scan_size = 0;
@@ -2403,10 +2420,10 @@ $$
     left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
     on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
 $$);
-
+-- rollback to settings;
 
 -- single-batch with rescan, parallel-aware
-
+-- savepoint settings;
 set enable_parallel_hash = on;
 set parallel_leader_participation = off;
 set min_parallel_table_scan_size = 0;
@@ -2430,43 +2447,43 @@ $$
     left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
     on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
 $$);
-
+-- rollback to settings;
 
 -- A full outer join where every record is matched.
 
 -- non-parallel
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 0;
 explain (costs off)
      select  count(*) from simple r full outer join simple s using (id);
 select  count(*) from simple r full outer join simple s using (id);
-
+-- rollback to settings;
 
 -- parallelism not possible with parallel-oblivious outer hash join
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 explain (costs off)
      select  count(*) from simple r full outer join simple s using (id);
 select  count(*) from simple r full outer join simple s using (id);
-
+-- rollback to settings;
 
 -- An full outer join where every record is not matched.
 
 -- non-parallel
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 0;
 explain (costs off)
      select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
 select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-
+-- rollback to settings;
 
 -- parallelism not possible with parallel-oblivious outer hash join
-
+-- savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 explain (costs off)
      select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
 select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-
+-- rollback to settings;
 
 -- exercise special code paths for huge tuples (note use of non-strict
 -- expression and left join required to get the detoasted tuple into
@@ -2474,7 +2491,7 @@ select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
 
 -- parallel with parallel-aware hash join (hits ExecParallelHashLoadTuple and
 -- sts_puttuple oversized tuple cases because it's multi-batch)
-
+-- savepoint settings;
 set max_parallel_workers_per_gather = 2;
 set enable_parallel_hash = on;
 set work_mem = '128kB';
@@ -2489,6 +2506,6 @@ $$
   select length(max(s.t))
   from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
 $$);
-
+-- rollback to settings;
 
 rollback;
