@@ -4369,11 +4369,10 @@ Datum reverse(PG_FUNCTION_ARGS)
     bool *nulls;
     Oid *types;
     agtype_value agtv_result;
+    text *text_string = NULL;
     char *string = NULL;
-    char *result = NULL;
     int string_len;
     Oid type;
-    int i;
 
     /* extract argument values */
     nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
@@ -4394,14 +4393,13 @@ Datum reverse(PG_FUNCTION_ARGS)
     if (type != AGTYPEOID)
     {
         if (type == CSTRINGOID)
-            string = DatumGetCString(arg);
+            text_string = cstring_to_text(DatumGetCString(arg));
         else if (type == TEXTOID)
-            string = text_to_cstring(DatumGetTextPP(arg));
+            text_string = DatumGetTextPP(arg);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                             errmsg("reverse() unsuppoted argument type %d",
                                    type)));
-        string_len = strlen(string);
     }
     else
     {
@@ -4421,30 +4419,32 @@ Datum reverse(PG_FUNCTION_ARGS)
         if (agtv_value->type == AGTV_NULL)
             PG_RETURN_NULL();
         if (agtv_value->type == AGTV_STRING)
-        {
-            string = agtv_value->val.string.val;
-            string_len = agtv_value->val.string.len;
-        }
+            text_string = cstring_to_text_with_len(agtv_value->val.string.val,
+                                                   agtv_value->val.string.len);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                             errmsg("reverse() unsuppoted argument agtype %d",
                                    agtv_value->type)));
     }
 
+    /*
+     * We need the string as a text string so that we can let PG deal with
+     * multibyte characters in reversing the string.
+     */
+    text_string = DatumGetTextPP(DirectFunctionCall1(text_reverse,
+                                                     PointerGetDatum(text_string)));
+
+    /* convert it back to a cstring */
+    string = text_to_cstring(text_string);
+    string_len = strlen(string);
+
     /* if we have an empty string, return null */
     if (string_len == 0)
         PG_RETURN_NULL();
 
-    /* allocate the new string */
-    result = palloc(string_len);
-
-    /* reverse the string */
-    for (i = 0; i < string_len; i++)
-        result[i] = string[string_len - i - 1];
-
     /* build the result */
     agtv_result.type = AGTV_STRING;
-    agtv_result.val.string.val = result;
+    agtv_result.val.string.val = string;
     agtv_result.val.string.len = string_len;
 
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
@@ -4625,6 +4625,279 @@ Datum tolowercase(PG_FUNCTION_ARGS)
     /* build the result */
     agtv_result.type = AGTV_STRING;
     agtv_result.val.string.val = result;
+    agtv_result.val.string.len = string_len;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(r_trim);
+
+Datum r_trim(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    text *text_string = NULL;
+    char *string = NULL;
+    int string_len;
+    Oid type;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs > 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("rTrim() only supports one argument")));
+
+    /* check for null */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /* rTrim() supports text, cstring, or the agtype string input */
+    arg = args[0];
+    type = types[0];
+
+    if (type != AGTYPEOID)
+    {
+        if (type == CSTRINGOID)
+            text_string = cstring_to_text(DatumGetCString(arg));
+        else if (type == TEXTOID)
+            text_string = DatumGetTextPP(arg);
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("rTrim() unsuppoted argument type %d",
+                                   type)));
+    }
+    else
+    {
+        agtype *agt_arg;
+        agtype_value *agtv_value;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("rTrim() only supports scalar arguments")));
+
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        /* check for agtype null */
+        if (agtv_value->type == AGTV_NULL)
+            PG_RETURN_NULL();
+        if (agtv_value->type == AGTV_STRING)
+            text_string = cstring_to_text_with_len(agtv_value->val.string.val,
+                                                   agtv_value->val.string.len);
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("rTrim() unsuppoted argument agtype %d",
+                                   agtv_value->type)));
+    }
+
+    /*
+     * We need the string as a text string so that we can let PG deal with
+     * multibyte characters in trimming the string.
+     */
+    text_string = DatumGetTextPP(DirectFunctionCall1(rtrim1,
+                                                     PointerGetDatum(text_string)));
+
+    /* convert it back to a cstring */
+    string = text_to_cstring(text_string);
+    string_len = strlen(string);
+
+    /* if we have an empty string, return null */
+    if (string_len == 0)
+        PG_RETURN_NULL();
+
+    /* build the result */
+    agtv_result.type = AGTV_STRING;
+    agtv_result.val.string.val = string;
+    agtv_result.val.string.len = string_len;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(l_trim);
+
+Datum l_trim(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    text *text_string = NULL;
+    char *string = NULL;
+    int string_len;
+    Oid type;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs > 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("lTrim() only supports one argument")));
+
+    /* check for null */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /* rTrim() supports text, cstring, or the agtype string input */
+    arg = args[0];
+    type = types[0];
+
+    if (type != AGTYPEOID)
+    {
+        if (type == CSTRINGOID)
+            text_string = cstring_to_text(DatumGetCString(arg));
+        else if (type == TEXTOID)
+            text_string = DatumGetTextPP(arg);
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("lTrim() unsuppoted argument type %d",
+                                   type)));
+    }
+    else
+    {
+        agtype *agt_arg;
+        agtype_value *agtv_value;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("lTrim() only supports scalar arguments")));
+
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        /* check for agtype null */
+        if (agtv_value->type == AGTV_NULL)
+            PG_RETURN_NULL();
+        if (agtv_value->type == AGTV_STRING)
+            text_string = cstring_to_text_with_len(agtv_value->val.string.val,
+                                                   agtv_value->val.string.len);
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("lTrim() unsuppoted argument agtype %d",
+                                   agtv_value->type)));
+    }
+
+    /*
+     * We need the string as a text string so that we can let PG deal with
+     * multibyte characters in trimming the string.
+     */
+    text_string = DatumGetTextPP(DirectFunctionCall1(ltrim1,
+                                                     PointerGetDatum(text_string)));
+
+    /* convert it back to a cstring */
+    string = text_to_cstring(text_string);
+    string_len = strlen(string);
+
+    /* if we have an empty string, return null */
+    if (string_len == 0)
+        PG_RETURN_NULL();
+
+    /* build the result */
+    agtv_result.type = AGTV_STRING;
+    agtv_result.val.string.val = string;
+    agtv_result.val.string.len = string_len;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(b_trim);
+
+Datum b_trim(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    text *text_string = NULL;
+    char *string = NULL;
+    int string_len;
+    Oid type;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs > 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("trim() only supports one argument")));
+
+    /* check for null */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /* trim() supports text, cstring, or the agtype string input */
+    arg = args[0];
+    type = types[0];
+
+    if (type != AGTYPEOID)
+    {
+        if (type == CSTRINGOID)
+            text_string = cstring_to_text(DatumGetCString(arg));
+        else if (type == TEXTOID)
+            text_string = DatumGetTextPP(arg);
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("trim() unsuppoted argument type %d",
+                                   type)));
+    }
+    else
+    {
+        agtype *agt_arg;
+        agtype_value *agtv_value;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("trim() only supports scalar arguments")));
+
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        /* check for agtype null */
+        if (agtv_value->type == AGTV_NULL)
+            PG_RETURN_NULL();
+        if (agtv_value->type == AGTV_STRING)
+            text_string = cstring_to_text_with_len(agtv_value->val.string.val,
+                                                   agtv_value->val.string.len);
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("trim() unsuppoted argument agtype %d",
+                                   agtv_value->type)));
+    }
+
+    /*
+     * We need the string as a text string so that we can let PG deal with
+     * multibyte characters in trimming the string.
+     */
+    text_string = DatumGetTextPP(DirectFunctionCall1(btrim1,
+                                                     PointerGetDatum(text_string)));
+
+    /* convert it back to a cstring */
+    string = text_to_cstring(text_string);
+    string_len = strlen(string);
+
+    /* if we have an empty string, return null */
+    if (string_len == 0)
+        PG_RETURN_NULL();
+
+    /* build the result */
+    agtv_result.type = AGTV_STRING;
+    agtv_result.val.string.val = string;
     agtv_result.val.string.len = string_len;
 
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));

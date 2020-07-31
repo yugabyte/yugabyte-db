@@ -988,6 +988,59 @@ SELECT * FROM touppercase();
 SELECT * FROM tolowercase();
 
 --
+-- lTrim(), rTrim(), trim()
+--
+
+SELECT * FROM cypher('expr', $$
+    RETURN lTrim("  string   ")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN rTrim("  string   ")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN trim("  string   ")
+$$) AS (results agtype);
+SELECT * FROM l_trim('  string   ');
+SELECT * FROM r_trim('  string   ');
+SELECT * FROM b_trim('  string   ');
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN lTrim(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN rTrim(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN trim(null)
+$$) AS (results agtype);
+SELECT * FROM l_trim(null);
+SELECT * FROM r_trim(null);
+SELECT * FROM b_trim(null);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN lTrim(true)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN rTrim(true)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN trim(true)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN lTrim()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN rTrim()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN trim()
+$$) AS (results agtype);
+
+SELECT * FROM l_trim();
+SELECT * FROM r_trim();
+SELECT * FROM b_trim();
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

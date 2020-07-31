@@ -2255,6 +2255,140 @@ LINE 1: SELECT * FROM tolowercase();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
+-- lTrim(), rTrim(), trim()
+--
+SELECT * FROM cypher('expr', $$
+    RETURN lTrim("  string   ")
+$$) AS (results agtype);
+   results   
+-------------
+ "string   "
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN rTrim("  string   ")
+$$) AS (results agtype);
+  results   
+------------
+ "  string"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN trim("  string   ")
+$$) AS (results agtype);
+ results  
+----------
+ "string"
+(1 row)
+
+SELECT * FROM l_trim('  string   ');
+   l_trim    
+-------------
+ "string   "
+(1 row)
+
+SELECT * FROM r_trim('  string   ');
+   r_trim   
+------------
+ "  string"
+(1 row)
+
+SELECT * FROM b_trim('  string   ');
+  b_trim  
+----------
+ "string"
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN lTrim(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN rTrim(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN trim(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM l_trim(null);
+ l_trim 
+--------
+ 
+(1 row)
+
+SELECT * FROM r_trim(null);
+ r_trim 
+--------
+ 
+(1 row)
+
+SELECT * FROM b_trim(null);
+ b_trim 
+--------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN lTrim(true)
+$$) AS (results agtype);
+ERROR:  lTrim() unsuppoted argument agtype 5
+SELECT * FROM cypher('expr', $$
+    RETURN rTrim(true)
+$$) AS (results agtype);
+ERROR:  rTrim() unsuppoted argument agtype 5
+SELECT * FROM cypher('expr', $$
+    RETURN trim(true)
+$$) AS (results agtype);
+ERROR:  trim() unsuppoted argument agtype 5
+SELECT * FROM cypher('expr', $$
+    RETURN lTrim()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN rTrim()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN trim()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM l_trim();
+ERROR:  function l_trim() does not exist
+LINE 1: SELECT * FROM l_trim();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM r_trim();
+ERROR:  function r_trim() does not exist
+LINE 1: SELECT * FROM r_trim();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM b_trim();
+ERROR:  function b_trim() does not exist
+LINE 1: SELECT * FROM b_trim();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
