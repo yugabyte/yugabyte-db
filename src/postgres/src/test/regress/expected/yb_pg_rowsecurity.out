@@ -1380,49 +1380,72 @@ LINE 1: UPDATE t1 SET b = b WHERE f_leak(b) RETURNING oid, *, t1;
 -- updates with from clause
 EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t3
 WHERE t2.a = 3 and t3.a = 2 AND f_leak(t2.b) AND f_leak(t3.b);
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ERROR:  relation "t2" does not exist
+LINE 1: EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t3
+                                   ^
 UPDATE t2 SET b=t2.b FROM t3
 WHERE t2.a = 3 and t3.a = 2 AND f_leak(t2.b) AND f_leak(t3.b);
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ERROR:  relation "t2" does not exist
+LINE 1: UPDATE t2 SET b=t2.b FROM t3
+               ^
 EXPLAIN (COSTS OFF) UPDATE t1 SET b=t1.b FROM t2
 WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ERROR:  relation "t2" does not exist
+LINE 1: EXPLAIN (COSTS OFF) UPDATE t1 SET b=t1.b FROM t2
+                                                      ^
 UPDATE t1 SET b=t1.b FROM t2
 WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ERROR:  relation "t2" does not exist
+LINE 1: UPDATE t1 SET b=t1.b FROM t2
+                                  ^
 EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t1
 WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ERROR:  relation "t2" does not exist
+LINE 1: EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t1
+                                   ^
 UPDATE t2 SET b=t2.b FROM t1
 WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ERROR:  relation "t2" does not exist
+LINE 1: UPDATE t2 SET b=t2.b FROM t1
+               ^
 -- updates with from clause self join
 EXPLAIN (COSTS OFF) UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2_2
 WHERE t2_1.a = 3 AND t2_2.a = t2_1.a AND t2_2.b = t2_1.b
 AND f_leak(t2_1.b) AND f_leak(t2_2.b) RETURNING *, t2_1, t2_2;
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ERROR:  relation "t2" does not exist
+LINE 1: EXPLAIN (COSTS OFF) UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2...
+                                   ^
 UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2_2
 WHERE t2_1.a = 3 AND t2_2.a = t2_1.a AND t2_2.b = t2_1.b
 AND f_leak(t2_1.b) AND f_leak(t2_2.b) RETURNING *, t2_1, t2_2;
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ERROR:  relation "t2" does not exist
+LINE 1: UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2_2
+               ^
 EXPLAIN (COSTS OFF) UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
 WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
 AND f_leak(t1_1.b) AND f_leak(t1_2.b) RETURNING *, t1_1, t1_2;
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Update on t1 t1_1
+   ->  Hash Join
+         Hash Cond: (t1_1.b = t1_2.b)
+         ->  Seq Scan on t1 t1_1
+               Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
+         ->  Hash
+               ->  Seq Scan on t1 t1_2
+                     Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
+(8 rows)
+
 UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
 WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
 AND f_leak(t1_1.b) AND f_leak(t1_2.b) RETURNING *, t1_1, t1_2;
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+NOTICE:  f_leak => daddad_updt
+NOTICE:  f_leak => daddad_updt
+ a |      b      | k | a |      b      | k |       t1_1        |       t1_2
+---+-------------+---+---+-------------+---+-------------------+-------------------
+ 4 | daddad_updt | 4 | 4 | daddad_updt | 4 | (4,daddad_updt,4) | (4,daddad_updt,4)
+(1 row)
+
 RESET SESSION AUTHORIZATION;
 SET row_security TO OFF;
 SELECT * FROM t1 ORDER BY a,b;
@@ -3200,21 +3223,25 @@ INSERT INTO r1 SELECT a + 1 FROM r2 RETURNING *; -- OK
 (2 rows)
 
 UPDATE r1 SET a = r2.a + 2 FROM r2 WHERE r1.a = r2.a RETURNING *; -- OK
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ a  | k | a  | k
+----+---+----+---
+ 12 | 1 | 10 | 1
+ 22 | 2 | 20 | 2
+(2 rows)
+
 DELETE FROM r1 USING r2 WHERE r1.a = r2.a + 2 RETURNING *; -- OK
-ERROR:  USING clause in DELETE not supported yet
-LINE 1: DELETE FROM r1 USING r2 WHERE r1.a = r2.a + 2 RETURNING *;
-                       ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ a  | k | a  | k
+----+---+----+---
+ 12 | 1 | 10 | 1
+ 22 | 2 | 20 | 2
+(2 rows)
+
 SELECT * FROM r1;
  a  | k
 ----+---
- 10 | 1
- 20 | 2
  11 | 3
  21 | 4
-(4 rows)
+(2 rows)
 
 SELECT * FROM r2;
  a  | k

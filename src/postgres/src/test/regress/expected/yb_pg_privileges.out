@@ -150,8 +150,6 @@ UPDATE atest2 SET col2 = NULL; -- ok
 UPDATE atest2 SET col2 = NOT col2; -- fails; requires SELECT on atest2
 ERROR:  permission denied for table atest2
 UPDATE atest2 SET col2 = true FROM atest1 WHERE atest1.a = 5; -- ok
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
 SELECT * FROM atest1 FOR UPDATE; -- fail
 ERROR:  permission denied for table atest1
 SELECT * FROM atest2 FOR UPDATE; -- fail
