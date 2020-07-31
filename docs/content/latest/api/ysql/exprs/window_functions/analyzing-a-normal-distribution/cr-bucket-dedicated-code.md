@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `cr_bucket_dedicated_code.sql`.
-```postgresql
+```plpgsql
 -- This approach implements the required "open-closed" interval
 -- bucket semantics directly. See the test
 --

@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `do_assert_bucket_ok.sql`.
-```postgresql
+```plpgsql
 -- Test it over the full range.
 -- Pay special attention to the bucket boundaries.
 do $body$

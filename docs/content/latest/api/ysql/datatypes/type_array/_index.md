@@ -78,14 +78,14 @@ The following properties determine the shape of an array. Each can be observed u
 
 Arrays are special because (unlike is the case for, for example, numeric data types like `decimal` and `int`, or character data types like `text` and `varchar`) there are no ready-made array data types. Rather, you construct the array data type that you need using an array _type constructor_. Here's an example:
 
-```postgresql
+```plpgsql
 create table t1(k int primary key, arr text array[4]);
 ```
 This syntax conforms to the SQL Standard. Notice that `array` is a reserved word. (You cannot, for example, create a table with that name.) It appears to let you specify just a one-dimensional array and to specify how many values it holds. But both of these apparent declarations of intent are ignored and act, therefore, only as potentially misleading documentation.
 
 The following illustrates PostgreSQL's extension to the Standard that YSQL, therefore, inherits.:
 
-```postgresql
+```plpgsql
 create table t2(
   k int primary key,
   one_dimensional_array int[],
@@ -109,7 +109,7 @@ The `array_ndims()` function lets you define a table constraint to insist that t
 ## Atomically null vs having all values null
 
 Here is a minimal example:
-```postgresql
+```plpgsql
 create table t(k int primary key, v int[]);
 insert into t(k) values(1);
 insert into t(k, v) values (2, '{null}'::int[]);
@@ -126,7 +126,7 @@ It shows this:
 ```
 
 Because _"v"_ has no constraint, it can be `NULL`, just like when its data type is scalar. This is the case for the row with _"k = 1"_. Here, _"v"_ is said to be _atomically null_. (This term is usually used only when the data type is composite to distinguish the outcome from what is seen for the row with _"k = 2"_ where _"v"_ is not atomically null. The array properties of the first row's _"v"_, like its dimensionality, are all `NULL`. But for the second row, they have meaningful, `not null`, values. Now try this:
-```postgresql
+```plpgsql
 update t set v = v||'{null}'::int[] where k = 2;
 select k, v, array_dims(v) as dims from t where k = 2;
 ```
@@ -138,7 +138,7 @@ The `||` operator is explained in [Array concatenation functions and operators](
  2 | {NULL,NULL} | [1:2]
 ```
 Here, _"v"_ for the second row, while not atomically null, has all of its values `NULL`. Its dimensionality cannot be changed, but because it is a one dimensional array, its length can be extended, as was explained above. This is allowed:
-```postgresql
+```plpgsql
 update t set v[0] = 17 where k = 2;
 select k, v, array_dims(v) as dims from t where k = 2;
 ```
@@ -149,7 +149,7 @@ It shows this:
  2 | [0:3]={17,NULL,NULL,NULL} | [0:3]
 ```
  This, too, is allowed:
-```postgresql
+```plpgsql
 update t set v[1] = 42 where k = 1;
 select k, v, array_dims(v) as dims from t where k = 1;
 ```
@@ -167,7 +167,7 @@ The dimensionality of _"v"_ for this first row has now been irrevocably establis
 
 Arrays are not YSQL's only example of type construction. So, also, are _"row"_ types and `DOMAIN`s:
 
-```postgresql
+```plpgsql
 create type rec_t as(f1 int, f2 text);
 
 create domain medal_t as text
@@ -186,7 +186,7 @@ Notice that you must define a _"row"_ type or a `DOMAIN` as a schema object. But
 This sections within this "Array data types and functionality" major section carefully describe what is sketched here.
 
 _First_, create a table with an `int[]` column and populate it with a two-dimensional array by using an array literal.
-```postgresql
+```plpgsql
 create table t(
   k int primary key, v int[]);
 
@@ -199,7 +199,7 @@ insert into t(k, v) values(1,
 ```
 _Next_, look at a direct `::text` typecast of the value that was inserted:
 
-```postgresql
+```plpgsql
 select v::text from t where k = 1;
 ```
 It shows this:
@@ -211,7 +211,7 @@ It shows this:
 Notice that, apart from the fact that it has no whitespace, this representation is identical to the literal that defined the inserted array. It can therefore be used in this way.
 
 _Next_ check that the inserted array value has the expected properties:
-```postgresql
+```plpgsql
 select
   array_ndims(v),
   array_length(v, 1),
@@ -229,7 +229,7 @@ It shows this:
 The `array_ndims()` function reports the dimensionality of the array; `array_length()` reports the length of the specified dimension (that is, the number of values that this dimension has); and `array_dims()` presents the same information, as a single `text` value, as using `array_length()` in turn for each dimension does. Notice that `array_length()` returns a _single_ `int` value for the specified dimension. Its design rests upon a rule, exemplified by saying that a two-dimensional array must be a rectangle (it cannot have a ragged edge). In the same way, a three-dimensional array must be a cuboid (it cannot have an uneven surface). This notion, though its harder to visualise, continues to apply as the number of dimensions increases.
 
 Here's an example that violates the rule:
-```postgresql
+```plpgsql
 insert into t(k, v) values(2,
    '{
       {11, 12, 13},
@@ -242,7 +242,7 @@ The formatting emphasizes that its edge is ragged. It causes a _"22P02: malforme
 
 Finally, in this sketch, this `DO` block shows how you can visualise the values in a two-dimensional array as a rectangular grid.
 
-```postgresql
+```plpgsql
 do $body$
 declare
   arr constant int[] not null:= '{
@@ -288,7 +288,7 @@ When, for example, the values of same-dimensioned multidimensional arrays are co
 **Note:** The term "_row-major order"_ is explained in [Joint semantics](./functions-operators/properties/#joint-semantics)) within the _"Functions for reporting the geometric properties of an array"_ section. it contains a an example PL/pgSQL procedure that shows how to traverse an arbitrary two-dimensional array's values, where the lower bounds and lengths along each dimension are unknown beforehand, in this order.
 
 Notice that, in the example above, the first value in each dimension has index value 1. This is the case when an array value is created using a literal and you say nothing about the index values. The next example shows how you can control where the index values for each dimension start and end.
-```postgresql
+```plpgsql
 \pset null '<is null>'
 with v as (
   select '[2:4][5:8]=
@@ -336,7 +336,7 @@ The GPS device lets the cyclist split the trip into successive intervals, usuall
 
 This sounds like a classic three table design, with foreign key constraints to capture the notion that a GPS data point belongs to a lap and that a lap belongs to a trip. The array data type allows all of the GPS data points that belong to a lap to be recorded in a single row in the _"laps"_ table—in other words as a multivalued field, thus: 
 
-```postgresql
+```plpgsql
 create type gps_data_point_t as (
   ts          timestamp,
   lat         numeric,

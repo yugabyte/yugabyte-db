@@ -66,7 +66,7 @@ Use the _"row"_ type constructor to create representative values of each kind an
 
 This example demonstrates the principle:
 
-```postgresql
+```plpgsql
 create type row_t as (f1 int, f2 int, f3 int);
 create table t(k serial primary key, v1 row_t, v2 row_t);
 insert into t(v1) values (row(1, 2, 3)::row_t);
@@ -94,7 +94,7 @@ You can see the general form already:
 The next section, [_"Row"_ type with `text` fields](./#row-type-with-text-fields), shows that more needs to be said. But the two rules that you have already noticed always hold.
 
 To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
-```postgresql
+```plpgsql
 \set canonical_literal '\'':result_text_typecast'\''::row_t
 \echo :canonical_literal
 ```
@@ -103,7 +103,7 @@ To use the text of the literal that was produced to create a value, you must enq
 '(1,2,3)'::row_t
 ```
 Next, use the canonical literal that you produced to update _"t.v2"_ to confirm that the value that the row constructor created was recreated:
-```postgresql
+```plpgsql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
@@ -122,7 +122,7 @@ Use [_"Row"_ type with `int` fields](./#row-type-with-text-fields) as a template
      a       '       a b       ()       ,       "       \       null
 ```
 
-```postgresql
+```plpgsql
 create type row_t as (f1 text, f2 text, f3 text, f4 text, f5 text, f6 text, f7 text, f8 text);
 create table t(k serial primary key, v1 row_t, v2 row_t);
 insert into t(v1) values (
@@ -157,7 +157,7 @@ In addition to the first two rules, you notice the following.
 There's another rule that the present example does not show. Though not every comma-separated value was surrounded by double quotes, it's _never harmful_ to do this. You can confirm this with your own test, Yugabyte recommends that, for consistency, you always surround every `text` value within the parentheses of a _"row"_ type literal with double quotes.
 
 To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this, as you did for the `int` example above, with the `\set` metacommand. But you must use dollar quotes because the literal itself has an interior single quote.
-```postgresql
+```plpgsql
 \set canonical_literal '$$':result_text_typecast'$$'::row_t
 \echo :canonical_literal
 ```
@@ -166,7 +166,7 @@ The `\echo` metacommand now shows this:
 $$(a,',"a b","()",",","""","\\",)$$::row_t
 ```
 Next, use the canonical literal that you produced to update _"t.v2"_ to confirm that the value that the row constructor created was recreated:
-```postgresql
+```plpgsql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
@@ -179,7 +179,7 @@ It shows this:
 So, again as promised, the canonical form of the array literal does indeed recreate the identical value that the _"row"_ type constructor created.
 
 Finally in this section, consider the meaning-changing effect of surrounding the comma delimiters with whitespace. Try this:
-```postgresql
+```plpgsql
 create type row_t as (f1 text, f2 text, f3 text);
 select '(   a   ,   "(a b)"   ,   c   )'::row_t;;
 ```
@@ -197,7 +197,7 @@ This rule is different from the rule for an array literal. It's also different f
 
 This example demonstrates the principle:
 
-```postgresql
+```plpgsql
 create type row_t as (f1 timestamp, f2 timestamp);
 create table t(k serial primary key, v1 row_t, v2 row_t);
 insert into t(v1) values (('2019-01-27 11:48:33', '2020-03-30 14:19:21')::row_t);
@@ -211,7 +211,7 @@ The `\echo` metacommand shows this:
 ("2019-01-27 11:48:33","2020-03-30 14:19:21")
 ```
 To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
-```postgresql
+```plpgsql
 \set canonical_literal '\'':result_text_typecast'\''::row_t
 \echo :canonical_literal
 ```
@@ -220,7 +220,7 @@ To use the text of the literal that was produced to create a value, you must enq
 '("2019-01-27 11:48:33","2020-03-30 14:19:21")'::row_t
 ```
 Next, use the canonical literal that you produced to update _"t.v2"_ to confirm that you have recreated the value that the row constructor created:
-```postgresql
+```plpgsql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
@@ -236,7 +236,7 @@ Once again, as promised, the canonical form of the array literal does indeed rec
 
 This example demonstrates the principle:
 
-```postgresql
+```plpgsql
 create type row_t as (f1 boolean, f2 boolean, f3 boolean);
 create table t(k serial primary key, v1 row_t, v2 row_t);
 insert into t(v1) values ((true, false, null)::row_t);
@@ -249,7 +249,7 @@ The `\echo` metacommand shows this:
  (t,f,)
 ```
 To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
-```postgresql
+```plpgsql
 \set canonical_literal '\'':result_text_typecast'\''::row_t
 \echo :canonical_literal
 ```
@@ -258,7 +258,7 @@ To use the text of the literal that was produced to create a value, you must enq
 '(t,f,)'::row_t
 ```
 Next, use the canonical literal that you produced to update _"t.v2"_ to confirm that the value that the row constructor created was recreated:
-```postgresql
+```plpgsql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
@@ -282,7 +282,7 @@ The rules for such cases can be determined by induction from the rules that this
 
 The two notions, _type constructor_ and _literal_, are functionally critically different. You can demonstrate the difference using a `DO` block, because this lets you use a declared variable. It's more effort to do this using a SQL statement because you'd have to use a scalar subquery in place of the PL/pgSQL variable. The `ROW` keyword is deliberately omitted here to emphasize its optional status.
 
-```postgresql
+```plpgsql
 create type rt as (n numeric, s text, t timestamp, b boolean);
 
 do $body$

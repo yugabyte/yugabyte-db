@@ -40,7 +40,7 @@ The following `DO` block applies the pattern using a representative range of bot
 
 Notice that the last test uses an array whose data type is the user-created `DOMAIN` _"int_arr_t"_. [Using an array of `DOMAIN` values](../../array-of-domains/) explains this notion. This is a real stress-tests of the rule.
 
-```postgresql
+```plpgsql
 -- Needed by the '1-d array of "row" type values' test.
 create type rt as (n numeric, s text, t timestamp, b boolean);
 
@@ -175,7 +175,7 @@ Notice how the syntax for the _array of arrays_ `text` value compares with the s
 ## boolean values show special text forms in ysqlsh
 
 Try this:
-```postgresql
+```plpgsql
 select true as "bare true", true::text as "true::text";
 ```
 This is the result:
@@ -193,7 +193,7 @@ You saw above that even when you explicitly `::text` typecast a composite value,
 ## The relationship between the text typecast of a value and the literal that creates that value
 
 Try this in `ysqlsh`:
-```postgresql
+```plpgsql
 select
   42.932771::numeric          as n,
   'cat'::text                 as t1,

@@ -78,7 +78,7 @@ But this causes a compilation error. The paradox is exactly that `int[]` is anon
 
 The `DOMAIN` brings the functionality that overcomes the apparent restriction. First, do this:
 
-```postgresql
+```plpgsql
 create domain int_arr_t as int[];
 create table t(k serial primary key, v1 int_arr_t[], typecast text, v2 int_arr_t[]);
 ```
@@ -86,7 +86,7 @@ Notice that the use of the `CREATE DOMAIN` statement is an example of _type cons
 
 The columns _"v1"_ and _"v2"_ are now ready to store ragged arrays of arrays. Prove it like this:
 
-```postgresql
+```plpgsql
 do $body$
 declare
   arr_1      constant int_arr_t := array[1, 2];
@@ -100,7 +100,7 @@ $body$;
 By using a `DO` block to set the value of _"ragged_arr"_ by building it bottom-up, you emphasize the fact that it really is a one-dimensional array of one-dimensional arrays of different lengths. It is, then, clearly _not_ a rectilinear two-dimensional array.
 
 Now use the technique that [The non-lossy round trip: value to text typecast and back to value](../literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value) explained to inspect the `::text` typecast of the ragged array and then to show that, by typecasting this back to a value of the original data type, it can serve as the literal for the original value. First, do this:
-```postgresql
+```plpgsql
 update t
 set typecast = v1::text
 where k = 1;
@@ -121,7 +121,7 @@ This sentence is copied from [The non-lossy round trip: value to text typecast a
 
 Now do this:
 
-```postgresql
+```plpgsql
 update t
 set v2 = typecast::int_arr_t[]
 where k = 1;
@@ -140,7 +140,7 @@ The original value has been recreated.
 ### Addressing values in a ragged array of arrays
 
 First, consider this counter example:
-```postgresql
+```plpgsql
 \pset null '<IS NULL'>
 with v as (
   select  '{{1,2},{3,4}}'::int[] as two_d_arr)
@@ -167,7 +167,7 @@ And it reminds you that you must supply exactly as many index values as the arra
 - How do you address, for example, the _first_ value in the array that is itself the _second_ array in the ragged array of arrays?
 
 You know before typing it that this can't be right:
-```postgresql
+```plpgsql
 select v1[2][1] as "v1[2][1]" from t where k = 1;
 ```
 Sure enough, it shows this:
@@ -177,7 +177,7 @@ Sure enough, it shows this:
  <IS NULL>
 ```
 You don't get an error. But neither do you get what you want. Try this instead:
-```postgresql
+```plpgsql
 select v1[2] as "v1[2]" from t where k = 1;
 ```
 This is the result:
@@ -187,7 +187,7 @@ This is the result:
  {3,4,5}
 ```
 This is the clue. You have identified the leaf array, in the array of arrays, that you want to. Now you have to identify the desired value in _that_ array. Try this:
-```postgresql
+```plpgsql
 select (v1[2])[1] as "(v1[2])[1]" from t where k = 1;
 ```
 This is the result:
@@ -197,7 +197,7 @@ This is the result:
           3
 ```
 In the same way, you can inspect the geometric properties of the leaf array like this:
-```postgresql
+```plpgsql
 select
   array_lower(v1[1], 1) as v1_lb,
   array_upper(v1[1], 1) as v1_ub,
@@ -213,7 +213,7 @@ This is the result:
 ```
 Finally, try this counter example:
 
-```postgresql
+```plpgsql
 with v as (
   select  '{{1,2},{3,4}}'::int[] as two_d_arr)
 select
@@ -246,7 +246,7 @@ First, define the data type for the "payload" matrix. To make it interesting, as
 - Each of the matrix's values must be `NOT NULL`.
 
 The motivating requirement for the `DOMAIN` type constructor is that it must allow arbitrary constraints to be defined on values of the constructed type, like this:
-```postgresql
+```plpgsql
 create domain matrix_t as text[]
 check (
   (value is not null)         and
@@ -275,7 +275,7 @@ Next, define the block matrix as a matrix of _"matrix_t"_. Assume that similar f
 - Each of the matrix's values must be `NOT NULL`.
 
 The `CREATE DOMAIN` statement for _"block_matrix_t"_ is therefore similar to that for _"matrix_t"_:
-```postgresql
+```plpgsql
 create domain block_matrix_t as matrix_t[]
 check (
   (value is not null)         and
@@ -296,7 +296,7 @@ These two `CREATE DOMAIN` statements are uncomfortably verbose and repetitive. B
 
 Next, create a block matrix value, insert it, and its `::text` typecast, into a table, and inspect the typecast's value.
 
-```postgresql
+```plpgsql
 create table block_matrices_1(k int primary key, v block_matrix_t, text_typecast text);
 
 do $body$
@@ -374,7 +374,7 @@ Finally, check that even this exotic structure conforms to the universal rule, c
 > - Any value of any data type, primitive or composite, can be `::text` typecasted. Similarly, there always exists a `text` value that, when properly spelled, can be typecasted to a value of any desired data type, primitive or composite.
 > - If you `::text` typecast a value of any data type and then typecast that `text` value to the original value's data type, then the value that you get is identical to the original value.
 
-```postgresql
+```plpgsql
 create table block_matrices_2(k int primary key, v block_matrix_t);
 
 insert into block_matrices_2(k, v)
@@ -404,7 +404,7 @@ The rule holds.
 
 ### Using unnest() on an array of arrays
 First, produce the list of _"matrix_t"_ values, in row-major order:
-```postgresql
+```plpgsql
 with matrices as (
   select unnest(v) as m
   from block_matrices_1
@@ -429,7 +429,7 @@ This is the result:
  4 | {{28,29,30},{31,32,33},{34,35,36}}
 ```
 Now unnest a _"matrix_t"_ value of interest:
-```postgresql
+```plpgsql
 select unnest(v[2][1]) as val
 from block_matrices_1
 where k = 1
@@ -446,7 +446,7 @@ This is the result:
  27
 ```
 Use this query if you want to see _all_ of the leaf values in row-major order:
-```postgresql
+```plpgsql
 with
   matrixes as (
     select unnest(v) as m

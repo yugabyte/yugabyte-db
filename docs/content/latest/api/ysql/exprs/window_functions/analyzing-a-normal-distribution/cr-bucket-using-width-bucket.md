@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `cr_bucket_using_width_bucket.sql`.
-```postgresql
+```plpgsql
 -- This approach subtracts a tiny value, epsilon, from the input value
 -- to change "width_bucket()"'s "closed-open" interval bucket semantics to
 -- the required "open-closed" interval bucket semantics.

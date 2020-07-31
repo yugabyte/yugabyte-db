@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `do_populate_results.sql`.
-```postgresql
+```plpgsql
 do $body$
 declare
   nof_buckets constant int not null := 20;

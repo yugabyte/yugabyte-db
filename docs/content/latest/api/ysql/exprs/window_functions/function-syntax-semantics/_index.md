@@ -70,7 +70,7 @@ The names of the other window functions that the second table lists, `first_valu
 
 See the section [Window function invocation—SQL syntax and semantics](../sql-syntax-semantics). But the default does _not_ specify the entire [_window_](../sql-syntax-semantics/#the-window-definition-rule). To do this, use this variant:
 
-```postgresql
+```plpgsql
 -- You must specify this explicitly unless you are sure
 -- that you want a different specification.
 range between unbounded preceding and unbounded following
