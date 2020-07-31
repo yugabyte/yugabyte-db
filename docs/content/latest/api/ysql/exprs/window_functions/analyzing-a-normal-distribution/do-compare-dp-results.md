@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `do_compare_dp_results.sql`.
-```postgresql
+```plpgsql
 with
   nt_results as (
     select

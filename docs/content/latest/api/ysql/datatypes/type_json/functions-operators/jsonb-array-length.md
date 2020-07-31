@@ -23,7 +23,7 @@ return value:      integer
 
 **Notes:** Each function in this pair requires that the supplied JSON value is an _array_.
 
-```postgresql
+```plpgsql
 do $body$
 declare
   j constant jsonb := '["a", 42, true, null]';

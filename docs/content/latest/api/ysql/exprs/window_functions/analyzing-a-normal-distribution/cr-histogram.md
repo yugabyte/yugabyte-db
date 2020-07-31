@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `cr_histogram.sql`.
-```postgresql
+```plpgsql
 -- "scale_factor" controls the histogram height.
 -- Use 10 for 10,000 rows, 100 for 100,000 rows.
 

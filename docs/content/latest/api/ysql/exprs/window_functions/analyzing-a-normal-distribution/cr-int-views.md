@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `cr_int_views.sql`.
-```postgresql
+```plpgsql
 -- Suppress the spurious warning that is raised
 -- when the to-be-deleted view doesn't yet exist.
 set client_min_messages = warning;

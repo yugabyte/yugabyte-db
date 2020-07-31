@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `cr_pr_cd_equality_report.sql`.
-```postgresql
+```plpgsql
 set client_min_messages = warning;
 drop type if exists pr_cd_equality_report_t cascade;
 create type pr_cd_equality_report_t as("count(*)" int, max_score text, max_ratio text);

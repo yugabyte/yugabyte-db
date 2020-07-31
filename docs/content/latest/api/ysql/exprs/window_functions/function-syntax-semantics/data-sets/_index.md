@@ -24,7 +24,7 @@ contain scripts to create and populate tables with data sets that are useful for
 
 Each table uses a surrogate `uuid` primary key whose values are provided by the function `gen_random_uuid()`, brought by the `pgcrypto` extension. The procedure to populate table _"t4"_ also uses the function `normal_rand()`, brought by the `tablefunc` extension. These extensions are described in the sections [pgcrypto](../../../../extensions/#pgcrypto) and [tablefunc](../../../../extensions/#tablefunc) in the section [Install and use extensions](../../../../extensions/). Each is a pre-bundled extension. This means that the installation for each will work without any preparatory steps, as long as you install them as a `superuser` like this:
 
-```postgresql
+```plpgsql
 create extension pgcrypto;
 create extension tablefunc;
 ```
@@ -79,7 +79,7 @@ and save each of the scripts that these present onto the same directory where yo
 
 Save this script as, for example, `install_all_tables.sql`:
 
-```postgresql
+```plpgsql
 -- You can run this script time and again. It will always finish silently.
 
 \i t1.sql
@@ -97,7 +97,7 @@ Save this script as, for example, `install_all_tables.sql`:
 ```
 Then you can simply do this whenever you need to re-establish the state that the code examples rely on:
 
-```postgresql
+```plpgsql
 \i install_all_tables.sql
 ```
 

@@ -79,7 +79,7 @@ These three operators are insensitive to the geometric properties of the two to-
 - The `=` operator returns `TRUE` if the LHS and RHS arrays are equal.
 - The `<>` operator is the natural complement: it returns `TRUE` if the LHS and RHS arrays are not equal.
 
-```postgresql
+```plpgsql
 with
   v as (
     select
@@ -96,7 +96,7 @@ This is the result:
  true
 ```
 
-```postgresql
+```plpgsql
 with
   v as (
     select
@@ -122,7 +122,7 @@ These four operators implement the familiar inequality comparisons.
 - The `<` operator returns `TRUE` if the LHS array is less than the RHS array.
 
 It's sufficient, therefore, to provide an example for just the `<` operator.
-```postgresql
+```plpgsql
 with
   v as (
     select
@@ -147,7 +147,7 @@ This is the result:
 - The `@>` operator returns `TRUE` if the LHS array contains the RHS array—that is, if every distinct value in the RHS array is found among the LHS array's distinct values.
 - The `<@` operator is the natural complement: it returns `TRUE` if every distinct value in the LHS array is found among the RHS array's distinct values.
 
-```postgresql
+```plpgsql
 with
   v as (
     select
@@ -170,7 +170,7 @@ This is the result:
 
 The `&&` operator returns `TRUE` if the LHS and RHS arrays overlap—that is, if they have at least one value in common. The definition of this operator makes it insensitive to which of the two to-be-compared is used on the LHS and which is used on the RHS.
 
-```postgresql
+```plpgsql
 with
   v as (
     select
@@ -193,7 +193,7 @@ This is the result:
 
 This section demonstrates each of the rules that [Comparison operators overview](./#comparison-operators-overview) above stated.
 
-```postgresql
+```plpgsql
 -- Any two arrays can be compared without error if they have the same data type.
 do $body$
 begin
@@ -425,7 +425,7 @@ $body$;
 
 This section demonstrates each of the rules that [Containment and overlap operators overview](./#containment-and-overlap-operators-overview) stated.
 
-```postgresql
+```plpgsql
 -- Any two arrays can be compared without error if they have the same data type.
 -- Insensitive to the geometric properties.
 do $body$

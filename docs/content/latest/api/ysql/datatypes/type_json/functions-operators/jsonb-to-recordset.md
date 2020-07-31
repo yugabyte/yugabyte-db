@@ -25,7 +25,7 @@ return value:      SETOF record
 
 Therefore, the `DO` block that demonstrated the functionality of [`jsonb_populate_recordset()`](../jsonb-populate-recordset/) can be extended to demonstrate the functionality of `jsonb_to_recordset()` as well and to show that their results are identical. See the _"Record and array comparison"_ note in the account of `jsonb_populate_recordset()`.
 
-```postgresql
+```plpgsql
 create type t as (a int, b int);
 
 do $body$

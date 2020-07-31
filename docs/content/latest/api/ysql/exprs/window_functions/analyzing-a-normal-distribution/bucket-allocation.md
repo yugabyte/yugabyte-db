@@ -51,7 +51,7 @@ then the buckets are defined as these _closed-open_ intervals:
 Any value that is less than _0_ is allocated to the lower overflow bucket _0_. And any value that is greater than or equal to the value _100_ is allocated to the upper overflow bucket _11_.
 Here is an example:
 
-```postgresql
+```plpgsql
 do $body$
 declare
   lb     constant double precision := 0;

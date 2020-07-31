@@ -20,7 +20,7 @@ return value:      text
 ```
 
 **Example:**
-```postgresql
+```plpgsql
 create type rt as (f1 int, f2 text);
 create table t(k int primary key, arr rt[]);
 insert into t(k, arr) values(1,
@@ -42,7 +42,7 @@ It shows this:
 To understand the syntax of the text of this literal, especially when a field is `NULL`, see  [The literal for a _"row"_ type value](../../literals/row/).
 
 Now do this:
-```postgresql
+```plpgsql
 select
   array_to_string(
     arr,     -- the input array
@@ -59,7 +59,7 @@ It shows this:
 Notice that the third, `NULL`, array value is not represented. Rather, this implied by the _absence_ of any characters between the comma and the right parenthesis delimiters.
 
 Now do this;
-```postgresql
+```plpgsql
 select
   array_to_string(
     arr,     -- the input array

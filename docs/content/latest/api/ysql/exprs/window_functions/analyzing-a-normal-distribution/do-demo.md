@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `do_demo.sql`.
-```postgresql
+```plpgsql
 -- Uses table t4.
 -- Once you've created it, you can run this script time and again using
 -- for example, a different number of histogran buckets or a
