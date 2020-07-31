@@ -14,6 +14,7 @@ import {
   createNodeInstances, createNodeInstancesResponse, getNodeInstancesForProvider,
   getNodesInstancesForProviderResponse, deleteInstance, deleteInstanceResponse
 } from '../../../actions/cloud';
+import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 import { reduxForm } from 'redux-form';
 import { closeUniverseDialog } from '../../../actions/universe';
 import { openDialog, closeDialog } from '../../../actions/modal';
@@ -22,12 +23,19 @@ import _ from 'lodash';
 const mapStateToProps = (state) => {
   return {
     cloud: state.cloud,
+    universeList: state.universe.universeList,
     visibleModal: state.modal.visibleModal
   };
 };
 
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {
+    fetchUniverseList: () => {
+      dispatch(fetchUniverseList()).then((response) => {
+        dispatch(fetchUniverseListResponse(response.payload));
+      });
+    },
+
     getInstanceTypeListItems: (provider) => {
       dispatch(getInstanceTypeList(provider)).then((response) => {
         dispatch(getInstanceTypeListResponse(response.payload));

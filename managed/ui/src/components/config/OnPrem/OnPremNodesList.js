@@ -5,7 +5,7 @@ import React, { Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FieldArray } from 'redux-form';
-import { withRouter } from 'react-router';
+import { Link, withRouter } from 'react-router';
 
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
@@ -110,7 +110,33 @@ class OnPremNodesList extends Component {
     this.props.reset();
   };
 
+  handleCheckNodesUsage = (data, row) => {
+    const { universeList } = this.props;
+    if (data && getPromiseState(universeList).isSuccess()) {
+      const result = universeList.data.find(u => {
+        const nodes = u.universeDetails.nodeDetailsSet;
+        if (nodes) {
+          return !!nodes.find(n => n.azUuid === row.zoneUuid ||
+            (n.nodeUuid && n.nodeUuid === row.nodeUuid));
+        }
+        return false;
+      });
+      if (result) {
+        return (
+          <Link to={`/universes/${result.universeUUID}`}>
+            {result.name}
+          </Link>
+        );
+      }
+    }
+    return data;
+  }
+
   UNSAFE_componentWillMount() {
+    const { universeList } = this.props;
+    if (!getPromiseState(universeList).isSuccess()) {
+      this.props.fetchUniverseList();
+    }
     // Get OnPrem provider if provider list is already loaded during component load
     const onPremProvider = this.props.cloud.providers.data.find((provider)=>provider.code === "onprem");
     this.props.getRegionListItems(onPremProvider.uuid);
@@ -118,18 +144,30 @@ class OnPremNodesList extends Component {
   }
 
   render() {
-    const {cloud: {nodeInstanceList, instanceTypes, supportedRegionList, accessKeys, providers}, handleSubmit, showProviderView, visibleModal } = this.props;
+    const {
+      cloud: {
+        nodeInstanceList,
+        instanceTypes,
+        supportedRegionList,
+        accessKeys,
+        providers
+      },
+      handleSubmit,
+      showProviderView,
+      visibleModal
+    } = this.props;
     const self = this;
     let nodeListItems = [];
     if (getPromiseState(nodeInstanceList).isSuccess()) {
       nodeListItems = nodeInstanceList.data.map(function(item) {
         return {
-          nodeId: item.nodeUuID,
+          nodeId: item.nodeUuid,
           inUse: item.inUse,
           ip: item.details.ip,
           instanceType: item.details.instanceType,
           region: item.details.region,
           zone: item.details.zone,
+          zoneUuid: item.zoneUuid,
           instanceName: item.instanceName
         };
       });
