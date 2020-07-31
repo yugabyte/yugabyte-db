@@ -27,8 +27,7 @@ public class TestPgRegressAggregates extends BasePgSQLTest {
   }
 
   @Test
-   public void testPgRegressAggregates() throws Exception {
-     runPgRegressTest("yb_pg_aggregates_schedule");
-   }
- }
- 
+  public void testPgRegressAggregates() throws Exception {
+    runPgRegressTest("yb_pg_aggregates_schedule");
+  }
+}
