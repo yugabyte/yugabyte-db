@@ -117,6 +117,7 @@ static event_trigger_support_data event_trigger_support[] = {
 	{"STATISTICS", true},
 	{"SUBSCRIPTION", true},
 	{"TABLE", true},
+	{"TABLEGROUP", false},
 	{"TABLESPACE", false},
 	{"TRANSFORM", true},
 	{"TRIGGER", true},
@@ -2247,6 +2248,8 @@ stringify_grant_objtype(ObjectType objtype)
 			return "PROCEDURE";
 		case OBJECT_ROUTINE:
 			return "ROUTINE";
+		case OBJECT_TABLEGROUP:
+			return "TABLEGROUP";
 		case OBJECT_TABLESPACE:
 			return "TABLESPACE";
 		case OBJECT_TYPE:
@@ -2279,7 +2282,6 @@ stringify_grant_objtype(ObjectType objtype)
 		case OBJECT_STATISTIC_EXT:
 		case OBJECT_SUBSCRIPTION:
 		case OBJECT_TABCONSTRAINT:
-		case OBJECT_TABLEGROUP: // TODO: support GRANT for TABLEGROUP
 		case OBJECT_TRANSFORM:
 		case OBJECT_TRIGGER:
 		case OBJECT_TSCONFIGURATION:
@@ -2330,6 +2332,8 @@ stringify_adefprivs_objtype(ObjectType objtype)
 			return "PROCEDURES";
 		case OBJECT_ROUTINE:
 			return "ROUTINES";
+		case OBJECT_TABLEGROUP:
+			return "TABLEGROUPS";
 		case OBJECT_TABLESPACE:
 			return "TABLESPACES";
 		case OBJECT_TYPE:
@@ -2362,7 +2366,6 @@ stringify_adefprivs_objtype(ObjectType objtype)
 		case OBJECT_STATISTIC_EXT:
 		case OBJECT_SUBSCRIPTION:
 		case OBJECT_TABCONSTRAINT:
-		case OBJECT_TABLEGROUP: // TODO: support GRANT for TABLEGROUP
 		case OBJECT_TRANSFORM:
 		case OBJECT_TRIGGER:
 		case OBJECT_TSCONFIGURATION:

@@ -39,6 +39,7 @@ using PeerId = std::string;
 using SnapshotId = std::string;
 using TabletServerId = PeerId;
 using TabletId = std::string;
+using TablegroupId = std::string;
 
 YB_STRONGLY_TYPED_STRING(KvStoreId);
 
@@ -63,6 +64,9 @@ NamespaceId GetPgsqlNamespaceId(uint32_t database_oid);
 
 // Get YB table id for a Postgres table.
 TableId GetPgsqlTableId(uint32_t database_oid, uint32_t table_oid);
+
+// Get YB tablegroup id for a Postgres tablegroup.
+TablegroupId GetPgsqlTablegroupId(uint32_t database_oid, uint32_t tablegroup_oid);
 
 // Is the namespace/table id a Postgres database or table id?
 bool IsPgsqlId(const string& id);

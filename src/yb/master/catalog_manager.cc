@@ -2247,7 +2247,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         (ns->name() == kSystemNamespaceName || req.name() == parent_table_name));
     if (!valid_ns_state) {
       Status s = STATUS_SUBSTITUTE(TryAgain, "Invalid Namespace State ($0).  Cannot create $1.$2",
-          ns->state(), ns->name(), req.name() );
+          SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), req.name() );
       return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
     }
 
@@ -2956,8 +2956,8 @@ Status CatalogManager::FindNamespaceUnlocked(const NamespaceIdentifierPB& ns_ide
       return STATUS(NotFound, "Keyspace identifier not found", ns_identifier.id());
     }
   } else if (ns_identifier.has_name()) {
-    *ns_info = FindPtrOrNull(
-        namespace_names_mapper_[GetDatabaseType(ns_identifier)], ns_identifier.name());
+    auto db = GetDatabaseType(ns_identifier);
+    *ns_info = FindPtrOrNull(namespace_names_mapper_[db], ns_identifier.name());
     if (*ns_info == nullptr) {
       return STATUS(NotFound, "Keyspace name not found", ns_identifier.name());
     }
@@ -3664,7 +3664,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     if (ns->state() != SysNamespaceEntryPB::RUNNING) {
       Status s = STATUS_SUBSTITUTE(TryAgain,
           "Namespace not running (State=$0).  Cannot create $1.$2",
-          ns->state(), ns->name(), table->name() );
+          SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), table->name() );
       return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
     }
   }
@@ -3997,7 +3997,8 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
 
     // Don't list tables with a namespace that isn't running.
     if (ns->state() != SysNamespaceEntryPB::RUNNING) {
-      LOG(INFO) << "ListTables request for a Namespace not running (State=" << ns->state() << ")";
+      LOG(INFO) << "ListTables request for a Namespace not running (State="
+                << SysNamespaceEntryPB::State_Name(ns->state()) << ")";
       return Status::OK();
     }
   }
@@ -4699,6 +4700,18 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
   return Status::OK();
 }
 
+Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
+                                        CreateTablegroupResponsePB* resp,
+                                        rpc::RpcContext* rpc) {
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
+                                        DeleteTablegroupResponsePB* resp,
+                                        rpc::RpcContext* rpc) {
+  return Status::OK();
+}
+
 Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                        CreateNamespaceResponsePB* resp,
                                        rpc::RpcContext* rpc) {
@@ -5046,9 +5059,15 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
     // Don't allow deletion if the namespace is in a transient state.
     auto cur_state = ns->state();
     if (cur_state != SysNamespaceEntryPB::RUNNING && cur_state != SysNamespaceEntryPB::FAILED) {
-      Status s = STATUS_SUBSTITUTE(TryAgain,
-          "Namespace deletion not allowed when State = $0", cur_state);
-      return SetupError(resp->mutable_error(), MasterErrorPB::IN_TRANSITION_CAN_RETRY, s);
+      if (cur_state == SysNamespaceEntryPB::DELETED) {
+        Status s = STATUS(NotFound, "Keyspace already deleted", ns->name());
+        return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+      } else {
+        Status s = STATUS_SUBSTITUTE(
+            TryAgain, "Namespace deletion not allowed when State = $0",
+            SysNamespaceEntryPB::State_Name(cur_state));
+        return SetupError(resp->mutable_error(), MasterErrorPB::IN_TRANSITION_CAN_RETRY, s);
+      }
     }
   }
 
@@ -5381,8 +5400,8 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
 
   // Don't allow an alter if the namespace isn't running.
   if (l->data().pb.state() != SysNamespaceEntryPB::RUNNING) {
-    Status s = STATUS_SUBSTITUTE(TryAgain,
-        "Namespace not running.  State = $0", l->data().pb.state());
+    Status s = STATUS_SUBSTITUTE(TryAgain, "Namespace not running.  State = $0",
+                                 SysNamespaceEntryPB::State_Name(l->data().pb.state()));
     return SetupError(resp->mutable_error(), NamespaceMasterError(l->data().pb.state()), s);
   }
 

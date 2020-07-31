@@ -325,8 +325,7 @@ class LogTestBase : public YBTest {
   }
 
   CHECKED_STATUS RollLog() {
-    RETURN_NOT_OK(log_->AsyncAllocateSegment());
-    return log_->RollOver();
+    return log_->AllocateSegmentAndRollOver();
   }
 
   string DumpSegmentsToString(const SegmentSequence& segments) {

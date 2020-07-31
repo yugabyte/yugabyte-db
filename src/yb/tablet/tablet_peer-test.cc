@@ -95,8 +95,7 @@ static Schema GetTestSchema() {
   return Schema({ ColumnSchema("key", INT32) }, 1);
 }
 
-class TabletPeerTest : public YBTabletTest,
-                       public ::testing::WithParamInterface<TableType> {
+class TabletPeerTest : public YBTabletTest {
  public:
   TabletPeerTest()
     : YBTabletTest(GetTestSchema(), YQL_TABLE_TYPE),
@@ -311,7 +310,7 @@ class DelayedApplyOperation : public WriteOperation {
 };
 
 // Ensure that Log::GC() doesn't delete logs with anchors.
-TEST_P(TabletPeerTest, TestLogAnchorsAndGC) {
+TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
   FLAGS_log_min_seconds_to_retain = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
@@ -350,7 +349,7 @@ TEST_P(TabletPeerTest, TestLogAnchorsAndGC) {
 }
 
 // Ensure that Log::GC() doesn't delete logs when the DMS has an anchor.
-TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
+TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   FLAGS_log_min_seconds_to_retain = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
@@ -427,7 +426,7 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 }
 
 // Ensure that Log::GC() doesn't compact logs with OpIds of active transactions.
-TEST_P(TabletPeerTest, TestActiveOperationPreventsLogGC) {
+TEST_F(TabletPeerTest, TestActiveOperationPreventsLogGC) {
   FLAGS_log_min_seconds_to_retain = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
@@ -443,14 +442,12 @@ TEST_P(TabletPeerTest, TestActiveOperationPreventsLogGC) {
   ASSERT_EQ(5, segments.size());
 }
 
-TEST_P(TabletPeerTest, TestGCEmptyLog) {
+TEST_F(TabletPeerTest, TestGCEmptyLog) {
   ConsensusBootstrapInfo info;
   ASSERT_OK(tablet_peer_->Start(info));
   // We don't wait on consensus on purpose.
   ASSERT_OK(tablet_peer_->RunLogGC());
 }
-
-INSTANTIATE_TEST_CASE_P(Rocks, TabletPeerTest, ::testing::Values(YQL_TABLE_TYPE));
 
 } // namespace tablet
 } // namespace yb

@@ -2,7 +2,7 @@
 title: Bucket allocation scheme
 linkTitle: Bucket allocation scheme
 headerTitle: The bucket allocation scheme
-description: Explains the algorithm for assigning output values from percent_rank and cume_dist into equal with buckets.
+description: The bucket allocation scheme. Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: bucket-allocation

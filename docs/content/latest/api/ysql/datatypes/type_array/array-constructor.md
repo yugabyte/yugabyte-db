@@ -27,9 +27,9 @@ return value:      anyarray
 
 These thee ordinary functions also create an array value from scratch:
 
-- The [`array_fill()`](../functions-operators/array-fill/) function creates a "blank canvas" array of the specified shape with all values set the same to what you want.
-- The [`array_agg()`](../functions-operators/array-agg-unnest/#array-agg) function creates an array (of, in general, an implied _"row"_ type) from a SQL subquery.
-- The [`text_to_array()`](../functions-operators/string-to-array/) function creates a `text[]`array from a single `text` value that uses a a specifiable delimiter to beak it into individual values.
+- [`array_fill()`](../functions-operators/array-fill/) creates a "blank canvas" array of the specified shape with all values set the same to what you want.
+- [`array_agg()`](../functions-operators/array-agg-unnest/#array-agg) creates an array (of, in general, an implied _"row"_ type) from a SQL subquery.
+- [`text_to_array()`](../functions-operators/string-to-array/) creates a `text[]`array from a single `text` value that uses a a specifiable delimiter to beak it into individual values.
 
 **Example:**
 ```postgresql
@@ -67,7 +67,7 @@ begin
   one_d_1 := array[r[1], r[2], r[3]];
   assert (one_d_1 = r), 'assert failed';
 ```
-The [`array_dims()`](../functions-operators/properties/#array-dims) function is documented in the _"Functions for reporting the geometric properties of an array"_ section.
+[`array_dims()`](../functions-operators/properties/#array-dims) is documented in the _"Functions for reporting the geometric properties of an array"_ section.
 
 Run this to create the required user-defined _"row"_ type and the table function and then to invoke it.
 

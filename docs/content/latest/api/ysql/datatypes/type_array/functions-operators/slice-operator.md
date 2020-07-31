@@ -7,6 +7,7 @@ menu:
   latest:
     identifier: array-slice-operator
     parent: array-functions-operators
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---

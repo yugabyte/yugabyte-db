@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: array-of-domains
     parent: api-ysql-datatypes-array
-    weight: 10
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---
@@ -25,7 +25,7 @@ An array of `DOMAIN` values lets you create, for example, a one-dimensional arra
 
 There are use cases for which a ragged structure is essential. Most programming languages, therefore, have constructs that support this.
 
-Look at the section [Example use case: GPS trip data](../../type_array/#example-use-case-gps-trip-data). It considers the representation of the GPS trips whose recording is broken up into laps, thus:
+Look at [Example use case: GPS trip data](../../type_array/#example-use-case-gps-trip-data). It considers the representation of the GPS trips whose recording is broken up into laps, thus:
 
 - Each trip is made up of one or many laps.
 - Each lap is typically made up of a large number GPS data points.
@@ -56,7 +56,7 @@ begin
 ```
 See [`array_fill()`](..//functions-operators/array-fill/). 
 
-The property of the declaration of an array variable that it cannot fix the dimensionality of a value that is subsequently assigned to the variable was pointed out in the [Array data types and functionality](../../type_array/) section. A column in a table with an array data type shares this property so that the column  can hold arrays of different dimensionality in different rows. This goes hand-in-hand with the fact that the following declarations of _"v1"_ and "_v2"_, though apparently different, define identical semantics.
+The property of the declaration of an array variable that it cannot fix the dimensionality of a value that is subsequently assigned to the variable was pointed out in [Array data types and functionality](../../type_array/). A column in a table with an array data type shares this property so that the column  can hold arrays of different dimensionality in different rows. This goes hand-in-hand with the fact that the following declarations of _"v1"_ and "_v2"_, though apparently different, define identical semantics.
 
 ```
 declare
@@ -99,7 +99,7 @@ $body$;
 ```
 By using a `DO` block to set the value of _"ragged_arr"_ by building it bottom-up, you emphasize the fact that it really is a one-dimensional array of one-dimensional arrays of different lengths. It is, then, clearly _not_ a rectilinear two-dimensional array.
 
-Now use the technique that the section [The non-lossy round trip: value to text typecast and back to value](../literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value) explained to inspect the `::text` typecast of the ragged array and then to show that, by typecasting this back to a value of the original data type, it can serve as the literal for the original value. First, do this:
+Now use the technique that [The non-lossy round trip: value to text typecast and back to value](../literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value) explained to inspect the `::text` typecast of the ragged array and then to show that, by typecasting this back to a value of the original data type, it can serve as the literal for the original value. First, do this:
 ```postgresql
 update t
 set typecast = v1::text
@@ -115,7 +115,7 @@ This is the result:
  {"{1,2}","{3,4,5}"}
 ```
 
-This sentence is copied from the section [The non-lossy round trip: value to text typecast and back to value](..//literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
+This sentence is copied from [The non-lossy round trip: value to text typecast and back to value](..//literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
 
 > Notice how the syntax for the _array of arrays_ `text` value compares with the syntax for the _2-d array_ `text` value. Because the _array of arrays_ is ragged, the two inner `{}` pairs contain respectively two and three values. To distinguish between this case and the ordinary rectilinear case, the inner `{}` pairs are surrounded by double quotes.
 
@@ -232,7 +232,7 @@ Look for the heading [Matrices with more general entries](https://en.wikipedia.o
 
 > One special but common case is block matrices, which may be considered as matrices whose entries themselves are matrices.
 
-Various disciplines in mathematics, physics, and the like, use block matrices. The section [Uses of arrays](../../type_array/#uses-of-arrays) explains how such cases generate various kinds of arrays in client-side programs and need to use these values later, again in client-side programs. This brings the requirement, in the present use case, to persist and to retrieve block matrices.
+Various disciplines in mathematics, physics, and the like, use block matrices. [Uses of arrays](../../type_array/#uses-of-arrays) explains how such cases generate various kinds of arrays in client-side programs and need to use these values later, again in client-side programs. This brings the requirement, in the present use case, to persist and to retrieve block matrices.
 
 Though this use case is relatively exotic, the techniques that are used to implement the required structures (and in particular, the dependency of a viable solution upon user-defined `DOMAIN` data types) are of general utility. Its for this reason that the approach is explained here.
 
@@ -369,7 +369,7 @@ This is the result (after manual whitespace formatting):
 ```
 **Note:** The annotations _"block_matrix"_, and so on, are just that. Because they are _within_ the `text` value, they are part of that value and therefore render it illegal. They were added manually just to highlight the meaning of the overall `text` value.
 
-Finally, check that even this exotic structure conforms to the universal rule, copied from the section [The non-lossy round trip: value to text typecast and back to value](..//literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
+Finally, check that even this exotic structure conforms to the universal rule, copied from [The non-lossy round trip: value to text typecast and back to value](..//literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
 
 > - Any value of any data type, primitive or composite, can be `::text` typecasted. Similarly, there always exists a `text` value that, when properly spelled, can be typecasted to a value of any desired data type, primitive or composite.
 > - If you `::text` typecast a value of any data type and then typecast that `text` value to the original value's data type, then the value that you get is identical to the original value.
@@ -416,7 +416,7 @@ from matrices order by m;
 ```
 See [`unnest()`](../functions-operators/array-agg-unnest/#unnest).
 
-The term _"row-major order"_ is explained in the section [Joint semantics](../functions-operators/properties/#joint-semantics) within the section _"Functions for reporting the geometric properties of an array"_..
+The term _"row-major order"_ is explained in [Joint semantics](../functions-operators/properties/#joint-semantics) within the section _"Functions for reporting the geometric properties of an array"_..
 
 This is the result:
 

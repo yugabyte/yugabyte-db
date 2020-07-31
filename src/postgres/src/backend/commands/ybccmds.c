@@ -103,7 +103,8 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 	HandleYBStatus(YBCPgNewDropDatabase(dbname,
 										dboid,
 										&handle));
-	HandleYBStatus(YBCPgExecDropDatabase(handle));
+        bool not_found = false;
+        HandleYBStatusIgnoreNotFound(YBCPgExecDropDatabase(handle), &not_found);
 }
 
 void
@@ -115,6 +116,29 @@ YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_o
 									begin_oid,
 									end_oid));
 }
+
+/* ------------------------------------------------------------------------- */
+/*  Tablegroup Functions. */
+void
+YBCCreateTablegroup(Oid grpoid, const char *grpname)
+{
+	YBCPgStatement handle;
+	char *db_name = get_database_name(MyDatabaseId);
+
+	HandleYBStatus(YBCPgNewCreateTablegroup(db_name, MyDatabaseId, grpname,
+																					grpoid, &handle));
+	HandleYBStatus(YBCPgExecCreateTablegroup(handle));
+}
+
+void
+YBCDropTablegroup(Oid grpoid, const char *grpname)
+{
+	YBCPgStatement handle;
+
+	HandleYBStatus(YBCPgNewDropTablegroup(grpname, MyDatabaseId, grpoid, &handle));
+	HandleYBStatus(YBCPgExecDropTablegroup(handle));
+}
+
 
 /* ------------------------------------------------------------------------- */
 /*  Table Functions. */

@@ -81,6 +81,10 @@ using yb::master::CreateTableRequestPB;
 using yb::master::CreateTableResponsePB;
 using yb::master::DeleteTableRequestPB;
 using yb::master::DeleteTableResponsePB;
+using yb::master::CreateTablegroupRequestPB;
+using yb::master::CreateTablegroupResponsePB;
+using yb::master::DeleteTablegroupRequestPB;
+using yb::master::DeleteTablegroupResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::GetTableSchemaRequestPB;
@@ -855,6 +859,36 @@ Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
     }
   }
   return false;
+}
+
+Status YBClient::CreateTablegroup(const std::string& namespace_name,
+                                  const std::string& namespace_id,
+                                  const std::string& tablegroup_name,
+                                  const std::string& tablegroup_id) {
+  CreateTablegroupRequestPB req;
+  CreateTablegroupResponsePB resp;
+  req.set_name(tablegroup_name);
+  req.set_id(tablegroup_id);
+  req.set_namespace_id(namespace_id);
+  req.set_namespace_name(namespace_name);
+
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateTablegroup);
+
+  return Status::OK();
+}
+
+Status YBClient::DeleteTablegroup(const std::string& tablegroup_name,
+                                  const std::string& namespace_id,
+                                  const std::string& tablegroup_id) {
+  DeleteTablegroupRequestPB req;
+  DeleteTablegroupResponsePB resp;
+  req.set_name(tablegroup_name);
+  req.set_id(tablegroup_id);
+  req.set_namespace_id(namespace_id);
+
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteTablegroup);
+
+  return Status::OK();
 }
 
 Status YBClient::GetUDType(const std::string& namespace_name,
