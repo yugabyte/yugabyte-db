@@ -159,7 +159,7 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2;
 UPDATE PKTABLE SET ptest1=1 WHERE ptest1=2;
 
 -- Check FKTABLE for update of matched row
-SELECT * FROM FKTABLE ORDER BY ftest1, ftest2;
+SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
 
 \set VERBOSITY terse \\ -- suppress cascade details
 -- this should fail for lack of CASCADE

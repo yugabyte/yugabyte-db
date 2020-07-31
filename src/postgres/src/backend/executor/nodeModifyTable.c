@@ -1135,7 +1135,20 @@ ExecUpdate(ModifyTableState *mtstate,
 		RangeTblEntry *rte = rt_fetch(resultRelInfo->ri_RangeTableIndex,
 									  estate->es_range_table);
 
-		bool row_found = YBCExecuteUpdate(resultRelationDesc, planSlot, tuple, estate, mtstate, rte->updatedCols);
+		bool row_found = false;
+
+		bool is_pk_updated =
+			bms_overlap(YBGetTablePrimaryKeyBms(resultRelationDesc), rte->updatedCols);
+
+		if (is_pk_updated)
+		{
+			YBCExecuteUpdateReplace(resultRelationDesc, planSlot, tuple, estate, mtstate);
+			row_found = true;
+		}
+		else
+		{
+			row_found = YBCExecuteUpdate(resultRelationDesc, planSlot, tuple, estate, mtstate, rte->updatedCols);
+		}
 
 		if (!row_found)
 		{
