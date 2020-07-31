@@ -94,7 +94,7 @@ Drop and re-create the results tables using [`do_clean_start.sql`](./do-clean-st
 ### Step ONE
 
 To confirm that the outcome is sensible, first create the table function `show_t4()` with [this script](./cr-show-t4/). It reports some useful overall measures of _"t4"_.  Then execute it like this:
-```postgresql
+```plpgsql
 select t as "Some useful overall measures of t4."
 from show_t4();
 ```
@@ -114,7 +114,7 @@ Now get a sense of how similar the values returned by [`percent_rank()`](../func
 
 Run the function with five different values for _"delta_threshold"_ like this:
 
-```postgresql
+```plpgsql
 select * from pr_cd_equality_report(0.50);
 select * from pr_cd_equality_report(0.10);
 select * from pr_cd_equality_report(0.05);
@@ -178,7 +178,7 @@ as $body$
 to encapsulate the identical SQL text. But it has the advantage that it can be done once when the application's database artifacts are installed rather than at the start of every session by each session that needs it. It also as the additional benefit that you can use  named formal parameters to make the SQL more readable.
 
 Now generate the histogram like this:
-```postgresql
+```plpgsql
 select * from histogram(50, 100);
 ```
 You can see typical results here: [Output from running `histogram()` on _"t4.dp_score"_](./reports/histogram-report/).

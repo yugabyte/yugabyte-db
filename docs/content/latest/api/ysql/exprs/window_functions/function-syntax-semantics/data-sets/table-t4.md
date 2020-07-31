@@ -33,7 +33,7 @@ A large value like 100,000 gives the best compromise between the time to populat
 This `ysqlsh` script creates the table _"t4"_ and creates the procedure to populate the table.
 Save it as `t4_1.sql`.
 
-```postgresql
+```plpgsql
 -- Suppress the spurious warning that is raised
 -- when the to-be-deleted table doesn't yet exist.
 set client_min_messages = warning;
@@ -89,7 +89,7 @@ $body$;
 
 This script executes the procedure and then creates a unique index on the _"dp_score"_ column. Save it as `t4_2.sql`.
 
-```postgresql
+```plpgsql
 -- You can run this script time and again. It will always finish silently.
 
 set client_min_messages = warning;

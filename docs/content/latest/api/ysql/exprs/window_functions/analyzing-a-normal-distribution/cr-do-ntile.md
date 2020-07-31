@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `cr_do_ntile.sql`.
-```postgresql
+```plpgsql
 create or replace procedure do_ntile(no_of_buckets in int)
   language sql
 as $body$

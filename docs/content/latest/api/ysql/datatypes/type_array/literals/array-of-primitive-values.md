@@ -73,7 +73,7 @@ You'll use the `array[]` constructor to create representative values of each kin
 
 This example demonstrates the principle:
 
-```postgresql
+```plpgsql
 create table t(k serial primary key, v1 int[], v2 int[]);
 insert into t(v1) values (array[1, 2, 3]);
 select v1::text as text_typecast from t where k = 1
@@ -97,7 +97,7 @@ You can see the general form already:
 
 To use the literal that you produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
 
-```postgresql
+```plpgsql
 \set canonical_literal '\'':result_text_typecast'\'::int[]'
 \echo :canonical_literal
 ```
@@ -106,7 +106,7 @@ To use the literal that you produced to create a value, you must enquote it and 
 '{1,2,3}'::int[]
 ```
 Next, use the canonical literal that was have produced to update _"t.v2"_ to confirm that the value that the row constructor created was recreated:
-```postgresql
+```plpgsql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
@@ -121,28 +121,28 @@ As promised, the canonical form of the array literal does indeed recreate the id
 **Note:**
 
 Try this:
-```postgresql
+```plpgsql
 select 12512454.872::text;
 ```
 The result is the canonical form, `12512454.872`. So this (though you rarely see it):
-```postgresql
+```plpgsql
 select 12512454.872::numeric;
 ```
 runs without error. Now try this:
 
-```postgresql
+```plpgsql
 select to_number('12,512,454.872', '999G999G999D999999')::text;
 ```
 This, too, runs without error because it uses the `to_number()` built-in function. The result here, too, is the canonical form, `12512454.872`—with no commas. Now try this:
 
-```postgresql
+```plpgsql
 select '12,512,454.872'::numeric;
 ```
 This causes the _"22P02: invalid input syntax for type numeric"_ error. In other words, _only_ a `numeric` value in canonical form can be directly typecast using `::numeric`.
 
 Here, using an array literal, is an informal first look at what follows. For now, take its syntax to mean what you'd intuitively expect. You must spell the representations for the values in a `numeric[]` array in canonical form. Try this:
 
-```postgresql
+```plpgsql
 select ('{123.456, -456.789}'::numeric[])::text;
 ```
 It shows this:
@@ -152,7 +152,7 @@ It shows this:
 ```
 
 Now try this:
-```postgresql
+```plpgsql
 select ('{9,123.456, -8,456.789}'::numeric[])::text;
 ```
 It silently produces this presumably unintended result (an array of _four_ numeric values) because the commas are taken as delimiters and not as part of the representation of a single `numeric` value:
@@ -169,7 +169,7 @@ Use [One-dimensional array of `int` values](./#one-dimensional-array-of-int-valu
      a          a b          ()          ,          '          "          \
 ```
 
-```postgresql
+```plpgsql
 create table t(k serial primary key, v1 text[], v2 text[]);
 insert into t(v1) values (array['a', 'a b', '()', ',', '{}', $$'$$, '"', '\']);
 select v1::text as text_typecast from t where k = 1
@@ -199,7 +199,7 @@ There's another rule that the present example does not show. Though not every co
 
 To use the text of the literal that was produced above to recreate the value, you must enquote it and typecast it. Do this, as you did for the `int[]` example above, with the `\set` metacommand. But you must use dollar quotes because the literal itself has an interior single quote.
 
-```postgresql
+```plpgsql
 \set canonical_literal '$$':result_text_typecast'$$'::text[]
 \echo :canonical_literal
 ```
@@ -208,7 +208,7 @@ The `\echo` metacommand now shows this:
 $${a,"a b",(),",",',"\"","\\"}$$::text[]
 ```
 Next, use the canonical literal to update _"t.v2"_ to confirm that the value that the row constructor created was recreated:
-```postgresql
+```plpgsql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
@@ -224,7 +224,7 @@ So, again as promised, the canonical form of the array literal does indeed recre
 
 This example demonstrates the principle:
 
-```postgresql
+```plpgsql
 create table t(k serial primary key, v1 timestamp[], v2 timestamp[]);
 insert into t(v1) values (array[
     '2019-01-27 11:48:33'::timestamp,
@@ -245,7 +245,7 @@ You learn one further rule from this:
 
 To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
 
-```postgresql
+```plpgsql
 \set canonical_literal '\'':result_text_typecast'\'::timestamp[]'
 \echo :canonical_literal
 ```
@@ -254,7 +254,7 @@ To use the text of the literal that was produced to create a value, you must enq
 '{"2019-01-27 11:48:33","2020-03-30 14:19:21"}'::timestamp[]
 ```
 Next, use the canonical literal to update _"t.v2"_ to confirm that the value that the row constructor created was recreated:
-```postgresql
+```plpgsql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
@@ -270,7 +270,7 @@ Once again, as promised, the canonical form of the array literal does indeed rec
 
 This example demonstrates the principle:
 
-```postgresql
+```plpgsql
 create table t(k serial primary key, v1 boolean[], v2 boolean[]);
 insert into t(v1) values (array[
     true,
@@ -297,7 +297,7 @@ Though the example doesn't show this, `NULL` is not case-sensitive. But to compo
 
 To use the literal that that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
 
-```postgresql
+```plpgsql
 \set canonical_literal '\'':result_text_typecast'\'::boolean[]'
 \echo :canonical_literal
 ```
@@ -306,7 +306,7 @@ To use the literal that that was produced to create a value, you must enquote it
 '{t,f,NULL}'::boolean[]
 ```
 Next use the canonical literal to update _"t.v2"_ to can confirm that the value that the row constructor created has been recreated :
-```postgresql
+```plpgsql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
@@ -320,7 +320,7 @@ Yet again, as promised, the canonical form of the array literal does indeed recr
 
 ### Multidimensional array of int values
 
-```postgresql
+```plpgsql
 create table t(k serial primary key, v int[]);
 
 -- Insert a 1-dimensional int[] value.

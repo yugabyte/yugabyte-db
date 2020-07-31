@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `do_report_results.sql`.
-```postgresql
+```plpgsql
 \t on
 select 'Using ntile().';
 \t off

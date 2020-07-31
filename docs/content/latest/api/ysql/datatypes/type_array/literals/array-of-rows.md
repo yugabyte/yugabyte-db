@@ -49,15 +49,15 @@ The example uses a _"row"_ type with four fields: an `int` field; a `text` field
      <space>     ,     (     )     "     \
 ```
 First, create the _"row"_ type:
-```postgresql
+```plpgsql
 create type rt as (n int, s text, t timestamp, b boolean);
 ```
 Next, you create a table with a column with data type _"rt"_ so that you can populate it with six rows that jointly, in their `text` fields, use all of the "challenging" characters listed above:
-```postgresql
+```plpgsql
 create table t1(k int primary key, v rt);
 ```
 Finally, you populate the table by building the _"row"_ type values bottom-up using appropriately typed PL/pgSQL variables in a `DO` block and inspect the result. This technique allows the actual primitive values that were chosen for this demonstration so be seen individually as the ordinary SQL literals that each data type requires. This makes the code more readable and more understandable than any other approach. In other words, it shows that, for humanly written code, the usability of a value constructor for any composite value is much greater than that of the literal that produces the same value. Of course, this benefit is of no consequence for a programmatically constructed literal.
-```postgresql
+```plpgsql
 do $body$
 declare
   n1 constant int := 1;
@@ -126,12 +126,12 @@ The first four are unremarkable, as long as you remember that each of these four
 - The single backslash occurrence, in the source data, must be doubled up and then surrounded by double quotes.
 
 Next, you concatenate these six _"row"_ type values into an array value by using the `array_agg()` function (described in [`array_agg()`](../../functions-operators/array-agg-unnest/#array-agg)), like this:
-```postgresql
+```plpgsql
 select array_agg(v order by k) from t1;
 ```
 
 The demonstration is best served by inserting this value into a new table, like this:
-```postgresql
+```plpgsql
 create table t2(k int primary key, v1 rt[], v1_text_typecast text, v2 rt[]);
 insert into t2(k, v1)
 select 1, array_agg(v order by k) from t1;
@@ -140,12 +140,12 @@ select 1, array_agg(v order by k) from t1;
 The `\get` technique that you used in the earlier sections is not viable here because there's an upper limit on its size. So, instead insert the literal that you produce by `text` typecasting _"t2.v1"_ into the companion _"v1&#95;text&#95;typecast"_ field in the same table, like this:
 
 
-```postgresql
+```plpgsql
 update t2 set v1_text_typecast =
 (select v1::text from t2 where k = 1);
 ```
 Finally, use this array literal to recreate the original value and check that it's identical to what you started with, thus:
-```postgresql
+```plpgsql
 update t2 set v2 = 
 (select v1_text_typecast from t2 where k = 1)::rt[];
 
@@ -160,7 +160,7 @@ As promised, the canonical form of the array literal does indeed recreate the id
 ```
 
 You haven't yet looked at the literal for the array of _"row"_ type values. Now is the moment to do so, thus:
-```postgresql
+```plpgsql
 select v1_text_typecast from t2 where k = 1;
 ```
 The result that's produced is too hard to read without some manual introduction of whitespace. But this is allowed around the commas that delimit successive values within an array literal, thus:

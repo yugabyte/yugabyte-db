@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `cr_do_percent_rank.sql`.
-```postgresql
+```plpgsql
 create or replace procedure do_percent_rank(no_of_buckets in int)
   language sql
 as $body$

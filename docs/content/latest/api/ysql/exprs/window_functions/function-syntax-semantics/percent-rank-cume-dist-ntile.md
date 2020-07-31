@@ -122,7 +122,7 @@ Create a data set using the `ysqlsh` script that [table t2](../data-sets/table-t
 
 Now do this:
 
-```postgresql
+```plpgsql
 with
   v1 as (
     select

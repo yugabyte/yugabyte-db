@@ -25,7 +25,7 @@ return value:      SETOF (text, text)
 
 Use this `ysqlsh` script to create the required type _"t"_ and then to execute the `ASSERT`.
 
-```postgresql
+```plpgsql
 create type t as (k text, v text);
 
 do $body$
