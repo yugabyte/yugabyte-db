@@ -5337,8 +5337,6 @@ DELETE FROM transition_table_level1
   WHERE level1_no = 25;
 UPDATE transition_table_level1 SET level1_no = -1
   WHERE level1_no = 30;
-ERROR:  Update PRIMARY KEY columns are not yet supported
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
 INSERT INTO transition_table_level2 (level2_no, parent_no)
   VALUES (10000, 10000);
 UPDATE transition_table_level2 SET parent_no = 2000
@@ -5417,8 +5415,6 @@ ALTER TABLE alter_table_under_transition_tables
   DROP column name;
 UPDATE alter_table_under_transition_tables
   SET id = id;
-ERROR:  Update PRIMARY KEY columns are not yet supported
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
 --
 -- Test multiple reference to a transition table
 --
