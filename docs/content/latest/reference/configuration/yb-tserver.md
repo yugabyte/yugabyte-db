@@ -460,7 +460,7 @@ YugabyteDB supports only two transaction isolation levels: `REPEATABLE READ` (ak
 
 ##### --ysql_disable_index_backfill
 
-Set this flag to `false` to enabled online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
 
 For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
@@ -514,6 +514,13 @@ Specifies if YCQL tables are created with transactions enabled by default.
 
 Default: `false`
 
+##### --ycql_disable_index_backfill
+
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
+
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+
+Default: `true`
 
 ---
 
