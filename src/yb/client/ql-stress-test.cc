@@ -63,6 +63,7 @@ DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
+DECLARE_int32(TEST_max_write_waiters);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(sst_files_soft_limit);
 DECLARE_uint64(sst_files_hard_limit);
@@ -199,6 +200,8 @@ class QLStressTest : public QLDmlTestBase {
     return QLStressTest::ReadRow(session, table_, key);
   }
 
+  TransactionManager CreateTxnManager();
+
   void VerifyFlushedFrontiers();
 
   void TestRetryWrites(bool restarts);
@@ -208,7 +211,8 @@ class QLStressTest : public QLDmlTestBase {
   void AddWriter(
       std::string value_prefix, std::atomic<int>* key, TestThreadHolder* thread_holder,
       const std::chrono::nanoseconds& sleep_duration = std::chrono::nanoseconds(),
-      bool allow_failures = false);
+      bool allow_failures = false, TransactionManager* txn_manager = nullptr,
+      double transactional_write_probability = 0.0);
 
   void TestWriteRejection();
 
@@ -309,6 +313,12 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
   return result;
 }
 
+TransactionManager QLStressTest::CreateTxnManager() {
+  server::ClockPtr clock(new server::HybridClock(WallClock()));
+  EXPECT_OK(clock->Init());
+  return TransactionManager(client_.get(), clock, client::LocalTabletFilter());
+}
+
 void QLStressTest::TestRetryWrites(bool restarts) {
   const size_t kConcurrentWrites = 5;
   // Used only when table is transactional.
@@ -319,9 +329,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   const bool transactional = table_.table()->schema().table_properties().is_transactional();
   boost::optional<TransactionManager> txn_manager;
   if (transactional) {
-    server::ClockPtr clock(new server::HybridClock(WallClock()));
-    ASSERT_OK(clock->Init());
-    txn_manager.emplace(client_.get(), clock, client::LocalTabletFilter());
+    txn_manager = CreateTxnManager();
   }
 
   TestThreadHolder thread_holder;
@@ -330,7 +338,6 @@ void QLStressTest::TestRetryWrites(bool restarts) {
     thread_holder.AddThreadFunctor(
         [this, &key_source, &stop_requested = thread_holder.stop_flag(),
          &txn_manager, kTransactionalWriteProbability] {
-      CDSAttacher attacher;
       auto session = NewSession();
       while (!stop_requested.load(std::memory_order_acquire)) {
         int32_t key = key_source.fetch_add(1, std::memory_order_acq_rel);
@@ -409,6 +416,12 @@ TEST_F(QLStressTest, RetryWritesWithRestarts) {
   TestRetryWrites(true /* restarts */);
 }
 
+void SetTransactional(YBSchemaBuilder* builder) {
+  TableProperties table_properties;
+  table_properties.SetTransactional(true);
+  builder->SetTableProperties(table_properties);
+}
+
 class QLTransactionalStressTest : public QLStressTest {
  public:
   void SetUp() override {
@@ -419,10 +432,8 @@ class QLTransactionalStressTest : public QLStressTest {
     ASSERT_NO_FATALS(QLStressTest::SetUp());
   }
 
-  void CompleteSchemaBuilder(YBSchemaBuilder* b) override {
-    TableProperties table_properties;
-    table_properties.SetTransactional(true);
-    b->SetTableProperties(table_properties);
+  void CompleteSchemaBuilder(YBSchemaBuilder* builder) override {
+    SetTransactional(builder);
   }
 };
 
@@ -761,24 +772,40 @@ class QLStressTestDelayWrite : public QLStressTestSingleTablet {
 void QLStressTest::AddWriter(
     std::string value_prefix, std::atomic<int>* key, TestThreadHolder* thread_holder,
     const std::chrono::nanoseconds& sleep_duration,
-    bool allow_failures) {
+    bool allow_failures, TransactionManager* txn_manager, double transactional_write_probability) {
   thread_holder->AddThreadFunctor([this, &stop = thread_holder->stop_flag(), key, sleep_duration,
-                                   value_prefix = std::move(value_prefix), allow_failures] {
+                                   value_prefix = std::move(value_prefix), allow_failures,
+                                   txn_manager, transactional_write_probability] {
     auto session = NewSession();
+    session->SetRejectionScoreSource(std::make_shared<RejectionScoreSource>());
+    ASSERT_TRUE(txn_manager || transactional_write_probability == 0.0);
+
     while (!stop.load(std::memory_order_acquire)) {
+      YBTransactionPtr txn;
+      if (txn_manager && RandomActWithProbability(transactional_write_probability)) {
+        txn = std::make_shared<YBTransaction>(txn_manager);
+        ASSERT_OK(txn->Init(IsolationLevel::SNAPSHOT_ISOLATION));
+        session->SetTransaction(txn);
+      } else {
+        session->SetTransaction(nullptr);
+      }
       auto new_key = *key + 1;
-      session->SetRejectionScoreSource(std::make_shared<RejectionScoreSource>());
-      auto write_status = WriteRow(session, new_key, value_prefix + std::to_string(new_key));
+      auto status = WriteRow(session, new_key, value_prefix + std::to_string(new_key));
+      if (status.ok() && txn) {
+        status = txn->CommitFuture().get();
+      }
+
       if (!allow_failures) {
-        ASSERT_OK(write_status);
-      } else if (!write_status.ok()) {
-        LOG(WARNING) << "Write failed: " << write_status;
-        continue;
+        ASSERT_OK(status);
+      } else if (!status.ok()) {
+        LOG(WARNING) << "Write failed: " << status;
+      }
+      if (status.ok()) {
+        ++*key;
       }
       if (sleep_duration.count() > 0) {
         std::this_thread::sleep_for(sleep_duration);
       }
-      ++*key;
     }
   });
 }
@@ -1036,6 +1063,33 @@ TEST_F_EX(QLStressTest, DynamicCompactionPriority, QLStressDynamicCompactionPrio
   MonoDelta delete_time(CoarseMonoClock::now() - delete_start);
   LOG(INFO) << "Delete time: " << delete_time;
   ASSERT_LE(delete_time, 10s);
+}
+
+class QLStressTestTransactionalSingleTablet : public QLStressTestSingleTablet {
+  void CompleteSchemaBuilder(YBSchemaBuilder* builder) override {
+    SetTransactional(builder);
+  }
+};
+
+// Verify that we don't have too many write waiters.
+// Uses FLAGS_TEST_max_write_waiters to fail debug check when there are too many waiters.
+TEST_F_EX(QLStressTest, RemoveIntentsDuringWrite, QLStressTestTransactionalSingleTablet) {
+  FLAGS_TEST_max_write_waiters = 5;
+
+  constexpr int kWriters = 10;
+  constexpr int kKeyBase = 10000;
+
+  std::array<std::atomic<int>, kWriters> keys;
+
+  auto txn_manager = CreateTxnManager();
+  TestThreadHolder thread_holder;
+  for (int i = 0; i != kWriters; ++i) {
+    keys[i] = i * kKeyBase;
+    AddWriter(
+        "value_", &keys[i], &thread_holder, 0s, false /* allow_failures */, &txn_manager, 1.0);
+  }
+
+  thread_holder.WaitAndStop(3s);
 }
 
 } // namespace client
