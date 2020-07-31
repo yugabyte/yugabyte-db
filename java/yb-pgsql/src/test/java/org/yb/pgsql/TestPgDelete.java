@@ -211,7 +211,7 @@ public class TestPgDelete extends BasePgSQLTest {
 
     // Fill in the helper table:
     try (Statement insert_stmt = connection.createStatement()) {
-      insert_stmt.execute("INSERT INTO test_helper(h, r, vi, vs) VALUES(1, 0.5, 10, 'v')");
+      insert_stmt.execute("INSERT INTO" + tableName2 + "(h, r, vi, vs) VALUES(1, 0.5, 10, 'v')");
     }
     
     List<Row> expectedRows = new ArrayList<>();
@@ -219,7 +219,7 @@ public class TestPgDelete extends BasePgSQLTest {
       String insert_format = "INSERT INTO %s(h, r, vi, vs) VALUES(%d, %f, %d, '%s')";
       for (long h = 0; h < 5; h++) {
         String insert_text = String.format(insert_format, tableName1,
-                                             h, h + 0.5, h * 10 + h, "v" + h );
+                                           h, h + 0.5, h * 10 + h, "v" + h );
         if (h == 1) {
           // Constructing rows to be returned by DELETE.
           expectedRows.add(new Row(h, h + 0.5 , h * 10 + h, "v" + h, 1, 0.5, 10, "v"));

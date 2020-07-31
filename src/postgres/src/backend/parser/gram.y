@@ -11872,9 +11872,9 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 		;
 
 using_clause:
-			USING from_list				{ $$ = $2; }
- 			| /*EMPTY*/					{ $$ = NIL; }
- 		;
+			USING from_list		{ $$ = $2; }
+			| /* EMPTY */				{ $$ = NIL; }
+		;
 
 
 /*****************************************************************************

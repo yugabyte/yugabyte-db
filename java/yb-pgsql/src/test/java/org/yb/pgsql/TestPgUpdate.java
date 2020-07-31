@@ -321,7 +321,7 @@ public class TestPgUpdate extends BasePgSQLTest {
 
     // Fill in the helper table:
     try (Statement insert_stmt = connection.createStatement()) {
-      insert_stmt.execute("INSERT INTO test_helper(h, r, vi, vs) VALUES(1, 0.5, 10, 'v')");
+      insert_stmt.execute("INSERT INTO " + tableName2 + "(h, r, vi, vs) VALUES(1, 0.5, 10, 'v')");
     }
 
     List<Row> expectedRows = new ArrayList<>();
@@ -341,7 +341,7 @@ public class TestPgUpdate extends BasePgSQLTest {
     try (Statement update_stmt = connection.createStatement()) {
       // Testing FROM in UPDATE with RETURNING clause:
       update_stmt.execute("UPDATE " + tableName1 + " SET vs = 'l' FROM " + tableName2 +
-                                        " WHERE " + tableName1 + ".h  = " + tableName2 + ".h RETURNING *");
+                          " WHERE " + tableName1 + ".h  = " + tableName2 + ".h RETURNING *");
 
       // Verify RETURNING clause.
       ResultSet returning = update_stmt.getResultSet();
