@@ -211,9 +211,9 @@ public class TestPgDelete extends BasePgSQLTest {
 
     // Fill in the helper table:
     try (Statement insert_stmt = connection.createStatement()) {
-      insert_stmt.execute("INSERT INTO" + tableName2 + "(h, r, vi, vs) VALUES(1, 0.5, 10, 'v')");
+      insert_stmt.execute("INSERT INTO " + tableName2 + "(h, r, vi, vs) VALUES(1, 0.5, 10, 'v')");
     }
-    
+
     List<Row> expectedRows = new ArrayList<>();
     try (Statement insert_stmt = connection.createStatement()) {
       String insert_format = "INSERT INTO %s(h, r, vi, vs) VALUES(%d, %f, %d, '%s')";
