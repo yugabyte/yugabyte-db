@@ -303,7 +303,6 @@ UPDATE CASE_TBL
                 ELSE (3 * j) END
   FROM CASE2_TBL b
   WHERE j = -CASE_TBL.i;
---
 SELECT * FROM CASE_TBL ORDER BY i, f;
   i  |   f
 -----+-------
