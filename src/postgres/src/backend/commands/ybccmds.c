@@ -408,7 +408,7 @@ void
 YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 							 Oid relationId, Oid namespaceId, Oid tablegroupId)
 {
-	if (relkind != RELKIND_RELATION)
+	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE)
 	{
 		return;
 	}
@@ -894,6 +894,8 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 			case AT_DisableRowSecurity:
 			case AT_ForceRowSecurity:
 			case AT_NoForceRowSecurity:
+			case AT_AttachPartition:
+			case AT_DetachPartition:
 				/* For these cases a YugaByte alter isn't required, so we do nothing. */
 				break;
 
