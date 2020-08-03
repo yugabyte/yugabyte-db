@@ -141,7 +141,7 @@ In practice, the clock drift would have to be orders of magnitude higher in orde
 
 ## DNS caching
 
-If you are using name servers instead of static ips you may end up doing aggressive DNS lookups.
+If you are using name servers instead of static IP addresses, you may end up with aggressive DNS lookups.
 
 If the DNS query load is large enough to be a problem or the RTT to the external DNS server is long enough to be a problem, you 
 can set high enough TTL on your DNS records.
