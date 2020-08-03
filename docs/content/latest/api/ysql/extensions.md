@@ -57,7 +57,7 @@ For more information see [`pgcrypto`](https://www.postgresql.org/docs/current/pg
 
 ### pg_stat_statements
 
-The `pg_stat_statements` is installed by default and needs to be enabled before it can be queried. 
+The [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) extension module is installed by default, but must be enabled before the `pg_stat_statements` view can be queried. 
 
 ```postgresql
 CREATE EXTENSION pg_stat_statements;
