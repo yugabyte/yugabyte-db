@@ -70,7 +70,7 @@ in `json` format.
 
 For more information see [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) in the PostgreSQL Docs.
 
-### spi module
+### Server Programming Interface (spi) module
 
 The `spi` module includes several separate extensions using the Server Programming Interface (SPI) and triggers.
 The specific extensions currently supported in YSQL are:
