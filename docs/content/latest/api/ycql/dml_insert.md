@@ -259,8 +259,7 @@ ycqlsh:foo> SELECT * FROM employees;
 
 ### RETURNS STATUS AS ROW
 
-When executing a batch in YCQL, the protocol just allows returning one error/return status.  
-The `RETURNS STATUS AS ROW` feature addresses this limitation and a status row for each statement.
+When executing a batch in YCQL, the protocol returns only one error or return status. The `RETURNS STATUS AS ROW` feature addresses this limitation and adds a status row for each statement.
 
 See examples in [batch docs](../batch#row-status).
 
