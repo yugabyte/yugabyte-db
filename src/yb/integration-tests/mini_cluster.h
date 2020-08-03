@@ -35,6 +35,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "yb/gutil/macros.h"
@@ -257,12 +258,17 @@ void StepDownRandomTablet(MiniCluster* cluster);
 
 YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
 
+std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const string& table_id);
+
 std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster, ListPeersFilter filter);
 
 std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster,
     const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter);
+
+CHECKED_STATUS WaitUntilTabletHasLeader(
+    MiniCluster* cluster, const string& tablet_id, MonoTime deadline);
 
 CHECKED_STATUS WaitForLeaderOfSingleTablet(
     MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,

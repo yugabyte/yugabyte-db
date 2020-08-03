@@ -104,6 +104,47 @@ Status PgAlterDatabase::RenameDatabase(const char *newname) {
 }
 
 //--------------------------------------------------------------------------------------------------
+// PgCreateTablegroup / PgDropTablegroup
+//--------------------------------------------------------------------------------------------------
+
+PgCreateTablegroup::PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
+                                       const char *database_name,
+                                       const PgOid database_oid,
+                                       const char *tablegroup_name,
+                                       const PgOid tablegroup_oid)
+    : PgDdl(pg_session),
+      database_name_(database_name),
+      database_oid_(database_oid),
+      tablegroup_name_(tablegroup_name),
+      tablegroup_oid_(tablegroup_oid) {
+}
+
+PgCreateTablegroup::~PgCreateTablegroup() {
+}
+
+Status PgCreateTablegroup::Exec() {
+  return pg_session_->CreateTablegroup(database_name_, database_oid_,
+                                       tablegroup_name_, tablegroup_oid_);
+}
+
+PgDropTablegroup::PgDropTablegroup(PgSession::ScopedRefPtr pg_session,
+                                   const char *tablegroup_name,
+                                   const PgOid database_oid,
+                                   const PgOid tablegroup_oid)
+    : PgDdl(pg_session),
+      tablegroup_name_(tablegroup_name),
+      database_oid_(database_oid),
+      tablegroup_oid_(tablegroup_oid) {
+}
+
+PgDropTablegroup::~PgDropTablegroup() {
+}
+
+Status PgDropTablegroup::Exec() {
+  return pg_session_->DropTablegroup(tablegroup_name_, database_oid_, tablegroup_oid_);
+}
+
+//--------------------------------------------------------------------------------------------------
 // PgCreateTable
 //--------------------------------------------------------------------------------------------------
 

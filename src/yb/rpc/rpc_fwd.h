@@ -62,6 +62,8 @@ class Protocol;
 class Scheduler;
 class SecureContext;
 class ServicePoolImpl;
+class Strand;
+class StrandTask;
 class Stream;
 class StreamReadBuffer;
 class ThreadPool;

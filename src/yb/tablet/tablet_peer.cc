@@ -61,6 +61,7 @@
 #include "yb/rocksdb/db/memtable.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/strand.h"
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/tablet.h"
@@ -208,6 +209,7 @@ Status TabletPeer::InitTabletPeer(
     // "Publish" the log pointer so it can be retrieved using the log() accessor.
     log_atomic_ = log.get();
     service_thread_pool_ = &messenger->ThreadPool();
+    strand_.reset(new rpc::Strand(&messenger->ThreadPool()));
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto index = log->GetLatestEntryOpId().index;
@@ -1206,14 +1208,24 @@ Status TabletPeer::UpdateState(RaftGroupStatePB expected, RaftGroupStatePB new_s
   return Status::OK();
 }
 
-bool TabletPeer::Enqueue(rpc::ThreadPoolTask* task) {
+void TabletPeer::Enqueue(rpc::ThreadPoolTask* task) {
   rpc::ThreadPool* thread_pool = service_thread_pool_.load(std::memory_order_acquire);
   if (!thread_pool) {
     task->Done(STATUS(Aborted, "Thread pool not ready"));
-    return false;
+    return;
   }
 
-  return thread_pool->Enqueue(task);
+  thread_pool->Enqueue(task);
+}
+
+void TabletPeer::StrandEnqueue(rpc::StrandTask* task) {
+  rpc::Strand* strand = strand_.get();
+  if (!strand) {
+    task->Done(STATUS(Aborted, "Thread pool not ready"));
+    return;
+  }
+
+  strand->Enqueue(task);
 }
 
 }  // namespace tablet

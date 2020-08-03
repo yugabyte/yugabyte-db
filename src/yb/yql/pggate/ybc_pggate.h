@@ -140,6 +140,24 @@ void YBCPgInvalidateTableCache(
     const YBCPgOid table_oid);
 YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
 
+// TABLEGROUP --------------------------------------------------------------------------------------
+// Create and drop tablegroup "database_name.tablegroup_name".
+
+// Create tablegroup.
+YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
+                                   YBCPgOid database_oid,
+                                   const char *tablegroup_name,
+                                   YBCPgOid tablegroup_oid,
+                                   YBCPgStatement *handle);
+YBCStatus YBCPgExecCreateTablegroup(YBCPgStatement handle);
+
+// Drop tablegroup.
+YBCStatus YBCPgNewDropTablegroup(const char *tablegroup_name,
+                                 YBCPgOid database_oid,
+                                 YBCPgOid tablegroup_oid,
+                                 YBCPgStatement *handle);
+YBCStatus YBCPgExecDropTablegroup(YBCPgStatement handle);
+
 // TABLE -------------------------------------------------------------------------------------------
 // Create and drop table "database_name.schema_name.table_name()".
 // - When "schema_name" is NULL, the table "database_name.table_name" is created.
@@ -217,6 +235,10 @@ YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t catalog_ca
 YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
                                 const YBCPgOid table_oid,
                                 bool *colocated);
+
+YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
+                           const YBCPgOid table_oid,
+                           bool *exists);
 
 // INDEX -------------------------------------------------------------------------------------------
 // Create and drop index "database_name.schema_name.index_name()".

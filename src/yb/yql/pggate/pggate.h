@@ -183,6 +183,24 @@ class PgApiImpl {
   void InvalidateTableCache(const PgObjectId& table_id);
 
   //------------------------------------------------------------------------------------------------
+  // Create and drop tablegroup.
+
+  CHECKED_STATUS NewCreateTablegroup(const char *database_name,
+                                     const PgOid database_oid,
+                                     const char *tablegroup_name,
+                                     const PgOid tablegroup_oid,
+                                     PgStatement **handle);
+
+  CHECKED_STATUS ExecCreateTablegroup(PgStatement *handle);
+
+  CHECKED_STATUS NewDropTablegroup(const char *tablegroup_name,
+                                   const PgOid database_oid,
+                                   const PgOid tablegroup_oid,
+                                   PgStatement **handle);
+
+  CHECKED_STATUS ExecDropTablegroup(PgStatement *handle);
+
+  //------------------------------------------------------------------------------------------------
   // Create, alter and drop table.
   CHECKED_STATUS NewCreateTable(const char *database_name,
                                 const char *schema_name,

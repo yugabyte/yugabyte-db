@@ -2,7 +2,7 @@
 title: cr_int_views.sql
 linkTitle: cr_int_views.sql
 headerTitle: cr_int_views.sql
-description: Create a function to compute some basic facts about table t4.
+description: cr_int_views.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: cr-int-views
@@ -12,23 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `cr_int_views.sql`.
-```postgresql
--- "create or replace view" not yet supported
-do $body$
-begin
-  begin
-    execute 'drop view t4_view';
-  exception
-    when undefined_table then null;
-  end;
-
-  begin
-    execute 'drop view results';
-  exception
-    when undefined_table then null;
-  end;
-end;
-$body$;
+```plpgsql
+-- Suppress the spurious warning that is raised
+-- when the to-be-deleted view doesn't yet exist.
+set client_min_messages = warning;
+drop view if exists t4_view;
 
 create view t4_view as
 select
@@ -37,6 +25,7 @@ select
 from t4;
 
 -- This very simple view allows updates.
+drop view if exists results;
 create view results as
 select method, bucket, n, min_s, max_s
 from int_results;

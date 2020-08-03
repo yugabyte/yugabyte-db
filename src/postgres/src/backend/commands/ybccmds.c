@@ -36,6 +36,7 @@
 #include "catalog/ybctype.h"
 #include "commands/dbcommands.h"
 #include "commands/ybccmds.h"
+#include "commands/tablegroup.h"
 
 #include "access/htup_details.h"
 #include "utils/lsyscache.h"
@@ -102,7 +103,8 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 	HandleYBStatus(YBCPgNewDropDatabase(dbname,
 										dboid,
 										&handle));
-	HandleYBStatus(YBCPgExecDropDatabase(handle));
+        bool not_found = false;
+        HandleYBStatusIgnoreNotFound(YBCPgExecDropDatabase(handle), &not_found);
 }
 
 void
@@ -114,6 +116,29 @@ YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_o
 									begin_oid,
 									end_oid));
 }
+
+/* ------------------------------------------------------------------------- */
+/*  Tablegroup Functions. */
+void
+YBCCreateTablegroup(Oid grpoid, const char *grpname)
+{
+	YBCPgStatement handle;
+	char *db_name = get_database_name(MyDatabaseId);
+
+	HandleYBStatus(YBCPgNewCreateTablegroup(db_name, MyDatabaseId, grpname,
+																					grpoid, &handle));
+	HandleYBStatus(YBCPgExecCreateTablegroup(handle));
+}
+
+void
+YBCDropTablegroup(Oid grpoid, const char *grpname)
+{
+	YBCPgStatement handle;
+
+	HandleYBStatus(YBCPgNewDropTablegroup(grpname, MyDatabaseId, grpoid, &handle));
+	HandleYBStatus(YBCPgExecDropTablegroup(handle));
+}
+
 
 /* ------------------------------------------------------------------------- */
 /*  Table Functions. */
@@ -380,9 +405,10 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 }
 
 void
-YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, Oid namespaceId)
+YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
+							 Oid relationId, Oid namespaceId, Oid tablegroupId)
 {
-	if (relkind != RELKIND_RELATION)
+	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE)
 	{
 		return;
 	}
@@ -430,6 +456,11 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 
 		if (strcmp(def->defname, "colocated") == 0)
 		{
+			if (stmt->tablegroupname)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot use \'colocated=true/false\' with tablegroup")));
+
 			bool colocated_relopt = defGetBoolean(def);
 			if (MyDatabaseColocated)
 				colocated = colocated_relopt;
@@ -680,7 +711,8 @@ YBCCreateIndex(const char *indexName,
 			   Oid indexId,
 			   Relation rel,
 			   OptSplit *split_options,
-			   const bool skip_index_backfill)
+			   const bool skip_index_backfill,
+			   Oid tablegroupId)
 {
 	char *db_name	  = get_database_name(MyDatabaseId);
 	char *schema_name = get_namespace_name(RelationGetNamespace(rel));
@@ -862,6 +894,8 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 			case AT_DisableRowSecurity:
 			case AT_ForceRowSecurity:
 			case AT_NoForceRowSecurity:
+			case AT_AttachPartition:
+			case AT_DetachPartition:
 				/* For these cases a YugaByte alter isn't required, so we do nothing. */
 				break;
 

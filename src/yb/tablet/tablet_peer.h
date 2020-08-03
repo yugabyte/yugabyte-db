@@ -325,7 +325,8 @@ class TabletPeer : public consensus::ConsensusContext,
     return clock_;
   }
 
-  bool Enqueue(rpc::ThreadPoolTask* task) override;
+  void Enqueue(rpc::ThreadPoolTask* task);
+  void StrandEnqueue(rpc::StrandTask* task) override;
 
   const std::shared_future<client::YBClient*>& client_future() const override {
     return client_future_;
@@ -469,6 +470,7 @@ class TabletPeer : public consensus::ConsensusContext,
   const std::string permanent_uuid_;
 
   std::atomic<rpc::ThreadPool*> service_thread_pool_{nullptr};
+  AtomicUniquePtr<rpc::Strand> strand_;
 
   OperationCounter preparing_operations_counter_;
 

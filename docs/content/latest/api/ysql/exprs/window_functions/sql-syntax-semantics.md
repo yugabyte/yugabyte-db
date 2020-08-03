@@ -132,7 +132,7 @@ In summary, the [**window_definition**](../../../syntax_resources/grammar_diagra
 
 The `FILTER` clause's `WHERE` clause has the same syntax and semantics as it does at the regular `WHERE` clause syntax spot immediately after a subquery's `FROM` list. Notice that the `FILTER` clause is legal only for the invocation of an aggregate function. Here is an example:
 
-```postgresql
+```plpgsql
 select
   class,
   k,

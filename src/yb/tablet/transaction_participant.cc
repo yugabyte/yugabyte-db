@@ -437,7 +437,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     auto cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
         &applier_, std::move(set), &participant_context_, status_manager, LogPrefix());
     cleanup_aborts_task->Prepare(cleanup_aborts_task);
-    participant_context_.Enqueue(cleanup_aborts_task.get());
+    participant_context_.StrandEnqueue(cleanup_aborts_task.get());
   }
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
@@ -1003,7 +1003,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       auto cleanup_task = std::make_shared<CleanupIntentsTask>(
           &participant_context_, &applier_, id);
       cleanup_task->Prepare(cleanup_task);
-      participant_context_.Enqueue(cleanup_task.get());
+      participant_context_.StrandEnqueue(cleanup_task.get());
     }
     return LockAndFindResult{};
   }

@@ -2,7 +2,6 @@
 title: CREATE TABLE statement [YCQL]
 headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
-summary: Create a new table in a keyspace
 description: Use the CREATE TABLE statement to create a new table in a keyspace.
 menu:
   latest:

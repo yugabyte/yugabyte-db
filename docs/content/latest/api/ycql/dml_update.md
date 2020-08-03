@@ -2,7 +2,6 @@
 title: UPDATE statement [YCQL]
 headerTitle: UPDATE
 linkTitle: UPDATE
-summary: Change values of a row in a table
 description: Use the UPDATE statement to update one or more column values for a row in table.
 menu:
   latest:

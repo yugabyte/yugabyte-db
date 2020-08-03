@@ -2,7 +2,7 @@
 title: do_demo.sql
 linkTitle: do_demo.sql
 headerTitle: do_demo.sql
-description: Master script to run the demo that supports the section Analyzing a normal distribution with percent_rank(), cume_dist() and ntile().
+description: do_demo.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: do-demo
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `do_demo.sql`.
-```postgresql
+```plpgsql
 -- Uses table t4.
 -- Once you've created it, you can run this script time and again using
 -- for example, a different number of histogran buckets or a

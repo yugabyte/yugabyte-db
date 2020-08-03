@@ -69,7 +69,7 @@
 //
 // <subdoc_a_type_or_value>, <subdoc_aa_type_or_value>, <subdoc_ab_type_or_value> are values of the
 // following form:
-//   - One-byte value type (see the ValueType enum below).
+//   - One-byte value type (see the ValueType enum).
 //   - For primitive values, the encoded value. Note: the value encoding may be different from the
 //     key encoding for the same data type. E.g. we only flip the sign bit for signed 64-bit
 //     integers when encoded as part of a RocksDB key, not value.
@@ -129,8 +129,6 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 // Input: doc_write_ops, read snapshot hybrid_time if requested in PrepareDocWriteOperation().
 // Context: rocksdb
 // Outputs: keys_locked, write_batch
-// TODO: rename this to something other than "apply" to avoid confusing it with the "apply"
-// operation that happens after Raft replication.
 CHECKED_STATUS ExecuteDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     CoarseTimePoint deadline,
@@ -193,39 +191,6 @@ CHECKED_STATUS PrepareApplyIntentsBatch(
     const TransactionId& transaction_id, HybridTime commit_ht, const KeyBounds* key_bounds,
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch);
-
-// A visitor class that could be overridden to consume results of scanning SubDocuments.
-// See e.g. SubDocumentBuildingVisitor (used in implementing GetSubDocument) as example usage.
-// We can scan any SubDocument from a node in the document tree.
-class DocVisitor {
- public:
-  DocVisitor() {}
-  virtual ~DocVisitor() {}
-
-  // Called once in the beginning of every new subdocument.
-  virtual CHECKED_STATUS StartSubDocument(const SubDocKey &key) = 0;
-
-  // Called in the end of a document.
-  virtual CHECKED_STATUS EndSubDocument() = 0;
-
-  // VisitKey and VisitValue are called as part of enumerating key-value pairs in an object, e.g.
-  // VisitKey(key1), VisitValue(value1), VisitKey(key2), VisitValue(value2), etc.
-
-  virtual CHECKED_STATUS VisitKey(const PrimitiveValue& key) = 0;
-  virtual CHECKED_STATUS VisitValue(const PrimitiveValue& value) = 0;
-
-  // Called in the beginning of an object, before any key/value pairs.
-  virtual CHECKED_STATUS StartObject() = 0;
-
-  // Called after all key/value pairs in an object.
-  virtual CHECKED_STATUS EndObject() = 0;
-
-  // Called before enumerating elements of an array. Not used as of 9/26/2016.
-  virtual CHECKED_STATUS StartArray() = 0;
-
-  // Called after enumerating elements of an array. Not used as of 9/26/2016.
-  virtual CHECKED_STATUS EndArray() = 0;
-};
 
 // Represents a general SubDocKey with information on whether this bound is lower/upper and whether
 // it is exclusive. Used in range requests.
@@ -409,17 +374,15 @@ YB_STRONGLY_TYPED_BOOL(SeekFwdSuffices);
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
 // Before the function is called, if seek_fwd_suffices is true, the iterator is expected to be
-// positioned on or before the first key.
-// After this, the iter should be positioned just outside the SubDocument (unless high_subkey is
-// specified, see below for details).
+// positioned on or before the first key when called.
+// After this, the iter should be positioned just outside the considered data range. If low_subkey,
+// and high_subkey are specified, the iterator will be positioned just past high_subkey. Otherwise,
+// the iterator will be positioned just past the SubDocument.
 // This function works with or without object init markers present.
 // If tombstone and other values are inserted at the same timestamp, it results in undefined
 // behavior.
 // The projection, if set, restricts the scan to a subset of keys in the first level.
 // The projection is used for QL selects to get only a subset of columns.
-// If low and high subkey are specified, only first level keys in the subdocument within that
-// range(inclusive) are returned and the iterator is positioned after high_subkey and not
-// necessarily outside the SubDocument.
 yb::Status GetSubDocument(
     IntentAwareIterator *db_iter,
     const GetSubDocumentData& data,
@@ -428,9 +391,6 @@ yb::Status GetSubDocument(
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in e.g. doc_rowwise_iterator.
-// low_subkey and high_subkey are optional ranges that we can specify for the subkeys to ensure
-// that we include only a particular set of subkeys for the first level of the subdocument that
-// we're looking for.
 yb::Status GetSubDocument(
     const DocDB& doc_db,
     const GetSubDocumentData& data,
@@ -445,55 +405,7 @@ yb::Status GetTtl(const Slice& encoded_subdoc_key,
                   bool* doc_found,
                   Expiration* exp);
 
-using DocDbDumpLineFilter = boost::function<bool(const std::string&)>;
-
-// Create a debug dump of the document database. Tries to decode all keys/values despite failures.
-// Reports all errors to the output stream and returns the status of the first failed operation,
-// if any.
-void DocDBDebugDump(
-    rocksdb::DB* rocksdb,
-    std::ostream& out,
-    StorageDbType db_type,
-    IncludeBinary include_binary = IncludeBinary::kFalse,
-    const DocDbDumpLineFilter& filter = DocDbDumpLineFilter());
-
-std::string DocDBDebugDumpToStr(
-    rocksdb::DB* rocksdb, StorageDbType db_type = StorageDbType::kRegular,
-    IncludeBinary include_binary = IncludeBinary::kFalse,
-    const DocDbDumpLineFilter& filter = DocDbDumpLineFilter());
-
-std::string DocDBDebugDumpToStr(
-    DocDB docdb, IncludeBinary include_binary = IncludeBinary::kFalse,
-    const DocDbDumpLineFilter& line_filter = DocDbDumpLineFilter());
-
-template <class T>
-void DocDBDebugDumpToContainer(
-    rocksdb::DB* rocksdb, T* out, StorageDbType db_type = StorageDbType::kRegular,
-    IncludeBinary include_binary = IncludeBinary::kFalse);
-
-template <class T>
-void DocDBDebugDumpToContainer(
-    DocDB docdb, T* out, IncludeBinary include_binary = IncludeBinary::kFalse);
-
-void DumpRocksDBToLog(rocksdb::DB* rocksdb, StorageDbType db_type = StorageDbType::kRegular);
-
-void ConfigureDocDBRocksDBOptions(rocksdb::Options* options);
-
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
-
-// Buffer for encoding DocHybridTime
-class DocHybridTimeBuffer {
- public:
-  DocHybridTimeBuffer();
-
-  Slice EncodeWithValueType(const DocHybridTime& doc_ht);
-
-  Slice EncodeWithValueType(HybridTime ht, IntraTxnWriteId write_id) {
-    return EncodeWithValueType(DocHybridTime(ht, write_id));
-  }
- private:
-  std::array<char, 1 + kMaxBytesPerEncodedHybridTime> buffer_;
-};
 
 }  // namespace docdb
 }  // namespace yb

@@ -85,6 +85,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_compaction_filter_intents.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/key_bytes.h"
@@ -423,11 +424,21 @@ Tablet::Tablet(const TabletInitData& data)
     auto rocksdb_statistics = rocksdb_statistics_;
     metric_entity_->AddExternalJsonMetricsCb(
         [rocksdb_statistics](JsonWriter* jw, const MetricJsonOptions& opts) {
+      // Assume all rocksdb statistics are at "info" level.
+      if (MetricLevel::kInfo < opts.level) {
+        return;
+      }
+
       EmitRocksDbMetricsAsJson(rocksdb_statistics, jw, opts);
     });
 
     metric_entity_->AddExternalPrometheusMetricsCb(
-        [rocksdb_statistics, attrs](PrometheusWriter* pw) {
+        [rocksdb_statistics, attrs](PrometheusWriter* pw, const MetricPrometheusOptions& opts) {
+      // Assume all rocksdb statistics are at "info" level.
+      if (MetricLevel::kInfo < opts.level) {
+        return;
+      }
+
       auto s = EmitRocksDbMetricsAsPrometheus(rocksdb_statistics, pw, attrs);
       if (!s.ok()) {
         YB_LOG_EVERY_N(WARNING, 100) << "Failed to get Prometheus metrics: " << s.ToString();
@@ -2928,8 +2939,8 @@ std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
   return docdb::DocDBDebugDumpToStr(doc_db());
 }
 
-template <class T>
-void Tablet::TEST_DocDBDumpToContainer(IncludeIntents include_intents, T* out) {
+void Tablet::TEST_DocDBDumpToContainer(
+    IncludeIntents include_intents, std::unordered_set<std::string>* out) {
   if (!regular_db_) return;
 
   if (!include_intents) {
@@ -2938,12 +2949,6 @@ void Tablet::TEST_DocDBDumpToContainer(IncludeIntents include_intents, T* out) {
 
   return docdb::DocDBDebugDumpToContainer(doc_db(), out);
 }
-
-template void Tablet::TEST_DocDBDumpToContainer(
-    IncludeIntents include_intents, std::unordered_set<std::string>* out);
-
-template void Tablet::TEST_DocDBDumpToContainer(
-    IncludeIntents include_intents, std::vector<std::string>* out);
 
 size_t Tablet::TEST_CountRegularDBRecords() {
   if (!regular_db_) return 0;

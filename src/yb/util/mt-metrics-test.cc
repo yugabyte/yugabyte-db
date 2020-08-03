@@ -114,7 +114,8 @@ void MultiThreadedMetricsTest::RegisterCounters(
     string name = strings::Substitute("$0_$1_$2", name_prefix, tid, i);
     auto proto = new CounterPrototype(MetricPrototype::CtorArgs(
         "test_entity", strdup(name.c_str()), "Test Counter",
-        MetricUnit::kOperations, "test counter"));
+        MetricUnit::kOperations, "test counter",
+        MetricLevel::kInfo));
     proto->Instantiate(metric_entity)->Increment();
   }
 }

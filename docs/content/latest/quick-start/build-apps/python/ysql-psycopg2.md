@@ -2,7 +2,7 @@
 title: Build a Python application that uses YSQL and Psycopg2
 headerTitle: Build a Python application
 linkTitle: Python
-description: Build a Python application that uses YSQL and Psycopg2
+description: Build a sample Python application with psycopg2 that use YSQL.
 aliases:
   - /develop/client-drivers/python/
   - /latest/develop/client-drivers/python/
@@ -40,7 +40,7 @@ showAsideToc: true
   </li>
 </ul>
 
-The following tutorial creates a simple Python application that connects to a YugabyteDB cluster using the `psycopg` database adapter, performs a few basic database operations — creating a table, inserting data, and running a SQL query — and prints the results to the screen.
+The following tutorial creates a simple Python application that connects to a YugabyteDB cluster using the `psycopg2` database adapter, performs a few basic database operations — creating a table, inserting data, and running a SQL query — and prints the results to the screen.
 
 ## Before you begin
 
@@ -54,7 +54,7 @@ YugabyteDB is up and running. If you are new to YugabyteDB, you can have Yugabyt
 
 Python 3, or later, is installed.
 
-### Psycopg database adapter
+### Psycopg2 database adapter
 
 [Psycopg](http://initd.org/psycopg/),the popular PostgreSQL database adapter for Python, is installed. To install a binary version of `psycopg2`, run the following `pip3` command.
 
@@ -62,9 +62,9 @@ Python 3, or later, is installed.
 $ pip3 install psycopg2-binary
 ```
 
-For details about using this database adapter, see the [Psycopg documentation](http://initd.org/psycopg/docs/).
+For details about using this database adapter, see [Psycopg documentation](http://initd.org/psycopg/docs/).
 
-## Create the Python application
+## Create the sample Python application
 
 Create a file `yb-sql-helloworld.py` and add the following content to it.
 
@@ -124,7 +124,7 @@ conn.close()
 
 ### Run the application
 
-To run the application, run the following Python script you just created.
+To use the application, run the following Python script you just created.
 
 ```sh
 $ python yb-sql-helloworld.py

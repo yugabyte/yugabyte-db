@@ -2,7 +2,7 @@
 title: cr_histogram.sql
 linkTitle: cr_histogram.sql
 headerTitle: cr_histogram.sql
-description: Create the function that creates the histogram output.
+description: cr_histogram.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: cr-histogram
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `cr_histogram.sql`.
-```postgresql
+```plpgsql
 -- "scale_factor" controls the histogram height.
 -- Use 10 for 10,000 rows, 100 for 100,000 rows.
 
