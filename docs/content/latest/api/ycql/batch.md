@@ -99,7 +99,7 @@ If one statement fails with an error or for conditional DMLs, some are not appli
 Therefore, it is not trivial/possible for an application to react to such failures appropriately (e.g. retry, abort, 
 change some parameters, for either entire batch or just the relevant statements etc).
 
-The `RETURNS STATUS AS ROW` feature addresses this limitation.
+You can address this limitation by using the `RETURNS STATUS AS ROW` feature.
 
 
 If used, the (write) statement will return it's status (whether applied, unapplied, or errored-out with a message) as a regular CQL 
