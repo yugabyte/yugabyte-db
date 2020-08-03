@@ -16,7 +16,7 @@ Batch operations let you send multiple operations in a single RPC call to the da
 the higher the latency for the entire batch. Although the latency for the entire batch of operations is higher than the latency of any single operation, 
 the throughput of the batch of operations is much higher.
 
-## Example in JAVA
+## Example in Java
 
 In order to perform a batch insert operation in Java, first create a BatchStatement object. 
 Next add the desired number of prepared and bound insert statements to it. 
