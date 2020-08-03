@@ -102,8 +102,7 @@ change some parameters, for either entire batch or just the relevant statements 
 You can address this limitation by using the `RETURNS STATUS AS ROW` feature.
 
 
-If used, the (write) statement will return it's status (whether applied, unapplied, or errored-out with a message) as a regular CQL 
-row that the application can inspect and decide what to do.
+If used, the write statement will return its status (whether applied, unapplied, or errored-out with a message) as a regular CQL row that the application can inspect and decide what to do.
 
 In the case of a batch (which is its intended use-case), it is required that either none or all statements use `RETURNS STATUS AS ROW`.
 
