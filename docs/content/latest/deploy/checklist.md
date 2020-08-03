@@ -139,6 +139,9 @@ In practice, the clock drift would have to be orders of magnitude higher in orde
 
 {{< /note >}}
 
+## Security checklist
+Checkout [security checklist](../secure/security-checklist.md) for list of best practices.
+
 ## Running on public clouds
 
 ### Amazon Web Services (AWS)
