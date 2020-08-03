@@ -28,6 +28,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tools/yb-admin_client.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace integration_tests {
@@ -162,6 +163,52 @@ TEST_F(LoadBalancerTest, IsLoadBalancerIdle) {
     bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
     return !is_idle;
   },  MonoDelta::FromMilliseconds(10000), "IsLoadBalancerActive"));
+}
+
+// This regression test is to check that we don't hit the CHECK in cluster_balance.cc
+//  state_->pending_stepdown_leader_tasks_[tablet->table()->id()].count(tablet->tablet_id()) == 0
+// This CHECK was previously hit when load_balancer_max_concurrent_moves was set to a value > 1
+// and multiple stepdown tasks were sent to the same tablet on subsequent LB runs.
+TEST_F(LoadBalancerTest, PendingLeaderStepdownRegressTest) {
+  const int test_bg_task_wait_ms = 1000;
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.z1"}));
+
+  // Move all leaders to one tablet.
+  ASSERT_OK(WaitFor([&]() {
+    return AreLeadersOnPreferredOnly();
+  }, MonoDelta::FromMilliseconds(kDefaultTimeoutMillis), "AreLeadersOnPreferredOnly"));
+
+  // Allow for multiple leader moves per table.
+  for (int i = 0; i < num_masters(); ++i) {
+    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
+                                              "load_balancer_max_concurrent_moves", "10"));
+    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
+                                              "load_balancer_max_concurrent_moves_per_table", "5"));
+    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
+                                              "catalog_manager_bg_task_wait_ms",
+                                              std::to_string(test_bg_task_wait_ms)));
+  }
+  // Add stepdown delay of 2 * catalog_manager_bg_task_wait_ms.
+  // This ensures that we will have pending stepdown tasks during a subsequent LB run.
+  for (int i = 0; i < num_tablet_servers(); ++i) {
+    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->tablet_server(i),
+                                              "TEST_leader_stepdown_delay_ms",
+                                              std::to_string(2 * test_bg_task_wait_ms)));
+  }
+
+  // Trigger leader balancing.
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.z0", "c.r.z1", "c.r.z2"}));
+
+  // Wait for load balancing to complete.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
+    return !is_idle;
+  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis * 2), "IsLoadBalancerActive"));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return client_->IsLoadBalancerIdle();
+  },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis * 2), "IsLoadBalancerIdle"));
 }
 
 } // namespace integration_tests

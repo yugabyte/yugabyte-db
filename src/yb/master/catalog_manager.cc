@@ -6295,18 +6295,20 @@ void CatalogManager::GetPendingServerTasksUnlocked(
     const TableId &table_uuid,
     TabletToTabletServerMap *add_replica_tasks_map,
     TabletToTabletServerMap *remove_replica_tasks_map,
-    TabletToTabletServerMap *stepdown_leader_tasks) {
+    TabletToTabletServerMap *stepdown_leader_tasks_map) {
 
   auto table = GetTableInfoUnlocked(table_uuid);
   for (const auto& task : table->GetTasks()) {
     TabletToTabletServerMap* outputMap = nullptr;
-    TabletId tablet_id;
     if (task->type() == MonitoredTask::ASYNC_ADD_SERVER) {
       outputMap = add_replica_tasks_map;
     } else if (task->type() == MonitoredTask::ASYNC_REMOVE_SERVER) {
       outputMap = remove_replica_tasks_map;
     } else if (task->type() == MonitoredTask::ASYNC_TRY_STEP_DOWN) {
-      outputMap = stepdown_leader_tasks;
+      // Store new_leader_uuid instead of change_config_ts_uuid.
+      auto raft_task = static_cast<AsyncTryStepDown*>(task.get());
+      (*stepdown_leader_tasks_map)[raft_task->tablet_id()] = raft_task->new_leader_uuid();
+      continue;
     }
     if (outputMap) {
       auto raft_task = static_cast<CommonInfoForRaftTask*>(task.get());

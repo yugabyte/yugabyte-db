@@ -177,6 +177,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS ListLeaderCounts(const client::YBTableName& table_name);
 
+  Result<unordered_map<string, int>> GetLeaderCounts(const client::YBTableName& table_name);
+
   CHECKED_STATUS SetupRedisTable();
 
   CHECKED_STATUS DropRedisTable();
