@@ -160,8 +160,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     assertThat(queryParam.getValue(), allOf(notNullValue(), instanceOf(Map.class)));
 
     List<String> expectedQueryStrings = new ArrayList<>();
-    expectedQueryStrings.add(validMetric.getQuery(new HashMap<>()));
-    expectedQueryStrings.add(validMetric2.getQuery(new HashMap<>()));
+    expectedQueryStrings.add(validMetric.getQuery(new HashMap<>(), 60 /* queryRangeSecs */));
+    expectedQueryStrings.add(validMetric2.getQuery(new HashMap<>(), 60 /* queryRangeSecs */));
 
     for (Map<String, String> capturedQueryParam: queryParam.getAllValues()) {
       assertTrue(expectedQueryStrings.contains(capturedQueryParam.get("query")));

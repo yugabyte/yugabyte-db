@@ -79,7 +79,7 @@ public class MetricConfig extends Model {
     return new Layout();
   }
 
-  public Map<String, String> getQueries(Map<String, String> additionalFilters) {
+  public Map<String, String> getQueries(Map<String, String> additionalFilters, int queryRangeSecs) {
     MetricConfig metricConfig = getConfig();
     if (metricConfig.metric == null) {
       throw new RuntimeException("Invalid MetricConfig: metric attribute is required");
@@ -90,16 +90,18 @@ public class MetricConfig extends Model {
     // Note: contains takes actual chars, while split takes a regex, hence the escape \\ there.
     if (metricConfig.metric.contains("|")) {
       for (String m : metricConfig.metric.split("\\|")) {
-        output.put(m, getQuery(m, additionalFilters));
+        output.put(m, getQuery(m, additionalFilters, queryRangeSecs));
       }
     } else {
-      output.put(metricConfig.metric, getQuery(metricConfig.metric, additionalFilters));
+      output.put(
+        metricConfig.metric,
+        getQuery(metricConfig.metric, additionalFilters, queryRangeSecs));
     }
     return output;
   }
 
-  public String getQuery(Map<String, String> additionalFilters) {
-    return getQuery(this.getConfig().metric, additionalFilters);
+  public String getQuery(Map<String, String> additionalFilters, int queryRangeSecs) {
+    return getQuery(this.getConfig().metric, additionalFilters, queryRangeSecs);
   }
 
   /**
@@ -112,22 +114,24 @@ public class MetricConfig extends Model {
    *  - avg(collectd_memory{memory=~"used|buffered|cached|free"}) by (memory) /10
    * @return, a valid prometheus query string
    */
-  public String getQuery(String metric, Map<String, String> additionalFilters) {
+  public String getQuery(String metric, Map<String, String> additionalFilters, int queryRangeSecs) {
     // Special case searchs for .avg to convert into the respective ratio of
     // avg(irate(metric_sum)) / avg(irate(metric_count))
     if (metric.endsWith(".avg")) {
       String metricPrefix = metric.substring(0, metric.length() - 4);
-      String sumQuery = getQuery(metricPrefix + "_sum", additionalFilters);
-      String countQuery = getQuery(metricPrefix + "_count", additionalFilters);
+      String sumQuery = getQuery(metricPrefix + "_sum", additionalFilters, queryRangeSecs);
+      String countQuery = getQuery(metricPrefix + "_count", additionalFilters, queryRangeSecs);
       return "(" + sumQuery + ") / (" + countQuery + ")";
     }
     else if (metric.contains("/")) {
       String[] metricNames = metric.split("/");
       MetricConfig numerator = get(metricNames[0]);
       MetricConfig denominator = get(metricNames[1]);
-      String numQuery = numerator.getQuery(numerator.getConfig().metric, additionalFilters);
-      String demonQuery = denominator.getQuery(denominator.getConfig().metric, additionalFilters);
-      return String.format("((%s)/(%s))*100", numQuery, demonQuery);
+      String numQuery = numerator.getQuery(
+        numerator.getConfig().metric, additionalFilters, queryRangeSecs);
+      String denomQuery = denominator.getQuery(
+        denominator.getConfig().metric, additionalFilters, queryRangeSecs);
+      return String.format("((%s)/(%s))*100", numQuery, denomQuery);
     }
 
     String queryStr;
@@ -159,7 +163,7 @@ public class MetricConfig extends Model {
     // Range is applicable only when we have functions
     // TODO: also need to add a check, since range is applicable for only certain functions
     if (metricConfig.range != null && metricConfig.function != null) {
-      query.append(String.format("[%s]", metricConfig.range));
+      query.append(String.format("[%ds]", queryRangeSecs)); // for ex: [60s]
     }
 
     queryStr = query.toString();
