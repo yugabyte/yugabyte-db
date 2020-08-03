@@ -5404,10 +5404,7 @@ UPDATE alter_table_under_transition_tables
 -- now change 'name' to an integer to see what happens...
 ALTER TABLE alter_table_under_transition_tables
   ALTER COLUMN name TYPE int USING name::integer;
-ERROR:  ALTER TABLE ALTER column not supported yet
-LINE 2:   ALTER COLUMN name TYPE int USING name::integer;
-          ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ERROR:  This ALTER TABLE command is not yet supported.
 UPDATE alter_table_under_transition_tables
   SET name = (name::text || name::text)::integer;
 -- now drop column 'name'

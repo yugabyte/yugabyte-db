@@ -1,6 +1,6 @@
 --
 -- ALTER_TABLE
--- add, rename, drop attribute
+-- add, rename, drop, alter type of attribute
 --
 
 CREATE TABLE tmp (initial int4);
@@ -380,3 +380,58 @@ delete from test_delete_dropped where a = 1 returning *;
 \d test_delete_dropped;
 select * from test_delete_dropped;
 DROP TABLE test_delete_dropped;
+
+-- Test ALTER TABLE _ ALTER COLUMN _ TYPE _
+create table test_alter_column_type(a varchar(1));
+alter table test_alter_column_type add column b name;
+alter table test_alter_column_type add column c text;
+alter table test_alter_column_type add column d char(1);
+alter table test_alter_column_type add column e varbit(1);
+alter table test_alter_column_type add column f int;
+alter table test_alter_column_type add column g varchar;
+alter table test_alter_column_type add column h varbit;
+insert into test_alter_column_type values ('a', 'b', 'c', 'd', B'1', 1, 'g', B'1');
+select * from test_alter_column_type;
+\d test_alter_column_type
+
+alter table test_alter_column_type alter column a type varchar(1);
+alter table test_alter_column_type alter column a type varchar(5);
+alter table test_alter_column_type alter column a type varchar(1); --fails
+alter table test_alter_column_type alter column a type char(10); --fails
+
+alter table test_alter_column_type alter column b type name;
+alter table test_alter_column_type alter column b type varchar(100); --fails
+
+alter table test_alter_column_type alter column c type text;
+alter table test_alter_column_type alter column c type varchar(100); --fails
+
+alter table test_alter_column_type alter column d type char(1);
+alter table test_alter_column_type alter column d type varchar(100); --fails
+alter table test_alter_column_type alter column d type char(100); --fails
+
+alter table test_alter_column_type alter column e type varbit(1);
+alter table test_alter_column_type alter column e type varbit(5);
+alter table test_alter_column_type alter column e type varbit(1); --fails
+
+alter table test_alter_column_type alter column f type varchar(100); --fails
+alter table test_alter_column_type alter column f type varbit(100); --fails
+alter table test_alter_column_type alter column f type int;
+
+alter table test_alter_column_type alter column g type varchar;
+alter table test_alter_column_type alter column g type varchar(5); --fails
+alter table test_alter_column_type alter column g type text; --fails
+
+alter table test_alter_column_type alter column h type varbit;
+alter table test_alter_column_type alter column h type varbit(5); --fails
+
+insert into test_alter_column_type values ('abcde', '-', '-', '-', B'10101', 0, '-', B'0');
+
+select * from test_alter_column_type;
+\d test_alter_column_type
+
+alter table test_alter_column_type alter column a type varchar;
+alter table test_alter_column_type alter column e type varbit;
+
+\d test_alter_column_type
+
+DROP TABLE test_alter_column_type;
