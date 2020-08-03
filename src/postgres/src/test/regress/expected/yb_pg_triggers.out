@@ -1343,8 +1343,12 @@ UPDATE city_view SET continent = 'EU' WHERE continent = 'Europe' RETURNING *;
 UPDATE 1
 UPDATE city_view v1 SET country_name = v2.country_name FROM city_view v2
     WHERE v2.city_name = 'Birmingham' AND v1.city_name = 'London' RETURNING *;
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ city_id | city_name | population | country_name | continent | city_id | city_name  | population | country_name | continent
+---------+-----------+------------+--------------+-----------+---------+------------+------------+--------------+-----------
+       2 | London    |    7556900 | UK           | Europe    |  234567 | Birmingham |    1016800 | UK           | Europe
+(1 row)
+
+UPDATE 1
 -- DELETE .. RETURNING
 DELETE FROM city_view WHERE city_name = 'Birmingham' RETURNING *;
  city_id | city_name  | population | country_name | continent
@@ -1360,7 +1364,7 @@ CREATE VIEW european_city_view AS
 SELECT count(*) FROM european_city_view;
  count
 -------
-     0
+     1
 (1 row)
 
 CREATE FUNCTION no_op_trig_fn() RETURNS trigger LANGUAGE plpgsql
@@ -1435,15 +1439,19 @@ UPDATE city_view v SET population = 599657
     AND v.city_id = ci.city_id AND v.country_name = co.country_name
     RETURNING co.country_id, v.country_name,
               v.city_id, v.city_name, v.population;
-ERROR:  FROM clause in UPDATE not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
+ country_id | country_name | city_id |   city_name   | population
+------------+--------------+---------+---------------+------------
+          3 | USA          |       3 | Washington DC |     599657
+(1 row)
+
+UPDATE 1
 \set QUIET true
 SELECT * FROM city_view order by city_id;
  city_id |   city_name   | population | country_name |   continent
 ---------+---------------+------------+--------------+---------------
        1 | Tokyo         |   13010279 | Japan        | Asia
-       2 | London        |    7556900 |              |
-       3 | Washington DC |            | USA          | North America
+       2 | London        |    7556900 | UK           | Europe
+       3 | Washington DC |     599657 | USA          | North America
   123456 | New York      |    8391881 | USA          | North America
 (4 rows)
 
