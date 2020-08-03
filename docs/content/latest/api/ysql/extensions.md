@@ -68,7 +68,7 @@ The same info is also available in the UI. On every `yb-tserver` node, you can a
 /statements` for output of pg_stat_statements
 in `json` format. 
 
-For more information see [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) in the PostgreSQL Docs.
+For more information, see [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) in the PostgreSQL documentation.
 
 ### Server Programming Interface (spi) module
 
