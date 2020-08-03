@@ -55,15 +55,27 @@ SELECT * FROM pgcrypto_example;
 
 For more information see [`pgcrypto`](https://www.postgresql.org/docs/current/pgcrypto.html) in the PostgreSQL Docs.
 
-### spi module
+### pg_stat_statements
 
-The spi module includes several separate extensions using the Server Programming Interface (SPI) and triggers.
-The specific extensions currently supported in YSQL are:
+The [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) extension module is installed by default, but must be enabled before the `pg_stat_statements` view can be queried. 
 
-- `insert_username`: functions for tracking who changed a table
+```postgresql
+CREATE EXTENSION pg_stat_statements;
+SELECT query, calls, total_time, min_time, max_time, mean_time, stddev_time, rows FROM pg_stat_statements;
+```
+
+You can also access the output of `pg_stat_statements` (in JSON format) by using a web browser to go to `https://<yb-tserver-ip>:13000/statements`, where `<yb-tserver-ip>` is the IP address of any YB-TServer node of your cluster.
+
+For more information, see [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) in the PostgreSQL documentation.
+
+### Server Programming Interface (spi) module
+
+The `spi` module lets developers use the [Server Programming Interface (SPI)](https://www.postgresql.org/docs/11/spi.html) to use the C programming language to create user-defined functions and stored procedures and to run YSQL queries directly against YugabyteDB. In YugabyteDB, the following four (of the five) extensions provided in the `spi` module can be used:
+
+- `insert_username`: Functions for tracking who changed a table.
 - `moddatetime`: Functions for tracking last modification time
-- `autoinc`: functions for autoincrementing fields
-- `refint`: functions for implementing referential integrity
+- `autoinc`: Functions for autoincrementing fields.
+- `refint`: Functions for implementing referential integrity.
 
 #### Example
 
