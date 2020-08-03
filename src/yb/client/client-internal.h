@@ -54,7 +54,6 @@
 
 namespace yb {
 
-class DnsResolver;
 class HostPort;
 
 namespace master {
@@ -344,7 +343,6 @@ class YBClient::Data {
   rpc::Messenger* messenger_ = nullptr;
   std::unique_ptr<rpc::Messenger> messenger_holder_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
-  gscoped_ptr<DnsResolver> dns_resolver_;
   scoped_refptr<internal::MetaCache> meta_cache_;
   scoped_refptr<MetricEntity> metric_entity_;
 

@@ -278,6 +278,10 @@ class Messenger : public ProxyContext {
     return io_thread_pool_.io_service();
   }
 
+  DnsResolver& resolver() override {
+    return *resolver_;
+  }
+
   rpc::ThreadPool& ThreadPool(ServicePriority priority = ServicePriority::kNormal);
 
   RpcMetrics& rpc_metrics() override {
@@ -370,6 +374,8 @@ class Messenger : public ProxyContext {
 
   // This could be used for high-priority services such as Consensus.
   AtomicUniquePtr<rpc::ThreadPool> high_priority_thread_pool_;
+
+  std::unique_ptr<DnsResolver> resolver_;
 
   std::unique_ptr<RpcMetrics> rpc_metrics_;
 
