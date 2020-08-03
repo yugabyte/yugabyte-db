@@ -92,7 +92,7 @@ Row(applied=False, message=None, h=None, r=None, v1=None, v2=None)
 
 ## Row Status
 
-When executing a batch in YCQL, the protocol just allows returning one error/return status.
+When executing a batch in YCQL, the protocol allows returning only one error or return status.
 
 So, if one statement fails with an error or, for conditional DMLs, some are not applied because of failing the IF condition, 
 the driver/application cannot accurately identify the relevant statement(s), it will just receive one general error/return-status for the whole batch.
@@ -167,5 +167,4 @@ cqlsh:sample> SELECT * FROM test;
 `BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`. 
 
 {{< /note >}}
-
 
