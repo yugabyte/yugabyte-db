@@ -104,7 +104,7 @@ You can address this limitation by using the `RETURNS STATUS AS ROW` feature.
 
 If used, the write statement will return its status (whether applied, unapplied, or errored-out with a message) as a regular CQL row that the application can inspect and decide what to do.
 
-In the case of a batch (which is its intended use-case), it is required that either none or all statements use `RETURNS STATUS AS ROW`.
+For a batch, it is required that either none or all statements use `RETURNS STATUS AS ROW`.
 
 
 This is so that when executing n statements in a batch with `RETURN STATUS AS ROW` it will always return n rows (in the same order as the statements) 
