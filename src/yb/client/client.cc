@@ -516,26 +516,28 @@ Status YBClient::DeleteIndexTable(const string& table_id,
                             wait);
 }
 
-Status YBClient::FlushTable(const std::string& table_id,
-                            int timeout_secs,
-                            bool is_compaction) {
+Status YBClient::FlushTables(const std::vector<TableId>& table_ids,
+                             bool add_indexes,
+                             int timeout_secs,
+                             bool is_compaction) {
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(timeout_secs);
-  return data_->FlushTable(this,
-                           YBTableName(),
-                           table_id,
-                           deadline,
-                           is_compaction);
+  return data_->FlushTables(this,
+                            table_ids,
+                            add_indexes,
+                            deadline,
+                            is_compaction);
 }
 
-Status YBClient::FlushTable(const YBTableName& table_name,
-                            int timeout_secs,
-                            bool is_compaction) {
+Status YBClient::FlushTables(const std::vector<YBTableName>& table_names,
+                             bool add_indexes,
+                             int timeout_secs,
+                             bool is_compaction) {
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(timeout_secs);
-  return data_->FlushTable(this,
-                           table_name,
-                           "" /* table_id */,
-                           deadline,
-                           is_compaction);
+  return data_->FlushTables(this,
+                            table_names,
+                            add_indexes,
+                            deadline,
+                            is_compaction);
 }
 
 std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {

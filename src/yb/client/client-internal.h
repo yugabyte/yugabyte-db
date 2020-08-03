@@ -181,13 +181,17 @@ class YBClient::Data {
                                            string table_id,
                                            CoarseTimePoint deadline);
 
-  // Take one of table id or name.
-  // TODO(jason): it would be nice to have this take a list of table_names or table_ids.
-  CHECKED_STATUS FlushTable(YBClient* client,
-                            const YBTableName& table_name,
-                            const std::string& table_id,
-                            const CoarseTimePoint deadline,
-                            const bool is_compaction);
+  CHECKED_STATUS FlushTables(YBClient* client,
+                             const vector<YBTableName>& table_names,
+                             bool add_indexes,
+                             const CoarseTimePoint deadline,
+                             const bool is_compaction);
+
+  CHECKED_STATUS FlushTables(YBClient* client,
+                             const vector<TableId>& table_ids,
+                             bool add_indexes,
+                             const CoarseTimePoint deadline,
+                             const bool is_compaction);
 
   CHECKED_STATUS IsFlushTableInProgress(YBClient* client,
                                         const FlushRequestId& flush_id,
@@ -431,6 +435,10 @@ class YBClient::Data {
   std::atomic<int> tserver_count_cached_{0};
 
  private:
+  CHECKED_STATUS FlushTablesHelper(YBClient* client,
+                          const CoarseTimePoint deadline,
+                          const master::FlushTablesRequestPB req);
+
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 

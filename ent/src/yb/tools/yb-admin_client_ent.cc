@@ -166,7 +166,20 @@ Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored) 
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateSnapshot(const vector<YBTableName>& tables, bool add_indexes) {
+Status ClusterAdminClient::CreateSnapshot(
+    const vector<YBTableName>& tables,
+    const bool add_indexes,
+    const int flush_timeout_secs) {
+
+  if (flush_timeout_secs > 0) {
+    const auto status = FlushTables(tables, add_indexes, flush_timeout_secs, false);
+    if (status.IsTimedOut()) {
+      cout << status.ToString(false) << " (ignored)" << endl;
+    } else if (!status.ok() && !status.IsNotFound()) {
+      return status;
+    }
+  }
+
   RpcController rpc;
   rpc.set_timeout(timeout_);
   CreateSnapshotRequestPB req;
