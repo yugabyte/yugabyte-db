@@ -618,12 +618,21 @@ bool IsWildcardAddress(const std::string& host_str) {
   return !ec && addr.is_unspecified();
 }
 
-boost::optional<IpAddress> TryFastResolve(const std::string& host) {
+Result<IpAddress> ParseIpAddress(const std::string& host) {
   boost::system::error_code ec;
   auto addr = IpAddress::from_string(host, ec);
-  if (!ec) {
-    VLOG(4) << "Resolving ip address to itself for input: " << host;
-    return addr;
+  if (ec) {
+    return STATUS_FORMAT(InvalidArgument, "Failed to parse $0: $1", host, ec.message());
+  }
+
+  VLOG(4) << "Resolving ip address to itself for input: " << host;
+  return addr;
+}
+
+boost::optional<IpAddress> TryFastResolve(const std::string& host) {
+  auto result = ParseIpAddress(host);
+  if (result.ok()) {
+    return *result;
   }
 
   // For testing purpose we resolve A.B.C.D.ip.yugabyte to A.B.C.D.

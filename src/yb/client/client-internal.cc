@@ -317,7 +317,6 @@ YBClient::Data::Data()
       id_(ClientId::GenerateRandom()) {}
 
 YBClient::Data::~Data() {
-  dns_resolver_.reset();
   rpcs_.Shutdown();
 }
 
