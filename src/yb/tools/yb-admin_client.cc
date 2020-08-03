@@ -746,36 +746,9 @@ Status ClusterAdminClient::GetIsLoadBalancerIdle() {
 }
 
 Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
-  vector<string> tablet_ids, ranges;
-  RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
-  master::GetTabletLocationsRequestPB req;
-  for (const auto& tablet_id : tablet_ids) {
-    req.add_tablet_ids(tablet_id);
-  }
-  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::GetTabletLocations,
-      master_proxy_.get(), req));
-
-  unordered_map<string, int> leader_counts;
+  unordered_map<string, int> leader_counts = VERIFY_RESULT(GetLeaderCounts(table_name));
   int total_leader_count = 0;
-  for (const auto& locs : resp.tablet_locations()) {
-    for (const auto& replica : locs.replicas()) {
-      const auto uuid = replica.ts_info().permanent_uuid();
-      switch(replica.role()) {
-        case RaftPeerPB::LEADER:
-          // If this is a leader, increment leader counts.
-          ++leader_counts[uuid];
-          ++total_leader_count;
-          break;
-        case RaftPeerPB::FOLLOWER:
-          // If this is a follower, touch the leader count entry also so that tablet server with
-          // followers only and 0 leader will be accounted for still.
-          leader_counts[uuid];
-          break;
-        default:
-          break;
-      }
-    }
-  }
+  for (const auto& lc : leader_counts) { total_leader_count += lc.second; }
 
   // Calculate the standard deviation and adjusted deviation percentage according to the best and
   // worst-case scenarios. Best-case distribution is when leaders are evenly distributed and
@@ -812,6 +785,40 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   }
 
   return Status::OK();
+}
+
+Result<unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
+    const client::YBTableName& table_name) {
+  vector<string> tablet_ids, ranges;
+  RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
+  master::GetTabletLocationsRequestPB req;
+  for (const auto& tablet_id : tablet_ids) {
+    req.add_tablet_ids(tablet_id);
+  }
+  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::GetTabletLocations,
+      master_proxy_.get(), req));
+
+  unordered_map<string, int> leader_counts;
+  for (const auto& locs : resp.tablet_locations()) {
+    for (const auto& replica : locs.replicas()) {
+      const auto uuid = replica.ts_info().permanent_uuid();
+      switch(replica.role()) {
+        case RaftPeerPB::LEADER:
+          // If this is a leader, increment leader counts.
+          ++leader_counts[uuid];
+          break;
+        case RaftPeerPB::FOLLOWER:
+          // If this is a follower, touch the leader count entry also so that tablet server with
+          // followers only and 0 leader will be accounted for still.
+          leader_counts[uuid];
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  return leader_counts;
 }
 
 Status ClusterAdminClient::SetupRedisTable() {
