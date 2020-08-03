@@ -96,8 +96,8 @@ When executing a batch in YCQL, the protocol allows returning only one error or 
 
 If one statement fails with an error or for conditional DMLs, some are not applied because of failing the IF condition, the driver or application cannot accurately identify the relevant statements, it will just receive one general error or return-status for the batch.
 
-Therefore, it is not trivial/possible for an application to react to such failures appropriately (e.g. retry, abort, 
-change some parameters, for either entire batch or just the relevant statements etc).
+Therefore, it is not possible for an application to react to such failures appropriately (for example, retry, abort, 
+and change some parameters for either the entire batch or just the relevant statements).
 
 You can address this limitation by using the `RETURNS STATUS AS ROW` feature.
 
