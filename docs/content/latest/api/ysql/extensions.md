@@ -70,7 +70,7 @@ For more information, see [`pg_stat_statements`](https://www.postgresql.org/docs
 
 ### Server Programming Interface (spi) module
 
-The `spi` module includes several separate extensions using the Server Programming Interface (SPI) and triggers.
+The `spi` module lets developers use the [Server Programming Interface (SPI)](https://www.postgresql.org/docs/11/spi.html) to use the C programming language to create user-defined functions and stored procedures and to run YSQL queries directly against YugabyteDB. In YugabyteDB, the following four (of the five) extensions provided in the `spi` module can be used:
 The specific extensions currently supported in YSQL are:
 
 - `insert_username`: functions for tracking who changed a table
