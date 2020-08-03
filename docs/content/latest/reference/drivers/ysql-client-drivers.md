@@ -1,8 +1,8 @@
 ---
-title: API client drivers for YSQL
-headerTitle: API client drivers for YSQL
-linkTitle: API client drivers for YSQL
-description: Lists the API client library drivers that you can use to build and access YSQL applications.
+title: Client drivers for YSQL API
+headerTitle: Client drivers for YSQL API
+linkTitle: Client drivers for YSQL API
+description: Lists the client drivers that you can use to connect to and interact with the YSQL API.
 aliases:
   - /latest/reference/drivers/postgresql-jdbc-driver/
 menu:
