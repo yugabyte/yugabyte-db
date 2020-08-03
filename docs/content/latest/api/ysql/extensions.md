@@ -64,9 +64,7 @@ CREATE EXTENSION pg_stat_statements;
 SELECT query, calls, total_time, min_time, max_time, mean_time, stddev_time, rows FROM pg_stat_statements;
 ```
 
-The same info is also available in the UI. On every `yb-tserver` node, you can access `http://<yb-tserver-ip>13000
-/statements` for output of pg_stat_statements
-in `json` format. 
+You can also access the output of `pg_stat_statements` (in JSON format) by using a web browser to go to `https://<yb-tserver-ip>:13000/statements`, where `<yb-tserver-ip>` is the IP address of any YB-TServer node of your cluster.
 
 For more information, see [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) in the PostgreSQL documentation.
 
