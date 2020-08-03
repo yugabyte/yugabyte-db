@@ -27,7 +27,7 @@ Finally, execute the batch object. This is shown below.
 BatchStatement batch = new BatchStatement();
 
 // Create a prepared statement object to add to the batch.
-PreparedStatement insert = client.prepare("INSERT INTO table (k, v) VALUES (?, ?);");
+PreparedStatement insert = client.prepare("INSERT INTO table (k, v) VALUES (?, ?)");
 
 // Bind values to the prepared statement and add them to the batch.
 for (...) {
@@ -70,9 +70,9 @@ session = cluster.connect()
 b = BatchStatement()
 
 # Add multiple queries
-b.add(f"INSERT INTO test_rs_batch(h, r, v1, v2) VALUES (1, 1, 1 ,'a') RETURNS STATUS AS ROW;")
-b.add(f"UPDATE test_rs_batch SET v2='z' WHERE h=3 AND r=3 IF v2='z'  RETURNS STATUS AS ROW;")
-b.add(f"DELETE FROM test_rs_batch WHERE h=2 AND r=2 IF EXISTS RETURNS STATUS AS ROW;")
+b.add(f"INSERT INTO test_rs_batch(h, r, v1, v2) VALUES (1, 1, 1 ,'a') RETURNS STATUS AS ROW")
+b.add(f"UPDATE test_rs_batch SET v2='z' WHERE h=3 AND r=3 IF v2='z'  RETURNS STATUS AS ROW")
+b.add(f"DELETE FROM test_rs_batch WHERE h=2 AND r=2 IF EXISTS RETURNS STATUS AS ROW")
 
 # Execute the batch operation.
 result = session.execute(b, trace=True)
