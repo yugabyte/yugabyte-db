@@ -8,8 +8,6 @@ menu:
   latest:
     parent: api-cassandra
     weight: 19991
-aliases:
-  - /latest/api/ycql/batch2
 isTocNested: true
 showAsideToc: true
 ---
