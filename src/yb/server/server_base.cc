@@ -96,6 +96,8 @@ DEFINE_string(yb_test_name, "",
 DEFINE_bool(TEST_check_broadcast_address, true, "Break connectivity in test mini cluster to "
             "check broadcast address.");
 
+DEFINE_test_flag(string, public_hostname_suffix, ".ip.yugabyte", "Suffix for public hostnames.");
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -626,7 +628,8 @@ void RpcAndWebServerBase::Shutdown() {
 }
 
 std::string TEST_RpcAddress(int index, Private priv) {
-  return Format("127.0.0.$0$1", index * 2 + (priv ? 0 : 1), priv ? "" : ".ip.yugabyte");
+  return Format("127.0.0.$0$1",
+                index * 2 + (priv ? 0 : 1), priv ? "" : FLAGS_TEST_public_hostname_suffix);
 }
 
 string TEST_RpcBindEndpoint(int index, uint16_t port) {

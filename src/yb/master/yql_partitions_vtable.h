@@ -32,8 +32,6 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   mutable std::shared_ptr<QLRowBlock> cache_;
   mutable int cached_tablets_version_ = -1;
   mutable int cached_tablet_locations_version_ = -1;
-
-  std::unique_ptr<Resolver> resolver_;
 };
 
 }  // namespace master
