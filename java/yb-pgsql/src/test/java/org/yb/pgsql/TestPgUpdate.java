@@ -272,4 +272,41 @@ public class TestPgUpdate extends BasePgSQLTest {
                    expectedVi, expectedVs);
     }
   }
+
+  @Test
+  public void testUpdateFrom() throws SQLException {
+    String tableName1 = "test_update_from";
+    String tableName2 = "test_helper";
+    createSimpleTable(tableName1);
+    createSimpleTable(tableName2);
+
+    // Fill in the helper table:
+    try (Statement insert_stmt = connection.createStatement()) {
+      insert_stmt.execute("INSERT INTO " + tableName2 + "(h, r, vi, vs) VALUES(1, 0.5, 10, 'v')");
+    }
+
+    List<Row> expectedRows = new ArrayList<>();
+    try (Statement insert_stmt = connection.createStatement()) {
+      String insert_format = "INSERT INTO %s(h, r, vi, vs) VALUES(%d, %f, %d, '%s')";
+      for (long h = 0; h < 5; h++) {
+        String insert_text = String.format(insert_format, tableName1,
+                                           h, h + 0.5, h * 10 + h, "v" + h );
+        if (h == 1) {
+          // Constructing rows to be returned by UPDATE.
+          expectedRows.add(new Row(h, h + 0.5, h * 10 + h, "l", 1, 0.5, 10, "v"));
+        }
+        insert_stmt.execute(insert_text);
+      }
+    }
+
+    try (Statement update_stmt = connection.createStatement()) {
+      // Testing FROM in UPDATE with RETURNING clause:
+      update_stmt.execute("UPDATE " + tableName1 + " SET vs = 'l' FROM " + tableName2 +
+                          " WHERE " + tableName1 + ".h  = " + tableName2 + ".h RETURNING *");
+
+      // Verify RETURNING clause.
+      ResultSet returning = update_stmt.getResultSet();
+      assertEquals(expectedRows, getSortedRowList(returning));
+    }
+  }
 }
