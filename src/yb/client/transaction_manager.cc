@@ -172,6 +172,10 @@ class TransactionManager::Impl {
     CHECK(clock);
   }
 
+  ~Impl() {
+    Shutdown();
+  }
+
   void PickStatusTablet(PickStatusTabletCallback callback) {
     if (table_state_.status.load(std::memory_order_acquire) == TransactionTableStatus::kResolved) {
       if (ThreadRestrictions::IsWaitAllowed()) {
@@ -233,9 +237,7 @@ TransactionManager::TransactionManager(
     LocalTabletFilter local_tablet_filter)
     : impl_(new Impl(client, clock, std::move(local_tablet_filter))) {}
 
-TransactionManager::~TransactionManager() {
-  impl_->Shutdown();
-}
+TransactionManager::~TransactionManager() = default;
 
 void TransactionManager::PickStatusTablet(PickStatusTabletCallback callback) {
   impl_->PickStatusTablet(std::move(callback));
@@ -264,6 +266,9 @@ HybridTimeRange TransactionManager::NowRange() const {
 void TransactionManager::UpdateClock(HybridTime time) {
   impl_->UpdateClock(time);
 }
+
+TransactionManager::TransactionManager(TransactionManager&& rhs) = default;
+TransactionManager& TransactionManager::operator=(TransactionManager&& rhs) = default;
 
 } // namespace client
 } // namespace yb

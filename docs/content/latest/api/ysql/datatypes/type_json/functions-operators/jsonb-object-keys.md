@@ -23,7 +23,7 @@ return value:      SETOF text
 
 **Notes:** Each function in this pair requires that the supplied JSON value is an _object_. The returned keys are ordered alphabetically.
 
-```postgresql
+```plpgsql
 do $body$
 declare
   object constant jsonb :=

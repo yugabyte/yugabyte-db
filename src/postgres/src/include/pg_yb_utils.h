@@ -87,6 +87,17 @@ extern bool IsYBRelation(Relation relation);
  */
 extern bool IsYBBackedRelation(Relation relation);
 
+/*
+ * Returns whether a relation's attribute is a real column in the backing
+ * YugaByte table. (It implies we can both read from and write to it).
+ */
+extern bool IsRealYBColumn(Relation rel, int attrNum);
+
+/*
+ * Returns whether a relation's attribute is a YB system column.
+ */
+extern bool IsYBSystemColumn(int attrNum);
+
 extern bool YBNeedRetryAfterCacheRefresh(ErrorData *edata);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
@@ -98,6 +109,18 @@ extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
 extern int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum);
 
 extern AttrNumber YBBmsIndexToAttnum(Relation rel, int idx);
+
+/*
+ * Get primary key columns as bitmap set of a table for real YB columns.
+ * Subtracts YBGetFirstLowInvalidAttributeNumber from column attribute numbers.
+ */
+extern Bitmapset *YBGetTablePrimaryKeyBms(Relation rel);
+
+/*
+ * Get primary key columns as bitmap set of a table for real and system YB columns.
+ * Subtracts (YBSystemFirstLowInvalidAttributeNumber + 1) from column attribute numbers.
+ */
+extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 
 /*
  * Check if a relation has row triggers that may reference the old row.
@@ -137,8 +160,8 @@ extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
  * the given YugaByte statement.
  */
 extern void HandleYBStatusWithOwner(YBCStatus status,
-																		YBCPgStatement ybc_stmt,
-																		ResourceOwner owner);
+									YBCPgStatement ybc_stmt,
+									ResourceOwner owner);
 
 /*
  * Same as HandleYBStatus but delete the table description first if the

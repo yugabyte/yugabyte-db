@@ -734,6 +734,26 @@ Status PgSession::TruncateTable(const PgObjectId& table_id) {
 
 //--------------------------------------------------------------------------------------------------
 
+Status PgSession::CreateTablegroup(const string& database_name,
+                                   const PgOid database_oid,
+                                   const string& tablegroup_name,
+                                   PgOid tablegroup_oid) {
+  return client_->CreateTablegroup(database_name,
+                                   GetPgsqlNamespaceId(database_oid),
+                                   tablegroup_name,
+                                   GetPgsqlTablegroupId(database_oid, tablegroup_oid));
+}
+
+Status PgSession::DropTablegroup(const string& tablegroup_name,
+                                 const PgOid database_oid,
+                                 PgOid tablegroup_oid) {
+  return client_->DeleteTablegroup(tablegroup_name,
+                                   GetPgsqlNamespaceId(database_oid),
+                                   GetPgsqlTablegroupId(database_oid, tablegroup_oid));
+}
+
+//--------------------------------------------------------------------------------------------------
+
 Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_id) {
   VLOG(3) << "Loading table descriptor for " << table_id;
   const TableId yb_table_id = table_id.GetYBTableId();

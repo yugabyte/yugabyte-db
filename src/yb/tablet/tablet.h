@@ -516,7 +516,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
 
-  template<class T> void TEST_DocDBDumpToContainer(IncludeIntents include_intents, T* out);
+  void TEST_DocDBDumpToContainer(
+      IncludeIntents include_intents, std::unordered_set<std::string>* out);
 
   size_t TEST_CountRegularDBRecords();
 

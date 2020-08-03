@@ -424,6 +424,17 @@ class YBClient {
   Result<bool> NamespaceIdExists(const std::string& namespace_id,
                                  const boost::optional<YQLDatabase>& database_type = boost::none);
 
+  // Create a new tablegroup.
+  CHECKED_STATUS CreateTablegroup(const std::string& namespace_name,
+                                  const std::string& namespace_id,
+                                  const std::string& tablegroup_name,
+                                  const std::string& tablegroup_id);
+
+  // Delete a tablegroup.
+  CHECKED_STATUS DeleteTablegroup(const std::string& tablegroup_name,
+                                  const std::string& namespace_id,
+                                  const std::string& tablegroup_id);
+
   // Authentication and Authorization
   // Create a new role.
   CHECKED_STATUS CreateRole(const RoleName& role_name,

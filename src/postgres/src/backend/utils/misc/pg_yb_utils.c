@@ -82,7 +82,9 @@ CheckIsYBSupportedRelationByKind(char relkind)
 {
 	if (!(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
 		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE ||
-		  relkind == RELKIND_COMPOSITE_TYPE))
+		  relkind == RELKIND_COMPOSITE_TYPE || relkind == RELKIND_PARTITIONED_TABLE ||
+		  relkind == RELKIND_PARTITIONED_INDEX))
+
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("This feature is not supported in YugaByte.")));
@@ -99,8 +101,9 @@ IsYBRelation(Relation relation)
 
 	/* Currently only support regular tables and indexes.
 	 * Temp tables and views are supported, but they are not YB relations. */
-	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX)
-				 && relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP;
+	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX || relkind == RELKIND_PARTITIONED_TABLE ||
+	        relkind == RELKIND_PARTITIONED_INDEX) &&
+	        relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP;
 }
 
 bool
@@ -118,6 +121,19 @@ IsYBBackedRelation(Relation relation)
 	return IsYBRelation(relation) ||
 		(relation->rd_rel->relkind == RELKIND_VIEW &&
 		relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP);
+}
+
+bool IsRealYBColumn(Relation rel, int attrNum)
+{
+	return (attrNum > 0 && !TupleDescAttr(rel->rd_att, attrNum - 1)->attisdropped) ||
+	       (rel->rd_rel->relhasoids && attrNum == ObjectIdAttributeNumber);
+}
+
+bool IsYBSystemColumn(int attrNum)
+{
+	return (attrNum == YBRowIdAttributeNumber ||
+			attrNum == YBIdxBaseTupleIdAttributeNumber ||
+			attrNum == YBUniqueIdxKeySuffixAttributeNumber);
 }
 
 bool
@@ -152,6 +168,60 @@ AttrNumber YBBmsIndexToAttnum(Relation rel, int idx)
 	return idx + YBGetFirstLowInvalidAttributeNumber(rel);
 }
 
+/*
+ * Get primary key columns as bitmap of a table,
+ * subtracting minattr from attributes.
+ */
+static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
+                                        AttrNumber minattr,
+                                        bool includeYBSystemColumns)
+{
+	Oid            dboid         = YBCGetDatabaseOid(rel);
+	Oid            relid         = RelationGetRelid(rel);
+	int            natts         = RelationGetNumberOfAttributes(rel);
+	Bitmapset      *pkey         = NULL;
+	YBCPgTableDesc ybc_tabledesc = NULL;
+
+	/* Get the primary key columns 'pkey' from YugaByte. */
+	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_tabledesc));
+	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
+	{
+		if ((!includeYBSystemColumns && !IsRealYBColumn(rel, attnum)) ||
+			(!IsRealYBColumn(rel, attnum) && !IsYBSystemColumn(attnum)))
+		{
+			continue;
+		}
+
+		bool is_primary = false;
+		bool is_hash    = false;
+		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_tabledesc,
+		                                           attnum,
+		                                           &is_primary,
+		                                           &is_hash),
+		                        ybc_tabledesc);
+
+		if (is_hash || is_primary)
+		{
+			pkey = bms_add_member(pkey, attnum - minattr);
+		}
+	}
+
+	return pkey;
+}
+
+Bitmapset *YBGetTablePrimaryKeyBms(Relation rel)
+{
+	return GetTablePrimaryKeyBms(rel,
+	                             YBGetFirstLowInvalidAttributeNumber(rel) /* minattr */,
+	                             false /* includeYBSystemColumns */);
+}
+
+Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel)
+{
+	return GetTablePrimaryKeyBms(rel,
+	                             YBSystemFirstLowInvalidAttributeNumber + 1 /* minattr */,
+	                             true /* includeYBSystemColumns */);
+}
 
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 {

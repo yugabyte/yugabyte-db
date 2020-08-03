@@ -2,7 +2,7 @@
 title: YSQL window functions signature and purpose
 linkTitle: Per function signature and purpose
 headerTitle: Signature and purpose of each window function
-description: Window functions operate on a row set that's defined, in general, as an ordered window within a containing restriction defined by a subquery. They calculate a value for each row in the window by consulting values from other rows in the window.
+description: This section summarizes the signature and purpose of each of YSQL's window functions and links to their individual accounts.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -70,7 +70,7 @@ The names of the other window functions that the second table lists, `first_valu
 
 See the section [Window function invocation—SQL syntax and semantics](../sql-syntax-semantics). But the default does _not_ specify the entire [_window_](../sql-syntax-semantics/#the-window-definition-rule). To do this, use this variant:
 
-```postgresql
+```plpgsql
 -- You must specify this explicitly unless you are sure
 -- that you want a different specification.
 range between unbounded preceding and unbounded following

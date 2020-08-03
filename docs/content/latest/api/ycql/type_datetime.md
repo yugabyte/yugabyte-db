@@ -24,16 +24,7 @@ Use datetime data types to specify data of date and time at a time zone, `DATE` 
 
 ```
 type_specification ::= TIMESTAMP | DATE | TIME
-
-timestamp_format ::= date_format [ time_format ] [ timezone_format ]
-date_format ::= digit digit digit digit '-' digit [ digit ] '-' digit [ digit ]
-time_format ::= digit [ digit ] [ ':' digit [ digit ] [ ':' digit [digit]  [ '.' digit [ digit [ digit ] ] ] ] ] 
-timezone_format ::= [ 'UTC' ] ( '+' | '-' ) digit [ digit ] ':' digit [ digit ] 
 ```
-
-Where
-
-- the `timestamp_format` given above is not the timestamp literal but is used to match text literals when converting them to `TIMESTAMP` type.
 
 ## Semantics
 
@@ -47,10 +38,11 @@ Where
 ### DATE
 
 A date is represented using a 32-bit unsigned integer representing the number of days since epoch (January 1, 1970) with no corresponding time value.
+Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values as an integer (days since epoch) or in the string format shown below.
 
-Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values as an integer (days since epoch) or in the following string format:
-
-```yyyy-mm-dd
+#### Syntax
+```
+yyyy-mm-dd
 ```
 
 - `yyyy`: four digit year.
@@ -63,25 +55,29 @@ For example, `2020-07-29`.
 
 Values of the `time` data type are encoded as 64-bit signed integers representing the number of nanoseconds since midnight with no corresponding date value.
 
-Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values in the following string format, where milliseconds (`f`) are optional:
+Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values in the following string format, where subseconds (`f`) are optional and if provided, can be less than nanosecond:
 
-```hh:mm:ss[.fff]
+#### Syntax
+```
+hh:mm:ss[.fffffffff]
 ```
 
-- `HH`: two digit hour, using a 24-hour clock.
-- `MM`: two digit minutes.
-- `SS`: two digit seconds.
-- `fff`: (Optional) three digit sub-seconds, or milliseconds. When excluded, set to `0`.
+- `hh`: two digit hour, using a 24-hour clock.
+- `mm`: two digit minutes.
+- `ss`: two digit seconds.
+- `fffffffff`: (Optional) three digit sub-seconds, or nanoseconds. When excluded, set to `0`.
 
-For example, `12:34:56` or `12:34:56.789`.
+For example, `12:34:56` or `12:34:56.789` or `12:34:56.123456789`.
 
 ### TIMESTAMP
 
 Values of the `timestamp` data type combines date, time, and time zone, in ISO 8601 format.
 
-Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values in the following string format, where milliseconds (`f`) are optional:
+Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values in the string format shown below, where milliseconds (`f`) are optional.
 
-```yyyy-mm-dd[ (T| )HH:MM:SS[.fff]][(+|-)NNNN]
+#### Syntax
+```
+yyyy-mm-dd[ (T| )HH:MM[:SS][.fff]][(+|-)NNNN]
 ```
 
 Required date (`yyyy-mm-dd`) where:
@@ -90,11 +86,11 @@ Required date (`yyyy-mm-dd`) where:
 - `mm`: two digit month.
 - `dd`: two digit day.
 
-Optional time (HH:MM:SS[.fff]) where:
+Optional time (HH:MM[:SS][.fff]) where:
 
 - `HH`: two digit hour, using a 24-hour clock.
 - `MM`: two digit minutes.
-- `SS`: two digit seconds.
+- `SS`: (Optional) two digit seconds.
 - `fff`: (Optional) three digit sub-seconds, or milliseconds. When excluded, set to `0`.
 
 Optional time zone (`(+|-)NNNN`) where:

@@ -408,6 +408,22 @@ void MasterServiceImpl::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB
 }
 
 // ------------------------------------------------------------------------------------------------
+// Tablegroup
+// ------------------------------------------------------------------------------------------------
+
+void MasterServiceImpl::CreateTablegroup(const CreateTablegroupRequestPB* req,
+                                         CreateTablegroupResponsePB* resp,
+                                         rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::CreateTablegroup);
+}
+
+void MasterServiceImpl::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
+                                         DeleteTablegroupResponsePB* resp,
+                                         rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::DeleteTablegroup);
+}
+
+// ------------------------------------------------------------------------------------------------
 // Permissions
 // ------------------------------------------------------------------------------------------------
 

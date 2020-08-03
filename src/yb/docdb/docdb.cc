@@ -29,6 +29,7 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
@@ -265,6 +266,25 @@ void FilterKeysToLock(LockBatchEntries *keys_locked) {
   ++w;
   keys_locked->erase(w, keys_locked->end());
 }
+
+// Buffer for encoding DocHybridTime
+class DocHybridTimeBuffer {
+ public:
+  DocHybridTimeBuffer() {
+    buffer_[0] = ValueTypeAsChar::kHybridTime;
+  }
+
+  Slice EncodeWithValueType(const DocHybridTime& doc_ht) {
+    auto end = doc_ht.EncodedInDocDbFormat(buffer_.data() + 1);
+    return Slice(buffer_.data(), end);
+  }
+
+  Slice EncodeWithValueType(HybridTime ht, IntraTxnWriteId write_id) {
+    return EncodeWithValueType(DocHybridTime(ht, write_id));
+  }
+ private:
+  std::array<char, 1 + kMaxBytesPerEncodedHybridTime> buffer_;
+};
 
 }  // namespace
 
@@ -1298,143 +1318,9 @@ yb::Status GetTtl(const Slice& encoded_subdoc_key,
   return Status::OK();
 }
 
-template <class DumpStringFunc>
-void ProcessDumpEntry(
-    Slice key, Slice value, IncludeBinary include_binary, StorageDbType db_type,
-    DumpStringFunc func) {
-  const auto key_str = DocDBKeyToDebugStr(key, db_type);
-  if (!key_str.ok()) {
-    func(key_str.status().ToString());
-    return;
-  }
-  const KeyType key_type = GetKeyType(key, db_type);
-  Result<std::string> value_str = DocDBValueToDebugStr(key_type, *key_str, value);
-  if (!value_str.ok()) {
-    func(value_str.status().CloneAndAppend(Substitute(". Key: $0", *key_str)).ToString());
-  } else {
-    func(Format("$0 -> $1", *key_str, *value_str));
-  }
-  if (include_binary) {
-    func(Format("$0 -> $1\n", FormatSliceAsStr(key), FormatSliceAsStr(value)));
-  }
-}
-
-void AppendLineToStream(
-    const std::string& s, ostream* out, const DocDbDumpLineFilter& filter) {
-  if (filter.empty() || filter(s)) {
-    *out << s << std::endl;
-  }
-}
-
-void AppendToContainer(const std::string& s, std::unordered_set<std::string>* out) {
-  out->insert(s);
-}
-
-void AppendToContainer(const std::string& s, std::vector<std::string>* out) {
-  out->push_back(s);
-}
-
-std::string EntryToString(const rocksdb::Iterator& iterator, StorageDbType db_type) {
-  std::ostringstream out;
-  ProcessDumpEntry(
-      iterator.key(), iterator.value(), IncludeBinary::kFalse, db_type,
-      std::bind(&AppendLineToStream, _1, &out, DocDbDumpLineFilter()));
-  return out.str();
-}
-
-template <class DumpStringFunc>
-void DocDBDebugDump(rocksdb::DB* rocksdb, StorageDbType db_type, IncludeBinary include_binary,
-    DumpStringFunc dump_func) {
-  rocksdb::ReadOptions read_opts;
-  read_opts.query_id = rocksdb::kDefaultQueryId;
-  auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
-  iter->SeekToFirst();
-
-  while (iter->Valid()) {
-    ProcessDumpEntry(iter->key(), iter->value(), include_binary, db_type, dump_func);
-    iter->Next();
-  }
-}
-
-void DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, StorageDbType db_type,
-                    IncludeBinary include_binary, const DocDbDumpLineFilter& line_filter) {
-  DocDBDebugDump(
-      rocksdb, db_type, include_binary,
-      std::bind(&AppendLineToStream, _1, &out, line_filter));
-}
-
-std::string DocDBDebugDumpToStr(
-    DocDB docdb, IncludeBinary include_binary, const DocDbDumpLineFilter& line_filter) {
-  stringstream ss;
-  DocDBDebugDump(docdb.regular, ss, StorageDbType::kRegular, include_binary, line_filter);
-  if (docdb.intents) {
-    DocDBDebugDump(docdb.intents, ss, StorageDbType::kIntents, include_binary, line_filter);
-  }
-  return ss.str();
-}
-
-std::string DocDBDebugDumpToStr(
-    rocksdb::DB* rocksdb, StorageDbType db_type,
-    IncludeBinary include_binary, const DocDbDumpLineFilter& line_filter) {
-  stringstream ss;
-  DocDBDebugDump(rocksdb, ss, db_type, include_binary, line_filter);
-  return ss.str();
-}
-
-template <class T>
-void DocDBDebugDumpToContainer(rocksdb::DB* rocksdb, T* out, StorageDbType db_type,
-                               IncludeBinary include_binary) {
-  void (*f)(const std::string&, T*) = AppendToContainer;
-  DocDBDebugDump(rocksdb, db_type, include_binary, std::bind(f, _1, out));
-}
-
-template
-void DocDBDebugDumpToContainer(
-    rocksdb::DB* rocksdb, std::unordered_set<std::string>* out, StorageDbType db_type,
-    IncludeBinary include_binary);
-
-template
-void DocDBDebugDumpToContainer(
-    rocksdb::DB* rocksdb, std::vector<std::string>* out, StorageDbType db_type,
-    IncludeBinary include_binary);
-
-template <class T>
-void DocDBDebugDumpToContainer(DocDB docdb, T* out, IncludeBinary include_binary) {
-  DocDBDebugDumpToContainer(docdb.regular, out, StorageDbType::kRegular, include_binary);
-  if (docdb.intents) {
-    DocDBDebugDumpToContainer(docdb.intents, out, StorageDbType::kIntents, include_binary);
-  }
-}
-
-template
-void DocDBDebugDumpToContainer(
-    DocDB docdb, std::unordered_set<std::string>* out, IncludeBinary include_binary);
-
-template
-void DocDBDebugDumpToContainer(
-    DocDB docdb, std::vector<std::string>* out, IncludeBinary include_binary);
-
-void DumpRocksDBToLog(rocksdb::DB* rocksdb, StorageDbType db_type) {
-  std::vector<std::string> lines;
-  DocDBDebugDumpToContainer(rocksdb, &lines, db_type);
-  LOG(INFO) << AsString(db_type) << " DB dump:";
-  for (const auto& line : lines) {
-    LOG(INFO) << "  " << line;
-  }
-}
-
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* out) {
   out->AppendValueType(ValueType::kTransactionId);
   out->AppendRawBytes(transaction_id.AsSlice());
-}
-
-DocHybridTimeBuffer::DocHybridTimeBuffer() {
-  buffer_[0] = ValueTypeAsChar::kHybridTime;
-}
-
-Slice DocHybridTimeBuffer::EncodeWithValueType(const DocHybridTime& doc_ht) {
-  auto end = doc_ht.EncodedInDocDbFormat(buffer_.data() + 1);
-  return Slice(buffer_.data(), end);
 }
 
 CHECKED_STATUS IntentToWriteRequest(

@@ -1141,7 +1141,8 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         const auto& table_info = *entry.second;
         auto ltm = table_info.LockForRead();
 
-        if (new_namespace_id == table_info.namespace_id() &&
+        if (table_info.is_running() &&
+            new_namespace_id == table_info.namespace_id() &&
             meta.name() == ltm->data().name() &&
             ((table_data->is_index() && IsUserIndexUnlocked(table_info)) ||
                 (!table_data->is_index() && IsUserTableUnlocked(table_info)))) {

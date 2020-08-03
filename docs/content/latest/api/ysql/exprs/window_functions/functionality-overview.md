@@ -2,7 +2,7 @@
 title: Function invocation using the OVER clause
 linkTitle: Informal functionality overview
 headerTitle: Informal overview of function invocation using the OVER clause
-description: Informal introduction to window function and aggregate function invocation using the OVER clause.
+description: This section provdes an informal introduction to the invocation of window functions and aggregate functions using the OVER clause.
 menu:
   latest:
     identifier: functionality-overview
@@ -30,7 +30,7 @@ If you haven't yet installed the tables that the code examples use, then go to t
 
 The [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) window function is the simplest among the set of eleven such functions that YSQL supports. Briefly, this function assigns an ordinal number, starting at _1_, to the rows within the specified [_window_](../sql-syntax-semantics/#the-window-definition-rule) according to the specified ordering rule. Here is the most basic example.
 
-```postgresql
+```plpgsql
 select
   k,
   row_number() over(order by k desc) as r
@@ -61,7 +61,7 @@ Because the `OVER` clause doesn't specify a `PARTITION BY` clause, the so-called
 
 The next example emphasizes the point that a window function is often used in a subquery which, like any other subquery, is used to define a `WITH` clause view to allow further logic to be applied—in this case, a `WHERE` cause restriction on the values returned by [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) (and, of course, a final query-level `ORDER BY` rule).
 
-```postgresql
+```plpgsql
 with v as (
   select
     k,
@@ -150,7 +150,7 @@ Sometimes, you'll see that, by chance, not a single output row is marked _"true"
 ### Using row_number() with "PARTITION BY"
 
 This example adds a `PARTITION BY` clause to the window `ORDER BY` clause in the [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) . It selects and orders by _"v"_ rather than _"k"_ because this has `NULL`s and demonstrates the within-[_window_](../sql-syntax-semantics/#the-window-definition-rule) effect of `NULLS FIRST`. The [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) is moved to a dedicated `WINDOW` clause that names it so that the `OVER` clause can simply reference the definition that it needs. This might seem only to add verbosity in this example. But using a dedicated `WINDOW` clause reduces verbosity when invocations of several different window functions in the same subquery use the same [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) .
-```postgresql
+```plpgsql
 \pset null '??'
 
 with a as (
@@ -187,7 +187,7 @@ This is the result:
 
 If you want the output value for any of `first_value()`, `last_value()`, `nth_value()`, `lag()`, or `lead()` to include more than one column, then you must list them in a _"row"_ type constructor. This example uses [`nth_value()`](../function-syntax-semantics/first-value-nth-value-last-value/#nth-value). This accesses the _Nth_ row within the ordered set that each [_window_](../sql-syntax-semantics/#the-window-definition-rule) defines. It picks out the third row. The restriction _"class in (3, 5)"_ cuts down the result set to make it easier to read.
 
-```postgresql
+```plpgsql
 drop type if exists rt cascade;
 create type rt as (class int, k int, v int);
 
@@ -218,8 +218,8 @@ It produces this result:
      5 | (5,23,23)
      5 | (5,23,23)
 ```
-Each of `first_value()`, `last_value()`, and `nth_value()`, as their names suggest, produces the same output for each row of a [_window_](../sql-syntax-semantics/#the-window-definition-rule). It would be natural, therefore, to use the query above in a `WITH` clause whose final `SELECT` picks out the individual columns from the record and adds a `GROUP BY` clause, thus:
-```postgresql
+Each of `first_value()`, `last_value()`, and `nth_value()`, as their names suggest, produces the same output for each row of a [_window_](../sql-syntax-semantics/#the-window-definition-rule). It would be natural, therefore, to use the query above in a `WITH` clause whose final `SELECT ` picks out the individual columns from the record and adds a `GROUP BY` clause, thus:
+```plpgsql
 drop type if exists rt cascade;
 create type rt as (class int, k int, v int);
 
@@ -260,7 +260,7 @@ The query is specifically written to meet the exact requirements. It would need 
 
 The statement of requirement implies that the computation is not feasible for the first two and the last two days in the window. Under these circumstances, `lag()` and `lead()`, return `NULL`—or, it you prefer, a default value that you supply using an optional third parameter. See the dedicated section on [`lag()` and `lead()`](../function-syntax-semantics/lag-lead/) for details.
 
-```postgresql
+```plpgsql
 with v as (
   select
     day,
@@ -312,7 +312,7 @@ order by day groups between $1 preceding and $1 following
 Here, the statement is first prepared and then executed to emphasize the fact that a single formulation of the statement text works for any arbitrary range of days around the current row. The section [Window function invocation—SQL syntax and semantics](../sql-syntax-semantics/) explains the full power of expression brought by the `OVER` clause.
 
 Notice that this approach uses the value returned by [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number), using an `OVER` clause that does no more than order the rows, to exclude the meaningless first _N_ and last _N_ averages, where _N_ is the same parameterized value that _"groups between N preceding and N following"_ uses. These rows, if not excluded, would simply show the averages over the rows that allow access. You probably don't want to see those answers.
-```postgresql
+```plpgsql
 prepare stmt(int) as
 with v as (
   select
@@ -339,7 +339,7 @@ range between unbounded preceding and current row
 ```
 so that the average includes, for each row, the row itself and only the rows that precede it in the sort order.
 
-```postgresql
+```plpgsql
 with v as (
   select
     class,

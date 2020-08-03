@@ -908,6 +908,9 @@ acldefault_sql(PG_FUNCTION_ARGS)
 		case 'T':
 			objtype = OBJECT_TYPE;
 			break;
+		case 'g':
+			objtype = OBJECT_TABLEGROUP;
+			break;
 		default:
 			elog(ERROR, "unrecognized objtype abbreviation: %c", objtypec);
 	}

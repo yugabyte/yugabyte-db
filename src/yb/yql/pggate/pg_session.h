@@ -166,6 +166,19 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS DeleteDBSequences(int64_t db_oid);
 
+  //------------------------------------------------------------------------------------------------
+  // Operations on Tablegroup.
+  //------------------------------------------------------------------------------------------------
+
+  CHECKED_STATUS CreateTablegroup(const std::string& database_name,
+                                  const PgOid database_oid,
+                                  const std::string& tablegroup_name,
+                                  PgOid tablegroup_oid);
+
+  CHECKED_STATUS DropTablegroup(const std::string& tablegroup_name,
+                                const PgOid database_oid,
+                                PgOid tablegroup_oid);
+
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
   CHECKED_STATUS CreateSchema(const std::string& schema_name, bool if_not_exist);

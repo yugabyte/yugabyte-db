@@ -1,8 +1,8 @@
 ---
 title: do_assert_bucket_ok
 linkTitle: do_assert_bucket_ok
-headerTitle: do_assert_bucket_ok
-description: DO/assert block to test that bucket() gives the correct results
+headerTitle: do_assert_bucket_ok.sql
+description: do_assert_bucket_ok.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: do-assert-bucket-ok
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `do_assert_bucket_ok.sql`.
-```postgresql
+```plpgsql
 -- Test it over the full range.
 -- Pay special attention to the bucket boundaries.
 do $body$
