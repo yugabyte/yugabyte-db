@@ -18,10 +18,10 @@ menu:
     <a class="section-link icon-offset" href="ysql-client-drivers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
-        <div class="title">API client drivers for YSQL</div>
+        <div class="title">Client drivers for YSQL API</div>
       </div>
       <div class="body">
-        Find a supported API client driver to connect to and interact with YugabyteDB using YSQL.
+        Find a supported client drivers to connect to and interact with YugabyteDB using the YSQL API.
       </div>
     </a>
   </div>
@@ -42,10 +42,10 @@ menu:
     <a class="section-link icon-offset" href="ycql-client-drivers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/ycql.png" aria-hidden="true" />
-        <div class="title">API client drivers for YCQL</div>
+        <div class="title">Client drivers for YCQL API</div>
       </div>
       <div class="body">
-        Find a Yugabyte API client driver to connect to and interac with YugabyteDB using YCQL.
+        Find a supported client driver to connect to and interact with YugabyteDB using the YCQL API.
       </div>
     </a>
   </div>
