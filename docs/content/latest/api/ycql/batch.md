@@ -44,7 +44,7 @@ ResultSet resultSet = client.execute(batch);
 
 An example using Python client and RETURNS AS STATUS clause:
 
-```cassandra
+```sql
 ycqlsh> create keyspace if not exists yb_demo;
 ycqlsh> CREATE TABLE if not exists yb_demo.test_rs_batch(h int, r bigint, v1 int, v2 varchar, primary key (h, r));
 ycqlsh> INSERT INTO yb_demo.test_rs_batch(h,r,v1,v2) VALUES (1,1,1,'a');
@@ -128,13 +128,13 @@ Conversely, there will be one column for each table column which will be `null` 
 For instance:
 
 1. Set up a simple table:
-```cassandraql
+```sql
 cqlsh:sample> CREATE TABLE test(h INT, r INT, v LIST<INT>, PRIMARY KEY(h,r)) WITH transactions={'enabled': true};
 cqlsh:sample> INSERT INTO test(h,r,v) VALUES (1,1,[1,2]);
 ```
 
 2. Unapplied update when `IF` condition is false:
-```cassandraql
+```sql
 cqlsh:sample> UPDATE test SET v[2] = 4 WHERE h = 1 AND r = 1 IF v[1] = 3 RETURNS STATUS AS ROW;
  [applied] | [message] | h | r | v
 -----------+-----------+---+---+--------
@@ -142,21 +142,21 @@ cqlsh:sample> UPDATE test SET v[2] = 4 WHERE h = 1 AND r = 1 IF v[1] = 3 RETURNS
 ```
 
 3. Unapplied update when `IF` condition true but error:
-```cassandraql
+```sql
 cqlsh:sample> UPDATE test SET v[20] = 4 WHERE h = 1 AND r = 1 IF v[1] = 2 RETURNS STATUS AS ROW;
  [applied] | [message]                                                                              | h    | r    | v
 -----------+----------------------------------------------------------------------------------------+------+------+------
      False | Unable to replace items into list, expecting index 20, reached end of list with size 2 | null | null | null
 ```
 4. Applied update when `IF` condition true:
-```cassandraql
+```sql
 cqlsh:sample> UPDATE test SET v[0] = 4 WHERE h = 1 AND r = 1 IF v[1] = 2 RETURNS STATUS AS ROW;
  [applied] | [message] | h    | r    | v
 -----------+-----------+------+------+------
       True |      null | null | null | null
 ```
 5. Final table result:
-```cassandraql
+```sql
 cqlsh:sample> SELECT * FROM test;
  h | r | v
 ---+---+--------
