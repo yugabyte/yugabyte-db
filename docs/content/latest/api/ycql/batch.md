@@ -18,9 +18,11 @@ the throughput of the batch of operations is much higher.
 
 ## Example in Java
 
-In order to perform a batch insert operation in Java, first create a BatchStatement object. 
-Next add the desired number of prepared and bound insert statements to it. 
-Finally, execute the batch object. This is shown below.
+To perform a batch insert operation in Java:
+
+1.  Create a BatchStatement object. 
+2. Add the desired number of prepared and bound insert statements to it. 
+3. Execute the batch object. 
 
 ```java
 // Create a batch statement object.
