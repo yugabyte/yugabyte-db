@@ -94,7 +94,7 @@ Try again by running the build script with less concurrency `-j1`.
 
 {{< /note >}}
 
-The above command will build the release configuration, put the C++ binaries in `build/release-gcc-dynamic-ninja`, and will also create the `build/latest` symlink to that directory.
+The command above will build the release configuration, add the C++ binaries into the `build/release-gcc-dynamic-ninja` directory, and create a `build/latest` symlink to that directory.
 
 {{< tip title="Tip" >}}
 
