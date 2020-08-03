@@ -109,7 +109,7 @@ For a batch, it is required that either none or all statements use `RETURNS STAT
 
 When executing `n` statements in a batch with `RETURN STATUS AS ROW`, `n` rows are returned, in the same order as the statements and the application can easily inspect the result.
 
-Similarly, it is required that `RETURN STATUS AS ROW` is used for batches containing conditional DMLs.
+For batches containing conditional DMLs, `RETURN STATUS AS ROW` must be used.
 
 This is because, for conditional DMLs (which are normally not allowed in batches), any subset of them could fail due to 
 their `IF` condition so only returning rows for them would make it impossible to identify which ones actually failed.
