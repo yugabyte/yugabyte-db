@@ -113,14 +113,12 @@ When executing `n` statements in a batch with `RETURN STATUS AS ROW`, `n` rows a
 
 For batches containing conditional DMLs, `RETURN STATUS AS ROW` must be used.
 
-This is because, for conditional DMLs (which are normally not allowed in batches), any subset of them could fail due to 
-their `IF` condition so only returning rows for them would make it impossible to identify which ones actually failed.
+For conditional DMLs (not normally allowed in batches), any subset of them could fail due to 
+their `IF` condition and thus returning rows only for them makes it impossible to identify which ones actually failed.
 
-To distinguish between the two not-applied cases (error vs condition is false) there is an (error) `message` column in 
-the return row that will be null for not-applied and filled-in for errors.
+To distinguish between the two not-applied cases (error vs condition is false), there is an error `message` column in the return row that will be null for not-applied and filled-in for errors.
 
-Conversely, there will be one column for each table column which will be `null` for errors but filled-in for not-applied 
-(justifying the decision to not apply).
+Conversely, there will be one column for each table column, which will be `null` for errors but filled-in for not-applied (justifying the decision to not apply).
 
 For instance:
 
