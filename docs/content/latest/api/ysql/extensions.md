@@ -71,12 +71,11 @@ For more information, see [`pg_stat_statements`](https://www.postgresql.org/docs
 ### Server Programming Interface (spi) module
 
 The `spi` module lets developers use the [Server Programming Interface (SPI)](https://www.postgresql.org/docs/11/spi.html) to use the C programming language to create user-defined functions and stored procedures and to run YSQL queries directly against YugabyteDB. In YugabyteDB, the following four (of the five) extensions provided in the `spi` module can be used:
-The specific extensions currently supported in YSQL are:
 
-- `insert_username`: functions for tracking who changed a table
+- `insert_username`: Functions for tracking who changed a table.
 - `moddatetime`: Functions for tracking last modification time
-- `autoinc`: functions for autoincrementing fields
-- `refint`: functions for implementing referential integrity
+- `autoinc`: Functions for autoincrementing fields.
+- `refint`: Functions for implementing referential integrity.
 
 #### Example
 
