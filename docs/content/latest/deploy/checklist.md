@@ -146,10 +146,8 @@ If you are using name servers instead of static IP addresses, you may end up wit
 If the DNS query load is large enough to be a problem or the RTT to the external DNS server is long enough to be a problem, you 
 can set high enough TTL on your DNS records.
 
-On Linux , there is no OS-level DNS caching unless `nscd` is installed and running which has DNS caching features disabled
-by default because it's broken. 
-You can install a caching DNS server such as [Unbound](https://nlnetlabs.nl/projects/unbound/about/) on each server 
-configured to cache responses and forward misses to the regular DNS resolvers.
+The Linux operating system does not provide DNS caching unless [Name Service Cache Daemon (`nscd`)](https://ldapwiki.com/wiki/NSCD) is installed and running.
+You can install a caching DNS server,  such as [Unbound](https://nlnetlabs.nl/projects/unbound/about/), on each server that is configured to cache responses and forward misses to the regular DNS resolvers.
 
 ## Running on public clouds
 
