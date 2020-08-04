@@ -116,7 +116,7 @@ To bring up a YugabyteDB cluster with encryption in transit (TLS) enabled, follo
 
 For example, `helm install yugabyte --namespace yb-demo --name yb-demo --set=tls.enabled=true`.
 
-### Connecting from within the Kubernetes cluster
+### Connect from within the Kubernetes cluster
 
 Copy the following `yb-client.yaml` and use this `kubectl create -f yb-client.yaml` command to create a pod with auto-mounted client certificates.
 
