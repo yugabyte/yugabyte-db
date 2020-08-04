@@ -36,6 +36,8 @@ CREATE TABLEGROUP tgroup2;
 CREATE TABLEGROUP tgroup3;
 CREATE TABLE tgroup_test1 (col1 int, col2 int) TABLEGROUP tgroup1;
 CREATE TABLE tgroup_test2 (col1 int, col2 int) TABLEGROUP tgroup1;
+CREATE TABLE nogroup (col1 int) NO TABLEGROUP; -- fail
+ERROR:  Cannot use NO TABLEGROUP in CREATE TABLE statement.
 SELECT grpname FROM pg_tablegroup;
  grpname
 ---------
@@ -55,16 +57,21 @@ SELECT relname
 
 CREATE INDEX ON tgroup_test1(col2);
 CREATE TABLE tgroup_test3 (col1 int, col2 int) TABLEGROUP tgroup2;
-SELECT relname, relhasindex
-    FROM (SELECT relname, relhasindex, unnest(reloptions) AS opts FROM pg_class) s, pg_tablegroup
-    WHERE opts LIKE CONCAT('%', CAST(pg_tablegroup.oid AS text), '%');
-        relname        | relhasindex
------------------------+-------------
- tgroup_test1          | t
- tgroup_test2          | f
- tgroup_test1_col2_idx | f
- tgroup_test3          | f
-(4 rows)
+-- Index opt out - should not show up in following SELECT
+CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP;
+-- Index explicitly specify tablegroup other than that of indexed table
+CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1;
+SELECT s.relname, pg_tablegroup.grpname
+    FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s, pg_tablegroup
+    WHERE opts LIKE CONCAT('%tablegroup=', CAST(pg_tablegroup.oid AS text), '%');
+        relname         | grpname
+------------------------+---------
+ tgroup_test1           | tgroup1
+ tgroup_test2           | tgroup1
+ tgroup_test1_col2_idx  | tgroup1
+ tgroup_test3           | tgroup2
+ tgroup_test3_col1_idx1 | tgroup1
+(5 rows)
 
 -- These should fail.
 CREATE TABLEGROUP tgroup1;
@@ -93,13 +100,7 @@ ERROR:  Cannot supply tablegroup through WITH clause.
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123, colocated=true);
 ERROR:  Cannot supply tablegroup through WITH clause.
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123) TABLEGROUP tgroup1;
-ERROR:  syntax error at or near "TABLEGROUP"
-LINE 1: ...INDEX ON tgroup_test1(col1) WITH (tablegroup=123) TABLEGROUP...
-                                                             ^
-CREATE INDEX ON tgroup_test1(col1) TABLEGROUP tgroup1;
-ERROR:  syntax error at or near "TABLEGROUP"
-LINE 1: CREATE INDEX ON tgroup_test1(col1) TABLEGROUP tgroup1;
-                                           ^
+ERROR:  Cannot supply tablegroup through WITH clause.
 --
 -- DROP TABLEGROUP
 --
@@ -114,6 +115,7 @@ ERROR:  tablegroup "bad_tgroupname" does not exist
 -- This drop should work now.
 DROP TABLE tgroup_test1;
 DROP TABLE tgroup_test2;
+DROP INDEX tgroup_test3_col1_idx1;
 DROP TABLEGROUP tgroup1;
 -- Create a tablegroup with the name of a dropped tablegroup.
 CREATE TABLEGROUP tgroup1;
