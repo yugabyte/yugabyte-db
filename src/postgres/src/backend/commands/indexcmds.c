@@ -580,11 +580,25 @@ DefineIndex(Oid relationId,
 	/*
 	 * Select tablegroup to use. Default to the tablegroup of the indexed table.
 	 * If no tablegroup for the indexed table then set to InvalidOid (no tablegroup).
-	 * TODO(vivek/jason): Allow indexes to opt out of tablegroups (currently disabled from grammar).
+	 * If tablegroup specified then perform a lookup unless has_tablegroup is false.
 	 */
 	Oid tablegroupId = InvalidOid;
 	if (TablegroupCatalogExists)
-		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
+	{
+		if (!stmt->tablegroup)
+		{
+			// If NULL tablegroup, follow tablegroup of indexed table.
+			tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
+		}
+		else
+		{
+			OptTableGroup *grp = stmt->tablegroup;
+			if (grp->has_tablegroup)
+			{
+				tablegroupId = get_tablegroup_oid(grp->tablegroup_name, false);
+			}
+		}
+	}
 
 	/*
 	 * Check permissions for tablegroup. To create an index within a tablegroup, a user must

@@ -17,15 +17,20 @@ CREATE TABLEGROUP tgroup2;
 CREATE TABLEGROUP tgroup3;
 CREATE TABLE tgroup_test1 (col1 int, col2 int) TABLEGROUP tgroup1;
 CREATE TABLE tgroup_test2 (col1 int, col2 int) TABLEGROUP tgroup1;
+CREATE TABLE nogroup (col1 int) NO TABLEGROUP; -- fail
 SELECT grpname FROM pg_tablegroup;
 SELECT relname
     FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s
     WHERE opts LIKE '%tablegroup%';
 CREATE INDEX ON tgroup_test1(col2);
 CREATE TABLE tgroup_test3 (col1 int, col2 int) TABLEGROUP tgroup2;
-SELECT relname, relhasindex
-    FROM (SELECT relname, relhasindex, unnest(reloptions) AS opts FROM pg_class) s, pg_tablegroup
-    WHERE opts LIKE CONCAT('%', CAST(pg_tablegroup.oid AS text), '%');
+-- Index opt out - should not show up in following SELECT
+CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP;
+-- Index explicitly specify tablegroup other than that of indexed table
+CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1;
+SELECT s.relname, pg_tablegroup.grpname
+    FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s, pg_tablegroup
+    WHERE opts LIKE CONCAT('%tablegroup=', CAST(pg_tablegroup.oid AS text), '%');
 -- These should fail.
 CREATE TABLEGROUP tgroup1;
 CREATE TABLE tgroup_test (col1 int, col2 int) TABLEGROUP bad_tgroupname;
@@ -44,7 +49,6 @@ CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123) TABLEGROUP t
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123);
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123, colocated=true);
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123) TABLEGROUP tgroup1;
-CREATE INDEX ON tgroup_test1(col1) TABLEGROUP tgroup1;
 
 --
 -- DROP TABLEGROUP
@@ -58,6 +62,7 @@ DROP TABLEGROUP bad_tgroupname;
 -- This drop should work now.
 DROP TABLE tgroup_test1;
 DROP TABLE tgroup_test2;
+DROP INDEX tgroup_test3_col1_idx1;
 DROP TABLEGROUP tgroup1;
 -- Create a tablegroup with the name of a dropped tablegroup.
 CREATE TABLEGROUP tgroup1;
