@@ -189,7 +189,7 @@ $ kubectl get secret yugabyte-tls-client-cert  -n yb-demo -o jsonpath='{.data.yu
 $ kubectl get secret yugabyte-tls-client-cert  -n yb-demo -o jsonpath='{.data.yugabytedb\.key}' | base64 --decode > $(pwd)/certs/yugabytedb.key
 ```
 
-Here is an example of a client that uses the `YSQL shell` ([`ysqlsh`](../../../admin/ysqlsh)) to connect. The command specifies the external LoadBalancer IP of the `yb-tserver-service` as shown in [the docs here](../single-zone/oss/helm-chart/#connect-using-external-clients). 
+Here is an example of a client that uses the `YSQL shell` ([`ysqlsh`](../../../admin/ysqlsh)) to connect. The command specifies the external LoadBalancer IP of the `yb-tserver-service` as described in [Connect using external clients](../single-zone/oss/helm-chart/#connect-using-external-clients). 
 
 Use the following command to verify the connection.
 
