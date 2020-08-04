@@ -206,7 +206,7 @@ SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 25
 
 Here is an example of a client that uses the `YCQL shell` ([`ycqlsh`](../../../admin/cqlsh)) to connect.
 
-Use the following docker command to verify the connection.
+To verify the connection, use the following `docker run` command.
 
 ```sh
 $ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro \
