@@ -118,7 +118,7 @@ For example, `helm install yugabyte --namespace yb-demo --name yb-demo --set=tls
 
 ### Connect from within the Kubernetes cluster
 
-Copy the following `yb-client.yaml` and use this `kubectl create -f yb-client.yaml` command to create a pod with auto-mounted client certificates.
+Copy the following `yb-client.yaml` and use the `kubectl create -f yb-client.yaml` command to create a pod with auto-mounted client certificates.
 
 ```yaml
 apiVersion: v1
