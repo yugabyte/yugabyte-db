@@ -64,6 +64,9 @@ DEFINE_bool(ysql_non_txn_copy, false,
 DEFINE_int32(ysql_max_read_restart_attempts, 20,
              "How many read restarts can we try transparently before giving up");
 
+DEFINE_test_flag(bool, ysql_disable_transparent_cache_refresh_retry, false,
+    "Never transparently retry commands that fail with cache version mismatch error");
+
 DEFINE_int32(ysql_output_buffer_size, 262144,
              "Size of postgres-level output buffer, in bytes. "
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "

@@ -200,6 +200,10 @@ Status PgApiImpl::InvalidateCache() {
   return Status::OK();
 }
 
+const bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
+  return FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry;
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgMemctx *PgApiImpl::CreateMemctx() {
