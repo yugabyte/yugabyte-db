@@ -80,7 +80,7 @@ ycqlsh> use demo;
 ycqlsh:demo> CREATE TABLE t_demo(id INT PRIMARY KEY);
 ```
 
-## Master UI dashboard
+## YB-Master Admin UI
 
 The master UI dashboard is available at the external IP address exposed by the `yb-master-ui` LoadBalancer service - in this case at `http://98.138.219.231:7000/`.
 
