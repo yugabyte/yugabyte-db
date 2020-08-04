@@ -178,7 +178,7 @@ $ kubectl delete pod yb-client -n yb-demo
 pod "yb-client" deleted
 ```
 
-### Connecting externally
+### Connect externally
 
 To connect externally to a TLS-enabled YugabyteDB helm cluster, first download the client certificates locally from the Kubernetes cluster's secrets.
 
