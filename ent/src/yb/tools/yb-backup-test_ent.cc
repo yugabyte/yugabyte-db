@@ -462,5 +462,30 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYBBackupWrongUsage)) {
+  client::KeyValueTableTest::CreateTable(
+      client::Transactional::kTrue, CalcNumTablets(3), client_.get(), &table_);
+  const string& keyspace = table_.name().namespace_name();
+  const string& table = table_.name().table_name();
+  const string backup_dir = GetTempDir("backup");
+
+  // No 'create' or 'restore' argument.
+  ASSERT_NOK(RunBackupCommand({}));
+
+  // No '--keyspace' argument.
+  ASSERT_NOK(RunBackupCommand({"--backup_location", backup_dir, "create"}));
+  ASSERT_NOK(RunBackupCommand({"--backup_location", backup_dir, "--table", table, "create"}));
+
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
+
+  // No '--keyspace' argument, but there is '--table'.
+  ASSERT_NOK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--table", "new_" + table, "restore"}));
+
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace tools
 }  // namespace yb

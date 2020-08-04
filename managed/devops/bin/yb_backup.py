@@ -1869,6 +1869,8 @@ class YBBackup:
         if self.args.keyspace:
             if len(self.args.keyspace) > 1:
                 raise BackupException('Only one --keyspace expected for the restore mode.')
+        elif self.args.table:
+            raise BackupException('Need to specify --keyspace')
 
         logging.info('Restoring backup from {}'.format(self.args.backup_location))
 
