@@ -49,7 +49,25 @@ public class Users extends Model {
     ReadOnly,
 
     @EnumValue("SuperAdmin")
-    SuperAdmin
+    SuperAdmin,
+
+    @EnumValue("BackupAdmin")
+    BackupAdmin;
+
+    public String getFeaturesFile() {
+      switch (this) {
+        case Admin:
+          return null;
+        case ReadOnly:
+          return "readOnlyFeatureConfig.json";
+        case SuperAdmin:
+          return null;
+        case BackupAdmin:
+          return "backupAdminFeatureConfig.json";
+        default:
+          return null;
+      }
+    }
   }
 
 
