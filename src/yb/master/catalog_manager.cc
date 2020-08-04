@@ -213,6 +213,11 @@ DEFINE_bool(master_tombstone_evicted_tablet_replicas, true,
             "are no longer part of the latest reported raft config.");
 TAG_FLAG(master_tombstone_evicted_tablet_replicas, hidden);
 
+// Temporary.  Can be removed after long-run testing.
+DEFINE_bool(master_ignore_stale_cstate, true,
+            "Whether Master processes the raft config when the version is lower.");
+TAG_FLAG(master_ignore_stale_cstate, hidden);
+
 DEFINE_bool(catalog_manager_check_ts_count_for_create_table, true,
             "Whether the master should ensure that there are enough live tablet "
             "servers to satisfy the provided replication count before allowing "
@@ -4474,6 +4479,15 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         // committed config opid_index, we skip over those replicas.
         if (!cstate.config().has_opid_index()) {
           LOG(WARNING) << "Missing opid_index in reported config:\n" << report.DebugString();
+          continue;
+        }
+        if (PREDICT_TRUE(FLAGS_master_ignore_stale_cstate) &&
+              (cstate.current_term() < prev_cstate.current_term() ||
+               report_opid_index < prev_opid_index)) {
+          LOG(WARNING) << "Stale heartbeat for Tablet " << tablet->ToString()
+                       << " on TS " << ts_desc->permanent_uuid()
+                       << "cstate=" << cstate.ShortDebugString()
+                       << ", prev_cstate=" << prev_cstate.ShortDebugString();
           continue;
         }
 
