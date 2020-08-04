@@ -3795,7 +3795,9 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 		 * So we just re-throw the error in that case.
 		 *
 		 */
-		if (consider_retry && !IsTransactionBlock())
+		if (consider_retry &&
+				!IsTransactionBlock() &&
+				!YBCGetDisableTransparentCacheRefreshRetry())
 		{
 			/* Clear error state */
 			FlushErrorState();
@@ -3844,7 +3846,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 								"while processing this query. Try Again.")));
 			else
 			{
-				/* need_table_cache_refresh */
+				Assert(need_table_cache_refresh);
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
 						 errmsg("%s", edata->message)));

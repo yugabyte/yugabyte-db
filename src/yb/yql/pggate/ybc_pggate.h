@@ -59,6 +59,9 @@ YBCStatus YBCPgClearBinds(YBCPgStatement handle);
 // Check if initdb has been already run.
 YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 
+// Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
+const bool YBCGetDisableTransparentCacheRefreshRetry();
+
 // Sets catalog_version to the local tserver's catalog version stored in shared
 // memory, or an error if the shared memory has not been initialized (e.g. in initdb).
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);

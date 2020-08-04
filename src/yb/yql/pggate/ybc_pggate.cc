@@ -847,6 +847,10 @@ YBCStatus YBCPgIsInitDbDone(bool* initdb_done) {
   return ExtractValueFromResult(pgapi->IsInitDbDone(), initdb_done);
 }
 
+const bool YBCGetDisableTransparentCacheRefreshRetry() {
+  return pgapi->GetDisableTransparentCacheRefreshRetry();
+}
+
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
 }

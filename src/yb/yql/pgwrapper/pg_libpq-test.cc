@@ -47,6 +47,8 @@ class PgLibPqTest : public LibPqTestBase {
   void TestConcurrentCounter(IsolationLevel isolation);
 
   void TestOnConflict(bool kill_master, const MonoDelta& duration);
+
+  void TestCacheRefreshRetry(const bool is_retry_disabled);
 };
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
@@ -1641,23 +1643,51 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(actual_num_rows, kNumRows);
 }
 
+// Override the index backfill test to disable transparent retries on cache version mismatch.
+class PgLibPqTestIndexBackfillNoRetry : public PgLibPqTestIndexBackfill {
+ public:
+  PgLibPqTestIndexBackfillNoRetry() {
+    more_tserver_flags.push_back("--TEST_ysql_disable_transparent_cache_refresh_retry=true");
+  }
+};
+
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillDropNoRetry),
+          PgLibPqTestIndexBackfillNoRetry) {
+  constexpr int kNumRows = 5;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kIndexName = "i";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
+      kTableName,
+      kNumRows));
+
+  // Create index.
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
+
+  // Update the table cache entry for the indexed table.
+  ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
+
+  // Drop index.
+  ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", kIndexName));
+
+  // Ensure that there is no schema version mismatch for the indexed table.  This is because the
+  // above `DROP INDEX` should have invalidated the corresponding table cache entry.  (There also
+  // should be no catalog version mismatch because it is updated for the same session after DDL.)
+  ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
+}
+
 // Override the index backfill test to have slower backfill-related operations
 class PgLibPqTestIndexBackfillSlow : public PgLibPqTestIndexBackfill {
  public:
   PgLibPqTestIndexBackfillSlow() {
     more_master_flags.push_back("--TEST_slowdown_backfill_alter_table_rpcs_ms=7000");
     more_tserver_flags.push_back("--TEST_slowdown_backfill_by_ms=7000");
-  }
-
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.insert(
-        std::end(options->extra_master_flags),
-        std::begin(more_master_flags),
-        std::end(more_master_flags));
-    options->extra_tserver_flags.insert(
-        std::end(options->extra_tserver_flags),
-        std::begin(more_tserver_flags),
-        std::end(more_tserver_flags));
   }
 };
 
@@ -1891,6 +1921,103 @@ TEST_F_EX(PgLibPqTest,
     int value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
     ASSERT_EQ(value, expected_key + 110);
   }
+}
+
+// Override the base test to start a cluster with transparent retries on cache version mismatch
+// disabled.
+class PgLibPqTestNoRetry : public PgLibPqTest {
+ public:
+  PgLibPqTestNoRetry() {
+    more_tserver_flags.push_back("--TEST_ysql_disable_transparent_cache_refresh_retry=true");
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.insert(
+        std::end(options->extra_master_flags),
+        std::begin(more_master_flags),
+        std::end(more_master_flags));
+    options->extra_tserver_flags.insert(
+        std::end(options->extra_tserver_flags),
+        std::begin(more_tserver_flags),
+        std::end(more_tserver_flags));
+  }
+
+ protected:
+  std::vector<std::string> more_master_flags;
+  std::vector<std::string> more_tserver_flags;
+};
+
+// This test is like "TestPgCacheConsistency#testVersionMismatchWithFailedRetry".  That one gets
+// failures because the queries are "parse" message types, and we don't consider retry for those.
+// These queries are "simple query" message types, so they should be considered for transparent
+// retry.  The last factor is whether `--TEST_ysql_disable_transparent_cache_refresh_retry` is
+// specified.
+void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
+  constexpr int kNumTries = 5;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+  int num_successes = 0;
+  std::array<PGConn, 2> conns = {
+    ASSERT_RESULT(ConnectToDB(kNamespaceName)),
+    ASSERT_RESULT(ConnectToDB(kNamespaceName)),
+  };
+
+  ASSERT_OK(conns[0].ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  // Make the catalog version cache up to date.
+  ASSERT_OK(conns[1].FetchFormat("SELECT * FROM $0", kTableName));
+
+  for (int i = 0; i < kNumTries; ++i) {
+    ASSERT_OK(conns[0].ExecuteFormat("ALTER TABLE $0 ADD COLUMN j$1 int", kTableName, i));
+    auto res = conns[1].FetchFormat("SELECT * FROM $0", kTableName);
+    if (is_retry_disabled) {
+      // Ensure that we fall under one of two cases:
+      // 1. tserver gets updated catalog version before SELECT (rare)
+      //    - YBCheckSharedCatalogCacheVersion causes YBRefreshCache
+      //    - trying the SELECT requires getting the table schema, but it will be a cache miss since
+      //      the whole cache was invalidated, so we get the up-to-date table schema and succeed
+      // 2. tserver doesn't get updated catalog version before SELECT (common)
+      //    - trying the SELECT causes catalog version mismatch
+      if (res.ok()) {
+        LOG(WARNING) << "SELECT was ok";
+        num_successes++;
+        continue;
+      }
+      auto msg = res.status().message().ToBuffer();
+      ASSERT_TRUE(msg.find("Catalog Version Mismatch") != std::string::npos) << res.status();
+    } else {
+      // Ensure that the request is successful (thanks to retry).
+      if (!res.ok()) {
+        LOG(WARNING) << "SELECT was not ok: " << res.status();
+        continue;
+      }
+      num_successes++;
+    }
+    // Make the catalog version cache up to date, if needed.
+    ASSERT_OK(conns[1].FetchFormat("SELECT * FROM $0", kTableName));
+  }
+
+  LOG(INFO) << "number of successes: " << num_successes << "/" << kNumTries;
+  if (is_retry_disabled) {
+    // Expect at least half of the tries to fail with catalog version mismatch.  There can be some
+    // successes because, between the ALTER and SELECT, the catalog version could have propogated
+    // through shared memory (see `YBCheckSharedCatalogCacheVersion`).
+    const int num_failures = kNumTries - num_successes;
+    ASSERT_GE(num_failures, kNumTries / 2);
+  } else {
+    // Expect all the tries to succeed.  This is because it is unacceptable to fail when retries are
+    // enabled.
+    ASSERT_EQ(num_successes, kNumTries);
+  }
+}
+
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(CacheRefreshRetryDisabled),
+          PgLibPqTestNoRetry) {
+  TestCacheRefreshRetry(true /* is_retry_disabled */);
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRetryEnabled)) {
+  TestCacheRefreshRetry(false /* is_retry_disabled */);
 }
 
 } // namespace pgwrapper
