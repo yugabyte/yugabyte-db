@@ -804,6 +804,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return
    */
   public SubTaskGroup createStopMasterTasks(Collection<NodeDetails> nodes) {
+    return createStopServerTasks(nodes, "master", false);
+  }
+
+  /**
+   * Creates a task list to stop the tservers of the cluster and adds it to the task queue.
+   * @param nodes set of nodes to be stopped as master
+   * @return
+   */
+  public SubTaskGroup createStopServerTasks(Collection<NodeDetails> nodes,
+                                            String serverType,
+                                            boolean isForceDelete) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
@@ -814,10 +825,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Add the az uuid.
       params.azUuid = node.azUuid;
       // The service and the command we want to run.
-      params.process = "master";
+      params.process = serverType;
       params.command = "stop";
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
+      params.isForceDelete = isForceDelete;
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
       task.initialize(params);
