@@ -27,7 +27,7 @@ public class TestPgRegressJoin extends BasePgSQLTest {
   }
 
   @Test
-  public void TestPgRegressJoin() throws Exception {
+  public void testPgRegressJoin() throws Exception {
     runPgRegressTest("yb_pg_join_schedule");
   }
 }
