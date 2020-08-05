@@ -658,7 +658,7 @@ SELECT '' AS "xxx", tx.ii, tx.jj, tx.kk
 (99 rows)
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL CROSS JOIN J2_TBL a CROSS JOIN J2_TBL b order by 1, 2, 3, 4,5, 6, 7, 8;
+  FROM J1_TBL CROSS JOIN J2_TBL a CROSS JOIN J2_TBL b order by 1, 2, 3, 4, 5, 6, 7, 8;
  xxx | i | j |   t   | i | k  | i | k
 -----+---+---+-------+---+----+---+----
      | 0 |   | zero  | 0 |    | 0 |
@@ -2188,30 +2188,16 @@ rollback;
 --
 -- regression test: be sure we cope with proven-dummy append rels
 --
---table b is not defined in original postgres join.sql We define it here.
-create temp table b (aa int, bb int);
-explain (costs off)
-select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
-  where bb < bb and bb is null;
-                     QUERY PLAN
-----------------------------------------------------
- Hash Right Join
-   Hash Cond: (tenk1.unique1 = b.aa)
-   ->  Seq Scan on tenk1
-   ->  Hash
-         ->  Seq Scan on b
-               Filter: ((bb IS NULL) AND (bb < bb))
-(6 rows)
-
-select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
-  where bb < bb and bb is null;
- aa | bb | unique1 | unique1
-----+----+---------+---------
-(0 rows)
-
-  drop table b;
+-- Table b requires yb_pg_inherits which is not supported by YB.
+-- See: https://github.com/yugabyte/yugabyte-db/issues/1129
+-- TODO: Add yb_pg_inherits once it is supported.
+-- explain (costs off)
+-- select aa, bb, unique1, unique1
+--   from tenk1 right join b on aa = unique1
+--   where bb < bb and bb is null;
+-- select aa, bb, unique1, unique1
+--   from tenk1 right join b on aa = unique1
+--   where bb < bb and bb is null;
 --
 -- regression test: check handling of empty-FROM subquery underneath outer join
 --
@@ -2499,10 +2485,12 @@ reset enable_mergejoin;
 create temp table tt3(f1 int, f2 text);
 insert into tt3 select x, repeat('xyzzy', 100) from generate_series(1,10000) x;
 create index tt3i on tt3(f1);
+-- analyze tt3;
 -- All 'analyze' statements from original postgres test removed.
 -- See: https://github.com/yugabyte/yugabyte-db/issues/1420
 create temp table tt4(f1 int);
 insert into tt4 values (0),(1),(9999);
+-- analyze tt4;
 SELECT a.f1
 FROM tt4 a
 LEFT JOIN (
@@ -2662,6 +2650,7 @@ select * from a left join b on i = x and i = y and x = i;
 ---+---+---
 (0 rows)
 
+-- TODO: remove these when closing issue #5313
 drop table a;
 drop table b;
 rollback;
@@ -2784,6 +2773,7 @@ order by c.name;
  C    |      |       |
 (3 rows)
 
+-- TODO: remove these when closing issue #5313
 drop table a;
 drop table b;
 drop table c;
@@ -3591,8 +3581,8 @@ select t1.* from
   on (t1.f1 = b1.d1)
   left join int4_tbl i4
   on (i8.q2 = i4.f1);
-                                      QUERY PLAN
---------------------------------------------------------------------------------------
+                              QUERY PLAN
+----------------------------------------------------------------------
  Nested Loop Left Join
    Output: t1.f1
    Join Filter: (t1.f1 = '***'::text)
@@ -3606,7 +3596,7 @@ select t1.* from
                      Hash Cond: (i8b2.q1 = i8.q1)
                      ->  Nested Loop
                            Output: i8b2.q1, NULL::integer
-                           ->  Index Scan using int8_tbl_pkey on public.int8_tbl i8b2
+                           ->  Seq Scan on public.int8_tbl i8b2
                                  Output: i8b2.q1, i8b2.q2
                            ->  Materialize
                                  ->  Seq Scan on public.int4_tbl i4b2
@@ -3753,14 +3743,14 @@ select * from
   on i8.q2 = 123,
   lateral (select i8.q1, t2.f1 from text_tbl t2 limit 1) as ss
 where t1.f1 = ss.f1;
-                            QUERY PLAN
-------------------------------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Nested Loop
    Output: t1.f1, i8.q1, i8.q2, (i8.q1), t2.f1
    Join Filter: (t1.f1 = t2.f1)
    ->  Nested Loop Left Join
          Output: t1.f1, i8.q1, i8.q2
-         ->  Index Scan using text_tbl_pkey on public.text_tbl t1
+         ->  Seq Scan on public.text_tbl t1
                Output: t1.f1
          ->  Materialize
                Output: i8.q1, i8.q2
@@ -3792,8 +3782,8 @@ select * from
   lateral (select i8.q1, t2.f1 from text_tbl t2 limit 1) as ss1,
   lateral (select ss1.* from text_tbl t3 limit 1) as ss2
 where t1.f1 = ss2.f1;
-                               QUERY PLAN
-------------------------------------------------------------------------
+                            QUERY PLAN
+-------------------------------------------------------------------
  Nested Loop
    Output: t1.f1, i8.q1, i8.q2, (i8.q1), t2.f1, ((i8.q1)), (t2.f1)
    Join Filter: (t1.f1 = (t2.f1))
@@ -3801,7 +3791,7 @@ where t1.f1 = ss2.f1;
          Output: t1.f1, i8.q1, i8.q2, (i8.q1), t2.f1
          ->  Nested Loop Left Join
                Output: t1.f1, i8.q1, i8.q2
-               ->  Index Scan using text_tbl_pkey on public.text_tbl t1
+               ->  Seq Scan on public.text_tbl t1
                      Output: t1.f1
                ->  Materialize
                      Output: i8.q1, i8.q2
@@ -4169,6 +4159,11 @@ select 1 from (select a.id FROM a left join b on a.b_id = b.id) q,
          Filter: (a.id = i)
 (4 rows)
 
+-- TODO: remove these when closing issue #5313
+drop table a;
+drop table b;
+drop table c;
+drop table d;
 rollback;
 create temp table parent (k int primary key, pd int);
 create temp table child (k int unique, cd int);
@@ -4246,18 +4241,15 @@ select p.* from
 
 explain (costs off)
 select p.* from
-  (parent p left join child c on (p.k = c.k)) join parent x on p.k = x.k
-  where p.k = 1 and p.k = 2;
-        QUERY PLAN
---------------------------
- Result
-   One-Time Filter: false
-(2 rows)
+  (parent p left join child c on (p.k = c.k)) join parent x on p.k = x.k;
+         QUERY PLAN
+----------------------------
+ Nested Loop
+   Join Filter: (p.k = x.k)
+   ->  Seq Scan on parent p
+   ->  Seq Scan on parent x
+(4 rows)
 
-  drop table a;
-  drop table b;
-  drop table c;
-  drop table d;
 -- bug 5255: this is not optimizable by join removal
 begin;
 CREATE TEMP TABLE a (id int PRIMARY KEY);
@@ -4276,6 +4268,7 @@ SELECT b.* FROM b LEFT JOIN a ON (b.a_id = a.id) WHERE (a.id IS NULL OR a.id > 0
   1 |
 (1 row)
 
+-- TODO: remove these when closing issue #5313
 drop table a;
 drop table b;
 rollback;
@@ -4812,6 +4805,7 @@ select v.* from
 
 create temp table dual();
 insert into dual default values;
+  -- analyze dual;
 select v.* from
   (int8_tbl x left join (select q1,(select coalesce(q2,0)) q2 from int8_tbl) y on x.q2 = y.q1)
   left join int4_tbl z on z.f1 = x.q2,
@@ -5153,7 +5147,7 @@ select c.*,a.*,ss1.q1,ss2.q1,ss3.* from
                      ->  Nested Loop
                            Output: b.q1, COALESCE(b.q2, (b2.f1)::bigint)
                            Join Filter: (b.q1 < b2.f1)
-                           ->  Index Scan using int8_tbl_pkey on public.int8_tbl b
+                           ->  Seq Scan on public.int8_tbl b
                                  Output: b.q1, b.q2
                            ->  Materialize
                                  Output: b2.f1
@@ -5425,6 +5419,8 @@ insert into fkest select x/10, x%10, x from generate_series(1,1000) x;
 insert into fkest1 select x/10, x%10 from generate_series(1,1000) x;
 alter table fkest1
   add constraint fkest1_a_b_fkey foreign key (a,b) references fkest;
+-- analyze fkest;
+-- analyze fkest1;
 explain (costs off)
 select *
 from fkest f
@@ -5457,6 +5453,9 @@ create table j3 (id int);
 insert into j1 values(1),(2),(3);
 insert into j2 values(1),(2),(3);
 insert into j3 values(1),(1);
+-- analyze j1;
+-- analyze j2;
+-- analyze j3;
 -- ensure join is properly marked as unique
 explain (verbose, costs off)
 select * from j1 inner join j2 on j1.id = j2.id;
@@ -5766,6 +5765,7 @@ where exists (select 1 from tenk1 t3
 
 -- ... unless it actually is unique
 create table j3 as select unique1, tenthous from onek;
+-- vacuum analyze j3;
 create unique index on j3(unique1, tenthous);
 explain (verbose, costs off)
 select t1.unique1, t2.hundred
@@ -5850,13 +5850,15 @@ $$;
 create table simple as
   select generate_series(1, 20000) AS id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 --  ALTER TABLE SET not supported. See https://github.com/YugaByte/yugabyte-db/issues/1124
---alter table simple set (parallel_workers = 2);
+-- alter table simple set (parallel_workers = 2);
+-- analyze simple;
 -- Make a relation whose size we will under-estimate.  We want stats
 -- to say 1000 rows, but actually there are 20,000 rows.
 create table bigger_than_it_looks as
   select generate_series(1, 20000) as id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 --alter table bigger_than_it_looks set (autovacuum_enabled = 'false');
 --alter table bigger_than_it_looks set (parallel_workers = 2);
+-- analyze bigger_than_it_looks
 update pg_class set reltuples = 1000 where relname = 'bigger_than_it_looks';
 -- Make a relation whose size we underestimate and that also has a
 -- kind of skew that breaks our batching scheme.  We want stats to say
@@ -5864,6 +5866,7 @@ update pg_class set reltuples = 1000 where relname = 'bigger_than_it_looks';
 create table extremely_skewed (id int, t text);
 --alter table extremely_skewed set (autovacuum_enabled = 'false');
 --alter table extremely_skewed set (parallel_workers = 2);
+-- analyze extremely_skewed;
 insert into extremely_skewed
   select 42 as id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   from generate_series(1, 20000);
@@ -5878,721 +5881,4 @@ create table wide as select generate_series(1, 2) as id, rpad('', 320000, 'x') a
 -- our work_mem budget
 -- non-parallel
 -- All SAVEPOINT from original join.sql removed. See https://github.com/YugaByte/yugabyte-db/issues/1125.
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '4MB';
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-               QUERY PLAN
-----------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select count(*) from simple r join simple s using (id);
- count
--------
-     0
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches
-----------------------+-------------------
-                      |
-(1 row)
-
--- parallel with parallel-oblivious hash join
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-               QUERY PLAN
-----------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select count(*) from simple r join simple s using (id);
- count
--------
-     0
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches
-----------------------+-------------------
-                      |
-(1 row)
-
--- parallel with parallel-aware hash join
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-               QUERY PLAN
-----------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select count(*) from simple r join simple s using (id);
- count
--------
-     0
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches
-----------------------+-------------------
-                      |
-(1 row)
-
--- The "good" case: batches required, but we plan the right number; we
--- plan for some number of batches, and we stick to that number, and
--- peak memory usage says within our work_mem budget
--- non-parallel
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-               QUERY PLAN
-----------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select count(*) from simple r join simple s using (id);
- count
--------
-     0
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches
-----------------------+-------------------
-                      |
-(1 row)
-
--- parallel with parallel-oblivious hash join
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-               QUERY PLAN
-----------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select count(*) from simple r join simple s using (id);
- count
--------
-     0
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches
-----------------------+-------------------
-                      |
-(1 row)
-
--- parallel with parallel-aware hash join
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '192kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-               QUERY PLAN
-----------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select count(*) from simple r join simple s using (id);
- count
--------
-     0
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches
-----------------------+-------------------
-                      |
-(1 row)
-
--- The "bad" case: during execution we need to increase number of
--- batches; in this case we plan for 1 batch, and increase at least a
--- couple of times, and peak memory usage stays within our work_mem
--- budget
--- non-parallel
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
-                      QUERY PLAN
-------------------------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on bigger_than_it_looks s
-(6 rows)
-
-select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
- count
--------
-     0
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
-$$);
- initially_multibatch | increased_batches
-----------------------+-------------------
-                      |
-(1 row)
-
--- parallel with parallel-oblivious hash join
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-                      QUERY PLAN
-------------------------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on bigger_than_it_looks s
-(6 rows)
-
-select count(*) from simple r join bigger_than_it_looks s using (id);
- count
--------
-     0
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-$$);
- initially_multibatch | increased_batches
-----------------------+-------------------
-                      |
-(1 row)
-
--- parallel with parallel-aware hash join
-set local max_parallel_workers_per_gather = 1;
-set local work_mem = '192kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-                      QUERY PLAN
-------------------------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on bigger_than_it_looks s
-(6 rows)
-
-select count(*) from simple r join bigger_than_it_looks s using (id);
- count
--------
-     0
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-$$);
- initially_multibatch | increased_batches
-----------------------+-------------------
-                      |
-(1 row)
-
--- The "ugly" case: increasing the number of batches during execution
--- doesn't help, so stop trying to fit in work_mem and hope for the
--- best; in this case we plan for 1 batch, increases just once and
--- then stop increasing because that didn't help at all, so we blow
--- right through the work_mem budget and hope for the best...
--- non-parallel
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-                    QUERY PLAN
---------------------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on extremely_skewed s
-(6 rows)
-
-select count(*) from simple r join extremely_skewed s using (id);
- count
--------
-     0
-(1 row)
-
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
- original | final
-----------+-------
-          |
-(1 row)
-
--- parallel with parallel-oblivious hash join
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-                    QUERY PLAN
---------------------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on extremely_skewed s
-(6 rows)
-
-select count(*) from simple r join extremely_skewed s using (id);
- count
--------
-     0
-(1 row)
-
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
- original | final
-----------+-------
-          |
-(1 row)
-
--- parallel with parallel-aware hash join
-set local max_parallel_workers_per_gather = 1;
-set local work_mem = '128kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-                    QUERY PLAN
---------------------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on extremely_skewed s
-(6 rows)
-
-select count(*) from simple r join extremely_skewed s using (id);
- count
--------
-     0
-(1 row)
-
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
- original | final
-----------+-------
-          |
-(1 row)
-
--- A couple of other hash join tests unrelated to work_mem management.
--- Check that EXPLAIN ANALYZE has data even if the leader doesn't participate
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local parallel_leader_participation = off;
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- original | final
-----------+-------
-          |
-(1 row)
-
--- Exercise rescans.  We'll turn off parallel_leader_participation so
--- that we can check that instrumentation comes back correctly.
-create table join_foo as select generate_series(1, 3) as id, 'xxxxx'::text as t;
---alter table join_foo set (parallel_workers = 0);
-create table join_bar as select generate_series(1, 10000) as id, 'xxxxx'::text as t;
---alter table join_bar set (parallel_workers = 2);
--- multi-batch with rescan, parallel-oblivious
-set enable_parallel_hash = off;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '64kB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-                                     QUERY PLAN
-------------------------------------------------------------------------------------
- Aggregate
-   ->  Nested Loop Left Join
-         Join Filter: ((join_foo.id < (b1.id + 1)) AND (join_foo.id > (b1.id - 1)))
-         ->  Seq Scan on join_foo
-         ->  Hash Join
-               Hash Cond: (b1.id = b2.id)
-               ->  Seq Scan on join_bar b1
-               ->  Hash
-                     ->  Seq Scan on join_bar b2
-(9 rows)
-
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
- count
--------
-     0
-(1 row)
-
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
- multibatch
-------------
-
-(1 row)
-
--- single-batch with rescan, parallel-oblivious
-set enable_parallel_hash = off;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '4MB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-                                     QUERY PLAN
-------------------------------------------------------------------------------------
- Aggregate
-   ->  Nested Loop Left Join
-         Join Filter: ((join_foo.id < (b1.id + 1)) AND (join_foo.id > (b1.id - 1)))
-         ->  Seq Scan on join_foo
-         ->  Hash Join
-               Hash Cond: (b1.id = b2.id)
-               ->  Seq Scan on join_bar b1
-               ->  Hash
-                     ->  Seq Scan on join_bar b2
-(9 rows)
-
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
- count
--------
-     0
-(1 row)
-
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
- multibatch
-------------
-
-(1 row)
-
--- multi-batch with rescan, parallel-aware
-set enable_parallel_hash = on;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '64kB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-                                     QUERY PLAN
-------------------------------------------------------------------------------------
- Aggregate
-   ->  Nested Loop Left Join
-         Join Filter: ((join_foo.id < (b1.id + 1)) AND (join_foo.id > (b1.id - 1)))
-         ->  Seq Scan on join_foo
-         ->  Hash Join
-               Hash Cond: (b1.id = b2.id)
-               ->  Seq Scan on join_bar b1
-               ->  Hash
-                     ->  Seq Scan on join_bar b2
-(9 rows)
-
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
- count
--------
-     0
-(1 row)
-
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
- multibatch
-------------
-
-(1 row)
-
--- single-batch with rescan, parallel-aware
-set enable_parallel_hash = on;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '4MB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-                                     QUERY PLAN
-------------------------------------------------------------------------------------
- Aggregate
-   ->  Nested Loop Left Join
-         Join Filter: ((join_foo.id < (b1.id + 1)) AND (join_foo.id > (b1.id - 1)))
-         ->  Seq Scan on join_foo
-         ->  Hash Join
-               Hash Cond: (b1.id = b2.id)
-               ->  Seq Scan on join_bar b1
-               ->  Hash
-                     ->  Seq Scan on join_bar b2
-(9 rows)
-
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
- count
--------
-     0
-(1 row)
-
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
- multibatch
-------------
-
-(1 row)
-
--- A full outer join where every record is matched.
--- non-parallel
-set local max_parallel_workers_per_gather = 0;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s using (id);
-               QUERY PLAN
-----------------------------------------
- Aggregate
-   ->  Hash Full Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select  count(*) from simple r full outer join simple s using (id);
- count
--------
-     0
-(1 row)
-
--- parallelism not possible with parallel-oblivious outer hash join
-set local max_parallel_workers_per_gather = 2;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s using (id);
-               QUERY PLAN
-----------------------------------------
- Aggregate
-   ->  Hash Full Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select  count(*) from simple r full outer join simple s using (id);
- count
--------
-     0
-(1 row)
-
--- An full outer join where every record is not matched.
--- non-parallel
-set local max_parallel_workers_per_gather = 0;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-               QUERY PLAN
-----------------------------------------
- Aggregate
-   ->  Hash Full Join
-         Hash Cond: (r.id = (0 - s.id))
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
- count
--------
-     0
-(1 row)
-
--- parallelism not possible with parallel-oblivious outer hash join
-set local max_parallel_workers_per_gather = 2;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-               QUERY PLAN
-----------------------------------------
- Aggregate
-   ->  Hash Full Join
-         Hash Cond: (r.id = (0 - s.id))
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
- count
--------
-     0
-(1 row)
-
--- exercise special code paths for huge tuples (note use of non-strict
--- expression and left join required to get the detoasted tuple into
--- the hash table)
--- parallel with parallel-aware hash join (hits ExecParallelHashLoadTuple and
--- sts_puttuple oversized tuple cases because it's multi-batch)
-set max_parallel_workers_per_gather = 2;
-set enable_parallel_hash = on;
-set work_mem = '128kB';
-explain (costs off)
-  select length(max(s.t))
-  from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
-                QUERY PLAN
--------------------------------------------
- Aggregate
-   ->  Hash Left Join
-         Hash Cond: (wide.id = wide_1.id)
-         ->  Seq Scan on wide
-         ->  Hash
-               ->  Seq Scan on wide wide_1
-(6 rows)
-
-select length(max(s.t))
-from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
- length
---------
-
-(1 row)
-
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select length(max(s.t))
-  from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
-$$);
- multibatch
-------------
-
-(1 row)
-
-rollback;
+-- Since the rest of join.sql relies on savepoint, yb_pg_join ends here.

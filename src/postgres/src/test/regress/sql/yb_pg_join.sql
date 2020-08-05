@@ -367,18 +367,15 @@ rollback;
 -- 
 -- Table b requires yb_pg_inherits which is not supported by YB.
 -- See: https://github.com/yugabyte/yugabyte-db/issues/1129
--- TODO: remove below line once yb_pg_inherits is supported.
-create temp table b (aa int, bb int);
-explain (costs off)
-select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
-  where bb < bb and bb is null;
+-- TODO: Add yb_pg_inherits once it is supported.
+-- explain (costs off)
+-- select aa, bb, unique1, unique1
+--   from tenk1 right join b on aa = unique1
+--   where bb < bb and bb is null;
 
-select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
-  where bb < bb and bb is null;
-
-drop table b;
+-- select aa, bb, unique1, unique1
+--   from tenk1 right join b on aa = unique1
+--   where bb < bb and bb is null;
 
 --
 -- regression test: check handling of empty-FROM subquery underneath outer join
@@ -680,6 +677,8 @@ create temp table a (i integer);
 create temp table b (x integer, y integer);
 
 select * from a left join b on i = x and i = y and x = i;
+
+-- TODO: remove these when closing issue #5313
 drop table a;
 drop table b;
 
@@ -764,9 +763,11 @@ from c left join
   on (c.a = ss.code)
 order by c.name;
 
+-- TODO: remove these when closing issue #5313
 drop table a;
 drop table b;
 drop table c;
+
 rollback;
 
 --
@@ -1427,6 +1428,12 @@ explain (costs off)
 select 1 from (select a.id FROM a left join b on a.b_id = b.id) q,
 			  lateral generate_series(1, q.id) gs(i) where q.id = gs.i;
 
+-- TODO: remove these when closing issue #5313
+drop table a;
+drop table b;
+drop table c;
+drop table d;
+
 rollback;
 
 create temp table parent (k int primary key, pd int);
@@ -1462,13 +1469,7 @@ select p.* from
   where p.k = 1 and p.k = 2;
 explain (costs off)
 select p.* from
-  (parent p left join child c on (p.k = c.k)) join parent x on p.k = x.k
-  where p.k = 1 and p.k = 2;
-
-  drop table a;
-  drop table b;
-  drop table c;
-  drop table d;
+  (parent p left join child c on (p.k = c.k)) join parent x on p.k = x.k;
 
 -- bug 5255: this is not optimizable by join removal
 begin;
@@ -1481,8 +1482,10 @@ INSERT INTO b VALUES (0, 0), (1, NULL);
 SELECT * FROM b LEFT JOIN a ON (b.a_id = a.id) WHERE (a.id IS NULL OR a.id > 0);
 SELECT b.* FROM b LEFT JOIN a ON (b.a_id = a.id) WHERE (a.id IS NULL OR a.id > 0);
 
+-- TODO: remove these when closing issue #5313
 drop table a;
 drop table b;
+
 
 rollback;
 
@@ -2133,379 +2136,4 @@ create table wide as select generate_series(1, 2) as id, rpad('', 320000, 'x') a
 
 -- non-parallel
 -- All SAVEPOINT from original join.sql removed. See https://github.com/YugaByte/yugabyte-db/issues/1125.
--- savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '4MB';
-explain (costs off)
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > o  select count(*) from simple r join simple s using (id);
-riginal as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
--- rollback to settings;
-
--- parallel with parallel-oblivious hash join
--- savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
--- rollback to settings;
-
--- parallel with parallel-aware hash join
--- savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
--- rollback to settings;
-
--- The "good" case: batches required, but we plan the right number; we
--- plan for some number of batches, and we stick to that number, and
--- peak memory usage says within our work_mem budget
-
--- non-parallel
--- savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
--- rollback to settings;
-
--- parallel with parallel-oblivious hash join
--- savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
---rollback to settings;
-
--- parallel with parallel-aware hash join
--- savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '192kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
--- rollback to settings;
-
--- The "bad" case: during execution we need to increase number of
--- batches; in this case we plan for 1 batch, and increase at least a
--- couple of times, and peak memory usage stays within our work_mem
--- budget
-
--- non-parallel
--- savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
-select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
-$$);
--- rollback to settings;
-
--- parallel with parallel-oblivious hash join
--- savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-select count(*) from simple r join bigger_than_it_looks s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-$$);
--- rollback to settings;
-
--- parallel with parallel-aware hash join
--- savepoint settings;
-set local max_parallel_workers_per_gather = 1;
-set local work_mem = '192kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-select count(*) from simple r join bigger_than_it_looks s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-$$);
--- rollback to settings;
-
--- The "ugly" case: increasing the number of batches during execution
--- doesn't help, so stop trying to fit in work_mem and hope for the
--- best; in this case we plan for 1 batch, increases just once and
--- then stop increasing because that didn't help at all, so we blow
--- right through the work_mem budget and hope for the best...
-
--- non-parallel
--- savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-select count(*) from simple r join extremely_skewed s using (id);
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
--- rollback to settings;
-
--- parallel with parallel-oblivious hash join
--- savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-select count(*) from simple r join extremely_skewed s using (id);
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
--- rollback to settings;
-
--- parallel with parallel-aware hash join
--- savepoint settings;
-set local max_parallel_workers_per_gather = 1;
-set local work_mem = '128kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-select count(*) from simple r join extremely_skewed s using (id);
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
--- rollback to settings;
-
--- A couple of other hash join tests unrelated to work_mem management.
-
--- Check that EXPLAIN ANALYZE has data even if the leader doesn't participate
--- savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local parallel_leader_participation = off;
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
--- rollback to settings;
-
--- Exercise rescans.  We'll turn off parallel_leader_participation so
--- that we can check that instrumentation comes back correctly.
-
-create table join_foo as select generate_series(1, 3) as id, 'xxxxx'::text as t;
-alter table join_foo set (parallel_workers = 0);
-create table join_bar as select generate_series(1, 10000) as id, 'xxxxx'::text as t;
-alter table join_bar set (parallel_workers = 2);
-
--- multi-batch with rescan, parallel-oblivious
--- savepoint settings;
-set enable_parallel_hash = off;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '64kB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
--- rollback to settings;
-
--- single-batch with rescan, parallel-oblivious
--- savepoint settings;
-set enable_parallel_hash = off;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '4MB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
--- rollback to settings;
-
--- multi-batch with rescan, parallel-aware
--- savepoint settings;
-set enable_parallel_hash = on;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '64kB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
--- rollback to settings;
-
--- single-batch with rescan, parallel-aware
--- savepoint settings;
-set enable_parallel_hash = on;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '4MB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
--- rollback to settings;
-
--- A full outer join where every record is matched.
-
--- non-parallel
--- savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s using (id);
-select  count(*) from simple r full outer join simple s using (id);
--- rollback to settings;
-
--- parallelism not possible with parallel-oblivious outer hash join
--- savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s using (id);
-select  count(*) from simple r full outer join simple s using (id);
--- rollback to settings;
-
--- An full outer join where every record is not matched.
-
--- non-parallel
--- savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
--- rollback to settings;
-
--- parallelism not possible with parallel-oblivious outer hash join
--- savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
--- rollback to settings;
-
--- exercise special code paths for huge tuples (note use of non-strict
--- expression and left join required to get the detoasted tuple into
--- the hash table)
-
--- parallel with parallel-aware hash join (hits ExecParallelHashLoadTuple and
--- sts_puttuple oversized tuple cases because it's multi-batch)
--- savepoint settings;
-set max_parallel_workers_per_gather = 2;
-set enable_parallel_hash = on;
-set work_mem = '128kB';
-explain (costs off)
-  select length(max(s.t))
-  from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
-select length(max(s.t))
-from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select length(max(s.t))
-  from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
-$$);
--- rollback to settings;
-
-rollback;
+-- Since the rest of join.sql relies on savepoint, yb_pg_join ends here. 
