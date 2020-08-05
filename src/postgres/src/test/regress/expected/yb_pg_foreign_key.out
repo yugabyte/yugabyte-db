@@ -1583,10 +1583,7 @@ CREATE TABLE fk_partitioned_fk_1 PARTITION OF fk_partitioned_fk FOR VALUES FROM 
 INSERT INTO fk_notpartitioned_pk VALUES (1);
 INSERT INTO fk_partitioned_fk VALUES (1);
 ALTER TABLE fk_notpartitioned_pk ALTER COLUMN a TYPE bigint;
-ERROR:  ALTER TABLE ALTER column not supported yet
-LINE 1: ALTER TABLE fk_notpartitioned_pk ALTER COLUMN a TYPE bigint;
-                                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ERROR:  This ALTER TABLE command is not yet supported.
 DELETE FROM fk_notpartitioned_pk WHERE a = 1;
 ERROR:  update or delete on table "fk_notpartitioned_pk" violates foreign key constraint "fk_partitioned_fk_a_fkey" on table "fk_partitioned_fk"
 DETAIL:  Key (a)=(1) is still referenced from table "fk_partitioned_fk".
