@@ -450,7 +450,7 @@ Default: `true`
 
 ##### --dump_certificate_entries
 
-Dump certificate entries.
+Can be used to dump certificate entries while logging handshake error.
 
 Default: `false`
 
