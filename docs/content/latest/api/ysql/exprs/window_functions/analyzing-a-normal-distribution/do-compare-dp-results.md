@@ -2,7 +2,7 @@
 title: do_compare_dp_results.sql
 linkTitle: do_compare_dp_results.sql
 headerTitle: do_compare_dp_results.sql
-description: Create the function that creates the histogram output.
+description: do_compare_dp_results.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: do-compare-dp-results
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `do_compare_dp_results.sql`.
-```postgresql
+```plpgsql
 with
   nt_results as (
     select

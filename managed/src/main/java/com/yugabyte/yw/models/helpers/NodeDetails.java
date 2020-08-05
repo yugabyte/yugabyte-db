@@ -166,8 +166,10 @@ public class NodeDetails {
       return new HashSet<>();
     }
     switch (state) {
+      case Adding:
+        return new HashSet<>(Arrays.asList(NodeActionType.REMOVE));
       case ToBeAdded:
-        return new HashSet<>(Arrays.asList(NodeActionType.DELETE));
+        return new HashSet<>(Arrays.asList(NodeActionType.DELETE, NodeActionType.REMOVE));
       case Live:
         return new HashSet<>(Arrays.asList(NodeActionType.STOP, NodeActionType.REMOVE));
       case Stopped:

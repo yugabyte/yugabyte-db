@@ -674,10 +674,18 @@ class YBBackup:
                                      'secret_key = ' + '\n' +
                                      'security_token = ' + '\n')
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
+                host_base = os.getenv('AWS_HOST_BASE')
+                if host_base:
+                    host_base_cfg = 'host_base = {0}\n' \
+                                    'host_bucket = {1}.{0}\n'.format(
+                                        host_base, self.args.backup_location)
+                else:
+                    host_base_cfg = ''
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
                     s3_cfg.write('[default]\n' +
                                  'access_key = ' + os.environ['AWS_ACCESS_KEY_ID'] + '\n' +
-                                 'secret_key = ' + os.environ['AWS_SECRET_ACCESS_KEY'] + '\n')
+                                 'secret_key = ' + os.environ['AWS_SECRET_ACCESS_KEY'] + '\n' +
+                                 host_base_cfg)
             else:
                 raise BackupException(
                     "Missing either AWS access key or secret key for S3 "

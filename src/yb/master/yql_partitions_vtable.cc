@@ -37,8 +37,7 @@ const std::string kReplicaAddresses = "replica_addresses";
 }
 
 YQLPartitionsVTable::YQLPartitionsVTable(const Master* const master)
-    : YQLVirtualTable(master::kSystemPartitionsTableName, master, CreateSchema()),
-      resolver_(new Resolver(master->messenger()->io_service())) {
+    : YQLVirtualTable(master::kSystemPartitionsTableName, master, CreateSchema()) {
 }
 
 Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
@@ -67,8 +66,9 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
   auto vtable = std::make_shared<QLRowBlock>(schema_);
   std::vector<scoped_refptr<TableInfo> > tables;
   catalog_manager->GetAllTables(&tables, true /* includeOnlyRunningTables */);
+  auto& resolver = master_->messenger()->resolver();
 
-  std::unordered_map<std::string, std::future<Result<InetAddress>>> dns_lookups;
+  std::unordered_map<std::string, std::shared_future<Result<IpAddress>>> dns_lookups;
   struct TabletData {
     scoped_refptr<NamespaceInfo> namespace_info;
     scoped_refptr<TableInfo> table;
@@ -106,7 +106,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
       for (const auto& replica : data.locations.replicas()) {
         auto host = DesiredHostPort(replica.ts_info(), CloudInfoPB()).host();
         if (dns_lookups.count(host) == 0) {
-          dns_lookups.emplace(host, ResolveDnsFuture(host, resolver_.get()));
+          dns_lookups.emplace(host, resolver.ResolveFuture(host));
         }
       }
     }
@@ -115,7 +115,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
   std::unordered_map<std::string, InetAddress> dns_results;
 
   for (auto& p : dns_lookups) {
-    dns_results.emplace(p.first, VERIFY_RESULT(p.second.get()));
+    dns_results.emplace(p.first, InetAddress(VERIFY_RESULT(p.second.get())));
   }
 
   for (const auto& data : tablets) {

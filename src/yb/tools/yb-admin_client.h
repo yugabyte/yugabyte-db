@@ -183,13 +183,15 @@ class ClusterAdminClient {
 
   CHECKED_STATUS DropRedisTable();
 
-  CHECKED_STATUS FlushTable(const client::YBTableName& table_name,
-                            int timeout_secs,
-                            bool is_compaction);
+  CHECKED_STATUS FlushTables(const std::vector<client::YBTableName>& table_names,
+                             bool add_indexes,
+                             int timeout_secs,
+                             bool is_compaction);
 
-  CHECKED_STATUS FlushTableById(const TableId &table_id,
-                                int timeout_secs,
-                                bool is_compaction);
+  CHECKED_STATUS FlushTablesById(const std::vector<TableId>& table_id,
+                                 bool add_indexes,
+                                 int timeout_secs,
+                                 bool is_compaction);
 
   CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos,
                                      int replication_factor,

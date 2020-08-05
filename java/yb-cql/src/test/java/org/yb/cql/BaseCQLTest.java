@@ -231,6 +231,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   @After
   public void tearDownAfter() throws Exception {
     final String logPrefix = "BaseCQLTest.tearDownAfter: ";
+    LOG.info(logPrefix + "End test: " + getCurrentTestMethodName());
 
     if (miniCluster == null) {
       LOG.info(logPrefix + "mini cluster has been destroyed");

@@ -58,7 +58,7 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
-#include "yb/util/ulimit_info.h"
+#include "yb/util/ulimit_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/net/net_util.h"
 
@@ -202,7 +202,8 @@ int TabletServerMain(int argc, char** argv) {
   LOG(INFO) << "Initializing tablet server...";
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Init());
   LOG(INFO) << "Starting tablet server...";
-  LOG(INFO) << "ulimit cur(max)..." << UlimitInfo::GetUlimitInfo();
+  UlimitUtil::InitUlimits();
+  LOG(INFO) << "ulimit cur(max)..." << UlimitUtil::GetUlimitInfo();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
   LOG(INFO) << "Tablet server successfully started.";
 

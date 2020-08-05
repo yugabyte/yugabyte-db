@@ -33,7 +33,7 @@ showAsideToc: true
 
 </ul>
 
-You can create a transactonal backup for a YCQL table (which includes its associated secondary indexes) using snapshots.
+You can create a transactional backup for a YCQL table (including associated secondary indexes) using snapshots.
 
 ## Step 1: Create a local cluster
 

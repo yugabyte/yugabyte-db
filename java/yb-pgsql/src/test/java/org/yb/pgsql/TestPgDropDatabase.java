@@ -190,6 +190,42 @@ public class TestPgDropDatabase extends BasePgSQLTest {
   }
 
   @Test
+  public void testDropDatabaseNotFoundOnMaster() throws Exception {
+    String dbname = "basic_db";
+
+    // Create database.
+    Connection connection0 = createConnection(0);
+    try (Statement statement0 = connection0.createStatement()) {
+      statement0.execute(String.format("CREATE DATABASE %s", dbname));
+    }
+
+    // Creating a few objects in the database.
+    Connection connection1 = createConnection(1, dbname);
+    CreateDatabaseObjects(connection1);
+    connection1.close();
+
+    // Delete the database on the master.  Should still have data stored at Postgres layer.
+    runProcess(TestUtils.findBinary("yb-admin"),
+               "--master_addresses",
+               masterAddresses,
+               "delete_namespace",
+               "ysql." + dbname);
+
+    // Drop the database. Should succeed, even though there's no work to handle on master.
+    try (Statement statement0 = connection0.createStatement()) {
+      statement0.execute(String.format("DROP DATABASE %s", dbname));
+    }
+
+    // Connect should fail as database should not exist.
+    try {
+      createConnection(2, dbname);
+      fail(String.format("Connecting to non-existing database '%s' did not fail", dbname));
+    } catch (Exception ex) {
+      LOG.info("Expected connection failure", ex);
+    }
+  }
+
+  @Test
   public void testRecreateDatabase() throws Exception {
     String dbname = "recreate_db";
 

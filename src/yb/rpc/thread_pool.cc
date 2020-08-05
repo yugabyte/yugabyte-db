@@ -266,10 +266,10 @@ ThreadPool::ThreadPool(ThreadPoolOptions options)
     : impl_(new Impl(std::move(options))) {
 }
 
-ThreadPool::ThreadPool(ThreadPool&& rhs)
+ThreadPool::ThreadPool(ThreadPool&& rhs) noexcept
     : impl_(std::move(rhs.impl_)) {}
 
-ThreadPool& ThreadPool::operator=(ThreadPool&& rhs) {
+ThreadPool& ThreadPool::operator=(ThreadPool&& rhs) noexcept {
   impl_->Shutdown();
   impl_ = std::move(rhs.impl_);
   return *this;

@@ -59,6 +59,9 @@ YBCStatus YBCPgClearBinds(YBCPgStatement handle);
 // Check if initdb has been already run.
 YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 
+// Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
+const bool YBCGetDisableTransparentCacheRefreshRetry();
+
 // Sets catalog_version to the local tserver's catalog version stored in shared
 // memory, or an error if the shared memory has not been initialized (e.g. in initdb).
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
@@ -139,6 +142,24 @@ void YBCPgInvalidateTableCache(
     const YBCPgOid database_oid,
     const YBCPgOid table_oid);
 YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
+
+// TABLEGROUP --------------------------------------------------------------------------------------
+// Create and drop tablegroup "database_name.tablegroup_name".
+
+// Create tablegroup.
+YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
+                                   YBCPgOid database_oid,
+                                   const char *tablegroup_name,
+                                   YBCPgOid tablegroup_oid,
+                                   YBCPgStatement *handle);
+YBCStatus YBCPgExecCreateTablegroup(YBCPgStatement handle);
+
+// Drop tablegroup.
+YBCStatus YBCPgNewDropTablegroup(const char *tablegroup_name,
+                                 YBCPgOid database_oid,
+                                 YBCPgOid tablegroup_oid,
+                                 YBCPgStatement *handle);
+YBCStatus YBCPgExecDropTablegroup(YBCPgStatement handle);
 
 // TABLE -------------------------------------------------------------------------------------------
 // Create and drop table "database_name.schema_name.table_name()".

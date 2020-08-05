@@ -76,6 +76,9 @@
 #include "utils/tqual.h"
 #include "utils/varlena.h"
 
+/*  YB includes. */
+#include "commands/ybccmds.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -90,6 +93,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	HeapTuple	tuple;
 	Oid			tablegroupoid;
 	Oid			ownerId;
+	Acl		   *grpacl = NULL;
 
 	if (!TablegroupCatalogExists)
 	{
@@ -139,7 +143,13 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	values[Anum_pg_tablegroup_grpname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->tablegroupname));
 	values[Anum_pg_tablegroup_grpowner - 1] = ObjectIdGetDatum(ownerId);
-	nulls[Anum_pg_tablegroup_grpacl - 1] = true;
+
+	/* Get default permissions and set up grpacl */
+	grpacl = get_user_default_acl(OBJECT_TABLEGROUP, ownerId, InvalidOid);
+	if (grpacl != NULL)
+		values[Anum_pg_tablegroup_grpacl - 1] = PointerGetDatum(grpacl);
+	else
+		nulls[Anum_pg_tablegroup_grpacl - 1] = true;
 
 	/* Generate new proposed grpoptions (text array) */
 	/* For now no grpoptions. Will be part of Interleaved/Copartitioned */
@@ -151,6 +161,11 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	tablegroupoid = CatalogTupleInsert(rel, tuple);
 
 	heap_freetuple(tuple);
+
+	if (IsYugaByteEnabled())
+	{
+		YBCCreateTablegroup(tablegroupoid, stmt->tablegroupname);
+	}
 
 	/* We keep the lock on pg_tablegroup until commit */
 	heap_close(rel, NoLock);
@@ -280,6 +295,11 @@ DropTableGroup(DropTableGroupStmt *stmt)
 	CatalogTupleDelete(rel, tuple);
 
 	heap_endscan(scandesc);
+
+	if (IsYugaByteEnabled())
+	{
+		YBCDropTablegroup(tablegroupoid, stmt->tablegroupname);
+	}
 
 	/* We keep the lock on pg_tablegroup until commit */
 	heap_close(rel, NoLock);

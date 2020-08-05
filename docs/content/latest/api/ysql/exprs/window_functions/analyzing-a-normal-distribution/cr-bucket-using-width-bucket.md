@@ -2,7 +2,7 @@
 title: cr_bucket_using_width_bucket.sql
 linkTitle: cr_bucket_using_width_bucket.sql
 headerTitle: cr_bucket_using_width_bucket.sql
-description: Create the bucket function using the width_bucket built-in.
+description: cr_bucket_using_width_bucket.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: cr-bucket-using-width-bucket
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `cr_bucket_using_width_bucket.sql`.
-```postgresql
+```plpgsql
 -- This approach subtracts a tiny value, epsilon, from the input value
 -- to change "width_bucket()"'s "closed-open" interval bucket semantics to
 -- the required "open-closed" interval bucket semantics.

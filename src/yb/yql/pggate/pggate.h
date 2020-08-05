@@ -95,6 +95,9 @@ class PgApiImpl {
   // Invalidate the sessions table cache.
   CHECKED_STATUS InvalidateCache();
 
+  // Get the gflag TEST_ysql_disable_transparent_cache_refresh_retry.
+  const bool GetDisableTransparentCacheRefreshRetry();
+
   Result<bool> IsInitDbDone();
 
   Result<uint64_t> GetSharedCatalogVersion();
@@ -181,6 +184,24 @@ class PgApiImpl {
 
   // Invalidate the cache entry corresponding to table_id from the PgSession table cache.
   void InvalidateTableCache(const PgObjectId& table_id);
+
+  //------------------------------------------------------------------------------------------------
+  // Create and drop tablegroup.
+
+  CHECKED_STATUS NewCreateTablegroup(const char *database_name,
+                                     const PgOid database_oid,
+                                     const char *tablegroup_name,
+                                     const PgOid tablegroup_oid,
+                                     PgStatement **handle);
+
+  CHECKED_STATUS ExecCreateTablegroup(PgStatement *handle);
+
+  CHECKED_STATUS NewDropTablegroup(const char *tablegroup_name,
+                                   const PgOid database_oid,
+                                   const PgOid tablegroup_oid,
+                                   PgStatement **handle);
+
+  CHECKED_STATUS ExecDropTablegroup(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Create, alter and drop table.

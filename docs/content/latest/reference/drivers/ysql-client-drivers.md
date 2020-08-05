@@ -1,8 +1,10 @@
 ---
-title: API client drivers for YSQL
-headerTitle: API client drivers for YSQL
-linkTitle: API client drivers for YSQL
-description: Lists the API client library drivers that you can use to build and access YSQL applications. 
+title: Client drivers for YSQL API
+headerTitle: Client drivers for YSQL API
+linkTitle: Client drivers for YSQL API
+description: Lists the client drivers that you can use to connect to and interact with the YSQL API.
+aliases:
+  - /latest/reference/drivers/postgresql-jdbc-driver/
 menu:
   latest:
     identifier: ysql-client-libraries
@@ -103,7 +105,7 @@ The [Go PostgreSQL driver package (`pq`)](https://pkg.go.dev/github.com/lib/pq?t
 
 For a tutorial on building a sample Go application with `pq`, see [Build a Go application](../../../quick-start/build-apps/go/ysql-pq).
 
-### Install the pq driver
+#### Install the pq driver
 
 To install the package locally, run the following [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
@@ -121,7 +123,7 @@ The [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) is the official Postg
 
 For a tutorial on building a sample Go application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql/) and click **YSQL-JDBC**.
 
-### Install the PostgreSQL JDBC Driver
+#### Install the PostgreSQL JDBC Driver
 
 To download binary JAR files, go to [PostgreSQL JDBC Driver – Downloads](https://jdbc.postgresql.org/download.html).  Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
 
@@ -189,7 +191,7 @@ $ pip3 install psycopg2
 
 For a tutorial on building a sample Ruby application with `pg`, see [Build a Ruby application](../../../quick-start/build-apps/ruby/ysql-pg).
 
-### Install the pg driver
+#### Install the pg driver
 
 To install `pg` driver, run the following [`gem install`](https://guides.rubygems.org/command-reference/#gem-install) command:
 

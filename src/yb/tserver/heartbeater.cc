@@ -406,7 +406,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
       // determine the master and attempt to heartbeat during in the
       // next heartbeat interval.
       proxy_.reset();
-      return STATUS(ServiceUnavailable, "master is no longer the leader");
+      return STATUS_FORMAT(ServiceUnavailable, "Master is no longer the leader: $0", resp.error());
     }
 
     // Check for a universe key registry for encryption.

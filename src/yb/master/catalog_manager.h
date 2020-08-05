@@ -356,6 +356,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                 RedisConfigGetResponsePB* resp,
                                 rpc::RpcContext* rpc);
 
+  CHECKED_STATUS CreateTablegroup(const CreateTablegroupRequestPB* req,
+                                  CreateTablegroupResponsePB* resp,
+                                  rpc::RpcContext* rpc);
+
+  CHECKED_STATUS DeleteTablegroup(const DeleteTablegroupRequestPB* req,
+                                  DeleteTablegroupResponsePB* resp,
+                                  rpc::RpcContext* rpc);
+
   // Create a new User-Defined Type with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,
@@ -672,6 +680,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Time since this peer became master leader. Caller should verify that it is leader before.
   MonoDelta TimeSinceElectedLeader();
+
+  Result<std::vector<TableDescription>> CollectTables(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, bool add_indexes);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.

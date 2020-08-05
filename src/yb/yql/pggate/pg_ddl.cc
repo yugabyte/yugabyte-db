@@ -104,6 +104,47 @@ Status PgAlterDatabase::RenameDatabase(const char *newname) {
 }
 
 //--------------------------------------------------------------------------------------------------
+// PgCreateTablegroup / PgDropTablegroup
+//--------------------------------------------------------------------------------------------------
+
+PgCreateTablegroup::PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
+                                       const char *database_name,
+                                       const PgOid database_oid,
+                                       const char *tablegroup_name,
+                                       const PgOid tablegroup_oid)
+    : PgDdl(pg_session),
+      database_name_(database_name),
+      database_oid_(database_oid),
+      tablegroup_name_(tablegroup_name),
+      tablegroup_oid_(tablegroup_oid) {
+}
+
+PgCreateTablegroup::~PgCreateTablegroup() {
+}
+
+Status PgCreateTablegroup::Exec() {
+  return pg_session_->CreateTablegroup(database_name_, database_oid_,
+                                       tablegroup_name_, tablegroup_oid_);
+}
+
+PgDropTablegroup::PgDropTablegroup(PgSession::ScopedRefPtr pg_session,
+                                   const char *tablegroup_name,
+                                   const PgOid database_oid,
+                                   const PgOid tablegroup_oid)
+    : PgDdl(pg_session),
+      tablegroup_name_(tablegroup_name),
+      database_oid_(database_oid),
+      tablegroup_oid_(tablegroup_oid) {
+}
+
+PgDropTablegroup::~PgDropTablegroup() {
+}
+
+Status PgDropTablegroup::Exec() {
+  return pg_session_->DropTablegroup(tablegroup_name_, database_oid_, tablegroup_oid_);
+}
+
+//--------------------------------------------------------------------------------------------------
 // PgCreateTable
 //--------------------------------------------------------------------------------------------------
 
@@ -450,10 +491,10 @@ Status PgDropIndex::Exec() {
   client::YBTableName indexed_table_name;
   Status s = pg_session_->DropIndex(table_id_, &indexed_table_name);
   DSCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
-  PgObjectId index_table_id(indexed_table_name.table_id());
+  PgObjectId indexed_table_id(indexed_table_name.table_id());
 
   pg_session_->InvalidateTableCache(table_id_);
-  pg_session_->InvalidateTableCache(index_table_id);
+  pg_session_->InvalidateTableCache(indexed_table_id);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     return Status::OK();
   }

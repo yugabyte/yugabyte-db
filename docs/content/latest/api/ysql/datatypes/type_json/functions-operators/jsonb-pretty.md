@@ -27,7 +27,7 @@ Because, in the main, JSON is mechanically generated and mechanically consumed, 
 
 The pretty format makes conventional, and liberal, use of newlines and spaces, thus:
 
-```postgresql
+```plpgsql
 do $body$
 declare
   orig_text constant text := '

@@ -81,6 +81,10 @@ using yb::master::CreateTableRequestPB;
 using yb::master::CreateTableResponsePB;
 using yb::master::DeleteTableRequestPB;
 using yb::master::DeleteTableResponsePB;
+using yb::master::CreateTablegroupRequestPB;
+using yb::master::CreateTablegroupResponsePB;
+using yb::master::DeleteTablegroupRequestPB;
+using yb::master::DeleteTablegroupResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::GetTableSchemaRequestPB;
@@ -385,7 +389,6 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
       "Could not locate the leader master");
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
-  c->data_->dns_resolver_.reset(new DnsResolver());
 
   // Init local host names used for locality decisions.
   RETURN_NOT_OK_PREPEND(c->data_->InitLocalHostNames(),
@@ -513,26 +516,28 @@ Status YBClient::DeleteIndexTable(const string& table_id,
                             wait);
 }
 
-Status YBClient::FlushTable(const std::string& table_id,
-                            int timeout_secs,
-                            bool is_compaction) {
+Status YBClient::FlushTables(const std::vector<TableId>& table_ids,
+                             bool add_indexes,
+                             int timeout_secs,
+                             bool is_compaction) {
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(timeout_secs);
-  return data_->FlushTable(this,
-                           YBTableName(),
-                           table_id,
-                           deadline,
-                           is_compaction);
+  return data_->FlushTables(this,
+                            table_ids,
+                            add_indexes,
+                            deadline,
+                            is_compaction);
 }
 
-Status YBClient::FlushTable(const YBTableName& table_name,
-                            int timeout_secs,
-                            bool is_compaction) {
+Status YBClient::FlushTables(const std::vector<YBTableName>& table_names,
+                             bool add_indexes,
+                             int timeout_secs,
+                             bool is_compaction) {
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(timeout_secs);
-  return data_->FlushTable(this,
-                           table_name,
-                           "" /* table_id */,
-                           deadline,
-                           is_compaction);
+  return data_->FlushTables(this,
+                            table_names,
+                            add_indexes,
+                            deadline,
+                            is_compaction);
 }
 
 std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {
@@ -855,6 +860,36 @@ Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
     }
   }
   return false;
+}
+
+Status YBClient::CreateTablegroup(const std::string& namespace_name,
+                                  const std::string& namespace_id,
+                                  const std::string& tablegroup_name,
+                                  const std::string& tablegroup_id) {
+  CreateTablegroupRequestPB req;
+  CreateTablegroupResponsePB resp;
+  req.set_name(tablegroup_name);
+  req.set_id(tablegroup_id);
+  req.set_namespace_id(namespace_id);
+  req.set_namespace_name(namespace_name);
+
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateTablegroup);
+
+  return Status::OK();
+}
+
+Status YBClient::DeleteTablegroup(const std::string& tablegroup_name,
+                                  const std::string& namespace_id,
+                                  const std::string& tablegroup_id) {
+  DeleteTablegroupRequestPB req;
+  DeleteTablegroupResponsePB resp;
+  req.set_name(tablegroup_name);
+  req.set_id(tablegroup_id);
+  req.set_namespace_id(namespace_id);
+
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteTablegroup);
+
+  return Status::OK();
 }
 
 Status YBClient::GetUDType(const std::string& namespace_name,

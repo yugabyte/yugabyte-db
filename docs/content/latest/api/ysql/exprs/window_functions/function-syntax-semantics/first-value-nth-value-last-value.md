@@ -2,7 +2,7 @@
 title: first_value(), nth_value(), last_value()
 linkTitle: first_value(), nth_value(), last_value()
 headerTitle: first_value(), nth_value(), last_value()
-description: The SQL window functions first_value(), nth_value(), last_value()
+description: Describes the functionality of the YSQL window functions first_value(), nth_value(), and last_value().
 menu:
   latest:
     identifier: first-value-nth-value-last-value
@@ -56,7 +56,7 @@ If you haven't yet installed the tables that the code examples use, then go to t
 This example uses table _"t1"_. Notice that it has been contrived so that the last _"v"_ (ordered by _"k"_) for each value of _"class"_ is `NULL`. 
 
 Use the technique shown in the section [Using `nth_value()` and `last_value()` to return the whole row](../#using-nth-value-and-last-value-to-return-the-whole-row) so that each of the three window functions produces all of the fields in each row:
-```postgresql
+```plpgsql
 drop type if exists rt cascade;
 create type rt as (class int, k int, v int);
 
@@ -107,7 +107,7 @@ Here is the result. To make it easier to see the pattern, a break has been manua
      5 | 25 | (5,21,21) | (5,23,23) | (5,25,)
 ```
 Notice that the `::text` typecast of a _"row"_ type value renders `NULL` simply as an absence. This explains why you see, for example, _"(1,5,)"_ for each value produced by `last_value()` in the [_window_](../../sql-syntax-semantics/#the-window-definition-rule) where _"k=1"_. This basic example certainly demonstrates the meaning of _"first"_, _"Nth"_ (for _"N=3"_), and _"last"_. But it isn't very useful because, just as these names suggest, the output is the same for each row in a particular [_window_](../../sql-syntax-semantics/#the-window-definition-rule). The following query adds a conventional `GROUP BY` clause. It also extracts the interesting fields from the _"row"_ type value that each window function produces as individual values.
-```postgresql
+```plpgsql
 drop type if exists rt cascade;
 create type rt as (class int, k int, v int);
 \pset null '??'

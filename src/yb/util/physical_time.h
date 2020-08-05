@@ -21,6 +21,7 @@
 namespace yb {
 
 using MicrosTime = uint64_t;
+using MillisTime = uint64_t;
 
 struct PhysicalTime {
   MicrosTime time_point;

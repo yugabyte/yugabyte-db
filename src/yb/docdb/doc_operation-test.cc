@@ -23,6 +23,7 @@
 #include "yb/common/transaction-test-util.h"
 
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/doc_rowwise_iterator.h"

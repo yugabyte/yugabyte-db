@@ -2,7 +2,7 @@
 title: table t2
 linkTitle: table t2
 headerTitle: Create and populate table t2
-description: Creates and populate table t2 with data that allows the demonstration of the SQL window functions rank(), dense_rank(), percent_rank(), cume_dist(), and ntile().
+description: Creates and populate table t2 with data that allows the demonstration of the YSQL's window functions.
 menu:
   latest:
     identifier: table-t2
@@ -32,7 +32,7 @@ For maximum pedagogic effect, it uses the same technique that [table t1](../tabl
 
 This `ysqlsh` script creates and populates able _"t2"_. Save it as `t2.sql`.
 
-```postgresql
+```plpgsql
 -- Suppress the spurious warning that is raised
 -- when the to-be-deleted table doesn't yet exist.
 set client_min_messages = warning;
@@ -88,7 +88,7 @@ order by r;
 ```
 Now inspect its contents:
 
-```postgresql
+```plpgsql
 -- Notice the absence of "ORDER BY".
 select class, k, score
 from t2;

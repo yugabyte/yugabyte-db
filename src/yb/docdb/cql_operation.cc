@@ -22,6 +22,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/primitive_value_util.h"

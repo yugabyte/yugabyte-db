@@ -200,6 +200,10 @@ Status PgApiImpl::InvalidateCache() {
   return Status::OK();
 }
 
+const bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
+  return FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry;
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgMemctx *PgApiImpl::CreateMemctx() {
@@ -398,6 +402,48 @@ Result<PgTableDesc::ScopedRefPtr> PgApiImpl::LoadTable(const PgObjectId& table_i
 void PgApiImpl::InvalidateTableCache(const PgObjectId& table_id) {
   pg_session_->InvalidateTableCache(table_id);
 }
+
+//--------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::NewCreateTablegroup(const char *database_name,
+                                      const PgOid database_oid,
+                                      const char *tablegroup_name,
+                                      const PgOid tablegroup_oid,
+                                      PgStatement **handle) {
+  auto stmt = make_scoped_refptr<PgCreateTablegroup>(pg_session_, database_name, database_oid,
+                                                     tablegroup_name, tablegroup_oid);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecCreateTablegroup(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLEGROUP)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  return down_cast<PgCreateTablegroup*>(handle)->Exec();
+}
+
+Status PgApiImpl::NewDropTablegroup(const char *tablegroup_name,
+                                    const PgOid database_oid,
+                                    const PgOid tablegroup_oid,
+                                    PgStatement **handle) {
+  auto stmt = make_scoped_refptr<PgDropTablegroup>(pg_session_, tablegroup_name,
+                                                   database_oid, tablegroup_oid);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
+  return Status::OK();
+}
+
+
+Status PgApiImpl::ExecDropTablegroup(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_TABLEGROUP)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgDropTablegroup*>(handle)->Exec();
+}
+
 
 //--------------------------------------------------------------------------------------------------
 
