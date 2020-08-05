@@ -747,7 +747,7 @@ alter table test_alter_column_type alter column h type varbit;
 alter table test_alter_column_type alter column h type varbit(5); --fails
 ERROR:  This ALTER TABLE command is not yet supported.
 insert into test_alter_column_type values ('abcde', '-', '-', '-', B'10101', 0, '-', B'0');
-select * from test_alter_column_type;
+select * from test_alter_column_type order by a;
    a   | b | c | d |   e   | f | g | h
 -------+---+---+---+-------+---+---+---
  a     | b | c | d | 1     | 1 | g | 1

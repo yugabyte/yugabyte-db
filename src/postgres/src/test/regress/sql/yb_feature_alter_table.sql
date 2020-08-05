@@ -426,7 +426,7 @@ alter table test_alter_column_type alter column h type varbit(5); --fails
 
 insert into test_alter_column_type values ('abcde', '-', '-', '-', B'10101', 0, '-', B'0');
 
-select * from test_alter_column_type;
+select * from test_alter_column_type order by a;
 \d test_alter_column_type
 
 alter table test_alter_column_type alter column a type varchar;
