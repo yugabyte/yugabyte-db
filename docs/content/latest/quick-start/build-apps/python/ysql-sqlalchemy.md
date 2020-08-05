@@ -22,6 +22,12 @@ showAsideToc: true
     </a>
   </li>
   <li >
+    <a href="/latest/quick-start/build-apps/python/ysql-aiopg" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - aiopg
+    </a>
+  </li>
+  <li >
     <a href="/latest/quick-start/build-apps/python/ysql-sqlalchemy" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - SQL Alchemy
