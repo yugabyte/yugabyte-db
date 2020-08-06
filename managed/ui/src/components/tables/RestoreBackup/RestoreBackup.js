@@ -28,7 +28,8 @@ export default class RestoreBackup extends Component {
       const payload = {
         storageConfigUUID: values.storageConfigUUID,
         storageLocation:  values.storageLocation,
-        actionType: 'RESTORE',   
+        actionType: 'RESTORE',
+        parallelism: values.parallelism
       };
       if (values.restoreToTableName !== initialValues.restoreToTableName) {
         payload.keyspace = values.restoreToKeyspace;
@@ -36,7 +37,7 @@ export default class RestoreBackup extends Component {
       } else if (values.restoreToKeyspace !== initialValues.restoreToKeyspace) {
         payload.keyspace = values.restoreToKeyspace;
       }
-      
+
       onHide();
       restoreTableBackup(restoreToUniverseUUID, payload);
       browserHistory.push('/universes/' + restoreToUniverseUUID + "/backups");
@@ -54,14 +55,18 @@ export default class RestoreBackup extends Component {
     let universeOptions = [];
     const hasBackupInfo = this.hasBackupInfo();
     const validationSchema = Yup.object().shape({
-      restoreToUniverseUUID: Yup.string()
-      .required('Restore To Universe is Required'),
+      restoreToUniverseUUID: Yup.string().required('Restore To Universe is Required'),
       restoreToKeyspace: Yup.string().nullable(),
       restoreToTableName: Yup.string().nullable(),
       storageConfigUUID: Yup.string()
       .required('Storage Config is Required'),
       storageLocation: Yup.string()
-      .required('Storage Location is Required')
+      .required('Storage Location is Required'),
+      parallelism: Yup.number('Parallelism must be a number')
+        .min(1)
+        .max(100)
+        .integer('Value must be a whole number')
+        .required('Number of threads is required')
     });
 
     if (hasBackupInfo) {
@@ -127,12 +132,16 @@ export default class RestoreBackup extends Component {
           <Field name="restoreToUniverseUUID" component={YBFormSelect}
                 label={"Universe"} options={universeOptions} />
           <Field name="restoreToKeyspace"
-                component={YBFormInput}                
+                component={YBFormInput}
                 label={"Keyspace"} />
           <Field name="restoreToTableName"
                 component={YBFormInput}
                 disabled={isMultiTableBackup}
                 label={"Table"}/>
+          <Field
+              name="parallelism"
+              component={YBFormInput}
+              label={"Parallel Threads"}/>
         </YBModalForm>
       </div>
     );

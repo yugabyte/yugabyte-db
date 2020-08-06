@@ -607,6 +607,7 @@ public class TablesControllerTest extends WithApplication {
         "/multi_table_backup";
     ObjectNode bodyJson = Json.newObject();
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
+    bodyJson.put("actionType", "CREATE");
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
 
     ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);;
@@ -636,6 +637,7 @@ public class TablesControllerTest extends WithApplication {
         "/multi_table_backup";
     ObjectNode bodyJson = Json.newObject();
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
+    bodyJson.put("actionType", "CREATE");
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "5 * * * *");
 
@@ -660,6 +662,7 @@ public class TablesControllerTest extends WithApplication {
         "/multi_table_backup";
     ObjectNode bodyJson = Json.newObject();
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
+    bodyJson.put("actionType", "CREATE");
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("schedulingFrequency", "6000");
 

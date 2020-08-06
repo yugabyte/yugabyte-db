@@ -185,10 +185,13 @@ import static org.mockito.Mockito.when;
 
     cmd.add(testUniverse.getMasterAddresses());
 
+    cmd.add("--parallelism");
+    cmd.add("8");
     cmd.add("--table");
     cmd.add(backupTableParams.tableName);
     cmd.add("--keyspace");
     cmd.add(backupTableParams.keyspace);
+
     if (testProvider.code.equals("kubernetes")) {
       cmd.add("--k8s_config");
       cmd.add(Json.stringify(Json.toJson(namespaceToConfig)));
