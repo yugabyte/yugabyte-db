@@ -107,7 +107,7 @@ class ScheduleDisplayItem extends Component {
             <DescriptionItem title={"Schedule"}>
               <span>{schedule.frequency || schedule.cronExpression}</span>
             </DescriptionItem>
-            <DescriptionItem title={"Server-Side Encryption"}>
+            <DescriptionItem title={"Encrypt Backup"}>
               <span>{schedule.taskParams.sse ? "On" : "Off"}</span>
             </DescriptionItem>
             <DescriptionItem title={"Keyspace"}>

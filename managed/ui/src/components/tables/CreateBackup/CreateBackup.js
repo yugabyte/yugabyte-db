@@ -332,16 +332,14 @@ export default class CreateBackup extends Component {
               {s3StorageSelected && <Field
                 name="enableSSE"
                 component={YBFormToggle}
-                label={"Enable Server-Side Encryption"}
+                label={"Encrypt Backup"}
               />
               }
-              {
-                <Field
-                  name="parallelism"
-                  component={YBFormInput}
-                  label={"Parallel Threads"}
-                />
-              }
+              <Field
+                name="parallelism"
+                component={YBFormInput}
+                label={"Parallel Threads"}
+              />
             </Fragment>);
           }}
         />
