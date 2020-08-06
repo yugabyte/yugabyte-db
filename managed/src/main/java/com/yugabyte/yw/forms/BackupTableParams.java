@@ -46,4 +46,7 @@ public class BackupTableParams extends TableManagerParams {
 
   // Should the backup be transactional across tables
   public boolean transactionalBackup = false;
+
+  // The number of concurrent commands to run on nodes over SSH
+  public int parallelism = 8;
 }

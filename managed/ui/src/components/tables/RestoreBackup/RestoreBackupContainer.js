@@ -22,7 +22,8 @@ function mapStateToProps(state, ownProps) {
     restoreToTableName: '',
     restoreToKeyspace: '',
     storageConfigUUID: '',
-    storageLocation: ''
+    storageLocation: '',
+    parallelism: 8
   };
   const { customer: { configs }, universe: { currentUniverse, universeList} } = state;
   const storageConfigs = configs.data.filter( (config) => config.type === "STORAGE");
