@@ -87,10 +87,11 @@ using master::SysSnapshotEntryPB;
 
 PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 
-Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored) {
+Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored, bool show_deleted) {
   RpcController rpc;
   rpc.set_timeout(timeout_);
   ListSnapshotsRequestPB req;
+  req.set_list_deleted_snapshots(show_deleted);
   ListSnapshotsResponsePB resp;
   RETURN_NOT_OK(master_backup_proxy_->ListSnapshots(req, &resp, &rpc));
 
