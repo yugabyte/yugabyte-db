@@ -38,12 +38,12 @@ init_guc(void)
 		.guc_restart = true
 	};
 	conf[i++] = (GucVariable) { 
-		.guc_name = "pg_stat_monitor.pgsm_track",
-		.guc_desc = "Selects which statements are tracked by pg_stat_monitor.",
-		.guc_default = 0,
+		.guc_name = "pg_stat_monitor.pgsm_enable",
+		.guc_desc = "Enable/Disable stistics collector.",
+		.guc_default = 1,
 		.guc_min = 0,
 		.guc_max = 0,
-		.guc_restart = false
+		.guc_restart = true
 	};
 	conf[i++] = (GucVariable) { 
 		.guc_name = "pg_stat_monitor.pgsm_track_utility",
@@ -138,7 +138,7 @@ init_guc(void)
 							NULL);
 
 	DefineCustomIntVariable("pg_stat_monitor.pgsm_query_max_len",
-							"Sets the maximum length of query",
+							"Sets the maximum length of query.",
 							NULL,
 							&PGSM_QUERY_MAX_LEN,
 							1024,
@@ -150,12 +150,11 @@ init_guc(void)
 							NULL,
 							NULL);
 
-	DefineCustomEnumVariable("pg_stat_monitor.pgsm_track",
-							 "Selects which statements are tracked by pg_stat_monitor.",
+	DefineCustomBoolVariable("pg_stat_monitor.pgsm_enable",
+							 "Enable/Disable the statis collector.",
 							 NULL,
-							 &PGSM_TRACK,
-							 PGSM_TRACK_TOP,
-							 track_options,
+							 (bool*)&PGSM_ENABLED,
+							 true,
 							 PGC_SUSET,
 							 0,
 							 NULL,
@@ -167,7 +166,7 @@ init_guc(void)
 							 NULL,
 							 (bool*)&PGSM_TRACK_UTILITY,
 							 true,
-							 PGC_SUSET,
+							 PGC_USERSET,
 							 0,
 							 NULL,
 							 NULL,
@@ -178,7 +177,7 @@ init_guc(void)
 							 NULL,
 							 (bool*)&PGSM_NORMALIZED_QUERY,
 							 true,
-							 PGC_SUSET,
+							 PGC_USERSET,
 							 0,
 							 NULL,
 							 NULL,

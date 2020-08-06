@@ -481,7 +481,7 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * counting of optimizable statements that are directly contained in
 	 * utility statements.
 	 */
-	if (PGSS_ENABLED() && queryDesc->plannedstmt->queryId != UINT64CONST(0))
+	if (PGSM_ENABLED && queryDesc->plannedstmt->queryId != UINT64CONST(0))
 	{
 		/*
 		 * Set up to track total elapsed time in ExecutorRun.  Make sure the
@@ -556,7 +556,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 	float   stime;
 	uint64	queryId = queryDesc->plannedstmt->queryId;
 
-	if (queryId != UINT64CONST(0) && queryDesc->totaltime && PGSS_ENABLED())
+	if (queryId != UINT64CONST(0) && queryDesc->totaltime && PGSM_ENABLED)
 	{
 		/*
 		 * Make sure stats accumulation is done.  (Note: it's okay if several

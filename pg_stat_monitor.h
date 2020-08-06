@@ -325,32 +325,13 @@ typedef struct pgssJumbleState
 	int			highest_extern_param_id;
 } pgssJumbleState;
 
-typedef enum
-{
-	PGSM_TRACK_NONE,			/* track no statements */
-	PGSM_TRACK_TOP,				/* only top level statements */
-	PGSM_TRACK_ALL				/* all statements, including nested ones */
-} PGSSTRACKlEVEL;
-
-static const struct config_enum_entry track_options[] =
-{
-	{"none", PGSM_TRACK_NONE, false},
-	{"top", PGSM_TRACK_TOP, false},
-	{"all", PGSM_TRACK_ALL, false},
-	{NULL, 0, false}
-};
-
-#define PGSS_ENABLED() \
-	(PGSM_TRACK == PGSM_TRACK_ALL || \
-	(PGSM_TRACK == PGSM_TRACK_TOP && nested_level == 0))
-
 /* guc.c */
 void init_guc(void);
 
 /*---- GUC variables ----*/
 #define PGSM_MAX conf[0].guc_variable
 #define PGSM_QUERY_MAX_LEN conf[1].guc_variable
-#define PGSM_TRACK conf[2].guc_variable
+#define PGSM_ENABLED conf[2].guc_variable
 #define PGSM_TRACK_UTILITY conf[3].guc_variable
 #define PGSM_NORMALIZED_QUERY conf[4].guc_variable
 #define PGSM_MAX_BUCKETS conf[5].guc_variable
