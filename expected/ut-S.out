@@ -377,12 +377,12 @@ error hint:
 
 -- No. S-1-5-2
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE p1.c1 = 1;
-        QUERY PLAN        
---------------------------
+         QUERY PLAN          
+-----------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (c1 = 1)
-   ->  Seq Scan on p1c1
+   ->  Seq Scan on p1c1 p1_2
          Filter: (c1 = 1)
 (5 rows)
 
@@ -395,12 +395,12 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN               
----------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Append
-   ->  Index Scan using p1_i on p1
+   ->  Index Scan using p1_i on p1 p1_1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_i on p1c1
+   ->  Index Scan using p1c1_i on p1c1 p1_2
          Index Cond: (c1 = 1)
 (5 rows)
 
@@ -3761,9 +3761,8 @@ error hint:
  c4     | text    |           |          | 
 Indexes:
     "ti1_pkey" PRIMARY KEY, btree (c1)
-    "ti1_c2_key" UNIQUE CONSTRAINT, btree (c2)
-    "ti1_uniq" UNIQUE, btree (c1)
     "ti1_btree" btree (c1)
+    "ti1_c2_key" UNIQUE CONSTRAINT, btree (c2)
     "ti1_expr" btree ((c1 < 100))
     "ti1_gin" gin (c1)
     "ti1_gist" gist (c1)
@@ -3775,6 +3774,7 @@ Indexes:
     "ti1_multi" btree (c1, c2, c3, c4)
     "ti1_pred" btree (lower(c4))
     "ti1_ts" gin (to_tsvector('english'::regconfig, c4))
+    "ti1_uniq" UNIQUE, btree (c1)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
                                                                QUERY PLAN                                                                
@@ -4979,12 +4979,12 @@ error hint:
 
 -- No. S-3-8-2
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
-        QUERY PLAN        
---------------------------
+         QUERY PLAN          
+-----------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (c1 = 1)
-   ->  Seq Scan on p1c1
+   ->  Seq Scan on p1c1 p1_2
          Filter: (c1 = 1)
 (5 rows)
 
@@ -4997,12 +4997,12 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN               
----------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Append
-   ->  Index Scan using p1_i on p1
+   ->  Index Scan using p1_i on p1 p1_1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_i on p1c1
+   ->  Index Scan using p1c1_i on p1c1 p1_2
          Index Cond: (c1 = 1)
 (5 rows)
 
@@ -5050,14 +5050,14 @@ error hint:
 
 -- No. S-3-8-4
 EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
-        QUERY PLAN        
---------------------------
+         QUERY PLAN          
+-----------------------------
  Update on p1
    Update on p1
-   Update on p1c1
+   Update on p1c1 p1_1
    ->  Seq Scan on p1
          Filter: (c1 = 1)
-   ->  Seq Scan on p1c1
+   ->  Seq Scan on p1c1 p1_1
          Filter: (c1 = 1)
 (7 rows)
 
@@ -5070,14 +5070,14 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN               
----------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Update on p1
    Update on p1
-   Update on p1c1
+   Update on p1c1 p1_1
    ->  Index Scan using p1_i on p1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_i on p1c1
+   ->  Index Scan using p1c1_i on p1c1 p1_1
          Index Cond: (c1 = 1)
 (7 rows)
 
@@ -5094,14 +5094,14 @@ not used hint:
 duplication hint:
 error hint:
 
-                QUERY PLAN                
-------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Update on p1
    Update on p1
-   Update on p1c1
+   Update on p1c1 p1_1
    ->  Index Scan using p1_pkey on p1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_pkey on p1c1
+   ->  Index Scan using p1c1_pkey on p1c1 p1_1
          Index Cond: (c1 = 1)
 (7 rows)
 
@@ -5110,12 +5110,12 @@ error hint:
 ----
 -- No. S-3-9-1
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
-        QUERY PLAN        
---------------------------
+         QUERY PLAN          
+-----------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (c1 = 1)
-   ->  Seq Scan on p1c1
+   ->  Seq Scan on p1c1 p1_2
          Filter: (c1 = 1)
 (5 rows)
 
@@ -5128,25 +5128,25 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN               
----------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Append
-   ->  Index Scan using p1_i on p1
+   ->  Index Scan using p1_i on p1 p1_1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_i on p1c1
+   ->  Index Scan using p1c1_i on p1c1 p1_2
          Index Cond: (c1 = 1)
 (5 rows)
 
 -- No. S-3-9-2
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
-        QUERY PLAN        
---------------------------
+          QUERY PLAN           
+-------------------------------
  Append
-   ->  Seq Scan on p2
+   ->  Seq Scan on p2 p2_1
          Filter: (c1 = 1)
-   ->  Seq Scan on p2c1
+   ->  Seq Scan on p2c1 p2_2
          Filter: (c1 = 1)
-   ->  Seq Scan on p2c1c1
+   ->  Seq Scan on p2c1c1 p2_3
          Filter: (c1 = 1)
 (7 rows)
 
@@ -5159,14 +5159,14 @@ not used hint:
 duplication hint:
 error hint:
 
-                QUERY PLAN                 
--------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Append
-   ->  Index Scan using p2_i on p2
+   ->  Index Scan using p2_i on p2 p2_1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p2c1_i on p2c1
+   ->  Index Scan using p2c1_i on p2c1 p2_2
          Index Cond: (c1 = 1)
-   ->  Index Scan using p2c1c1_i on p2c1c1
+   ->  Index Scan using p2c1c1_i on p2c1c1 p2_3
          Index Cond: (c1 = 1)
 (7 rows)
 
@@ -5174,14 +5174,14 @@ error hint:
 ---- No. S-3-10 inheritance table specified table
 ----
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
-        QUERY PLAN        
---------------------------
+          QUERY PLAN           
+-------------------------------
  Append
-   ->  Seq Scan on p2
+   ->  Seq Scan on p2 p2_1
          Filter: (c1 = 1)
-   ->  Seq Scan on p2c1
+   ->  Seq Scan on p2c1 p2_2
          Filter: (c1 = 1)
-   ->  Seq Scan on p2c1c1
+   ->  Seq Scan on p2c1c1 p2_3
          Filter: (c1 = 1)
 (7 rows)
 
@@ -5195,14 +5195,14 @@ not used hint:
 duplication hint:
 error hint:
 
-                QUERY PLAN                 
--------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Append
-   ->  Index Scan using p2_i on p2
+   ->  Index Scan using p2_i on p2 p2_1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p2c1_i on p2c1
+   ->  Index Scan using p2c1_i on p2c1 p2_2
          Index Cond: (c1 = 1)
-   ->  Index Scan using p2c1c1_i on p2c1c1
+   ->  Index Scan using p2c1c1_i on p2c1c1 p2_3
          Index Cond: (c1 = 1)
 (7 rows)
 
@@ -5216,14 +5216,14 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN               
----------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Append
-   ->  Seq Scan on p2
+   ->  Seq Scan on p2 p2_1
          Filter: (c1 = 1)
-   ->  Index Scan using p2c1_i on p2c1
+   ->  Index Scan using p2c1_i on p2c1 p2_2
          Index Cond: (c1 = 1)
-   ->  Seq Scan on p2c1c1
+   ->  Seq Scan on p2c1c1 p2_3
          Filter: (c1 = 1)
 (7 rows)
 
@@ -5232,12 +5232,12 @@ error hint:
 EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
 \o
 \! sql/maskout.sh results/ut-S.tmpout
-                        QUERY PLAN                        
-----------------------------------------------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
  Append  (cost=xxx..xxx rows=4 width=xxx)
-   ->  Seq Scan on p1  (cost=xxx..xxx rows=1 width=xxx)
+   ->  Seq Scan on p1 p1_1  (cost=xxx..xxx rows=1 width=xxx)
          Filter: ((c1 < 10) AND ((c2 * 2) < 100))
-   ->  Seq Scan on p1c1  (cost=xxx..xxx rows=3 width=xxx)
+   ->  Seq Scan on p1c1 p1_2  (cost=xxx..xxx rows=3 width=xxx)
          Filter: ((c1 < 10) AND ((c2 * 2) < 100))
 
 \o results/ut-S.tmpout
@@ -5253,12 +5253,12 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-S.tmpout
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
  Append  (cost=xxx..xxx rows=4 width=xxx)
-   ->  Index Scan using p1_parent on p1  (cost=xxx..xxx rows=1 width=xxx)
+   ->  Index Scan using p1_parent on p1 p1_1  (cost=xxx..xxx rows=1 width=xxx)
          Filter: ((c2 * 2) < 100)
-   ->  Index Scan using p1c1_c4_expr_idx on p1c1  (cost=xxx..xxx rows=3 width=xxx)
+   ->  Index Scan using p1c1_c4_expr_idx on p1c1 p1_2  (cost=xxx..xxx rows=3 width=xxx)
          Filter: ((c2 * 2) < 100)
 
 -- No. S-3-10-4
@@ -5277,16 +5277,16 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-S.tmpout
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
  Append  (cost=xxx..xxx rows=4 width=xxx)
-   ->  Index Scan using p1_i2 on p1  (cost=xxx..xxx rows=1 width=xxx)
+   ->  Index Scan using p1_i2 on p1 p1_1  (cost=xxx..xxx rows=1 width=xxx)
          Index Cond: (c2 = 1)
-   ->  Seq Scan on p1c1  (cost={inf}..{inf} rows=1 width=xxx)
+   ->  Seq Scan on p1c1 p1_2  (cost={inf}..{inf} rows=1 width=xxx)
          Filter: (c2 = 1)
-   ->  Seq Scan on p1c2  (cost={inf}..{inf} rows=1 width=xxx)
+   ->  Seq Scan on p1c2 p1_3  (cost={inf}..{inf} rows=1 width=xxx)
          Filter: (c2 = 1)
-   ->  Seq Scan on p1c3  (cost={inf}..{inf} rows=1 width=xxx)
+   ->  Seq Scan on p1c3 p1_4  (cost={inf}..{inf} rows=1 width=xxx)
          Filter: (c2 = 1)
 
 -- No. S-3-10-5
@@ -5304,14 +5304,14 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-S.tmpout
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
  Append  (cost={inf}..{inf} rows=3 width=xxx)
-   ->  Seq Scan on p2  (cost={inf}..{inf} rows=1 width=xxx)
+   ->  Seq Scan on p2 p2_1  (cost={inf}..{inf} rows=1 width=xxx)
          Filter: (c1 = 1)
-   ->  Index Scan using p2c1_pkey on p2c1  (cost=xxx..xxx rows=1 width=xxx)
+   ->  Index Scan using p2c1_pkey on p2c1 p2_2  (cost=xxx..xxx rows=1 width=xxx)
          Index Cond: (c1 = 1)
-   ->  Seq Scan on p2c1c1  (cost={inf}..{inf} rows=1 width=xxx)
+   ->  Seq Scan on p2c1c1 p2_3  (cost={inf}..{inf} rows=1 width=xxx)
          Filter: (c1 = 1)
 
 ----
@@ -6032,12 +6032,12 @@ not used hint:
 duplication hint:
 error hint:
 
-                QUERY PLAN                
-------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Append
-   ->  Index Scan using p1_pkey on p1
+   ->  Index Scan using p1_pkey on p1 p1_1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_pkey on p1c1
+   ->  Index Scan using p1c1_pkey on p1c1 p1_2
          Index Cond: (c1 = 1)
 (5 rows)
 
@@ -6053,12 +6053,12 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN               
----------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Append
-   ->  Index Scan using p1_i on p1
+   ->  Index Scan using p1_i on p1 p1_1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_i on p1c1
+   ->  Index Scan using p1c1_i on p1c1 p1_2
          Index Cond: (c1 = 1)
 (5 rows)
 
@@ -6074,12 +6074,12 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN        
---------------------------
+         QUERY PLAN          
+-----------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (c1 = 1)
-   ->  Seq Scan on p1c1
+   ->  Seq Scan on p1c1 p1_2
          Filter: (c1 = 1)
 (5 rows)
 

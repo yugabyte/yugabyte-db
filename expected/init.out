@@ -194,6 +194,7 @@ SELECT * FROM settings;
  enable_gathermerge             | on        | Query Tuning / Planner Method Configuration
  enable_hashagg                 | on        | Query Tuning / Planner Method Configuration
  enable_hashjoin                | on        | Query Tuning / Planner Method Configuration
+ enable_incremental_sort        | on        | Query Tuning / Planner Method Configuration
  enable_indexonlyscan           | on        | Query Tuning / Planner Method Configuration
  enable_indexscan               | on        | Query Tuning / Planner Method Configuration
  enable_material                | on        | Query Tuning / Planner Method Configuration
@@ -207,6 +208,6 @@ SELECT * FROM settings;
  enable_seqscan                 | on        | Query Tuning / Planner Method Configuration
  enable_sort                    | on        | Query Tuning / Planner Method Configuration
  enable_tidscan                 | on        | Query Tuning / Planner Method Configuration
-(46 rows)
+(47 rows)
 
 ANALYZE;

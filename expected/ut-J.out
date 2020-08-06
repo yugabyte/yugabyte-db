@@ -472,16 +472,16 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p1 t1, s1.p1 t2 WHERE t1.c1 = t2.c1;
  Hash Join
    Hash Cond: (t1.c1 = t2.c1)
    ->  Append
-         ->  Seq Scan on p1 t1
-         ->  Seq Scan on p1c1 t1_1
-         ->  Seq Scan on p1c2 t1_2
-         ->  Seq Scan on p1c3 t1_3
+         ->  Seq Scan on p1 t1_1
+         ->  Seq Scan on p1c1 t1_2
+         ->  Seq Scan on p1c2 t1_3
+         ->  Seq Scan on p1c3 t1_4
    ->  Hash
          ->  Append
-               ->  Seq Scan on p1 t2
-               ->  Seq Scan on p1c1 t2_1
-               ->  Seq Scan on p1c2 t2_2
-               ->  Seq Scan on p1c3 t2_3
+               ->  Seq Scan on p1 t2_1
+               ->  Seq Scan on p1c1 t2_2
+               ->  Seq Scan on p1c2 t2_3
+               ->  Seq Scan on p1c3 t2_4
 (13 rows)
 
 /*+NestLoop(t1 t2)*/
@@ -497,18 +497,18 @@ error hint:
 --------------------------------------------------
  Nested Loop
    ->  Append
-         ->  Seq Scan on p1 t1
-         ->  Seq Scan on p1c1 t1_1
-         ->  Seq Scan on p1c2 t1_2
-         ->  Seq Scan on p1c3 t1_3
+         ->  Seq Scan on p1 t1_1
+         ->  Seq Scan on p1c1 t1_2
+         ->  Seq Scan on p1c2 t1_3
+         ->  Seq Scan on p1c3 t1_4
    ->  Append
-         ->  Seq Scan on p1 t2
+         ->  Seq Scan on p1 t2_1
                Filter: (t1.c1 = c1)
-         ->  Index Scan using p1c1_i on p1c1 t2_1
+         ->  Index Scan using p1c1_i on p1c1 t2_2
                Index Cond: (c1 = t1.c1)
-         ->  Index Scan using p1c2_i on p1c2 t2_2
+         ->  Index Scan using p1c2_i on p1c2 t2_3
                Index Cond: (c1 = t1.c1)
-         ->  Index Scan using p1c3_i on p1c3 t2_3
+         ->  Index Scan using p1c3_i on p1c3 t2_4
                Index Cond: (c1 = t1.c1)
 (15 rows)
 
@@ -4248,27 +4248,27 @@ SET enable_hashjoin TO on;
 ---- No. J-3-2 join inherit tables
 ----
 EXPLAIN (COSTS false) SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
-             QUERY PLAN             
-------------------------------------
+               QUERY PLAN                
+-----------------------------------------
  Hash Join
    Hash Cond: (p2.c1 = p1.c1)
    ->  Append
-         ->  Seq Scan on p2
-         ->  Seq Scan on p2c1
-         ->  Seq Scan on p2c2
-         ->  Seq Scan on p2c3
-         ->  Seq Scan on p2c1c1
-         ->  Seq Scan on p2c1c2
-         ->  Seq Scan on p2c2c1
-         ->  Seq Scan on p2c2c2
-         ->  Seq Scan on p2c3c1
-         ->  Seq Scan on p2c3c2
+         ->  Seq Scan on p2 p2_1
+         ->  Seq Scan on p2c1 p2_2
+         ->  Seq Scan on p2c2 p2_3
+         ->  Seq Scan on p2c3 p2_4
+         ->  Seq Scan on p2c1c1 p2_5
+         ->  Seq Scan on p2c1c2 p2_6
+         ->  Seq Scan on p2c2c1 p2_7
+         ->  Seq Scan on p2c2c2 p2_8
+         ->  Seq Scan on p2c3c1 p2_9
+         ->  Seq Scan on p2c3c2 p2_10
    ->  Hash
          ->  Append
-               ->  Seq Scan on p1
-               ->  Seq Scan on p1c1
-               ->  Seq Scan on p1c2
-               ->  Seq Scan on p1c3
+               ->  Seq Scan on p1 p1_1
+               ->  Seq Scan on p1c1 p1_2
+               ->  Seq Scan on p1c2 p1_3
+               ->  Seq Scan on p1c3 p1_4
 (19 rows)
 
 -- No. J-3-2-1
@@ -4281,30 +4281,30 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN              
---------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Merge Join
    Merge Cond: (p1.c1 = p2.c1)
    ->  Sort
          Sort Key: p1.c1
          ->  Append
-               ->  Seq Scan on p1
-               ->  Seq Scan on p1c1
-               ->  Seq Scan on p1c2
-               ->  Seq Scan on p1c3
+               ->  Seq Scan on p1 p1_1
+               ->  Seq Scan on p1c1 p1_2
+               ->  Seq Scan on p1c2 p1_3
+               ->  Seq Scan on p1c3 p1_4
    ->  Sort
          Sort Key: p2.c1
          ->  Append
-               ->  Seq Scan on p2
-               ->  Seq Scan on p2c1
-               ->  Seq Scan on p2c2
-               ->  Seq Scan on p2c3
-               ->  Seq Scan on p2c1c1
-               ->  Seq Scan on p2c1c2
-               ->  Seq Scan on p2c2c1
-               ->  Seq Scan on p2c2c2
-               ->  Seq Scan on p2c3c1
-               ->  Seq Scan on p2c3c2
+               ->  Seq Scan on p2 p2_1
+               ->  Seq Scan on p2c1 p2_2
+               ->  Seq Scan on p2c2 p2_3
+               ->  Seq Scan on p2c3 p2_4
+               ->  Seq Scan on p2c1c1 p2_5
+               ->  Seq Scan on p2c1c2 p2_6
+               ->  Seq Scan on p2c2c1 p2_7
+               ->  Seq Scan on p2c2c2 p2_8
+               ->  Seq Scan on p2c3c1 p2_9
+               ->  Seq Scan on p2c3c2 p2_10
 (22 rows)
 
 -- No. J-3-2-2
@@ -4317,53 +4317,53 @@ MergeJoin(p1c1 p2c1)
 duplication hint:
 error hint:
 
-             QUERY PLAN             
-------------------------------------
+               QUERY PLAN                
+-----------------------------------------
  Hash Join
    Hash Cond: (p2.c1 = p1.c1)
    ->  Append
-         ->  Seq Scan on p2
-         ->  Seq Scan on p2c1
-         ->  Seq Scan on p2c2
-         ->  Seq Scan on p2c3
-         ->  Seq Scan on p2c1c1
-         ->  Seq Scan on p2c1c2
-         ->  Seq Scan on p2c2c1
-         ->  Seq Scan on p2c2c2
-         ->  Seq Scan on p2c3c1
-         ->  Seq Scan on p2c3c2
+         ->  Seq Scan on p2 p2_1
+         ->  Seq Scan on p2c1 p2_2
+         ->  Seq Scan on p2c2 p2_3
+         ->  Seq Scan on p2c3 p2_4
+         ->  Seq Scan on p2c1c1 p2_5
+         ->  Seq Scan on p2c1c2 p2_6
+         ->  Seq Scan on p2c2c1 p2_7
+         ->  Seq Scan on p2c2c2 p2_8
+         ->  Seq Scan on p2c3c1 p2_9
+         ->  Seq Scan on p2c3c2 p2_10
    ->  Hash
          ->  Append
-               ->  Seq Scan on p1
-               ->  Seq Scan on p1c1
-               ->  Seq Scan on p1c2
-               ->  Seq Scan on p1c3
+               ->  Seq Scan on p1 p1_1
+               ->  Seq Scan on p1c1 p1_2
+               ->  Seq Scan on p1c2 p1_3
+               ->  Seq Scan on p1c3 p1_4
 (19 rows)
 
 ----
 ---- No. J-3-2-2 join partitioned tables
 ----
 EXPLAIN (COSTS false) SELECT * FROM s1.pt1, s1.p2 WHERE pt1.c1 = p2.c1;
-              QUERY PLAN              
---------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Hash Join
-   Hash Cond: (p2.c1 = pt1_c1.c1)
+   Hash Cond: (p2.c1 = pt1.c1)
    ->  Append
-         ->  Seq Scan on p2
-         ->  Seq Scan on p2c1
-         ->  Seq Scan on p2c2
-         ->  Seq Scan on p2c3
-         ->  Seq Scan on p2c1c1
-         ->  Seq Scan on p2c1c2
-         ->  Seq Scan on p2c2c1
-         ->  Seq Scan on p2c2c2
-         ->  Seq Scan on p2c3c1
-         ->  Seq Scan on p2c3c2
+         ->  Seq Scan on p2 p2_1
+         ->  Seq Scan on p2c1 p2_2
+         ->  Seq Scan on p2c2 p2_3
+         ->  Seq Scan on p2c3 p2_4
+         ->  Seq Scan on p2c1c1 p2_5
+         ->  Seq Scan on p2c1c2 p2_6
+         ->  Seq Scan on p2c2c1 p2_7
+         ->  Seq Scan on p2c2c2 p2_8
+         ->  Seq Scan on p2c3c1 p2_9
+         ->  Seq Scan on p2c3c2 p2_10
    ->  Hash
          ->  Append
-               ->  Seq Scan on pt1_c1
-               ->  Seq Scan on pt1_c2
-               ->  Seq Scan on pt1_c3
+               ->  Seq Scan on pt1_c1 pt1_1
+               ->  Seq Scan on pt1_c2 pt1_2
+               ->  Seq Scan on pt1_c3 pt1_3
 (18 rows)
 
 /*+MergeJoin(pt1 p2)*/
@@ -4375,29 +4375,29 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN              
---------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Merge Join
-   Merge Cond: (pt1_c1.c1 = p2.c1)
+   Merge Cond: (pt1.c1 = p2.c1)
    ->  Sort
-         Sort Key: pt1_c1.c1
+         Sort Key: pt1.c1
          ->  Append
-               ->  Seq Scan on pt1_c1
-               ->  Seq Scan on pt1_c2
-               ->  Seq Scan on pt1_c3
+               ->  Seq Scan on pt1_c1 pt1_1
+               ->  Seq Scan on pt1_c2 pt1_2
+               ->  Seq Scan on pt1_c3 pt1_3
    ->  Sort
          Sort Key: p2.c1
          ->  Append
-               ->  Seq Scan on p2
-               ->  Seq Scan on p2c1
-               ->  Seq Scan on p2c2
-               ->  Seq Scan on p2c3
-               ->  Seq Scan on p2c1c1
-               ->  Seq Scan on p2c1c2
-               ->  Seq Scan on p2c2c1
-               ->  Seq Scan on p2c2c2
-               ->  Seq Scan on p2c3c1
-               ->  Seq Scan on p2c3c2
+               ->  Seq Scan on p2 p2_1
+               ->  Seq Scan on p2c1 p2_2
+               ->  Seq Scan on p2c2 p2_3
+               ->  Seq Scan on p2c3 p2_4
+               ->  Seq Scan on p2c1c1 p2_5
+               ->  Seq Scan on p2c1c2 p2_6
+               ->  Seq Scan on p2c2c1 p2_7
+               ->  Seq Scan on p2c2c2 p2_8
+               ->  Seq Scan on p2c3c1 p2_9
+               ->  Seq Scan on p2c3c2 p2_10
 (21 rows)
 
 /*+MergeJoin(pt1_c1 p2c1)*/ /* will ignored */
@@ -4409,26 +4409,26 @@ MergeJoin(p2c1 pt1_c1)
 duplication hint:
 error hint:
 
-              QUERY PLAN              
---------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Hash Join
-   Hash Cond: (p2.c1 = pt1_c1.c1)
+   Hash Cond: (p2.c1 = pt1.c1)
    ->  Append
-         ->  Seq Scan on p2
-         ->  Seq Scan on p2c1
-         ->  Seq Scan on p2c2
-         ->  Seq Scan on p2c3
-         ->  Seq Scan on p2c1c1
-         ->  Seq Scan on p2c1c2
-         ->  Seq Scan on p2c2c1
-         ->  Seq Scan on p2c2c2
-         ->  Seq Scan on p2c3c1
-         ->  Seq Scan on p2c3c2
+         ->  Seq Scan on p2 p2_1
+         ->  Seq Scan on p2c1 p2_2
+         ->  Seq Scan on p2c2 p2_3
+         ->  Seq Scan on p2c3 p2_4
+         ->  Seq Scan on p2c1c1 p2_5
+         ->  Seq Scan on p2c1c2 p2_6
+         ->  Seq Scan on p2c2c1 p2_7
+         ->  Seq Scan on p2c2c2 p2_8
+         ->  Seq Scan on p2c3c1 p2_9
+         ->  Seq Scan on p2c3c2 p2_10
    ->  Hash
          ->  Append
-               ->  Seq Scan on pt1_c1
-               ->  Seq Scan on pt1_c2
-               ->  Seq Scan on pt1_c3
+               ->  Seq Scan on pt1_c1 pt1_1
+               ->  Seq Scan on pt1_c2 pt1_2
+               ->  Seq Scan on pt1_c3 pt1_3
 (18 rows)
 
 ----

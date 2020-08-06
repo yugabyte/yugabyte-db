@@ -516,16 +516,16 @@ EXPLAIN SELECT * FROM s1.p1 t1, s1.p1 t2 WHERE t1.c1 = t2.c1;
  Hash Join  (cost=xxx..xxx rows=301 width=xxx)
    Hash Cond: (t1.c1 = t2.c1)
    ->  Append  (cost=xxx..xxx rows=301 width=xxx)
-         ->  Seq Scan on p1 t1  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p1c1 t1_1  (cost=xxx..xxx rows=100 width=xxx)
-         ->  Seq Scan on p1c2 t1_2  (cost=xxx..xxx rows=100 width=xxx)
-         ->  Seq Scan on p1c3 t1_3  (cost=xxx..xxx rows=100 width=xxx)
+         ->  Seq Scan on p1 t1_1  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p1c1 t1_2  (cost=xxx..xxx rows=100 width=xxx)
+         ->  Seq Scan on p1c2 t1_3  (cost=xxx..xxx rows=100 width=xxx)
+         ->  Seq Scan on p1c3 t1_4  (cost=xxx..xxx rows=100 width=xxx)
    ->  Hash  (cost=xxx..xxx rows=301 width=xxx)
          ->  Append  (cost=xxx..xxx rows=301 width=xxx)
-               ->  Seq Scan on p1 t2  (cost=xxx..xxx rows=1 width=xxx)
-               ->  Seq Scan on p1c1 t2_1  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c2 t2_2  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c3 t2_3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1 t2_1  (cost=xxx..xxx rows=1 width=xxx)
+               ->  Seq Scan on p1c1 t2_2  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c2 t2_3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c3 t2_4  (cost=xxx..xxx rows=100 width=xxx)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)*/
@@ -544,16 +544,16 @@ error hint:
  Hash Join  (cost=xxx..xxx rows=1 width=xxx)
    Hash Cond: (t1.c1 = t2.c1)
    ->  Append  (cost=xxx..xxx rows=301 width=xxx)
-         ->  Seq Scan on p1 t1  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p1c1 t1_1  (cost=xxx..xxx rows=100 width=xxx)
-         ->  Seq Scan on p1c2 t1_2  (cost=xxx..xxx rows=100 width=xxx)
-         ->  Seq Scan on p1c3 t1_3  (cost=xxx..xxx rows=100 width=xxx)
+         ->  Seq Scan on p1 t1_1  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p1c1 t1_2  (cost=xxx..xxx rows=100 width=xxx)
+         ->  Seq Scan on p1c2 t1_3  (cost=xxx..xxx rows=100 width=xxx)
+         ->  Seq Scan on p1c3 t1_4  (cost=xxx..xxx rows=100 width=xxx)
    ->  Hash  (cost=xxx..xxx rows=301 width=xxx)
          ->  Append  (cost=xxx..xxx rows=301 width=xxx)
-               ->  Seq Scan on p1 t2  (cost=xxx..xxx rows=1 width=xxx)
-               ->  Seq Scan on p1c1 t2_1  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c2 t2_2  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c3 t2_3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1 t2_1  (cost=xxx..xxx rows=1 width=xxx)
+               ->  Seq Scan on p1c1 t2_2  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c2 t2_3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c3 t2_4  (cost=xxx..xxx rows=100 width=xxx)
 
 -- No. R-1-6-3
 \o results/ut-R.tmpout
@@ -4696,27 +4696,27 @@ error hint:
 EXPLAIN SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Hash Join  (cost=xxx..xxx rows=301 width=xxx)
    Hash Cond: (p2.c1 = p1.c1)
    ->  Append  (cost=xxx..xxx rows=304 width=xxx)
-         ->  Seq Scan on p2  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c1  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c2  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c3  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c1c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c1c2  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c2c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c2c2  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c3c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c3c2  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2 p2_1  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c1 p2_2  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c2 p2_3  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c3 p2_4  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c1c1 p2_5  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c1c2 p2_6  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c2c1 p2_7  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c2c2 p2_8  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c3c1 p2_9  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c3c2 p2_10  (cost=xxx..xxx rows=50 width=xxx)
    ->  Hash  (cost=xxx..xxx rows=301 width=xxx)
          ->  Append  (cost=xxx..xxx rows=301 width=xxx)
-               ->  Seq Scan on p1  (cost=xxx..xxx rows=1 width=xxx)
-               ->  Seq Scan on p1c1  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c2  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1 p1_1  (cost=xxx..xxx rows=1 width=xxx)
+               ->  Seq Scan on p1c1 p1_2  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c2 p1_3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c3 p1_4  (cost=xxx..xxx rows=100 width=xxx)
 
 \o results/ut-R.tmpout
 /*+Rows(p1 p2 #1)*/
@@ -4730,54 +4730,54 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Hash Join  (cost=xxx..xxx rows=1 width=xxx)
    Hash Cond: (p2.c1 = p1.c1)
    ->  Append  (cost=xxx..xxx rows=304 width=xxx)
-         ->  Seq Scan on p2  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c1  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c2  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c3  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c1c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c1c2  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c2c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c2c2  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c3c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c3c2  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2 p2_1  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c1 p2_2  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c2 p2_3  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c3 p2_4  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c1c1 p2_5  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c1c2 p2_6  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c2c1 p2_7  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c2c2 p2_8  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c3c1 p2_9  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c3c2 p2_10  (cost=xxx..xxx rows=50 width=xxx)
    ->  Hash  (cost=xxx..xxx rows=301 width=xxx)
          ->  Append  (cost=xxx..xxx rows=301 width=xxx)
-               ->  Seq Scan on p1  (cost=xxx..xxx rows=1 width=xxx)
-               ->  Seq Scan on p1c1  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c2  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1 p1_1  (cost=xxx..xxx rows=1 width=xxx)
+               ->  Seq Scan on p1c1 p1_2  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c2 p1_3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c3 p1_4  (cost=xxx..xxx rows=100 width=xxx)
 
 -- No. R-3-4-2
 \o results/ut-R.tmpout
 EXPLAIN SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Hash Join  (cost=xxx..xxx rows=301 width=xxx)
    Hash Cond: (p2.c1 = p1.c1)
    ->  Append  (cost=xxx..xxx rows=304 width=xxx)
-         ->  Seq Scan on p2  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c1  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c2  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c3  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c1c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c1c2  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c2c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c2c2  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c3c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c3c2  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2 p2_1  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c1 p2_2  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c2 p2_3  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c3 p2_4  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c1c1 p2_5  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c1c2 p2_6  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c2c1 p2_7  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c2c2 p2_8  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c3c1 p2_9  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c3c2 p2_10  (cost=xxx..xxx rows=50 width=xxx)
    ->  Hash  (cost=xxx..xxx rows=301 width=xxx)
          ->  Append  (cost=xxx..xxx rows=301 width=xxx)
-               ->  Seq Scan on p1  (cost=xxx..xxx rows=1 width=xxx)
-               ->  Seq Scan on p1c1  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c2  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1 p1_1  (cost=xxx..xxx rows=1 width=xxx)
+               ->  Seq Scan on p1c1 p1_2  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c2 p1_3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c3 p1_4  (cost=xxx..xxx rows=100 width=xxx)
 
 \o results/ut-R.tmpout
 /*+Rows(p1c1 p2c1 #1)*/
@@ -4791,27 +4791,27 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Hash Join  (cost=xxx..xxx rows=301 width=xxx)
    Hash Cond: (p2.c1 = p1.c1)
    ->  Append  (cost=xxx..xxx rows=304 width=xxx)
-         ->  Seq Scan on p2  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c1  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c2  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c3  (cost=xxx..xxx rows=1 width=xxx)
-         ->  Seq Scan on p2c1c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c1c2  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c2c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c2c2  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c3c1  (cost=xxx..xxx rows=50 width=xxx)
-         ->  Seq Scan on p2c3c2  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2 p2_1  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c1 p2_2  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c2 p2_3  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c3 p2_4  (cost=xxx..xxx rows=1 width=xxx)
+         ->  Seq Scan on p2c1c1 p2_5  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c1c2 p2_6  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c2c1 p2_7  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c2c2 p2_8  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c3c1 p2_9  (cost=xxx..xxx rows=50 width=xxx)
+         ->  Seq Scan on p2c3c2 p2_10  (cost=xxx..xxx rows=50 width=xxx)
    ->  Hash  (cost=xxx..xxx rows=301 width=xxx)
          ->  Append  (cost=xxx..xxx rows=301 width=xxx)
-               ->  Seq Scan on p1  (cost=xxx..xxx rows=1 width=xxx)
-               ->  Seq Scan on p1c1  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c2  (cost=xxx..xxx rows=100 width=xxx)
-               ->  Seq Scan on p1c3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1 p1_1  (cost=xxx..xxx rows=1 width=xxx)
+               ->  Seq Scan on p1c1 p1_2  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c2 p1_3  (cost=xxx..xxx rows=100 width=xxx)
+               ->  Seq Scan on p1c3 p1_4  (cost=xxx..xxx rows=100 width=xxx)
 
 ----
 ---- No. R-3-5 conflict join method hint

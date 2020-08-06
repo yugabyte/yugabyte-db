@@ -3069,23 +3069,23 @@ EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid =
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (19 rows)
 
@@ -3094,13 +3094,13 @@ EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid =
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_3
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_4
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (9 rows)
 
@@ -3117,23 +3117,23 @@ error hint:
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (19 rows)
 
@@ -3146,34 +3146,34 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Append
-   ->  Index Scan using p1_pkey on p1
+   ->  Index Scan using p1_pkey on p1 p1_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p1_c1_pkey on p1_c1
+   ->  Index Scan using p1_c1_pkey on p1_c1 p1_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p1_c2_pkey on p1_c2
+   ->  Index Scan using p1_c2_pkey on p1_c2 p1_3
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p1_c3_pkey on p1_c3
+   ->  Index Scan using p1_c3_pkey on p1_c3 p1_4
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p1_c4_pkey on p1_c4
+   ->  Index Scan using p1_c4_pkey on p1_c4 p1_5
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1
+   ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1 p1_6
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2
+   ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2 p1_7
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p1_c3_c1_pkey on p1_c3_c1
+   ->  Index Scan using p1_c3_c1_pkey on p1_c3_c1 p1_8
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p1_c3_c2_pkey on p1_c3_c2
+   ->  Index Scan using p1_c3_c2_pkey on p1_c3_c2 p1_9
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
 (28 rows)
@@ -3190,47 +3190,47 @@ error hint:
                       QUERY PLAN                       
 -------------------------------------------------------
  Append
-   ->  Bitmap Heap Scan on p1
+   ->  Bitmap Heap Scan on p1 p1_1
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
-   ->  Bitmap Heap Scan on p1_c1
+   ->  Bitmap Heap Scan on p1_c1 p1_2
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_c1_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
-   ->  Bitmap Heap Scan on p1_c2
+   ->  Bitmap Heap Scan on p1_c2 p1_3
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_c2_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
-   ->  Bitmap Heap Scan on p1_c3
+   ->  Bitmap Heap Scan on p1_c3 p1_4
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_c3_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
-   ->  Bitmap Heap Scan on p1_c4
+   ->  Bitmap Heap Scan on p1_c4 p1_5
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_c4_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
-   ->  Bitmap Heap Scan on p1_c1_c1
+   ->  Bitmap Heap Scan on p1_c1_c1 p1_6
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_c1_c1_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
-   ->  Bitmap Heap Scan on p1_c1_c2
+   ->  Bitmap Heap Scan on p1_c1_c2 p1_7
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_c1_c2_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
-   ->  Bitmap Heap Scan on p1_c3_c1
+   ->  Bitmap Heap Scan on p1_c3_c1 p1_8
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_c3_c1_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
-   ->  Bitmap Heap Scan on p1_c3_c2
+   ->  Bitmap Heap Scan on p1_c3_c2 p1_9
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_c3_c2_pkey
@@ -3249,31 +3249,31 @@ error hint:
                  QUERY PLAN                  
 ---------------------------------------------
  Append
-   ->  Tid Scan on p1
+   ->  Tid Scan on p1 p1_1
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p1_c1
+   ->  Tid Scan on p1_c1 p1_2
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p1_c2
+   ->  Tid Scan on p1_c2 p1_3
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p1_c3
+   ->  Tid Scan on p1_c3 p1_4
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p1_c4
+   ->  Tid Scan on p1_c4 p1_5
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p1_c1_c1
+   ->  Tid Scan on p1_c1_c1 p1_6
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p1_c1_c2
+   ->  Tid Scan on p1_c1_c2 p1_7
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p1_c3_c1
+   ->  Tid Scan on p1_c3_c1 p1_8
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p1_c3_c2
+   ->  Tid Scan on p1_c3_c2 p1_9
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
 (28 rows)
@@ -3291,13 +3291,13 @@ error hint:
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_3
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_4
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (9 rows)
 
@@ -3310,19 +3310,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Append
-   ->  Index Scan using p1_pkey on p1
+   ->  Index Scan using p1_pkey on p1 p1_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p1_c1_pkey on p1_c1
+   ->  Index Scan using p1_c1_pkey on p1_c1 p1_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1
+   ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1 p1_3
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2
+   ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2 p1_4
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
 (13 rows)
@@ -3339,22 +3339,22 @@ error hint:
                       QUERY PLAN                       
 -------------------------------------------------------
  Append
-   ->  Bitmap Heap Scan on p1
+   ->  Bitmap Heap Scan on p1 p1_1
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
-   ->  Bitmap Heap Scan on p1_c1
+   ->  Bitmap Heap Scan on p1_c1 p1_2
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_c1_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
-   ->  Bitmap Heap Scan on p1_c1_c1
+   ->  Bitmap Heap Scan on p1_c1_c1 p1_3
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_c1_c1_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
-   ->  Bitmap Heap Scan on p1_c1_c2
+   ->  Bitmap Heap Scan on p1_c1_c2 p1_4
          Recheck Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on p1_c1_c2_pkey
@@ -3373,16 +3373,16 @@ error hint:
                  QUERY PLAN                  
 ---------------------------------------------
  Append
-   ->  Tid Scan on p1
+   ->  Tid Scan on p1 p1_1
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p1_c1
+   ->  Tid Scan on p1_c1 p1_2
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p1_c1_c1
+   ->  Tid Scan on p1_c1_c1 p1_3
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p1_c1_c2
+   ->  Tid Scan on p1_c1_c2 p1_4
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
 (13 rows)
@@ -3396,23 +3396,23 @@ EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND
    ->  Sort
          Sort Key: p1.id
          ->  Append
-               ->  Seq Scan on p1
+               ->  Seq Scan on p1 p1_1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1
+               ->  Seq Scan on p1_c1 p1_2
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c2
+               ->  Seq Scan on p1_c2 p1_3
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c3
+               ->  Seq Scan on p1_c3 p1_4
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c4
+               ->  Seq Scan on p1_c4 p1_5
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c1
+               ->  Seq Scan on p1_c1_c1 p1_6
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c2
+               ->  Seq Scan on p1_c1_c2 p1_7
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c3_c1
+               ->  Seq Scan on p1_c3_c1 p1_8
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c3_c2
+               ->  Seq Scan on p1_c3_c2 p1_9
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
@@ -3427,13 +3427,13 @@ EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND
    ->  Sort
          Sort Key: p1.id
          ->  Append
-               ->  Seq Scan on p1
+               ->  Seq Scan on p1 p1_1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1
+               ->  Seq Scan on p1_c1 p1_2
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c1
+               ->  Seq Scan on p1_c1_c1 p1_3
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c2
+               ->  Seq Scan on p1_c1_c2 p1_4
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
@@ -3456,23 +3456,23 @@ error hint:
    ->  Sort
          Sort Key: p1.id
          ->  Append
-               ->  Seq Scan on p1
+               ->  Seq Scan on p1 p1_1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1
+               ->  Seq Scan on p1_c1 p1_2
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c2
+               ->  Seq Scan on p1_c2 p1_3
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c3
+               ->  Seq Scan on p1_c3 p1_4
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c4
+               ->  Seq Scan on p1_c4 p1_5
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c1
+               ->  Seq Scan on p1_c1_c1 p1_6
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c2
+               ->  Seq Scan on p1_c1_c2 p1_7
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c3_c1
+               ->  Seq Scan on p1_c3_c1 p1_8
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c3_c2
+               ->  Seq Scan on p1_c3_c2 p1_9
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
@@ -3487,37 +3487,37 @@ not used hint:
 duplication hint:
 error hint:
 
-                       QUERY PLAN                       
---------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Merge Join
    Merge Cond: (p1.id = t1.id)
    ->  Merge Append
          Sort Key: p1.id
-         ->  Index Scan using p1_pkey on p1
+         ->  Index Scan using p1_pkey on p1 p1_1
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
-         ->  Index Scan using p1_c1_pkey on p1_c1
+         ->  Index Scan using p1_c1_pkey on p1_c1 p1_2
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
-         ->  Index Scan using p1_c2_pkey on p1_c2
+         ->  Index Scan using p1_c2_pkey on p1_c2 p1_3
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
-         ->  Index Scan using p1_c3_pkey on p1_c3
+         ->  Index Scan using p1_c3_pkey on p1_c3 p1_4
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
-         ->  Index Scan using p1_c4_pkey on p1_c4
+         ->  Index Scan using p1_c4_pkey on p1_c4 p1_5
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
-         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1
+         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1 p1_6
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
-         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2
+         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2 p1_7
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
-         ->  Index Scan using p1_c3_c1_pkey on p1_c3_c1
+         ->  Index Scan using p1_c3_c1_pkey on p1_c3_c1 p1_8
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
-         ->  Index Scan using p1_c3_c2_pkey on p1_c3_c2
+         ->  Index Scan using p1_c3_c2_pkey on p1_c3_c2 p1_9
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
    ->  Index Scan using t1_pkey on t1
@@ -3540,47 +3540,47 @@ error hint:
    ->  Sort
          Sort Key: p1.id
          ->  Append
-               ->  Bitmap Heap Scan on p1
+               ->  Bitmap Heap Scan on p1 p1_1
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_pkey
                            Index Cond: ((id >= 50) AND (id <= 51))
-               ->  Bitmap Heap Scan on p1_c1
+               ->  Bitmap Heap Scan on p1_c1 p1_2
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_c1_pkey
                            Index Cond: ((id >= 50) AND (id <= 51))
-               ->  Bitmap Heap Scan on p1_c2
+               ->  Bitmap Heap Scan on p1_c2 p1_3
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_c2_pkey
                            Index Cond: ((id >= 50) AND (id <= 51))
-               ->  Bitmap Heap Scan on p1_c3
+               ->  Bitmap Heap Scan on p1_c3 p1_4
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_c3_pkey
                            Index Cond: ((id >= 50) AND (id <= 51))
-               ->  Bitmap Heap Scan on p1_c4
+               ->  Bitmap Heap Scan on p1_c4 p1_5
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_c4_pkey
                            Index Cond: ((id >= 50) AND (id <= 51))
-               ->  Bitmap Heap Scan on p1_c1_c1
+               ->  Bitmap Heap Scan on p1_c1_c1 p1_6
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_c1_c1_pkey
                            Index Cond: ((id >= 50) AND (id <= 51))
-               ->  Bitmap Heap Scan on p1_c1_c2
+               ->  Bitmap Heap Scan on p1_c1_c2 p1_7
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_c1_c2_pkey
                            Index Cond: ((id >= 50) AND (id <= 51))
-               ->  Bitmap Heap Scan on p1_c3_c1
+               ->  Bitmap Heap Scan on p1_c3_c1 p1_8
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_c3_c1_pkey
                            Index Cond: ((id >= 50) AND (id <= 51))
-               ->  Bitmap Heap Scan on p1_c3_c2
+               ->  Bitmap Heap Scan on p1_c3_c2 p1_9
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_c3_c2_pkey
@@ -3605,31 +3605,31 @@ error hint:
    ->  Sort
          Sort Key: p1.id
          ->  Append
-               ->  Tid Scan on p1
+               ->  Tid Scan on p1 p1_1
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1
+               ->  Tid Scan on p1_c1 p1_2
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c2
+               ->  Tid Scan on p1_c2 p1_3
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3
+               ->  Tid Scan on p1_c3 p1_4
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c4
+               ->  Tid Scan on p1_c4 p1_5
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c1
+               ->  Tid Scan on p1_c1_c1 p1_6
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2
+               ->  Tid Scan on p1_c1_c2 p1_7
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c1
+               ->  Tid Scan on p1_c3_c1 p1_8
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c2
+               ->  Tid Scan on p1_c3_c2 p1_9
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
    ->  Index Scan using t1_pkey on t1
@@ -3650,23 +3650,23 @@ error hint:
  Nested Loop
    Join Filter: (p1.id = t1.id)
    ->  Append
-         ->  Seq Scan on p1
+         ->  Seq Scan on p1 p1_1
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c1
+         ->  Seq Scan on p1_c1 p1_2
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c2
+         ->  Seq Scan on p1_c2 p1_3
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c3
+         ->  Seq Scan on p1_c3 p1_4
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c4
+         ->  Seq Scan on p1_c4 p1_5
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c1_c1
+         ->  Seq Scan on p1_c1_c1 p1_6
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c1_c2
+         ->  Seq Scan on p1_c1_c2 p1_7
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c3_c1
+         ->  Seq Scan on p1_c3_c1 p1_8
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c3_c2
+         ->  Seq Scan on p1_c3_c2 p1_9
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Materialize
          ->  Index Scan using t1_pkey on t1
@@ -3689,23 +3689,23 @@ error hint:
    ->  Sort
          Sort Key: p1.id
          ->  Append
-               ->  Seq Scan on p1
+               ->  Seq Scan on p1 p1_1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1
+               ->  Seq Scan on p1_c1 p1_2
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c2
+               ->  Seq Scan on p1_c2 p1_3
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c3
+               ->  Seq Scan on p1_c3 p1_4
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c4
+               ->  Seq Scan on p1_c4 p1_5
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c1
+               ->  Seq Scan on p1_c1_c1 p1_6
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c2
+               ->  Seq Scan on p1_c1_c2 p1_7
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c3_c1
+               ->  Seq Scan on p1_c3_c1 p1_8
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c3_c2
+               ->  Seq Scan on p1_c3_c2 p1_9
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
@@ -3725,23 +3725,23 @@ error hint:
  Hash Join
    Hash Cond: (p1.id = t1.id)
    ->  Append
-         ->  Seq Scan on p1
+         ->  Seq Scan on p1 p1_1
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c1
+         ->  Seq Scan on p1_c1 p1_2
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c2
+         ->  Seq Scan on p1_c2 p1_3
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c3
+         ->  Seq Scan on p1_c3 p1_4
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c4
+         ->  Seq Scan on p1_c4 p1_5
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c1_c1
+         ->  Seq Scan on p1_c1_c1 p1_6
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c1_c2
+         ->  Seq Scan on p1_c1_c2 p1_7
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c3_c1
+         ->  Seq Scan on p1_c3_c1 p1_8
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c3_c2
+         ->  Seq Scan on p1_c3_c2 p1_9
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Hash
          ->  Index Scan using t1_pkey on t1
@@ -3765,13 +3765,13 @@ error hint:
    ->  Sort
          Sort Key: p1.id
          ->  Append
-               ->  Seq Scan on p1
+               ->  Seq Scan on p1 p1_1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1
+               ->  Seq Scan on p1_c1 p1_2
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c1
+               ->  Seq Scan on p1_c1_c1 p1_3
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c2
+               ->  Seq Scan on p1_c1_c2 p1_4
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
@@ -3786,22 +3786,22 @@ not used hint:
 duplication hint:
 error hint:
 
-                       QUERY PLAN                       
---------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Merge Join
    Merge Cond: (p1.id = t1.id)
    ->  Merge Append
          Sort Key: p1.id
-         ->  Index Scan using p1_pkey on p1
+         ->  Index Scan using p1_pkey on p1 p1_1
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
-         ->  Index Scan using p1_c1_pkey on p1_c1
+         ->  Index Scan using p1_c1_pkey on p1_c1 p1_2
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
-         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1
+         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1 p1_3
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
-         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2
+         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2 p1_4
                Index Cond: ((id >= 50) AND (id <= 51))
                Filter: (ctid = '(1,1)'::tid)
    ->  Index Scan using t1_pkey on t1
@@ -3824,22 +3824,22 @@ error hint:
    ->  Sort
          Sort Key: p1.id
          ->  Append
-               ->  Bitmap Heap Scan on p1
+               ->  Bitmap Heap Scan on p1 p1_1
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_pkey
                            Index Cond: ((id >= 50) AND (id <= 51))
-               ->  Bitmap Heap Scan on p1_c1
+               ->  Bitmap Heap Scan on p1_c1 p1_2
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_c1_pkey
                            Index Cond: ((id >= 50) AND (id <= 51))
-               ->  Bitmap Heap Scan on p1_c1_c1
+               ->  Bitmap Heap Scan on p1_c1_c1 p1_3
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_c1_c1_pkey
                            Index Cond: ((id >= 50) AND (id <= 51))
-               ->  Bitmap Heap Scan on p1_c1_c2
+               ->  Bitmap Heap Scan on p1_c1_c2 p1_4
                      Recheck Cond: ((id >= 50) AND (id <= 51))
                      Filter: (ctid = '(1,1)'::tid)
                      ->  Bitmap Index Scan on p1_c1_c2_pkey
@@ -3864,16 +3864,16 @@ error hint:
    ->  Sort
          Sort Key: p1.id
          ->  Append
-               ->  Tid Scan on p1
+               ->  Tid Scan on p1 p1_1
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1
+               ->  Tid Scan on p1_c1 p1_2
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c1
+               ->  Tid Scan on p1_c1_c1 p1_3
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2
+               ->  Tid Scan on p1_c1_c2 p1_4
                      TID Cond: (ctid = '(1,1)'::tid)
                      Filter: ((id >= 50) AND (id <= 51))
    ->  Index Scan using t1_pkey on t1
@@ -3897,13 +3897,13 @@ error hint:
          Index Cond: (id < 10)
    ->  Materialize
          ->  Append
-               ->  Seq Scan on p1
+               ->  Seq Scan on p1 p1_1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1
+               ->  Seq Scan on p1_c1 p1_2
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c1
+               ->  Seq Scan on p1_c1_c1 p1_3
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c2
+               ->  Seq Scan on p1_c1_c2 p1_4
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (14 rows)
 
@@ -3923,13 +3923,13 @@ error hint:
    ->  Sort
          Sort Key: p1.id
          ->  Append
-               ->  Seq Scan on p1
+               ->  Seq Scan on p1 p1_1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1
+               ->  Seq Scan on p1_c1 p1_2
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c1
+               ->  Seq Scan on p1_c1_c1 p1_3
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c2
+               ->  Seq Scan on p1_c1_c2 p1_4
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
@@ -3952,13 +3952,13 @@ error hint:
          Index Cond: (id < 10)
    ->  Hash
          ->  Append
-               ->  Seq Scan on p1
+               ->  Seq Scan on p1 p1_1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1
+               ->  Seq Scan on p1_c1 p1_2
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c1
+               ->  Seq Scan on p1_c1_c1 p1_3
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Seq Scan on p1_c1_c2
+               ->  Seq Scan on p1_c1_c2 p1_4
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (14 rows)
 
@@ -6515,13 +6515,13 @@ EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid =
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
-   ->  Seq Scan on p2
+   ->  Seq Scan on p2 p2_1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1
+   ->  Seq Scan on p2_c1 p2_2
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c1
+   ->  Seq Scan on p2_c1_c1 p2_3
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c2
+   ->  Seq Scan on p2_c1_c2 p2_4
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (9 rows)
 
@@ -6538,19 +6538,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Append
-   ->  Index Scan using p2_pkey on p2
+   ->  Index Scan using p2_pkey on p2 p2_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_pkey on p2_c1
+   ->  Index Scan using p2_c1_pkey on p2_c1 p2_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1
+   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1 p2_3
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2
+   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2 p2_4
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
 (13 rows)
@@ -6568,19 +6568,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                       QUERY PLAN                       
---------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Append
-   ->  Index Scan using p2_id_val_idx on p2
+   ->  Index Scan using p2_id_val_idx on p2 p2_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_id_val_idx on p2_c1
+   ->  Index Scan using p2_c1_id_val_idx on p2_c1 p2_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1
+   ->  Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1 p2_3
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2
+   ->  Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2 p2_4
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
 (13 rows)
@@ -6598,19 +6598,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                       QUERY PLAN                       
---------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Append
-   ->  Index Scan using p2_val_id_idx on p2
+   ->  Index Scan using p2_val_id_idx on p2 p2_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_val_id_idx on p2_c1
+   ->  Index Scan using p2_c1_val_id_idx on p2_c1 p2_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c1_val_id_idx on p2_c1_c1
+   ->  Index Scan using p2_c1_c1_val_id_idx on p2_c1_c1 p2_3
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c2_val_id_idx on p2_c1_c2
+   ->  Index Scan using p2_c1_c2_val_id_idx on p2_c1_c2 p2_4
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
 (13 rows)
@@ -6619,23 +6619,23 @@ EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Append
-   ->  Seq Scan on p2
+   ->  Seq Scan on p2 p2_1
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1
+   ->  Seq Scan on p2_c1 p2_2
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c2
+   ->  Seq Scan on p2_c2 p2_3
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3
+   ->  Seq Scan on p2_c3 p2_4
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c4
+   ->  Seq Scan on p2_c4 p2_5
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c1
+   ->  Seq Scan on p2_c1_c1 p2_6
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c2
+   ->  Seq Scan on p2_c1_c2 p2_7
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3_c1
+   ->  Seq Scan on p2_c3_c1 p2_8
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3_c2
+   ->  Seq Scan on p2_c3_c2 p2_9
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
 (19 rows)
 
@@ -6662,23 +6662,23 @@ error hint:
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Append
-   ->  Seq Scan on p2
+   ->  Seq Scan on p2 p2_1
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1
+   ->  Seq Scan on p2_c1 p2_2
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c2
+   ->  Seq Scan on p2_c2 p2_3
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3
+   ->  Seq Scan on p2_c3 p2_4
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c4
+   ->  Seq Scan on p2_c4 p2_5
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c1
+   ->  Seq Scan on p2_c1_c1 p2_6
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c2
+   ->  Seq Scan on p2_c1_c2 p2_7
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3_c1
+   ->  Seq Scan on p2_c3_c1 p2_8
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3_c2
+   ->  Seq Scan on p2_c3_c2 p2_9
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
 (19 rows)
 
@@ -6695,19 +6695,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Append
-   ->  Index Scan using p2_pkey on p2
+   ->  Index Scan using p2_pkey on p2 p2_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_pkey on p2_c1
+   ->  Index Scan using p2_c1_pkey on p2_c1 p2_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1
+   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1 p2_3
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2
+   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2 p2_4
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
 (13 rows)
@@ -6728,15 +6728,15 @@ error hint:
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
-   ->  Index Scan using p2_id2_val on p2
+   ->  Index Scan using p2_id2_val on p2 p2_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_id2_val on p2_c1
+   ->  Index Scan using p2_c1_id2_val on p2_c1 p2_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Seq Scan on p2_c1_c1
+   ->  Seq Scan on p2_c1_c1 p2_3
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c2
+   ->  Seq Scan on p2_c1_c2 p2_4
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (11 rows)
 
@@ -6756,14 +6756,14 @@ error hint:
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
-   ->  Index Scan using p2_val2_id on p2
+   ->  Index Scan using p2_val2_id on p2 p2_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Seq Scan on p2_c1
+   ->  Seq Scan on p2_c1 p2_2
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c1
+   ->  Seq Scan on p2_c1_c1 p2_3
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c2
+   ->  Seq Scan on p2_c1_c2 p2_4
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (10 rows)
 
@@ -6780,19 +6780,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Append
-   ->  Index Scan using p2_pkey on p2
+   ->  Index Scan using p2_pkey on p2 p2_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_pkey on p2_c1
+   ->  Index Scan using p2_c1_pkey on p2_c1 p2_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1
+   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1 p2_3
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2
+   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2 p2_4
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
 (13 rows)
@@ -6813,14 +6813,14 @@ error hint:
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
-   ->  Seq Scan on p2
+   ->  Seq Scan on p2 p2_1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Index Scan using p2_c1_id_val_idx on p2_c1
+   ->  Index Scan using p2_c1_id_val_idx on p2_c1 p2_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Seq Scan on p2_c1_c1
+   ->  Seq Scan on p2_c1_c1 p2_3
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c2
+   ->  Seq Scan on p2_c1_c2 p2_4
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (10 rows)
 
@@ -6840,13 +6840,13 @@ error hint:
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
-   ->  Seq Scan on p2
+   ->  Seq Scan on p2 p2_1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1
+   ->  Seq Scan on p2_c1 p2_2
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c1
+   ->  Seq Scan on p2_c1_c1 p2_3
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c2
+   ->  Seq Scan on p2_c1_c2 p2_4
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (9 rows)
 
@@ -6863,19 +6863,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Append
-   ->  Index Scan using p2_pkey on p2
+   ->  Index Scan using p2_pkey on p2 p2_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_id_val_idx on p2_c1
+   ->  Index Scan using p2_c1_id_val_idx on p2_c1 p2_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1
+   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1 p2_3
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2
+   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2 p2_4
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
 (13 rows)
@@ -6893,19 +6893,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Append
-   ->  Index Scan using p2_pkey on p2
+   ->  Index Scan using p2_pkey on p2 p2_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_pkey on p2_c1
+   ->  Index Scan using p2_c1_pkey on p2_c1 p2_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1
+   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1 p2_3
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2
+   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2 p2_4
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
 (13 rows)
@@ -6926,14 +6926,14 @@ error hint:
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
-   ->  Seq Scan on p2
+   ->  Seq Scan on p2 p2_1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Index Scan using p2_c1_id_val_idx on p2_c1
+   ->  Index Scan using p2_c1_id_val_idx on p2_c1 p2_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Seq Scan on p2_c1_c1
+   ->  Seq Scan on p2_c1_c1 p2_3
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c2
+   ->  Seq Scan on p2_c1_c2 p2_4
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (10 rows)
 
@@ -6950,19 +6950,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Append
-   ->  Index Scan using p2_pkey on p2
+   ->  Index Scan using p2_pkey on p2 p2_1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_id_val_idx on p2_c1
+   ->  Index Scan using p2_c1_id_val_idx on p2_c1 p2_2
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1
+   ->  Index Scan using p2_c1_c1_pkey on p2_c1_c1 p2_3
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2
+   ->  Index Scan using p2_c1_c2_pkey on p2_c1_c2 p2_4
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
 (13 rows)
@@ -6988,31 +6988,31 @@ error hint:
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Append
-   ->  Index Scan using p2_val_idx on p2
+   ->  Index Scan using p2_val_idx on p2 p2_1
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_val_idx on p2_c1
+   ->  Index Scan using p2_c1_val_idx on p2_c1 p2_2
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c2_val_idx on p2_c2
+   ->  Index Scan using p2_c2_val_idx on p2_c2 p2_3
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c3_val_idx on p2_c3
+   ->  Index Scan using p2_c3_val_idx on p2_c3 p2_4
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c4_val_idx on p2_c4
+   ->  Index Scan using p2_c4_val_idx on p2_c4 p2_5
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c1_val_idx on p2_c1_c1
+   ->  Index Scan using p2_c1_c1_val_idx on p2_c1_c1 p2_6
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c2_val_idx on p2_c1_c2
+   ->  Index Scan using p2_c1_c2_val_idx on p2_c1_c2 p2_7
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c3_c1_val_idx on p2_c3_c1
+   ->  Index Scan using p2_c3_c1_val_idx on p2_c3_c1 p2_8
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c3_c2_val_idx on p2_c3_c2
+   ->  Index Scan using p2_c3_c2_val_idx on p2_c3_c2 p2_9
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
 (28 rows)
@@ -7038,23 +7038,23 @@ error hint:
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Append
-   ->  Seq Scan on p2
+   ->  Seq Scan on p2 p2_1
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1
+   ->  Seq Scan on p2_c1 p2_2
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c2
+   ->  Seq Scan on p2_c2 p2_3
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3
+   ->  Seq Scan on p2_c3 p2_4
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c4
+   ->  Seq Scan on p2_c4 p2_5
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c1
+   ->  Seq Scan on p2_c1_c1 p2_6
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c2
+   ->  Seq Scan on p2_c1_c2 p2_7
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3_c1
+   ->  Seq Scan on p2_c3_c1 p2_8
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3_c2
+   ->  Seq Scan on p2_c3_c2 p2_9
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
 (19 rows)
 
@@ -7079,23 +7079,23 @@ error hint:
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Append
-   ->  Seq Scan on p2
+   ->  Seq Scan on p2 p2_1
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1
+   ->  Seq Scan on p2_c1 p2_2
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c2
+   ->  Seq Scan on p2_c2 p2_3
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3
+   ->  Seq Scan on p2_c3 p2_4
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c4
+   ->  Seq Scan on p2_c4 p2_5
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c1
+   ->  Seq Scan on p2_c1_c1 p2_6
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c1_c2
+   ->  Seq Scan on p2_c1_c2 p2_7
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3_c1
+   ->  Seq Scan on p2_c3_c1 p2_8
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Seq Scan on p2_c3_c2
+   ->  Seq Scan on p2_c3_c2 p2_9
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
 (19 rows)
 
@@ -7120,31 +7120,31 @@ error hint:
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Append
-   ->  Index Scan using p2_val_idx on p2
+   ->  Index Scan using p2_val_idx on p2 p2_1
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_val_idx on p2_c1
+   ->  Index Scan using p2_c1_val_idx on p2_c1 p2_2
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c2_val_idx on p2_c2
+   ->  Index Scan using p2_c2_val_idx on p2_c2 p2_3
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c3_val_idx on p2_c3
+   ->  Index Scan using p2_c3_val_idx on p2_c3 p2_4
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c4_val_idx on p2_c4
+   ->  Index Scan using p2_c4_val_idx on p2_c4 p2_5
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c1_val_idx on p2_c1_c1
+   ->  Index Scan using p2_c1_c1_val_idx on p2_c1_c1 p2_6
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c1_c2_val_idx on p2_c1_c2
+   ->  Index Scan using p2_c1_c2_val_idx on p2_c1_c2 p2_7
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c3_c1_val_idx on p2_c3_c1
+   ->  Index Scan using p2_c3_c1_val_idx on p2_c3_c1 p2_8
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using p2_c3_c2_val_idx on p2_c3_c2
+   ->  Index Scan using p2_c3_c2_val_idx on p2_c3_c2 p2_9
          Index Cond: ((val >= '50'::text) AND (val <= '51'::text))
          Filter: (ctid = '(1,1)'::tid)
 (28 rows)
@@ -7404,26 +7404,26 @@ error hint:
 
 -- Inheritance
 EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
-         QUERY PLAN         
-----------------------------
+           QUERY PLAN            
+---------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: (val = 1)
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: (val = 1)
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: (val = 1)
 (19 rows)
 
@@ -7445,26 +7445,26 @@ not used hint:
 duplication hint:
 error hint:
 
-         QUERY PLAN         
-----------------------------
+           QUERY PLAN            
+---------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: (val = 1)
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: (val = 1)
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: (val = 1)
 (19 rows)
 
@@ -7486,26 +7486,26 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Append
-   ->  Index Scan using p1_val2 on p1
+   ->  Index Scan using p1_val2 on p1 p1_1
          Index Cond: (val = 1)
-   ->  Index Scan using p1_c1_val2 on p1_c1
+   ->  Index Scan using p1_c1_val2 on p1_c1 p1_2
          Index Cond: (val = 1)
-   ->  Index Scan using p1_c2_val2 on p1_c2
+   ->  Index Scan using p1_c2_val2 on p1_c2 p1_3
          Index Cond: (val = 1)
-   ->  Index Scan using p1_c3_val2 on p1_c3
+   ->  Index Scan using p1_c3_val2 on p1_c3 p1_4
          Index Cond: (val = 1)
-   ->  Index Scan using p1_c4_val2 on p1_c4
+   ->  Index Scan using p1_c4_val2 on p1_c4 p1_5
          Index Cond: (val = 1)
-   ->  Index Scan using p1_c1_c1_val2 on p1_c1_c1
+   ->  Index Scan using p1_c1_c1_val2 on p1_c1_c1 p1_6
          Index Cond: (val = 1)
-   ->  Index Scan using p1_c1_c2_val2 on p1_c1_c2
+   ->  Index Scan using p1_c1_c2_val2 on p1_c1_c2 p1_7
          Index Cond: (val = 1)
-   ->  Index Scan using p1_c3_c1_val2 on p1_c3_c1
+   ->  Index Scan using p1_c3_c1_val2 on p1_c3_c1 p1_8
          Index Cond: (val = 1)
-   ->  Index Scan using p1_c3_c2_val2 on p1_c3_c2
+   ->  Index Scan using p1_c3_c2_val2 on p1_c3_c2 p1_9
          Index Cond: (val = 1)
 (19 rows)
 
@@ -7527,26 +7527,26 @@ not used hint:
 duplication hint:
 error hint:
 
-         QUERY PLAN         
-----------------------------
+           QUERY PLAN            
+---------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: (val = 1)
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: (val = 1)
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: (val = 1)
 (19 rows)
 
@@ -7568,26 +7568,26 @@ not used hint:
 duplication hint:
 error hint:
 
-         QUERY PLAN         
-----------------------------
+           QUERY PLAN            
+---------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: (val = 1)
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: (val = 1)
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: (val = 1)
 (19 rows)
 
@@ -7609,26 +7609,26 @@ not used hint:
 duplication hint:
 error hint:
 
-         QUERY PLAN         
-----------------------------
+           QUERY PLAN            
+---------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: (val = 1)
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: (val = 1)
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: (val = 1)
 (19 rows)
 
@@ -7650,26 +7650,26 @@ not used hint:
 duplication hint:
 error hint:
 
-                      QUERY PLAN                       
--------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Append
-   ->  Index Only Scan using p1_val2 on p1
+   ->  Index Only Scan using p1_val2 on p1 p1_1
          Index Cond: (val = 1)
-   ->  Index Only Scan using p1_c1_val2 on p1_c1
+   ->  Index Only Scan using p1_c1_val2 on p1_c1 p1_2
          Index Cond: (val = 1)
-   ->  Index Only Scan using p1_c2_val2 on p1_c2
+   ->  Index Only Scan using p1_c2_val2 on p1_c2 p1_3
          Index Cond: (val = 1)
-   ->  Index Only Scan using p1_c3_val2 on p1_c3
+   ->  Index Only Scan using p1_c3_val2 on p1_c3 p1_4
          Index Cond: (val = 1)
-   ->  Index Only Scan using p1_c4_val2 on p1_c4
+   ->  Index Only Scan using p1_c4_val2 on p1_c4 p1_5
          Index Cond: (val = 1)
-   ->  Index Only Scan using p1_c1_c1_val2 on p1_c1_c1
+   ->  Index Only Scan using p1_c1_c1_val2 on p1_c1_c1 p1_6
          Index Cond: (val = 1)
-   ->  Index Only Scan using p1_c1_c2_val2 on p1_c1_c2
+   ->  Index Only Scan using p1_c1_c2_val2 on p1_c1_c2 p1_7
          Index Cond: (val = 1)
-   ->  Index Only Scan using p1_c3_c1_val2 on p1_c3_c1
+   ->  Index Only Scan using p1_c3_c1_val2 on p1_c3_c1 p1_8
          Index Cond: (val = 1)
-   ->  Index Only Scan using p1_c3_c2_val2 on p1_c3_c2
+   ->  Index Only Scan using p1_c3_c2_val2 on p1_c3_c2 p1_9
          Index Cond: (val = 1)
 (19 rows)
 
@@ -7691,26 +7691,26 @@ not used hint:
 duplication hint:
 error hint:
 
-         QUERY PLAN         
-----------------------------
+           QUERY PLAN            
+---------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: (val = 1)
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: (val = 1)
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: (val = 1)
 (19 rows)
 
@@ -7732,26 +7732,26 @@ not used hint:
 duplication hint:
 error hint:
 
-         QUERY PLAN         
-----------------------------
+           QUERY PLAN            
+---------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: (val = 1)
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: (val = 1)
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: (val = 1)
 (19 rows)
 
@@ -7773,26 +7773,26 @@ not used hint:
 duplication hint:
 error hint:
 
-         QUERY PLAN         
-----------------------------
+           QUERY PLAN            
+---------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: (val = 1)
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: (val = 1)
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: (val = 1)
 (19 rows)
 
@@ -7817,39 +7817,39 @@ error hint:
                    QUERY PLAN                   
 ------------------------------------------------
  Append
-   ->  Bitmap Heap Scan on p1
+   ->  Bitmap Heap Scan on p1 p1_1
          Recheck Cond: (val = 1)
          ->  Bitmap Index Scan on p1_val2
                Index Cond: (val = 1)
-   ->  Bitmap Heap Scan on p1_c1
+   ->  Bitmap Heap Scan on p1_c1 p1_2
          Recheck Cond: (val = 1)
          ->  Bitmap Index Scan on p1_c1_val2
                Index Cond: (val = 1)
-   ->  Bitmap Heap Scan on p1_c2
+   ->  Bitmap Heap Scan on p1_c2 p1_3
          Recheck Cond: (val = 1)
          ->  Bitmap Index Scan on p1_c2_val2
                Index Cond: (val = 1)
-   ->  Bitmap Heap Scan on p1_c3
+   ->  Bitmap Heap Scan on p1_c3 p1_4
          Recheck Cond: (val = 1)
          ->  Bitmap Index Scan on p1_c3_val2
                Index Cond: (val = 1)
-   ->  Bitmap Heap Scan on p1_c4
+   ->  Bitmap Heap Scan on p1_c4 p1_5
          Recheck Cond: (val = 1)
          ->  Bitmap Index Scan on p1_c4_val2
                Index Cond: (val = 1)
-   ->  Bitmap Heap Scan on p1_c1_c1
+   ->  Bitmap Heap Scan on p1_c1_c1 p1_6
          Recheck Cond: (val = 1)
          ->  Bitmap Index Scan on p1_c1_c1_val2
                Index Cond: (val = 1)
-   ->  Bitmap Heap Scan on p1_c1_c2
+   ->  Bitmap Heap Scan on p1_c1_c2 p1_7
          Recheck Cond: (val = 1)
          ->  Bitmap Index Scan on p1_c1_c2_val2
                Index Cond: (val = 1)
-   ->  Bitmap Heap Scan on p1_c3_c1
+   ->  Bitmap Heap Scan on p1_c3_c1 p1_8
          Recheck Cond: (val = 1)
          ->  Bitmap Index Scan on p1_c3_c1_val2
                Index Cond: (val = 1)
-   ->  Bitmap Heap Scan on p1_c3_c2
+   ->  Bitmap Heap Scan on p1_c3_c2 p1_9
          Recheck Cond: (val = 1)
          ->  Bitmap Index Scan on p1_c3_c2_val2
                Index Cond: (val = 1)
@@ -7873,26 +7873,26 @@ not used hint:
 duplication hint:
 error hint:
 
-         QUERY PLAN         
-----------------------------
+           QUERY PLAN            
+---------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: (val = 1)
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: (val = 1)
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: (val = 1)
 (19 rows)
 
@@ -7914,26 +7914,26 @@ not used hint:
 duplication hint:
 error hint:
 
-         QUERY PLAN         
-----------------------------
+           QUERY PLAN            
+---------------------------------
  Append
-   ->  Seq Scan on p1
+   ->  Seq Scan on p1 p1_1
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1
+   ->  Seq Scan on p1_c1 p1_2
          Filter: (val = 1)
-   ->  Seq Scan on p1_c2
+   ->  Seq Scan on p1_c2 p1_3
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3
+   ->  Seq Scan on p1_c3 p1_4
          Filter: (val = 1)
-   ->  Seq Scan on p1_c4
+   ->  Seq Scan on p1_c4 p1_5
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c1
+   ->  Seq Scan on p1_c1_c1 p1_6
          Filter: (val = 1)
-   ->  Seq Scan on p1_c1_c2
+   ->  Seq Scan on p1_c1_c2 p1_7
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c1
+   ->  Seq Scan on p1_c3_c1 p1_8
          Filter: (val = 1)
-   ->  Seq Scan on p1_c3_c2
+   ->  Seq Scan on p1_c3_c2 p1_9
          Filter: (val = 1)
 (19 rows)
 
@@ -8392,47 +8392,47 @@ SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = '
 EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
 UNION ALL
 SELECT val::int FROM p2 WHERE id < 1000;
-               QUERY PLAN                
------------------------------------------
+                 QUERY PLAN                  
+---------------------------------------------
  Append
    ->  Append
-         ->  Seq Scan on p1
+         ->  Seq Scan on p1 p1_1
                Filter: (val < 1000)
-         ->  Seq Scan on p1_c1
+         ->  Seq Scan on p1_c1 p1_2
                Filter: (val < 1000)
-         ->  Seq Scan on p1_c2
+         ->  Seq Scan on p1_c2 p1_3
                Filter: (val < 1000)
-         ->  Seq Scan on p1_c3
+         ->  Seq Scan on p1_c3 p1_4
                Filter: (val < 1000)
-         ->  Seq Scan on p1_c4
+         ->  Seq Scan on p1_c4 p1_5
                Filter: (val < 1000)
-         ->  Seq Scan on p1_c1_c1
+         ->  Seq Scan on p1_c1_c1 p1_6
                Filter: (val < 1000)
-         ->  Seq Scan on p1_c1_c2
+         ->  Seq Scan on p1_c1_c2 p1_7
                Filter: (val < 1000)
-         ->  Seq Scan on p1_c3_c1
+         ->  Seq Scan on p1_c3_c1 p1_8
                Filter: (val < 1000)
-         ->  Seq Scan on p1_c3_c2
+         ->  Seq Scan on p1_c3_c2 p1_9
                Filter: (val < 1000)
    ->  Result
          ->  Append
-               ->  Seq Scan on p2
+               ->  Seq Scan on p2 p2_1
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c1
+               ->  Seq Scan on p2_c1 p2_2
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c2
+               ->  Seq Scan on p2_c2 p2_3
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c3
+               ->  Seq Scan on p2_c3 p2_4
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c4
+               ->  Seq Scan on p2_c4 p2_5
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c1_c1
+               ->  Seq Scan on p2_c1_c1 p2_6
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c1_c2
+               ->  Seq Scan on p2_c1_c2 p2_7
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c3_c1
+               ->  Seq Scan on p2_c3_c1 p2_8
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c3_c2
+               ->  Seq Scan on p2_c3_c2 p2_9
                      Filter: (id < 1000)
 (40 rows)
 
@@ -8456,47 +8456,47 @@ not used hint:
 duplication hint:
 error hint:
 
-                       QUERY PLAN                       
---------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Append
    ->  Append
-         ->  Index Scan using p1_val3 on p1
+         ->  Index Scan using p1_val3 on p1 p1_1
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c1_val3 on p1_c1
+         ->  Index Scan using p1_c1_val3 on p1_c1 p1_2
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c2_val3 on p1_c2
+         ->  Index Scan using p1_c2_val3 on p1_c2 p1_3
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c3_val3 on p1_c3
+         ->  Index Scan using p1_c3_val3 on p1_c3 p1_4
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c4_val3 on p1_c4
+         ->  Index Scan using p1_c4_val3 on p1_c4 p1_5
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c1_c1_val3 on p1_c1_c1
+         ->  Index Scan using p1_c1_c1_val3 on p1_c1_c1 p1_6
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c1_c2_val3 on p1_c1_c2
+         ->  Index Scan using p1_c1_c2_val3 on p1_c1_c2 p1_7
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c3_c1_val3 on p1_c3_c1
+         ->  Index Scan using p1_c3_c1_val3 on p1_c3_c1 p1_8
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c3_c2_val3 on p1_c3_c2
+         ->  Index Scan using p1_c3_c2_val3 on p1_c3_c2 p1_9
                Index Cond: (val < 1000)
    ->  Result
          ->  Append
-               ->  Seq Scan on p2
+               ->  Seq Scan on p2 p2_1
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c1
+               ->  Seq Scan on p2_c1 p2_2
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c2
+               ->  Seq Scan on p2_c2 p2_3
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c3
+               ->  Seq Scan on p2_c3 p2_4
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c4
+               ->  Seq Scan on p2_c4 p2_5
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c1_c1
+               ->  Seq Scan on p2_c1_c1 p2_6
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c1_c2
+               ->  Seq Scan on p2_c1_c2 p2_7
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c3_c1
+               ->  Seq Scan on p2_c3_c1 p2_8
                      Filter: (id < 1000)
-               ->  Seq Scan on p2_c3_c2
+               ->  Seq Scan on p2_c3_c2 p2_9
                      Filter: (id < 1000)
 (40 rows)
 
@@ -8530,47 +8530,47 @@ not used hint:
 duplication hint:
 error hint:
 
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Append
    ->  Append
-         ->  Index Scan using p1_val3 on p1
+         ->  Index Scan using p1_val3 on p1 p1_1
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c1_val3 on p1_c1
+         ->  Index Scan using p1_c1_val3 on p1_c1 p1_2
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c2_val3 on p1_c2
+         ->  Index Scan using p1_c2_val3 on p1_c2 p1_3
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c3_val3 on p1_c3
+         ->  Index Scan using p1_c3_val3 on p1_c3 p1_4
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c4_val3 on p1_c4
+         ->  Index Scan using p1_c4_val3 on p1_c4 p1_5
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c1_c1_val3 on p1_c1_c1
+         ->  Index Scan using p1_c1_c1_val3 on p1_c1_c1 p1_6
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c1_c2_val3 on p1_c1_c2
+         ->  Index Scan using p1_c1_c2_val3 on p1_c1_c2 p1_7
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c3_c1_val3 on p1_c3_c1
+         ->  Index Scan using p1_c3_c1_val3 on p1_c3_c1 p1_8
                Index Cond: (val < 1000)
-         ->  Index Scan using p1_c3_c2_val3 on p1_c3_c2
+         ->  Index Scan using p1_c3_c2_val3 on p1_c3_c2 p1_9
                Index Cond: (val < 1000)
    ->  Result
          ->  Append
-               ->  Index Scan using p2_id_val_idx on p2
+               ->  Index Scan using p2_id_val_idx on p2 p2_1
                      Index Cond: (id < 1000)
-               ->  Index Scan using p2_c1_id_val_idx on p2_c1
+               ->  Index Scan using p2_c1_id_val_idx on p2_c1 p2_2
                      Index Cond: (id < 1000)
-               ->  Index Scan using p2_c2_id_val_idx on p2_c2
+               ->  Index Scan using p2_c2_id_val_idx on p2_c2 p2_3
                      Index Cond: (id < 1000)
-               ->  Index Scan using p2_c3_id_val_idx on p2_c3
+               ->  Index Scan using p2_c3_id_val_idx on p2_c3 p2_4
                      Index Cond: (id < 1000)
-               ->  Index Scan using p2_c4_id_val_idx on p2_c4
+               ->  Index Scan using p2_c4_id_val_idx on p2_c4 p2_5
                      Index Cond: (id < 1000)
-               ->  Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1
+               ->  Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1 p2_6
                      Index Cond: (id < 1000)
-               ->  Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2
+               ->  Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2 p2_7
                      Index Cond: (id < 1000)
-               ->  Index Scan using p2_c3_c1_id_val_idx on p2_c3_c1
+               ->  Index Scan using p2_c3_c1_id_val_idx on p2_c3_c1 p2_8
                      Index Cond: (id < 1000)
-               ->  Index Scan using p2_c3_c2_id_val_idx on p2_c3_c2
+               ->  Index Scan using p2_c3_c2_id_val_idx on p2_c3_c2 p2_9
                      Index Cond: (id < 1000)
 (40 rows)
 
@@ -8578,49 +8578,49 @@ error hint:
 EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
 UNION
 SELECT val::int FROM p2 WHERE id < 1000;
-                  QUERY PLAN                   
------------------------------------------------
+                    QUERY PLAN                     
+---------------------------------------------------
  HashAggregate
    Group Key: p1.val
    ->  Append
          ->  Append
-               ->  Seq Scan on p1
+               ->  Seq Scan on p1 p1_1
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c1
+               ->  Seq Scan on p1_c1 p1_2
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c2
+               ->  Seq Scan on p1_c2 p1_3
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c3
+               ->  Seq Scan on p1_c3 p1_4
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c4
+               ->  Seq Scan on p1_c4 p1_5
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c1_c1
+               ->  Seq Scan on p1_c1_c1 p1_6
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c1_c2
+               ->  Seq Scan on p1_c1_c2 p1_7
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c3_c1
+               ->  Seq Scan on p1_c3_c1 p1_8
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c3_c2
+               ->  Seq Scan on p1_c3_c2 p1_9
                      Filter: (val < 1000)
          ->  Result
                ->  Append
-                     ->  Seq Scan on p2
+                     ->  Seq Scan on p2 p2_1
                            Filter: (id < 1000)
-                     ->  Seq Scan on p2_c1
+                     ->  Seq Scan on p2_c1 p2_2
                            Filter: (id < 1000)
-                     ->  Seq Scan on p2_c2
+                     ->  Seq Scan on p2_c2 p2_3
                            Filter: (id < 1000)
-                     ->  Seq Scan on p2_c3
+                     ->  Seq Scan on p2_c3 p2_4
                            Filter: (id < 1000)
-                     ->  Seq Scan on p2_c4
+                     ->  Seq Scan on p2_c4 p2_5
                            Filter: (id < 1000)
-                     ->  Seq Scan on p2_c1_c1
+                     ->  Seq Scan on p2_c1_c1 p2_6
                            Filter: (id < 1000)
-                     ->  Seq Scan on p2_c1_c2
+                     ->  Seq Scan on p2_c1_c2 p2_7
                            Filter: (id < 1000)
-                     ->  Seq Scan on p2_c3_c1
+                     ->  Seq Scan on p2_c3_c1 p2_8
                            Filter: (id < 1000)
-                     ->  Seq Scan on p2_c3_c2
+                     ->  Seq Scan on p2_c3_c2 p2_9
                            Filter: (id < 1000)
 (42 rows)
 
@@ -8644,49 +8644,49 @@ not used hint:
 duplication hint:
 error hint:
 
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
  HashAggregate
    Group Key: p1.val
    ->  Append
          ->  Append
-               ->  Seq Scan on p1
+               ->  Seq Scan on p1 p1_1
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c1
+               ->  Seq Scan on p1_c1 p1_2
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c2
+               ->  Seq Scan on p1_c2 p1_3
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c3
+               ->  Seq Scan on p1_c3 p1_4
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c4
+               ->  Seq Scan on p1_c4 p1_5
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c1_c1
+               ->  Seq Scan on p1_c1_c1 p1_6
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c1_c2
+               ->  Seq Scan on p1_c1_c2 p1_7
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c3_c1
+               ->  Seq Scan on p1_c3_c1 p1_8
                      Filter: (val < 1000)
-               ->  Seq Scan on p1_c3_c2
+               ->  Seq Scan on p1_c3_c2 p1_9
                      Filter: (val < 1000)
          ->  Result
                ->  Append
-                     ->  Index Scan using p2_id_val_idx on p2
+                     ->  Index Scan using p2_id_val_idx on p2 p2_1
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c1_id_val_idx on p2_c1
+                     ->  Index Scan using p2_c1_id_val_idx on p2_c1 p2_2
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c2_id_val_idx on p2_c2
+                     ->  Index Scan using p2_c2_id_val_idx on p2_c2 p2_3
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c3_id_val_idx on p2_c3
+                     ->  Index Scan using p2_c3_id_val_idx on p2_c3 p2_4
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c4_id_val_idx on p2_c4
+                     ->  Index Scan using p2_c4_id_val_idx on p2_c4 p2_5
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1
+                     ->  Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1 p2_6
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2
+                     ->  Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2 p2_7
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c3_c1_id_val_idx on p2_c3_c1
+                     ->  Index Scan using p2_c3_c1_id_val_idx on p2_c3_c1 p2_8
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c3_c2_id_val_idx on p2_c3_c2
+                     ->  Index Scan using p2_c3_c2_id_val_idx on p2_c3_c2 p2_9
                            Index Cond: (id < 1000)
 (42 rows)
 
@@ -8720,49 +8720,49 @@ not used hint:
 duplication hint:
 error hint:
 
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
  HashAggregate
    Group Key: p1.val
    ->  Append
          ->  Append
-               ->  Index Scan using p1_val3 on p1
+               ->  Index Scan using p1_val3 on p1 p1_1
                      Index Cond: (val < 1000)
-               ->  Index Scan using p1_c1_val3 on p1_c1
+               ->  Index Scan using p1_c1_val3 on p1_c1 p1_2
                      Index Cond: (val < 1000)
-               ->  Index Scan using p1_c2_val3 on p1_c2
+               ->  Index Scan using p1_c2_val3 on p1_c2 p1_3
                      Index Cond: (val < 1000)
-               ->  Index Scan using p1_c3_val3 on p1_c3
+               ->  Index Scan using p1_c3_val3 on p1_c3 p1_4
                      Index Cond: (val < 1000)
-               ->  Index Scan using p1_c4_val3 on p1_c4
+               ->  Index Scan using p1_c4_val3 on p1_c4 p1_5
                      Index Cond: (val < 1000)
-               ->  Index Scan using p1_c1_c1_val3 on p1_c1_c1
+               ->  Index Scan using p1_c1_c1_val3 on p1_c1_c1 p1_6
                      Index Cond: (val < 1000)
-               ->  Index Scan using p1_c1_c2_val3 on p1_c1_c2
+               ->  Index Scan using p1_c1_c2_val3 on p1_c1_c2 p1_7
                      Index Cond: (val < 1000)
-               ->  Index Scan using p1_c3_c1_val3 on p1_c3_c1
+               ->  Index Scan using p1_c3_c1_val3 on p1_c3_c1 p1_8
                      Index Cond: (val < 1000)
-               ->  Index Scan using p1_c3_c2_val3 on p1_c3_c2
+               ->  Index Scan using p1_c3_c2_val3 on p1_c3_c2 p1_9
                      Index Cond: (val < 1000)
          ->  Result
                ->  Append
-                     ->  Index Scan using p2_id_val_idx on p2
+                     ->  Index Scan using p2_id_val_idx on p2 p2_1
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c1_id_val_idx on p2_c1
+                     ->  Index Scan using p2_c1_id_val_idx on p2_c1 p2_2
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c2_id_val_idx on p2_c2
+                     ->  Index Scan using p2_c2_id_val_idx on p2_c2 p2_3
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c3_id_val_idx on p2_c3
+                     ->  Index Scan using p2_c3_id_val_idx on p2_c3 p2_4
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c4_id_val_idx on p2_c4
+                     ->  Index Scan using p2_c4_id_val_idx on p2_c4 p2_5
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1
+                     ->  Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1 p2_6
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2
+                     ->  Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2 p2_7
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c3_c1_id_val_idx on p2_c3_c1
+                     ->  Index Scan using p2_c3_c1_id_val_idx on p2_c3_c1 p2_8
                            Index Cond: (id < 1000)
-                     ->  Index Scan using p2_c3_c2_id_val_idx on p2_c3_c2
+                     ->  Index Scan using p2_c3_c2_id_val_idx on p2_c3_c2 p2_9
                            Index Cond: (id < 1000)
 (42 rows)
 

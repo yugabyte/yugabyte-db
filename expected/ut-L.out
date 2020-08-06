@@ -673,28 +673,28 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p1 t1, s1.p1 t2, s1.p1 t3, s1.p1 t4 WHERE
          ->  Hash Join
                Hash Cond: (t1.c1 = t2.c1)
                ->  Append
-                     ->  Seq Scan on p1 t1
-                     ->  Seq Scan on p1c1 t1_1
-                     ->  Seq Scan on p1c2 t1_2
-                     ->  Seq Scan on p1c3 t1_3
+                     ->  Seq Scan on p1 t1_1
+                     ->  Seq Scan on p1c1 t1_2
+                     ->  Seq Scan on p1c2 t1_3
+                     ->  Seq Scan on p1c3 t1_4
                ->  Hash
                      ->  Append
-                           ->  Seq Scan on p1 t2
-                           ->  Seq Scan on p1c1 t2_1
-                           ->  Seq Scan on p1c2 t2_2
-                           ->  Seq Scan on p1c3 t2_3
+                           ->  Seq Scan on p1 t2_1
+                           ->  Seq Scan on p1c1 t2_2
+                           ->  Seq Scan on p1c2 t2_3
+                           ->  Seq Scan on p1c3 t2_4
          ->  Hash
                ->  Append
-                     ->  Seq Scan on p1 t3
-                     ->  Seq Scan on p1c1 t3_1
-                     ->  Seq Scan on p1c2 t3_2
-                     ->  Seq Scan on p1c3 t3_3
+                     ->  Seq Scan on p1 t3_1
+                     ->  Seq Scan on p1c1 t3_2
+                     ->  Seq Scan on p1c2 t3_3
+                     ->  Seq Scan on p1c3 t3_4
    ->  Hash
          ->  Append
-               ->  Seq Scan on p1 t4
-               ->  Seq Scan on p1c1 t4_1
-               ->  Seq Scan on p1c2 t4_2
-               ->  Seq Scan on p1c3 t4_3
+               ->  Seq Scan on p1 t4_1
+               ->  Seq Scan on p1c1 t4_2
+               ->  Seq Scan on p1c2 t4_3
+               ->  Seq Scan on p1c3 t4_4
 (29 rows)
 
 /*+Leading(t4 t3 t2 t1)*/
@@ -715,28 +715,28 @@ error hint:
          ->  Hash Join
                Hash Cond: (t3.c1 = t4.c1)
                ->  Append
-                     ->  Seq Scan on p1 t3
-                     ->  Seq Scan on p1c1 t3_1
-                     ->  Seq Scan on p1c2 t3_2
-                     ->  Seq Scan on p1c3 t3_3
+                     ->  Seq Scan on p1 t3_1
+                     ->  Seq Scan on p1c1 t3_2
+                     ->  Seq Scan on p1c2 t3_3
+                     ->  Seq Scan on p1c3 t3_4
                ->  Hash
                      ->  Append
-                           ->  Seq Scan on p1 t4
-                           ->  Seq Scan on p1c1 t4_1
-                           ->  Seq Scan on p1c2 t4_2
-                           ->  Seq Scan on p1c3 t4_3
+                           ->  Seq Scan on p1 t4_1
+                           ->  Seq Scan on p1c1 t4_2
+                           ->  Seq Scan on p1c2 t4_3
+                           ->  Seq Scan on p1c3 t4_4
          ->  Hash
                ->  Append
-                     ->  Seq Scan on p1 t2
-                     ->  Seq Scan on p1c1 t2_1
-                     ->  Seq Scan on p1c2 t2_2
-                     ->  Seq Scan on p1c3 t2_3
+                     ->  Seq Scan on p1 t2_1
+                     ->  Seq Scan on p1c1 t2_2
+                     ->  Seq Scan on p1c2 t2_3
+                     ->  Seq Scan on p1c3 t2_4
    ->  Hash
          ->  Append
-               ->  Seq Scan on p1 t1
-               ->  Seq Scan on p1c1 t1_1
-               ->  Seq Scan on p1c2 t1_2
-               ->  Seq Scan on p1c3 t1_3
+               ->  Seq Scan on p1 t1_1
+               ->  Seq Scan on p1c1 t1_2
+               ->  Seq Scan on p1c2 t1_3
+               ->  Seq Scan on p1c3 t1_4
 (29 rows)
 
 -- No. L-1-6-3
@@ -3999,19 +3999,19 @@ error hint:
    ->  Hash Join
          Hash Cond: (t1.c1 = t2.c1)
          ->  Append
-               ->  Seq Scan on p2c1 t1
-               ->  Seq Scan on p2c1c1 t1_1
-               ->  Seq Scan on p2c1c2 t1_2
+               ->  Seq Scan on p2c1 t1_1
+               ->  Seq Scan on p2c1c1 t1_2
+               ->  Seq Scan on p2c1c2 t1_3
          ->  Hash
                ->  Append
-                     ->  Seq Scan on p2c2 t2
-                     ->  Seq Scan on p2c2c1 t2_1
-                     ->  Seq Scan on p2c2c2 t2_2
+                     ->  Seq Scan on p2c2 t2_1
+                     ->  Seq Scan on p2c2c1 t2_2
+                     ->  Seq Scan on p2c2c2 t2_3
    ->  Hash
          ->  Append
-               ->  Seq Scan on p2c3 t3
-               ->  Seq Scan on p2c3c1 t3_1
-               ->  Seq Scan on p2c3c2 t3_2
+               ->  Seq Scan on p2c3 t3_1
+               ->  Seq Scan on p2c3c1 t3_2
+               ->  Seq Scan on p2c3c2 t3_3
 (18 rows)
 
 -- No. L-3-3-2
@@ -4033,19 +4033,19 @@ error hint:
    ->  Hash Join
          Hash Cond: (t1.c1 = t2.c1)
          ->  Append
-               ->  Seq Scan on p2c1 t1
-               ->  Seq Scan on p2c1c1 t1_1
-               ->  Seq Scan on p2c1c2 t1_2
+               ->  Seq Scan on p2c1 t1_1
+               ->  Seq Scan on p2c1c1 t1_2
+               ->  Seq Scan on p2c1c2 t1_3
          ->  Hash
                ->  Append
-                     ->  Seq Scan on p2c2 t2
-                     ->  Seq Scan on p2c2c1 t2_1
-                     ->  Seq Scan on p2c2c2 t2_2
+                     ->  Seq Scan on p2c2 t2_1
+                     ->  Seq Scan on p2c2c1 t2_2
+                     ->  Seq Scan on p2c2c2 t2_3
    ->  Hash
          ->  Append
-               ->  Seq Scan on p2c3 t3
-               ->  Seq Scan on p2c3c1 t3_1
-               ->  Seq Scan on p2c3c2 t3_2
+               ->  Seq Scan on p2c3 t3_1
+               ->  Seq Scan on p2c3c1 t3_2
+               ->  Seq Scan on p2c3c2 t3_3
 (18 rows)
 
 ----

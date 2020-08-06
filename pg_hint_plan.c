@@ -405,8 +405,9 @@ static void pg_hint_plan_ProcessUtility(PlannedStmt *pstmt,
 					const char *queryString,
 					ProcessUtilityContext context,
 					ParamListInfo params, QueryEnvironment *queryEnv,
-					DestReceiver *dest, char *completionTag);
-static PlannedStmt *pg_hint_plan_planner(Query *parse, int cursorOptions,
+					DestReceiver *dest, QueryCompletion *qc);
+static PlannedStmt *pg_hint_plan_planner(Query *parse, const char *query_string,
+										 int cursorOptions,
 										 ParamListInfo boundParams);
 static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root,
 											int levels_needed,
@@ -480,10 +481,11 @@ void pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 static void create_plain_partial_paths(PlannerInfo *root,
 													RelOptInfo *rel);
 static void make_rels_by_clause_joins(PlannerInfo *root, RelOptInfo *old_rel,
+									  List *other_rels_list,
 									  ListCell *other_rels);
 static void make_rels_by_clauseless_joins(PlannerInfo *root,
 										  RelOptInfo *old_rel,
-										  ListCell *other_rels);
+										  List *other_rels);
 static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
 static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 								   RangeTblEntry *rte);
@@ -3012,14 +3014,14 @@ static void
 pg_hint_plan_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					ProcessUtilityContext context,
 					ParamListInfo params, QueryEnvironment *queryEnv,
-					DestReceiver *dest, char *completionTag)
+					DestReceiver *dest, QueryCompletion *qc)
 {
 	if (prev_ProcessUtility_hook)
 		prev_ProcessUtility_hook(pstmt, queryString, context, params, queryEnv,
-								 dest, completionTag);
+								 dest, qc);
 	else
 		standard_ProcessUtility(pstmt, queryString, context, params, queryEnv,
-								 dest, completionTag);
+								 dest, qc);
 
 	if (plpgsql_recurse_level == 0)
 		current_hint_retrieved = false;
@@ -3029,7 +3031,7 @@ pg_hint_plan_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
  * Read and set up hint information
  */
 static PlannedStmt *
-pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
+pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams)
 {
 	int				save_nestlevel;
 	PlannedStmt	   *result;
@@ -3143,9 +3145,11 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	PG_TRY();
 	{
 		if (prev_planner)
-			result = (*prev_planner) (parse, cursorOptions, boundParams);
+			result = (*prev_planner) (parse, query_string,
+									  cursorOptions, boundParams);
 		else
-			result = standard_planner(parse, cursorOptions, boundParams);
+			result = standard_planner(parse, query_string,
+									  cursorOptions, boundParams);
 
 		current_hint_str = prev_hint_str;
 		recurse_level--;
@@ -3201,9 +3205,11 @@ standard_planner_proc:
 	}
 	current_hint_state = NULL;
 	if (prev_planner)
-		result =  (*prev_planner) (parse, cursorOptions, boundParams);
+		result =  (*prev_planner) (parse, query_string,
+								   cursorOptions, boundParams);
 	else
-		result = standard_planner(parse, cursorOptions, boundParams);
+		result = standard_planner(parse, query_string,
+								  cursorOptions, boundParams);
 
 	/* The upper-level planner still needs the current hint state */
 	if (HintStateStack != NIL)
@@ -3390,7 +3396,6 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 			   bool using_parent_hint)
 {
 	ListCell	   *cell;
-	ListCell	   *prev;
 	ListCell	   *next;
 	StringInfoData	buf;
 	RangeTblEntry  *rte = root->simple_rte_array[rel->relid];
@@ -3420,7 +3425,6 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 	 * Leaving only an specified index, we delete it from a IndexOptInfo list
 	 * other than it.
 	 */
-	prev = NULL;
 	if (debug_level > 0)
 		initStringInfo(&buf);
 
@@ -3431,8 +3435,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 		ListCell	   *l;
 		bool			use_index = false;
 
-		next = lnext(cell);
-
+		next = lnext(rel->indexlist, cell);
 		foreach(l, hint->indexnames)
 		{
 			char   *hintname = (char *) lfirst(l);
@@ -3602,10 +3605,18 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 		}
 
 		if (!use_index)
-			rel->indexlist = list_delete_cell(rel->indexlist, cell, prev);
-		else
-			prev = cell;
+		{
+			rel->indexlist = list_delete_cell(rel->indexlist, cell);
 
+			/*
+			 * the elements after cell moved to the list head by 1 element.
+			 * the next iteration should visit the cell at the same address if
+			 * any.
+			 */
+			if (next)
+				next = cell;
+		}
+			
 		pfree(indexname);
 	}
 
@@ -3865,7 +3876,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 
 				parentrel_oid =
 					root->simple_rte_array[current_hint_state->parent_relid]->relid;
-				parent_rel = heap_open(parentrel_oid, NoLock);
+				parent_rel = table_open(parentrel_oid, NoLock);
 
 				/* Search the parent relation for indexes match the hint spec */
 				foreach(l, RelationGetIndexList(parent_rel))
@@ -3889,7 +3900,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 						lappend(current_hint_state->parent_index_infos,
 								parent_index_info);
 				}
-				heap_close(parent_rel, NoLock);
+				table_close(parent_rel, NoLock);
 			}
 		}
 	}
@@ -4069,8 +4080,8 @@ OuterInnerJoinCreate(OuterInnerRels *outer_inner, LeadingHint *leading_hint,
 										 leading_hint->base.hint_str));
 	}
 
-	outer_rels = lfirst(outer_inner->outer_inner_pair->head);
-	inner_rels = lfirst(outer_inner->outer_inner_pair->tail);
+	outer_rels = linitial(outer_inner->outer_inner_pair);
+	inner_rels = llast(outer_inner->outer_inner_pair);
 
 	outer_relids = OuterInnerJoinCreate(outer_rels,
 										leading_hint,
@@ -4377,14 +4388,13 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 		{
 			if (hstate->join_hint_level[i] != NIL)
 			{
-				ListCell *prev = NULL;
 				ListCell *next = NULL;
 				for(l = list_head(hstate->join_hint_level[i]); l; l = next)
 				{
 
 					JoinMethodHint *hint = (JoinMethodHint *)lfirst(l);
 
-					next = lnext(l);
+					next = lnext(hstate->join_hint_level[i], l);
 
 					if (hint->inner_nrels == 0 &&
 						!(bms_intersect(hint->joinrelids, joinrelids) == NULL ||
@@ -4392,11 +4402,8 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 						  hint->joinrelids)))
 					{
 						hstate->join_hint_level[i] =
-							list_delete_cell(hstate->join_hint_level[i], l,
-											 prev);
+							list_delete_cell(hstate->join_hint_level[i], l);
 					}
-					else
-						prev = l;
 				}
 			}
 		}
