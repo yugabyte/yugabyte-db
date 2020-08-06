@@ -190,14 +190,12 @@ class PgApiImpl {
 
   CHECKED_STATUS NewCreateTablegroup(const char *database_name,
                                      const PgOid database_oid,
-                                     const char *tablegroup_name,
                                      const PgOid tablegroup_oid,
                                      PgStatement **handle);
 
   CHECKED_STATUS ExecCreateTablegroup(PgStatement *handle);
 
-  CHECKED_STATUS NewDropTablegroup(const char *tablegroup_name,
-                                   const PgOid database_oid,
+  CHECKED_STATUS NewDropTablegroup(const PgOid database_oid,
                                    const PgOid tablegroup_oid,
                                    PgStatement **handle);
 
@@ -213,6 +211,7 @@ class PgApiImpl {
                                 bool if_not_exist,
                                 bool add_primary_key,
                                 const bool colocated,
+                                const PgObjectId& tablegroup_oid,
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
@@ -278,6 +277,7 @@ class PgApiImpl {
                                 bool is_unique_index,
                                 const bool skip_index_backfill,
                                 bool if_not_exist,
+                                const PgObjectId& tablegroup_oid,
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateIndexAddColumn(PgStatement *handle, const char *attr_name, int attr_num,

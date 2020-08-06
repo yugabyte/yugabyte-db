@@ -172,11 +172,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS CreateTablegroup(const std::string& database_name,
                                   const PgOid database_oid,
-                                  const std::string& tablegroup_name,
                                   PgOid tablegroup_oid);
 
-  CHECKED_STATUS DropTablegroup(const std::string& tablegroup_name,
-                                const PgOid database_oid,
+  CHECKED_STATUS DropTablegroup(const PgOid database_oid,
                                 PgOid tablegroup_oid);
 
   // API for schema operations.

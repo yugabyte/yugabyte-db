@@ -765,7 +765,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     Capitalize(&state);
     string ysql_table_oid;
     if (table->GetTableType() == PGSQL_TABLE_TYPE &&
-        !master_->catalog_manager()->IsColocatedParentTable(*table)) {
+        !master_->catalog_manager()->IsColocatedParentTable(*table) &&
+        !master_->catalog_manager()->IsTablegroupParentTable(*table)) {
       const auto result = GetPgsqlTableOid(table_uuid);
       if (result.ok()) {
         ysql_table_oid = std::to_string(*result);
@@ -1664,7 +1665,8 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       tablet->GetReplicaLocations(&replication_locations);
 
       for (const auto& replica : replication_locations) {
-        if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)) {
+        if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)
+                          || master_->catalog_manager()->IsTablegroupParentTable(*table)) {
           if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
             (*tablet_map)[replica.first].user_tablet_leaders++;
           } else {

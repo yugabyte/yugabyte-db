@@ -92,7 +92,7 @@ DEFINE_bool(ysql_beta_feature_roles, false,
 DEFINE_bool(ysql_beta_feature_extension, false,
             "Whether to enable the 'extension' ysql beta feature");
 
-DEFINE_bool(ysql_beta_feature_tablegroup, false,
+DEFINE_bool(ysql_beta_feature_tablegroup, true,
             "Whether to enable the incomplete 'tablegroup' ysql beta feature");
 
 TAG_FLAG(ysql_beta_feature_tablegroup, hidden);

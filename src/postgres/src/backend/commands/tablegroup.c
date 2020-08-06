@@ -164,7 +164,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateTablegroup(tablegroupoid, stmt->tablegroupname);
+		YBCCreateTablegroup(tablegroupoid);
 	}
 
 	/* We keep the lock on pg_tablegroup until commit */
@@ -298,7 +298,7 @@ DropTableGroup(DropTableGroupStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCDropTablegroup(tablegroupoid, stmt->tablegroupname);
+		YBCDropTablegroup(tablegroupoid);
 	}
 
 	/* We keep the lock on pg_tablegroup until commit */

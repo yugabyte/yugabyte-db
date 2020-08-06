@@ -433,13 +433,17 @@ class YBClient {
   // Create a new tablegroup.
   CHECKED_STATUS CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
-                                  const std::string& tablegroup_name,
                                   const std::string& tablegroup_id);
 
   // Delete a tablegroup.
-  CHECKED_STATUS DeleteTablegroup(const std::string& tablegroup_name,
-                                  const std::string& namespace_id,
+  CHECKED_STATUS DeleteTablegroup(const std::string& namespace_id,
                                   const std::string& tablegroup_id);
+
+  // Check if the tablegroup given by 'tablegroup_id' exists.
+  // Result value is set only on success.
+  Result<bool> TablegroupExists(const std::string& namespace_name,
+                                const std::string& tablegroup_id);
+  Result<vector<master::TablegroupIdentifierPB>> ListTablegroups(const std::string& namespace_name);
 
   // Authentication and Authorization
   // Create a new role.
