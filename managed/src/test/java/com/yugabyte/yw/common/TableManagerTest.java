@@ -212,6 +212,9 @@ import static org.mockito.Mockito.when;
 
     cmd.add(testUniverse.getMasterAddresses());
 
+    cmd.add("--parallelism");
+    cmd.add("8");
+
     if (backupTableParams.tableNameList != null) {
       for (String tableName : backupTableParams.tableNameList) {
         cmd.add("--table");

@@ -57,12 +57,10 @@ public class BackupUniverse extends UniverseTaskBase {
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-      if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
-        // Run all the tasks.
-        subTaskGroupQueue.run();
-      } else {
-        // Run all the tasks.
-        subTaskGroupQueue.run();
+      // Run all the tasks.
+      subTaskGroupQueue.run();
+
+      if (taskParams().actionType != BackupTableParams.ActionType.CREATE) {
         unlockUniverseForUpdate();
       }
     } catch (Throwable t) {

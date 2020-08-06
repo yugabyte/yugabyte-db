@@ -79,6 +79,8 @@ public class TableManager extends DevopsBase {
     switch (subType) {
       case BACKUP:
         BackupTableParams backupTableParams = (BackupTableParams) taskParams;
+        commandArgs.add("--parallelism");
+        commandArgs.add(Integer.toString(backupTableParams.parallelism));
         if (backupTableParams.actionType == BackupTableParams.ActionType.CREATE) {
           if (backupTableParams.tableUUIDList != null && !backupTableParams.tableUUIDList.isEmpty()) {
             for (int listIndex = 0; listIndex < backupTableParams.tableNameList.size(); listIndex++) {

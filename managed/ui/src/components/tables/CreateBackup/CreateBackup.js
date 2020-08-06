@@ -31,9 +31,13 @@ const schemaValidation =  Yup.object().shape({
     then: Yup.string().required('Backup keyspace and table are required').notOneOf([[]])
   }),
   tableKeyspace: Yup.object().required('Backup keyspace and table are required').notOneOf([[]]),
-  storageConfigUUID: Yup.string()
-  .required('Storage Config is Required'),
+  storageConfigUUID: Yup.string().required('Storage Config is Required'),
   enableSSE: Yup.bool(),
+  parallelism: Yup.number('Parallelism must be a number')
+    .min(1)
+    .max(100)
+    .integer('Value must be a whole number')
+    .required('Number of threads is required'),
   transactionalBackup: Yup.bool(),
   schedulingFrequency: Yup.number('Frequency must be a number'),
   cronExpression: Yup.string().test({
@@ -41,7 +45,7 @@ const schemaValidation =  Yup.object().shape({
     test: (value) => (value && cron.isValidCron(value)) || !value,
     message: 'Does not looks like a valid cron expression'
   })
-}, ['backupTableUUID', 'tableKeyspace']);
+});
 
 export default class CreateBackup extends Component {
   static propTypes = {
@@ -64,12 +68,14 @@ export default class CreateBackup extends Component {
         "transactionalBackup": values.transactionalBackup,
         "schedulingFrequency": isEmptyString(values.schedulingFrequency) ? null : values.schedulingFrequency,
         "cronExpression": isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
+        "parallelism": values.parallelism,
+        "actionType": "CREATE"
       };
       if (isDefinedNotNull(values.tableKeyspace) && values.tableKeyspace.value === "allkeyspaces") {
         // Backup all tables in all keyspaces
         createUniverseBackup(universeUUID, payload);
       } else if (isDefinedNotNull(values.backupTableUUID)) {
-        values.backupTableUUID = Array.isArray(values.backupTableUUID) ? 
+        values.backupTableUUID = Array.isArray(values.backupTableUUID) ?
           values.backupTableUUID.map(x => x.value) : [values.backupTableUUID.value];
         if (values.backupTableUUID[0] === "alltables") {
           payload.keyspace = values.tableKeyspace.value;
@@ -80,10 +86,9 @@ export default class CreateBackup extends Component {
           createUniverseBackup(universeUUID, payload);
         } else {
           const backupTable = universeTables
-                                .find((table) => table.tableUUID === values.backupTableUUID[0]);
+            .find((table) => table.tableUUID === values.backupTableUUID[0]);
           payload.tableName = backupTable.tableName;
           payload.keyspace = backupTable.keySpace;
-          payload.actionType = "CREATE";
           createTableBackup(universeUUID, values.backupTableUUID[0], payload);
         }
       }
@@ -141,13 +146,13 @@ export default class CreateBackup extends Component {
           keyspace: tableInfo.keySpace
         }];
         initialValues.backupTableUUID = tableOptions[0];
-      }      
+      }
       modalTitle = modalTitle + " for " + tableInfo.keySpace + "." + tableInfo.tableName;
       initialValues.tableKeyspace = {
         label: tableInfo.keySpace,
         value: tableInfo.keySpace
-      };      
-    } else {      
+      };
+    } else {
       tableOptions = universeTables.map((tableInfo) => {
         keyspaces.add(tableInfo.keySpace);
         return {
@@ -155,7 +160,7 @@ export default class CreateBackup extends Component {
           label: tableInfo.keySpace + "." + tableInfo.tableName,
           keyspace: tableInfo.keySpace // Optional field for sorting
         };
-      }).sort((a, b) => a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1);      
+      }).sort((a, b) => a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1);
     }
 
     initialValues.schedulingFrequency = "";
@@ -183,7 +188,7 @@ export default class CreateBackup extends Component {
           cancelLabel={"Cancel"}
           onFormSubmit={(values) => {
             const payload = {
-              ...values,             
+              ...values,
               storageConfigUUID: values.storageConfigUUID.value,
             };
             this.createBackup(payload);
@@ -191,7 +196,7 @@ export default class CreateBackup extends Component {
           initialValues={initialValues}
           validationSchema={schemaValidation}
           render={({
-            values: { cronExpression, schedulingFrequency, backupTableUUID, storageConfigUUID, tableKeyspace },
+            values: { cronExpression, schedulingFrequency, backupTableUUID, storageConfigUUID, tableKeyspace, parallelism },
             values,
             errors
           }) => {
@@ -202,10 +207,10 @@ export default class CreateBackup extends Component {
             const isSchedulingFrequencyReadOnly = cronExpression !== "";
             const isCronExpressionReadOnly = schedulingFrequency !== "";
             const isTableSelected = backupTableUUID && backupTableUUID.length;
-            
+
             const s3StorageSelected = storageConfigUUID && storageConfigUUID.label === 'S3 Storage';
 
-            const showTransactionalToggle = isKeyspaceSelected && 
+            const showTransactionalToggle = isKeyspaceSelected &&
               (!!isTableSelected && (backupTableUUID.length > 1 || backupTableUUID[0].value === 'alltables'));
 
             const displayedTables = [
@@ -234,12 +239,12 @@ export default class CreateBackup extends Component {
               value: 'keyspaces',
               options: [...keyspaces].map(key => ({ value: key, label: key }))
             }];
-            
+
             let nextCronExec = null;
             if (!isCronExpressionReadOnly && cronExpression && !errors.cronExpression) {
               try {
                 const localDate = moment().utc();
-                let iterator = cronParser.parseExpression(cronExpression, { currentDate: localDate })                
+                let iterator = cronParser.parseExpression(cronExpression, { currentDate: localDate })
                 nextCronExec = iterator.next().toDate().toString();
               } catch (e) {
                 console.error('Invalid characters in cron expression');
@@ -284,10 +289,10 @@ export default class CreateBackup extends Component {
 │    │    └───────────  Day      (1..31)<br />
 │    └────────────────  Hour     (0..23)<br />
 └─────────────────────  Minute   (0..59)</code></pre>
-                        </div>} />  
+                        </div>} />
                     </Col>
                   </Row>
-                  {nextCronExec && 
+                  {nextCronExec &&
                     <Row className="cron-description">
                       <Col lg={2}>Next job:</Col>
                       <Col>{nextCronExec}</Col>
@@ -301,7 +306,7 @@ export default class CreateBackup extends Component {
                 label={"Storage"}
                 options={storageOptions}
               />
-              {!!keyspaceOptions.length &&               
+              {!!keyspaceOptions.length &&
                 <Field
                   name="tableKeyspace"
                   component={YBFormSelect}
@@ -315,7 +320,7 @@ export default class CreateBackup extends Component {
                   isDisabled={isNonEmptyObject(tableInfo)}
                 />
               }
-              {isKeyspaceSelected && 
+              {isKeyspaceSelected &&
                 <Row>
                   <Col xs={6}>
                     <Field
@@ -332,7 +337,7 @@ export default class CreateBackup extends Component {
                       isDisabled={isNonEmptyObject(tableInfo)}
                     />
                   </Col>
-                  {isYSQLKeyspace && 
+                  {isYSQLKeyspace &&
                     <Col lg={1} className="config-zone-tooltip">
                       <YBInfoTip title="Backups in YSQL"
                         content={<div>Table-level backups are unavailable for YSQL.<br />Please use keyspace-level backups instead.</div>} />
@@ -351,7 +356,15 @@ export default class CreateBackup extends Component {
                 name="enableSSE"
                 component={YBFormToggle}
                 label={"Enable Server-Side Encryption"}
-              />}
+              />
+              }
+              {
+                <Field
+                  name="parallelism"
+                  component={YBFormInput}
+                  label={"Parallel Threads"}
+                />
+              }
             </Fragment>);
           }}
         />
