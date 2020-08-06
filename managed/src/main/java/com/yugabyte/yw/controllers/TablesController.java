@@ -295,11 +295,8 @@ public class TablesController extends AuthenticatedController {
       String errMsg = "Invalid Customer UUID: " + customerUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
+
     Universe universe = Universe.get(universeUUID);
-    if (universe == null) {
-      String errMsg = "Invalid Universe UUID: " + universeUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
     Form<MultiTableBackup.Params> formData = formFactory
         .form(MultiTableBackup.Params.class)
         .bindFromRequest();
@@ -361,10 +358,6 @@ public class TablesController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
     Universe universe = Universe.get(universeUUID);
-    if (universe == null) {
-      String errMsg = "Invalid Universe UUID: " + universeUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
 
     if (disableBackupOnTables(Arrays.asList(tableUUID), universe)) {
       String errMsg = "Invalid Table UUID: " + tableUUID + ". Cannot backup index or YSQL table.";
