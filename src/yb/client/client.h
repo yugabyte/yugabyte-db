@@ -273,8 +273,14 @@ class YBClient {
   CHECKED_STATUS IsCreateTableInProgress(const YBTableName& table_name,
                                          bool *create_in_progress);
 
-  // Wait for create table is not in progress.
+  // Wait for create table to finish.
   CHECKED_STATUS WaitForCreateTableToFinish(const YBTableName& table_name);
+  CHECKED_STATUS WaitForCreateTableToFinish(const YBTableName& table_name,
+                                            const CoarseTimePoint& deadline);
+
+  CHECKED_STATUS WaitForCreateTableToFinish(const string& table_id);
+  CHECKED_STATUS WaitForCreateTableToFinish(const string& table_id,
+                                            const CoarseTimePoint& deadline);
 
   // Truncate the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.

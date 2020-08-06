@@ -28,12 +28,14 @@
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/encryption_util.h"
 
 DECLARE_bool(use_client_to_server_encryption);
+DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 namespace yb {
 
@@ -422,8 +424,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
 
   const RepeatedPtrField<ImportSnapshotMetaResponsePB_TableMetaPB>& tables_meta =
       resp.tables_meta();
-  IsCreateTableDoneRequestPB wait_req;
-  IsCreateTableDoneResponsePB wait_resp;
   CreateSnapshotRequestPB snapshot_req;
   CreateSnapshotResponsePB snapshot_resp;
 
@@ -447,25 +447,10 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
            << pair.new_id() << endl;
     }
 
-    // Wait for table creation.
-    wait_req.mutable_table()->set_table_id(new_table_id);
-
-    for (int k = 0; k < 30; ++k) {
-      rpc.Reset();
-      RETURN_NOT_OK(master_proxy_->IsCreateTableDone(wait_req, &wait_resp, &rpc));
-
-      if (wait_resp.done()) {
-        break;
-      } else {
-        cout << "Waiting for table " << new_table_id << "..." << endl;
-        std::this_thread::sleep_for(1s);
-      }
-    }
-
-    if (!wait_resp.done()) {
-      return STATUS_FORMAT(
-          TimedOut, "Table creation timeout: table id $0", new_table_id);
-    }
+    RETURN_NOT_OK(yb_client_->WaitForCreateTableToFinish(
+        new_table_id,
+        CoarseMonoClock::Now() + MonoDelta::FromSeconds(FLAGS_yb_client_admin_operation_timeout_sec)
+    ));
 
     snapshot_req.mutable_tables()->Add()->set_table_id(new_table_id);
   }
