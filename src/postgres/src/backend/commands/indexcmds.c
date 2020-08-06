@@ -1455,6 +1455,12 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		RelationClose(rel);
 	}
 
+	/* Get whether the index is part of a tablegroup */
+	Oid tablegroupId = InvalidOid;
+	if (TablegroupCatalogExists && IsYugaByteEnabled() &&
+		!IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
+		tablegroupId = get_tablegroup_oid_by_table_oid(relId);
+
 	/*
 	 * process attributeList
 	 */
@@ -1484,7 +1490,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 						 * colocated tables, the first attribute defaults to
 						 * ASC.
 						 */
-						if (attn > 0 || colocated)
+						if (attn > 0 || colocated || tablegroupId != InvalidOid)
 						{
 							range_index = true;
 							break;
@@ -1758,7 +1764,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (use_yb_ordering &&
 				attn == 0 &&
 				attribute->ordering == SORTBY_DEFAULT &&
-				!colocated)
+				!colocated && tablegroupId == InvalidOid)
 				colOptionP[attn] |= INDOPTION_HASH;
 
 			/* default null ordering is LAST for ASC, FIRST for DESC */

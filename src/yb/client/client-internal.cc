@@ -292,6 +292,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateTablegroup);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTablegroup);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListTablegroups);
 // These are not actually exposed outside, but it's nice to auto-add using directive.
 YB_CLIENT_SPECIALIZE_SIMPLE(AlterTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(FlushTables);

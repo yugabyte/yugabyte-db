@@ -121,22 +121,22 @@ YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_o
 /* ------------------------------------------------------------------------- */
 /*  Tablegroup Functions. */
 void
-YBCCreateTablegroup(Oid grpoid, const char *grpname)
+YBCCreateTablegroup(Oid grpoid)
 {
 	YBCPgStatement handle;
 	char *db_name = get_database_name(MyDatabaseId);
 
-	HandleYBStatus(YBCPgNewCreateTablegroup(db_name, MyDatabaseId, grpname,
-																					grpoid, &handle));
+	HandleYBStatus(YBCPgNewCreateTablegroup(db_name, MyDatabaseId,
+											grpoid, &handle));
 	HandleYBStatus(YBCPgExecCreateTablegroup(handle));
 }
 
 void
-YBCDropTablegroup(Oid grpoid, const char *grpname)
+YBCDropTablegroup(Oid grpoid)
 {
 	YBCPgStatement handle;
 
-	HandleYBStatus(YBCPgNewDropTablegroup(grpname, MyDatabaseId, grpoid, &handle));
+	HandleYBStatus(YBCPgNewDropTablegroup(MyDatabaseId, grpoid, &handle));
 	HandleYBStatus(YBCPgExecDropTablegroup(handle));
 }
 
@@ -171,7 +171,8 @@ static void CreateTableAddColumn(YBCPgStatement handle,
 static void CreateTableAddColumns(YBCPgStatement handle,
 								  TupleDesc desc,
 								  Constraint *primary_key,
-								  const bool colocated)
+								  const bool colocated,
+								  Oid tablegroupId)
 {
 	/* Add all key columns first with respect to compound key order */
 	ListCell *cell;
@@ -200,7 +201,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 					bool is_hash = (order == SORTBY_HASH ||
 									(is_first_key &&
 									 order == SORTBY_DEFAULT &&
-									 !colocated));
+									 !colocated && tablegroupId == InvalidOid));
 					bool is_desc = false;
 					bool is_nulls_first = false;
 					ColumnSortingOptions(order,
@@ -486,9 +487,10 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 									   false, /* if_not_exists */
 									   primary_key == NULL /* add_primary_key */,
 									   colocated,
+									   tablegroupId,
 									   &handle));
 
-	CreateTableAddColumns(handle, desc, primary_key, colocated);
+	CreateTableAddColumns(handle, desc, primary_key, colocated, tablegroupId);
 
 	/* Handle SPLIT statement, if present */
 	OptSplit *split_options = stmt->split_options;
@@ -523,8 +525,11 @@ YBCDropTable(Oid relationId)
 																 &not_found);
 	}
 
-	/* Create table-level tombstone for colocated tables */
-	if (colocated)
+	/* Create table-level tombstone for colocated tables / tables in a tablegroup */
+	Oid tablegroupId = InvalidOid;
+	if (TablegroupCatalogExists)
+		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
+	if (colocated || tablegroupId != InvalidOid)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(MyDatabaseId,
@@ -571,10 +576,12 @@ YBCTruncateTable(Relation rel) {
 		HandleYBStatus(YBCPgIsTableColocated(MyDatabaseId,
 											 relationId,
 											 &colocated));
-
-	if (colocated)
+	Oid tablegroupId = InvalidOid;
+	if (TablegroupCatalogExists)
+		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
+	if (colocated || tablegroupId != InvalidOid)
 	{
-		/* Create table-level tombstone for colocated tables */
+		/* Create table-level tombstone for colocated tables / tables in tablegroups */
 		HandleYBStatus(YBCPgNewTruncateColocated(MyDatabaseId,
 												 relationId,
 												 false,
@@ -611,9 +618,13 @@ YBCTruncateTable(Relation rel) {
 			HandleYBStatus(YBCPgIsTableColocated(MyDatabaseId,
 												 relationId,
 												 &colocated));
-		if (colocated)
+
+		tablegroupId = InvalidOid;
+		if (TablegroupCatalogExists)
+			tablegroupId = get_tablegroup_oid_by_table_oid(indexId);
+		if (colocated || tablegroupId != InvalidOid)
 		{
-			/* Create table-level tombstone for colocated tables */
+			/* Create table-level tombstone for colocated tables / tables in tablegroups */
 			HandleYBStatus(YBCPgNewTruncateColocated(MyDatabaseId,
 													 relationId,
 													 false,
@@ -751,6 +762,7 @@ YBCCreateIndex(const char *indexName,
 									   indexInfo->ii_Unique,
 									   skip_index_backfill,
 									   false, /* if_not_exists */
+									   tablegroupId,
 									   &handle));
 
 	for (int i = 0; i < indexTupleDesc->natts; i++)
@@ -1040,8 +1052,11 @@ YBCDropIndex(Oid relationId)
 																 &not_found);
 	}
 
-	/* Create table-level tombstone for colocated tables */
-	if (colocated)
+	/* Create table-level tombstone for colocated tables / tables in a tablegroup */
+	Oid tablegroupId = InvalidOid;
+	if (TablegroupCatalogExists)
+		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
+	if (colocated || tablegroupId != InvalidOid)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(MyDatabaseId,

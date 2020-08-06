@@ -527,6 +527,37 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   DISALLOW_COPY_AND_ASSIGN(NamespaceInfo);
 };
 
+// The information about a tablegroup.
+class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
+ public:
+  explicit TablegroupInfo(TablegroupId tablegroup_id,
+                          NamespaceId namespace_id);
+
+  const std::string& id() const { return tablegroup_id_; }
+  const std::string& namespace_id() const { return namespace_id_; }
+
+  // Operations to track table_set_ information (what tables belong to the tablegroup)
+  void AddChildTable(const TableId& table_id);
+  void DeleteChildTable(const TableId& table_id);
+  bool HasChildTables() const;
+  std::size_t NumChildTables() const;
+
+ private:
+  friend class RefCountedThreadSafe<TablegroupInfo>;
+  ~TablegroupInfo() = default;
+
+  // The tablegroup ID is used in the catalog manager maps to look up the proper
+  // tablet to add user tables to.
+  const TablegroupId tablegroup_id_;
+  const NamespaceId namespace_id_;
+
+  // Protects table_set_.
+  mutable simple_spinlock lock_;
+  std::unordered_set<TableId> table_set_;
+
+  DISALLOW_COPY_AND_ASSIGN(TablegroupInfo);
+};
+
 // The data related to a User-Defined Type which is persisted on disk.
 // This portion of UDTypeInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.

@@ -51,6 +51,9 @@ class YBTableCreator {
   // not colocated.
   YBTableCreator& colocated(const bool colocated);
 
+  // Tablegroup ID - will be ignored by catalog manager if the table is not in a tablegroup.
+  YBTableCreator& tablegroup_id(const std::string& tablegroup_id);
+
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
   YBTableCreator& schema(const YBSchema* schema);
@@ -177,6 +180,9 @@ class YBTableCreator {
   bool wait_ = true;
 
   bool colocated_ = true;
+
+  // The tablegroup id to assign (if a table is in a tablegroup).
+  std::string tablegroup_id_;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableCreator);
 };
