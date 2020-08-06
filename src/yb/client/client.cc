@@ -50,6 +50,7 @@
 #include "yb/client/namespace_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
@@ -62,6 +63,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
+#include "yb/util/monotime.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
 #include "yb/rpc/messenger.h"
@@ -456,7 +458,23 @@ Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
 
 Status YBClient::WaitForCreateTableToFinish(const YBTableName& table_name) {
   const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitForCreateTableToFinish(table_name, deadline);
+}
+
+Status YBClient::WaitForCreateTableToFinish(
+    const YBTableName& table_name, const CoarseTimePoint& deadline) {
   return data_->WaitForCreateTableToFinish(this, table_name, "" /* table_id */, deadline);
+}
+
+Status YBClient::WaitForCreateTableToFinish(const string& table_id) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitForCreateTableToFinish(table_id, deadline);
+}
+
+Status YBClient::WaitForCreateTableToFinish(
+    const string& table_id, const CoarseTimePoint& deadline) {
+  const YBTableName empty_table_name;
+  return data_->WaitForCreateTableToFinish(this, empty_table_name, table_id, deadline);
 }
 
 Status YBClient::TruncateTable(const string& table_id, bool wait) {
