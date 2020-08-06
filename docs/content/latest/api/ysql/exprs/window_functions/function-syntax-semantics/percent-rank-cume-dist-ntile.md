@@ -6,7 +6,7 @@ description: Describes the functionality of the YSQL window functions percent_ra
 menu:
   latest:
     identifier: percent-rank-cume-dist-ntile
-    parent: function-syntax-semantics
+    parent: window-function-syntax-semantics
     weight: 20
 isTocNested: true
 showAsideToc: true

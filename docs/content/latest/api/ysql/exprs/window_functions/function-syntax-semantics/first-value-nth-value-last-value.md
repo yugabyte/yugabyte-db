@@ -6,7 +6,7 @@ description: Describes the functionality of the YSQL window functions first_valu
 menu:
   latest:
     identifier: first-value-nth-value-last-value
-    parent: function-syntax-semantics
+    parent: window-function-syntax-semantics
     weight: 30
 isTocNested: true
 showAsideToc: true

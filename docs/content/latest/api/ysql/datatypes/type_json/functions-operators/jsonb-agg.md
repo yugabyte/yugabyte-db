@@ -6,7 +6,7 @@ description: Aggregate a SETOF values into a JSON array.
 menu:
   latest:
     identifier: jsonb-agg
-    parent: functions-operators
+    parent: json-functions-operators
     weight: 57
 isTocNested: true
 showAsideToc: true
