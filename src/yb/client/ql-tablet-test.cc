@@ -939,7 +939,7 @@ TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
   workload.Setup();
   workload.Start();
 
-  while (workload.rows_inserted() < 75000) {
+  while (workload.rows_inserted() < RegularBuildVsSanitizers(75000, 20000)) {
     std::this_thread::sleep_for(10ms);
   }
 

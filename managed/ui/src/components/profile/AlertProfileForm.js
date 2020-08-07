@@ -31,8 +31,8 @@ const validationSchema = Yup.object().shape({
       smtpServer: Yup.string().required('Must specify an SMTP server address'),
       smtpPort: Yup.number().typeError('Must specify an SMTP server port number'),
       emailFrom: Yup.string().email('Must be an email'),
-      smtpUsername: Yup.string().required('Must specify an SMTP server credentials username'),
-      smtpPassword: Yup.string().required('Must specify an SMTP server credentials password'),
+      smtpUsername: Yup.string(),
+      smtpPassword: Yup.string(),
       useSSL: Yup.boolean(),
       useTLS: Yup.boolean()
     })
@@ -136,7 +136,8 @@ export default class AlertProfileForm extends Component {
             // default form to new values to avoid unwanted validation of smtp fields when they are hidden
             resetForm(values);
           }}
-          render={({ values, handleChange, handleSubmit, isSubmitting }) => (
+        >
+          {({ values, handleChange, handleSubmit, isSubmitting }) => (
             <Form name="EditCustomerProfile" onSubmit={handleSubmit}>
               <Row>
                 <Col md={6} sm={12}>
@@ -298,7 +299,7 @@ export default class AlertProfileForm extends Component {
               </div>
             </Form>
           )}
-        />
+        </Formik>
       </div>
     );
   }

@@ -85,6 +85,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_compaction_filter_intents.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/key_bytes.h"
@@ -191,6 +192,12 @@ DEFINE_int32(backfill_index_timeout_grace_margin_ms, 50,
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, advanced);
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, runtime);
 
+DEFINE_bool(disable_alter_vs_write_mutual_exclusion, false,
+             "A safety switch to disable the changes from D8710 which makes a schema "
+             "operation take an exclusive lock making all write operations wait for it.");
+TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
+TAG_FLAG(disable_alter_vs_write_mutual_exclusion, runtime);
+
 DEFINE_bool(cleanup_intents_sst_files, true,
             "Cleanup intents files that are no more relevant to any running transaction.");
 
@@ -237,7 +244,6 @@ namespace yb {
 namespace tablet {
 
 using yb::MaintenanceManager;
-using consensus::OpId;
 using consensus::MaximumOpId;
 using log::LogAnchorRegistry;
 using strings::Substitute;
@@ -359,10 +365,6 @@ std::string MakeTabletLogPrefix(
 
 } // namespace
 
-string DocDbOpIds::ToString() const {
-  return Format("{ regular: $0 intents: $1 }", regular, intents);
-}
-
 class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
  public:
   RegularRocksDbListener(Tablet* tablet, const std::string& log_prefix)
@@ -397,6 +399,8 @@ Tablet::Tablet(const TabletInitData& data)
       mvcc_(
           MakeTabletLogPrefix(data.metadata->raft_group_id(), data.log_prefix_suffix), data.clock),
       tablet_options_(data.tablet_options),
+      pending_op_counter_("RocksDB"),
+      write_ops_being_submitted_counter_("Tablet schema"),
       client_future_(data.client_future),
       local_tablet_filter_(data.local_tablet_filter),
       log_prefix_suffix_(data.log_prefix_suffix),
@@ -420,11 +424,21 @@ Tablet::Tablet(const TabletInitData& data)
     auto rocksdb_statistics = rocksdb_statistics_;
     metric_entity_->AddExternalJsonMetricsCb(
         [rocksdb_statistics](JsonWriter* jw, const MetricJsonOptions& opts) {
+      // Assume all rocksdb statistics are at "info" level.
+      if (MetricLevel::kInfo < opts.level) {
+        return;
+      }
+
       EmitRocksDbMetricsAsJson(rocksdb_statistics, jw, opts);
     });
 
     metric_entity_->AddExternalPrometheusMetricsCb(
-        [rocksdb_statistics, attrs](PrometheusWriter* pw) {
+        [rocksdb_statistics, attrs](PrometheusWriter* pw, const MetricPrometheusOptions& opts) {
+      // Assume all rocksdb statistics are at "info" level.
+      if (MetricLevel::kInfo < opts.level) {
+        return;
+      }
+
       auto s = EmitRocksDbMetricsAsPrometheus(rocksdb_statistics, pw, attrs);
       if (!s.ok()) {
         YB_LOG_EVERY_N(WARNING, 100) << "Failed to get Prometheus metrics: " << s.ToString();
@@ -875,7 +889,7 @@ bool Tablet::StartShutdown() {
   return true;
 }
 
-void Tablet::PreventCallbacksFromRocksDBs(bool disable_flush_on_shutdown) {
+void Tablet::PreventCallbacksFromRocksDBs(DisableFlushOnShutdown disable_flush_on_shutdown) {
   if (intents_db_) {
     intents_db_->ListenFilesChanged(nullptr);
     intents_db_->SetDisableFlushOnShutdown(disable_flush_on_shutdown);
@@ -909,12 +923,11 @@ void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
-  PreventCallbacksFromRocksDBs(is_drop_table);
-
   // Shutdown the RocksDB instance for this table, if present.
   // Destroy intents and regular DBs in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
-  WARN_NOT_OK(ResetRocksDBs(), "Failed to reset rocksdb during shutdown");
+  WARN_NOT_OK(ResetRocksDBs(Destroy::kFalse, DisableFlushOnShutdown(is_drop_table)),
+              "Failed to reset rocksdb during shutdown");
   state_ = kShutdown;
 
   // Release the mutex that prevents snapshot restore / truncate operations from running. Such
@@ -940,7 +953,9 @@ CHECKED_STATUS ResetRocksDB(
   return rocksdb::DestroyDB(dir, options);
 }
 
-Status Tablet::ResetRocksDBs(bool destroy) {
+Status Tablet::ResetRocksDBs(Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown) {
+  PreventCallbacksFromRocksDBs(disable_flush_on_shutdown);
+
   rocksdb::Options rocksdb_options;
   if (destroy) {
     InitRocksDBOptions(&rocksdb_options, LogPrefix());
@@ -1345,7 +1360,8 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
       DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
                << yb::ToString(req);
       auto write_op = std::make_unique<QLWriteOperation>(
-          table_info->schema, table_info->index_map, unique_index_key_schema_.get_ptr(),
+          std::shared_ptr<Schema>(table_info, &table_info->schema),
+          table_info->index_map, unique_index_key_schema_.get_ptr(),
           *txn_op_ctx);
       auto status = write_op->Init(req, resp);
       if (!status.ok()) {
@@ -1758,6 +1774,17 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
   }
 
   const WriteRequestPB* key_value_write_request = operation->state()->request();
+  if (!GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
+    auto write_permit = GetPermitToWrite(operation->deadline());
+    if (!write_permit.ok()) {
+      TRACE("Could not get the write permit.");
+      WriteOperation::StartSynchronization(std::move(operation), MoveStatus(write_permit));
+      return;
+    }
+    // Save the write permit to be released after the operation is submitted
+    // to Raft queue.
+    operation->UseSubmitToken(std::move(write_permit));
+  }
 
   if (!key_value_write_request->redis_write_batch().empty()) {
     KeyValueBatchFromRedisWriteBatch(std::move(operation));
@@ -2337,7 +2364,8 @@ ScopedRWOperationPause Tablet::PauseReadWriteOperations(Stop stop) {
                      Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
     return ScopedRWOperationPause(
         &pending_op_counter_,
-        MonoDelta::FromMilliseconds(FLAGS_tablet_rocksdb_ops_quiet_down_timeout_ms),
+        CoarseMonoClock::Now() +
+            MonoDelta::FromMilliseconds(FLAGS_tablet_rocksdb_ops_quiet_down_timeout_ms),
         stop);
   }
   FATAL_ERROR("Unreachable code -- the previous block must always return");
@@ -2416,12 +2444,10 @@ Status Tablet::Truncate(TruncateOperationState *state) {
     return STATUS(IllegalState, "Tablet was shut down");
   }
 
-  PreventCallbacksFromRocksDBs(true);
-
   const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
   const string db_dir = regular_db_->GetName();
 
-  auto s = ResetRocksDBs(/* destroy= */ true);
+  auto s = ResetRocksDBs(Destroy::kTrue, DisableFlushOnShutdown::kTrue);
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
     return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());
@@ -2880,6 +2906,19 @@ HybridTime Tablet::DoGetSafeTime(
   return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
 }
 
+ScopedRWOperationPause Tablet::PauseWritePermits(CoarseTimePoint deadline) {
+  TRACE("Blocking write permit(s)");
+  auto se = ScopeExit([] { TRACE("Blocking write permit(s) done"); });
+  // Prevent new write ops from being submitted.
+  return ScopedRWOperationPause(&write_ops_being_submitted_counter_, deadline, Stop::kFalse);
+}
+
+ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
+  TRACE("Acquiring write permit");
+  auto se = ScopeExit([] { TRACE("Acquiring write permit done"); });
+  return ScopedRWOperation(&write_ops_being_submitted_counter_);
+}
+
 void Tablet::ForceRocksDBCompactInTest() {
   if (regular_db_) {
     docdb::ForceRocksDBCompact(regular_db_.get());
@@ -2900,8 +2939,8 @@ std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
   return docdb::DocDBDebugDumpToStr(doc_db());
 }
 
-template <class T>
-void Tablet::TEST_DocDBDumpToContainer(IncludeIntents include_intents, T* out) {
+void Tablet::TEST_DocDBDumpToContainer(
+    IncludeIntents include_intents, std::unordered_set<std::string>* out) {
   if (!regular_db_) return;
 
   if (!include_intents) {
@@ -2910,12 +2949,6 @@ void Tablet::TEST_DocDBDumpToContainer(IncludeIntents include_intents, T* out) {
 
   return docdb::DocDBDebugDumpToContainer(doc_db(), out);
 }
-
-template void Tablet::TEST_DocDBDumpToContainer(
-    IncludeIntents include_intents, std::unordered_set<std::string>* out);
-
-template void Tablet::TEST_DocDBDumpToContainer(
-    IncludeIntents include_intents, std::vector<std::string>* out);
 
 size_t Tablet::TEST_CountRegularDBRecords() {
   if (!regular_db_) return 0;

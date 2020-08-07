@@ -53,7 +53,25 @@ public class Users extends Model {
     ReadOnly,
 
     @EnumValue("SuperAdmin")
-    SuperAdmin
+    SuperAdmin,
+
+    @EnumValue("BackupAdmin")
+    BackupAdmin;
+
+    public String getFeaturesFile() {
+      switch (this) {
+        case Admin:
+          return null;
+        case ReadOnly:
+          return "readOnlyFeatureConfig.json";
+        case SuperAdmin:
+          return null;
+        case BackupAdmin:
+          return "backupAdminFeatureConfig.json";
+        default:
+          return null;
+      }
+    }
   }
 
 
@@ -179,6 +197,19 @@ public class Users extends Model {
     } else {
       return null;
     }
+  }
+
+  /**
+   * Validate if the email and password combination is valid, we use this to authenticate
+   * the Users.
+   *
+   * @param email
+   * @param password
+   * @return Authenticated Users Info
+   */
+  public static Users getByEmail(String email) {
+    Users user = Users.find.where().eq("email", email).findUnique();
+    return user;
   }
 
   /**

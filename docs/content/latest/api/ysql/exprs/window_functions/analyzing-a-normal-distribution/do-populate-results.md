@@ -2,7 +2,7 @@
 title: do_populate_results.sql
 linkTitle: do_populate_results.sql
 headerTitle: do_populate_results.sql
-description: Create the function that creates the histogram output.
+description: do_populate_results.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: do-populate-results
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `do_populate_results.sql`.
-```postgresql
+```plpgsql
 do $body$
 declare
   nof_buckets constant int not null := 20;

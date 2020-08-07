@@ -2,7 +2,7 @@
 title: table t1
 linkTitle: table t1
 headerTitle: Create and populate table t1
-description: Creates and populate table t1 with data that allows the demonstration of the SQL window function row_number().
+description: Creates and populate table t1 with data that allows the demonstration of the YSQL's window functions.
 menu:
   latest:
     identifier: table-t1
@@ -25,7 +25,7 @@ It is also used in the section [Informal overview of function invocation using t
 
 This `ysqlsh` script creates and populates able _"t1"_. Save it as `t1.sql`.
 
-```postgresql
+```plpgsql
 -- Suppress the spurious warning that is raised
 -- when the to-be-deleted table doesn't yet exist.
 set client_min_messages = warning;
@@ -72,7 +72,7 @@ Now inspect its contents. Notice that the first SELECT to display the content ha
 
 The second `SELECT` orders the rows usefully and, of course, produces a deterministically reliable result.
 
-```postgresql
+```plpgsql
 \pset null '??'
 
 -- Notice the absence of "ORDER BY".
@@ -118,9 +118,9 @@ Here is the result of the second `SELECT`. To make it easier to see the pattern,
      5 | 25 | ??
 ```
 
-Do the following to demonstrate that the result set produced by invoking a window function with an `OVER` clause whose [**window_definition**](../../../../../syntax_resources/grammar_diagrams/#window-definition) doesn't include a window `ORDER BY` clause is unreliable. Be sure to re-run the table creation and population script each time before you run this query:
+Do the following to demonstrate that the result set produced by invoking a window function with an `OVER` clause whose [`window_definition`](../../../../../syntax_resources/grammar_diagrams/#window-definition) doesn't include a window `ORDER BY` clause is unreliable. Be sure to re-run the table creation and population script each time before you run this query:
 
-```postgresql
+```plpgsql
 select
   class,
   k,
@@ -207,4 +207,4 @@ This is the result:
      5 | 25 |     21
 ```
 
-This demonstrates a plausible use of the `OVER` clause whose [**window_definition**](../../../../../syntax_resources/grammar_diagrams/#window-definition) doesn't have a window `ORDER BY` clause but _does_ have a `PARTITION BY` clause. If you run and re-run the table creation and population script, then you'll see that the result set of the invocation of an aggregate function with an `OVER` clause is reliably reproducible.
+This demonstrates a plausible use of the `OVER` clause whose [`window_definition`](../../../../../syntax_resources/grammar_diagrams/#window-definition) doesn't have a window `ORDER BY` clause but _does_ have a `PARTITION BY` clause. If you run and re-run the table creation and population script, then you'll see that the result set of the invocation of an aggregate function with an `OVER` clause is reliably reproducible.

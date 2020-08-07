@@ -52,6 +52,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
+#include "yb/util/status.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
 #include "yb/util/random_util.h"
@@ -289,44 +290,6 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
   }
 
   return CreateNonTransactionAwareSnapshot(req, resp, rpc);
-}
-
-Result<vector<TableDescription>> CatalogManager::CollectTables(
-    const RepeatedPtrField<TableIdentifierPB>& tables, bool add_indexes) {
-  vector<TableDescription> all_tables;
-
-  for (const auto& table_id_pb : tables) {
-    TableDescription table_description = VERIFY_RESULT(DescribeTable(table_id_pb));
-    all_tables.push_back(table_description);
-
-    if (add_indexes) {
-      TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
-      auto l = table_description.table_info->LockForRead();
-
-      if (table_description.table_info->is_index()) {
-        return STATUS(InvalidArgument, "Expected table, but found index",
-                      table_description.table_info->id(),
-                      MasterError(MasterErrorPB::SNAPSHOT_FAILED));
-      }
-
-      if (l->data().table_type() == PGSQL_TABLE_TYPE) {
-        return STATUS(InvalidArgument, "Getting indexes for YSQL table is not supported",
-                      table_description.table_info->id(),
-                      MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
-      }
-
-      for (const auto& index_info : l->data().pb.indexes()) {
-        LOG_IF(DFATAL, table_description.table_info->id() != index_info.indexed_table_id())
-                << "Wrong indexed table id in index descriptor";
-        TableIdentifierPB index_id_pb;
-        index_id_pb.set_table_id(index_info.table_id());
-        index_id_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
-        all_tables.push_back(VERIFY_RESULT(DescribeTable(index_id_pb)));
-      }
-    }
-  }
-
-  return all_tables;
 }
 
 Status CatalogManager::CreateNonTransactionAwareSnapshot(
@@ -983,15 +946,6 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 
   // Setup Index info.
   if (table_data->is_index()) {
-    // Demangle column names (expecting mangled names in the index only).
-    if (schema->table_properties().has_use_mangled_column_name() &&
-        schema->table_properties().use_mangled_column_name()) {
-      for (int i = 0; i < schema->columns_size(); ++i) {
-        ColumnSchemaPB* const column = schema->mutable_columns(i);
-        column->set_name(YcqlName::DemangleName(column->name()));
-      }
-    }
-
     TRACE("Looking up indexed table");
     // First of all try to attach to the new copy of the referenced table,
     // because the table restored from the snapshot is preferred.
@@ -1003,23 +957,107 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
                 << meta.indexed_table_id() << " from the snapshot.";
       req.set_indexed_table_id(it->second.new_table_id);
     } else {
+      LOG(INFO) << "Try to use old indexed table ID " << meta.indexed_table_id();
+      req.set_indexed_table_id(meta.indexed_table_id());
+    }
+
+    scoped_refptr<TableInfo> indexed_table;
+    {
       SharedLock<LockType> l(lock_);
       // Try to find the specified indexed table by id.
-      scoped_refptr<TableInfo> indexed_table = FindPtrOrNull(
-          *table_ids_map_, meta.indexed_table_id());
-
-      if (indexed_table != nullptr) {
-        LOG(INFO) << "Found old indexed table ID " << meta.indexed_table_id();
-        req.set_indexed_table_id(meta.indexed_table_id());
-      } else {
-        return STATUS(
-            InvalidArgument, Format("Indexed table not found by id: $0", meta.indexed_table_id()),
-            MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-      }
+      indexed_table = FindPtrOrNull(*table_ids_map_, req.indexed_table_id());
     }
+
+    if (indexed_table == nullptr) {
+      return STATUS(
+          InvalidArgument, Format("Indexed table not found by id: $0", req.indexed_table_id()),
+          MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+    }
+
+    LOG(INFO) << "Found indexed table by ID " << req.indexed_table_id();
+    Schema indexed_schema;
+    RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
 
     req.set_is_local_index(meta.is_local_index());
     req.set_is_unique_index(meta.is_unique_index());
+    req.set_skip_index_backfill(true);
+    // Setup IndexInfoPB - self descriptor.
+    IndexInfoPB* const index_info_pb = req.mutable_index_info();
+    *index_info_pb = meta.index_info();
+    index_info_pb->clear_table_id();
+    index_info_pb->set_indexed_table_id(req.indexed_table_id());
+    map<ColumnIdRep, ColumnIdRep> col_ids_map; // Old column id -> new column id.
+
+    // Column ids can be changed during the indexed table recreation.
+    // Update the Column ids from the recreated indexed table schema.
+    for (int i = 0; i < index_info_pb->columns_size(); ++i) {
+      IndexInfoPB_IndexColumnPB* const column = index_info_pb->mutable_columns(i);
+      column->clear_column_id();
+
+      if (column->has_column_name()) {
+        const string name = column->column_name();
+        const ColumnId new_id = VERIFY_RESULT(indexed_schema.ColumnIdByName(
+           index_info_pb->use_mangled_column_name() ? YcqlName::DemangleName(name) : name));
+        col_ids_map[column->indexed_column_id()] = new_id.rep();
+        column->set_indexed_column_id(new_id.rep());
+      } else { // No name, keep the column ID as it is.
+        col_ids_map[column->indexed_column_id()] = column->indexed_column_id();
+      }
+    }
+
+    // Update column expressions.
+    for (int i = 0; i < index_info_pb->columns_size(); ++i) {
+      IndexInfoPB_IndexColumnPB* const column = index_info_pb->mutable_columns(i);
+      if (column->has_colexpr()) {
+        QLExpressionPB* const colexpr = column->mutable_colexpr();
+        if (colexpr->has_column_id()) {
+          LOG_IF(DFATAL, colexpr->expr_case() != QLExpressionPB::kColumnId)
+              << "Unexpected expression case: " << colexpr->expr_case();
+          map<ColumnIdRep, ColumnIdRep>::iterator it = col_ids_map.find(colexpr->column_id());
+          if (it == col_ids_map.end()) {
+            return STATUS(InvalidArgument,
+                          Format("Unknown column id in the column expression: $0",
+                                 colexpr->column_id()),
+                          MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+          }
+
+          colexpr->set_column_id(it->second);
+        } else {
+          // Other column expression cases are not supported yet.
+          // TODO: Support ExprCase::kJsonColumn = 9
+          return STATUS(NotSupported,
+                        Format("Restore is not yet supported for index by an expression "
+                               "of column: $0", colexpr->ShortDebugString()),
+                        MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+        }
+      }
+    }
+
+    for (int i = 0; i < index_info_pb->indexed_hash_column_ids_size(); ++i) {
+      map<ColumnIdRep, ColumnIdRep>::iterator it =
+          col_ids_map.find(index_info_pb->indexed_hash_column_ids(i));
+      if (it == col_ids_map.end()) {
+        return STATUS(InvalidArgument,
+                      Format("Unknown indexed hash column id in the index info: $0",
+                             index_info_pb->indexed_hash_column_ids(i)),
+                      MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+      }
+
+      index_info_pb->set_indexed_hash_column_ids(i, it->second);
+    }
+
+    for (int i = 0; i < index_info_pb->indexed_range_column_ids_size(); ++i) {
+      map<ColumnIdRep, ColumnIdRep>::iterator it =
+          col_ids_map.find(index_info_pb->indexed_range_column_ids(i));
+      if (it == col_ids_map.end()) {
+        return STATUS(InvalidArgument,
+                      Format("Unknown indexed range column id in the index info: $0",
+                             index_info_pb->indexed_range_column_ids(i)),
+                      MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+      }
+
+      index_info_pb->set_indexed_range_column_ids(i, it->second);
+    }
   }
 
   RETURN_NOT_OK(CreateTable(&req, &resp, /* RpcContext */nullptr));
@@ -1066,7 +1104,8 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         const auto& table_info = *entry.second;
         auto ltm = table_info.LockForRead();
 
-        if (new_namespace_id == table_info.namespace_id() &&
+        if (table_info.is_running() &&
+            new_namespace_id == table_info.namespace_id() &&
             meta.name() == ltm->data().name() &&
             ((table_data->is_index() && IsUserIndexUnlocked(table_info)) ||
                 (!table_data->is_index() && IsUserTableUnlocked(table_info)))) {
@@ -2300,7 +2339,7 @@ void CatalogManager::GetTableSchemaCallback(
     return;
   }
 
-  auto result = info->schema.Equals(resp.schema());
+  auto result = info->schema.EquivalentForDataCopy(resp.schema());
   if (!result.ok() || !*result) {
     LOG(ERROR) << "Source and target schemas don't match: Source: " << info->table_id
                << ", Target: " << resp.identifier().table_id()

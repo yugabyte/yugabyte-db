@@ -2,11 +2,11 @@
 title: row_number(), rank() and dense_rank()
 linkTitle: row_number(), rank() and dense_rank()
 headerTitle: row_number(), rank() and dense_rank()
-description: The SQL window functions row_number(), rank() and dense_rank()
+description: Describes the functionality of the YSQL window functions row_number(), rank() and dense_rank().
 menu:
   latest:
     identifier: row-number-rank-dense-rank
-    parent: function-syntax-semantics
+    parent: window-function-syntax-semantics
     weight: 10
 isTocNested: true
 showAsideToc: true
@@ -51,7 +51,7 @@ If you haven't yet installed the tables that the code examples use, then go to t
 {{< /note >}}
 
 This example highlights the semantic difference between `row_number()`, `rank()`, and `dense_rank()`. Create a data set using the `ysqlsh` script that [table t2](../data-sets/table-t2/) presents. Then do this:
-```postgresql
+```plpgsql
 select
   class,
   k,

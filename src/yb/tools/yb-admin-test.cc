@@ -283,6 +283,7 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
 
   vector<string> ts_flags, master_flags;
   master_flags.push_back("--replication_factor=1");
+  ts_flags.push_back("--index_backfill_upperbound_for_user_enforced_txn_duration_ms=12000");
   BuildAndStart(ts_flags, master_flags);
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
 
@@ -320,14 +321,14 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
   col->set_column_name("C$_key");
   col->set_indexed_column_id(10);
 
-  Status s = table_creator->
-      table_name(YBTableName(YQL_DATABASE_CQL, keyspace, index_name))
-      .table_type(YBTableType::YQL_TABLE_TYPE)
-      .schema(&index_schema)
-      .indexed_table_id(table_id)
-      .is_local_index(false)
-      .is_unique_index(false)
-      .Create();
+  Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, keyspace, index_name))
+                 .table_type(YBTableType::YQL_TABLE_TYPE)
+                 .schema(&index_schema)
+                 .indexed_table_id(table_id)
+                 .is_local_index(false)
+                 .is_unique_index(false)
+                 .timeout(MonoDelta::FromSeconds(60))
+                 .Create();
   ASSERT_OK(s);
 
   tables = ASSERT_RESULT(client->ListTables(/* filter */ "", /* exclude_ysql */ true));

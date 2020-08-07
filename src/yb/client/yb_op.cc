@@ -642,7 +642,8 @@ std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewTruncateColocated(
 }
 
 std::string YBPgsqlWriteOp::ToString() const {
-  return "PGSQL_WRITE " + write_request_->ShortDebugString();
+  return "PGSQL_WRITE " + write_request_->ShortDebugString() +
+         ", response: " + response().ShortDebugString();
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
@@ -717,12 +718,6 @@ void YBPgsqlReadOp::SetHashCode(const uint16_t hash_code) {
 }
 
 Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
-  // If partition key is explicitly specified, use that.
-  if (partition_key_) {
-    *partition_key = partition_key_.get();
-    return Status::OK();
-  }
-
   const Schema schema = table_->InternalSchema();
   if (!read_request_->partition_column_values().empty()) {
     // If hashed columns are set, use them to compute the exact key and set the bounds

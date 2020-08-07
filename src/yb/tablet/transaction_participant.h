@@ -68,7 +68,7 @@ namespace tablet {
 struct TransactionApplyData {
   int64_t leader_term = -1;
   TransactionId transaction_id;
-  consensus::OpId op_id;
+  OpIdPB op_id;
   HybridTime commit_ht;
   HybridTime log_ht;
   bool sealed = false;
@@ -78,7 +78,7 @@ struct TransactionApplyData {
 };
 
 struct RemoveIntentsData {
-  consensus::OpId op_id;
+  OpIdPB op_id;
   HybridTime log_ht;
 };
 
@@ -110,7 +110,8 @@ class TransactionParticipantContext {
   // Fills RemoveIntentsData with information about replicated state.
   virtual void GetLastReplicatedData(RemoveIntentsData* data) = 0;
 
-  virtual bool Enqueue(rpc::ThreadPoolTask* task) = 0;
+  // Enqueue task to participant context strand.
+  virtual void StrandEnqueue(rpc::StrandTask* task) = 0;
   virtual HybridTime Now() = 0;
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual bool IsLeader() = 0;
@@ -183,10 +184,10 @@ class TransactionParticipant : public TransactionStatusManager {
   struct ReplicatedData {
     int64_t leader_term = -1;
     const tserver::TransactionStatePB& state;
-    const consensus::OpId& op_id;
+    const OpIdPB& op_id;
     HybridTime hybrid_time;
     bool sealed = false;
-    AlreadyApplied already_applied;
+    AlreadyAppliedToRegularDB already_applied_to_regular_db;
 
     std::string ToString() const;
   };

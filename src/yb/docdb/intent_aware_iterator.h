@@ -74,10 +74,10 @@ struct FetchKeyResult {
 // intents for (sub)key B.
 //
 // When seeking to some (sub)dockey, it will ignore values for this (sub)dockey
-// (except write intents written by the same transaction) with HT higher than high_ht.
+// (except write intents written by the same transaction) with HT higher than read_time.
 //
-// For intents from the same transaction, intent with maximum HT would be picked, ignoring high_ht.
-// And returned as key with time equals to high_ht.
+// For intents from the same transaction, intents with maximum HT would be picked -- ignoring
+// read_time for filtering purposes -- and returned as key with time equal to read_time.
 // Intent data format:
 //   SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value.
 // TxnId, IntentType, HybridTime are all prefixed with their respective value types.

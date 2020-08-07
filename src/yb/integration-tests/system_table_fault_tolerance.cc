@@ -84,8 +84,9 @@ TEST_F(SystemTableFaultTolerance, TestFaultTolerance) {
       false /* Update roles' permissions cache */);
   server::ClockPtr clock(new server::HybridClock());
   ASSERT_OK(clock->Init());
-  auto processor = std::make_unique<ql::QLProcessor>(client.get(), metadata_cache, nullptr, clock,
-                                                     ql::TransactionPoolProvider());
+  auto processor = std::make_unique<ql::QLProcessor>(
+      client.get(), metadata_cache, /* ql_metrics= */ nullptr,
+      /* parser_pool= */ nullptr, clock, ql::TransactionPoolProvider());
   Synchronizer s;
   ql::StatementParameters statement_parameters;
   processor->RunAsync("SELECT * from system.peers", statement_parameters,

@@ -85,6 +85,10 @@ TableId GetPgsqlTableId(const uint32_t database_oid, const uint32_t table_oid) {
   return UuidToString(&id);
 }
 
+TablegroupId GetPgsqlTablegroupId(const uint32_t database_oid, const uint32_t tablegroup_oid) {
+  return GetPgsqlTableId(database_oid, tablegroup_oid);
+}
+
 bool IsPgsqlId(const string& id) {
   if (id.size() != 32) return false; // Ignore non-UUID id like "sys.catalog.uuid"
   try {

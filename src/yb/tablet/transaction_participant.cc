@@ -437,7 +437,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     auto cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
         &applier_, std::move(set), &participant_context_, status_manager, LogPrefix());
     cleanup_aborts_task->Prepare(cleanup_aborts_task);
-    participant_context_.Enqueue(cleanup_aborts_task.get());
+    participant_context_.StrandEnqueue(cleanup_aborts_task.get());
   }
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
@@ -454,7 +454,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         // This situation is normal and could be caused by 2 scenarios:
         // 1) Write batch failed, but originator doesn't know that.
         // 2) Failed to notify status tablet that we applied transaction.
-        LOG_WITH_PREFIX(WARNING) << Format("Apply of unknown transaction: $0", data);
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
+            << Format("Apply of unknown transaction: $0", data);
         NotifyApplied(data);
         CHECK(!FLAGS_TEST_fail_in_apply_if_no_metadata);
         return Status::OK();
@@ -980,12 +981,16 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   LockAndFindResult LockAndFind(
       const TransactionId& id, const std::string& reason, TransactionLoadFlags flags) {
     WaitLoaded(id);
-    std::unique_lock<std::mutex> lock(mutex_);
-    auto it = transactions_.find(id);
-    if (it != transactions_.end()) {
-      return LockAndFindResult{std::move(lock), it};
+    bool recently_removed;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      auto it = transactions_.find(id);
+      if (it != transactions_.end()) {
+        return LockAndFindResult{ std::move(lock), it };
+      }
+      recently_removed = WasTransactionRecentlyRemoved(id);
     }
-    if (WasTransactionRecentlyRemoved(id)) {
+    if (recently_removed) {
       VLOG_WITH_PREFIX(1)
           << "Attempt to load recently removed transaction: " << id << ", for: " << reason;
       LockAndFindResult result;
@@ -994,16 +999,18 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
     metric_transaction_not_found_->Increment();
     if (flags.Test(TransactionLoadFlag::kMustExist)) {
-      LOG_WITH_PREFIX(WARNING) << "Transaction not found: " << id << ", for: " << reason;
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
+          << "Transaction not found: " << id << ", for: " << reason;
     } else {
-      LOG_WITH_PREFIX(INFO) << "Transaction not found: " << id << ", for: " << reason;
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
+          << "Transaction not found: " << id << ", for: " << reason;
     }
     if (flags.Test(TransactionLoadFlag::kCleanup)) {
       VLOG_WITH_PREFIX(2) << "Schedule cleanup for: " << id;
       auto cleanup_task = std::make_shared<CleanupIntentsTask>(
           &participant_context_, &applier_, id);
       cleanup_task->Prepare(cleanup_task);
-      participant_context_.Enqueue(cleanup_task.get());
+      participant_context_.StrandEnqueue(cleanup_task.get());
     }
     return LockAndFindResult{};
   }
@@ -1060,6 +1067,11 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
 
     start_latch_.Wait();
+    if (closing_.load(std::memory_order_acquire)) {
+      LOG_WITH_PREFIX(INFO) << __func__ << ": closing, not starting transaction status resolution";
+      return;
+    }
+    LOG_WITH_PREFIX(INFO) << __func__ << ": starting transaction status resolution";
     status_resolver_.Start(CoarseTimePoint::max());
   }
 
@@ -1248,7 +1260,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     TransactionApplyData data = {
         .leader_term = term,
         .transaction_id = *id,
-        .op_id = consensus::OpId(),
+        .op_id = OpIdPB(),
         .commit_ht = HybridTime(),
         .log_ht = HybridTime(),
         .sealed = state->request()->sealed(),
@@ -1269,7 +1281,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     TransactionApplyData apply_data = {
         data.leader_term, id, data.op_id, commit_time, data.hybrid_time, data.sealed,
         data.state.tablets(0) };
-    if (!data.already_applied) {
+    if (!data.already_applied_to_regular_db) {
       return ProcessApply(apply_data);
     }
     if (!data.sealed) {
@@ -1492,8 +1504,7 @@ OneWayBitmap TransactionParticipant::TEST_TransactionReplicatedBatches(
 }
 
 std::string TransactionParticipant::ReplicatedData::ToString() const {
-  return Format("{ leader_term: $0 state: $1 op_id: $2 hybrid_time: $3 already_applied: $4 }",
-               leader_term, state, op_id, hybrid_time, already_applied);
+  return YB_STRUCT_TO_STRING(leader_term, state, op_id, hybrid_time, already_applied_to_regular_db);
 }
 
 void TransactionParticipant::StartShutdown() {

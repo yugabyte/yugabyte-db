@@ -110,7 +110,7 @@ In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, 
 
 Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
-Default: `0.0.0.0:7100`
+Default: `""`
 
 ##### --use_private_ip
 
@@ -369,6 +369,30 @@ Default: `8`
 On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/commands/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
 
 {{< /note >}}
+
+#### --tablet_split_size_threshold_bytes
+
+{{< note title="Note" >}}
+
+Automatic tablet splitting is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+{{< /note >}}
+
+Enables tablets to automatically split tablets while online, based on the specified tablet threshold size.
+
+**Syntax**
+
+```sh
+yb-admin --master_addresses <master-addresses> --tablet_split_size_threshold_bytes <bytes>
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *bytes*: The threshold size, in bytes, after which tablets should be split. Default value of `0` disables automatic tablet splitting.
+
+For details on automatic tablet splitting, see:
+
+- [Automatic tablet splitting](../../../architecture/docdb-sharding/tablet-splitting) — Architecture overview
+- [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) — Architecture design document in the GitHub repository.
 
 ---
 

@@ -410,6 +410,9 @@ class PgDocReadOp : public PgDocOp {
   //     Create parallel request for SELECT COUNT().
   CHECKED_STATUS PopulateParallelSelectCountOps();
 
+  // Set partition boundaries to a given partition.
+  CHECKED_STATUS SetScanPartitionBoundary();
+
   // Process response from DocDB.
   Result<std::list<PgDocResult>> ProcessResponseImpl() override;
 
@@ -427,9 +430,6 @@ class PgDocReadOp : public PgDocOp {
 
   // Set the read_time for our read request based on our exec control parameter.
   void SetReadTime();
-
-  // Set the partition key for our read request based on our exec control paramater.
-  void SetPartitionKey();
 
   // Clone the template into actual requests to be sent to server.
   std::unique_ptr<client::YBPgsqlOp> CloneFromTemplate() override {
@@ -469,9 +469,6 @@ class PgDocReadOp : public PgDocOp {
   // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
   // this will be initialized to [[1], [2, 3], [4, 5, 6], [7]]
   std::vector<std::vector<const PgsqlExpressionPB*>> partition_exprs_;
-
-  // The partition key identifying the sole tablet to read from.
-  boost::optional<std::string> partition_key_;
 };
 
 //--------------------------------------------------------------------------------------------------

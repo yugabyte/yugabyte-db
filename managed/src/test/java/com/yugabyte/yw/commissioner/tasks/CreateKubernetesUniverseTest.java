@@ -36,10 +36,16 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE;
-import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.APPLY_SECRET;
-import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_INSTALL;
-import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.POD_INFO;
+import static com.yugabyte.yw.commissioner.tasks.subtasks
+                 .KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE;
+import static com.yugabyte.yw.commissioner.tasks.subtasks
+                 .KubernetesCommandExecutor.CommandType.APPLY_SECRET;
+import static com.yugabyte.yw.commissioner.tasks.subtasks
+                 .KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+import static com.yugabyte.yw.commissioner.tasks.subtasks
+                 .KubernetesCommandExecutor.CommandType.POD_INFO;
+import static com.yugabyte.yw.commissioner.tasks.subtasks
+                 .KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
@@ -136,6 +142,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
+      TaskType.KubernetesCheckNumPod,
       TaskType.KubernetesCommandExecutor,
       TaskType.WaitForServer,
       TaskType.WaitForMasterLeader,
@@ -151,6 +158,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of("commandType", CREATE_NAMESPACE.name())),
       Json.toJson(ImmutableMap.of("commandType", APPLY_SECRET.name())),
       Json.toJson(ImmutableMap.of("commandType", HELM_INSTALL.name())),
+      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
       Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
@@ -167,6 +175,10 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     int position = 0;
     for (TaskType taskType: KUBERNETES_CREATE_UNIVERSE_TASKS) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
+      if (taskType == TaskType.KubernetesCheckNumPod) {
+        position++;
+        continue;
+      }
       JsonNode expectedResults =
           getExpectedCreateUniverseTaskResults().get(position);
       List<JsonNode> taskDetails = tasks.stream()
@@ -292,7 +304,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     verify(mockKubernetesManager, times(1)).createNamespace(expectedConfig.capture(),
         expectedNodePrefix.capture());
     
-    verify(mockKubernetesManager, times(1)).helmInstall(expectedConfig.capture(), expectedUniverseUUID.capture(),
+    verify(mockKubernetesManager, times(1)).helmInstall(expectedConfig.capture(),
+        expectedUniverseUUID.capture(),
         expectedNodePrefix.capture(), expectedOverrideFile.capture());
     
     assertEquals(defaultProvider.uuid, expectedUniverseUUID.getValue());

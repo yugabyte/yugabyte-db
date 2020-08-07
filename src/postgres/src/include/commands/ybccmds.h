@@ -42,13 +42,20 @@ extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
 extern void YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_oid);
 
+/*  Tablegroup Functions ------------------------------------------------------------------------ */
+
+extern void YBCCreateTablegroup(Oid grpoid, const char *grpname);
+
+extern void YBCDropTablegroup(Oid grpoid, const char *grpname);
+
 /*  Table Functions ----------------------------------------------------------------------------- */
 
 extern void YBCCreateTable(CreateStmt *stmt,
 						   char relkind,
 						   TupleDesc desc,
 						   Oid relationId,
-						   Oid namespaceId);
+						   Oid namespaceId,
+						   Oid tablegroupId);
 
 extern void YBCDropTable(Oid relationId);
 
@@ -62,7 +69,8 @@ extern void YBCCreateIndex(const char *indexName,
 						   Oid indexId,
 						   Relation rel,
 						   OptSplit *split_options,
-						   const bool skip_index_backfill);
+						   const bool skip_index_backfill,
+						   Oid tablegroupId);
 
 extern void YBCDropIndex(Oid relationId);
 

@@ -1660,7 +1660,7 @@ public class TestPgPushdown extends BasePgSQLTest {
       return getRowList(stmt.executeQuery(selectCountQuery)).get(0).getLong(0);
     }
 
-    /** Assert that the plan for the given query results in index/foreign scan */
+    /** Assert that the plan for the given query results in index/seq scan */
     private void assertPushdownPlan(
         Statement stmt,
         String queryString,
@@ -1672,13 +1672,13 @@ public class TestPgPushdown extends BasePgSQLTest {
           shouldUseIndex);
     }
 
-    /** Assert that the plan for the given query results in index/foreign scan */
+    /** Assert that the plan for the given query results in index/seq scan */
     private void assertPushdownPlan(Statement stmt, String query, boolean shouldUseIndex)
         throws Exception {
       assertPushdownPlan(stmt.executeQuery("EXPLAIN " + query), query, shouldUseIndex);
     }
 
-    /** Assert that the plan for the given query results in index/foreign scan */
+    /** Assert that the plan for the given query results in index/seq scan */
     private void assertPushdownPlan(ResultSet rs, String query, boolean shouldUseIndex)
         throws Exception {
       List<Row> rows = getRowList(rs);
@@ -1692,9 +1692,9 @@ public class TestPgPushdown extends BasePgSQLTest {
             plan.contains("Index Scan") || plan.contains("Index Only Scan"));
       } else {
         assertTrue(
-            String.format("Expected query '%s' to be a foreign scan, but the plan was:\n%s",
+            String.format("Expected query '%s' to be a seq scan, but the plan was:\n%s",
                 query, plan),
-            plan.contains("Foreign Scan"));
+            plan.contains("Seq Scan"));
       }
     }
   }

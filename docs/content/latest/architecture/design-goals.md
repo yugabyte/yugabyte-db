@@ -73,7 +73,7 @@ YugabyteDB does not reinvent data client APIs. It is wire-compatible with existi
 
 ### YCQL
 
-[YCQL](../../api/ycql/) is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. 
+[YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. 
 
 {{< tip title="Read more" >}}
 

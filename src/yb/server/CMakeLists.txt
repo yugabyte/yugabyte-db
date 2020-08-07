@@ -58,6 +58,7 @@ ADD_YB_TEST(hybrid_clock-test)
 ADD_YB_TEST(logical_clock-test)
 # This test is here and not in common because we need access to HybridClock.
 ADD_YB_TEST(doc_hybrid_time-test)
+ADD_YB_TEST(lag_metrics_test)
 
 #########################################
 # server_base_proto

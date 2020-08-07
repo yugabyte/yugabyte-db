@@ -431,17 +431,11 @@ ExecInsert(ModifyTableState *mtstate,
 		 * one; except that if we got here via tuple-routing, we don't need to
 		 * if there's no BR trigger defined on the partition.
 		 */
-		if (!IsYBRelation(resultRelationDesc))
-		{
-			/*
-			 * TODO(Hector) When partitioning is supported in YugaByte, this check must be enabled.
-			 */
-			if (resultRelInfo->ri_PartitionCheck &&
-					(resultRelInfo->ri_PartitionRoot == NULL ||
-					 (resultRelInfo->ri_TrigDesc &&
-						resultRelInfo->ri_TrigDesc->trig_insert_before_row)))
-				ExecPartitionCheck(resultRelInfo, slot, estate, true);
-		}
+		if (resultRelInfo->ri_PartitionCheck &&
+				(resultRelInfo->ri_PartitionRoot == NULL ||
+				 (resultRelInfo->ri_TrigDesc &&
+					resultRelInfo->ri_TrigDesc->trig_insert_before_row)))
+			ExecPartitionCheck(resultRelInfo, slot, estate, true);
 
 		if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0)
 		{
@@ -1133,11 +1127,28 @@ ExecUpdate(ModifyTableState *mtstate,
 		if (resultRelationDesc->rd_att->constr)
 			ExecConstraints(resultRelInfo, slot, estate, mtstate);
 
+		/*
+		 * Verify that the update does not violate partition constraints.
+		 */
+		ExecPartitionCheck(resultRelInfo, slot, estate, true /* emitError */);
 
 		RangeTblEntry *rte = rt_fetch(resultRelInfo->ri_RangeTableIndex,
 									  estate->es_range_table);
 
-		bool row_found = YBCExecuteUpdate(resultRelationDesc, planSlot, tuple, estate, mtstate, rte->updatedCols);
+		bool row_found = false;
+
+		bool is_pk_updated =
+			bms_overlap(YBGetTablePrimaryKeyBms(resultRelationDesc), rte->updatedCols);
+
+		if (is_pk_updated)
+		{
+			YBCExecuteUpdateReplace(resultRelationDesc, planSlot, tuple, estate, mtstate);
+			row_found = true;
+		}
+		else
+		{
+			row_found = YBCExecuteUpdate(resultRelationDesc, planSlot, tuple, estate, mtstate, rte->updatedCols);
+		}
 
 		if (!row_found)
 		{

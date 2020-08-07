@@ -27,6 +27,10 @@ public class BackupTableParams extends TableManagerParams {
 
   public List<UUID> tableUUIDList;
 
+  // Allows bundling multiple backup params. Used only in the case
+  // of backing up an entire universe transactionally
+  public List<BackupTableParams> backupList;
+
   // Specifies the frequency for running the backup in milliseconds.
   public long schedulingFrequency = 0L;
 
@@ -42,4 +46,7 @@ public class BackupTableParams extends TableManagerParams {
 
   // Should the backup be transactional across tables
   public boolean transactionalBackup = false;
+
+  // The number of concurrent commands to run on nodes over SSH
+  public int parallelism = 8;
 }

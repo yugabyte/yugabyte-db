@@ -27,8 +27,8 @@ const mapDispatchToProps = (dispatch) => {
   return {
     submitConfigureUniverse: (values) => {
       dispatch(configureUniverseTemplateLoading());
-      dispatch(configureUniverseTemplate(values)).then((response) => {
-        dispatch(configureUniverseTemplateResponse(response.payload));
+      return dispatch(configureUniverseTemplate(values)).then((response) => {
+        return dispatch(configureUniverseTemplateResponse(response.payload));
       });
     },
 
@@ -39,11 +39,11 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     submitCreateUniverse: (values) => {
-      dispatch(createUniverse(values)).then((response) => {
-        dispatch(createUniverseResponse(response.payload));
+      return dispatch(createUniverse(values)).then((response) => {
         dispatch(getTlsCertificates()).then((response) => {
           dispatch(getTlsCertificatesResponse(response.payload));
         });
+        return dispatch(createUniverseResponse(response.payload));
       });
     },
 
@@ -225,7 +225,7 @@ function mapStateToProps(state, ownProps) {
       "accessKeyCode": "yugabyte-default",
       "assignPublicIP":  true,
       "useTimeSync": false,
-      "enableYSQL": false,
+      "enableYSQL": true,
       "enableNodeToNodeEncrypt": false,
       "enableClientToNodeEncrypt": false,
       "enableEncryptionAtRest": false,
@@ -238,7 +238,7 @@ function mapStateToProps(state, ownProps) {
       "isMultiAZ": true,
       "assignPublicIP":  true,
       "useTimeSync": false,
-      "enableYSQL": false,
+      "enableYSQL": true,
       "enableNodeToNodeEncrypt": false,
       "enableClientToNodeEncrypt": false
     }

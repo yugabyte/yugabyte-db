@@ -47,6 +47,12 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 `CONCURRENTLY`, `USING method`, `COLLATE`, and `TABLESPACE` options are not yet supported.
 
+{{< note title="Note" >}}
+
+When an index is created on an existing table, YugabyteDB automatically backfills existing data into the index. Currently, this is not done in an online manner. To online backfill an index, you can set the `ysql_disable_index_backfill` flag to `false` when starting yb-tservers. Note that we don't recommend setting this flag in a production cluster yet. For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
+
+{{< /note >}}
+
 ### UNIQUE
 
 Enforce that duplicate values in a table are not allowed.
@@ -89,11 +95,11 @@ Specify one or more columns of the table and must be surrounded by parentheses.
 ### SPLIT INTO
 
 For hash-sharded indexes, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the index. The hash range is then evenly split across those tablets.
-Pre-splitting indexes, using `SPLIT INTO`, distributes index workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 tablets can provide higher write throughput on the index. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
+Presplitting indexes, using `SPLIT INTO`, distributes index workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 tablets can provide higher write throughput on the index. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 
-By default, YugabyteDB pre-splits an index into `ysql_num_shards_per_tserver * num_of_tserver` tablets. The `SPLIT INTO` clause can be used to override that setting on a per-index basis.
+By default, YugabyteDB presplits an index into `ysql_num_shards_per_tserver * num_of_tserver` tablets. The `SPLIT INTO` clause can be used to override that setting on a per-index basis.
 
 {{< /note >}}
 

@@ -76,7 +76,7 @@ const char* kTestTablet = "TestTablet";
 const char* kLocalPeerUuid = "peer-0";
 
 // A simple map to collect the results of a sequence of transactions.
-typedef std::map<OpId, Status, OpIdCompareFunctor> StatusesMap;
+typedef std::map<OpIdPB, Status, OpIdCompareFunctor> StatusesMap;
 
 class MockQueue : public PeerMessageQueue {
  public:
@@ -88,8 +88,8 @@ class MockQueue : public PeerMessageQueue {
           FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock, nullptr /* consensus_queue */,
           std::move(raft_pool_observers_token)) {}
 
-  MOCK_METHOD1(Init, void(const OpId& locally_replicated_index));
-  MOCK_METHOD3(SetLeaderMode, void(const OpId& committed_opid,
+  MOCK_METHOD1(Init, void(const OpIdPB& locally_replicated_index));
+  MOCK_METHOD3(SetLeaderMode, void(const OpIdPB& committed_opid,
                                    int64_t current_term,
                                    const RaftConfigPB& active_config));
   MOCK_METHOD0(SetNonLeaderMode, void());
@@ -218,7 +218,7 @@ class RaftConsensusTest : public YBTest {
     fs_manager_.reset(new FsManager(env_.get(), test_path, "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());
-    ASSERT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
+    ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
     ASSERT_OK(Log::Open(LogOptions(),
                        kTestTablet,
                        fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
@@ -226,7 +226,8 @@ class RaftConsensusTest : public YBTest {
                        schema_,
                        0, // schema_version
                        nullptr, // metric_entity
-                       append_pool_.get(),
+                       log_thread_pool_.get(),
+                       log_thread_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                        &log_));
 
@@ -319,10 +320,10 @@ class RaftConsensusTest : public YBTest {
   // Create a ConsensusRequestPB suitable to send to a peer.
   ConsensusRequestPB MakeConsensusRequest(int64_t caller_term,
                                           const string& caller_uuid,
-                                          const OpId& preceding_opid);
+                                          const OpIdPB& preceding_opid);
 
   // Add a single no-op with the given OpId to a ConsensusRequestPB.
-  void AddNoOpToConsensusRequest(ConsensusRequestPB* request, const OpId& noop_opid);
+  void AddNoOpToConsensusRequest(ConsensusRequestPB* request, const OpIdPB& noop_opid);
 
   scoped_refptr<ConsensusRound> AppendNoOpRound() {
     auto replicate_ptr = std::make_shared<ReplicateMsg>();
@@ -351,9 +352,9 @@ class RaftConsensusTest : public YBTest {
   gscoped_ptr<ThreadPool> raft_pool_;
   ConsensusOptions options_;
   RaftConfigPB config_;
-  OpId initial_id_;
+  OpIdPB initial_id_;
   gscoped_ptr<FsManager> fs_manager_;
-  std::unique_ptr<ThreadPool> append_pool_;
+  std::unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<Log> log_;
   gscoped_ptr<PeerProxyFactory> proxy_factory_;
   scoped_refptr<server::Clock> clock_;
@@ -374,7 +375,7 @@ class RaftConsensusTest : public YBTest {
 
 ConsensusRequestPB RaftConsensusTest::MakeConsensusRequest(int64_t caller_term,
                                                            const string& caller_uuid,
-                                                           const OpId& preceding_opid) {
+                                                           const OpIdPB& preceding_opid) {
   ConsensusRequestPB request;
   request.set_caller_term(caller_term);
   request.set_caller_uuid(caller_uuid);
@@ -384,7 +385,7 @@ ConsensusRequestPB RaftConsensusTest::MakeConsensusRequest(int64_t caller_term,
 }
 
 void RaftConsensusTest::AddNoOpToConsensusRequest(ConsensusRequestPB* request,
-                                                  const OpId& noop_opid) {
+                                                  const OpIdPB& noop_opid) {
   ReplicateMsg* noop_msg = request->add_ops();
   *noop_msg->mutable_id() = noop_opid;
   noop_msg->set_op_type(NO_OP);
@@ -415,7 +416,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
   ASSERT_OK(consensus_->EmulateElection());
 
   // Commit the first noop round, created on EmulateElection();
-  OpId committed_index;
+  OpIdPB committed_index;
   consensus_->UpdateMajorityReplicatedInTests(rounds_[0]->id(), &committed_index);
   ASSERT_OPID_EQ(rounds_[0]->id(), committed_index);
 
@@ -451,7 +452,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
   ASSERT_OK(consensus_->Start(info));
   ASSERT_OK(consensus_->EmulateElection());
 
-  OpId committed_index;
+  OpIdPB committed_index;
   consensus_->UpdateMajorityReplicatedInTests(rounds_[0]->id(), &committed_index);
   ASSERT_OPID_EQ(rounds_[0]->id(), committed_index);
 
@@ -464,7 +465,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
 
   // Now tell consensus that 'round' has been majority replicated, this _shouldn't_
   // advance the committed index, since that belongs to a previous term.
-  OpId new_committed_index;
+  OpIdPB new_committed_index;
   consensus_->UpdateMajorityReplicatedInTests(round->id(), &new_committed_index);
   ASSERT_OPID_EQ(committed_index, new_committed_index);
 
@@ -561,7 +562,7 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
   // Now tell consensus all original orphaned replicates were majority replicated.
   // This should not advance the committed index because we haven't replicated
   // anything in the current term.
-  OpId committed_index;
+  OpIdPB committed_index;
   consensus_->UpdateMajorityReplicatedInTests(info.orphaned_replicates.back()->id(),
                                               &committed_index);
   // Should still be the last committed in the wal.
@@ -570,7 +571,7 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
   // Now mark the last operation (the no-op round) as committed.
   // This should advance the committed index, since that round in on our current term,
   // and we should be able to commit all previous rounds.
-  OpId cc_round_id = info.orphaned_replicates.back()->id();
+  OpIdPB cc_round_id = info.orphaned_replicates.back()->id();
   cc_round_id.set_term(11);
 
   // +1 here because index is incremented during emulated election.
@@ -696,7 +697,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
 
 TEST_F(RaftConsensusTest, TestReceivedIdIsInittedBeforeStart) {
   SetUpConsensus();
-  OpId opid;
+  OpIdPB opid;
   consensus_->GetLastReceivedOpId().ToPB(&opid);
   ASSERT_TRUE(opid.IsInitialized());
   ASSERT_OPID_EQ(opid, MinimumOpId());
@@ -719,7 +720,7 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
 
   caller_term = 1;
   string caller_uuid = config_.peers(0).permanent_uuid();
-  OpId preceding_opid = MinimumOpId();
+  OpIdPB preceding_opid = MinimumOpId();
 
   // Heartbeat. This will cause the term to increment on the follower.
   request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid);
@@ -731,7 +732,7 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   ASSERT_OPID_EQ(response.status().last_received_current_leader(), MinimumOpId());
 
   // Replicate a no-op.
-  OpId noop_opid = MakeOpId(caller_term, ++log_index);
+  OpIdPB noop_opid = MakeOpId(caller_term, ++log_index);
   AddNoOpToConsensusRequest(&request, noop_opid);
   response.Clear();
   ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));

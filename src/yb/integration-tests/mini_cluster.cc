@@ -80,6 +80,7 @@ DECLARE_int32(ts_consensus_svc_num_threads);
 DECLARE_int32(ts_remote_bootstrap_svc_num_threads);
 DECLARE_int32(replication_factor);
 DECLARE_string(use_private_ip);
+DECLARE_int32(load_balancer_initial_delay_secs);
 
 namespace yb {
 
@@ -169,6 +170,9 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   // This dictates the RF of newly created tables.
   SetAtomicFlag(num_ts_initial_ >= 3 ? 3 : 1, &FLAGS_replication_factor);
   FLAGS_memstore_size_mb = 16;
+  // Default master args to make sure we don't wait to trigger new LB tasks upon master leader
+  // failover.
+  FLAGS_load_balancer_initial_delay_secs = 0;
 
   // start the masters
   RETURN_NOT_OK_PREPEND(StartMasters(),
@@ -265,7 +269,7 @@ Status MiniCluster::RestartSync() {
     CHECK_OK(master_server->WaitForCatalogManagerInit());
   }
 
-  RETURN_NOT_OK_PREPEND(WaitForTabletServerCount(num_tablet_servers()),
+  RETURN_NOT_OK_PREPEND(WaitForAllTabletServers(),
                         "Waiting for tablet servers to start");
   running_ = true;
   return Status::OK();
@@ -449,6 +453,10 @@ Status MiniCluster::WaitForReplicaCount(const string& tablet_id,
                                      tablet_id, expected_count));
 }
 
+Status MiniCluster::WaitForAllTabletServers() {
+  return WaitForTabletServerCount(num_tablet_servers());
+}
+
 Status MiniCluster::WaitForTabletServerCount(int count) {
   vector<shared_ptr<master::TSDescriptor> > descs;
   return WaitForTabletServerCount(count, &descs);
@@ -572,6 +580,16 @@ void StepDownRandomTablet(MiniCluster* cluster) {
   }
 }
 
+std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const string& table_id) {
+  std::unordered_set<string> tablet_ids;
+  for (auto peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+    if (peer->tablet_metadata()->table_id() == table_id) {
+      tablet_ids.insert(peer->tablet_id());
+    }
+  }
+  return tablet_ids;
+}
+
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(MiniCluster* cluster, ListPeersFilter filter) {
   switch (filter) {
     case ListPeersFilter::kAll:
@@ -612,6 +630,17 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
   }
 
   return result;
+}
+
+Status WaitUntilTabletHasLeader(
+    MiniCluster* cluster, const string& tablet_id, MonoTime deadline) {
+  return Wait([cluster, &tablet_id] {
+    auto tablet_peers = ListTabletPeers(cluster, [&tablet_id](auto peer) {
+      return peer->tablet_id() == tablet_id
+          && peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+    });
+    return tablet_peers.size() == 1;
+  }, deadline, "Waiting for election in tablet " + tablet_id);
 }
 
 Status WaitForLeaderOfSingleTablet(

@@ -2,7 +2,7 @@
 title: table t4
 linkTitle: table t4
 headerTitle: Create and populate table t4
-description: Creates and populate table t4 with data that allows the demonstration of the SQL window functions percent_rank(), cume_dist(), and ntile().
+description: Creates and populate table t4 with a psuedo-randomly generated approximate normal distrubution that allows the comparison of YSQL's percent_rank(), cume_dist(), and ntile() window functions.
 menu:
   latest:
     identifier: table-t4
@@ -13,14 +13,16 @@ showAsideToc: true
 ---
 
 {{< note title=" " >}}
+
 Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t4"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../extensions/#pgcrypto) and [tablefunc](../../../../../extensions/#tablefunc) extensions.
+
 {{< /note >}}
 
 The table _"t4"_ is used for comparing these window functions:
 [`percent_rank()`](../../percent-rank-cume-dist-ntile/#percent-rank),
 [`cume_dist()`](../../percent-rank-cume-dist-ntile/#cume-dist),
-and [`ntile()`](../../percent-rank-cume-dist-ntile-main/#ntile).
-See the section [Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()](../../../analyzing-a-normal-distribution/).
+and [`ntile()`](../../percent-rank-cume-dist-ntile/#ntile).
+See the section [Analyzing a normal distribution with percent_rank(), cume_dist(), and ntile()](../../../analyzing-a-normal-distribution/).
 
 The table is populated using a procedure that is parameterized with the number of rows to generate. You will typically choose a large number like, 100,000. It uses the `normal_rand()` function to generate the specified number of  values by pseudorandomly picking values from an ideal normal distribution. The  `normal_rand()` function is brought by the [tablefunc](../../../../../extensions/#tablefunc) extension. This function is parameterized by the number of values to create, and by the mean and the standard deviation of the distribution from which to pick the values. An infinite number of such values would range between minus and plus infinity. But of course, some number, like _100,000_, of such values will lie between finite limits. It's sufficient for the purposes of the demonstrations that will use this data to scale the values so that the minimum is _0.0_ and the maximum is _100.0_. Doing this has the consequence that the mean will be about _50.0_ and the standard deviation will be about _10.0_—no matter what values for these are provided as the actual arguments to `normal_rand()`. It's sufficient to say that the values will lie on a bell-shaped curve, just as is typical for a large enough sample of examination results.
 
@@ -33,7 +35,7 @@ A large value like 100,000 gives the best compromise between the time to populat
 This `ysqlsh` script creates the table _"t4"_ and creates the procedure to populate the table.
 Save it as `t4_1.sql`.
 
-```postgresql
+```plpgsql
 -- Suppress the spurious warning that is raised
 -- when the to-be-deleted table doesn't yet exist.
 set client_min_messages = warning;
@@ -89,7 +91,7 @@ $body$;
 
 This script executes the procedure and then creates a unique index on the _"dp_score"_ column. Save it as `t4_2.sql`.
 
-```postgresql
+```plpgsql
 -- You can run this script time and again. It will always finish silently.
 
 set client_min_messages = warning;

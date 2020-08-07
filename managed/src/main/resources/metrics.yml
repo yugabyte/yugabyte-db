@@ -1749,12 +1749,11 @@ cql_sql_latency_breakdown:
 
 cql_yb_rpc_connections:
   metric: "rpc_connections_alive"
-  function: "irate|avg"
-  range: "1m"
+  function: "sum"
   filters:
-    metric_id: "yb.cqlserver"
+    export_type: "cql_export"
   layout:
-    title: "YCQL Inbound Connections"
+    title: "Inbound RPC Connections Alive"
     xaxis:
       type: "date"
 
@@ -1857,7 +1856,7 @@ tserver_rpc_queue_size_master:
   metric: "rpcs_in_queue_yb_master_MasterService"
   function: "max"
   layout:
-    title: "RPC queue sizes (Master)"
+    title: "RPC Queue Size"
     xaxis:
       type: "date"
     yaxis:
@@ -1874,7 +1873,7 @@ tserver_rpc_queue_size_tserver:
     export_type: "tserver_export"
   group_by: "saved_name"
   layout:
-    title: "RPC queue sizes (Tserver)"
+    title: "RPC Queue Size"
     xaxis:
       type: "date"
     yaxis:
@@ -1895,7 +1894,7 @@ tserver_rpc_queue_size_cql:
     export_type: "cql_export"
   group_by: "saved_name"
   layout:
-    title: "RPC queue sizes (YCQL)"
+    title: "RPC Queue Size"
     xaxis:
       type: "date"
     yaxis:
@@ -1910,7 +1909,7 @@ tserver_rpc_queue_size_redis:
     export_type: "redis_export"
   group_by: "saved_name"
   layout:
-    title: "RPC queue sizes (YEDIS)"
+    title: "RPC Queue Size"
     xaxis:
       type: "date"
     yaxis:
@@ -1919,6 +1918,7 @@ tserver_rpc_queue_size_redis:
 
 tserver_async_replication_lag_micros:
   metric: ""
+  operator: "/ 1000"
   function: "max without (table_id, table_name, stream_id)"
   filters:
     saved_name: "async_replication_sent_lag_micros|async_replication_committed_lag_micros"
@@ -1928,5 +1928,182 @@ tserver_async_replication_lag_micros:
       type: "date"
     yaxis:
       alias:
-        "async_replication_sent_lag_micros": "Sent Lag (Microseconds)"
-        "async_replication_committed_lag_micros": "Committed Lag (Microseconds)"
+        "async_replication_sent_lag_micros": "Sent Lag (Milliseconds)"
+        "async_replication_committed_lag_micros": "Committed Lag (Milliseconds)"
+
+master_overall_rpc_rate:
+  metric: "rpc_inbound_calls_created"
+  function: "rate"
+  range: "1m"
+  filters:
+    export_type: "master_export"
+  layout:
+    title: "Overall RPCs / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_get_tablet_location:
+  metric: "rpc_latency_count"
+  function: "rate"
+  range: "1m"
+  filters:
+    export_type: "master_export"
+    service_type: "MasterService"
+    service_method: "GetTabletLocations"
+  layout:
+    title: "GetTabletLocations / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_tsservice_reads:
+  metric: "rpc_latency_count"
+  function: "rate"
+  range: "1m"
+  filters:
+    export_type: "master_export"
+    service_type: "TabletServerService"
+    service_method: "Read"
+  layout:
+    title: "Master TSService Reads / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_tsservice_writes:
+  metric: "rpc_latency_count"
+  function: "rate"
+  range: "1m"
+  filters:
+    export_type: "master_export"
+    service_type: "TabletServerService"
+    service_method: "Write"
+  layout:
+    title: "Master TSService Writes / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_ts_heartbeats:
+  metric: "rpc_latency_count"
+  function: "rate"
+  range: "1m"
+  filters:
+    export_type: "master_export"
+    service_type: "MasterService"
+    service_method: "TSHeartbeat"
+  layout:
+    title: "TS Heartbeats / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_consensus_update:
+  metric: "rpc_latency_count"
+  function: "rate"
+  range: "1m"
+  filters:
+    export_type: "master_export"
+    service_type: "ConsensusService"
+    service_method: "UpdateConsensus"
+  layout:
+    title: "UpdateConsensus / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_table_ops:
+  metric: "rpc_latency_count"
+  function: "sum"
+  filters:
+    export_type: "master_export"
+    service_type: "MasterService"
+    saved_name: "handler_latency_yb_master_MasterService_DeleteTable_count|handler_latency_yb_master_MasterService_CreateTable_count"
+  group_by: "saved_name"
+  layout:
+    title: "Create/Delete Table RPCs"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "handler_latency_yb_master_MasterService_DeleteTable_count": "Delete Table"
+        "handler_latency_yb_master_MasterService_CreateTable_count": "Create Table"
+
+master_cpu_util_secs:
+  metric: "cpu_utime|cpu_stime"
+  function: "rate"
+  range: "1m"
+  operator: "/ 1000"
+  filters:
+    export_type: "master_export"
+  layout:
+    title: "CPU Util Secs / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+        "cpu_utime": "cpu_utime"
+        "cpu_stime": "cpu_stime"
+
+tserver_cpu_util_secs:
+  metric: "cpu_utime|cpu_stime"
+  function: "rate|avg"
+  range: "1m"
+  operator: "/ 1000"
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "CPU Util Secs / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "cpu_utime": "cpu_utime"
+        "cpu_stime": "cpu_stime"
+
+redis_yb_rpc_connections:
+  metric: "rpc_connections_alive"
+  function: "sum"
+  filters:
+    export_type: "redis_export"
+  layout:
+    title: "Inbound RPC Connections Alive"
+    xaxis:
+      type: "date"
+
+tserver_yb_rpc_connections:
+  metric: "rpc_connections_alive"
+  function: "sum"
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Inbound RPC Connections Alive"
+    xaxis:
+      type: "date"
+
+master_yb_rpc_connections:
+  metric: "rpc_connections_alive"
+  function: ""
+  filters:
+    export_type: "master_export"
+  layout:
+    title: "Inbound RPC Connections Alive"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"

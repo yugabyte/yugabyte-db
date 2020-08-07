@@ -149,6 +149,10 @@ public class TaskInfo extends Model {
     return uuid;
   }
 
+  public void setTaskUUID(UUID taskUUID) {
+    uuid = taskUUID;
+  }
+
   public void setOwner(String owner) {
     this.owner = owner;
   }
@@ -189,6 +193,14 @@ public class TaskInfo extends Model {
         .eq("parent_uuid", getTaskUUID())
         .orderBy("position asc");
     return subTaskQuery.findList();
+  }
+
+  public List<TaskInfo> getIncompleteSubTasks() {
+    Object[] incompleteStates = {State.Created, State.Initializing, State.Running};
+    return TaskInfo.find.where()
+      .eq("parent_uuid", getTaskUUID())
+      .in("task_state", incompleteStates)
+      .findList();
   }
 
   @Override

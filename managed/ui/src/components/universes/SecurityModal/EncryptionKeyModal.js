@@ -81,7 +81,8 @@ export default class EncryptionKeyModal extends Component {
         onSubmit={(values) => {
           this.handleSubmitForm(values);
         }}
-        render={props => (
+      >
+        {props => (
           <YBModal visible={modalVisible} formName={"EncryptionForm"} onHide={onHide} onFormSubmit={props.handleSubmit}
             submitLabel={'Submit'} cancelLabel={'Close'} showCancelButton={true} title={ "Manage Keys" }
           >
@@ -119,7 +120,8 @@ export default class EncryptionKeyModal extends Component {
               }
             </div>
           </YBModal>
-        )} />
+        )}
+      </Formik>
     );
   }
 }

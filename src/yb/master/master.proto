@@ -1036,6 +1036,11 @@ message AlterTableRequestPB {
   optional NamespaceIdentifierPB new_namespace = 4;
   optional TablePropertiesPB alter_properties = 5;
   optional uint32 wal_retention_secs = 6;
+
+  // If set to true, SendAlterTableRequest will be sent even if no changes are specified in this
+  // request.
+  // This is useful to trigger index permissions update.
+  optional bool force_send_alter_request = 7 [default = false];
 }
 
 message AlterTableResponsePB {
@@ -1420,6 +1425,33 @@ message GetNamespaceInfoResponsePB {
 }
 
 // ============================================================================
+//  Tablegroup
+// ============================================================================
+
+message CreateTablegroupRequestPB {
+  required string name = 1;
+  required bytes id = 2;
+  required bytes namespace_id = 3;
+  optional string namespace_name = 4;
+}
+
+message CreateTablegroupResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message DeleteTablegroupRequestPB {
+  required string name = 1;
+  required bytes id = 2;
+  required bytes namespace_id = 3;
+}
+
+message DeleteTablegroupResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+// ============================================================================
 //  Authentication and Authorization
 // ============================================================================
 
@@ -1670,6 +1702,10 @@ message FlushTablesRequestPB {
 
   // Whether we want to compact the tablets instead of flushing them.
   optional bool is_compaction = 2;
+
+  // Whether we want to include index tables in this flush. If there are index tables in the tables
+  // field this field must be set to false, otherwise the request will fail.
+  optional bool add_indexes = 3;
 }
 
 message FlushTablesResponsePB {
@@ -1821,6 +1857,10 @@ service MasterService {
   rpc AlterNamespace(AlterNamespaceRequestPB) returns (AlterNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
   rpc GetNamespaceInfo(GetNamespaceInfoRequestPB) returns (GetNamespaceInfoResponsePB);
+
+  // For Tablegroup:
+  rpc CreateTablegroup(CreateTablegroupRequestPB) returns (CreateTablegroupResponsePB);
+  rpc DeleteTablegroup(DeleteTablegroupRequestPB) returns (DeleteTablegroupResponsePB);
 
   // For Postgres:
   rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);

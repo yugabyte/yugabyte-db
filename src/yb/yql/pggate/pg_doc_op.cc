@@ -13,16 +13,22 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_doc_op.h"
-#include "yb/yql/pggate/pg_txn_manager.h"
+
+#include <algorithm>
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <boost/algorithm/string.hpp>
 
 #include "yb/client/table.h"
-
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
-#include "yb/util/yb_pg_errcodes.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/util/yb_pg_errcodes.h"
+#include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -314,7 +320,6 @@ void PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   SetRequestPrefetchLimit();
   SetRowMark();
   SetReadTime();
-  SetPartitionKey();
 }
 
 Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {
@@ -348,6 +353,9 @@ Status PgDocReadOp::CreateRequests() {
 
   } else {
     // No optimization.
+    if (exec_params_.partition_key != nullptr) {
+      RETURN_NOT_OK(SetScanPartitionBoundary());
+    }
     pgsql_ops_.push_back(template_op_);
     template_op_->set_active(true);
     active_op_count_ = 1;
@@ -577,6 +585,32 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
   return Status::OK();
 }
 
+// When postgres requests to scan a specific partition, set the partition parameter accordingly.
+Status PgDocReadOp::SetScanPartitionBoundary() {
+  SCHECK(exec_params_.partition_key != nullptr, Uninitialized, "expected non-null partition_key");
+
+  const std::vector<std::string>& partition_keys = table_desc_->table()->GetPartitions();
+  const auto& partition_key = std::find(
+      partition_keys.begin(),
+      partition_keys.end(),
+      a2b_hex(exec_params_.partition_key));
+  DSCHECK(partition_key != partition_keys.end(), InvalidArgument, "invalid partition key given");
+
+  // Set paging state.
+  PgsqlReadRequestPB *req = template_op_->mutable_request();
+  req->mutable_paging_state()->set_next_partition_key(*partition_key);
+
+  // Set max_hash_code to end of tablet (next key - 1).
+  // TODO(jason): this assumes hash partitioning; handle range partitioning (see issue #4768).
+  const auto& next_partition_key = std::next(partition_key, 1);
+  if (next_partition_key != partition_keys.end()) {
+    req->set_max_hash_code(
+        PartitionSchema::DecodeMultiColumnHashValue(std::string(*next_partition_key)) - 1);
+  }
+
+  return Status::OK();
+}
+
 Status PgDocReadOp::ProcessResponsePagingState() {
   // For each read_op, set up its request for the next batch of data or make it in-active.
   bool has_more_data = false;
@@ -628,13 +662,6 @@ Status PgDocReadOp::ProcessResponsePagingState() {
     } else {
       read_op->set_active(false);
     }
-  }
-
-  // If partition key of tablet to scan is specified, then we should be done.  This is because,
-  // curently, only `BACKFILL INDEX ... PARTITION ...` statements set `partition_key`, and they scan
-  // a single tablet.
-  if (partition_key_) {
-    has_more_data = false;
   }
 
   if (has_more_data || send_count < active_op_count_) {
@@ -689,13 +716,6 @@ void PgDocReadOp::SetReadTime() {
   PgDocOp::SetReadTime();
   if (read_time_) {
     template_op_->SetReadTime(ReadHybridTime::FromUint64(read_time_));
-  }
-}
-
-void PgDocReadOp::SetPartitionKey() {
-  if (exec_params_.partition_key != NULL) {
-    partition_key_ = a2b_hex(exec_params_.partition_key);
-    template_op_->SetPartitionKey(partition_key_.get());
   }
 }
 

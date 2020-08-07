@@ -2,7 +2,7 @@
 title: table t3
 linkTitle: table t3
 headerTitle: Create and populate table t3
-description: Creates and populate table t3 with data that allows the demonstration of the SQL window functions percent_rank(), cume_dist(), and ntile().
+description: Creates and populate table t3 with data that allows the demonstration of the YSQL's window functions.
 menu:
   latest:
     identifier: table-t3
@@ -20,7 +20,7 @@ The rows in table  _"t3"_ are inserted in random order. It has twenty-five rows 
 
 This `ysqlsh` script creates and populates able _"t3"_. Save it as `t3.sql`.
 
-```postgresql
+```plpgsql
 -- Suppress the spurious warning that is raised
 -- when the to-be-deleted table doesn't yet exist.
 set client_min_messages = warning;
@@ -76,7 +76,7 @@ order by r;
 
 Now inspect its contents:
 
-```postgresql
+```plpgsql
 -- Notice the absence of "ORDER BY".
 select
   to_char(day, 'Dy DD-Mon-YYYY') as "Day",

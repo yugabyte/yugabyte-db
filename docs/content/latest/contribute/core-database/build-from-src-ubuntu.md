@@ -54,7 +54,8 @@ Update packages on your system, install development tools and additional package
 sudo apt-get update
 sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build \
                      cmake curl rsync python3-pip python3-venv zip autoconf libtool \
-                     pkg-config libssl1.0-dev libicu-dev bison flex
+                     pkg-config libssl1.0-dev libicu-dev bison flex \
+                     libncurses5-dev 
 ```
 
 Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
@@ -94,10 +95,10 @@ YugabyteDB core is written in C++, but the repository contains Java code needed 
 * JDK 8
 * [Apache Maven](https://maven.apache.org/).
 
-Also make sure Maven's bin directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). See the example below (if you've installed Maven into `~/tools/apache-maven-3.5.0`)
+Also make sure Maven's bin directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). See the example below (if you've installed Maven into `~/tools/apache-maven-3.6.3`)
 
 ```sh
-export PATH=$HOME/tools/apache-maven-3.5.0/bin:$PATH
+export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
 ```
 
 For building YugabyteDB Java code, you'll need to install Java and Apache Maven.

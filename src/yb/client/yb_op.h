@@ -539,8 +539,6 @@ class YBPgsqlReadOp : public YBPgsqlOp {
 
   bool should_add_intents(IsolationLevel isolation_level) override;
 
-  void SetPartitionKey(const std::string& partition_key) { partition_key_ = partition_key; }
-
  protected:
   virtual Type type() const override { return PGSQL_READ; }
 
@@ -550,7 +548,6 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   std::unique_ptr<PgsqlReadRequestPB> read_request_;
   YBConsistencyLevel yb_consistency_level_;
   ReadHybridTime read_time_;
-  boost::optional<std::string> partition_key_ = boost::none;
 };
 
 // This class is not thread-safe, though different YBNoOp objects on

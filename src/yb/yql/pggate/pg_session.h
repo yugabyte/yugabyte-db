@@ -166,6 +166,19 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS DeleteDBSequences(int64_t db_oid);
 
+  //------------------------------------------------------------------------------------------------
+  // Operations on Tablegroup.
+  //------------------------------------------------------------------------------------------------
+
+  CHECKED_STATUS CreateTablegroup(const std::string& database_name,
+                                  const PgOid database_oid,
+                                  const std::string& tablegroup_name,
+                                  PgOid tablegroup_oid);
+
+  CHECKED_STATUS DropTablegroup(const std::string& tablegroup_name,
+                                const PgOid database_oid,
+                                PgOid tablegroup_oid);
+
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
   CHECKED_STATUS CreateSchema(const std::string& schema_name, bool if_not_exist);
@@ -176,7 +189,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   std::unique_ptr<client::YBTableAlterer> NewTableAlterer(const client::YBTableName& table_name);
   std::unique_ptr<client::YBTableAlterer> NewTableAlterer(const string table_id);
   CHECKED_STATUS DropTable(const PgObjectId& table_id);
-  CHECKED_STATUS DropIndex(const PgObjectId& index_id);
+  CHECKED_STATUS DropIndex(
+      const PgObjectId& index_id,
+      client::YBTableName* indexed_table_name = nullptr,
+      bool wait = true);
   CHECKED_STATUS TruncateTable(const PgObjectId& table_id);
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);
@@ -303,6 +319,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       const PgObjectId& table_id,
       const PgObjectId& index_id,
       const IndexPermissions& target_index_permissions);
+
+  CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
 
  private:
   CHECKED_STATUS FlushBufferedOperationsImpl();

@@ -47,7 +47,7 @@ public class TestPgSelect extends BasePgSQLTest {
       try (ResultSet rs = statement.executeQuery(query)) {
         assertEquals(allRows, getSortedRowList(rs));
       }
-      assertFalse(useIndex(query, PRIMARY_KEY));
+      assertFalse(doesUseIndex(query, PRIMARY_KEY));
 
       // Test fixed hash key.
       query = "SELECT * FROM test_where WHERE h = 2";
@@ -58,7 +58,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(10, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(useIndex(query, PRIMARY_KEY));
+      assertTrue(doesUseIndex(query, PRIMARY_KEY));
 
       // Test fixed primary key.
       query = "SELECT * FROM test_where WHERE h = 2 AND r = 3.5";
@@ -70,7 +70,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(1, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(useIndex(query, PRIMARY_KEY));
+      assertTrue(doesUseIndex(query, PRIMARY_KEY));
 
       // Test fixed range key without fixed hash key.
       query = "SELECT * FROM test_where WHERE r = 6.5";
@@ -81,7 +81,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(10, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertFalse(useIndex(query, PRIMARY_KEY));
+      assertFalse(doesUseIndex(query, PRIMARY_KEY));
 
       // Test range scan.
       query = "SELECT * FROM test_where WHERE h = 2 AND r >= 3.5 AND r < 8.5";
@@ -94,7 +94,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(5, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(useIndex(query, PRIMARY_KEY));
+      assertTrue(doesUseIndex(query, PRIMARY_KEY));
 
       // Test conditions on regular (non-primary-key) columns.
       query = "SELECT * FROM test_where WHERE vi < 14 AND vs != 'v09'";
@@ -107,7 +107,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(13, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertFalse(useIndex(query, PRIMARY_KEY));
+      assertFalse(doesUseIndex(query, PRIMARY_KEY));
 
       // Test other WHERE operators (IN, OR, LIKE).
       query = "SELECT * FROM test_where WHERE h = 2 OR h = 3 OR vs LIKE 'v_2'";
@@ -121,7 +121,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(28, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertFalse(useIndex(query, PRIMARY_KEY));
+      assertFalse(doesUseIndex(query, PRIMARY_KEY));
     }
   }
 

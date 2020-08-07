@@ -30,11 +30,14 @@ import static play.test.Helpers.contentAsString;
 import java.util.*;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -58,7 +61,7 @@ import play.test.Helpers;
 import play.test.WithApplication;
 
 @RunWith(MockitoJUnitRunner.class)
-public class EncryptionAtRestControllerTest extends WithApplication {
+public class EncryptionAtRestControllerTest extends FakeDBApplication {
 
     @Mock
     play.Configuration mockAppConfig;
@@ -66,25 +69,11 @@ public class EncryptionAtRestControllerTest extends WithApplication {
     private Users user;
     private Universe universe;
     private String authToken;
-    private ApiHelper mockApiHelper;
-    private EncryptionAtRestManager mockUtil;
 
     String mockEncryptionKey = "RjZiNzVGekljNFh5Zmh0NC9FQ1dpM0FaZTlMVGFTbW1Wa1dnaHRzdDhRVT0=";
     String algorithm = "AES";
     int keySize = 256;
     String mockKid = "some_kId";
-
-
-    @Override
-    protected Application provideApplication() {
-        mockApiHelper = mock(ApiHelper.class);
-        mockUtil = mock(EncryptionAtRestManager.class);
-        return new GuiceApplicationBuilder()
-                .configure((Map) Helpers.inMemoryDatabase())
-                .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
-                .overrides(bind(EncryptionAtRestManager.class).toInstance(mockUtil))
-                .build();
-    }
 
     @Before
     public void setUp() {
@@ -126,8 +115,9 @@ public class EncryptionAtRestControllerTest extends WithApplication {
         );
         when(mockApiHelper.getRequest(any(String.class), any(Map.class), any(Map.class)))
                 .thenReturn(Json.newArray());
-        when(mockUtil.getServiceInstance(eq("SMARTKEY"))).thenReturn(new SmartKeyEARService());
-        when(mockUtil.getServiceInstance(eq("AWS"))).thenReturn(new AwsEARService());
+        when(mockEARManager.getServiceInstance(eq("SMARTKEY")))
+                           .thenReturn(new SmartKeyEARService());
+        when(mockEARManager.getServiceInstance(eq("AWS"))).thenReturn(new AwsEARService());
     }
 
     @Test
@@ -155,6 +145,9 @@ public class EncryptionAtRestControllerTest extends WithApplication {
 
     @Test
     public void testDeleteConfig() {
+        UUID fakeTaskUUID = UUID.randomUUID();
+        when(mockCommissioner.submit(any(TaskType.class),
+                any(KMSConfigTaskParams.class))).thenReturn(fakeTaskUUID);
         ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
         String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
         Result listResult = doRequestWithAuthToken("GET", url, authToken);

@@ -86,7 +86,7 @@ class CDCPoller {
   // Using mutex to guarantee cache flush, preventing TSAN warnings.
   std::mutex data_mutex_;
 
-  consensus::OpId op_id_ GUARDED_BY(data_mutex_);
+  OpIdPB op_id_ GUARDED_BY(data_mutex_);
 
   yb::Status status_ GUARDED_BY(data_mutex_);
   std::shared_ptr<cdc::GetChangesResponsePB> resp_ GUARDED_BY(data_mutex_);

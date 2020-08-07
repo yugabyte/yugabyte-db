@@ -153,7 +153,7 @@ $ ./bin/ycsb load yugabyteSQL -s \
       -P workloads/workloada     \
       -p recordcount=1000000     \
       -p operationcount=10000000 \
-      -p threadcount=256         \
+      -p threadcount=32          \
       -p maxexecutiontime=180
 ```
 

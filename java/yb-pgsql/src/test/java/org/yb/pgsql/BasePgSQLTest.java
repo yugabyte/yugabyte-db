@@ -772,6 +772,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       return elems.get(index);
     }
 
+    Boolean getBoolean(int index) {
+      return (Boolean) elems.get(index);
+    }
+
     Integer getInt(int index) {
       return (Integer) elems.get(index);
     }
@@ -911,14 +915,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "Cannot cast to Comparable " + obj.getClass().getSimpleName() + ": " + obj.toString());
   }
 
+  protected Row getCurrentRow(ResultSet rs) throws SQLException {
+    Comparable[] elems = new Comparable[rs.getMetaData().getColumnCount()];
+    for (int i = 0; i < elems.length; i++) {
+      elems[i] = toComparable(rs.getObject(i + 1)); // Column index starts from 1.
+    }
+    return new Row(elems);
+  }
+
+  protected Row getSingleRow(ResultSet rs) throws SQLException {
+    assertTrue("Result set has no rows", rs.next());
+    Row row = getCurrentRow(rs);
+    assertFalse("Result set has more than one row", rs.next());
+    return row;
+  }
+
   protected List<Row> getRowList(ResultSet rs) throws SQLException {
     List<Row> rows = new ArrayList<>();
     while (rs.next()) {
-      Comparable[] elems = new Comparable[rs.getMetaData().getColumnCount()];
-      for (int i = 0; i < elems.length; i++) {
-        elems[i] = toComparable(rs.getObject(i + 1)); // Column index starts from 1.
-      }
-      rows.add(new Row(elems));
+      rows.add(getCurrentRow(rs));
     }
     return rows;
   }
@@ -946,9 +961,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected void assertNextRow(ResultSet rs, Object... values) throws SQLException {
     assertTrue(rs.next());
-    for (int i = 0; i < values.length; i++) {
-      assertEquals(values[i], rs.getObject(i + 1)); // Column index starts from 1.
+    Comparable[] elems = new Comparable[values.length];
+    for (int i = 0; i < elems.length; i++) {
+      elems[i] = toComparable(values[i]);
     }
+    Row expected = new Row(elems);
+    Row actual = getCurrentRow(rs);
+    assertEquals(expected, actual);
   }
 
   protected void assertOneRow(Statement statement,
@@ -980,25 +999,48 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  /*
-   * Returns whether or not this select statement uses index.
-   */
-  protected boolean useIndex(String stmt, String index) throws SQLException {
-    try (Statement statement = connection.createStatement()) {
-      try (ResultSet rs = statement.executeQuery("EXPLAIN " + stmt)) {
-        assert(rs.getMetaData().getColumnCount() == 1); // Expecting one string column.
-        while (rs.next()) {
-          if (rs.getString(1).contains("Index Scan using " + index)) {
-            return true;
-          }
-        }
-        return false;
-      }
+  protected void assertRowList(Statement statement,
+                               String query,
+                               List<Row> expectedRows) throws SQLException {
+    try (ResultSet rs = statement.executeQuery(query)) {
+      assertEquals(expectedRows, getRowList(rs));
     }
   }
 
-  /*
-   * Returns whether or not this select statement requires filtering by Postgres (i.e. not all
+  private boolean isQueryPlanContainsSubstring(Statement stmt, String query, String substring)
+      throws SQLException {
+    try (ResultSet rs = stmt.executeQuery("EXPLAIN " + query)) {
+      assert (rs.getMetaData().getColumnCount() == 1); // Expecting one string column.
+      while (rs.next()) {
+        if (rs.getString(1).contains(substring)) {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+
+  /** Whether or not this select statement uses Index Scan with a given index. */
+  protected boolean isIndexScan(Statement stmt, String query, String index)
+      throws SQLException {
+    return isQueryPlanContainsSubstring(stmt, query, "Index Scan using " + index);
+  }
+
+  /** Whether or not this select statement uses Index Only Scan with a given index. */
+  protected boolean isIndexOnlyScan(Statement stmt, String query, String index)
+      throws SQLException {
+    return isQueryPlanContainsSubstring(stmt, query, "Index Only Scan using " + index);
+  }
+
+  /** Whether or not this select statement uses index. */
+  protected boolean doesUseIndex(String query, String index) throws SQLException {
+    try (Statement stmt = connection.createStatement()) {
+      return isIndexScan(stmt, query, index) || isIndexOnlyScan(stmt, query, index);
+    }
+  }
+
+  /**
+   * Whether or not this select statement requires filtering by Postgres (i.e. not all
    * conditions can be pushed down to YugaByte).
    */
   protected boolean needsPgFiltering(String stmt) throws SQLException {

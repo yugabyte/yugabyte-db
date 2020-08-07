@@ -50,6 +50,7 @@
 #include "yb/client/namespace_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
@@ -62,6 +63,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
+#include "yb/util/monotime.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
 #include "yb/rpc/messenger.h"
@@ -81,6 +83,10 @@ using yb::master::CreateTableRequestPB;
 using yb::master::CreateTableResponsePB;
 using yb::master::DeleteTableRequestPB;
 using yb::master::DeleteTableResponsePB;
+using yb::master::CreateTablegroupRequestPB;
+using yb::master::CreateTablegroupResponsePB;
+using yb::master::DeleteTablegroupRequestPB;
+using yb::master::DeleteTablegroupResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::GetTableSchemaRequestPB;
@@ -385,7 +391,6 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
       "Could not locate the leader master");
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
-  c->data_->dns_resolver_.reset(new DnsResolver());
 
   // Init local host names used for locality decisions.
   RETURN_NOT_OK_PREPEND(c->data_->InitLocalHostNames(),
@@ -453,7 +458,23 @@ Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
 
 Status YBClient::WaitForCreateTableToFinish(const YBTableName& table_name) {
   const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitForCreateTableToFinish(table_name, deadline);
+}
+
+Status YBClient::WaitForCreateTableToFinish(
+    const YBTableName& table_name, const CoarseTimePoint& deadline) {
   return data_->WaitForCreateTableToFinish(this, table_name, "" /* table_id */, deadline);
+}
+
+Status YBClient::WaitForCreateTableToFinish(const string& table_id) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitForCreateTableToFinish(table_id, deadline);
+}
+
+Status YBClient::WaitForCreateTableToFinish(
+    const string& table_id, const CoarseTimePoint& deadline) {
+  const YBTableName empty_table_name;
+  return data_->WaitForCreateTableToFinish(this, empty_table_name, table_id, deadline);
 }
 
 Status YBClient::TruncateTable(const string& table_id, bool wait) {
@@ -513,26 +534,28 @@ Status YBClient::DeleteIndexTable(const string& table_id,
                             wait);
 }
 
-Status YBClient::FlushTable(const std::string& table_id,
-                            int timeout_secs,
-                            bool is_compaction) {
+Status YBClient::FlushTables(const std::vector<TableId>& table_ids,
+                             bool add_indexes,
+                             int timeout_secs,
+                             bool is_compaction) {
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(timeout_secs);
-  return data_->FlushTable(this,
-                           YBTableName(),
-                           table_id,
-                           deadline,
-                           is_compaction);
+  return data_->FlushTables(this,
+                            table_ids,
+                            add_indexes,
+                            deadline,
+                            is_compaction);
 }
 
-Status YBClient::FlushTable(const YBTableName& table_name,
-                            int timeout_secs,
-                            bool is_compaction) {
+Status YBClient::FlushTables(const std::vector<YBTableName>& table_names,
+                             bool add_indexes,
+                             int timeout_secs,
+                             bool is_compaction) {
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(timeout_secs);
-  return data_->FlushTable(this,
-                           table_name,
-                           "" /* table_id */,
-                           deadline,
-                           is_compaction);
+  return data_->FlushTables(this,
+                            table_names,
+                            add_indexes,
+                            deadline,
+                            is_compaction);
 }
 
 std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {
@@ -594,14 +617,9 @@ Result<IndexPermissions> YBClient::GetIndexPermissions(
 Result<IndexPermissions> YBClient::GetIndexPermissions(
     const YBTableName& table_name,
     const YBTableName& index_name) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   YBTableInfo table_info = VERIFY_RESULT(GetYBTableInfo(table_name));
   YBTableInfo index_info = VERIFY_RESULT(GetYBTableInfo(index_name));
-  return data_->GetIndexPermissions(
-      this,
-      table_info.table_id,
-      index_info.table_id,
-      deadline);
+  return GetIndexPermissions(table_info.table_id, index_info.table_id);
 }
 
 Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
@@ -621,15 +639,19 @@ Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
     const YBTableName& table_name,
     const YBTableName& index_name,
     const IndexPermissions& target_index_permissions) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   YBTableInfo table_info = VERIFY_RESULT(GetYBTableInfo(table_name));
   YBTableInfo index_info = VERIFY_RESULT(GetYBTableInfo(index_name));
-  return data_->WaitUntilIndexPermissionsAtLeast(
-      this,
-      table_info.table_id,
-      index_info.table_id,
-      deadline,
-      target_index_permissions);
+  return WaitUntilIndexPermissionsAtLeast(table_info.table_id,
+                                          index_info.table_id,
+                                          target_index_permissions);
+}
+
+Status YBClient::AsyncUpdateIndexPermissions(const TableId& indexed_table_id) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  AlterTableRequestPB req;
+  req.mutable_table()->set_table_id(indexed_table_id);
+  req.set_force_send_alter_request(true);
+  return data_->AlterTable(this, req, deadline);
 }
 
 Status YBClient::CreateNamespace(const std::string& namespace_name,
@@ -856,6 +878,36 @@ Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
     }
   }
   return false;
+}
+
+Status YBClient::CreateTablegroup(const std::string& namespace_name,
+                                  const std::string& namespace_id,
+                                  const std::string& tablegroup_name,
+                                  const std::string& tablegroup_id) {
+  CreateTablegroupRequestPB req;
+  CreateTablegroupResponsePB resp;
+  req.set_name(tablegroup_name);
+  req.set_id(tablegroup_id);
+  req.set_namespace_id(namespace_id);
+  req.set_namespace_name(namespace_name);
+
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateTablegroup);
+
+  return Status::OK();
+}
+
+Status YBClient::DeleteTablegroup(const std::string& tablegroup_name,
+                                  const std::string& namespace_id,
+                                  const std::string& tablegroup_id) {
+  DeleteTablegroupRequestPB req;
+  DeleteTablegroupResponsePB resp;
+  req.set_name(tablegroup_name);
+  req.set_id(tablegroup_id);
+  req.set_namespace_id(namespace_id);
+
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteTablegroup);
+
+  return Status::OK();
 }
 
 Status YBClient::GetUDType(const std::string& namespace_name,
@@ -1334,8 +1386,8 @@ Status YBClient::GetTabletsAndUpdateCache(
   RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets, RequireTabletsRunning::kFalse));
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
 
-  RETURN_NOT_OK(
-      data_->meta_cache_->ProcessTabletLocations(tablets, nullptr /* partition_group_start */));
+  RETURN_NOT_OK(data_->meta_cache_->ProcessTabletLocations(
+      tablets, /* partition_group_start= */ nullptr, /* request_no= */ 0));
 
   return Status::OK();
 }

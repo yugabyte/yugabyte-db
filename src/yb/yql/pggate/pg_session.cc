@@ -275,6 +275,10 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
       RETURN_NOT_OK(pg_session_.FlushBufferedOperationsImpl());
       buffered_keys.insert(RowIdentifier(wop));
     }
+    if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
+      LOG(INFO) << "Buffering operation: " << op->ToString();
+    }
+
     buffered_ops_.push_back({std::move(op), relation_id});
     // Flush buffers in case limit of operations in single RPC exceeded.
     return PREDICT_TRUE(buffered_keys.size() < FLAGS_ysql_session_max_batch_size)
@@ -310,6 +314,9 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
     // Session must not be changed as all operations belong to single session
     // (transactional or non-transactional)
     DCHECK_EQ(yb_session_.get(), session);
+  }
+  if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
+    LOG(INFO) << "Applying operation : " << op->ToString();
   }
   return yb_session_->Apply(std::move(op));
 }
@@ -711,12 +718,38 @@ Status PgSession::DropTable(const PgObjectId& table_id) {
   return client_->DeleteTable(table_id.GetYBTableId());
 }
 
-Status PgSession::DropIndex(const PgObjectId& index_id) {
-  return client_->DeleteIndexTable(index_id.GetYBTableId());
+Status PgSession::DropIndex(
+    const PgObjectId& index_id,
+    client::YBTableName* indexed_table_name,
+    bool wait) {
+  return client_->DeleteIndexTable(
+      index_id.GetYBTableId(),
+      indexed_table_name,
+      wait);
 }
 
 Status PgSession::TruncateTable(const PgObjectId& table_id) {
   return client_->TruncateTable(table_id.GetYBTableId());
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status PgSession::CreateTablegroup(const string& database_name,
+                                   const PgOid database_oid,
+                                   const string& tablegroup_name,
+                                   PgOid tablegroup_oid) {
+  return client_->CreateTablegroup(database_name,
+                                   GetPgsqlNamespaceId(database_oid),
+                                   tablegroup_name,
+                                   GetPgsqlTablegroupId(database_oid, tablegroup_oid));
+}
+
+Status PgSession::DropTablegroup(const string& tablegroup_name,
+                                 const PgOid database_oid,
+                                 PgOid tablegroup_oid) {
+  return client_->DeleteTablegroup(tablegroup_name,
+                                   GetPgsqlNamespaceId(database_oid),
+                                   GetPgsqlTablegroupId(database_oid, tablegroup_oid));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -858,7 +891,11 @@ Status PgSession::FlushBufferedOperationsImpl(const PgsqlOpBuffer& ops, bool tra
     DCHECK(transactional);
     session->SetInTxnLimit(HybridTime(clock_->Now().ToUint64()));
   }
-
+  if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
+    LOG(INFO) << "Flushing buffered operations, using "
+              << (transactional ? " transactional" : "non-transactional")
+              << "session (num ops: " << ops.size() << ")";
+  }
   for (auto buffered_op : ops) {
     const auto& op = buffered_op.operation;
     DCHECK_EQ(ShouldHandleTransactionally(*op), transactional)
@@ -953,6 +990,10 @@ Result<IndexPermissions> PgSession::WaitUntilIndexPermissionsAtLeast(
       table_id.GetYBTableId(),
       index_id.GetYBTableId(),
       target_index_permissions);
+}
+
+Status PgSession::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
+  return client_->AsyncUpdateIndexPermissions(indexed_table_id.GetYBTableId());
 }
 
 }  // namespace pggate

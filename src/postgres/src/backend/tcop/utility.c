@@ -52,6 +52,7 @@
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
+#include "commands/tablegroup.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
 #include "commands/user.h"
@@ -195,6 +196,7 @@ check_xact_readonly(Node *parsetree)
 		case T_CreateStmt:
 		case T_CreateTableAsStmt:
 		case T_RefreshMatViewStmt:
+		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreateTransformStmt:
 		case T_CreateTrigStmt:
@@ -205,6 +207,7 @@ check_xact_readonly(Node *parsetree)
 		case T_ViewStmt:
 		case T_DropStmt:
 		case T_DropdbStmt:
+		case T_DropTableGroupStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropRoleStmt:
 		case T_GrantStmt:
@@ -540,6 +543,16 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 
 		case T_DoStmt:
 			ExecuteDoStmt((DoStmt *) parsetree, isAtomicContext);
+			break;
+
+		case T_CreateTableGroupStmt:
+			PreventInTransactionBlock(isTopLevel, "CREATE TABLEGROUP");
+			CreateTableGroup((CreateTableGroupStmt *) parsetree);
+			break;
+
+		case T_DropTableGroupStmt:
+			PreventInTransactionBlock(isTopLevel, "DROP TABLEGROUP");
+			DropTableGroup((DropTableGroupStmt *) parsetree);
 			break;
 
 		case T_CreateTableSpaceStmt:
@@ -2221,6 +2234,14 @@ CreateCommandTag(Node *parsetree)
 
 		case T_CreateStmt:
 			tag = "CREATE TABLE";
+			break;
+
+		case T_CreateTableGroupStmt:
+			tag = "CREATE TABLEGROUP";
+			break;
+
+		case T_DropTableGroupStmt:
+			tag = "DROP TABLEGROUP";
 			break;
 
 		case T_CreateTableSpaceStmt:

@@ -1,8 +1,8 @@
 ---
-title: percent_rank(), cume_dist() and ntile() on a normal distribution
+title: percent_rank(), cume_dist(), and ntile() on a normal distribution
 linkTitle: Analyzing a normal distribution
-headerTitle: Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()
-description: Comparing and contrasting percent_rank(), cume_dist() and ntile() on large sets of normally distributed values
+headerTitle: Analyzing a normal distribution with percent_rank(), cume_dist(), and ntile()
+description: Compare and contrast the window functions percent_rank(), cume_dist(), and ntile() on large sets of normally distributed values.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -32,13 +32,13 @@ The answer is, of course, "Yes"—why else would the three functions all be supp
 
 The other two functions implement more fine grained measures. Here's what the [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) documentation says:
 
-> **Purpose:** Return the percentile rank of each row within the [_window_](../sql-syntax-semantics/#the-window-definition-rule), with respect to the argument of the [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _p_ returned by `percent_rank()` is a number in the range _0 <= p <= 1_. It is calculated like this:
+> **Purpose:** Return the percentile rank of each row within the [_window_](../sql-syntax-semantics/#the-window-definition-rule), with respect to the argument of the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _p_ returned by `percent_rank()` is a number in the range _0 <= p <= 1_. It is calculated like this:
 ```
 percentile_rank = (rank - 1) / ("no. of rows in window" - 1)
 ```
 And here's what the [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) documentation says:
 
-> **Purpose:** Return a value that represents the number of rows with values less than or equal to the current row’s value divided by the total number of rows—in other words, the relative position of a value in a set of values. The graph of all values of `cume_dist()` within the [_window_](../sql-syntax-semantics/#the-window-definition-rule) is known as the cumulative distribution of the argument of the [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _c_ returned by `cume_dist()` is a number in the range _0 < c <= 1_. It is calculated like this:
+> **Purpose:** Return a value that represents the number of rows with values less than or equal to the current row’s value divided by the total number of rows—in other words, the relative position of a value in a set of values. The graph of all values of `cume_dist()` within the [_window_](../sql-syntax-semantics/#the-window-definition-rule) is known as the cumulative distribution of the argument of the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _c_ returned by `cume_dist()` is a number in the range _0 < c <= 1_. It is calculated like this:
 ```
 cume_dist() =
   "no of rows with a value <= the current row's value" /
@@ -73,7 +73,7 @@ The steps that are described in the next section should all be run at the `ysqls
 
 It's best to create a dedicated user for the purpose of running this code that owns no other objects.
 
-Each of the the `.sql` scripts is presented on a dedicated page. (You can see all of these in the order in which they are to be run in the navigation bar.) Each page starts with a sentence like this:
+Each of the `.sql` scripts is presented on a dedicated page. (You can see all of these in the order in which they are to be run in the navigation bar.) Each page starts with a sentence like this:
 
 > Save this script as `<some name>.sql`.
 
@@ -94,7 +94,7 @@ Drop and re-create the results tables using [`do_clean_start.sql`](./do-clean-st
 ### Step ONE
 
 To confirm that the outcome is sensible, first create the table function `show_t4()` with [this script](./cr-show-t4/). It reports some useful overall measures of _"t4"_.  Then execute it like this:
-```postgresql
+```plpgsql
 select t as "Some useful overall measures of t4."
 from show_t4();
 ```
@@ -114,7 +114,7 @@ Now get a sense of how similar the values returned by [`percent_rank()`](../func
 
 Run the function with five different values for _"delta_threshold"_ like this:
 
-```postgresql
+```plpgsql
 select * from pr_cd_equality_report(0.50);
 select * from pr_cd_equality_report(0.10);
 select * from pr_cd_equality_report(0.05);
@@ -178,7 +178,7 @@ as $body$
 to encapsulate the identical SQL text. But it has the advantage that it can be done once when the application's database artifacts are installed rather than at the start of every session by each session that needs it. It also as the additional benefit that you can use  named formal parameters to make the SQL more readable.
 
 Now generate the histogram like this:
-```postgresql
+```plpgsql
 select * from histogram(50, 100);
 ```
 You can see typical results here: [Output from running `histogram()` on _"t4.dp_score"_](./reports/histogram-report/).

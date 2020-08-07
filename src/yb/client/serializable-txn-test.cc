@@ -233,7 +233,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
 // serializable isolation.
 // With retries the resulting value should be equal to number of increments.
 void SerializableTxnTest::TestIncrements(bool transactional) {
-  FLAGS_transaction_rpc_timeout_ms = MonoDelta(1min).ToMicroseconds();
+  FLAGS_transaction_rpc_timeout_ms = MonoDelta(1min).ToMilliseconds();
 
   const auto kThreads = RegularBuildVsSanitizers(3, 2);
 

@@ -2,7 +2,7 @@
 title: do_clean_start.sql
 linkTitle: do_clean_start.sql
 headerTitle: do_clean_start.sql
-description: Drops and re-creates the dp_results and int_results tables.
+description: do_clean_start.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
   latest:
     identifier: do-clean-start
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 Save this script as `do_clean_start.sql`.
-```postgresql
+```plpgsql
 -- Get a clean start.
 -- These tables will store some query results so that, with
 -- all these in a single table, it is easy to use

@@ -156,7 +156,7 @@ class ControlScript(object):
                 "Failed to shut down {}: {}. Please check PID in {}".format(
                     SCRIPT_NAME, err, self.script.pidfile))
             sys.exit(1)
-        else:
+        elif pid:
             self.script.wait_until_stop(pid)
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
         sys.exit(0)
@@ -175,7 +175,7 @@ class ControlScript(object):
             Output.log_error_and_exit(
                 "Failed to shut down {}: {}. Please check PID in {}".format(
                     SCRIPT_NAME, err, self.script.pidfile))
-        else:
+        elif pid:
             self.script.wait_until_stop(pid)
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
         logpath = self.configs.saved_data.get("log_dir")
@@ -399,7 +399,7 @@ class ControlScript(object):
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
     def start_processes(self):
-        bind_ip = self.configs.saved_data.get("bind_ip")
+        bind_ip = self.configs.saved_data.get("listen")
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
@@ -868,7 +868,7 @@ class ControlScript(object):
 
         # The master was not in the current list of masters
         # and we have a valid join_ip
-        bind_ip = self.configs.saved_data.get("bind_ip")
+        bind_ip = self.configs.saved_data.get("listen")
         master_addrs = "{}:{}".format(join_ip,
                     self.configs.saved_data.get("master_rpc_port"))
         master_uuids = [ m[0] for m in YBAdminProxy.get_masters(master_addrs) ]
@@ -1237,7 +1237,8 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--webserver_port", help="Port on which main webserver will run.")
             cur_parser.add_argument(
-                "--bind_ip", help="IP address to which {} processes will bind.".format(SCRIPT_NAME))
+                "--listen",
+                help="IP address or local hostname on which {} will listen.".format(SCRIPT_NAME))
             cur_parser.add_argument(
                 "--join", help="IP address to which this process will join".format(SCRIPT_NAME))
             cur_parser.add_argument(
@@ -1292,7 +1293,7 @@ class ControlScript(object):
             Output.log_error_and_exit(traceback.format_exc())
 
     def advertise_ip(self):
-        bind_ip = self.configs.saved_data.get("bind_ip")
+        bind_ip = self.configs.saved_data.get("listen")
         return bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
 
     def master_port(self):
@@ -1309,7 +1310,7 @@ class Configs(object):
             "tserver_webserver_port": DEFAULT_TSERVER_WEBSERVER_PORT,
             "ysql_port": DEFAULT_YSQL_PORT,
             "ycql_port": DEFAULT_YCQL_PORT,
-            "bind_ip": DEFAULT_BIND_IP,
+            "listen": DEFAULT_BIND_IP,
             "webserver_port": DEFAULT_WEBSERVER_PORT,
             "universe_uuid": str(uuid.uuid4()),
             "node_uuid": str(uuid.uuid4()),
@@ -1676,7 +1677,7 @@ class Diagnostics(object):
             if p.start_time:
                 payload["{}_start_time".format(p.name)] = p.start_time
 
-        bind_ip = self.configs.saved_data.get("bind_ip")
+        bind_ip = self.configs.saved_data.get("listen")
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
 
         master_addrs = "{}:{}".format(

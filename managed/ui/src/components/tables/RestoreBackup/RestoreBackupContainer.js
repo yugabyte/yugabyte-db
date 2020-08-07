@@ -22,14 +22,15 @@ function mapStateToProps(state, ownProps) {
     restoreToTableName: '',
     restoreToKeyspace: '',
     storageConfigUUID: '',
-    storageLocation: ''
+    storageLocation: '',
+    parallelism: 8
   };
   const { customer: { configs }, universe: { currentUniverse, universeList} } = state;
   const storageConfigs = configs.data.filter( (config) => config.type === "STORAGE");
 
   if (isNonEmptyObject(ownProps.backupInfo)) {
     const { backupInfo : {
-      storageConfigUUID, storageLocation, universeUUID, keyspace, tableName, tableNameList, tableUUIDList, transactionalBackup }
+      backupList, storageConfigUUID, storageLocation, universeUUID, keyspace, tableName, tableNameList, tableUUIDList, transactionalBackup }
     } = ownProps;
 
     /* AC: Careful! This sets the default of the Select but the return value
@@ -45,6 +46,7 @@ function mapStateToProps(state, ownProps) {
     initialFormValues.storageConfigUUID = storageConfigUUID;
     initialFormValues.storageLocation = storageLocation;
     initialFormValues.transactionalBackup = transactionalBackup;
+    initialFormValues.backupList = backupList;
   } else {
     if (getPromiseState(currentUniverse).isSuccess() &&
         isNonEmptyObject(currentUniverse.data)) {

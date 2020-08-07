@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
@@ -107,8 +108,7 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
 }
 
 @RunWith(MockitoJUnitRunner.class)
-public class EncryptionAtRestServiceTest extends WithApplication {
-    EncryptionAtRestManager mockUtil;
+public class EncryptionAtRestServiceTest extends FakeDBApplication {
 
     EncryptionAtRestConfig config;
 
@@ -142,7 +142,7 @@ public class EncryptionAtRestServiceTest extends WithApplication {
         EncryptionAtRestService service = new TestEncryptionAtRestService(
                 null,
                 KeyProvider.AWS,
-                mockUtil,
+                mockEARManager,
                 true
         );
         UUID customerUUID = UUID.randomUUID();

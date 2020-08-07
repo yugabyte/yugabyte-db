@@ -23,16 +23,20 @@ export default class RestoreBackup extends Component {
     } = this.props;
 
     if (!isEmptyString(values.storageConfigUUID) &&
-        !isEmptyString(values.storageLocation)) {
+        (!isEmptyString(values.storageLocation) || values.backupList)) {
       const { restoreToUniverseUUID } = values;
       const payload = {
         storageConfigUUID: values.storageConfigUUID,
         storageLocation:  values.storageLocation,
         actionType: 'RESTORE',
-        // tableName: values.restoreToTableName,        
+        parallelism: values.parallelism
       };
-      // TODO: Allow renaming of individual tables
-      if (values.keyspace !== initialValues.keyspace) {
+      if (values.backupList) {
+        payload.backupList = values.backupList;
+      } else if (values.restoreToTableName !== initialValues.restoreToTableName) {
+        payload.tableName = values.restoreToTableName;
+        payload.keyspace = values.restoreToKeyspace;
+      } else if (values.restoreToKeyspace !== initialValues.restoreToKeyspace) {
         payload.keyspace = values.restoreToKeyspace;
       }
       onHide();
@@ -45,23 +49,28 @@ export default class RestoreBackup extends Component {
   }
 
   render() {
-    const { visible, onHide, universeList, storageConfigs, currentUniverse } = this.props;
+    const { backupInfo, visible, onHide, universeList, storageConfigs, currentUniverse } = this.props;
 
     // If the backup information is not provided, most likely we are trying to load the backup
     // from pre-existing location (specified by the user) into the current universe in context.
     let universeOptions = [];
     const hasBackupInfo = this.hasBackupInfo();
     const validationSchema = Yup.object().shape({
-      restoreToUniverseUUID: Yup.string()
-      .required('Restore To Universe is Required'),
-      restoreToKeyspace: Yup.string()
-      .required('Restore To Keyspace is Required'),
-      restoreToTableName: Yup.string()
-      .required('Restore To Tablename is Required'),
-      storageConfigUUID: Yup.string()
-      .required('Storage Config is Required'),
-      storageLocation: Yup.string()
-      .required('Storage Location is Required')
+      restoreToUniverseUUID: Yup.string().required('Restore To Universe is Required'),
+      restoreToKeyspace: Yup.string().nullable(),
+      restoreToTableName: Yup.string().nullable(),
+      storageConfigUUID: Yup.string().required('Storage Config is Required'),
+      storageLocation: Yup.string().nullable()
+        .when('backupList', {
+          is: x => !x || !Array.isArray(x),
+          then: Yup.string().required('Storage Location is Required'),
+        }),
+      backupList: Yup.mixed().nullable(),
+      parallelism: Yup.number('Parallelism must be a number')
+        .min(1)
+        .max(100)
+        .integer('Value must be a whole number')
+        .required('Number of threads is required')
     });
 
     if (hasBackupInfo) {
@@ -86,6 +95,14 @@ export default class RestoreBackup extends Component {
       ...this.props.initialValues,
       storageConfigUUID: hasBackupInfo ? storageOptions.find((element) => { return element.value === this.props.initialValues.storageConfigUUID;}) : ""
     };
+    const isUniverseBackup = hasBackupInfo && Array.isArray(backupInfo.backupList) && backupInfo.backupList.length;
+
+    // Disable table field if multi-table backup
+    const isMultiTableBackup = hasBackupInfo && (
+      isUniverseBackup ||
+      (backupInfo.tableNameList && backupInfo.tableNameList.length > 1) ||
+      (backupInfo.keyspace && (!backupInfo.tableNameList || !backupInfo.tableNameList.length) && !backupInfo.tableUUID)
+    );
 
     return (
       <div className="universe-apps-modal" onClick={(e) => e.stopPropagation()}>
@@ -104,9 +121,11 @@ export default class RestoreBackup extends Component {
                   const payload = {
                     ...values,
                     restoreToUniverseUUID,
-                    storageLocation: values.storageLocation.trim(),
                     storageConfigUUID: values.storageConfigUUID.value,
                   };
+                  if (values.storageLocation) {
+                    payload.storageLocation = values.storageLocation.trim()
+                  }
                   this.restoreBackup(payload);
                 }}
                 initialValues= {initialValues}
@@ -121,12 +140,17 @@ export default class RestoreBackup extends Component {
           <Field name="restoreToUniverseUUID" component={YBFormSelect}
                 label={"Universe"} options={universeOptions} />
           <Field name="restoreToKeyspace"
-                component={YBFormInput}                
+                component={YBFormInput}
+                disabled={isUniverseBackup}
                 label={"Keyspace"} />
           <Field name="restoreToTableName"
                 component={YBFormInput}
-                disabled={true}
+                disabled={isMultiTableBackup}
                 label={"Table"}/>
+          <Field
+              name="parallelism"
+              component={YBFormInput}
+              label={"Parallel Threads"}/>
         </YBModalForm>
       </div>
     );

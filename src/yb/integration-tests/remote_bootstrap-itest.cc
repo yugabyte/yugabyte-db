@@ -779,14 +779,17 @@ TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
   constexpr int kMaxConcurrentTabletRemoteBootstrapSessionsPerTable = 2;
 
   vector<string> ts_flags, master_flags;
-  ts_flags.push_back("--follower_unavailable_considered_failed_sec=10");
+  int follower_considered_failed_sec;
+  follower_considered_failed_sec = 10;
+  ts_flags.push_back("--follower_unavailable_considered_failed_sec="+
+                     std::to_string(follower_considered_failed_sec));
+  ts_flags.push_back("--heartbeat_interval_ms=100");
   ts_flags.push_back("--enable_leader_failure_detection=false");
   ts_flags.push_back("--TEST_crash_if_remote_bootstrap_sessions_greater_than=" +
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessions + 1));
   ts_flags.push_back("--TEST_crash_if_remote_bootstrap_sessions_per_table_greater_than=" +
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessionsPerTable + 1));
   ts_flags.push_back("--TEST_simulate_long_remote_bootstrap_sec=5");
-  ts_flags.push_back("--heartbeat_interval_ms=100");
 
   master_flags.push_back("--TEST_load_balancer_handle_under_replicated_tablets_only=true");
   master_flags.push_back("--load_balancer_max_concurrent_tablet_remote_bootstraps=" +
@@ -794,6 +797,7 @@ TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
   master_flags.push_back("--load_balancer_max_concurrent_tablet_remote_bootstraps_per_table=" +
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessionsPerTable));
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  // This value has to be less than follower_considered_failed_sec.
   master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
 
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
@@ -818,10 +822,17 @@ TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
   // Now pause the first tserver so that it gets removed from the configuration for all of the
   // tablets.
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Pause());
+  LOG(INFO) << "Paused tserver " << cluster_->tablet_server(kTsIndex)->uuid();
 
   // Sleep for longer than FLAGS_follower_unavailable_considered_failed_sec to guarantee that the
   // other peers in the config for each tablet removes this tserver from the raft config.
-  SleepFor(MonoDelta::FromSeconds(20));
+  int total_time_slept = 0;
+  while (total_time_slept < follower_considered_failed_sec * 2) {
+    SleepFor(MonoDelta::FromSeconds(1));
+    total_time_slept++;
+    LOG(INFO) << "Total time slept " << total_time_slept;
+  }
+
 
   // Resume the tserver. The cluster balancer will ensure that all the tablets are added back to
   // this tserver, and it will cause the leader to start remote bootstrap sessions for all of the
@@ -829,12 +840,15 @@ TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
   // never have more than the expected number of concurrent remote bootstrap sessions.
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Resume());
 
+  LOG(INFO) << "Tserver " << cluster_->tablet_server(kTsIndex)->uuid() << " resumed";
+
   // Wait until the config for all the tablets have three voters. This means that the tserver that
   // we just resumed was remote bootstrapped correctly.
   for (int i = 0; i < kNumberTables; i++) {
     for (const string& tablet_id : tablet_ids[i]) {
         TServerDetails* leader_ts = nullptr;
         ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
+        LOG(INFO) << "Waiting until config has 3 voters for tablet " << tablet_id;
         ASSERT_OK(itest::WaitUntilCommittedConfigNumVotersIs(3, leader_ts, tablet_id, timeout));
       }
   }

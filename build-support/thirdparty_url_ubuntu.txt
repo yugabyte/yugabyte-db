@@ -1,0 +1,1 @@
+https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v20200709004310-33ee9c909c/yugabyte-db-thirdparty-v20200709004310-33ee9c909c-ubuntu.tar.gz

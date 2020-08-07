@@ -18,6 +18,7 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/random_util.h"
 #include "yb/util/subprocess.h"
 
 using std::unique_ptr;
@@ -26,6 +27,10 @@ using strings::Split;
 
 namespace yb {
 namespace tools {
+
+namespace helpers {
+YB_DEFINE_ENUM(TableOp, (kDropTable)(kKeepTable));
+}
 
 class YBBackupTest : public pgwrapper::PgCommandTestBase {
  protected:
@@ -36,10 +41,27 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     ASSERT_OK(CreateClient());
   }
 
+  void DoBeforeTearDown() override {
+    if (!tmp_dir_.empty()) {
+      LOG(INFO) << "Deleting temporary folder: " << tmp_dir_;
+      ASSERT_OK(Env::Default()->DeleteRecursively(tmp_dir_));
+    }
+  }
+
+  string GetTempDir(const string& subdir) {
+    if (tmp_dir_.empty()) {
+      EXPECT_OK(Env::Default()->GetTestDirectory(&tmp_dir_));
+      tmp_dir_ = JoinPathSegments(
+        tmp_dir_, string(CURRENT_TEST_CASE_NAME()) + '_' + RandomHumanReadableString(8));
+    }
+
+    return JoinPathSegments(tmp_dir_, subdir);
+  }
+
   Status RunBackupCommand(const vector<string>& args) {
     const HostPort pg_hp = cluster_->pgsql_hostport(0);
     std::stringstream command;
-    command << "python2 " << GetToolPath("../../../managed/devops/bin", "yb_backup.py")
+    command << "python3 " << GetToolPath("../../../managed/devops/bin", "yb_backup.py")
             << " --masters " << cluster_->GetMasterAddresses()
             << " --remote_yb_admin_binary=" << GetToolPath("yb-admin")
             << " --remote_ysql_dump_binary=" << GetPgToolPath("ysql_dump")
@@ -50,7 +72,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
             << " --no_ssh"
             << " --no_auto_name";
 #if defined(__APPLE__)
-    command << " --mac";
+    command << " --mac" << " --verbose";
 #endif // defined(__APPLE__)
     string backup_cmd;
     for (const auto& a : args) {
@@ -93,7 +115,10 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     return Status::OK();
   }
 
+  void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);
+
   client::TableHandle table_;
+  string tmp_dir_;
 };
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackup)) {
@@ -101,9 +126,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackup)) {
       client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
   const string& keyspace = table_.name().namespace_name();
 
-  string tmp_dir;
-  ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
-  const auto backup_dir = JoinPathSegments(tmp_dir, "backup");
+  const string backup_dir = GetTempDir("backup");
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
@@ -113,7 +136,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackup)) {
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackup)) {
+void YBBackupTest::DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'foo')"));
   ASSERT_NO_FATALS(RunPsqlCommand(
@@ -126,9 +149,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackup)) {
       )#"
   ));
 
-  string tmp_dir;
-  ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
-  const auto backup_dir = JoinPathSegments(tmp_dir, "backup");
+  const string backup_dir = GetTempDir("backup");
 
   // There is no YCQL keyspace 'yugabyte'.
   ASSERT_NOK(RunBackupCommand(
@@ -149,6 +170,11 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackup)) {
       )#"
   ));
 
+  if (tableOp == helpers::TableOp::kDropTable) {
+    // Validate that the DB restoration works even if we have deleted tables with the same name.
+    ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE mytbl", "DROP TABLE"));
+  }
+
   // Restore into the original "ysql.yugabyte" YSQL DB.
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
@@ -162,7 +188,15 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackup)) {
         (1 row)
       )#"
   ));
+}
 
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackup)) {
+  DoTestYSQLKeyspaceBackup(helpers::TableOp::kKeepTable);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackupWithDropTable)) {
+  DoTestYSQLKeyspaceBackup(helpers::TableOp::kDropTable);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
@@ -233,9 +267,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
 
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO vendors (v_code, v_name) VALUES (100, 'foo')"));
 
-  string tmp_dir;
-  ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
-  const auto backup_dir = JoinPathSegments(tmp_dir, "backup");
+  const string backup_dir = GetTempDir("backup");
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
@@ -298,6 +330,22 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
            "serialtbl_pkey" PRIMARY KEY, lsm (k HASH)
       )#"
   ));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "\\d vendors",
+      R"#(
+                     Table "public.vendors"
+        Column |  Type   | Collation | Nullable | Default
+       --------+---------+-----------+----------+---------
+        v_code | integer |           | not null |
+        v_name | text    |           |          |
+       Indexes:
+           "vendors_pkey" PRIMARY KEY, lsm (v_code HASH)
+           "vendors_v_name_idx" UNIQUE, lsm (v_name HASH)
+       Referenced by:
+      )#"
+      "     TABLE \"orders\" CONSTRAINT \"orders_v_code_fkey\" FOREIGN KEY (v_code) "
+      "REFERENCES vendors(v_code)"
+  ));
   // Check the table data.
   ASSERT_NO_FATALS(RunPsqlCommand(
       "SELECT v_code, v_name FROM vendors ORDER BY v_code",
@@ -320,11 +368,40 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
       )#"
   ));
   ASSERT_NO_FATALS(RunPsqlCommand(
+      "EXPLAIN SELECT v_name FROM vendors WHERE v_name = 'foo'",
+      R"#(
+                                               QUERY PLAN
+        ----------------------------------------------------------------------------------------
+         Index Only Scan using vendors_v_name_idx on vendors  (cost=0.00..4.11 rows=1 width=32)
+           Index Cond: (v_name = 'foo'::text)
+        (2 rows)
+      )#"
+  ));
+  ASSERT_NO_FATALS(RunPsqlCommand(
       "SELECT v_name FROM vendors WHERE v_name = 'foo'",
       R"#(
          v_name
         --------
          foo
+        (1 row)
+      )#"
+  ));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "EXPLAIN SELECT * FROM vendors WHERE v_name = 'foo'",
+      R"#(
+                                            QUERY PLAN
+        -----------------------------------------------------------------------------------
+         Index Scan using vendors_v_name_idx on vendors  (cost=0.00..4.12 rows=1 width=36)
+           Index Cond: (v_name = 'foo'::text)
+        (2 rows)
+      )#"
+  ));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT * FROM vendors WHERE v_name = 'foo'",
+      R"#(
+         v_code | v_name
+        --------+--------
+            100 | foo
         (1 row)
       )#"
   ));
@@ -381,6 +458,31 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
         (4 rows)
       )#"
   ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYBBackupWrongUsage)) {
+  client::KeyValueTableTest::CreateTable(
+      client::Transactional::kTrue, CalcNumTablets(3), client_.get(), &table_);
+  const string& keyspace = table_.name().namespace_name();
+  const string& table = table_.name().table_name();
+  const string backup_dir = GetTempDir("backup");
+
+  // No 'create' or 'restore' argument.
+  ASSERT_NOK(RunBackupCommand({}));
+
+  // No '--keyspace' argument.
+  ASSERT_NOK(RunBackupCommand({"--backup_location", backup_dir, "create"}));
+  ASSERT_NOK(RunBackupCommand({"--backup_location", backup_dir, "--table", table, "create"}));
+
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
+
+  // No '--keyspace' argument, but there is '--table'.
+  ASSERT_NOK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--table", "new_" + table, "restore"}));
+
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
