@@ -52,6 +52,6 @@ can also be written thus:
 '{a, b, c}'::text[]
 ```
 
-See the section [Creating an array value using a literal](../../../type_array/literals) for more information on this topic. This dramatic context-sensitive difference in meaning of `'{...}'` might confuse the reader. Therefore, in the major section _"JSON data types and functionality"_, the `array[...]` constructor form will be used for a SQL array value—and the use of the `'{...}'` SQL array literal will be avoided.
+See the section [Creating an array value using a literal](../../type_array/literals) for more information on this topic. This dramatic context-sensitive difference in meaning of `'{...}'` might confuse the reader. Therefore, in the major section _"JSON data types and functionality"_, the `array[...]` constructor form will be used for a SQL array value—and the use of the `'{...}'` SQL array literal will be avoided.
 
 The fact that a JSON _array_ can have subvalues of mixed data type but a SQL array can have only elements of the same data type means that special steps have to be taken when the goal is to construct a JSON _array_ mixed subvalue data type from SQL values.

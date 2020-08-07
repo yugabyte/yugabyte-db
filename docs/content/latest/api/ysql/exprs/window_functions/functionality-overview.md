@@ -19,7 +19,7 @@ Aggregate functions can be invoked with the `OVER` clause. Examples are given us
 These examples are sufficient to give a general sense of the following notions:
 
 - how window functions are invoked, and their general semantics
-- the three clauses of the [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) : the `PARTITION BY` clause, the window `ORDER BY` clause, and the [**frame_clause**](../../../syntax_resources/grammar_diagrams/#frame-clause)
+- the three clauses of the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) : the `PARTITION BY` clause, the window `ORDER BY` clause, and the [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause)
 - how an aggregate function gains different useful functionality when it's invoked using an `OVER` clause rather than (as is probably more common) in conjunction with the regular `GROUP BY` clause.
 
 {{< note title=" " >}}
@@ -93,7 +93,7 @@ This is the result:
 
 ### Showing the importance of the window ORDER BY clause
 
-Here is a counter example. Notice that the [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) doesn't specify a window `ORDER BY` clause.
+Here is a counter example. Notice that the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) doesn't specify a window `ORDER BY` clause.
 
 ```plpgsql
 with a as (
@@ -149,7 +149,7 @@ Sometimes, you'll see that, by chance, not a single output row is marked _"true"
 
 ### Using row_number() with "PARTITION BY"
 
-This example adds a `PARTITION BY` clause to the window `ORDER BY` clause in the [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) . It selects and orders by _"v"_ rather than _"k"_ because this has `NULL`s and demonstrates the within-[_window_](../sql-syntax-semantics/#the-window-definition-rule) effect of `NULLS FIRST`. The [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) is moved to a dedicated `WINDOW` clause that names it so that the `OVER` clause can simply reference the definition that it needs. This might seem only to add verbosity in this example. But using a dedicated `WINDOW` clause reduces verbosity when invocations of several different window functions in the same subquery use the same [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) .
+This example adds a `PARTITION BY` clause to the window `ORDER BY` clause in the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) . It selects and orders by _"v"_ rather than _"k"_ because this has `NULL`s and demonstrates the within-[_window_](../sql-syntax-semantics/#the-window-definition-rule) effect of `NULLS FIRST`. The [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) is moved to a dedicated `WINDOW` clause that names it so that the `OVER` clause can simply reference the definition that it needs. This might seem only to add verbosity in this example. But using a dedicated `WINDOW` clause reduces verbosity when invocations of several different window functions in the same subquery use the same [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) .
 ```plpgsql
 \pset null '??'
 
@@ -256,7 +256,7 @@ The aim is to compute the moving average for each day within the window, where t
 
 Notice that the following section uses the aggregate function `avg()` to produce the same result, and it shows the advantages of that approach over using the window functions [`lag()`](../function-syntax-semantics/lag-lead/#lag) and [`lead()`](../function-syntax-semantics/lag-lead/#lead). There are many other cases where `lag()` and/or  `lead()`are needed and where `avg()` is of no use. The present use case was chosen here because it shows very clearly what `lag()` and `lead()` do and, especially, because it allows the demonstration of invoking an aggregate function with an `OVER` clause.
 
-The query is specifically written to meet the exact requirements. It would need to be manually re-written to base the moving average on a bigger, or smaller, range of days. Notice that the same [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) , _"w"_, is used as the argument for each of the four uses of the `OVER` clause. This is where using a separate `WINDOW` clause delivers its intended benefit.
+The query is specifically written to meet the exact requirements. It would need to be manually re-written to base the moving average on a bigger, or smaller, range of days. Notice that the same [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) , _"w"_, is used as the argument for each of the four uses of the `OVER` clause. This is where using a separate `WINDOW` clause delivers its intended benefit.
 
 The statement of requirement implies that the computation is not feasible for the first two and the last two days in the window. Under these circumstances, `lag()` and `lead()`, return `NULL`—or, it you prefer, a default value that you supply using an optional third parameter. See the dedicated section on [`lag()` and `lead()`](../function-syntax-semantics/lag-lead/) for details.
 
@@ -305,7 +305,7 @@ This is the result:
  Wed 15-Oct |     $17.30
 ```
 ### Using the aggregate function avg() to compute a moving average
-This solution takes advantage of this [**window_definition**](../../../syntax_resources/grammar_diagrams/#window-definition) to determine the rows that `avg()` uses:
+This solution takes advantage of this [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) to determine the rows that `avg()` uses:
 ```
 order by day groups between $1 preceding and $1 following
 ```
@@ -332,8 +332,8 @@ order by day;
 execute stmt(2);
 ```
 The result is identical to that produced by the `lag()`/`lead()` approach. Try repeating the `EXECUTE` statement with a few different actual arguments. The bigger it gets, the fewer result rows you see, and the closer the values of the moving average get to each other.
-### Using the aggregate function sum() with the OVER clause
-This example shows a different spelling of the [**frame_clause**](../../../syntax_resources/grammar_diagrams/#frame-clause):
+### Using the aggregate function `sum()` with the OVER clause
+This example shows a different spelling of the [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause):
 ```
 range between unbounded preceding and current row
 ```

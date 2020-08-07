@@ -24,7 +24,7 @@ If you have a use case that requires a specifically tailored [_window frame_](..
 input value:       anyelement
 return value:      anyelement
 ```
-**Purpose:** Return the specified value from the first row, in the specified sort order, in the current [_window frame_](../../sql-syntax-semantics/#frame-clause-semantics-for-window-functions). If you specify the [**frame_clause**](../../../../syntax_resources/grammar_diagrams/#frame-clause) to start at a fixed offset before the current row, then `first_value()` would produce the same result as would the correspondingly parameterized `lag()`. If this is your aim, then you should use `lag()` for clarity.
+**Purpose:** Return the specified value from the first row, in the specified sort order, in the current [_window frame_](../../sql-syntax-semantics/#frame-clause-semantics-for-window-functions). If you specify the [`frame_clause`](../../../../syntax_resources/grammar_diagrams/#frame-clause) to start at a fixed offset before the current row, then `first_value()` would produce the same result as would the correspondingly parameterized `lag()`. If this is your aim, then you should use `lag()` for clarity.
 
 ## nth_value()
 
