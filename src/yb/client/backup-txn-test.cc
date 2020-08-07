@@ -242,6 +242,42 @@ class BackupTxnTest : public TransactionTestBase {
     return Status::OK();
   }
 
+  CHECKED_STATUS WaitAllSnapshotsDeleted() {
+    RETURN_NOT_OK(WaitFor([this]() -> Result<bool> {
+      auto snapshots = VERIFY_RESULT(ListSnapshots());
+      SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
+      if (snapshots[0].entry().state(), SysSnapshotEntryPB::DELETED) {
+        return true;
+      }
+      SCHECK_EQ(snapshots[0].entry().state(), SysSnapshotEntryPB::DELETING, IllegalState,
+                "Wrong snapshot state");
+      return false;
+    }, kWaitTimeout * kTimeMultiplier, "Complete delete snapshot"));
+
+    return WaitFor([this]() -> Result<bool> {
+      auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+      for (const auto& peer : peers) {
+        auto db = peer->tablet()->doc_db().regular;
+        if (!db) {
+          continue;
+        }
+        auto dir = tablet::TabletSnapshots::SnapshotsDirName(db->GetName());
+        auto children = VERIFY_RESULT(Env::Default()->GetChildren(dir, ExcludeDots::kTrue));
+        if (!children.empty()) {
+          LOG(INFO) << peer->LogPrefix() << "Children: " << AsString(children);
+          return false;
+        }
+      }
+      return true;
+    }, kWaitTimeout * kTimeMultiplier, "Delete on tablets");
+  }
+
+  CHECKED_STATUS WaitAllSnapshotsCleaned() {
+    return WaitFor([this]() -> Result<bool> {
+      return VERIFY_RESULT(ListSnapshots()).empty();
+    }, kWaitTimeout * kTimeMultiplier, "Snapshot cleanup");
+  }
+
   Result<ImportedSnapshotData> StartImportSnapshot(const master::SnapshotInfoPB& snapshot) {
     master::ImportSnapshotMetaRequestPB req;
     master::ImportSnapshotMetaResponsePB resp;
@@ -342,40 +378,28 @@ TEST_F(BackupTxnTest, Delete) {
   auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
   ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
   ASSERT_OK(DeleteSnapshot(snapshot_id));
-
-  ASSERT_OK(WaitFor([this]() -> Result<bool> {
-    auto snapshots = VERIFY_RESULT(ListSnapshots());
-    SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
-    if (snapshots[0].entry().state(), SysSnapshotEntryPB::DELETED) {
-      return true;
-    }
-    SCHECK_EQ(snapshots[0].entry().state(), SysSnapshotEntryPB::DELETING, IllegalState,
-              "Wrong snapshot state");
-    return false;
-  }, kWaitTimeout * kTimeMultiplier, "Complete delete snapshot"));
-
-  ASSERT_OK(WaitFor([this]() -> Result<bool> {
-    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
-    for (const auto& peer : peers) {
-      auto db = peer->tablet()->doc_db().regular;
-      if (!db) {
-        continue;
-      }
-      auto dir = tablet::TabletSnapshots::SnapshotsDirName(db->GetName());
-      auto children = VERIFY_RESULT(Env::Default()->GetChildren(dir, ExcludeDots::kTrue));
-      if (!children.empty()) {
-        LOG(INFO) << peer->LogPrefix() << "Children: " << AsString(children);
-        return false;
-      }
-    }
-    return true;
-  }, kWaitTimeout * kTimeMultiplier, "Delete on tablets"));
+  ASSERT_OK(WaitAllSnapshotsDeleted());
 
   SetAtomicFlag(1000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
 
-  ASSERT_OK(WaitFor([this]() -> Result<bool> {
-    return VERIFY_RESULT(ListSnapshots()).empty();
-  }, kWaitTimeout * kTimeMultiplier, "Snapshot cleanup"));
+  ASSERT_OK(WaitAllSnapshotsCleaned());
+}
+
+TEST_F(BackupTxnTest, CleanupAfterRestart) {
+  SetAtomicFlag(300000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
+
+  ASSERT_NO_FATALS(WriteData());
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+  ASSERT_OK(DeleteSnapshot(snapshot_id));
+  ASSERT_OK(WaitAllSnapshotsDeleted());
+
+  ASSERT_FALSE(ASSERT_RESULT(ListSnapshots()).empty());
+
+  SetAtomicFlag(1000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
+  ASSERT_OK(cluster_->leader_mini_master()->Restart());
+
+  ASSERT_OK(WaitAllSnapshotsCleaned());
 }
 
 TEST_F(BackupTxnTest, ImportMeta) {
