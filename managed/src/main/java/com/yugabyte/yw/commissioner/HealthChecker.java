@@ -405,7 +405,7 @@ public class HealthChecker {
       HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
     } else {
       LOG.error(String.format(
-          "Health check script got error: code (%s), msg: ", response.code, response.message));
+          "Health check script got error: code (%s)\n%s", response.code, response.message));
     }
   }
 }
