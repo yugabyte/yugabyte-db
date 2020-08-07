@@ -1007,16 +1007,21 @@ void MetaCache::InvalidateTableCache(const TableId& table_id) {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     auto it = tables_.find(table_id);
     if (it != tables_.end()) {
-      it->second.stale = true;
+      auto& table_data = it->second;
+      // Some partitions could be mapped to tablets that have been split and we need to re-fetch
+      // info about tablets serving partitions.
+      for (auto& tablet : table_data.tablets_by_partition) {
+        tablet.second->MarkStale();
+      }
       // TODO(tsplit): Optimize to retry only necessary lookups inside ProcessTabletLocations,
       // detect which need to be retried by GetTableLocationsResponsePB.partitions_version.
-      for (auto& group_lookups : it->second.tablet_lookups_by_group) {
+      for (auto& group_lookups : table_data.tablet_lookups_by_group) {
         while (auto* lookup = group_lookups.second.lookups.Pop()) {
           to_notify.push_back(std::move(lookup->callback));
           delete lookup;
         }
       }
-      it->second.tablet_lookups_by_group.clear();
+      table_data.tablet_lookups_by_group.clear();
     }
   }
   for (const auto& callback : to_notify) {
@@ -1208,7 +1213,11 @@ class LookupByKeyRpc : public LookupRpc {
     if (resp_.partitions_version() != table_partitions_version) {
       DoFinished(
           STATUS_EC_FORMAT(
-              TryAgain, ClientError(ClientErrorCode::kTablePartitionsAreStale),
+              TryAgain,
+              ClientError(
+                  resp_.partitions_version() > table_partitions_version
+                      ? ClientErrorCode::kTablePartitionsAreStale
+                      : ClientErrorCode::kGotOldTablePartitions),
               "Received table $0 partitions version: $1, ours is: $2", table_->id(),
               resp_.partitions_version(), table_partitions_version),
           resp_, &partition_group_start_);
@@ -1237,8 +1246,8 @@ class LookupByKeyRpc : public LookupRpc {
 RemoteTabletPtr MetaCache::LookupTabletByKeyFastPathUnlocked(const YBTable* table,
                                                              const std::string& partition_key) {
   auto it = tables_.find(table->id());
-  if (PREDICT_FALSE(it == tables_.end() || it->second.stale)) {
-    // No cache available for this table or it is stale.
+  if (PREDICT_FALSE(it == tables_.end())) {
+    // No cache available for this table.
     return nullptr;
   }
 
