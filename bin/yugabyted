@@ -396,6 +396,25 @@ class ControlScript(object):
         # exit no matter what
         os._exit(os.EX_OK)
 
+    def start_first_master_tserver(self, master_addresses):
+        self.processes.get("master").start()
+        if not self.setup_master():
+            # TODO(sanketh): Make these all throw exceptions instead of excns + return values
+            return "Failed to start master {}".format(SCRIPT_NAME)
+
+        self.update_tserver_master_addrs()
+        self.processes.get("tserver").start()
+        if not self.wait_tserver():
+            return "Failed to start tserver {}".format(SCRIPT_NAME)
+
+        universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
+        if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
+            self.configs.saved_data["universe_uuid"] = universe_uuid
+            self.configs.save_configs()
+
+        return None
+
+
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
     def start_processes(self):
@@ -529,38 +548,28 @@ class ControlScript(object):
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
                 Output.init_animation("Running system checks...")
+
                 self.post_install_yb()
 
-            for name in ("master", "tserver"):
-                process = self.processes.get(name)
-                process.remove_error_logs()
-                if not process.is_running():
-                    if not is_first_run:
+                ret = self.start_first_master_tserver(master_addresses)
+                if ret:
+                    Output.update_animation("Database failed to start",
+                        status=Output.ANIMATION_FAIL)
+                    Output.log_error_and_exit(ret)
+
+                Output.update_animation("System checks")
+            else:
+                for name in ("master", "tserver"):
+                    process = self.processes.get(name)
+                    process.remove_error_logs()
+                    if not process.is_running():
                         Output.log(
                             "{} died unexpectedly. Restarting...".format(process.name),
                             logging.ERROR)
-                    if name == "tserver":
-                        self.update_tserver_master_addrs()
-                    process.start()
-                    should_callhome = True
-
-            if is_first_run:
-                if not self.wait_tserver():
-                    Output.update_animation("Database failed to start",
-                        status=Output.ANIMATION_FAIL)
-                    Output.log_error_and_exit("Failed to start tserver {}".format(SCRIPT_NAME))
-
-                if not self.setup_master():
-                    Output.update_animation("Database failed to start",
-                        status=Output.ANIMATION_FAIL)
-                    Output.log_error_and_exit("Failed to start master {}".format(SCRIPT_NAME))
-
-                universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
-                if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
-                    self.configs.saved_data["universe_uuid"] = universe_uuid
-                    self.configs.save_configs()
-
-                Output.update_animation("System checks")
+                        if name == "tserver":
+                            self.update_tserver_master_addrs()
+                        process.start()
+                        should_callhome = True
 
             if self.configs.temp_data.get("ui"):
                 (_, was_started) = self.maybe_start_yw(is_first_run, is_first_install)
@@ -807,9 +816,8 @@ class ControlScript(object):
         master_addr = "{}:{}".format(master_ip,
                                      self.configs.saved_data.get("master_rpc_port"))
 
-        if (not self.processes.get("master").is_running()
-                or not self.processes.get("tserver").is_running()):
-            Output.log("Failed waiting for yb-master/tserver... process died.", logging.ERROR)
+        if (not self.processes.get("master").is_running()):
+            Output.log("Failed waiting for yb-master... process died.", logging.ERROR)
             raise RuntimeError("process died unexpectedly.")
 
         cur_master_uuids = [ m[0] for m in YBAdminProxy.get_masters(master_addr) ]
@@ -930,6 +938,9 @@ class ControlScript(object):
         Output.log("Failed to wait for tserver.")
         return False
 
+    # In a multi-node cluster, the tserver initially knows just about its own master and the
+    # master it is joining. After the cluster is formed, this method will attempt to
+    # refresh the full list of masters so that the tserver can become aware of other masters.
     def update_tserver_master_addrs(self):
         tserver_cmd = self.processes["tserver"].cmd
         master_flag = [ flag for flag in tserver_cmd if flag.find(TS_MASTER_ADDRS_FLAG) >= 0 ]
