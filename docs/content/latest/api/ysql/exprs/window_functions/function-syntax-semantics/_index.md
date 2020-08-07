@@ -26,7 +26,7 @@ The two tables at the end classify YSQL's eleven built-in window functions into 
 
 ### Aggregate function variants
 
-A few of these also have an aggregate function variant. This can be seen with the `\df` meta-command. For example, `df lag` shows this:
+A few of these also have an aggregate function variant. This can be seen with the `\df` metacommand. For example, `df lag` shows this:
 
 ```
  Result data type |          Argument data types           |  Type
@@ -37,7 +37,9 @@ A few of these also have an aggregate function variant. This can be seen with th
 This property is marked by _"Y"_ in the column _"agg?"_ in the following tables; a blank in this column means that the entry has only a window function variant.
 
 {{< note title="Functions with both a 'window' and an 'aggregate' variant" >}}
+
 The definitive description of the use, as an aggregate function, of a window function that has such a variant, is outside the scope of this major _"Window functions"_ section. A future documentation effort will add an _"Aggregate functions"_ major section. The topic will be covered there. Meanwhile, you can refer to the section _"9.20. Aggregate Functions"_ in the PostgreSQL documentation. Look for <a href="https://www.postgresql.org/docs/11/functions-aggregate.html#FUNCTIONS-HYPOTHETICAL-TABLE" target="_blank">Table 9.55. Hypothetical-Set Aggregate Functions <i class="fas fa-external-link-alt"></i></a>.
+
 {{< /note >}}
 
 ### Frame_clause sensitivity
@@ -49,11 +51,13 @@ The results of a few of the window functions _are_ sensitive to what the [`frame
 #### Frame_clause-insensitive window functions
 
 All of the window functions listed in the first table, and `lag()` and `lead()` from the second table, are insensitive to whatever the [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause) might say. You can easily show this by trying a few variants like, for example, this:
+
 ```
 -- Counter example. Don't use this for window functions
 -- that aren't frame_clause-sensitive.
 range between 1 preceding and 1 following exclude current row
 ```
+
 It says "consider only the row immediately before and the row immediately after the current row". You'll see that including this, or any other variant, in the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) brings the identical result to what including only the window `ORDER BY` clause brings for each of the window functions that aren't sensitive to the [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause).
 
 Yugabyte recommends that you never include a [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause) in the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) that you use when you invoke a window function that isn't sensitive to the [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause).

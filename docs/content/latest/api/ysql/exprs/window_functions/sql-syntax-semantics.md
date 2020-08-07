@@ -144,9 +144,11 @@ select
 from t1
 order by class, k;
 ```
-If you want to run this, then create a data set using the `ysqlsh` script that [table t1](../data-sets/table-t1/) presents.
+
+If you want to run this, then create a data set using the `ysqlsh` script that [table t1](../function-syntax-semantics/data-sets/table-t1/) presents.
 
 Using the `FILTER` clause in the invocation of a window function causes this compilation error:
+
 ```
 0A000: FILTER is not implemented for non-aggregate window functions
 ```
@@ -287,16 +289,21 @@ window w as (
   )
 ...
 ```
-See the section [`first_value()`,` nth_value()`, `last_value()`](../first-value-nth-value-last-value/) for a runnable example of this syntax variant.
+
+For a runnable example of this syntax variant, see [`first_value()`,`nth_value()`, `last_value()`](../function-syntax-semantics/first-value-nth-value-last-value/).
 
 Notice that the syntax rules allow both this:
+
 ```
 window_fn_1(...) over w as a1
 ```
+
 and this:
+
 ```
 window_fn_1(...) over (w) as a1
 ```
+
 The parentheses around the window's identifier convey no meaning, Yugabyte recommends that you don't use this form because doing so will make anybody who reads your code wonder if it _does_ convey a meaning.
 
 ### Third example
@@ -313,9 +320,11 @@ from ...
 window w as (partition by <column list 1> order by <column list 2>)
 ...
 ```
+
 ### Fourth example
 
 This shows how the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) specialization technique that the third example showed can be used in successively in the `WINDOW` clause.
+
 ```
 select
   ...
@@ -329,4 +338,5 @@ window
   w2 as (w1 range between unbounded preceding and unbounded following),
   w3 as (w1 range between unbounded preceding and current row)
 ```
-See the section [Comparing the effect of `percent_rank()`, `cume_dist()`, and `ntile()` on the same input](../../window_functions/percent-rank-cume-dist-ntile/#comparing-the-effect-of-percent-rank-cume-dist-and-ntile-on-the-same-input) for a runnable example of this fourth syntax variant.
+
+For a runnable example of this fourth syntax variant, see [Comparing the effect of `percent_rank()`, `cume_dist()`, and `ntile()` on the same input](../../window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#comparing-the-effect-of-percent-rank-cume-dist-and-ntile-on-the-same-input).

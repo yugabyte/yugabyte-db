@@ -40,7 +40,7 @@ Window functions are similar to aggregate functions in this way:
 
 - Each operates on each of possibly many [_windows_](./sql-syntax-semantics/#the-window-definition-rule) of a row set.
 
-**Note:** As mentioned above, the row set for a window function can be defined _only_ by using the `PARTITION BY` clause within a [`window_definition](../../syntax_resources/grammar_diagrams/#window-definition) . The row set for an aggregate function _may_ be defined in this way. But it may alternatively be defined by the regular `GROUP BY` clause at the syntax spot in a subquery that follows the `WHERE` clause's spot.
+**Note:** As mentioned above, the row set for a window function can be defined _only_ by using the `PARTITION BY` clause within a [`window_definition`](../../syntax_resources/grammar_diagrams/#window-definition). The row set for an aggregate function _may_ be defined in this way. But it may alternatively be defined by the regular `GROUP BY` clause at the syntax spot in a subquery that follows the `WHERE` clause's spot.
 
 Window functions differ from aggregate functions in this way:
 
