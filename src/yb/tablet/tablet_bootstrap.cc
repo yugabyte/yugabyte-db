@@ -797,9 +797,11 @@ class TabletBootstrap {
       replay_state_->pending_replicates.erase(iter, replay_state_->pending_replicates.end());
     }
 
-    SCHECK(entry_metadata.entry_time != RestartSafeCoarseTimePoint(),
-           Corruption,
-           "Entry metadata must have a restart-safe time");
+    // We expect entry_metadata.entry_time to always be set for newly written WAL entries. However,
+    // for some very old WALs, it might be missing.
+    LOG_IF_WITH_PREFIX(DFATAL, entry_metadata.entry_time == RestartSafeCoarseTimePoint())
+        << "Entry metadata must have a restart-safe time. OpId: " << OpId::FromPB(replicate.id());
+
     CHECK(replay_state_->pending_replicates.emplace(
         op_id.index(), Entry{std::move(*replicate_entry_ptr), entry_metadata.entry_time}).second);
 
