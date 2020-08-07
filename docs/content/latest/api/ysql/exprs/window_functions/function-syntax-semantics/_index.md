@@ -6,7 +6,7 @@ description: This section summarizes the signature and purpose of each of YSQL's
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
-    identifier: function-syntax-semantics
+    identifier: window-function-syntax-semantics
     parent: window-functions
     weight: 30
 aliases:

@@ -6,7 +6,7 @@ description: Convert a JSON object into the equivalent SQL record. Offers no pra
 menu:
   latest:
     identifier: jsonb-to-record
-    parent: functions-operators
+    parent: json-functions-operators
     weight: 230
 isTocNested: true
 showAsideToc: true

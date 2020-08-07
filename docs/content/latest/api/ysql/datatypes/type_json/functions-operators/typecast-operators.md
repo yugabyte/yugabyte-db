@@ -6,7 +6,7 @@ description: Typecast between any pair of text, json, and jsonb values.
 menu:
   latest:
     identifier: typecast-operators
-    parent: functions-operators
+    parent: json-functions-operators
     weight: 10
 isTocNested: true
 showAsideToc: true
