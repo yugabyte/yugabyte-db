@@ -6,7 +6,7 @@ description: Describes the functionality of the YSQL window functions lag(), lea
 menu:
   latest:
     identifier: lag-lead
-    parent: function-syntax-semantics
+    parent: window-function-syntax-semantics
     weight: 40
 isTocNested: true
 showAsideToc: true

@@ -6,7 +6,7 @@ description: Read a JSON value at a specified path.
 menu:
   latest:
     identifier: subvalue-operators
-    parent: functions-operators
+    parent: json-functions-operators
     weight: 12
 isTocNested: true
 showAsideToc: true

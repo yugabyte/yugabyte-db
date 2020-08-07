@@ -7,7 +7,7 @@ image: /images/section_icons/api/ysql.png
 menu:
   latest:
     identifier: data-sets
-    parent: function-syntax-semantics
+    parent: window-function-syntax-semantics
     weight: 50
 isTocNested: true
 showAsideToc: true
