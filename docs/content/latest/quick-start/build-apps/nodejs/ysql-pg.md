@@ -43,7 +43,7 @@ showAsideToc: true
 
 ## Install the node-postgres driver
 
-Install the [`node-postgres` driver](../../reference/drivers/ysql-client-drivers/#node-postgres) using the following command.
+Install the [`node-postgres` driver](../../../../reference/drivers/ysql-client-drivers/#node-postgres) using the following command.
 
 ```sh
 $ npm install pg
@@ -55,7 +55,7 @@ The `node-postgres` module is installed.
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
+- installed YugabyteDB and created a universe. If not, follow the steps in [Quick Start](../../../../quick-start).
 - installed a recent version of [`node`](https://nodejs.org/en/download/).
 - installed the [async](https://github.com/caolan/async) JS utility to work with asynchronous Javascript. Install this by running the following command:
 
