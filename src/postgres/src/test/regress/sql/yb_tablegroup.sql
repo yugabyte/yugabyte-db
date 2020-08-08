@@ -51,12 +51,40 @@ CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123, colocated=true);
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123) TABLEGROUP tgroup1;
 
 --
+-- Test describes
+--
+CREATE TABLE tgroup_test4 (col1 int, col2 int) TABLEGROUP tgroup2;
+CREATE INDEX ON tgroup_test4(col1);
+CREATE INDEX ON tgroup_test4(col2);
+-- Add comments
+COMMENT ON TABLEGROUP tgroup1 IS 'Comment for Tablegroup 1';
+COMMENT ON TABLEGROUP tgroup2 IS 'Comment for Tablegroup 2';
+\dgr
+\dgr+
+\dgrt
+\dgrt+
+COMMENT ON TABLEGROUP tgroup2 IS NULL;
+\dgr+ tgroup2
+\dgrt tgroup2
+
+-- Describe table
+\d tgroup_test2
+\d tgroup_test4
+\d tgroup_test4_col1_idx
+CREATE TABLEGROUP tgroup_describe1;
+CREATE TABLEGROUP tgroup_describe2;
+CREATE TABLE tgroup_describe (col1 int) TABLEGROUP tgroup_describe1;
+CREATE INDEX ON tgroup_describe(col1);
+CREATE INDEX ON tgroup_describe(col1) NO TABLEGROUP;
+CREATE INDEX ON tgroup_describe(col1) TABLEGROUP tgroup_describe2;
+\d tgroup_describe
+--
 -- DROP TABLEGROUP
 --
 
 DROP TABLEGROUP tgroup3;
 -- These should fail. CREATE TABLE is to check that the row entry was deleted from pg_tablegroup.
-CREATE TABLE tgroup_test4 (col1 int, col2 int) TABLEGROUP tgroup3;
+CREATE TABLE tgroup_test5 (col1 int, col2 int) TABLEGROUP tgroup3;
 DROP TABLEGROUP tgroup1;
 DROP TABLEGROUP bad_tgroupname;
 -- This drop should work now.

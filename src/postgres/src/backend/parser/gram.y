@@ -6960,7 +6960,7 @@ opt_restart_seqs:
  *                 EXTENSION | EVENT TRIGGER | FOREIGN DATA WRAPPER |
  *                 FOREIGN TABLE | INDEX | [PROCEDURAL] LANGUAGE |
  *                 MATERIALIZED VIEW | POLICY | ROLE | SCHEMA | SEQUENCE |
- *                 SERVER | STATISTICS | TABLE | TABLESPACE |
+ *                 SERVER | STATISTICS | TABLE | TABLEGROUP | TABLESPACE |
  *                 TEXT SEARCH CONFIGURATION | TEXT SEARCH DICTIONARY |
  *                 TEXT SEARCH PARSER | TEXT SEARCH TEMPLATE | TYPE |
  *                 VIEW] <objname> |
@@ -7170,6 +7170,7 @@ comment_type_name:
 			| SCHEMA							{ $$ = OBJECT_SCHEMA; }
 			| SERVER							{ $$ = OBJECT_FOREIGN_SERVER; }
 			| SUBSCRIPTION						{ $$ = OBJECT_SUBSCRIPTION; }
+			| TABLEGROUP						{ $$ = OBJECT_TABLEGROUP; }
 			| TABLESPACE						{ $$ = OBJECT_TABLESPACE; }
 		;
 
