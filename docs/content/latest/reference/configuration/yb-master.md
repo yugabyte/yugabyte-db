@@ -450,7 +450,7 @@ Default: `true`
 
 ##### --dump_certificate_entries
 
-Can be used to dump certificate entries while logging handshake error.
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages.  Enabling this flag is useful for debugging certificate issues.
 
 Default: `false`
 
