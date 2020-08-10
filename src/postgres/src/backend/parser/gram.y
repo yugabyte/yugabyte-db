@@ -3375,6 +3375,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
 					}
+					if ($13 && $14)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
+					}
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name '('
@@ -3409,6 +3414,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
+					}
+					if ($16 && $17)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3446,6 +3456,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
 					}
+					if ($12 && $13)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
+					}
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name OF any_name
@@ -3481,6 +3496,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
+					}
+					if ($15 && $16)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3518,6 +3538,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
 					}
+					if ($14 && $15)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
+					}
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name PARTITION OF
@@ -3553,6 +3578,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
+					}
+					if ($17 && $18)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}

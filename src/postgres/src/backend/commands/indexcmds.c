@@ -589,12 +589,25 @@ DefineIndex(Oid relationId,
 		{
 			// If NULL tablegroup, follow tablegroup of indexed table.
 			tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
+			if (OidIsValid(tablegroupId) && stmt->split_options)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 		errmsg("Cannot use TABLEGROUP with SPLIT."),
+				 		errdetail("Please supply NO TABLEGROUP to opt-out of indexed table's tablegroup.")));
+			}
 		}
 		else
 		{
 			OptTableGroup *grp = stmt->tablegroup;
 			if (grp->has_tablegroup)
 			{
+				if (stmt->split_options)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 		errmsg("Cannot use TABLEGROUP with SPLIT.")));
+				}
 				tablegroupId = get_tablegroup_oid(grp->tablegroup_name, false);
 			}
 		}

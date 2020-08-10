@@ -51,6 +51,13 @@ CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123, colocated=true);
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123) TABLEGROUP tgroup1;
 
 --
+-- Usage of SPLIT clause with TABLEGROUP should fail
+--
+CREATE TABLE tgroup_split (col1 int PRIMARY KEY) SPLIT INTO 3 TABLETS TABLEGROUP tgroup1;
+CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30));
+CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30)) TABLEGROUP tgroup2;
+CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30)) NO TABLEGROUP; -- should succeed
+--
 -- Test describes
 --
 CREATE TABLE tgroup_test4 (col1 int, col2 int) TABLEGROUP tgroup2;
