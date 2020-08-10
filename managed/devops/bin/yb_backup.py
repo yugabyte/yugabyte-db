@@ -1101,6 +1101,8 @@ class YBBackup:
 
                     if len(data_dirs) == 0:
                         tserver_ips.remove(tserver_ip)
+                else:
+                    tserver_ips.remove(tserver_ip)
 
         find_snapshot_dir_results = parallel_find_snapshots.run(pool)
 
@@ -1331,6 +1333,8 @@ class YBBackup:
                                                 possible_tablet_id, tserver_ip))
                             raise BackupException("Did not find snapshot directories for some "
                                                   + "tablets on tablet server " + tserver_ip)
+                else:
+                    tserver_ip_to_tablet_id_to_snapshot_dirs.pop(tserver_ip)
 
     def get_tmp_dir(self):
         if not self.tmp_dir_name:
