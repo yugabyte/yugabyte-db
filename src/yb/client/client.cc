@@ -988,7 +988,8 @@ Status YBClient::DeleteTablegroup(const std::string& namespace_id,
       // A prior attempt to delete the table has succeeded, but
       // appeared as a failure to the client due to, e.g., an I/O or
       // network issue.
-      // Good case - go through - to 'return Status::OK()'
+      LOG(INFO) << "Parent table for tablegroup with ID " << tablegroup_id << " already deleted.";
+      return Status::OK();
     } else {
       return StatusFromPB(resp.error().status());
     }
