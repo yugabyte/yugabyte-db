@@ -100,8 +100,7 @@ INTO OUTFILE '/path/to/sample.csv' FIELDS TERMINATED BY ',';
 
 ## Import data
 
-These instructions are organized by the size of the input datasets, ranging from small (few MB of data) to large (GB
- or larger) datasets. 
+These instructions are organized by the size of the input datasets, ranging from small (MBs of data) to larger datasets (GBs of data). 
 
 ### Small datasets (MBs)
 
