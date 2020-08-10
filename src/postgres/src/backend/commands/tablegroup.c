@@ -619,6 +619,8 @@ RenameTablegroup(const char *oldname, const char *newname)
 
 	ObjectAddressSet(address, TableGroupRelationId, tablegroupoid);
 
+	heap_freetuple(newtup);
+
 	/*
 	 * Close pg_tablegroup, but keep lock till commit.
 	 */
@@ -678,12 +680,8 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 		HeapTuple	newtuple;
 
 		/* Otherwise, must be owner of the existing object or a superuser */
-		if (!superuser())
-		{
-			if (!pg_tablegroup_ownercheck(HeapTupleGetOid(tuple), GetUserId()))
-				aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TABLEGROUP,
-							   grpname);
-		}
+		if (!superuser() && !pg_tablegroup_ownercheck(HeapTupleGetOid(tuple), GetUserId()))
+			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TABLEGROUP, grpname);
 
 		/* Must be able to become new owner */
 		check_is_member_of_role(GetUserId(), newOwnerId);
@@ -723,7 +721,7 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 
 	heap_endscan(scandesc);
 
-	/* Close pg_database, but keep lock till commit */
+	/* Close pg_tablegroup, but keep lock till commit */
 	heap_close(rel, NoLock);
 
 	return address;
