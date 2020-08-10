@@ -2389,6 +2389,280 @@ LINE 1: SELECT * FROM b_trim();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
+-- left(), right(), & substring()
+-- left()
+SELECT * FROM cypher('expr', $$
+    RETURN left("123456789", 1)
+$$) AS (results agtype);
+ results 
+---------
+ "1"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN left("123456789", 3)
+$$) AS (results agtype);
+ results 
+---------
+ "123"
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN left("123456789", 0)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN left(null, 1)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN left(null, null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM l_substr(null, 1);
+ l_substr 
+----------
+ 
+(1 row)
+
+SELECT * FROM l_substr(null, null);
+ l_substr 
+----------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN left("123456789", null)
+$$) AS (results agtype);
+ERROR:  left() length parameter cannot be null
+SELECT * FROM cypher('expr', $$
+    RETURN left("123456789", -1)
+$$) AS (results agtype);
+ERROR:  left() negative values are not supported for length
+SELECT * FROM cypher('expr', $$
+    RETURN left()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM l_substr('123456789', null);
+ERROR:  left() length parameter cannot be null
+SELECT * FROM l_substr('123456789', -1);
+ERROR:  left() negative values are not supported for length
+SELECT * FROM l_substr();
+ERROR:  function l_substr() does not exist
+LINE 1: SELECT * FROM l_substr();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--right()
+SELECT * FROM cypher('expr', $$
+    RETURN right("123456789", 1)
+$$) AS (results agtype);
+ results 
+---------
+ "9"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN right("123456789", 3)
+$$) AS (results agtype);
+ results 
+---------
+ "789"
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN right("123456789", 0)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN right(null, 1)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN right(null, null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM r_substr(null, 1);
+ r_substr 
+----------
+ 
+(1 row)
+
+SELECT * FROM r_substr(null, null);
+ r_substr 
+----------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN right("123456789", null)
+$$) AS (results agtype);
+ERROR:  right() length parameter cannot be null
+SELECT * FROM cypher('expr', $$
+    RETURN right("123456789", -1)
+$$) AS (results agtype);
+ERROR:  right() negative values are not supported for length
+SELECT * FROM cypher('expr', $$
+    RETURN right()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM r_substr('123456789', null);
+ERROR:  right() length parameter cannot be null
+SELECT * FROM r_substr('123456789', -1);
+ERROR:  right() negative values are not supported for length
+SELECT * FROM r_substr();
+ERROR:  function r_substr() does not exist
+LINE 1: SELECT * FROM r_substr();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- substring()
+SELECT * FROM cypher('expr', $$
+    RETURN substring("0123456789", 0, 1)
+$$) AS (results agtype);
+ results 
+---------
+ "0"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN substring("0123456789", 1, 3)
+$$) AS (results agtype);
+ results 
+---------
+ "123"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN substring("0123456789", 3)
+$$) AS (results agtype);
+  results  
+-----------
+ "3456789"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN substring("0123456789", 0)
+$$) AS (results agtype);
+   results    
+--------------
+ "0123456789"
+(1 row)
+
+SELECT * FROM b_substr('0123456789', 3, 2);
+ b_substr 
+----------
+ "34"
+(1 row)
+
+SELECT * FROM b_substr('0123456789', 1);
+  b_substr   
+-------------
+ "123456789"
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN substring(null, null, null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN substring(null, null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN substring(null, 1)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM b_substr(null, null, null);
+ b_substr 
+----------
+ 
+(1 row)
+
+SELECT * FROM b_substr(null, null);
+ b_substr 
+----------
+ 
+(1 row)
+
+SELECT * FROM b_substr(null, 1);
+ b_substr 
+----------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN substring("123456789", null)
+$$) AS (results agtype);
+ERROR:  substring() offset or length cannot be null
+SELECT * FROM cypher('expr', $$
+    RETURN substring("123456789", 0, -1)
+$$) AS (results agtype);
+ERROR:  substring() negative values are not supported for offset or length
+SELECT * FROM cypher('expr', $$
+    RETURN substring("123456789", -1)
+$$) AS (results agtype);
+ERROR:  substring() negative values are not supported for offset or length
+SELECT * FROM cypher('expr', $$
+    RETURN substring("123456789")
+$$) AS (results agtype);
+ERROR:  substring() invalid number of arguments
+SELECT * FROM b_substr('123456789', null);
+ERROR:  substring() offset or length cannot be null
+SELECT * FROM b_substr('123456789', 0, -1);
+ERROR:  substring() negative values are not supported for offset or length
+SELECT * FROM b_substr('123456789', -1);
+ERROR:  substring() negative values are not supported for offset or length
+SELECT * FROM b_substr();
+ERROR:  function b_substr() does not exist
+LINE 1: SELECT * FROM b_substr();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

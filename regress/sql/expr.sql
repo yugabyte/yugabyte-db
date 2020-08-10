@@ -1041,6 +1041,118 @@ SELECT * FROM r_trim();
 SELECT * FROM b_trim();
 
 --
+-- left(), right(), & substring()
+-- left()
+SELECT * FROM cypher('expr', $$
+    RETURN left("123456789", 1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN left("123456789", 3)
+$$) AS (results agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN left("123456789", 0)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN left(null, 1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN left(null, null)
+$$) AS (results agtype);
+SELECT * FROM l_substr(null, 1);
+SELECT * FROM l_substr(null, null);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN left("123456789", null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN left("123456789", -1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN left()
+$$) AS (results agtype);
+SELECT * FROM l_substr('123456789', null);
+SELECT * FROM l_substr('123456789', -1);
+SELECT * FROM l_substr();
+--right()
+SELECT * FROM cypher('expr', $$
+    RETURN right("123456789", 1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN right("123456789", 3)
+$$) AS (results agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN right("123456789", 0)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN right(null, 1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN right(null, null)
+$$) AS (results agtype);
+SELECT * FROM r_substr(null, 1);
+SELECT * FROM r_substr(null, null);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN right("123456789", null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN right("123456789", -1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN right()
+$$) AS (results agtype);
+SELECT * FROM r_substr('123456789', null);
+SELECT * FROM r_substr('123456789', -1);
+SELECT * FROM r_substr();
+-- substring()
+SELECT * FROM cypher('expr', $$
+    RETURN substring("0123456789", 0, 1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN substring("0123456789", 1, 3)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN substring("0123456789", 3)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN substring("0123456789", 0)
+$$) AS (results agtype);
+SELECT * FROM b_substr('0123456789', 3, 2);
+SELECT * FROM b_substr('0123456789', 1);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN substring(null, null, null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN substring(null, null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN substring(null, 1)
+$$) AS (results agtype);
+SELECT * FROM b_substr(null, null, null);
+SELECT * FROM b_substr(null, null);
+SELECT * FROM b_substr(null, 1);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN substring("123456789", null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN substring("123456789", 0, -1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN substring("123456789", -1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN substring("123456789")
+$$) AS (results agtype);
+SELECT * FROM b_substr('123456789', null);
+SELECT * FROM b_substr('123456789', 0, -1);
+SELECT * FROM b_substr('123456789', -1);
+SELECT * FROM b_substr();
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

@@ -63,6 +63,9 @@
 #define FUNC_LTRIM      {"lTrim",      "l_trim",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
 #define FUNC_RTRIM      {"rTrim",      "r_trim",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
 #define FUNC_BTRIM      {"trim",       "b_trim",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_RSUBSTR    {"right",      "r_substr",   ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false}
+#define FUNC_LSUBSTR    {"left",       "l_substr",   ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false}
+#define FUNC_BSUBSTR    {"substring",  "b_substr",   ANYOID,    ANYOID, ANYOID, AGTYPEOID, -1, 1, false}
 
 /* supported functions */
 #define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
@@ -71,7 +74,8 @@
                              FUNC_TOINTEGER, FUNC_TOBOOLEAN, FUNC_TOFLOAT, \
                              FUNC_EXISTS, FUNC_TOSTRING, FUNC_REVERSE, \
                              FUNC_TOUPPER, FUNC_TOLOWER, FUNC_LTRIM, \
-                             FUNC_RTRIM, FUNC_BTRIM}
+                             FUNC_RTRIM, FUNC_BTRIM, FUNC_RSUBSTR, \
+                             FUNC_LSUBSTR, FUNC_BSUBSTR}
 
 /* structure for supported function signatures */
 typedef struct function_signature
@@ -785,8 +789,13 @@ static Node *transform_cypher_function(cypher_parsestate *cpstate,
     if (func_operator_oid == InvalidOid)
         ereport(ERROR, (errmsg_internal("function \'%s\' not supported",
                                         cfunction->funcname)));
-    /* verify the number of passed arguments */
-    if (fs->nexprs != nexprs)
+    /*
+     * verify the number of passed arguments -
+     * if -1 its variable but at least 1
+     * otherwise they must match.
+     */
+    if (((fs->nexprs != -1) || (nexprs == 0)) &&
+        (fs->nexprs != nexprs))
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("invalid number of input parameters for %s()",
                                funcname)));
