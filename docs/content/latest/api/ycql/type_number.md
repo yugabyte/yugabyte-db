@@ -22,7 +22,7 @@ Data type | Description | Decimal precision |
 ---------|-----|-----|
 `FLOAT` | Inexact 32-bit floating point number | 7 |
 `DOUBLE` | Inexact 64-bit floating point number | 15 |
-`DECIMAL` | Exact fixed-point number | 99 |
+`DECIMAL` | Arbitrary-precision number  | no upper-bound |
 
 ## Syntax
 
