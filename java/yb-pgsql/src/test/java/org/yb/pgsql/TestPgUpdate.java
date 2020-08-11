@@ -190,59 +190,59 @@ public class TestPgUpdate extends BasePgSQLTest {
 
   @Test
   public void testConcurrentUpdate() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_concurrent_update (k int primary key," +
+                   " v1 int, v2 int, v3 int, v4 int)");
+      stmt.execute("INSERT INTO test_concurrent_update VALUES" +
+                                           " (0, 0, 0, 0, 0)");
 
-    connection.createStatement().execute("CREATE TABLE test_concurrent_update (k int primary key," +
-                                         " v1 int, v2 int, v3 int, v4 int)");
-    connection.createStatement().execute("INSERT INTO test_concurrent_update VALUES" +
-                                         " (0, 0, 0, 0, 0)");
+      final List<Throwable> errors = new ArrayList<Throwable>();
 
-    final List<Throwable> errors = new ArrayList<Throwable>();
+      // Test concurrent update to individual columns from 1 to 100. They should not block one
+      // another.
+      List<Thread> threads = new ArrayList<Thread>();
+      for (int i = 1; i <= 4; i++) {
+        final int index = i;
+        Thread thread = new Thread(() -> {
+          try (PreparedStatement updateStmt = connection.prepareStatement(
+                    String.format("UPDATE test_concurrent_update SET v%d = ? WHERE k = 0", index));
+               PreparedStatement selectStmt = connection.prepareStatement(
+                    String.format("SELECT v%d from test_concurrent_update WHERE k = 0", index))) {
 
-    // Test concurrent update to individual columns from 1 to 100. They should not block one
-    // another.
-    List<Thread> threads = new ArrayList<Thread>();
-    for (int i = 1; i <= 4; i++) {
-      final int index = i;
-      Thread thread = new Thread(() -> {
-        try {
-          PreparedStatement updateStmt = connection.prepareStatement(
-                  String.format("UPDATE test_concurrent_update SET v%d = ? WHERE k = 0", index));
-          PreparedStatement selectStmt = connection.prepareStatement(
-                  String.format("SELECT v%d from test_concurrent_update WHERE k = 0", index));
+            for (int j = 1; j <= 100; j++) {
+              // Update column.
+              updateStmt.setInt(1, j);
+              updateStmt.execute();
 
-          for (int j = 1; j <= 100; j++) {
-            // Update column.
-            updateStmt.setInt(1, j);
-            updateStmt.execute();
+              // Verify update.
+              ResultSet rs = selectStmt.executeQuery();
+              assertNextRow(rs, j);
+            }
 
-            // Verify update.
-            ResultSet rs = selectStmt.executeQuery();
-            assertNextRow(rs, j);
+          } catch (Throwable e) {
+            synchronized (errors) {
+              errors.add(e);
+            }
           }
+        });
+        thread.start();
+        threads.add(thread);
+      }
 
-        } catch (Throwable e) {
-          synchronized (errors) {
-            errors.add(e);
-          }
-        }
-      });
-      thread.start();
-      threads.add(thread);
+      for (Thread thread : threads) {
+        thread.join();
+      }
+
+      // Verify final result of all columns.
+      assertOneRow(stmt, "SELECT v1, v2, v3, v4 FROM test_concurrent_update WHERE k = 0",
+                   100, 100, 100, 100);
+
+      // Log the actual errors that occurred.
+      for (Throwable e : errors) {
+        LOG.error("Errors occurred", e);
+      }
+      assertTrue(errors.isEmpty());
     }
-
-    for (Thread thread : threads) {
-      thread.join();
-    }
-
-    // Verify final result of all columns.
-    assertOneRow("SELECT v1, v2, v3, v4 FROM test_concurrent_update WHERE k = 0",
-                 100, 100, 100, 100);
-
-    // Log the actual errors that occurred.
-    for (Throwable e : errors) {
-      LOG.error("Errors occurred", e);
-    }
-    assertTrue(errors.isEmpty());
   }
 
   /*
@@ -268,7 +268,8 @@ public class TestPgUpdate extends BasePgSQLTest {
       updateStmt.execute();
       expectedVi += viInc;
       expectedVs += vsConcat;
-      assertOneRow("SELECT vi,vs FROM test_update_expr_pushdown WHERE h = 2 AND r = 2.5",
+      assertOneRow(connection.createStatement(),
+                   "SELECT vi,vs FROM test_update_expr_pushdown WHERE h = 2 AND r = 2.5",
                    expectedVi, expectedVs);
     }
   }

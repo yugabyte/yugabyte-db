@@ -97,14 +97,11 @@ public class TestPgForeignKey extends BasePgSQLTest {
         isolationLevel = IsolationLevel.SERIALIZABLE;
       }
 
-      try (Connection connection1 = newConnectionBuilder()
-              .setIsolationLevel(isolationLevel)
-              .setAutoCommit(AutoCommit.DISABLED)
-              .connect();
-           Connection connection2 = newConnectionBuilder()
-                   .setIsolationLevel(isolationLevel)
-                   .setAutoCommit(AutoCommit.DISABLED)
-                   .connect()) {
+      ConnectionBuilder connBldr = getConnectionBuilder()
+          .withIsolationLevel(isolationLevel)
+          .withAutoCommit(AutoCommit.DISABLED);
+      try (Connection connection1 = connBldr.connect();
+           Connection connection2 = connBldr.connect()) {
 
         // Test update/delete conflicts.
         for (int id = 1; id < 20; id += 2) {
