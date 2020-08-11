@@ -71,26 +71,27 @@ public class TestPgRegressSecondaryIndexScan extends BasePgSQLTest {
     final String batchQuery =
         "SELECT elevation_ft FROM airports WHERE type = '%s' AND iso_country > '0';";
 
-    long rowScanTime;
-    long batchScanTime;
     LOG.info(String.format("Query: type = '%s', expected row count = %d", airportType, rowCount));
 
-    // Scan one row at a time.
-    rowScanTime = timeQueryWithRowCount(String.format(rowQuery, airportType), rowCount, execCount);
-    LOG.info(String.format("Query one row at a time (row count = %d). Scan time = %d",
-                           rowCount, rowScanTime));
+    try (Statement stmt = connection.createStatement()) {
+      // Scan one row at a time.
+      long rowScanTime =
+          timeQueryWithRowCount(stmt, String.format(rowQuery, airportType), rowCount, execCount);
+      LOG.info(String.format("Query one row at a time (row count = %d). Scan time = %d",
+                             rowCount, rowScanTime));
 
-    // Scan rows in batches.
-    batchScanTime = timeQueryWithRowCount(String.format(batchQuery, airportType),
-                                          rowCount, execCount);
-    LOG.info(String.format("Query rows in batches (row count = %d). Scan time = %d",
-                           rowCount, batchScanTime));
+      // Scan rows in batches.
+      long batchScanTime =
+          timeQueryWithRowCount(stmt, String.format(batchQuery, airportType), rowCount, execCount);
+      LOG.info(String.format("Query rows in batches (row count = %d). Scan time = %d",
+                             rowCount, batchScanTime));
 
-    // Batch select run about 10x better, but the perf number for smaller data-set can varry.
-    if (rowCount < 10000) {
-      perfAssertLessThan(batchScanTime * 3, rowScanTime);
-    } else {
-      perfAssertLessThan(batchScanTime * 7, rowScanTime);
+      // Batch select run about 10x better, but the perf number for smaller data-set can varry.
+      if (rowCount < 10000) {
+        perfAssertLessThan(batchScanTime * 3, rowScanTime);
+      } else {
+        perfAssertLessThan(batchScanTime * 7, rowScanTime);
+      }
     }
   }
 
@@ -103,26 +104,27 @@ public class TestPgRegressSecondaryIndexScan extends BasePgSQLTest {
     final String batchQuery =
         "SELECT elevation_ft FROM airports WHERE type = '%s' AND name > '!';";
 
-    long rowScanTime;
-    long batchScanTime;
     LOG.info(String.format("Query: type = '%s', expected row count = %d", airportType, rowCount));
 
-    // Scan one row at a time.
-    rowScanTime = timeQueryWithRowCount(String.format(rowQuery, airportType), rowCount, execCount);
-    LOG.info(String.format("Query one row at a time (row count = %d). Scan time = %d",
-                           rowCount, rowScanTime));
+    try (Statement stmt = connection.createStatement()) {
+      // Scan one row at a time.
+      long rowScanTime =
+          timeQueryWithRowCount(stmt, String.format(rowQuery, airportType), rowCount, execCount);
+      LOG.info(String.format("Query one row at a time (row count = %d). Scan time = %d",
+                             rowCount, rowScanTime));
 
-    // Scan rows in batches.
-    batchScanTime = timeQueryWithRowCount(String.format(batchQuery, airportType),
-                                          rowCount, execCount);
-    LOG.info(String.format("Query rows in batches (row count = %d). Scan time = %d",
-                           rowCount, batchScanTime));
+      // Scan rows in batches.
+      long batchScanTime =
+          timeQueryWithRowCount(stmt, String.format(batchQuery, airportType), rowCount, execCount);
+      LOG.info(String.format("Query rows in batches (row count = %d). Scan time = %d",
+                             rowCount, batchScanTime));
 
-    // Batch select run about 5 to 10x better, but the perf number for smaller data-set can varry.
-    if (rowCount < 10000) {
-      perfAssertLessThan(batchScanTime, rowScanTime);
-    } else {
-      perfAssertLessThan(batchScanTime * 4, rowScanTime);
+      // Batch select run about 5 to 10x better, but the perf number for smaller data-set can varry.
+      if (rowCount < 10000) {
+        perfAssertLessThan(batchScanTime, rowScanTime);
+      } else {
+        perfAssertLessThan(batchScanTime * 4, rowScanTime);
+      }
     }
   }
 
