@@ -21,8 +21,8 @@ Use the non-integer (floating-point and fixed-point) data types to specify non-i
 Data type | Description | Decimal precision |
 ---------|-----|-----|
 `FLOAT` | Inexact 32-bit floating point number | 7 |
-`DOUBLE` | Arbitrary-precision number  | no upper-bound |
-`DECIMAL` | Exact fixed-point number | 99 |
+`DOUBLE` | Inexact 64-bit floating point number | 15 |
+`DECIMAL` | Arbitrary-precision number  | no upper-bound |
 
 ## Syntax
 
