@@ -12,7 +12,7 @@ test: yb_pg_copy
 
 test: yb_bit
 test: yb_char
-test: yb_text
+test: yb_pg_text
 test: yb_bytea
 test: yb_pg_json
 test: yb_pg_jsonb
