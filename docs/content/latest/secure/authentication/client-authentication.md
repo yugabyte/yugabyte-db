@@ -245,3 +245,41 @@ Start `yb-tserver` with the following [`--ysql_hba_conf`](../../../reference/con
 ```
 
 This will enable authentication for all users except `yugabyte`.
+
+### Scram authentication
+
+
+In this case, we'll change the password of `yugabyte` user to `yugabyte` but in SCRAM instead of default MD5.
+
+You need to change the authentication of YSQL to use scram-sha-256 for authentication. This is a PostgreSQL config, so you have to use [--ysql-pg-conf]https://docs.yugabyte.com/latest/reference/configuration/yb-tserver/#ysql-pg-conf.
+Put this line in your gflag file:
+```
+ysql_pg_conf=password_encryption = scram-sha-256
+```
+Then you should change  [`--yb_hba_conf`](https://docs.yugabyte.com/latest/secure/authentication/client
+-authentication/)  to use  `scram-sha-256`. In this case, we put:
+```
+--ysql_hba_conf=host all postgres 0.0.0.0/0 trust, host all all 0.0.0.0/0 scram-sha-256, host all postgres ::0/0 trust, host all all ::0/0 scram-sha-256
+```
+Which says to require authentication for all users except `postgres` role.
+
+Then we connect to the server and change the password for role `yugabyte`:
+```
+./bin/ysqlsh --username=postgres
+postgres=# \password yugabyte
+Enter new password:
+Enter it again:
+```
+And verify that the password was hashed with SCRAM:
+```
+postgres=# SELECT
+    rolname, rolpassword
+FROM pg_authid
+WHERE rolcanlogin;
+ rolname  |                                                              rolpassword
+----------+---------------------------------------------------------------------------------------------------------------------------------------
+ postgres |
+ yugabyte | SCRAM-SHA-256$4096:dnsF94xZmdJYZHoW5wXtdA==$4bxAFNHgmz9VXIWUxijReO4zyJ0DnX/iLNndKq32WOg=:TSXL3EF0fCroBXTndmp16Wle4F1MH+qc1P1iVFkqMQ8=
+(2 rows)
+```
+
