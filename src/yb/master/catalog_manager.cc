@@ -299,6 +299,11 @@ DEFINE_test_flag(bool, tablegroup_master_only, false,
                  "This is only for MasterTest to be able to test tablegroups without the"
                  " transaction status table being created.");
 
+DEFINE_bool(enable_register_ts_from_raft, false, "Whether to register a tserver from the consensus "
+                                                 "information of a reported tablet.");
+
+DECLARE_int32(tserver_unresponsive_timeout_ms);
+
 namespace yb {
 namespace master {
 
@@ -4331,6 +4336,25 @@ void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uu
   }
 }
 
+bool CatalogManager::ReplicaMapDiffersFromConsensusState(const scoped_refptr<TabletInfo>& tablet,
+                                                         const ConsensusStatePB& cstate) {
+  TabletInfo::ReplicaMap locs;
+  tablet->GetReplicaLocations(&locs);
+  if (locs.size() != cstate.config().peers_size()) {
+    return true;
+  }
+  for (const auto& loc : locs) {
+    auto it = std::find_if(cstate.config().peers().begin(), cstate.config().peers().end(),
+                           [&](const auto& x) {
+                             return x.permanent_uuid() == loc.first;
+                           });
+    if (it == cstate.config().peers().end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
                                            const TabletReportPB& full_report,
                                            TabletReportUpdatesPB* full_report_update,
@@ -4642,14 +4666,13 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
               }
             }
           }
-
           // 6d(iii). Update the in-memory ReplicaLocations for this tablet using the new config.
           VLOG(2) << "Updating replicas for tablet " << tablet_id
-                  << " using config reported by " << ts_desc->permanent_uuid()
-                  << " to that committed in log index " << cstate.config().opid_index()
-                  << " with leader state from term " << cstate.current_term();
-          ReconcileTabletReplicasInLocalMemoryWithReport(tablet,
-              ts_desc->permanent_uuid(), cstate, report.state());
+                << " using config reported by " << ts_desc->permanent_uuid()
+                << " to that committed in log index " << cstate.config().opid_index()
+                << " with leader state from term " << cstate.current_term();
+          ReconcileTabletReplicasInLocalMemoryWithReport(
+            tablet, ts_desc->permanent_uuid(), cstate, report.state());
 
           // 6d(iv). Update the consensus state. Don't use 'prev_cstate' after this.
           LOG(INFO) << "Tablet: " << tablet->tablet_id() << " reported consensus state change."
@@ -4660,8 +4683,9 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
           tablet_was_mutated = true;
         } else {
           // Report opid_index is equal to the previous opid_index. If some
-          // replica is reporting the same consensus configuration we already know about and hasn't
-          // been added as replica, add it.
+          // replica is reporting the same consensus configuration we already know about, but we
+          // haven't yet heard from all the tservers in the config, update the in-memory
+          // ReplicaLocations.
           LOG(INFO) << "Peer " << ts_desc->permanent_uuid() << " sent "
                     << (full_report.is_incremental() ? "incremental" : "full tablet")
                     << " report for " << tablet->tablet_id()
@@ -4669,7 +4693,13 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
                     << ", prev state term: " << prev_cstate.current_term()
                     << ", prev state has_leader_uuid: " << prev_cstate.has_leader_uuid()
                     << ". Consensus state: " << cstate.ShortDebugString();
-          UpdateTabletReplicaInLocalMemory(ts_desc, &cstate, report.state(), tablet);
+          if (GetAtomicFlag(&FLAGS_enable_register_ts_from_raft) &&
+              ReplicaMapDiffersFromConsensusState(tablet, cstate)) {
+             ReconcileTabletReplicasInLocalMemoryWithReport(
+               tablet, ts_desc->permanent_uuid(), cstate, report.state());
+          } else {
+            UpdateTabletReplicaInLocalMemory(ts_desc, &cstate, report.state(), tablet);
+          }
         }
 
         // 7. Send an AlterSchema RPC if the tablet has an old schema version.
@@ -6107,6 +6137,22 @@ uint64_t CatalogManager::GetYsqlCatalogVersion() {
   return l->data().pb.ysql_catalog_config().version();
 }
 
+Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer) {
+  NodeInstancePB instance_pb;
+  instance_pb.set_permanent_uuid(peer.permanent_uuid());
+  instance_pb.set_instance_seqno(0);
+
+  TSRegistrationPB registration_pb;
+  auto* common = registration_pb.mutable_common();
+  *common->mutable_private_rpc_addresses() = peer.last_known_private_addr();
+  *common->mutable_broadcast_addresses() = peer.last_known_broadcast_addr();
+  *common->mutable_cloud_info() = peer.cloud_info();
+
+  return master_->ts_manager()->RegisterTS(instance_pb, registration_pb, master_->MakeCloudInfoPB(),
+                                           &master_->proxy_cache(),
+                                           RegisteredThroughHeartbeat::kFalse);
+}
+
 void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
     const scoped_refptr<TabletInfo>& tablet,
     const std::string& sender_uuid,
@@ -6123,10 +6169,31 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
       continue;
     }
     if (!master_->ts_manager()->LookupTSByUUID(peer.permanent_uuid(), &ts_desc)) {
-      LOG_WITH_PREFIX(WARNING) << "Tablet server has never reported in. "
-          << "Not including in replica locations map yet. Peer: " << peer.ShortDebugString()
-          << "; Tablet: " << tablet->ToString();
-      continue;
+      if (!GetAtomicFlag(&FLAGS_enable_register_ts_from_raft)) {
+        LOG_WITH_PREFIX(WARNING) << "Tablet server has never reported in. "
+        << "Not including in replica locations map yet. Peer: " << peer.ShortDebugString()
+        << "; Tablet: " << tablet->ToString();
+        continue;
+      }
+
+      LOG_WITH_PREFIX(INFO) << "Tablet server has never reported in. Registering the ts using "
+                            << "the raft config. Peer: " << peer.ShortDebugString()
+                            << "; Tablet: " << tablet->ToString();
+      Status s = RegisterTsFromRaftConfig(peer);
+      if (!s.ok()) {
+        LOG_WITH_PREFIX(WARNING) << "Could not register ts from raft config: " << s
+                                 << " Skip updating the replica map.";
+        continue;
+      }
+
+      // Guaranteed to find the ts since we just registered.
+      master_->ts_manager()->LookupTSByUUID(peer.permanent_uuid(), &ts_desc);
+      if (!ts_desc.get()) {
+        LOG_WITH_PREFIX(WARNING) << "Could not find ts with uuid " << peer.permanent_uuid()
+                                 << " after registering from raft config. Skip updating the replica"
+                                 << " map.";
+        continue;
+      }
     }
 
     // Do not update replicas in the NOT_STARTED or BOOTSTRAPPING state (unless they are stale).
@@ -6170,8 +6237,7 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
                                                     const RaftGroupStatePB& replica_state,
                                                     TabletReplica* new_replica) {
   // Tablets in state NOT_STARTED or BOOTSTRAPPING don't have a consensus.
-  if (consensus_state == nullptr ||
-      replica_state == tablet::NOT_STARTED || replica_state == tablet::BOOTSTRAPPING) {
+  if (consensus_state == nullptr) {
     new_replica->role = RaftPeerPB::NON_PARTICIPANT;
     new_replica->member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
   } else {
@@ -6182,6 +6248,9 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
   }
   new_replica->state = replica_state;
   new_replica->ts_desc = ts_desc;
+  if (!ts_desc->registered_through_heartbeat()) {
+    new_replica->time_updated = MonoTime::Now() - ts_desc->TimeSinceHeartbeat();
+  }
 }
 
 Status CatalogManager::GetTabletPeer(const TabletId& tablet_id,
