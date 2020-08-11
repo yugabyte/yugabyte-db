@@ -870,6 +870,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
                                          TabletLocationsPB* locs_pb);
 
+  // Check whether the tservers in the current replica map differs from those in the cstate when
+  // processing a tablet report. Ignore the roles reported by the cstate, just compare the
+  // tservers.
+  bool ReplicaMapDiffersFromConsensusState(const scoped_refptr<TabletInfo>& tablet,
+                                           const consensus::ConsensusStatePB& consensus_state);
+
   void ReconcileTabletReplicasInLocalMemoryWithReport(
       const scoped_refptr<TabletInfo>& tablet,
       const std::string& sender_uuid,
@@ -1112,6 +1118,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Creates a new TableInfo object.
   scoped_refptr<TableInfo> NewTableInfo(TableId id);
+
+  // Register the tablet server with the ts manager using the Raft config. This is called for
+  // servers that are part of the Raft config but haven't registered as yet.
+  CHECKED_STATUS RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer);
 
   template <class Loader>
   CHECKED_STATUS Load(const std::string& title, const int64_t term);

@@ -751,9 +751,9 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
 
   ClusterVerifier cluster_verifier(cluster_.get());
-  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
   // During this test we disable leader failure detection.
-  // So we use CONSISTENT_PREFIX for verification because it could end up w/o leader at all.
+  // So we use CONSISTENT_PREFIX for verification because it could end up w/o leader at all. We also
+  // don't call CheckCluster for this reason.
   ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
       workload.table_name(), ClusterVerifier::EXACTLY, workload.rows_inserted(),
       YBConsistencyLevel::CONSISTENT_PREFIX));
