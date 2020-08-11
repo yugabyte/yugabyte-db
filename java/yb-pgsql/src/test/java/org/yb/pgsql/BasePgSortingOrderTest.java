@@ -13,10 +13,10 @@
 
 package org.yb.pgsql;
 
-import org.junit.runner.RunWith;
+import static org.yb.AssertionWrappers.*;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -26,13 +26,10 @@ import java.util.Arrays;
 import java.util.Set;
 import java.util.HashSet;
 
-import static org.yb.AssertionWrappers.*;
+public abstract class BasePgSortingOrderTest extends BasePgSQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(BasePgSortingOrderTest.class);
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class BasePgSortingOrder extends BasePgSQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(BasePgSortingOrder.class);
-
-  private static final Set<String> supportedTypes = new HashSet(Arrays.asList(
+  private static final Set<String> supportedTypes = new HashSet<>(Arrays.asList(
     "BIGINT",
     "BIGSERIAL",
     "BIT",
@@ -139,7 +136,7 @@ public class BasePgSortingOrder extends BasePgSQLTest {
         String sql = String.format("CREATE TABLE tab_%s" +
                                    "(id bool, datum %s, PRIMARY KEY(id, datum));",
                                    formTableName(typeName), typeName);
-        runInvalidQuery(statement, sql);
+        runInvalidQuery(statement, sql, "not yet supported");
       }
     }
     LOG.info("CREATE TABLES WITH INVALID PRIMARY KEY - Done");
@@ -182,7 +179,8 @@ public class BasePgSortingOrder extends BasePgSQLTest {
       // Execute the statement.
       String stmt = String.format(stmtFormat, value);
       try (Statement statement = connection.createStatement()) {
-        runInvalidQuery(statement, stmt);
+        // Specific error message depends on a value, we're not verifying it here.
+        runInvalidQuery(statement, stmt, "ERROR");
       }
     }
 
@@ -214,9 +212,9 @@ public class BasePgSortingOrder extends BasePgSQLTest {
   }
 
   // Run one testcase.
-  public void RunTest(String[] typeNames,
-                      String[][] values,
-                      String[][] invalidValues) throws Exception {
+  public void runSortingOrderTest(String[] typeNames,
+                                  String[][] values,
+                                  String[][] invalidValues) throws Exception {
     // Create all table to test if a type is supported.
     createTables(typeNames);
 
