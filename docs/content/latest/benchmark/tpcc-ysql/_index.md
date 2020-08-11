@@ -43,10 +43,6 @@ $ tar -zxvf tpcc.tar.gz
 $ cd tpcc
 ```
 
-{{< note title="Note" >}}
-The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
-{{< /note >}}
-
 ### Start the Database
 
 Start your YugabyteDB cluster by following the steps [here](../../deploy/manual-deployment/).
