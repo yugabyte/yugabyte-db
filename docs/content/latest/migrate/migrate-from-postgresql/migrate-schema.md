@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: migrate-postgresql-schema
     parent: migrate-from-postgresql
-    weight: 740
+    weight: 730
 isTocNested: false
 showAsideToc: true
 ---
