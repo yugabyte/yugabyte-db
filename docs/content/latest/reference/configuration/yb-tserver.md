@@ -386,7 +386,7 @@ Default: `true`
 
 ##### --ysql_enable_auth
 
-Enables YSQL authentication.
+Enables YSQL authentication. For more information, see [Authentication - YSQL](../../secure/authentication/ysql-authentication).
 
 {{< note title="Note" >}}
 

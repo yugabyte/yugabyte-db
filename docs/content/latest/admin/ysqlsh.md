@@ -824,7 +824,7 @@ Print the current query buffer to the standard output. If the current query buff
 
 ##### \password [* username* ]
 
-Changes the password of the specified user (by default, the current user). This command prompts for the new password, encrypts it, and sends it to the server as an [ALTER ROLE](../../api/ysql/commands/dcl_alter_role) statement. This makes sure that the new password does not appear in cleartext in the command history, the server log, or elsewhere.
+Changes the password of the specified user (by default, the current user). This command prompts for the new password, encrypts it, and sends it to the server as an [ALTER ROLE](../../api/ysql/commands/dcl_alter_role) statement. This makes sure that the new password does not appear in clear text in the command history, the server log, or elsewhere.
 
 ##### \prompt [ *text* ] *name*
 
