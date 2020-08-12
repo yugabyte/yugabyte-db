@@ -90,7 +90,7 @@ cd ~/code/yugabyte-db
 {{< note title="Note" >}}
 
 If you see errors, such as `g++: internal compiler error: Killed`, the system has probably run out of memory.
-Try again by running the build script with less concurrency `-j1`.
+Try again by running the build script with less concurrency, for example, `-j1`.
 
 {{< /note >}}
 
