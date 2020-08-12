@@ -62,9 +62,9 @@ or in the `tserver.conf`, add the following line:
 --ysql_pg_conf=password_encryption=scram-sha-256
 ```
 
-2. Add the YB-TServer `--ysql_pg_conf`](../../../reference/configuration/yb-tserver/#ysql-hba-conf) flag, specifying rules for the use of the `scram-sha-256` authentication method.
+2. Add the YB-TServer [`--ysql_pg_conf`](../../../reference/configuration/yb-tserver/#ysql-pg-conf) flag, specifying rules for the use of the `scram-sha-256` authentication method.
 
-In the following example, 
+Here's an example of using the flag to create rules for using SCRAM-SHA-256 authentication:
 
 ```
 --ysql_hba_conf=host all yugabyte 0.0.0.0/0 trust, host all all 0.0.0.0/0 scram-sha-256, host all yugabyte ::0/0 trust, host all all ::0/0 scram-sha-256
@@ -76,7 +76,7 @@ or in the `yb-tserver.conf`, add the following line:
 --ysql_hba_conf=host all postgres 0.0.0.0/0 trust, host all all 0.0.0.0/0 scram-sha-256, host all postgres ::0/0 trust, host all all ::0/0 scram-sha-256
 ```
 
-For details on using the [--ysql_hba_conf](../../reference/configuration/yb-tserver/#ysql-hba-conf) flag to specify client authentication, see [Fine-grained authentication](../../secure/authentication/client-authentication).
+For details on using the [--ysql_hba_conf](../../../reference/configuration/yb-tserver/#ysql-hba-conf) flag to specify client authentication, see [Fine-grained authentication](../../authentication/client-authentication).
 
 ## Migrating MD5 passwords to SCRAM
 
