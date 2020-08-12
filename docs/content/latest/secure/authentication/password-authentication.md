@@ -16,38 +16,33 @@ By default, password authentication is disabled, allowing users and clients to c
 
 ## Password authentication methods
 
-The following password authentication methods are supported by YugabyteDB. 
-
-### `scram-sha-256`
-
-The `scram-sh-256` method performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](../../reference/drivers/ysql-client-drivers).
-
-Allows for two parties to verify they both know a secret without exchanging the secret.
+The following password authentication methods are supported by YugabyteDB.
 
 ### `md5`
 
-The MD5 method prevents password sniffing and avoids storing passwords on the server in plain text, but provides no protection if an attacker manages to steal the password hash from the server. The MD5 authentication method is the default password encryption for YugabyteDB clusters.
+The MD5 method (`md5`) prevents password sniffing and avoids storing passwords on the server in plain text, but provides no protection if an attacker manages to steal the password hash from the server. This method is the default password encryption for YugabyteDB clusters.
 
-The MD5 hash algorithm is not considered secure against determined attacks.
-
-Security risks include:
+The MD5 hash algorithm is not considered secure against determined attacks. Some of the security risks include:
 
 - If someone has access to a valid username/password combination, or their MD5-styled hash, they can log into any cluster where that user exists with the same username and password.
 - The "shared secret" is effectively shared over the wire every time the MD5 authentication method is used.
 
-### `password`
+### `scram-sha-256`
 
-The `password` method requires users or roles to provide an unencrypted password for authentication. Because the password is sent in clear text and is vulnerable to password "sniffing" attacks, it should not be used on untrusted networks. If TLS encryption is enabled, the password is protected.
+The SCRAM-SHA-256 method (`scram-sh-256`) performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](../../../reference/drivers/ysql-client-drivers).
+
+Allows for two parties to verify they both know a secret without exchanging the secret.
+
+For additional security, the SCRAM-SHA-256 method can be used with [encryption in transit (TLS encryption)](../../../secure/tls-encryption).
 
 ## YugabyteDB database passwords
 
 YugabyteDB database passwords are separate from operating system passwords. The password for each database user is stored in the `pg_authid` system catalog.
 
-Database passwords can be managed using the following: 
+Database passwords can be managed using the following:
 
-- [CREATE ROLE](../../api/ysql/commands/dcl_create_role)
-- [ALTER ROLE](../../api/ysql/commands/dcl_alter_role)
-- [`\password`](../../admin/ysqlsh/#password-username) metacommand.
+- YSQL API: [CREATE ROLE](../../../api/ysql/commands/dcl_create_role) and [ALTER ROLE](../../../api/ysql/commands/dcl_alter_role)
+- ysqlsh metacommand: [`\password`](../../../admin/ysqlsh/#password-username)
 
 ## Configure SCRAM-SHA-256 authentication
 
@@ -55,7 +50,7 @@ To configure a YugabyteDB cluster to use SCRAM-SHA-256 authentication for databa
 
 1. Change the password encryption method
 
-To change the password encryption method to SCRAM-SHA-256, add the YB-TServer [`--ysql_pg_conf`](../../reference/configuration/yb-tserver/#ysql-pg-conf) flag and set the value to `scram-sha-256`:
+To change the password encryption method to SCRAM-SHA-256, add the YB-TServer [`--ysql_pg_conf`](../../../reference/configuration/yb-tserver/#ysql-pg-conf) flag and set the value to `scram-sha-256`:
 
 ```sh
 --ysql_pg_conf="password_encryption=scram-sha-256"
@@ -67,7 +62,7 @@ or in the `tserver.conf`, add the following line:
 --ysql_pg_conf=password_encryption=scram-sha-256
 ```
 
-2. Specify the use of `scram-sha-256` with the YB-TServer `--ysql_pg_conf`](../../reference/configuration/yb-tserver/#ysql-hba-conf) flag.
+2. Add the YB-TServer `--ysql_pg_conf`](../../../reference/configuration/yb-tserver/#ysql-hba-conf) flag, specifying rules for the use of the `scram-sha-256` authentication method.
 
 In the following example, 
 
