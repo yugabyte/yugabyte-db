@@ -69,11 +69,12 @@ Here's an example of using the flag to create rules for using SCRAM-SHA-256 auth
 ```
 --ysql_hba_conf=host all yugabyte 0.0.0.0/0 trust, host all all 0.0.0.0/0 scram-sha-256, host all yugabyte ::0/0 trust, host all all ::0/0 scram-sha-256
 ```
+??? Need to review this with @ddorian and others
 
 or in the `yb-tserver.conf`, add the following line:
 
 ```
---ysql_hba_conf=host all postgres 0.0.0.0/0 trust, host all all 0.0.0.0/0 scram-sha-256, host all postgres ::0/0 trust, host all all ::0/0 scram-sha-256
+???
 ```
 
 For details on using the [--ysql_hba_conf](../../../reference/configuration/yb-tserver/#ysql-hba-conf) flag to specify client authentication, see [Fine-grained authentication](../../authentication/client-authentication).
