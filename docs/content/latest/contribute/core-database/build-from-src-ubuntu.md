@@ -65,7 +65,14 @@ cd ~/code/yugabyte-db
 ./yb_build.sh release
 ```
 
-The above command will build the release configuration, put the C++ binaries in `build/release-gcc-dynamic-ninja`, and will also create the `build/latest` symlink to that directory.
+{{< note title="Note" >}}
+
+If you see errors, such as `g++: internal compiler error: Killed`, the system has probably run out of memory.
+Try again by running the build script with less concurrency, for example, `-j1`.
+
+{{< /note >}}
+
+The command above will build the release configuration, add the C++ binaries into the `build/release-gcc-dynamic-ninja` directory, and create a `build/latest` symlink to that directory.
 
 
 {{< note title="Note" >}}
