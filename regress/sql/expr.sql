@@ -1153,6 +1153,58 @@ SELECT * FROM b_substr('123456789', -1);
 SELECT * FROM b_substr();
 
 --
+-- split()
+--
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", ",")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", "")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", " ")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,cd  e,f", " ")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,cd  e,f", "  ")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", "c,")
+$$) AS (results agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN split(null, null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN split(null, ",")
+$$) AS (results agtype);
+SELECT * FROM split(null, null);
+SELECT * FROM split('a,b,c,d,e,f', null);
+SELECT * FROM split(null, ',');
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN split(123456789, ",")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", -1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN split()
+$$) AS (results agtype);
+SELECT * FROM split(123456789, ',');
+SELECT * FROM split('a,b,c,d,e,f', -1);
+SELECT * FROM split('a,b,c,d,e,f');
+SELECT * FROM split();
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

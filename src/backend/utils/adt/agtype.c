@@ -27,6 +27,7 @@
 #include "access/htup_details.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_collation_d.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
@@ -5352,4 +5353,150 @@ Datum b_substr(PG_FUNCTION_ARGS)
     agtv_result.val.string.len = string_len;
 
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(split);
+
+Datum split(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    agtype_value *agtv_result;
+    text *param = NULL;
+    text *text_string = NULL;
+    text *text_delimiter = NULL;
+    Datum text_array;
+    Oid type;
+    int i;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs != 2)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("split() invalid number of arguments")));
+
+    /* check for a null string and delimiter */
+    if (nargs < 0 || nulls[0] || nulls[1])
+        PG_RETURN_NULL();
+
+    /*
+     * split() supports text, cstring, or the agtype string input for the
+     * string and delimiter values
+     */
+
+    for (i = 0; i < 2; i++)
+    {
+        arg = args[i];
+        type = types[i];
+
+        if (type != AGTYPEOID)
+        {
+            if (type == CSTRINGOID)
+                param = cstring_to_text(DatumGetCString(arg));
+            else if (type == TEXTOID)
+                param = DatumGetTextPP(arg);
+            else
+                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                errmsg("split() unsuppoted argument type %d",
+                                       type)));
+        }
+        else
+        {
+            agtype *agt_arg;
+            agtype_value *agtv_value;
+
+            /* get the agtype argument */
+            agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+            if (!AGT_ROOT_IS_SCALAR(agt_arg))
+                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                errmsg("split() only supports scalar arguments")));
+
+            agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+            /* check for agtype null */
+            if (agtv_value->type == AGTV_NULL)
+                PG_RETURN_NULL();
+            if (agtv_value->type == AGTV_STRING)
+                param = cstring_to_text_with_len(agtv_value->val.string.val,
+                                                 agtv_value->val.string.len);
+            else
+                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                errmsg("split() unsuppoted argument agtype %d",
+                                       agtv_value->type)));
+        }
+        if (i == 0)
+            text_string = param;
+        if (i == 1)
+            text_delimiter = param;
+    }
+
+    /*
+     * We need the strings as a text strings so that we can let PG deal with
+     * multibyte characters in the string. The result is an ArrayType
+     */
+    text_array = DirectFunctionCall2Coll(regexp_split_to_array,
+                                         DEFAULT_COLLATION_OID,
+                                         PointerGetDatum(text_string),
+                                         PointerGetDatum(text_delimiter));
+
+    /* now build an agtype array of strings */
+    if (PointerIsValid(DatumGetPointer(text_array)))
+    {
+        ArrayType *array = DatumGetArrayTypeP(text_array);
+        agtype_in_state result;
+        Datum *elements;
+        int nelements;
+
+        /* zero the state and deconstruct the ArrayType to TEXTOID */
+        memset(&result, 0, sizeof(agtype_in_state));
+        deconstruct_array(array, TEXTOID, -1, false, 'i', &elements, NULL,
+                          &nelements);
+
+        /* open the agtype array */
+        result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_ARRAY,
+                                       NULL);
+        /* add the values */
+        for (i = 0; i < nelements; i++)
+        {
+            char *string;
+            int string_len;
+            char *string_copy;
+            agtype_value agtv_string;
+            Datum d;
+
+            /* get the string element from the array */
+            string = VARDATA(elements[i]);
+            string_len = VARSIZE(elements[i]) - VARHDRSZ;
+
+            /* make a copy */
+            string_copy = palloc(string_len);
+            memcpy(string_copy, string, string_len);
+
+            /* build the agtype string */
+            agtv_string.type = AGTV_STRING;
+            agtv_string.val.string.val = string_copy;
+            agtv_string.val.string.len = string_len;
+
+            /* get the datum */
+            d = PointerGetDatum(agtype_value_to_agtype(&agtv_string));
+
+            /* add the value */
+            add_agtype(d, false, &result, AGTYPEOID, false);
+        }
+
+        /* close the array */
+        result.res = push_agtype_value(&result.parse_state, WAGT_END_ARRAY, NULL);
+
+        agtv_result = result.res;
+    }
+    else
+        elog(ERROR, "split() unexpected error");
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }

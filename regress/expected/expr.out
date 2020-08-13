@@ -2663,6 +2663,132 @@ LINE 1: SELECT * FROM b_substr();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
+-- split()
+--
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", ",")
+$$) AS (results agtype);
+            results             
+--------------------------------
+ ["a", "b", "c", "d", "e", "f"]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", "")
+$$) AS (results agtype);
+                         results                         
+---------------------------------------------------------
+ ["a", ",", "b", ",", "c", ",", "d", ",", "e", ",", "f"]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", " ")
+$$) AS (results agtype);
+     results     
+-----------------
+ ["a,b,c,d,e,f"]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,cd  e,f", " ")
+$$) AS (results agtype);
+        results        
+-----------------------
+ ["a,b,cd", "", "e,f"]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,cd  e,f", "  ")
+$$) AS (results agtype);
+      results      
+-------------------
+ ["a,b,cd", "e,f"]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", "c,")
+$$) AS (results agtype);
+      results      
+-------------------
+ ["a,b,", "d,e,f"]
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN split(null, null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN split(null, ",")
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM split(null, null);
+ split 
+-------
+ 
+(1 row)
+
+SELECT * FROM split('a,b,c,d,e,f', null);
+ split 
+-------
+ 
+(1 row)
+
+SELECT * FROM split(null, ',');
+ split 
+-------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN split(123456789, ",")
+$$) AS (results agtype);
+ERROR:  split() unsuppoted argument agtype 3
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f", -1)
+$$) AS (results agtype);
+ERROR:  split() unsuppoted argument agtype 3
+SELECT * FROM cypher('expr', $$
+    RETURN split("a,b,c,d,e,f")
+$$) AS (results agtype);
+ERROR:  invalid number of input parameters for split()
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN split()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM split(123456789, ',');
+ERROR:  split() unsuppoted argument type 23
+SELECT * FROM split('a,b,c,d,e,f', -1);
+ERROR:  split() unsuppoted argument type 23
+SELECT * FROM split('a,b,c,d,e,f');
+ERROR:  split() invalid number of arguments
+SELECT * FROM split();
+ERROR:  function split() does not exist
+LINE 1: SELECT * FROM split();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
