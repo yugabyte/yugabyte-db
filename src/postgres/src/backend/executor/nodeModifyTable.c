@@ -1118,6 +1118,8 @@ ExecUpdate(ModifyTableState *mtstate,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
+		bool		partition_constraint_failed;
+
 		if (resultRelInfo->ri_WithCheckOptions != NIL)
 			ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK, resultRelInfo, slot, estate);
 
@@ -1130,7 +1132,17 @@ ExecUpdate(ModifyTableState *mtstate,
 		/*
 		 * Verify that the update does not violate partition constraints.
 		 */
-		ExecPartitionCheck(resultRelInfo, slot, estate, true /* emitError */);
+		partition_constraint_failed =
+			resultRelInfo->ri_PartitionCheck &&
+			!ExecPartitionCheck(resultRelInfo, slot, estate, false /* emitError */);
+
+		if (partition_constraint_failed)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("This operation would cause a row to change the partition, "
+							"this is not yet supported"),
+					 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
+							 "Click '+' on the description to raise its priority", 5310)));
 
 		RangeTblEntry *rte = rt_fetch(resultRelInfo->ri_RangeTableIndex,
 									  estate->es_range_table);
