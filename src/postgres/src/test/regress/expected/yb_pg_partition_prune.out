@@ -2067,8 +2067,8 @@ insert into ab values (1,2);
 explain (analyze, costs off, summary off, timing off)
 -- TODO(jason): fix output when closing issue #5310
 update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
-ERROR:  new row for relation "ab_a1_b2" violates partition constraint
-DETAIL:  Failing row contains (1, 3).
+ERROR:  This operation would cause a row to change the partition, this is not yet supported
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/5310. Click '+' on the description to raise its priority
 table ab;
  a | b
 ---+---
