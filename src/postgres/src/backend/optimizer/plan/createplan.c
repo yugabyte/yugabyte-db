@@ -2791,7 +2791,11 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		primary_key_attrs = bms_add_member(primary_key_attrs, tle->resno);
 	}
 
-	/* Verify RETURNING columns are either primary key columns or UPDATE's SET columns. */
+	/*
+	 * Verify RETURNING columns are either primary key or
+	 * UPDATE's SET and not pushed down columns.
+	 * TODO(dmitry): Remove restriction for pushed down columns on #5392 completion.
+	 */
 	if (list_length(path->returningLists) > 0)
 	{
 		foreach(values, linitial(path->returningLists))
@@ -2799,8 +2803,9 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			TargetEntry *tle;
 
 			tle = lfirst_node(TargetEntry, values);
-			if (!bms_is_member(tle->resorigcol - attr_offset, update_attrs) &&
-				!bms_is_member(tle->resorigcol, primary_key_attrs))
+			if ((!bms_is_member(tle->resorigcol - attr_offset, update_attrs) &&
+				!bms_is_member(tle->resorigcol, primary_key_attrs)) ||
+				bms_is_member(tle->resorigcol, pushdown_update_attrs))
 				return false;
 		}
 	}
