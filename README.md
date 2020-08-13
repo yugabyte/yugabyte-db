@@ -6,7 +6,7 @@
 [![Documentation Status](https://readthedocs.org/projects/ansicolortags/badge/?version=latest)](https://docs.yugabyte.com/)
 [![Ask in forum](https://img.shields.io/badge/ask%20us-forum-orange.svg)](https://forum.yugabyte.com/)
 [![Slack chat](https://img.shields.io/badge/Slack:-%23yugabyte_db-blueviolet.svg?logo=slack)](https://www.yugabyte.com/slack)
-[![Analytics](https://yb-gcp-cloud-001.wl.r.appspot.com/UA-104956980-4/home?useReferer&pixel)](https://github.com/yugabyte/ga-beacon)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
 
 - [What is YugabyteDB?](#what-is-yugabytedb)
 - [Get Started](#get-started)
