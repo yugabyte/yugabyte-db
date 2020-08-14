@@ -144,6 +144,15 @@ public class NodeManager extends DevopsBase {
           }
         }
       }
+      if (params instanceof AnsibleSetupServer.Params &&
+          userIntent.providerType.equals(Common.CloudType.azu)) {
+        Region r = params.getRegion();
+        String customSecurityGroupId = r.getSecurityGroupId();
+          if (customSecurityGroupId != null) {
+            subCommand.add("--security_group_id");
+            subCommand.add(customSecurityGroupId);
+          }
+      }
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
@@ -417,6 +426,14 @@ public class NodeManager extends DevopsBase {
           if (taskParam.ipArnString != null) {
             commandArgs.add("--iam_profile_arn");
             commandArgs.add(taskParam.ipArnString);
+          }
+        }
+        if (cloudType.equals(Common.CloudType.azu)) {
+          Region r = taskParam.getRegion();
+          String vnetName = r.getVnetName();
+          if (vnetName != null && !vnetName.isEmpty()) {
+            commandArgs.add("--vpcId");
+            commandArgs.add(vnetName);
           }
         }
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));

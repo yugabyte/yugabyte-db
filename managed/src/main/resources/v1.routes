@@ -157,6 +157,7 @@ PUT    /customers/:cUUID/universes/:universeUUID/nodes/:nodeName               c
 GET    /metadata/column_types                                                  com.yugabyte.yw.controllers.TablesController.getColumnTypes()
 GET    /metadata/ebs_types                                                     com.yugabyte.yw.controllers.InstanceTypeController.getEBSTypes()
 GET    /metadata/gcp_types                                                     com.yugabyte.yw.controllers.InstanceTypeController.getGCPTypes()
+GET    /metadata/azu_types                                                     com.yugabyte.yw.controllers.InstanceTypeController.getAZUTypes()
 
 # Schedule Management API
 GET    /customers/:cUUID/schedules                                             com.yugabyte.yw.controllers.ScheduleController.list(cUUID: java.util.UUID)

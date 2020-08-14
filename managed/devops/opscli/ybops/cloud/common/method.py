@@ -126,6 +126,8 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--instance_tags",
                                  required=False,
                                  help="Tags for instances being created.")
+        self.parser.add_argument("--vpcId", required=False,
+                                 help="name of the virtual network associated with the subnet")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
