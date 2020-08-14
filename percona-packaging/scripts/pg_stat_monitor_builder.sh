@@ -10,15 +10,19 @@ Usage: $0 [OPTIONS]
     The following options may be given :
         --builddir=DIR      Absolute path to the dir where all actions will be performed
         --get_sources       Source will be downloaded from github
-        --build_src_rpm     If it is set - src rpm will be built
-        --build_src_deb  If it is set - source deb package will be built
-        --build_rpm         If it is set - rpm will be built
-        --build_deb         If it is set - deb will be built
-        --install_deps      Install build dependencies(root privilages are required)
+        --build_src_rpm     If it is 1 src rpm will be built
+        --build_source_deb  If it is 1 source deb package will be built
+        --build_rpm         If it is 1 rpm will be built
+        --build_deb         If it is 1 deb will be built
+        --build_tarball     If it is 1 tarball will be built
+        --install_deps      Install build dependencies(root previlages are required)
         --branch            Branch for build
         --repo              Repo for build
+        --rpm_release       RPM version( default = 1)
+        --deb_release       DEB version( default = 1)
+        --pg_release        PPG version build on( default = 11)
         --help) usage ;;
-Example $0 --builddir=/tmp/BUILD --get_sources=1 --build_src_rpm=1 --build_rpm=1
+Example $0 --builddir=/tmp/test --get_sources=1 --build_src_rpm=1 --build_rpm=1
 EOF
         exit 1
 }
@@ -27,7 +31,7 @@ append_arg_to_args () {
   args="$args "$(shell_quote_string "$1")
 }
 
-parse_arguments() {
+ parse_arguments() {
     pick_args=
     if test "$1" = PICK-ARGS-FROM-ARGV
     then
@@ -38,15 +42,20 @@ parse_arguments() {
     for arg do
         val=$(echo "$arg" | sed -e 's;^--[^=]*=;;')
         case "$arg" in
+            # these get passed explicitly to mysqld
             --builddir=*) WORKDIR="$val" ;;
             --build_src_rpm=*) SRPM="$val" ;;
-            --build_src_deb=*) SDEB="$val" ;;
+            --build_source_deb=*) SDEB="$val" ;;
             --build_rpm=*) RPM="$val" ;;
             --build_deb=*) DEB="$val" ;;
             --get_sources=*) SOURCE="$val" ;;
+            --build_tarball=*) TARBALL="$val" ;;
+            --install_deps=*) INSTALL="$val" ;;
             --branch=*) BRANCH="$val" ;;
             --repo=*) REPO="$val" ;;
-            --install_deps=*) INSTALL="$val" ;;
+            --rpm_release=*) RPM_RELEASE="$val" ;;
+            --deb_release=*) DEB_RELEASE="$val" ;;
+            --pg_release=*) PG_RELEASE="$val" ;;
             --help) usage ;;
             *)
               if test -n "$pick_args"
@@ -74,32 +83,11 @@ check_workdir(){
 }
 
 add_percona_yum_repo(){
-    if [ ! -f /etc/yum.repos.d/percona-dev.repo ]
-    then
-      wget http://jenkins.percona.com/yum-repo/percona-dev.repo
-      mv -f percona-dev.repo /etc/yum.repos.d/
+    if [ ! -f /etc/yum.repos.d/percona-dev.repo ]; then
+        curl -o /etc/yum.repos.d/percona-dev.repo https://jenkins.percona.com/yum-repo/percona-dev.repo
+        sed -i 's:$basearch:x86_64:g' /etc/yum.repos.d/percona-dev.repo
     fi
-    yum -y install https://repo.percona.com/yum/percona-release-latest.noarch.rpm
-    percona-release disable all
-    percona-release enable ppg-11 release
     return
-}
-
-add_percona_apt_repo(){
-  if [ ! -f /etc/apt/sources.list.d/percona-dev.list ]; then
-    cat >/etc/apt/sources.list.d/percona-dev.list <<EOL
-deb http://jenkins.percona.com/apt-repo/ @@DIST@@ main
-deb-src http://jenkins.percona.com/apt-repo/ @@DIST@@ main
-EOL
-    sed -i "s:@@DIST@@:$OS_NAME:g" /etc/apt/sources.list.d/percona-dev.list
-  fi
-  wget -qO - http://jenkins.percona.com/apt-repo/8507EFA5.pub | apt-key add -
-  wget https://repo.percona.com/apt/percona-release_latest.generic_all.deb
-  dpkg -i percona-release_latest.generic_all.deb
-  percona-release disable all
-  rm -f percona-release_latest.generic_all.deb
-  percona-release enable ppg-11 release
-  return
 }
 
 get_sources(){
@@ -109,14 +97,19 @@ get_sources(){
         echo "Sources will not be downloaded"
         return 0
     fi
-    PRODUCT=percona-pg-stat-monitor
-    echo "PRODUCT=${PRODUCT}" > pg-stat-monitor.properties
-
+    PRODUCT=percona-pg-stat-monitor${PG_RELEASE}
     PRODUCT_FULL=${PRODUCT}-${VERSION}
+
+    echo "PRODUCT=${PRODUCT}" > pg-stat-monitor.properties
     echo "PRODUCT_FULL=${PRODUCT_FULL}" >> pg-stat-monitor.properties
-    echo "VERSION=${PSM_VER}" >> pg-stat-monitor.properties
+    echo "VERSION=${VERSION}" >> pg-stat-monitor.properties
+    echo "BRANCH_NAME=$(echo ${BRANCH} | awk -F '/' '{print $(NF)}')" >> pg-stat-monitor.properties
     echo "BUILD_NUMBER=${BUILD_NUMBER}" >> pg-stat-monitor.properties
     echo "BUILD_ID=${BUILD_ID}" >> pg-stat-monitor.properties
+    echo "BRANCH_NAME=$(echo ${BRANCH} | awk -F '/' '{print $(NF)}')" >> pg-stat-monitor.properties
+    echo "PG_RELEASE=${PG_RELEASE}" >> pg-stat-monitor.properties
+    echo "RPM_RELEASE=${RPM_RELEASE}" >> pg-stat-monitor.properties
+    echo "DEB_RELEASE=${DEB_RELEASE}" >> pg-stat-monitor.properties
     git clone "$REPO" ${PRODUCT_FULL}
     retval=$?
     if [ $retval != 0 ]
@@ -136,13 +129,20 @@ get_sources(){
     rm -rf rpm debian
     cp -r percona-packaging/rpm ./
     cp -r percona-packaging/debian ./
+
+    EDITFILES="debian/control debian/control.in debian/rules rpm/pg-stat-monitor.spec"
+    for file in $EDITFILES; do
+        sed -i "s:@@PG_REL@@:${PG_RELEASE}:g" "$file"
+    done
+
+    sed -i "s:@@RPM_RELEASE@@:${RPM_RELEASE}:g" rpm/pg-stat-monitor.spec
+
     cd ${WORKDIR}
     #
     source pg-stat-monitor.properties
     #
-
     tar --owner=0 --group=0 --exclude=.* -czf ${PRODUCT_FULL}.tar.gz ${PRODUCT_FULL}
-    echo "UPLOAD=UPLOAD/experimental/BUILDS/${PRODUCT}/${PRODUCT_FULL}/${PSM_BRANCH}/${REVISION}/${BUILD_ID}" >> pg-stat-monitor.properties
+    echo "UPLOAD=UPLOAD/experimental/BUILDS/${PRODUCT}/${PRODUCT_FULL}/${BRANCH}/${REVISION}/${BUILD_ID}" >> pg-stat-monitor.properties
     mkdir $WORKDIR/source_tarball
     mkdir $CURDIR/source_tarball
     cp ${PRODUCT_FULL}.tar.gz $WORKDIR/source_tarball
@@ -154,14 +154,16 @@ get_sources(){
 
 get_system(){
     if [ -f /etc/redhat-release ]; then
-        RHEL=$(rpm --eval %rhel)
-        ARCH=$(echo $(uname -m) | sed -e 's:i686:i386:g')
-        OS_NAME="el$RHEL"
-        OS="rpm"
+        GLIBC_VER_TMP="$(rpm glibc -qa --qf %{VERSION})"
+        export RHEL=$(rpm --eval %rhel)
+        export ARCH=$(echo $(uname -m) | sed -e 's:i686:i386:g')
+        export OS_NAME="el$RHEL"
+        export OS="rpm"
     else
-        ARCH=$(uname -m)
-        OS_NAME="$(lsb_release -sc)"
-        OS="deb"
+        GLIBC_VER_TMP="$(dpkg-query -W -f='${Version}' libc6 | awk -F'-' '{print $1}')"
+        export ARCH=$(uname -m)
+        export OS_NAME="$(lsb_release -sc)"
+        export OS="deb"
     fi
     return
 }
@@ -178,61 +180,68 @@ install_deps() {
         exit 1
     fi
     CURPLACE=$(pwd)
-
-    if [ "x$OS" = "xrpm" ]; then
-      yum -y install wget
-      add_percona_yum_repo
-      wget http://jenkins.percona.com/yum-repo/percona-dev.repo
-      mv -f percona-dev.repo /etc/yum.repos.d/
-      yum clean all
-      RHEL=$(rpm --eval %rhel)
-      if [ ${RHEL} = 8 ]; then
-          dnf -y module disable postgresql
-          dnf config-manager --set-enabled codeready-builder-for-rhel-8-x86_64-rpms
-          dnf clean all
-          rm -r /var/cache/dnf
-          dnf -y upgrade
-          yum -y install perl
-      else
-          until yum -y install centos-release-scl; do
-              echo "waiting"
-              sleep 1
-          done
-          yum -y install epel-release
-          INSTALL_LIST="llvm-toolset-7-clang llvm5.0-devel"
-          yum -y install ${INSTALL_LIST}
-          source /opt/rh/devtoolset-7/enable
-          source /opt/rh/llvm-toolset-7/enable
-          INSTALL_LIST="clang-devel git clang llvm-devel rpmdevtools vim wget"
-          yum -y install ${INSTALL_LIST}
-          yum -y install binutils gcc gcc-c++
-      fi
-      INSTALL_LIST="percona-postgresql-common clang-devel llvm-devel percona-postgresql11-devel git rpm-build rpmdevtools wget gcc make autoconf"
-      yum -y install ${INSTALL_LIST}
-
+    if [ "$OS" == "rpm" ]
+    then
+        yum install -y https://repo.percona.com/yum/percona-release-latest.noarch.rpm
+        add_percona_yum_repo
+        if [[ ${PG_RELEASE} == "11" ]]; then
+            percona-release enable ppg-11 release
+        elif [[ $PG_RELEASE == "12" ]]; then
+            percona-release enable ppg-12 release
+        fi
+        yum -y install git wget
+        PKGLIST+=" clang-devel git clang llvm-devel rpmdevtools vim wget"
+        PKGLIST+=" perl binutils gcc gcc-c++"
+        PKGLIST+=" percona-postgresql-common clang-devel llvm-devel percona-postgresql${PG_RELEASE}-devel git rpm-build rpmdevtools wget gcc make autoconf"
+        if [[ "${RHEL}" -eq 8 ]]; then 
+            dnf -y module disable postgresql
+        elif [[ "${RHEL}" -eq 7 ]]; then
+            PKGLIST+=" llvm-toolset-7-clang llvm-toolset-7-llvm-devel llvm5.0-devel"
+            until yum -y install epel-release centos-release-scl; do
+                yum clean all
+                sleep 1
+                echo "waiting"
+            done
+            until yum -y makecache; do
+                yum clean all
+                sleep 1
+                echo "waiting"
+            done
+        fi
+        until yum -y install ${PKGLIST}; do
+            echo "waiting"
+            sleep 1
+        done
     else
-      export DEBIAN=$(lsb_release -sc)
-      export ARCH=$(echo $(uname -m) | sed -e 's:i686:i386:g')
-      apt-get -y install gnupg2
-      add_percona_apt_repo
-      apt-get update || true
-      LLVM_EXISTS=$(grep -c "apt.llvm.org" /etc/apt/sources.list)
-      if [ ${LLVM_EXISTS} = 0 ]; then
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
-          echo "deb http://apt.llvm.org/${DEBIAN}/ llvm-toolchain-${DEBIAN}-7 main" >> /etc/apt/sources.list
-          echo "deb-src http://apt.llvm.org/${DEBIAN}/ llvm-toolchain-${DEBIAN}-7 main" >> /etc/apt/sources.list
-          apt-get --allow-unauthenticated update
-      fi
-      apt-get update || true
-      INSTALL_LIST="build-essential percona-postgresql-11 debconf debhelper clang-7 devscripts dh-exec dh-systemd git wget libkrb5-dev libssl-dev percona-postgresql-common percona-postgresql-server-dev-all"
-      DEBIAN_FRONTEND=noninteractive apt-get -y --allow-unauthenticated install ${INSTALL_LIST}
-      INSTALL_LIST="build-essential debconf debhelper devscripts dh-exec dh-systemd git wget libxml-checker-perl libxml-libxml-perl libio-socket-ssl-perl libperl-dev libssl-dev libxml2-dev txt2man zlib1g-dev libpq-dev"
-      until DEBIAN_FRONTEND=noninteractive apt-get -y --allow-unauthenticated install ${INSTALL_LIST}; do
-        sleep 1
-        echo "waiting"
-      done
-      apt-get -y --allow-unauthenticated install libmysqlclient-dev || true
-      apt-get -y --allow-unauthenticated install default-libmysqlclient-dev || true
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get -y install lsb-release gnupg git wget
+
+        wget https://repo.percona.com/apt/percona-release_latest.$(lsb_release -sc)_all.deb && dpkg -i percona-release_latest.$(lsb_release -sc)_all.deb
+        if [[ "${PG_RELEASE}" == "11" ]]; then
+            percona-release enable ppg-11 release
+        elif [[ "${PG_RELEASE}" == "12" ]]; then
+            percona-release enable ppg-12 release
+        fi
+        apt-get update
+
+        if [[ "${OS_NAME}" != "focal" ]]; then
+            LLVM_EXISTS=$(grep -c "apt.llvm.org" /etc/apt/sources.list)
+            if [ "${LLVM_EXISTS}" == 0 ]; then
+                wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
+                echo "deb http://apt.llvm.org/${OS_NAME}/ llvm-toolchain-${OS_NAME}-7 main" >> /etc/apt/sources.list
+                echo "deb-src http://apt.llvm.org/${OS_NAME}/ llvm-toolchain-${OS_NAME}-7 main" >> /etc/apt/sources.list
+                apt-get update
+            fi
+        fi
+
+        PKGLIST+=" percona-postgresql-${PG_RELEASE} debconf debhelper clang-7 devscripts dh-exec dh-systemd git wget libkrb5-dev libssl-dev percona-postgresql-common percona-postgresql-server-dev-all"
+        PKGLIST+=" build-essential debconf debhelper devscripts dh-exec dh-systemd git wget libxml-checker-perl libxml-libxml-perl libio-socket-ssl-perl libperl-dev libssl-dev libxml2-dev txt2man zlib1g-dev libpq-dev"
+
+        until DEBIAN_FRONTEND=noninteractive apt-get -y install ${PKGLIST}; do
+            sleep 1
+            echo "waiting"
+        done
+
     fi
     return;
 }
@@ -350,8 +359,8 @@ build_rpm(){
         source /opt/rh/devtoolset-7/enable
         source /opt/rh/llvm-toolset-7/enable
     fi
-    export LIBPQ_DIR=/usr/pgsql-11/
-    export LIBRARY_PATH=/usr/pgsql-11/lib/:/usr/pgsql-11/include/
+    export LIBPQ_DIR=/usr/pgsql-${PG_RELEASE}/
+    export LIBRARY_PATH=/usr/pgsql-${PG_RELEASE}/lib/:/usr/pgsql-${PG_RELEASE}/include/
     rpmbuild --define "_topdir ${WORKDIR}/rpmbuild" --define "dist .$OS_NAME" --define "version ${VERSION}" --rebuild rpmbuild/SRPMS/$SRC_RPM
 
     return_code=$?
@@ -389,7 +398,7 @@ build_source_deb(){
     mv ${TARFILE} percona-pg-stat-monitor_${VERSION}.orig.tar.gz
     cd ${BUILDDIR}
 
-    dch -D unstable --force-distribution -v "${VERSION}-${RELEASE}" "Update to new percona-pg-stat-monitor version ${VERSION}"
+    dch -D unstable --force-distribution -v "${VERSION}-${DEB_RELEASE}" "Update to new percona-pg-stat-monitor${PG_RELEASE} version ${VERSION}"
     dpkg-buildpackage -S
     cd ../
     mkdir -p $WORKDIR/source_deb
@@ -422,19 +431,17 @@ build_deb(){
     cd $WORKDIR
     rm -fv *.deb
     #
-    export DEBIAN=$(lsb_release -sc)
     export ARCH=$(echo $(uname -m) | sed -e 's:i686:i386:g')
     #
-    echo "DEBIAN=${DEBIAN}" >> pg-stat-monitor.properties
+    echo "DEBIAN=${OS_NAME}" >> pg-stat-monitor.properties
     echo "ARCH=${ARCH}" >> pg-stat-monitor.properties
-
     #
     DSC=$(basename $(find . -name '*.dsc' | sort | tail -n1))
     #
     dpkg-source -x ${DSC}
     #
     cd percona-pg-stat-monitor-${VERSION}
-    dch -m -D "${DEBIAN}" --force-distribution -v "1:${VERSION}-${RELEASE}.${DEBIAN}" 'Update distribution'
+    dch -m -D "${OS_NAME}" --force-distribution -v "1:${VERSION}-${DEB_RELEASE}.${OS_NAME}" 'Update distribution'
     unset $(locale|cut -d= -f1)
     dpkg-buildpackage -rfakeroot -us -uc -b
     mkdir -p $CURDIR/deb
@@ -442,10 +449,9 @@ build_deb(){
     cp $WORKDIR/*.*deb $WORKDIR/deb
     cp $WORKDIR/*.*deb $CURDIR/deb
 }
-#main
 
 CURDIR=$(pwd)
-VERSION_FILE=$CURDIR/pg-stat-monitor.properties
+VERSION_FILE=$CURDIR/percona-pg-stat-monitor.properties
 args=
 WORKDIR=
 SRPM=0
@@ -453,21 +459,19 @@ SDEB=0
 RPM=0
 DEB=0
 SOURCE=0
+TARBALL=0
 OS_NAME=
 ARCH=
 OS=
+REVISION=0
+BRANCH="master"
 INSTALL=0
 RPM_RELEASE=1
 DEB_RELEASE=1
-REVISION=0
-BRANCH="master"
 REPO="https://github.com/Percona/pg_stat_monitor.git"
-PRODUCT=percona-pg-stat-monitor
-DEBUG=0
+VERSION="1.0.0"
+PG_RELEASE=11
 parse_arguments PICK-ARGS-FROM-ARGV "$@"
-VERSION='1.0.0'
-RELEASE='1'
-PRODUCT_FULL=${PRODUCT}-${VERSION}-${RELEASE}
 
 check_workdir
 get_system
