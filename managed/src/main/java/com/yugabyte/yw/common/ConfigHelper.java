@@ -41,6 +41,8 @@ public class ConfigHelper {
           return "configs/gcp-region-metadata.yml";
         case GCPInstanceTypeMetadata:
           return "configs/gcp-instance-type-metadata.yml";
+        case AZURegionMetadata:
+          return "configs/azu-region-metadata.yml";
         case DockerRegionMetadata:
           return "configs/docker-region-metadata.yml";
         case DockerInstanceTypeMetadata:
@@ -58,6 +60,8 @@ public class ConfigHelper {
           return "AWS Region Metadata";
         case GCPRegionMetadata:
           return "GCP Region Metadata";
+        case AZURegionMetadata:
+          return "Azure Region Metadata";
         case DockerRegionMetadata:
           return "Docker Region Metadata";
         case SoftwareReleases:
