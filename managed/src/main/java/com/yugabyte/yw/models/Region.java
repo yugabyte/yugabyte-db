@@ -32,6 +32,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
 @Entity
 public class Region extends Model {
   private static final String SECURITY_GROUP_KEY = "sg_id";
+  private static final String VNET_KEY = "vnet";
 
   @Id
   public UUID uuid;
@@ -96,6 +97,22 @@ public class Region extends Model {
     if (details != null) {
       JsonNode sgNode = details.get(SECURITY_GROUP_KEY);
       return sgNode == null || sgNode.isNull() ? null : sgNode.asText();
+    }
+    return null;
+  }
+
+  public void setVnetName(String vnetName) {
+    if (details == null) {
+      details = Json.newObject();
+    }
+    ((ObjectNode) details).put(VNET_KEY, vnetName);
+    save();
+  }
+
+  public String getVnetName() {
+    if (details != null) {
+      JsonNode vnetNode = details.get(VNET_KEY);
+      return vnetNode == null || vnetNode.isNull() ? null : vnetNode.asText();
     }
     return null;
   }

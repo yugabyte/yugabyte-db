@@ -1,11 +1,19 @@
+# Copyright 2020 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, \
     DestroyInstancesMethod, AbstractInstancesMethod
 import logging
 import json
-
-DEFAULT_AZURE_CENTOS_IMAGE = '7.8.2020051900'
+import glob
+import os
 
 
 class AzureNetworkBootstrapMethod(AbstractNetworkMethod):
@@ -27,8 +35,10 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
 
     def add_extra_args(self):
         super(AzureCreateInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--volume_type", choices=["Premium_LRS"], default="Premium_LRS",
-                                 help="Volume type for volumes on EBS-backed instances.")
+        self.parser.add_argument("--volume_type", choices=["premium_lrs", "standardssd_lrs", "ultrassd_lrs"],
+                                 default="premium_lrs", help="Volume type for Azure instances.")
+        self.parser.add_argument("--security_group_id", default=None,
+                                 help="Azure comma delimited security group IDs.")
 
     def preprocess_args(self, args):
         super(AzureCreateInstancesMethod, self).preprocess_args(args)
@@ -65,11 +75,6 @@ class AzureDestroyInstancesMethod(DestroyInstancesMethod):
         super(AzureDestroyInstancesMethod, self).__init__(base_command)
 
     def callback(self, args):
-        host_info = self.cloud.get_host_info(args)
-        if not host_info:
-            logging.error("Host {} does not exists.".format(args.search_pattern))
-            return
-
         self.cloud.destroy_instance(args)
 
 
@@ -82,12 +87,26 @@ class AzureAccessAddKeyMethod(AbstractAccessMethod):
         print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))
 
 
+class AzureAccessDeleteKeyMethod(AbstractAccessMethod):
+    def __init__(self, base_command):
+        super(AzureAccessDeleteKeyMethod, self).__init__(base_command, "delete-key")
+
+    def callback(self, args):
+        try:
+            for key_file in glob.glob("{}/{}.*".format(args.key_file_path, args.key_pair_name)):
+                os.remove(key_file)
+            print(json.dumps({"success": "Keypair {} deleted.".format(args.key_pair_name)}))
+        except Exception as e:
+            logging.error(e)
+            print(json.dumps({"error": "Unable to delete Keypair: {}".format(args.key_pair_name)}))
+
+
 class AzureQueryVPCMethod(AbstractMethod):
     def __init__(self, base_command):
         super(AzureQueryVPCMethod, self).__init__(base_command, "vpc")
 
     def callback(self, args):
-        print(json.dumps({"westus2": {"default_image": DEFAULT_AZURE_CENTOS_IMAGE}}))
+        print(json.dumps(self.cloud.query_vpc(args)))
 
 
 class AzureQueryRegionsMethod(AbstractMethod):
@@ -125,5 +144,13 @@ class AzureQueryZonesMethod(AbstractMethod):
                                  help="JSON payload of per-region data.")
 
     def callback(self, args):
-        print(json.dumps({"westus2": {"zones": ["1", "2", "3"],
-                          "subnetworks": ["default"]}}))
+        print(json.dumps(self.cloud.get_zones(args)))
+        # print(json.dumps({"westus2": {"1": "default", "2": "default", "3": "default"}}))
+
+
+class AzureQueryVnetMethod(AbstractMethod):
+    def __init__(self, base_command):
+        super(AzureQueryVnetMethod, self).__init__(base_command, "vnet")
+
+    def callback(self, args):
+        print(json.dumps(self.cloud.get_default_vnet(args)))

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2020 YugaByte, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -16,19 +16,21 @@ from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.cloud.azure.command import AzureNetworkCommand, AzureInstanceCommand, \
     AzureAccessCommand, AzureQueryCommand
-from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin
+from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin, create_resource_group
 
 
 class AzureCloud(AbstractCloud):
     """Subclass related to Azure specific functionality.
+        Assumes env variable "AZURE_RG" is set to name of resource_group
+        used for all cloud operations.
     """
     def __init__(self):
         super(AzureCloud, self).__init__("azu")
         self.admin = None
 
-    def get_admin(self, region):
+    def get_admin(self):
         if self.admin is None:
-            self.admin = AzureCloudAdmin(self.metadata, region)
+            self.admin = AzureCloudAdmin(self.metadata)
         return self.admin
 
     def add_subcommands(self):
@@ -40,32 +42,92 @@ class AzureCloud(AbstractCloud):
         self.add_subcommand(AzureQueryCommand())
 
     def network_bootstrap(self, args):
-        # hardcoded for now but will eventually read in from custom_payload
-        print(json.dumps({"westus2": {"security_group": [{"id": "", "name": "yb-us-west-2-sg"}],
-                          "vpc_id": "", "zones": {"1": "", "2": "", "3": ""}}}))
+        # Each region code maps to dictionary containing
+        #   "vpcId": String representing Azure VNet name (equivalent to VPC in AWS)
+        #   "azToSubnetIds": Dict mapping zones to subnet name
+        #   "customSecurityGroupId": (Optional) String representing Azure SG name
+        # if provided by the user
+        perRegionMetadata = json.loads(args.custom_payload).get("perRegionMetadata")
+
+        # First, make sure the resource group exists.
+        # If not, place it in arbitrary Azure region about to be bootstrapped.
+        create_resource_group(os.environ.get("AZURE_RG"), next(iter(perRegionMetadata.keys())))
+
+        user_provided_vnets = 0
+        # Verify that the user provided data
+        user_provided_vnets = len([r for r in perRegionMetadata.values()
+                                   if r.get("vpcId") is not None])
+        if user_provided_vnets > 0 and user_provided_vnets != len(perRegionMetadata):
+            raise YBOpsRuntimeError("Either no regions or all regions must have vpcId specified.")
+
+        components = {}
+        if user_provided_vnets > 0:
+            for region, metadata in perRegionMetadata.items():
+                # Assume the user has already set up peering/routing for specified network info
+                components[region] = self.get_admin().network(region, metadata).from_user_json()
+        else:
+            # Bootstrap the individual region items standalone (vnet, subnet, sg, RT, etc).
+            for region, metadata in perRegionMetadata.items():
+                components[region] = self.get_admin().network(region, metadata).bootstrap()
+        print(json.dumps(components))
 
     def create_instance(self, args, adminSSH):
         vmName = args.search_pattern
         region = args.region
-        zone = args.zone
-        subnet = os.environ.get("AZURE_SUBNET")
+        zone = args.zone.split('-')[-1]  # last character of zone (eastus-1) relevant for template
+        subnet = args.cloud_subnet
         numVolumes = args.num_volumes
         volSize = args.volume_size
+        volType = args.volume_type
         private_key_file = args.private_key_file
         instanceType = args.instance_type
-        image = args.machine_image
-        self.get_admin(region).create_vm(vmName, zone, numVolumes, subnet, private_key_file,
-                                         volSize, instanceType, adminSSH, image)
+        # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
+        [pub, offer, sku, image] = args.machine_image.split(':')
+        nsg = args.security_group_id
+        vnet = args.vpcId
+        public_ip = args.assign_public_ip
+        self.get_admin().create_vm(vmName, zone, numVolumes, subnet, private_key_file,
+                                   volSize, instanceType, adminSSH, image, nsg, pub, offer,
+                                   sku, vnet, volType, args.type, region, public_ip)
 
     def destroy_instance(self, args):
         host_info = self.get_host_info(args)
-        self.get_admin(args.region).destroy_instance(args.search_pattern, host_info)
+        self.get_admin().destroy_instance(args.search_pattern, host_info)
+
+    def query_vpc(self, args):
+        result = {}
+        regions = [args.region] if args.region else self.get_regions()
+        for region in regions:
+            result[region] = self.get_admin().query_vpc()
+            result[region]["default_image"] = self.get_image(region)
+        return result
+
+    def get_image(self, region):
+        return self.metadata["regions"][region]["image"]
+
+    def get_regions(self):
+        return self.metadata.get("regions", {}).keys()
+
+    def get_zones(self, args):
+        result = {}
+        regions = [args.region] if args.region else self.get_regions()
+        for region in regions:
+            result[region] = self.get_admin().get_zone_to_subnets(args.dest_vpc_id, region)
+        return result
+
+    def get_default_vnet(self, args):
+        result = {}
+        regions = [args.region] if args.region else self.get_regions()
+        for region in regions:
+            result[region] = self.get_admin().get_default_vnet(region)
+        return result
 
     def get_instance_types(self, args):
-        return self.get_admin(args.region).get_instance_types()
+        regions = args.regions if args.regions else self.get_regions()
+        return self.get_admin().get_instance_types(regions)
 
     def get_host_info(self, args, get_all=False):
-        return self.get_admin(args.region).get_host_info(args.search_pattern, get_all)
+        return self.get_admin().get_host_info(args.search_pattern, get_all)
 
     def get_device_names(self, args):
         return ["sd{}".format(chr(i)) for i in range(ord('c'), ord('c') + args.num_volumes)]
