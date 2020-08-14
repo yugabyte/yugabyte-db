@@ -188,7 +188,8 @@ function(VALIDATE_COMPILER_TYPE)
               "Compiler type is zapcc but the compiler family is '${COMPILER_FAMILY}' "
               "(expected to be clang)")
     endif()
-  elseif (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "${COMPILER_FAMILY}")
+  elseif (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "${COMPILER_FAMILY}" AND
+          NOT ("$ENV{YB_COMPILER_TYPE}" STREQUAL "gcc" AND "${COMPILER_FAMILY}" STREQUAL "gcc8"))
     message(FATAL_ERROR
             "YB_COMPILER_TYPE environment variable ($ENV{YB_COMPILER_TYPE}) does not match the "
             "compiler family detected by CMake (${COMPILER_FAMILY}")
@@ -415,6 +416,13 @@ endfunction()
 
 # ------------------------------------------------------------------------------------------------
 # Main build
+
+if ("$ENV{YB_DO_NOT_BUILD_TESTS}" STREQUAL "1")
+  message("Skipping building tests (YB_DO_NOT_BUILD_TESTS environment variable is set to 1)")
+  set(BUILD_TESTS OFF)
+else()
+  set(BUILD_TESTS ON)
+endif()
 
 get_filename_component(YB_BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
 string(REPLACE "-" ";" YB_BUILD_ROOT_BASENAME_COMPONENTS ${YB_BUILD_ROOT_BASENAME})
@@ -1143,7 +1151,7 @@ endfunction()
 function(ADD_YB_TEST REL_TEST_NAME)
   math(EXPR NEW_YB_NUM_TESTS "${YB_NUM_TESTS} + 1")
   set(YB_NUM_TESTS "${NEW_YB_NUM_TESTS}" CACHE INTERNAL "Number of tests" FORCE)
-  if(NO_TESTS)
+  if(NOT ${BUILD_TESTS})
     return()
   endif()
   if(NOT "${YB_TEST_FILTER_RE}" STREQUAL "")
@@ -1223,15 +1231,43 @@ function(ADD_YB_TESTS TESTS)
   endforeach(TEST)
 endfunction()
 
-# A wrapper for add_dependencies() that is compatible with NO_TESTS.
+# A wrapper for add_dependencies() that takes BUILD_TESTS into account.
 function(ADD_YB_TEST_DEPENDENCIES REL_TEST_NAME)
-  if(NO_TESTS)
+  if(NOT ${BUILD_TESTS})
     return()
   endif()
   GET_TEST_PREFIX_AND_BINARY_NAME(CTEST_PREFIX TEST_BINARY_NAME ${REL_TEST_NAME})
 
   add_dependencies(${TEST_BINARY_NAME} ${ARGN})
 endfunction()
+
+function(YB_TEST_TARGET_LINK_LIBRARIES REL_TEST_NAME)
+  if(NOT ${BUILD_TESTS})
+    return()
+  endif()
+  GET_TEST_PREFIX_AND_BINARY_NAME(CTEST_PREFIX TEST_BINARY_NAME ${REL_TEST_NAME})
+
+  target_link_libraries(${TEST_BINARY_NAME} ${ARGN})
+endfunction()
+
+function(YB_TEST_TARGET_INCLUDE_DIRECTORIES REL_TEST_NAME)
+  if(NOT ${BUILD_TESTS})
+    return()
+  endif()
+  GET_TEST_PREFIX_AND_BINARY_NAME(CTEST_PREFIX TEST_BINARY_NAME ${REL_TEST_NAME})
+
+  target_include_directories(${TEST_BINARY_NAME} ${ARGN})
+endfunction()
+
+function(YB_TEST_TARGET_COMPILE_OPTIONS REL_TEST_NAME)
+  if(NOT ${BUILD_TESTS})
+    return()
+  endif()
+  GET_TEST_PREFIX_AND_BINARY_NAME(CTEST_PREFIX TEST_BINARY_NAME ${REL_TEST_NAME})
+
+  target_compile_options(${TEST_BINARY_NAME} ${ARGN})
+endfunction()
+
 
 # Adds dependencies common to all tests, both main YB tests added using ADD_YB_TESTS,
 # and RocksDB tests, which are added in rocksdb/CMakeLists.txt using add_test directly.
@@ -1702,7 +1738,7 @@ message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
 
 set(PQ_SHARED_LIB
     "${YB_BUILD_ROOT}/postgres/lib/libpq${YB_SHARED_LIBRARY_SUFFIX}")
-set(YB_PGBACKEND_SHARED_LIB 
+set(YB_PGBACKEND_SHARED_LIB
     "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend${YB_SHARED_LIBRARY_SUFFIX}")
 
 # -------------------------------------------------------------------------------------------------
@@ -1752,6 +1788,9 @@ math(EXPR YB_NUM_EXCLUDED_TESTS "${YB_NUM_TESTS} - ${YB_NUM_INCLUDED_TESTS}")
 message("Total tests: ${YB_NUM_TESTS}, "
         "included: ${YB_NUM_INCLUDED_TESTS}, "
         "excluded: ${YB_NUM_EXCLUDED_TESTS}")
+if(NOT ${BUILD_TESTS} AND NOT ${YB_NUM_INCLUDED_TESTS} STREQUAL "0")
+  message(FATAL_ERROR "BUILD_TESTS is not set, but we still added ${YB_NUM_INCLUDED_TESTS} tests")
+endif()
 
 math(EXPR YB_NUM_EXCLUDED_EXECUTABLES "${YB_NUM_EXECUTABLES} - ${YB_NUM_INCLUDED_EXECUTABLES}")
 message("Total non-test executables: ${YB_NUM_EXECUTABLES}, "
