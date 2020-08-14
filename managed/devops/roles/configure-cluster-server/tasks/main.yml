@@ -125,25 +125,25 @@
     owner: "{{ user_name }}"
     mode: 0755
 
-- name: Setup cron to cleanup core files.
-  cron:
-    name: "cleanup core files hourly"
-    minute: "0"
-    user: "{{ user_name }}"
-    job: "{{ yb_bin_dir }}/clean_cores.sh"
-
-- name: Setup cron to cleanup log files.
-  cron:
-    name: "cleanup yb log files hourly"
-    minute: "5"
-    user: "{{ user_name }}"
-    job: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
-
-- name: Setup cron to check liveness of {{ yb_process_type }}
-  cron:
-    name: "Check liveness of {{ yb_process_type }}"
-    minute: "*/1"
-    user: "{{ user_name }}"
-    job: >
-      {{ yb_bin_dir }}/yb-server-ctl.sh {{ yb_process_type }} cron-check ||
-      {{ yb_bin_dir }}/yb-server-ctl.sh {{ yb_process_type }} start
+#- name: Setup cron to cleanup core files.
+#  cron:
+#    name: "cleanup core files hourly"
+#    minute: "0"
+#    user: "{{ user_name }}"
+#    job: "{{ yb_bin_dir }}/clean_cores.sh"
+#
+#- name: Setup cron to cleanup log files.
+#  cron:
+#    name: "cleanup yb log files hourly"
+#    minute: "5"
+#    user: "{{ user_name }}"
+#    job: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
+#
+#- name: Setup cron to check liveness of {{ yb_process_type }}
+#  cron:
+#    name: "Check liveness of {{ yb_process_type }}"
+#    minute: "*/1"
+#    user: "{{ user_name }}"
+#    job: >
+#      {{ yb_bin_dir }}/yb-server-ctl.sh {{ yb_process_type }} cron-check ||
+#      {{ yb_bin_dir }}/yb-server-ctl.sh {{ yb_process_type }} start

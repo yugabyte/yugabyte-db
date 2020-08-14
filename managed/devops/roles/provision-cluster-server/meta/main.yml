@@ -12,20 +12,20 @@ dependencies:
   - role: mount_ephemeral_drives
     when: cloud_type != "onprem"
 
-  - role: swamper
-    prometheus_components:
-      - node_exporter
-
-  - role: create_user
-    create_user:
-      name: "{{ user_name }}"
-      group: "{{ user_name }}"
-      shell: "/bin/bash"
-      comment: "{{ user_name }}"
-      home_dir: "{{ yb_home_dir }}"
-    ssh_config:
-      enabled: "{{ cluster_server_vault|default(False) }}"
-      id_rsa: "{{ cluster_server_vault | get_value('id_rsa') }}"
-      id_rsa_pub: "{{ cluster_server_vault | get_value('id_rsa_pub') }}"
-      sudo_user: "{{ yb_server_ssh_user | default(omit) }}"
-      authorized_keys: "{{ cluster_server_vault | get_value('authorized_keys') }}"
+#  - role: swamper
+#    prometheus_components:
+#      - node_exporter
+#
+#  - role: create_user
+#    create_user:
+#      name: "{{ user_name }}"
+#      group: "{{ user_name }}"
+#      shell: "/bin/bash"
+#      comment: "{{ user_name }}"
+#      home_dir: "{{ yb_home_dir }}"
+#    ssh_config:
+#      enabled: "{{ cluster_server_vault|default(False) }}"
+#      id_rsa: "{{ cluster_server_vault | get_value('id_rsa') }}"
+#      id_rsa_pub: "{{ cluster_server_vault | get_value('id_rsa_pub') }}"
+#      sudo_user: "{{ yb_server_ssh_user | default(omit) }}"
+#      authorized_keys: "{{ cluster_server_vault | get_value('authorized_keys') }}"
