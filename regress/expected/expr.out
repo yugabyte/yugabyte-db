@@ -2789,6 +2789,174 @@ LINE 1: SELECT * FROM split();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
+-- replace()
+--
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", "lo", "p")
+$$) AS (results agtype);
+ results 
+---------
+ "Help"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", "hello", "Good bye")
+$$) AS (results agtype);
+ results 
+---------
+ "Hello"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN replace("abcabcabc", "abc", "a")
+$$) AS (results agtype);
+ results 
+---------
+ "aaa"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN replace("abcabcabc", "ab", "")
+$$) AS (results agtype);
+ results 
+---------
+ "ccc"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN replace("ababab", "ab", "ab")
+$$) AS (results agtype);
+ results  
+----------
+ "ababab"
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN replace(null, null, null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", null, null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", "", null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN replace("", "", "")
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", "Hello", "")
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN replace("", "Hello", "Mellow")
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM replace(null, null, null);
+ replace 
+---------
+ 
+(1 row)
+
+SELECT * FROM replace('Hello', null, null);
+ replace 
+---------
+ 
+(1 row)
+
+SELECT * FROM replace('Hello', '', null);
+ replace 
+---------
+ 
+(1 row)
+
+SELECT * FROM replace('', '', '');
+ replace 
+---------
+ 
+(1 row)
+
+SELECT * FROM replace('Hello', 'Hello', '');
+ replace 
+---------
+ 
+(1 row)
+
+SELECT * FROM replace('', 'Hello', 'Mellow');
+ replace 
+---------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN replace()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello")
+$$) AS (results agtype);
+ERROR:  invalid number of input parameters for replace()
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", null)
+$$) AS (results agtype);
+ERROR:  invalid number of input parameters for replace()
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", "e", 1)
+$$) AS (results agtype);
+ERROR:  replace() unsuppoted argument agtype 3
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", 1, "e")
+$$) AS (results agtype);
+ERROR:  replace() unsuppoted argument agtype 3
+SELECT * FROM replace();
+ERROR:  function replace() does not exist
+LINE 1: SELECT * FROM replace();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM replace(null);
+ERROR:  replace() invalid number of arguments
+SELECT * FROM replace(null, null);
+ERROR:  replace() invalid number of arguments
+SELECT * FROM replace('Hello', 'e', 1);
+ERROR:  replace() unsuppoted argument type 23
+SELECT * FROM replace('Hello', 1, 'E');
+ERROR:  replace() unsuppoted argument type 23
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

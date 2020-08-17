@@ -67,6 +67,7 @@
 #define FUNC_LSUBSTR    {"left",       "l_substr",   ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false}
 #define FUNC_BSUBSTR    {"substring",  "b_substr",   ANYOID,    ANYOID, ANYOID, AGTYPEOID, -1, 1, false}
 #define FUNC_SPLIT      {"split",      "split",      ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false}
+#define FUNC_REPLACE    {"replace",    "replace",    ANYOID,    ANYOID, 0, AGTYPEOID, 3, 1, false}
 
 /* supported functions */
 #define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
@@ -76,7 +77,8 @@
                              FUNC_EXISTS, FUNC_TOSTRING, FUNC_REVERSE, \
                              FUNC_TOUPPER, FUNC_TOLOWER, FUNC_LTRIM, \
                              FUNC_RTRIM, FUNC_BTRIM, FUNC_RSUBSTR, \
-                             FUNC_LSUBSTR, FUNC_BSUBSTR, FUNC_SPLIT}
+                             FUNC_LSUBSTR, FUNC_BSUBSTR, FUNC_SPLIT, \
+                             FUNC_REPLACE}
 
 /* structure for supported function signatures */
 typedef struct function_signature

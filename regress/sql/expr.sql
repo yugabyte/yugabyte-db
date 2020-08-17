@@ -1205,6 +1205,71 @@ SELECT * FROM split('a,b,c,d,e,f');
 SELECT * FROM split();
 
 --
+-- replace()
+--
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", "lo", "p")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", "hello", "Good bye")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("abcabcabc", "abc", "a")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("abcabcabc", "ab", "")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("ababab", "ab", "ab")
+$$) AS (results agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN replace(null, null, null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", null, null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", "", null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("", "", "")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", "Hello", "")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("", "Hello", "Mellow")
+$$) AS (results agtype);
+SELECT * FROM replace(null, null, null);
+SELECT * FROM replace('Hello', null, null);
+SELECT * FROM replace('Hello', '', null);
+SELECT * FROM replace('', '', '');
+SELECT * FROM replace('Hello', 'Hello', '');
+SELECT * FROM replace('', 'Hello', 'Mellow');
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN replace()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", "e", 1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN replace("Hello", 1, "e")
+$$) AS (results agtype);
+SELECT * FROM replace();
+SELECT * FROM replace(null);
+SELECT * FROM replace(null, null);
+SELECT * FROM replace('Hello', 'e', 1);
+SELECT * FROM replace('Hello', 1, 'E');
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

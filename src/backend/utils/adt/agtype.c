@@ -5500,3 +5500,114 @@ Datum split(PG_FUNCTION_ARGS)
 
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
+
+PG_FUNCTION_INFO_V1(replace);
+
+Datum replace(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    text *param = NULL;
+    text *text_string = NULL;
+    text *text_search = NULL;
+    text *text_replace = NULL;
+    text *text_result = NULL;
+    char *string = NULL;
+    int string_len;
+    Oid type;
+    int i;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs != 3)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("replace() invalid number of arguments")));
+
+    /* check for a null string, search, and replace */
+    if (nargs < 0 || nulls[0] || nulls[1] || nulls[2])
+        PG_RETURN_NULL();
+
+    /*
+     * replace() supports text, cstring, or the agtype string input for the
+     * string and delimiter values
+     */
+
+    for (i = 0; i < 3; i++)
+    {
+        arg = args[i];
+        type = types[i];
+
+        if (type != AGTYPEOID)
+        {
+            if (type == CSTRINGOID)
+                param = cstring_to_text(DatumGetCString(arg));
+            else if (type == TEXTOID)
+                param = DatumGetTextPP(arg);
+            else
+                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                errmsg("replace() unsuppoted argument type %d",
+                                       type)));
+        }
+        else
+        {
+            agtype *agt_arg;
+            agtype_value *agtv_value;
+
+            /* get the agtype argument */
+            agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+            if (!AGT_ROOT_IS_SCALAR(agt_arg))
+                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                errmsg("replace() only supports scalar arguments")));
+
+            agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+            /* check for agtype null */
+            if (agtv_value->type == AGTV_NULL)
+                PG_RETURN_NULL();
+            if (agtv_value->type == AGTV_STRING)
+                param = cstring_to_text_with_len(agtv_value->val.string.val,
+                                                 agtv_value->val.string.len);
+            else
+                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                errmsg("replace() unsuppoted argument agtype %d",
+                                       agtv_value->type)));
+        }
+        if (i == 0)
+            text_string = param;
+        if (i == 1)
+            text_search = param;
+        if (i == 2)
+            text_replace = param;
+    }
+
+    /*
+     * We need the strings as a text strings so that we can let PG deal with
+     * multibyte characters in the string.
+     */
+    text_result = DatumGetTextPP(DirectFunctionCall3(replace_text,
+                                                     PointerGetDatum(text_string),
+                                                     PointerGetDatum(text_search),
+                                                     PointerGetDatum(text_replace)));
+
+    /* convert it back to a cstring */
+    string = text_to_cstring(text_result);
+    string_len = strlen(string);
+
+    /* if we have an empty string, return null */
+    if (string_len == 0)
+        PG_RETURN_NULL();
+
+    /* build the result */
+    agtv_result.type = AGTV_STRING;
+    agtv_result.val.string.val = string;
+    agtv_result.val.string.len = string_len;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
