@@ -446,21 +446,22 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 	if (query->queryId == UINT64CONST(0))
 		query->queryId = UINT64CONST(1);
 
-	if (jstate.clocations_count > 0)
-		pgss_store(pstate->p_sourcetext,
-				   query->queryId,
-				   query->stmt_location,
-				   query->stmt_len,
-				   PGSS_INVALID,
-				   0,
-				   0,
-				   NULL,
+	if (PGSM_ENABLED == 1)
+		if (jstate.clocations_count > 0)
+			pgss_store(pstate->p_sourcetext,
+						query->queryId,
+						query->stmt_location,
+						query->stmt_len,
+						PGSS_INVALID,
+						0,
+						0,
+						NULL,
 #if PG_VERSION_NUM >= 130000
-				   NULL,
+					NULL,
 #endif
-				   &jstate,
-				   0.0,
-				   0.0);
+					&jstate,
+					0.0,
+					0.0);
 }
 
 /*
@@ -558,6 +559,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 
 	if (queryId != UINT64CONST(0) && queryDesc->totaltime && PGSM_ENABLED)
 	{
+	 elog(WARNING, "PGSM_ENABLED = %d", PGSM_ENABLED);
 		/*
 		 * Make sure stats accumulation is done.  (Note: it's okay if several
 		 * levels of hook all do this.)
@@ -2715,18 +2717,19 @@ static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param
 		/* calc differences of WAL counters. */
 		memset(&walusage, 0, sizeof(WalUsage));
 		WalUsageAccumDiff(&walusage, &pgWalUsage, &walusage_start);
-		pgss_store(query_string,
-				   parse->queryId,
-				   parse->stmt_location,
-				   parse->stmt_len,
-				   PGSS_PLAN,
-				   INSTR_TIME_GET_MILLISEC(duration),
-				   0,
-				   &bufusage,
-				   &walusage,
-				   NULL,
-				   0,
-				   0);
+		if (PGSM_ENABLED == 1)
+			pgss_store(query_string,
+					parse->queryId,
+					parse->stmt_location,
+					parse->stmt_len,
+					PGSS_PLAN,
+					INSTR_TIME_GET_MILLISEC(duration),
+					0,
+					&bufusage,
+					&walusage,
+					NULL,
+					0,
+					0);
 	}
 	else
 	{

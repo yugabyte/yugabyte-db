@@ -106,8 +106,8 @@ init_guc(void)
 	};
 
 	conf[i++] = (GucVariable) { 
-		.guc_name = "pg_stat_monitor.shared_buffer",
-		.guc_desc = "Sets the shared_buffer size.",
+		.guc_name = "pg_stat_monitor.pgsm_query_shared_buffer",
+		.guc_desc = "Sets the query shared_buffer size.",
 		.guc_default = 500000,
 		.guc_min = 500000,
 		.guc_max = INT_MAX,
@@ -155,7 +155,7 @@ init_guc(void)
 							 NULL,
 							 (bool*)&PGSM_ENABLED,
 							 true,
-							 PGC_SUSET,
+							 PGC_USERSET,
 							 0,
 							 NULL,
 							 NULL,
@@ -250,7 +250,7 @@ init_guc(void)
 							NULL);
 
 	DefineCustomIntVariable("pg_stat_monitor.pgsm_query_shared_buffer",
-							"Sets the shared_buffer size",
+							"Sets the query shared_buffer size",
 							NULL,
 							&PGSM_QUERY_BUF_SIZE,
 							500000,
