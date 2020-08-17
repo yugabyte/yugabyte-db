@@ -11,6 +11,7 @@
 package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.services.AwsEARService;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
@@ -116,8 +117,9 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
         when(mockApiHelper.getRequest(any(String.class), any(Map.class), any(Map.class)))
                 .thenReturn(Json.newArray());
         when(mockEARManager.getServiceInstance(eq("SMARTKEY")))
-                           .thenReturn(new SmartKeyEARService());
-        when(mockEARManager.getServiceInstance(eq("AWS"))).thenReturn(new AwsEARService());
+          .thenReturn(new SmartKeyEARService());
+        when(mockEARManager.getServiceInstance(eq("AWS")))
+          .thenReturn(new AwsEARService());
     }
 
     @Test
