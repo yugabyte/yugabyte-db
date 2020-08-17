@@ -1121,7 +1121,7 @@ download_thirdparty() {
 # -------------------------------------------------------------------------------------------------
 
 detect_brew() {
-  if [[ ${YB_DISABLE_LINUXBREW:-1} == "1" ]]; then
+  if [[ ${YB_DISABLE_LINUXBREW:-0} == "1" ]]; then
     return
   fi
   if is_ubuntu; then
