@@ -1,17 +1,19 @@
 %global sname percona-pg-stat-monitor
-%global pginstdir /usr/pgsql-11/
+%global pgrel @@PG_REL@@
+%global rpm_release @@RPM_RELEASE@@
+%global pginstdir /usr/pgsql-@@PG_REL@@/
 %global pgstatmonmajver 1
 %global pgstatmonmidver 0
 %global pgstatmonminver 0
 
 Summary:        Statistics collector for PostgreSQL
-Name:           %{sname}
+Name:           %{sname}%{pgrel}
 Version:        %{pgstatmonmajver}.%{pgstatmonmidver}.%{pgstatmonminver}
-Release:        1%{?dist}
+Release:        %{rpm_release}%{?dist}
 License:        Apache 2.0
-Source0:        %{sname}-%{pgstatmonmajver}.%{pgstatmonmidver}.%{pgstatmonminver}.tar.gz
+Source0:        %{sname}%{pgrel}-%{pgstatmonmajver}.%{pgstatmonmidver}.%{pgstatmonminver}.tar.gz
 URL:            https://github.com/Percona-Lab/pg_stat_monitor
-BuildRequires:  percona-postgresql11-devel
+BuildRequires:  percona-postgresql%{pgrel}-devel
 Requires:       postgresql-server
 
 
@@ -25,11 +27,11 @@ It provides all the features of pg_stat_statment plus its own feature set.
 
 
 %prep
-%setup -q -n %{sname}-%{pgstatmonmajver}.%{pgstatmonmidver}.%{pgstatmonminver}
+%setup -q -n %{sname}%{pgrel}-%{pgstatmonmajver}.%{pgstatmonmidver}.%{pgstatmonminver}
 
 
 %build
-sed -i 's:PG_CONFIG = pg_config:PG_CONFIG = /usr/pgsql-11/bin/pg_config:' Makefile
+sed -i 's:PG_CONFIG = pg_config:PG_CONFIG = /usr/pgsql-%{pgrel}/bin/pg_config:' Makefile
 %{__make} USE_PGXS=1 %{?_smp_mflags}
 
 

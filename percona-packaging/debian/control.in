@@ -6,10 +6,10 @@ Build-Depends:
  debhelper (>= 9),
  percona-postgresql-server-dev-all (>= 153~),
 
-Package: percona-pg-stat-monitor
+Package: percona-pg-stat-monitor@@PG_REL@@
 Architecture: any
 Depends:
- percona-postgresql-11,
+ percona-postgresql-@@PG_REL@@,
  ${misc:Depends},
  ${shlibs:Depends},
 Description: The pg_stat_monitor is statistics collector tool
