@@ -31,6 +31,8 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
+import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
@@ -841,14 +843,39 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createTableBackupTask(BackupTableParams taskParams, Backup backup) {
-    SubTaskGroup subTaskGroup = null;
+    SubTaskGroup subTaskGroup;
     if (backup == null) {
       subTaskGroup = new SubTaskGroup("BackupTable", executor);
     } else {
       subTaskGroup = new SubTaskGroup("BackupTable", executor, true);
     }
+
     BackupTable task = new BackupTable(backup);
     task.initialize(taskParams);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createEncryptedUniverseKeyBackupTask() {
+    return createEncryptedUniverseKeyBackupTask((BackupTableParams) taskParams());
+  }
+
+  public SubTaskGroup createEncryptedUniverseKeyBackupTask(BackupTableParams params) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("BackupUniverseKeys", executor);
+    BackupUniverseKeys task = new BackupUniverseKeys();
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createEncryptedUniverseKeyRestoreTask(BackupTableParams params) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("RestoreUniverseKeys", executor);
+    RestoreUniverseKeys task = new RestoreUniverseKeys();
+    task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);

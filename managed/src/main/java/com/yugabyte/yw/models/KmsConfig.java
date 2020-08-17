@@ -61,6 +61,7 @@ public class KmsConfig extends Model {
     public static final Find<UUID, KmsConfig> find = new Find<UUID, KmsConfig>(){};
 
     public static KmsConfig get(UUID configUUID) {
+        if (configUUID == null) return null;
         return KmsConfig.find.where()
                 .idEq(configUUID)
                 .findUnique();
@@ -82,14 +83,8 @@ public class KmsConfig extends Model {
         return kmsConfig;
     }
 
-    public static KmsConfig getKMSConfig(UUID configUUID) {
-        return KmsConfig.find.where()
-                .idEq(configUUID)
-                .findUnique();
-    }
-
     public static ObjectNode getKMSAuthObj(UUID configUUID) {
-        KmsConfig config = getKMSConfig(configUUID);
+        KmsConfig config = get(configUUID);
         if (config == null) return null;
         return (ObjectNode) config.authConfig.deepCopy();
     }

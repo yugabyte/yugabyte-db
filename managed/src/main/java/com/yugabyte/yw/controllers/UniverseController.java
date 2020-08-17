@@ -610,7 +610,10 @@ public class UniverseController extends AuthenticatedController {
         Json.toJson(formData), taskUUID);
       return Results.status(OK, resultNode);
     } catch (Exception e) {
-      String errMsg = "Error occurred attempting to set the universe encryption key";
+      String errMsg = String.format(
+              "Error occurred attempting to %s the universe encryption key",
+              taskParams.encryptionAtRestConfig.opType.name()
+      );
       LOG.error(errMsg, e);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
