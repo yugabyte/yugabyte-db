@@ -39,7 +39,7 @@ init_guc(void)
 	};
 	conf[i++] = (GucVariable) { 
 		.guc_name = "pg_stat_monitor.pgsm_enable",
-		.guc_desc = "Enable/Disable stistics collector.",
+		.guc_desc = "Enable/Disable statistics collector.",
 		.guc_default = 1,
 		.guc_min = 0,
 		.guc_max = 0,
@@ -151,7 +151,7 @@ init_guc(void)
 							NULL);
 
 	DefineCustomBoolVariable("pg_stat_monitor.pgsm_enable",
-							 "Enable/Disable the statis collector.",
+							 "Enable/Disable statistics collector.",
 							 NULL,
 							 (bool*)&PGSM_ENABLED,
 							 true,
