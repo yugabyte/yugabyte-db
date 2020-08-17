@@ -184,6 +184,16 @@ public class KmsHistory extends Model {
                 .findUnique();
     }
 
+    public static boolean entryExists(
+            UUID targetUUID,
+            String keyRef,
+            KmsHistoryId.TargetType type
+    ) {
+        return KmsHistory.find.where()
+                .idEq(new KmsHistoryId(keyRef, targetUUID, type))
+                .findUnique() != null;
+    }
+
     public static KmsHistory getLatestConfigHistory(
             UUID targetUUID,
             UUID configUUID,

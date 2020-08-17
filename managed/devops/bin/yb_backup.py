@@ -641,7 +641,7 @@ class YBBackup:
             default=S3BackupStorage.storage_type(),
             help="Storage backing for backups, eg: s3, nfs, gcs, ..")
         parser.add_argument(
-            'command', choices=['create', 'restore'],
+            'command', choices=['create', 'restore', 'restore_keys'],
             help='Create or restore the backup from the provided backup location.')
         parser.add_argument(
             '--certs_dir', required=False,
@@ -649,6 +649,14 @@ class YBBackup:
         parser.add_argument(
             '--sse', required=False, action='store_true',
             help='Enable server side encryption on storage')
+        parser.add_argument(
+            '--backup_keys_source', required=False,
+            help="Location of universe encryption keys backup file to upload to backup location"
+        )
+        parser.add_argument(
+            '--restore_keys_destination', required=False,
+            help="Location to download universe encryption keys backup file to"
+        )
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 
@@ -1495,6 +1503,19 @@ class YBBackup:
 
         return self.tmp_dir_name
 
+    def upload_encryption_key_file(self):
+        key_file = os.path.basename(self.args.backup_keys_source)
+        key_file_dest = os.path.join("/".join(self.args.backup_location.split("/")[:-1]), key_file)
+        self.run_program(self.storage.upload_file_cmd(self.args.backup_keys_source, key_file_dest))
+        self.run_program(["rm", self.args.backup_keys_source])
+
+    def download_encryption_key_file(self):
+        key_file = os.path.basename(self.args.restore_keys_destination)
+        key_file_src = os.path.join("/".join(self.args.backup_location.split("/")[:-1]), key_file)
+        self.run_program(
+            self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination)
+        )
+
     def upload_metadata_and_checksum(self, src_path, dest_path):
         """
         Upload metadata file and checksum file to the target backup location.
@@ -1677,6 +1698,8 @@ class YBBackup:
         logging.info(
             'Backed up tables %s to %s successfully!' %
             (self.table_names_str(), snapshot_filepath))
+        if self.args.backup_keys_source:
+            self.upload_encryption_key_file()
         print(json.dumps({"snapshot_url": snapshot_filepath}))
 
     def download_file(self, src_path, target_path):
@@ -1973,6 +1996,16 @@ class YBBackup:
 
     # At exit callbacks
 
+    def restore_keys(self):
+        """
+        Restore universe keys from the backup stored in the given backup path.
+        """
+        if self.args.restore_keys_destination:
+            self.download_encryption_key_file()
+
+        logging.info('Restored backup universe keys successfully!')
+        print(json.dumps({"success": True}))
+
     def cleanup_temporary_directory(self, tmp_dir):
         """
         Callback run on exit to clean up temporary directories.
@@ -2008,6 +2041,8 @@ class YBBackup:
                 self.restore_table()
             elif self.args.command == 'create':
                 self.backup_table()
+            elif self.args.command == 'restore_keys':
+                self.restore_keys()
             else:
                 logging.error('Command was not specified')
                 print(json.dumps({"error": "Command was not specified"}))

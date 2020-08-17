@@ -191,6 +191,9 @@ public class MultiTableBackup extends UniverseTaskBase {
       if (params().transactionalBackup) {
         if (params().keyspace != null) {
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+          createEncryptedUniverseKeyBackupTask(backup.getBackupInfo()).setSubTaskGroupType(
+            UserTaskDetails.SubTaskGroupType.CreatingTableBackup
+          );
           createTableBackupTask(tableBackupParams, backup).setSubTaskGroupType(
             UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         } else {
@@ -204,12 +207,22 @@ public class MultiTableBackup extends UniverseTaskBase {
           tableBackupParams.parallelism = params().parallelism;
           tableBackupParams.transactionalBackup = params().transactionalBackup;
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+
+          for (BackupTableParams backupParams : backupParamsList) {
+            createEncryptedUniverseKeyBackupTask(backupParams).setSubTaskGroupType(
+              UserTaskDetails.SubTaskGroupType.CreatingTableBackup
+            );
+          }
+
           createTableBackupTask(tableBackupParams, backup).setSubTaskGroupType(
             UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         }
       } else {
         for (BackupTableParams tableParams : backupParamsList) {
           Backup backup = Backup.create(params().customerUUID, tableParams);
+          createEncryptedUniverseKeyBackupTask(tableParams).setSubTaskGroupType(
+            UserTaskDetails.SubTaskGroupType.CreatingTableBackup
+          );
           createTableBackupTask(tableParams, backup).setSubTaskGroupType(
             UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         }

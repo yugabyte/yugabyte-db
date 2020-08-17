@@ -148,8 +148,11 @@ public enum TaskType {
 
   CloudSetup("subtasks.cloud.CloudSetup"),
 
-
   BackupTable("subtasks.BackupTable"),
+
+  BackupUniverseKeys("subtasks.BackupUniverseKeys"),
+
+  RestoreUniverseKeys("subtasks.RestoreUniverseKeys"),
 
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 

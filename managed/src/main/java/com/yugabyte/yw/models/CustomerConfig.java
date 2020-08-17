@@ -108,6 +108,10 @@ public class CustomerConfig extends Model {
     return CustomerConfig.find.where().eq("customer_uuid", customerUUID).idEq(configUUID).findUnique();
   }
 
+  public static CustomerConfig get(UUID configUUID) {
+    return CustomerConfig.find.where().idEq(configUUID).findUnique();
+  }
+
   public static CustomerConfig createAlertConfig(UUID customerUUID, JsonNode payload) {
     CustomerConfig customerConfig = new CustomerConfig();
     customerConfig.type = ConfigType.ALERTS;
