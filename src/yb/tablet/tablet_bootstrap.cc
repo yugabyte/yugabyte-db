@@ -184,10 +184,12 @@ struct ReplayState {
   // Return error if it catches inconsistency between split operations.
   CHECKED_STATUS UpdateSplitOpId(const ReplicateMsg& msg, const TabletId& tablet_id);
 
+  // half_limit is half the limit on the number of entries added
   void AddEntriesToStrings(
-      const OpIndexToEntryMap& entries, std::vector<std::string>* strings) const;
+      const OpIndexToEntryMap& entries, std::vector<std::string>* strings, int half_limit) const;
 
-  void DumpReplayStateToStrings(std::vector<std::string>* strings) const;
+  // half_limit is half the limit on the number of entries to be dumped
+  void DumpReplayStateToStrings(std::vector<std::string>* strings, int half_limit) const;
 
   bool CanApply(log::LogEntryPB* entry);
 
@@ -316,13 +318,32 @@ Status ReplayState::UpdateSplitOpId(const ReplicateMsg& msg, const TabletId& tab
 }
 
 void ReplayState::AddEntriesToStrings(const OpIndexToEntryMap& entries,
-                                      std::vector<std::string>* strings) const {
-  for (const OpIndexToEntryMap::value_type& map_entry : entries) {
-    strings->push_back(Format("   [$0] $1", map_entry.first, map_entry.second.entry.get()));
+                                      std::vector<std::string>* strings,
+                                      int half_limit) const {
+  const auto n = entries.size();
+  const bool overflow = n > 2 * half_limit;
+  size_t index = 0;
+  for (const auto& entry : entries) {
+    if (!overflow || (index < half_limit || index >= n - half_limit)) {
+      const auto& replicate = entry.second.entry.get()->replicate();
+      strings->push_back(Format(
+          "    [$0] op_id: $1 hybrid_time: $2 op_type: $3 committed_op_id: $4",
+          index + 1,
+          OpId::FromPB(replicate.id()),
+          replicate.hybrid_time(),
+          replicate.op_type(),
+          OpId::FromPB(replicate.committed_op_id())));
+    }
+    if (overflow && index == half_limit - 1) {
+      strings->push_back(Format("($0 lines skipped)", n - 2 * half_limit));
+    }
+    index++;
   }
 }
 
-void ReplayState::DumpReplayStateToStrings(std::vector<std::string>* strings)  const {
+void ReplayState::DumpReplayStateToStrings(
+    std::vector<std::string>* strings,
+    int half_limit) const {
   strings->push_back(Substitute(
       "ReplayState: "
       "Previous OpId: $0, "
@@ -341,7 +362,7 @@ void ReplayState::DumpReplayStateToStrings(std::vector<std::string>* strings)  c
   }
   if (!pending_replicates.empty()) {
     strings->push_back(Substitute("Dumping REPLICATES ($0 items):", pending_replicates.size()));
-    AddEntriesToStrings(pending_replicates, strings);
+    AddEntriesToStrings(pending_replicates, strings, half_limit);
   }
 }
 
@@ -963,23 +984,10 @@ class TabletBootstrap {
     // Dump the replay state, this will log the pending replicates, which might be useful for
     // debugging.
     vector<string> state_dump;
-    replay_state_->DumpReplayStateToStrings(&state_dump);
     constexpr int kMaxLinesToDump = 1000;
-    static_assert(kMaxLinesToDump % 2 == 0, "Expected kMaxLinesToDump to be even");
-    if (state_dump.size() <= kMaxLinesToDump) {
-      for (const string& line : state_dump) {
-        LOG_WITH_PREFIX(INFO) << line;
-      }
-    } else {
-      int i = 0;
-      for (const string& line : state_dump) {
-        LOG_WITH_PREFIX(INFO) << line;
-        if (++i >= kMaxLinesToDump / 2) break;
-      }
-      LOG_WITH_PREFIX(INFO) << "(" << state_dump.size() - kMaxLinesToDump << " lines skipped)";
-      for (i = state_dump.size() - kMaxLinesToDump / 2; i < state_dump.size(); ++i) {
-        LOG_WITH_PREFIX(INFO) << state_dump[i];
-      }
+    replay_state_->DumpReplayStateToStrings(&state_dump, kMaxLinesToDump / 2);
+    for (const string& line : state_dump) {
+      LOG_WITH_PREFIX(INFO) << line;
     }
   }
 
