@@ -269,6 +269,11 @@ const NamespaceId TableInfo::namespace_id() const {
   return l->data().namespace_id();
 }
 
+const NamespaceName TableInfo::namespace_name() const {
+  auto l = LockForRead();
+  return l->data().namespace_name();
+}
+
 const Status TableInfo::GetSchema(Schema* schema) const {
   auto l = LockForRead();
   return SchemaFromPB(l->data().schema(), schema);

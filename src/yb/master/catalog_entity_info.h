@@ -293,7 +293,9 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
   }
 
   // Return the table's namespace id.
-  const NamespaceName& namespace_id() const { return pb.namespace_id(); }
+  const NamespaceId& namespace_id() const { return pb.namespace_id(); }
+  // Return the table's namespace name.
+  const NamespaceName& namespace_name() const { return pb.namespace_name(); }
 
   const SchemaPB& schema() const {
     return pb.schema();
@@ -327,6 +329,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::string ToStringWithState() const;
 
   const NamespaceId namespace_id() const;
+  const NamespaceName namespace_name() const;
 
   const CHECKED_STATUS GetSchema(Schema* schema) const;
 
@@ -505,7 +508,7 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
  public:
   explicit NamespaceInfo(NamespaceId ns_id);
 
-  virtual const std::string& id() const override { return namespace_id_; }
+  virtual const NamespaceId& id() const override { return namespace_id_; }
 
   const NamespaceName& name() const;
 
@@ -568,7 +571,7 @@ struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntry::U
   }
 
   // Return the table's namespace id.
-  const NamespaceName& namespace_id() const {
+  const NamespaceId& namespace_id() const {
     return pb.namespace_id();
   }
 
@@ -599,7 +602,7 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
 
   const UDTypeName& name() const;
 
-  const NamespaceName& namespace_id() const;
+  const NamespaceId& namespace_id() const;
 
   int field_names_size() const;
 
