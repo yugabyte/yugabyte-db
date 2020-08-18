@@ -92,6 +92,8 @@ class TabletStatusListener {
 
   const std::string tablet_id() const;
 
+  const std::string namespace_name() const;
+
   const std::string table_name() const;
 
   const std::string table_id() const;

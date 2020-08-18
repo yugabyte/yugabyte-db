@@ -1173,9 +1173,9 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     req.set_name(table_name);
     req.set_table_type(TableType::YQL_TABLE_TYPE);
 
-    RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, true /* create_tablets */,
-                                      namespace_id, partitions, nullptr, &tablets, nullptr,
-                                      &table));
+    RETURN_NOT_OK(CreateTableInMemory(
+        req, schema, partition_schema, true /* create_tablets */, namespace_id, namespace_name,
+        partitions, nullptr, &tablets, nullptr, &table));
     LOG(INFO) << "Inserted new " << namespace_name << "." << table_name
               << " table info into CatalogManager maps";
     // Update the on-disk table state to "running".
@@ -1512,7 +1512,8 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
   PartitionSchema partition_schema;
   std::vector<Partition> partitions;
 
-  NamespaceId namespace_id = ns->id();
+  const NamespaceId& namespace_id = ns->id();
+  const NamespaceName& namespace_name = ns->name();
 
   std::lock_guard<LockType> l(lock_);
   TRACE("Acquired catalog manager lock");
@@ -1548,9 +1549,9 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
   }
 
   // TODO: pass index_info for copartitioned index.
-  RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, false /* create_tablets */,
-                                    namespace_id, partitions, nullptr, nullptr, resp,
-                                    &this_table_info));
+  RETURN_NOT_OK(CreateTableInMemory(
+      req, schema, partition_schema, false /* create_tablets */, namespace_id, namespace_name,
+      partitions, nullptr, nullptr, resp, &this_table_info));
 
   TRACE("Inserted new table info into CatalogManager maps");
 
@@ -1735,7 +1736,8 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
   TRACE("Looking up namespace");
   scoped_refptr<NamespaceInfo> ns;
   RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
-  NamespaceId namespace_id = ns->id();
+  const NamespaceId& namespace_id = ns->id();
+  const NamespaceName& namespace_name = ns->name();
 
   Schema schema;
   Schema client_schema;
@@ -1790,9 +1792,9 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
     }
 
-    RETURN_NOT_OK(CreateTableInMemory(*req, schema, partition_schema, false /* create_tablets */,
-                                      namespace_id, partitions, nullptr /* index_info */,
-                                      nullptr /* tablets */, resp, &table));
+    RETURN_NOT_OK(CreateTableInMemory(
+        *req, schema, partition_schema, false /* create_tablets */, namespace_id, namespace_name,
+        partitions, nullptr /* index_info */, nullptr /* tablets */, resp, &table));
 
     scoped_refptr<TabletInfo> tablet = tablet_map_->find(kSysCatalogTabletId)->second;
     auto tablet_lock = tablet->LockForWrite();
@@ -2018,7 +2020,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     Status s = STATUS(NotFound, "Namespace not found");
     return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
   }
-  NamespaceId namespace_id = ns->id();
+  const NamespaceId& namespace_id = ns->id();
+  const NamespaceName& namespace_name = ns->name();
 
   // For index table, find the table info
   scoped_refptr<TableInfo> indexed_table;
@@ -2278,8 +2281,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     RETURN_NOT_OK(CreateTableInMemory(
         req, schema, partition_schema,
-        !tablets_exist && !tablegroup_tablets_exist /* create_tablets */,
-        namespace_id, partitions, &index_info, &tablets, resp, &table));
+        !tablets_exist && !tablegroup_tablets_exist /* create_tablets */, namespace_id,
+        namespace_name, partitions, &index_info, &tablets, resp, &table));
 
     // Section is executed when a table is either the parent table or a user table in a tablegroup.
     // It additionally sets the table metadata (and tablet metadata if this is the parent table)
@@ -2541,13 +2544,14 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
                                            const PartitionSchema& partition_schema,
                                            const bool create_tablets,
                                            const NamespaceId& namespace_id,
+                                           const NamespaceName& namespace_name,
                                            const std::vector<Partition>& partitions,
                                            IndexInfoPB* index_info,
                                            std::vector<TabletInfo*>* tablets,
                                            CreateTableResponsePB* resp,
                                            scoped_refptr<TableInfo>* table) {
   // Add the new table in "preparing" state.
-  *table = CreateTableInfo(req, schema, partition_schema, namespace_id, index_info);
+  *table = CreateTableInfo(req, schema, partition_schema, namespace_id, namespace_name, index_info);
   const TableId& table_id = (*table)->id();
   auto table_ids_map_checkout = table_ids_map_.CheckOut();
   (*table_ids_map_checkout)[table_id] = *table;
@@ -2876,6 +2880,7 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
                                                          const Schema& schema,
                                                          const PartitionSchema& partition_schema,
                                                          const NamespaceId& namespace_id,
+                                                         const NamespaceName& namespace_name,
                                                          IndexInfoPB* index_info) {
   DCHECK(schema.has_column_ids());
   TableId table_id
@@ -2887,6 +2892,7 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   metadata->set_name(req.name());
   metadata->set_table_type(req.table_type());
   metadata->set_namespace_id(namespace_id);
+  metadata->set_namespace_name(namespace_name);
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
   // TODO(bogdan): add back in replication_info once we allow overrides!

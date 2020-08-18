@@ -801,6 +801,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      const PartitionSchema& partition_schema,
                                      const bool create_tablets,
                                      const NamespaceId& namespace_id,
+                                     const NamespaceName& namespace_name,
                                      const vector<Partition>& partitions,
                                      IndexInfoPB* index_info,
                                      vector<TabletInfo*>* tablets,
@@ -838,6 +839,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                            const Schema& schema,
                                            const PartitionSchema& partition_schema,
                                            const NamespaceId& namespace_id,
+                                           const NamespaceName& namespace_name,
                                            IndexInfoPB* index_info) REQUIRES(lock_);
 
   // Helper for creating the initial TabletInfo state.
