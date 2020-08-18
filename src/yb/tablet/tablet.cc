@@ -416,6 +416,7 @@ Tablet::Tablet(const TabletInitData& data)
     // TODO(KUDU-745): table_id is apparently not set in the metadata.
     attrs["table_id"] = metadata_->table_id();
     attrs["table_name"] = metadata_->table_name();
+    attrs["namespace_name"] = metadata_->namespace_name();
     attrs["partition"] = metadata_->partition_schema()->PartitionDebugString(
         *metadata_->partition(), *schema());
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
@@ -1556,6 +1557,7 @@ void Tablet::UpdateQLIndexesFlushed(
 
 //--------------------------------------------------------------------------------------------------
 // PGSQL Request Processing.
+//--------------------------------------------------------------------------------------------------
 Status Tablet::HandlePgsqlReadRequest(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
@@ -1955,8 +1957,9 @@ Status Tablet::AddTable(const TableInfoPB& table_info) {
   RETURN_NOT_OK(PartitionSchema::FromPB(table_info.partition_schema(), schema, &partition_schema));
 
   metadata_->AddTable(
-      table_info.table_id(), table_info.table_name(), table_info.table_type(), schema, IndexMap(),
-      partition_schema, boost::none, table_info.schema_version());
+      table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
+      table_info.table_type(), schema, IndexMap(), partition_schema, boost::none,
+      table_info.schema_version());
 
   RETURN_NOT_OK(metadata_->Flush());
 
@@ -2018,9 +2021,10 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   metadata_->SetSchema(*operation_state->schema(), operation_state->index_map(), deleted_cols,
                        operation_state->schema_version(), current_table_info->table_id);
   if (operation_state->has_new_table_name()) {
-    metadata_->SetTableName(operation_state->new_table_name());
+    metadata_->SetTableName(current_table_info->namespace_name, operation_state->new_table_name());
     if (metric_entity_) {
       metric_entity_->SetAttribute("table_name", operation_state->new_table_name());
+      metric_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
     }
   }
 

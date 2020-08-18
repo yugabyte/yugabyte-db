@@ -65,6 +65,7 @@ namespace log {
 
 extern const char* kTestTable;
 extern const char* kTestTablet;
+extern const char* kTestNamespace;
 
 } // namespace log
 
@@ -178,6 +179,7 @@ class BootstrapTest : public LogTestBase {
         fs_manager_.get(),
         log::kTestTable,
         log::kTestTablet,
+        log::kTestNamespace,
         log::kTestTable,
         kTableType,
         schema,
