@@ -320,6 +320,12 @@ public class HealthChecker {
           }
         }
       }
+
+      for (NodeDetails nd : details.nodeDetailsSet) {
+        info.ycqlPort = nd.yqlServerRpcPort;
+        info.redisPort = nd.redisServerRpcPort;
+        break;
+      }
     }
     // If any clusters were invalid, abort for this universe.
     if (invalidUniverseData) {
