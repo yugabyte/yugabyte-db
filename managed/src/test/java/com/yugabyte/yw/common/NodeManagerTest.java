@@ -269,6 +269,10 @@ public class NodeManagerTest extends FakeDBApplication {
                 Json.toJson(setupParams.clusters.get(0).userIntent.instanceTags)));
           }
         }
+
+        expectedCommand.add("--node_exporter_port");
+        expectedCommand.add("9300");
+
         break;
       case Configure:
         AnsibleConfigureServers.Params configureParams = (AnsibleConfigureServers.Params) params;
@@ -279,10 +283,25 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--master_addresses_for_master");
           expectedCommand.add(MASTER_ADDRESSES);
         }
+
+        expectedCommand.add("--master_http_port");
+        expectedCommand.add("7000");
+        expectedCommand.add("--master_rpc_port");
+        expectedCommand.add("7100");
+        expectedCommand.add("--tserver_http_port");
+        expectedCommand.add("9000");
+        expectedCommand.add("--tserver_rpc_port");
+        expectedCommand.add("9100");
+        expectedCommand.add("--cql_proxy_rpc_port");
+        expectedCommand.add("9042");
+        expectedCommand.add("--redis_proxy_rpc_port");
+        expectedCommand.add("6379");
+
         if (configureParams.ybSoftwareVersion != null) {
           expectedCommand.add("--package");
           expectedCommand.add("/yb/release.tar.gz");
         }
+
 
         if (configureParams.getProperty("taskSubType") != null) {
           UpgradeUniverse.UpgradeTaskSubType taskSubType =
@@ -532,10 +551,25 @@ public class NodeManagerTest extends FakeDBApplication {
         ApiUtils.insertInstanceTags(univUUID);
         setInstanceTags(params);
       }
-      List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
+
+      ArrayList<String> expectedCommandArrayList = new ArrayList();
+      expectedCommandArrayList.addAll(t.baseCommand);
+      expectedCommandArrayList.addAll(nodeCommand(
+        NodeManager.NodeCommandType.Provision,
+        params,
+        t
+      ));
+
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        expectedCommandArrayList.add(15, "--node_exporter_port");
+        expectedCommandArrayList.add(16, "9300");
+        expectedCommandArrayList.remove(20);
+        expectedCommandArrayList.remove(19);
+      }
+
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(1))
+        .run(expectedCommandArrayList, t.region.provider.getConfig());
     }
   }
 

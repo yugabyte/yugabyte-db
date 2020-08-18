@@ -64,7 +64,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
     boolean edit = currPlacement != null;
     boolean isMultiAz = masterAddresses != null;
-    
+
     Map<UUID, Map<String, String>> activeDeploymentConfigs =
         PlacementInfoUtil.getConfigPerAZ(activeZones);
 
@@ -72,7 +72,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     SubTaskGroup createNamespaces = new SubTaskGroup(
         KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE.getSubTaskGroupName(), executor);
     createNamespaces.setSubTaskGroupType(SubTaskGroupType.Provisioning);
-    
+
     SubTaskGroup applySecrets = new SubTaskGroup(
         KubernetesCommandExecutor.CommandType.APPLY_SECRET.getSubTaskGroupName(), executor);
     applySecrets.setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -90,7 +90,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       }
 
       Map<String, String> config = entry.getValue();
-      
+
       PlacementInfo tempPI = new PlacementInfo();
       PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
 
@@ -98,7 +98,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int newNumMasters = newPlacement.masters.getOrDefault(azUUID, 0);
       int newNumTservers = newPlacement.tservers.getOrDefault(azUUID, 0);
 
-      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 
+      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
           newNumTservers;
       tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
           newNumMasters;
@@ -119,7 +119,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             continue;
           }
         }
-      } 
+      }
 
       // This will always be false in the case of a new universe.
       if (activeDeploymentConfigs.containsKey(azUUID)) {
@@ -132,11 +132,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         // Create the namespaces of the deployment.
         createNamespaces.addTask(createKubernetesExecutorTask(
             KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE, azCode, config));
-        
+
         // Apply the necessary pull secret to each namespace.
         applySecrets.addTask(createKubernetesExecutorTask(
             KubernetesCommandExecutor.CommandType.APPLY_SECRET, azCode, config));
-        
+
         // Create the helm deployments.
         helmInstalls.addTask(createKubernetesExecutorTask(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, tempPI, azCode,
@@ -155,10 +155,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   public void upgradePodsTask(KubernetesPlacement newPlacement, String masterAddresses,
                               KubernetesPlacement currPlacement, ServerType serverType,
                               String softwareVersion, int waitTime) {
-   
+
     boolean edit = currPlacement != null;
     boolean isMultiAz = masterAddresses != null;
-    
+
     Map<UUID, Integer> serversToUpdate = serverType == ServerType.MASTER ?
         newPlacement.masters : newPlacement.tservers;
     String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
@@ -166,14 +166,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     for (Entry<UUID, Integer> entry : serversToUpdate.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
-      
+
       PlacementInfo tempPI = new PlacementInfo();
       PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
 
       int currNumMasters = 0, currNumTservers = 0;
       int newNumMasters = newPlacement.masters.getOrDefault(azUUID, 0);
       int newNumTservers = newPlacement.tservers.getOrDefault(azUUID, 0);
-    
+
       int numPods = serverType == ServerType.MASTER ? newNumMasters : newNumTservers;
 
       if (edit) {
@@ -296,7 +296,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   public Set<NodeDetails> getPodsToAdd(Map<UUID, Integer> newPlacement,
                                        Map<UUID, Integer> currPlacement,
                                        ServerType serverType, boolean isMultiAz) {
-    
+
     Set<NodeDetails> podsToAdd = new HashSet<NodeDetails>();
     for (Entry<UUID, Integer> entry : newPlacement.entrySet()) {
       UUID azUUID = entry.getKey();
@@ -388,8 +388,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     return task;
   }
 
-  public void createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType commandType) {
-    createSingleKubernetesExecutorTask(commandType, null);    
+  public void createSingleKubernetesExecutorTask(
+      KubernetesCommandExecutor.CommandType commandType) {
+    createSingleKubernetesExecutorTask(commandType, null);
   }
 
   // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.

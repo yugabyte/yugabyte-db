@@ -100,6 +100,9 @@ public class NodeDetails {
   public int ysqlServerHttpPort = 13000;
   public int ysqlServerRpcPort = 5433;
 
+  // Which port node_exporter is running on.
+  public int nodeExporterPort = 9300;
+
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
   public static final Set<NodeState> IN_TRANSIT_STATES =
       ImmutableSet.of(NodeState.Removed, NodeState.Stopped, NodeState.Decommissioned);
