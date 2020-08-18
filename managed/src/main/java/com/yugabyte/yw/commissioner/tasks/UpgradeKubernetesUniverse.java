@@ -141,16 +141,18 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       version = taskParams().ybSoftwareVersion;
       flag = false;
     }
-    
+
     createSingleKubernetesExecutorTask(CommandType.POD_INFO, pi);
-    
+
     KubernetesPlacement placement = new KubernetesPlacement(pi);
 
     Provider provider = Provider.get(UUID.fromString(
           taskParams().getPrimaryCluster().userIntent.provider));
 
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+
     String masterAddresses = PlacementInfoUtil.computeMasterAddresses(pi, placement.masters,
-        taskParams().nodePrefix, provider);
+        taskParams().nodePrefix, provider, universeDetails.communicationPorts.masterRpcPort);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
     createLoadBalancerStateChangeTask(false /*enable*/)
