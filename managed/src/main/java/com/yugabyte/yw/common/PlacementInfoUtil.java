@@ -1702,7 +1702,8 @@ public class PlacementInfoUtil {
 
   // Compute the master addresses of the pods in the deployment if multiAZ.
   public static String computeMasterAddresses(PlacementInfo pi, Map<UUID, Integer> azToNumMasters,
-                                              String nodePrefix, Provider provider) {
+                                              String nodePrefix, Provider provider,
+                                              int masterRpcPort) {
     List<String> masters = new ArrayList<String>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     if (!isMultiAZ(provider)) {
@@ -1712,9 +1713,8 @@ public class PlacementInfoUtil {
       AvailabilityZone az = AvailabilityZone.get(entry.getKey());
       String domain = azToDomain.get(entry.getKey());
       for (int idx = 0; idx < entry.getValue(); idx++) {
-        int port = 7100;
         String master = String.format("yb-master-%d.yb-masters.%s-%s.%s:%d", idx, nodePrefix, az.code,
-            domain, port);
+            domain, masterRpcPort);
         masters.add(master);
       }
     }
@@ -2053,14 +2053,12 @@ public class PlacementInfoUtil {
             }
           }
 
-          switch (SwamperHelper.TargetType.createFromPort(Integer.valueOf(name[1]))) {
-            case TSERVER_EXPORT:
-                tserverAlive = tserverAlive || alive;
-              break;
-            case MASTER_EXPORT:
-                masterAlive = masterAlive || alive;
-            default:
-              break;
+          int port = Integer.parseInt(name[1]);
+
+          if (port == nodeDetails.masterHttpPort) {
+            masterAlive = masterAlive || alive;
+          } else if (port == nodeDetails.tserverHttpPort) {
+            tserverAlive = tserverAlive || alive;
           }
 
           if (!alive) {
