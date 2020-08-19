@@ -212,11 +212,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS UpdateIndexInBatches(
       const QLTableRow& row, const std::vector<IndexInfo>& indexes,
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests);
+      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      CoarseTimePoint* last_flushed_at);
 
   CHECKED_STATUS FlushIndexBatchIfRequired(
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-      bool force_flush = false);
+      bool force_flush,
+      CoarseTimePoint* last_flushed_at);
 
   CHECKED_STATUS
   FlushWithRetries(
@@ -836,7 +838,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   IsSysCatalogTablet is_sys_catalog_;
   TransactionsEnabled txns_enabled_;
-  CoarseTimePoint last_backfill_flush_at_;
 
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
 
