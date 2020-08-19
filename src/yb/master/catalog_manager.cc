@@ -4343,14 +4343,10 @@ bool CatalogManager::ReplicaMapDiffersFromConsensusState(const scoped_refptr<Tab
   if (locs.size() != cstate.config().peers_size()) {
     return true;
   }
-  for (const auto& loc : locs) {
-    auto it = std::find_if(cstate.config().peers().begin(), cstate.config().peers().end(),
-                           [&](const auto& x) {
-                             return x.permanent_uuid() == loc.first;
-                           });
-    if (it == cstate.config().peers().end()) {
-      return true;
-    }
+  for (auto iter = cstate.config().peers().begin(); iter != cstate.config().peers().end(); iter++) {
+      if (locs.find(iter->permanent_uuid()) == locs.end()) {
+        return true;
+      }
   }
   return false;
 }
