@@ -142,7 +142,7 @@ Default: `60000` (1 minute)
 
 {{< note title="Note" >}}
 
-If this value is changed from the default, make sure to add the same value to all YB-Master and YB-TSever configurations.
+If this value is changed from the default, make sure to add the identical value to all YB-Master and YB-TSever configurations.
 
 {{< /note >}}
 
