@@ -59,13 +59,10 @@ docker pull yugabytedb/yugabyte:2.2.2.0-b15
 - Fixed crashes when inserting literals containing newline characters. [#5270](https://github.com/yugabyte/yugabyte-db/issues/5270)
 - Reuse CQL parser between processors to improve memory usage. Add new `cql_processors_limit` flag to control processor allocation. [#5057](https://github.com/yugabyte/yugabyte-db/issues/5057)
 
-## System improvements
+## Core database
 
 - Fix `yugabyted` fails to start UI due to class binding failure. [#5069](https://github.com/yugabyte/yugabyte-db/issues/5069)
 - Show hostnames in YB-Master and YB-TServer Admin UI when hostnames are specified in `--webserver_interface`, `rpc_bind_addresses`, and `server_broadcast_addresses` flags. [#5002](https://github.com/yugabyte/yugabyte-db/issues/5002)
-
-### DocDB
-
 - Skip tablets without intents during commits, for example, the case of an update of a non-existing row. [#5321](https://github.com/yugabyte/yugabyte-db/issues/5321)
 - Fix log spew when applying unknown transaction and release mutex as soon as possible when transaction is not found. [#5315](https://github.com/yugabyte/yugabyte-db/issues/5315)
 - Fix snapshots cleanup when snapshots removed before restart. [#5337](https://github.com/yugabyte/yugabyte-db/issues/5337)
@@ -80,9 +77,9 @@ docker pull yugabytedb/yugabyte:2.2.2.0-b15
 - Fix WAL overwriting by new leader and replay of incorrect entries on tablet bootstrap. [#5003](https://github.com/yugabyte/yugabyte-db/issues/5003) [#3759](https://github.com/yugabyte/yugabyte-db/issues/3759) [#4983](https://github.com/yugabyte/yugabyte-db/issues/4983)
 - Avoid taking unique lock when starting lookup request. [#5059](https://github.com/yugabyte/yugabyte-db/issues/5059)
 - Set 2DC lag metrics to `0` if not the leader and if replication deleted. [#5113](https://github.com/yugabyte/yugabyte-db/issues/5113)
-- Set the table in alerting if `full_*` is populated. [#5139](https://github.com/yugabyte/yugabyte-db/issues/5139)
+- Set the table to ALTERING state when `fully_*` is populated. [#5139](https://github.com/yugabyte/yugabyte-db/issues/5139)
 - `Not the leader` errors should not cause a replica to be marked as failed. [#5072](https://github.com/yugabyte/yugabyte-db/issues/5072)
-- Use difference between follower's hybrid time and its safe time as a measure of staleness. Also, change the default value of `max_stale_read_bound_time_ms` to 10 seconds to avoid serving stale requests without users being aware. [#4868](https://github.com/yugabyte/yugabyte-db/issues/4868)
+- Use difference between follower's hybrid time and its safe time as a measure of staleness. [#4868](https://github.com/yugabyte/yugabyte-db/issues/4868)
 
 ## Yugabyte Platform
 
