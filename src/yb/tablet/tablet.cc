@@ -2195,6 +2195,7 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
   constexpr auto kProgressInterval = 1000;
   int num_rows_processed = 0;
   string resume_from;
+  CoarseTimePoint last_flushed_at;
   while (VERIFY_RESULT(iter->HasNext())) {
     RETURN_NOT_OK(iter->NextRow(&row));
 
@@ -2206,14 +2207,14 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
     }
 
     DVLOG(2) << "Building index for fetched row: " << row.ToString();
-    RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, &index_requests));
+    RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, &index_requests, &last_flushed_at));
     if (++num_rows_processed % kProgressInterval == 0) {
       VLOG(1) << "Processed " << num_rows_processed << " rows";
     }
   }
 
   VLOG(1) << "Processed " << num_rows_processed << " rows";
-  RETURN_NOT_OK(FlushIndexBatchIfRequired(&index_requests, /* forced */ true));
+  RETURN_NOT_OK(FlushIndexBatchIfRequired(&index_requests, /* forced */ true, &last_flushed_at));
   LOG(INFO) << "Done BackfillIndexes at " << read_time << " for "
             << yb::ToString(index_ids) << " until "
             << (resume_from.empty() ? "<end of the tablet>"
@@ -2223,7 +2224,8 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
 
 Status Tablet::UpdateIndexInBatches(
     const QLTableRow& row, const std::vector<IndexInfo>& indexes,
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests) {
+    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    CoarseTimePoint* last_flushed_at) {
   const QLTableRow& kEmptyRow = QLTableRow::empty_row();
   QLExprExecutor expr_executor;
 
@@ -2238,11 +2240,12 @@ Status Tablet::UpdateIndexInBatches(
   }
 
   // Update the index write op.
-  return FlushIndexBatchIfRequired(index_requests, false);
+  return FlushIndexBatchIfRequired(index_requests, false, last_flushed_at);
 }
 
 Status Tablet::FlushIndexBatchIfRequired(
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests, bool force_flush) {
+    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests, bool force_flush,
+    CoarseTimePoint* last_flushed_at) {
   if (!force_flush && index_requests->size() < FLAGS_backfill_index_write_batch_size) {
     return Status::OK();
   }
@@ -2297,7 +2300,7 @@ Status Tablet::FlushIndexBatchIfRequired(
 
   auto now = CoarseMonoClock::Now();
   if (FLAGS_backfill_index_rate_rows_per_sec > 0) {
-    auto duration_since_last_batch = MonoDelta(now - last_backfill_flush_at_);
+    auto duration_since_last_batch = MonoDelta(now - *last_flushed_at);
     auto expected_duration_ms = MonoDelta::FromMilliseconds(
         index_requests->size() * 1000 / FLAGS_backfill_index_rate_rows_per_sec);
     DVLOG(3) << "Duration since last batch " << duration_since_last_batch
@@ -2307,7 +2310,7 @@ Status Tablet::FlushIndexBatchIfRequired(
       SleepFor(expected_duration_ms - duration_since_last_batch);
     }
   }
-  last_backfill_flush_at_ = now;
+  *last_flushed_at = now;
 
   index_requests->clear();
   return Status::OK();
