@@ -73,8 +73,8 @@ docker pull yugabytedb/yugabyte:2.2.2.0-b14
 
 - Enable backfilling by default for transactional tables. Backfilling for YCQL user-enforced indexes are not enabled by default. [#4708](https://github.com/yugabyte/yugabyte-db/issues/4708)
 - Throttle YCQL calls on soft memory limit. [#4973](https://github.com/yugabyte/yugabyte-db/issues/4973)
-- Implement DNS cache to educe significant CPU load due to large number of DNS resolution requests (especially for YCQL connections). Adds `dns_cache_expiration_ms` flag (default is 1 minute). [#5201](https://github.com/yugabyte/yugabyte-db/issues/5201)
-- Fixed incorrect names demangling in index creation from `CatalogManager::ImportSnapshot()`. [#5157](https://github.com/yugabyte/yugabyte-db/issues/5157)
+- Implement DNS cache to reduce significant CPU load due to large number of DNS resolution requests (especially for YCQL connections). Adds `dns_cache_expiration_ms` flag (default is 1 minute). [#5201](https://github.com/yugabyte/yugabyte-db/issues/5201)
+- Fixed incorrect names de-mangling in index creation from `CatalogManager::ImportSnapshot()`. [#5157](https://github.com/yugabyte/yugabyte-db/issues/5157)
 - Correct name resolution for columns when checking for indexing covering. [#4881](https://github.com/yugabyte/yugabyte-db/issues/4881)
 - Fix server crashes when executing queries with invalid ORDER BY column. [#3451](https://github.com/yugabyte/yugabyte-db/issues/3451) and [#4908](https://github.com/yugabyte/yugabyte-db/issues/4908)
 
