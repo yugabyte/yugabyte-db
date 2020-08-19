@@ -12,6 +12,7 @@
 //
 package org.yb.cql;
 
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.io.BufferedReader;
@@ -313,6 +314,9 @@ public class TestYbBackup extends BaseCQLTest {
   public void checkValuesInTables(String keyspace,
                                   TableProperty tp,
                                   ValuesUpdateState state) throws Exception {
+    SimpleDateFormat isoFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+    isoFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+
     final String value_c = (state == ValuesUpdateState.UPDATED ? "99" : "4");
     assertQuery("select * from " + keyspace + ".test_tbl;",
                 "Row[1, 2, 3, " + value_c + "]");
@@ -350,9 +354,10 @@ public class TestYbBackup extends BaseCQLTest {
     }
 
     if (state == ValuesUpdateState.UPDATED) {
+      String dateStr = isoFormat.parse("2021-07-29T12:24:56").toString();
       assertQuery("select * from " + keyspace + ".test_types;",
                   "Row[1, 12, 13, 14, 15.5, 16.6, 17, 18, false, 2021-07-29, 39723123456789, " +
-                  "Thu Jul 29 12:24:56 UTC 2021, /127.1.0.1, " +
+                    dateStr + ", /127.1.0.1, " +
                   "11111111-2222-3333-4444-999999999999, " +
                   "f58ba3dc-3422-11e7-a919-92ebcb67fe99, " +
                   "{\"a\":10}, {11=a, 12=b}, [/11.2.3.4, /15.6.7.8], [11.1, 12.2]]");
@@ -367,7 +372,7 @@ public class TestYbBackup extends BaseCQLTest {
       assertQuery("select * from " + keyspace + ".c9i;", "Row[1, false]");
       assertQuery("select * from " + keyspace + ".c10i;", "Row[1, 2021-07-29]");
       assertQuery("select * from " + keyspace + ".c11i;", "Row[1, 39723123456789]");
-      assertQuery("select * from " + keyspace + ".c12i;", "Row[1, Thu Jul 29 12:24:56 UTC 2021]");
+      assertQuery("select * from " + keyspace + ".c12i;", "Row[1, " + dateStr + "]");
       assertQuery("select * from " + keyspace + ".c13i;", "Row[1, /127.1.0.1]");
       assertQuery("select * from " + keyspace + ".c14i;",
                   "Row[1, 11111111-2222-3333-4444-999999999999]");
@@ -377,9 +382,10 @@ public class TestYbBackup extends BaseCQLTest {
       assertQuery("select * from " + keyspace + ".fsi;", "Row[1, [/11.2.3.4, /15.6.7.8]]");
       assertQuery("select * from " + keyspace + ".fli;", "Row[1, [11.1, 12.2]]");
     } else {
+      String dateStr = isoFormat.parse("2020-07-29T12:24:56").toString();
       assertQuery("select * from " + keyspace + ".test_types;",
                   "Row[1, 2, 3, 4, 5.5, 6.6, 7, 8, true, 2020-07-29, 3723123456789, " +
-                  "Wed Jul 29 12:24:56 UTC 2020, /127.0.0.1, " +
+                    dateStr + ", /127.0.0.1, " +
                   "11111111-2222-3333-4444-555555555555, " +
                   "f58ba3dc-3422-11e7-a919-92ebcb67fe33, " +
                   "{\"a\":0}, {1=a, 2=b}, [/1.2.3.4, /5.6.7.8], [1.1, 2.2]]");
@@ -394,7 +400,7 @@ public class TestYbBackup extends BaseCQLTest {
       assertQuery("select * from " + keyspace + ".c9i;", "Row[1, true]");
       assertQuery("select * from " + keyspace + ".c10i;", "Row[1, 2020-07-29]");
       assertQuery("select * from " + keyspace + ".c11i;", "Row[1, 3723123456789]");
-      assertQuery("select * from " + keyspace + ".c12i;", "Row[1, Wed Jul 29 12:24:56 UTC 2020]");
+      assertQuery("select * from " + keyspace + ".c12i;", "Row[1, " + dateStr + "]");
       assertQuery("select * from " + keyspace + ".c13i;", "Row[1, /127.0.0.1]");
       assertQuery("select * from " + keyspace + ".c14i;",
                   "Row[1, 11111111-2222-3333-4444-555555555555]");
