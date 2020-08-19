@@ -14,7 +14,7 @@ menu:
     weight: 2589 
 ---
 
-**Released:** August 18, 2020 (2.2.2.0-b14).
+**Released:** August 19, 2020 (2.2.2.0-b15).
 
 **New to YugabyteDB?** To get up and running in less than five minutes, follow [Quick start](../../quick-start/).
 
@@ -40,10 +40,8 @@ menu:
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.2.2.0-b14
+docker pull yugabytedb/yugabyte:2.2.2.0-b15
 ```
-
-## Notable new features and enhancements
 
 ## YSQL
 
@@ -57,7 +55,7 @@ docker pull yugabytedb/yugabyte:2.2.2.0-b14
 - Make sure that YB index permission updates wait for `pg_index` updates during index backfills. [#4585](https://github.com/yugabyte/yugabyte-db/issues/4585)
 - Disabled IsCreateTableDone change for unique indexes. [#4918](https://github.com/yugabyte/yugabyte-db/issues/4918)
 - Invalidate indexed table cache on DROP INDEX statement. [#4974](https://github.com/yugabyte/yugabyte-db/issues/4974)
-- Use `--serializable-deferrable` by default for `ysql_dump` to help work with concurrent writes without any read restart errors and help distributed backups run more reliably. [#4990](https://github.com/yugabyte/yugabyte-db/issues/4990)
+- Use `--serializable-deferrable` by default for `ysql_dump` call from `yb_backyp.py` script. [#4990](https://github.com/yugabyte/yugabyte-db/issues/4990)
 - Change JDBC URL in `yb-ctl status` to use `yugabyte` instead of `postgres`. [#4997](https://github.com/yugabyte/yugabyte-db/issues/4997)
 - Properly handle empty delete with backfill. [#5015](https://github.com/yugabyte/yugabyte-db/issues/5015)
 - Fix concurrent CREATE INDEX and INSERT statements leads to crash. [#4941](https://github.com/yugabyte/yugabyte-db/issues/4941)
@@ -81,16 +79,18 @@ docker pull yugabytedb/yugabyte:2.2.2.0-b14
 - Fixed crashes when inserting literals containing newline characters. [#5270](https://github.com/yugabyte/yugabyte-db/issues/5270)
 - Reuse CQL parser between processors to improve memory usage. Add new `cql_processors_limit` flag to control processor allocation. [#5057](https://github.com/yugabyte/yugabyte-db/issues/5057)
 - [colocation] Corruption when dropping indexed table with backfill. [#4986](https://github.com/yugabyte/yugabyte-db/issues/4986)
+- Use ScopedRWOperationPause during YCQL schema change to pause write operations. [#4039](https://github.com/yugabyte/yugabyte-db/issues/4039)
 
 ## System improvements
 
 - Fix `yugabyted` fails to start UI due to class binding failure. [#5069](https://github.com/yugabyte/yugabyte-db/issues/5069)
 - Rename `yugabyte bind_ip` to `yugabyted listen`. [#4960](https://github.com/yugabyte/yugabyte-db/issues/4960)
 - Show hostnames in YB-Master and YB-TServer Admin UI when hostnames are specified in `--webserver_interface`, `rpc_bind_addresses`, and `server_broadcast_addresses` flags. [#5002](https://github.com/yugabyte/yugabyte-db/issues/5002)
+- Support High/Normal thread pools for callbacks. [#5025](https://github.com/yugabyte/yugabyte-db/issues/5025)
 
 ### DocDB
 
-- Implement size-based strategy for automatic tablet splitting. Adds `tablet_split_size_threshold` flag. For post-split tablets, only split again after full compaction. [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
+- Implement size-based strategy for automatic tablet splitting. Adds `tablet_split_size_threshold_bytes` flag. For post-split tablets, tablets are only split again after full compaction. [#1462](https://github.com/yugabyte/yugabyte-db/issues/1462)
 - Skip tablets without intents during commits. [#5321](https://github.com/yugabyte/yugabyte-db/issues/5321)
 - Fix log spew when applying unknown transaction and release mutex as soon as possible when transaction is not found. [#5315](https://github.com/yugabyte/yugabyte-db/issues/5315)
 - Fix snapshots cleanup when snapshots removed before restart. [#5337](https://github.com/yugabyte/yugabyte-db/issues/5315)
@@ -115,7 +115,8 @@ docker pull yugabytedb/yugabyte:2.2.2.0-b14
 ## Yugabyte Platform
 
 - Add backup and restore option for YSQL tables and universe-level transactional backups. [#3849](https://github.com/yugabyte/yugabyte-db/issues/3849)
-- Add **Master** section in metrics below **Tablet Server** section. [#5233](https://github.com/yugabyte/yugabyte-db/issues/5233)
+- Use `--serializable-deferrable` by default for `ysql_dump` call from `yb_backyp.py` script. [#4990](https://github.com/yugabyte/yugabyte-db/issues/4990)
+- Add **Master** section below **Tablet Server** section in **Metrics** page. [#5233](https://github.com/yugabyte/yugabyte-db/issues/5233)
 - Add `rpc_connections_alive` metrics for YSQL and YCQL APIs. [#5223](https://github.com/yugabyte/yugabyte-db/issues/5223)
 - Fix restore payload when renaming table to include keyspace. Disable keyspace field when restoring universe backup. [#5178](https://github.com/yugabyte/yugabyte-db/issues/5178)
 - Pass in `ssh_user` to air-gap provision script and add to on-premise template. [#5132](https://github.com/yugabyte/yugabyte-db/issues/5132)
@@ -134,9 +135,7 @@ docker pull yugabytedb/yugabyte:2.2.2.0-b14
 - Enable OAuth login for user authentication. [#4633](https://github.com/yugabyte/yugabyte-db/issues/4633)
 - Retrieve IAM instance profile credentials for backups. [#4900](https://github.com/yugabyte/yugabyte-db/issues/4900)
 - Add support for multi-table backups. [#4540]
-
 - Fix naming a universe then change name before saving cause nodes to have old name. [#5010](https://github.com/yugabyte/yugabyte-db/issues/5010)
-- Change Replication metric tab to show by default and add default state when there is no data. [#???]
 - Add **Replication** tab to **Universe overview** tab list. [#3820](https://github.com/yugabyte/yugabyte-db/issues/3820)
 
 {{< note title="Note" >}}

@@ -301,7 +301,7 @@ Create a single-node cluster with a given base dir and listen address. Note the 
 bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.2.0/data1 --listen=127.0.0.1
 ```
 
-### Create a multi-node cluster 
+### Create a multi-node cluster
 
 Add two more nodes to the cluster using the `join` option.
 
