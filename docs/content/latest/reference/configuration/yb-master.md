@@ -112,6 +112,18 @@ Specifies the public IP or DNS hostname of the server (with an optional port). T
 
 Default: `""`
 
+##### --dns_cache_expiration_ms
+
+Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided, thereby reducing latency, improving load times, and reducing bandwidth and CPU consumption.
+
+Default: `60000` (1 minute)
+
+{{< note title="Note" >}}
+
+If this value is changed from the default, make sure to add the same value to all YB-Master and YB-TSever configurations.
+
+{{< /note >}}
+
 ##### --use_private_ip
 
 Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration flags](#placement-flags).
