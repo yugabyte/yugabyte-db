@@ -125,7 +125,11 @@ export default class AlertProfileForm extends Component {
           enableReinitialize
           onSubmit={(values, { setSubmitting, resetForm }) => {
             const data = _.omit(values, 'customSmtp'); // don't submit internal helper field
-            if (!values.customSmtp) {
+            if (values.customSmtp) {
+              // due to smtp specifics have to remove smtpUsername/smtpPassword props from payload when they are empty
+              if (!data.smtpData.smtpUsername) data.smtpData = _.omit(data.smtpData, 'smtpUsername');
+              if (!data.smtpData.smtpPassword) data.smtpData = _.omit(data.smtpData, 'smtpPassword');
+            } else {
               data.smtpData = null; // this will revert smtp settings to default presets
             }
 
