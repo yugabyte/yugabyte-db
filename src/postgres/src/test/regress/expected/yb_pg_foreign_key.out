@@ -1609,8 +1609,6 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_3 FOR VALUES IN
 INSERT INTO fk_partitioned_fk (a, b) VALUES (2502, 2503);
 ERROR:  insert or update on table "fk_partitioned_fk_3" violates foreign key constraint "fk_partitioned_fk_a_fkey"
 DETAIL:  Key (a, b)=(2502, 2503) is not present in table "fk_notpartitioned_pk".
--- TODO(YB): The insert above has side effects! This cleanup is needed because of #5387
-DELETE FROM fk_partitioned_fk_3 WHERE a = 2502 AND b = 2503;
 INSERT INTO fk_partitioned_fk_3 (a, b) VALUES (2502, 2503);
 ERROR:  insert or update on table "fk_partitioned_fk_3" violates foreign key constraint "fk_partitioned_fk_a_fkey"
 DETAIL:  Key (a, b)=(2502, 2503) is not present in table "fk_notpartitioned_pk".
