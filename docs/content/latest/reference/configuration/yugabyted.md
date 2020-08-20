@@ -295,6 +295,37 @@ The base directory for the yugabtyed server that whose logs are desired.
 
 -----
 
+### connect
+
+Use the `yugabyted connect` command to connect to the cluster with `ysqlsh` or `ycqlsh` cli.
+
+#### Syntax
+
+```
+Usage: yugabyted connect [-h] {ycql,ysql} ...
+
+Commands:
+  {ycql,ysql}
+    ycql       Use YCQL through the CLI.
+    ysql       Use YSQL through the CLI.
+```
+
+#### Flags
+
+##### -h | --help
+
+Print the command line help and exit.
+  
+##### --ysql
+
+Connect with `ysqlsh` cli.
+  
+##### --ycql
+
+Connect with `ycqlsh` cli.
+
+-----
+
 ### demo
 
 Use the `yugabyted demo connect` command to start YugabyteDB with the [northwind sample dataset](../../../sample-data/northwind/). 
