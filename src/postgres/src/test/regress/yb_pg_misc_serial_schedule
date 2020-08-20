@@ -19,8 +19,5 @@ test: yb_pg_copy
 
 test: yb_pg_create_operator
 
-# Dependency for `yb_pg_aggregates`
-test: yb_pg_create_aggregate
-
 test: yb_pg_errors
 test: yb_pg_select
