@@ -482,10 +482,9 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
   // If pre-elections disabled or we already won pre-election then start regular election,
   // otherwise pre-election is started.
   // Pre-elections could be disable via flag, or temporarily if some nodes do not support them.
-  auto preelection = FLAGS_use_preelection && !preelected &&
+  auto preelection = ANNOTATE_UNPROTECTED_READ(FLAGS_use_preelection) && !preelected &&
                      disable_pre_elections_until_ < CoarseMonoClock::now();
   const char* election_name = preelection ? "pre-election" : "election";
-
 
   LeaderElectionPtr election;
   {
