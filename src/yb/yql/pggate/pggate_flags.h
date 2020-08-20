@@ -36,9 +36,6 @@ DECLARE_int32(ysql_select_parallelism);
 DECLARE_bool(ysql_suppress_unsupported_error);
 
 DECLARE_bool(ysql_beta_features);
-DECLARE_bool(ysql_beta_feature_function);
-DECLARE_bool(ysql_beta_feature_trigger);
-DECLARE_bool(ysql_beta_feature_roles);
 DECLARE_bool(ysql_beta_feature_extension);
 DECLARE_bool(ysql_beta_feature_tablegroup);
 DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
