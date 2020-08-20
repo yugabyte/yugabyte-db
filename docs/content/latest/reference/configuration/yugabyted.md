@@ -263,6 +263,38 @@ The base directory for the yugabtyed server that whose version is desired.
 
 -----
 
+### collect_logs
+
+Use the `yugabyted collect_logs` command to generate a zipped file with all logs.
+
+#### Syntax
+
+```
+Usage: yugabyted collect_logs [-h] [--config CONFIG]
+                                       [--data_dir DATA_DIR]
+                                       [--base_dir BASE_DIR]
+```
+
+#### Flags
+
+##### -h | --help
+
+Print the command line help and exit.
+  
+##### --config *config-file*
+
+The path to the configuration file of the yugabyted server whose logs are desired.
+  
+##### --data_dir *data-directory*
+
+The data directory for the yugabtyed server whose logs are desired.
+
+##### --base_dir *base-directory*
+
+The base directory for the yugabtyed server that whose logs are desired.
+
+-----
+
 ### demo
 
 Use the `yugabyted demo connect` command to start YugabyteDB with the [northwind sample dataset](../../../sample-data/northwind/). 
