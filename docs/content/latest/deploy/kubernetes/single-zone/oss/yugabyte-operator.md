@@ -45,12 +45,11 @@ showAsideToc: true
   </li>
 </ul>
 
-
 Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [YugabyteDB k8s operator repository](https://github.com/yugabyte/yugabyte-k8s-operator/). This operator currently provides more configuration flags as compared to the Rook operator. The Rook operator, in near future, will get these flags too. See full list of configuration flags [here](#configuration-flags).
 
 ## Prerequisites
 
-Clone [yugabyte-k8s-operator](https://github.com/yugaByte/yugabyte-k8s-operator/) repository on your local computer. Change into the cloned directory and follow instructions as below.
+Clone the [yugabyte-k8s-operator](https://github.com/yugaByte/yugabyte-k8s-operator/) repository on your local computer. Change into the cloned directory and follow instructions below.
 
 ## Deploy a YugabyteDB cluster with this operator
 
@@ -112,7 +111,7 @@ Enable TLS encryption for YugabyteDB, if desired. It is disabled by default. You
 
 ### YB-Master and YB-TServer
 
-YB-Master and YB-TServer are two essential components of a YugabyteDB cluster. YB-Master is responsible for recording and maintaining system metadata & for admin activities. YB-TServer is responsible for data I/O.
+YB-Master and YB-TServer are two essential components of a YugabyteDB cluster. YB-Master is responsible for recording and maintaining system metadata and for administration activities. YB-TServer is responsible for data I/O.
 Specify YB-Master and YB-TServer attributes under `master`/`tserver`. The valid attributes are as described below. These two are **required** fields.
 
 #### Replicas

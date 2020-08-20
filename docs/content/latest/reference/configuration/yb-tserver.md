@@ -258,6 +258,13 @@ For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-mas
 
 Default: `6`
 
+##### --max_stale_read_bound_time_ms
+
+Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
+In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
+
+Default: `10000` (10 seconds)
+
 ##### --raft_heartbeat_interval_ms
 
 The heartbeat interval, in milliseconds (ms), for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
