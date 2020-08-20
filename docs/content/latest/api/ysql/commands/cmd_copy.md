@@ -17,6 +17,13 @@ showAsideToc: true
 
 Use the `COPY` statement to transfer data between tables and files. `COPY TO` copies from tables to files. `COPY FROM` copies from files to tables. `COPY` outputs the number of rows that were copied.
 
+{{< note title="Note" >}}
+
+`COPY` works with files that reside local to the yb-tserver that we're connecting to. To work with files that reside
+ on the client, use `\copy` in [`ysqlsh` cli](../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option).
+{{< /note >}}
+
+
 ## Syntax
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -62,6 +69,41 @@ Specify a `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE` statement whose re
 Specify the path of the file to be copied. An input file name can be an absolute or relative path, but an output file name must be an absolute path.
 
 ## Examples
+
+Assuming we have a table like below:
+
+```postgresql
+yugabyte=# CREATE TABLE users(id BIGSERIAL PRIMARY KEY, name TEXT);
+yugabyte=# INSERT INTO users(name) VALUES ('John Doe'), ('Jane Doe'), ('Dorian Gray');
+yugabyte=# SELECT * FROM users;
+ id |    name     
+----+-------------
+  3 | Dorian Gray
+  2 | Jane Doe
+  1 | John Doe
+(3 rows)
+```
+
+### Export the whole table
+Copy the whole table to a comma separated CSV file with column names in the header.
+
+```postgresql
+yugabyte=# COPY users TO '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
+```
+
+### Export partial table using WHERE clause with column selection
+Use a WHERE clause to filter rows and only `name` column.
+
+```postgresql
+yugabyte=# COPY (SELECT name FROM users where name='Dorian Gray') TO '/home/yuga/Desktop/users.txt.sql' DELIMITER
+ ',' CSV HEADER;
+```
+
+### Importing the previous exports
+
+```postgresql
+yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
+```
 
 - Errors are raised if the table does not exist.
 - `COPY TO` can only be used with regular tables.
