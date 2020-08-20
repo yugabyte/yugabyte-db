@@ -1201,8 +1201,6 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_3 FOR VALUES IN
 
 -- this insert fails
 INSERT INTO fk_partitioned_fk (a, b) VALUES (2502, 2503);
--- TODO(YB): The insert above has side effects! This cleanup is needed because of #5387
-DELETE FROM fk_partitioned_fk_3 WHERE a = 2502 AND b = 2503;
 INSERT INTO fk_partitioned_fk_3 (a, b) VALUES (2502, 2503);
 -- but since the FK is MATCH SIMPLE, this one doesn't
 INSERT INTO fk_partitioned_fk_3 (a, b) VALUES (2502, NULL);
