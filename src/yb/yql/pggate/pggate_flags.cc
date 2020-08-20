@@ -76,18 +76,10 @@ DEFINE_bool(ysql_suppress_unsupported_error, false,
             "Suppress ERROR on use of unsupported SQL statement and use WARNING instead");
 
 // Top-level flag to enable all YSQL beta features.
-DEFINE_bool(ysql_beta_features, true,
+DEFINE_bool(ysql_beta_features, false,
             "Whether to enable all ysql beta features");
 
 // Per-feature flags -- only relevant if ysql_beta_features is false.
-DEFINE_bool(ysql_beta_feature_function, false,
-            "Whether to enable 'function' ysql beta feature");
-
-DEFINE_bool(ysql_beta_feature_trigger, false,
-            "Whether to enable the 'trigger' ysql beta feature");
-
-DEFINE_bool(ysql_beta_feature_roles, false,
-            "Whether to enable the 'roles' ysql beta feature");
 
 DEFINE_bool(ysql_beta_feature_extension, false,
             "Whether to enable the 'extension' ysql beta feature");

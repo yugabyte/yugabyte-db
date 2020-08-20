@@ -152,8 +152,8 @@ typedef struct ImportQual
 #define parser_ybc_not_support_in_templates(pos, feature) \
 	ybc_not_support_in_templates(pos, yyscanner, feature " not supported yet in template0/template1")
 
-#define parser_ybc_beta_feature(pos, feature) \
-	check_beta_feature(pos, yyscanner, "FLAGS_ysql_beta_feature_" feature, feature)
+#define parser_ybc_beta_feature(pos, feature, has_own_flag) \
+	check_beta_feature(pos, yyscanner, has_own_flag ? "FLAGS_ysql_beta_feature_" feature : NULL, feature)
 
 static void base_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner,
 						 const char *msg);
@@ -891,6 +891,7 @@ stmt :
 			| AlterDatabaseStmt
 			| AlterDefaultPrivilegesStmt
 			| AlterDomainStmt
+			| AlterGroupStmt
 			| AlterObjectSchemaStmt
 			| AlterOperatorStmt
 			| AlterOpFamilyStmt
@@ -955,14 +956,13 @@ stmt :
 			| ViewStmt
 
 			/* BETA features */
-			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension"); }
-			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension"); }
-			| AlterGroupStmt { parser_ybc_beta_feature(@1, "roles"); }
-			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze"); }
-			| BackfillIndexStmt { parser_ybc_beta_feature(@1, "backfill index"); }
-			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum"); }
-			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup"); }
-			| DropTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup"); }
+			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
+			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
+			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze", false); }
+			| BackfillIndexStmt { parser_ybc_beta_feature(@1, "backfill index", false); }
+			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
+			| DropTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
+			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum", false); }
 
 			/* Not supported in template0/template1 statements */
 			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
@@ -1361,7 +1361,6 @@ CreateGroupStmt:
 AlterGroupStmt:
 			ALTER GROUP_P RoleSpec add_drop USER role_list
 				{
-					parser_ybc_beta_feature(@1, "roles");
 					AlterRoleStmt *n = makeNode(AlterRoleStmt);
 					n->role = $3;
 					n->action = $4;
@@ -2467,7 +2466,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE TRIGGER <trig> */
 			| ENABLE_P TRIGGER name
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableTrig;
 					n->name = $3;
@@ -2476,7 +2474,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE ALWAYS TRIGGER <trig> */
 			| ENABLE_P ALWAYS TRIGGER name
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableAlwaysTrig;
 					n->name = $4;
@@ -2485,7 +2482,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE REPLICA TRIGGER <trig> */
 			| ENABLE_P REPLICA TRIGGER name
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableReplicaTrig;
 					n->name = $4;
@@ -2494,7 +2490,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE TRIGGER ALL */
 			| ENABLE_P TRIGGER ALL
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableTrigAll;
 					$$ = (Node *)n;
@@ -2502,7 +2497,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE TRIGGER USER */
 			| ENABLE_P TRIGGER USER
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableTrigUser;
 					$$ = (Node *)n;
@@ -2510,7 +2504,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DISABLE TRIGGER <trig> */
 			| DISABLE_P TRIGGER name
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DisableTrig;
 					n->name = $3;
@@ -2519,7 +2512,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DISABLE TRIGGER ALL */
 			| DISABLE_P TRIGGER ALL
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DisableTrigAll;
 					$$ = (Node *)n;
@@ -2527,7 +2519,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DISABLE TRIGGER USER */
 			| DISABLE_P TRIGGER USER
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DisableTrigUser;
 					$$ = (Node *)n;
@@ -2608,7 +2599,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> OWNER TO RoleSpec */
 			| OWNER TO RoleSpec
 				{
-					parser_ybc_beta_feature(@1, "roles");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_ChangeOwner;
 					n->newowner = $3;
@@ -2760,16 +2750,10 @@ opt_reloptions:		WITH reloptions					{ $$ = $2; }
 reloption_list:
 			reloption_elem
 				{
-					if (strcmp($1->defname, "colocated") == 0) {
-						parser_ybc_beta_feature(@1, "colocated table");
-					}
 					$$ = list_make1($1);
 				}
 			| reloption_list ',' reloption_elem
 				{
-					if (strcmp($3->defname, "colocated") == 0) {
-						parser_ybc_beta_feature(@1, "colocated table");
-					}
 					$$ = lappend($1, $3);
 				}
 		;
@@ -4311,14 +4295,14 @@ OnCommitOption:  ON COMMIT DROP				{ $$ = ONCOMMIT_DROP; }
 OptTableGroup:
 			TABLEGROUP name
 				{
-					parser_ybc_beta_feature(@1, "tablegroup");
+					parser_ybc_beta_feature(@1, "tablegroup", true);
 					$$ = makeNode(OptTableGroup);
 					$$->has_tablegroup = true;
 					$$->tablegroup_name = $2;
 				}
 			| NO TABLEGROUP
 				{
-					parser_ybc_beta_feature(@1, "tablegroup");
+					parser_ybc_beta_feature(@1, "tablegroup", true);
 					$$ = makeNode(OptTableGroup);
 					$$->has_tablegroup = false;
 					$$->tablegroup_name = NULL;
@@ -4371,7 +4355,7 @@ SplitClause:
       	}
       | AT VALUES '(' yb_split_points ')'
         {
-          parser_ybc_beta_feature(@1, "split_at");
+          parser_ybc_beta_feature(@1, "split_at", false);
       	  $$ = makeNode(OptSplit);
       	  $$->split_type = SPLIT_POINTS;
       	  $$->num_tablets = -1;
@@ -4816,7 +4800,7 @@ opt_procedural:
 
  CreateTableGroupStmt: CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions
  				{
- 					parser_ybc_beta_feature(@1, "tablegroup");
+ 					parser_ybc_beta_feature(@1, "tablegroup", true);
  					CreateTableGroupStmt *n = makeNode(CreateTableGroupStmt);
  					n->tablegroupname = $3;
  					n->owner = $4;
@@ -4838,7 +4822,7 @@ OptTableGroupOwner: OWNER RoleSpec		{ $$ = $2; }
 
 DropTableGroupStmt: DROP TABLEGROUP name
  				{
- 					parser_ybc_beta_feature(@1, "tablegroup");
+ 					parser_ybc_beta_feature(@1, "tablegroup", true);
  					DropTableGroupStmt *n = makeNode(DropTableGroupStmt);
  					n->tablegroupname = $3;
  					$$ = (Node *) n;
@@ -9705,7 +9689,7 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TABLEGROUP name RENAME TO name
 				{
-					parser_ybc_beta_feature(@1, "tablegroup");
+					parser_ybc_beta_feature(@1, "tablegroup", true);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TABLEGROUP;
 					n->subname = $3;
@@ -10309,7 +10293,7 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 				}
 			| ALTER TABLEGROUP name OWNER TO RoleSpec
 				{
-					parser_ybc_beta_feature(@1, "tablegroup");
+					parser_ybc_beta_feature(@1, "tablegroup", true);
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
 					n->objectType = OBJECT_TABLEGROUP;
 					n->object = (Node *) makeString($3);
@@ -17392,7 +17376,7 @@ beta_features_enabled()
 	static int beta_enabled = -1;
 	if (beta_enabled == -1)
 	{
-		beta_enabled = YBCIsEnvVarTrueWithDefault("FLAGS_ysql_beta_features", true);
+		beta_enabled = YBCIsEnvVarTrueWithDefault("FLAGS_ysql_beta_features", false);
 	}
 	return beta_enabled;
 }
@@ -17400,26 +17384,19 @@ beta_features_enabled()
 static void
 check_beta_feature(int pos, core_yyscan_t yyscanner, const char *flag, const char *feature)
 {
-	// Special handling for tablegroup beta feature until fully implemented in docdb.
-	if (strcmp(feature, "tablegroup") == 0)
+	if (YBIsUsingYBParser() && !beta_features_enabled() && !(flag && YBCIsEnvVarTrue(flag)))
 	{
-		if (YBIsUsingYBParser() && !YBCIsEnvVarTrue(flag))
-		{
-			int signal_level = YBUnsupportedFeatureSignalLevel();
-			ereport(signal_level,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("'%s' is a beta feature and is disabled", feature),
-					 errhint("To enable this beta feature, set the 'ysql_beta_feature_tablegroup' yb-tserver gflag to 'true'."),
-					 parser_errposition(pos)));
-		}
-	}
-	else if (YBIsUsingYBParser() && !(beta_features_enabled() || YBCIsEnvVarTrue(flag)))
-	{
-		int signal_level = YBUnsupportedFeatureSignalLevel();
-		ereport(signal_level,
+		const char* general_hint =
+			"Set 'ysql_beta_features' yb-tserver gflag to true to suppress the warning"
+			" for all beta features.";
+
+		ereport(WARNING,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("'%s' is a beta feature and beta features are disabled.", feature),
-				 errhint("To enable beta features, set the 'ysql_beta_features' yb-tserver gflag to 'true'."),
+				 errmsg("'%s' is a beta feature!", feature),
+				 flag != NULL ?
+					 errhint("To suppress this warning, set the '%s' yb-tserver gflag to true.\n(%s)",
+					         (flag + 6), general_hint) :
+					 errhint("%s", general_hint),
 				 parser_errposition(pos)));
 	}
 }
