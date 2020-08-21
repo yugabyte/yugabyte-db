@@ -2436,9 +2436,9 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg
   return state_->AddPendingOperation(round);
 }
 
-Status RaftConsensus::WaitForLeaderLeaseImprecise(MonoTime deadline) {
-  MonoTime now;
-  while ((now = MonoTime::Now()) < deadline) {
+Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
+  CoarseTimePoint now;
+  while ((now = CoarseMonoClock::Now()) < deadline) {
     MonoDelta remaining_old_leader_lease;
     LeaderLeaseStatus leader_lease_status;
     {
@@ -2460,19 +2460,14 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(MonoTime deadline) {
           // ReplicaState lock and re-checking, here we simply block for up to 100ms in that case,
           // because this function is currently (08/14/2017) only used in a context when it is OK,
           // such as catalog manager initialization.
-          leader_lease_wait_cond_.wait_for(lock,
-              max(MonoDelta::FromMilliseconds(100), deadline - now).ToSteadyDuration());
+          leader_lease_wait_cond_.wait_for(
+              lock, std::max<MonoDelta>(100ms, deadline - now).ToSteadyDuration());
         }
         continue;
-      case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE:
-        if (now + remaining_old_leader_lease > deadline) {
-          return STATUS_FORMAT(
-              TimedOut,
-              "Old leader still has lease for $0 but we only have $1 left to wait",
-              remaining_old_leader_lease, deadline - now);
-        }
-        SleepFor(remaining_old_leader_lease);
-        continue;
+      case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE: {
+        auto wait_deadline = std::min({deadline, now + 100ms, now + remaining_old_leader_lease});
+        std::this_thread::sleep_until(wait_deadline);
+      } continue;
     }
     FATAL_INVALID_ENUM_VALUE(LeaderLeaseStatus, leader_lease_status);
   }
