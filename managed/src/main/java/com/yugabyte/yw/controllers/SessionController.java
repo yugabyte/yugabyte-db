@@ -136,22 +136,28 @@ public class SessionController extends Controller {
   public Result thirdPartyLogin() {
     ObjectNode responseJson = Json.newObject();
     CommonProfile profile = getProfile();
-    String email = profile.getEmail();
-    Users user = Users.getByEmail(email);
+    String emailAttr = appConfig.getString("yb.security.oidcEmailAttribute", "");
+    String email = "";
+    if (emailAttr.equals("")) {
+      email = profile.getEmail();
+    } else {
+      email = (String) profile.getAttribute(emailAttr);
+    }
+    Users user = Users.getByEmail(email.toLowerCase());
     if (user == null) {
       final PlayWebContext context = new PlayWebContext(ctx(), playSessionStore);
       final ProfileManager<CommonProfile> profileManager = new ProfileManager(context);
       profileManager.logout();
       playSessionStore.destroySession(context);
-      return redirect("http://localhost:3000/");
+    } else {
+      Customer cust = Customer.get(user.customerUUID);
+      ctx().args.put("customer", cust);
+      ctx().args.put("user", user);
+      response().setCookie(Http.Cookie.builder("customerId", cust.uuid.toString())
+                                      .withSecure(ctx().request().secure()).build());
+      response().setCookie(Http.Cookie.builder("userId", user.uuid.toString())
+                                      .withSecure(ctx().request().secure()).build());
     }
-    Customer cust = Customer.get(user.customerUUID);
-    ctx().args.put("customer", cust);
-    ctx().args.put("user", user);
-    response().setCookie(Http.Cookie.builder("customerId", cust.uuid.toString())
-                                    .withSecure(ctx().request().secure()).build());
-    response().setCookie(Http.Cookie.builder("userId", user.uuid.toString())
-                                    .withSecure(ctx().request().secure()).build());
     if (environment.isDev()) {
       return redirect("http://localhost:3000/");
     } else {

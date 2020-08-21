@@ -49,9 +49,16 @@ public class TokenAuthenticator extends Action.Simple {
       final PlayWebContext context = new PlayWebContext(ctx, playSessionStore);
       final ProfileManager<CommonProfile> profileManager = new ProfileManager(context);
       if (profileManager.isAuthenticated()) {
-        String email = profileManager.get(true).get().getEmail();
-        return Users.getByEmail(email);
+        String emailAttr = appConfig.getString("yb.security.oidcEmailAttribute", "");
+        String email = "";
+        if (emailAttr.equals("")) {
+          email = profileManager.get(true).get().getEmail();
+        } else {
+          email = (String) profileManager.get(true).get().getAttribute(emailAttr);
+        }
+        return Users.getByEmail(email.toLowerCase());
       }
+      return null;
     } else {
       String token = fetchToken(ctx, true);
       if (token != null) {
@@ -61,7 +68,6 @@ public class TokenAuthenticator extends Action.Simple {
         return Users.authWithToken(token);
       }
     }
-    return null;
   }
 
   @Override
@@ -81,6 +87,8 @@ public class TokenAuthenticator extends Action.Simple {
 
     if (user != null) {
       cust = Customer.get(user.customerUUID);
+    } else {
+      return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
     }
 
     // Some authenticated calls don't actually need to be authenticated
