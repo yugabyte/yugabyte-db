@@ -106,6 +106,8 @@ ERROR:  Cannot supply tablegroup through WITH clause.
 --
 CREATE TABLE tgroup_split (col1 int PRIMARY KEY) SPLIT INTO 3 TABLETS TABLEGROUP tgroup1;
 ERROR:  Cannot use TABLEGROUP with SPLIT.
+CREATE TABLE tgroup_split (col1 int, col2 text) SPLIT INTO 3 TABLETS TABLEGROUP tgroup1;
+ERROR:  Cannot use TABLEGROUP with SPLIT.
 CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30));
 ERROR:  Cannot use TABLEGROUP with SPLIT.
 DETAIL:  Please supply NO TABLEGROUP to opt-out of indexed table's tablegroup.

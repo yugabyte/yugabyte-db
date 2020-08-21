@@ -302,23 +302,39 @@ CreateSplitPointDatums(ParseState *pstate,
 static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 										  TupleDesc desc,
 										  OptSplit *split_options,
-										  Constraint *primary_key)
+										  Constraint *primary_key,
+										  Oid namespaceId,
+										  const bool colocated,
+										  YBCPgOid tablegroup_id)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
 	{
 		case NUM_TABLETS: ;
 			/* Make sure we have HASH columns */
-			ListCell *head = list_head(primary_key->yb_index_params);
-			IndexElem *index_elem = (IndexElem*) lfirst(head);
-			if (!index_elem ||
-				!(index_elem->ordering == SORTBY_HASH ||
-				  index_elem->ordering == SORTBY_DEFAULT))
-			{
-				ereport(ERROR, (errmsg("HASH columns must be present to "
-									   "split by number of tablets")));
+			bool hashable = true;
+			if (primary_key) {
+				/* If a primary key exists, we utilize it to check its ordering */
+				ListCell *head = list_head(primary_key->yb_index_params);
+				IndexElem *index_elem = (IndexElem*) lfirst(head);
+
+				if (!index_elem ||
+				   !(index_elem->ordering == SORTBY_HASH ||
+				   index_elem->ordering == SORTBY_DEFAULT))
+					hashable = false;
+			} else {
+				/* In the abscence of a primary key, we use ybrowid as the PK to hash partition */
+				bool is_pg_catalog_table_ = IsSystemNamespace(namespaceId) && IsToastNamespace(namespaceId);
+				/*
+				 * Checking if  table_oid is valid simple means if the table is
+				 * part of a tablegroup.
+				 */
+				hashable = !is_pg_catalog_table_ && !colocated && tablegroup_id == kInvalidOid;
 			}
 
+			if (!hashable)
+				ereport(ERROR, (errmsg("HASH columns must be present to "
+							"split by number of tablets")));
 			/* Tell pggate about it */
 			HandleYBStatus(YBCPgCreateTableSetNumTablets(handle, split_options->num_tablets));
 			break;
@@ -495,15 +511,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 	/* Handle SPLIT statement, if present */
 	OptSplit *split_options = stmt->split_options;
 	if (split_options)
-	{
-		/* Illegal without primary key */
-		if (primary_key == NULL)
-		{
-			ereport(ERROR, (errmsg("Cannot have SPLIT options in the absence of a primary key")));
-		}
-
-		CreateTableHandleSplitOptions(handle, desc, split_options, primary_key);
-	}
+		CreateTableHandleSplitOptions(handle, desc, split_options, primary_key, namespaceId, colocated, tablegroupId);
 
 	/* Create the table. */
 	HandleYBStatus(YBCPgExecCreateTable(handle));
