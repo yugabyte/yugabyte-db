@@ -158,6 +158,8 @@ class MiniCluster : public MiniClusterBase {
   // found. May block until a leader Master is ready.
   master::MiniMaster* leader_mini_master();
 
+  int LeaderMasterIdx();
+
   // Returns the Master at index 'idx' for this MiniCluster.
   master::MiniMaster* mini_master(int idx);
 
@@ -311,6 +313,8 @@ void ShutdownAllTServers(MiniCluster* cluster);
 CHECKED_STATUS StartAllTServers(MiniCluster* cluster);
 void ShutdownAllMasters(MiniCluster* cluster);
 CHECKED_STATUS StartAllMasters(MiniCluster* cluster);
+
+CHECKED_STATUS BreakConnectivity(MiniCluster* cluster, int idx1, int idx2);
 
 }  // namespace yb
 
