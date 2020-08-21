@@ -228,6 +228,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     if (defaultUserIntent.enableNodeToNodeEncrypt || defaultUserIntent.enableClientToNodeEncrypt) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
+      tlsInfo.put("insecure", true);
       Map<String, Object> rootCA = new HashMap<>();
       rootCA.put("cert", CertificateHelper.getCertPEM(defaultCert));
       rootCA.put("key", CertificateHelper.getKeyPEM(defaultCert));
@@ -243,10 +244,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     masterOverrides.put("placement_zone", defaultAZ.code);
     // masterOverrides.put("placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     masterOverrides.put("placement_uuid", hackPlacementUUID.toString());
-    if (defaultUserIntent.enableClientToNodeEncrypt || defaultUserIntent.enableNodeToNodeEncrypt) {
-      masterOverrides.put("use_node_to_node_encryption", true);
-      masterOverrides.put("allow_insecure_connections", true);
-    }
     gflagOverrides.put("master", masterOverrides);
 
     // Tserver flags.
@@ -256,11 +253,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     tserverOverrides.put("placement_zone", defaultAZ.code);
     // tserverOverrides.put("placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     tserverOverrides.put("placement_uuid", hackPlacementUUID.toString());
-    if (defaultUserIntent.enableClientToNodeEncrypt || defaultUserIntent.enableNodeToNodeEncrypt) {
-      tserverOverrides.put("use_node_to_node_encryption", true);
-      tserverOverrides.put("allow_insecure_connections", true);
-      tserverOverrides.put("use_client_to_server_encryption", true);
-    }
 
     gflagOverrides.put("tserver", tserverOverrides);
     // Put all the flags together.
