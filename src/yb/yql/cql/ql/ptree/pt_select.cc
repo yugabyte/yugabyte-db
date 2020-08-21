@@ -402,7 +402,7 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
         continue;
       }
       if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {
-        for (const ColumnDesc coldesc : static_cast<const PTAllColumns*>(expr)->columns()) {
+        for (const ColumnDesc& coldesc : static_cast<const PTAllColumns*>(expr)->columns()) {
           referenced_index_colnames_.insert(coldesc.MangledName());
         }
       } else {
@@ -511,7 +511,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context) {
   MCVector<Selectivity> selectivities(sem_context->PTempMem());
   selectivities.reserve(table_->index_map().size() + 1);
   selectivities.emplace_back(sem_context->PTempMem(), *this);
-  for (const std::pair<TableId, IndexInfo>& index : table_->index_map()) {
+  for (const std::pair<TableId, IndexInfo> index : table_->index_map()) {
     if (index.second.HasReadPermission()) {
       selectivities.emplace_back(sem_context->PTempMem(), *this, index.second);
     }
@@ -642,7 +642,7 @@ bool PTSelectStmt::CoversFully(const IndexInfo& index_info) const {
       }
 
       if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {
-        for (const ColumnDesc coldesc : static_cast<const PTAllColumns*>(expr)->columns()) {
+        for (const ColumnDesc& coldesc : static_cast<const PTAllColumns*>(expr)->columns()) {
           if (index_info.IsExprCovered(coldesc.MangledName()) < 0) {
             return false;
           }
@@ -669,7 +669,7 @@ bool PTSelectStmt::CoversFully(const IndexInfo& index_info) const {
 CHECKED_STATUS PTSelectStmt::AnalyzeDistinctClause(SemContext *sem_context) {
   // Only partition and static columns are allowed to be used with distinct clause.
   int key_count = 0;
-  for (const auto pair : column_map_) {
+  for (const auto& pair : column_map_) {
     const ColumnDesc& desc = pair.second;
     if (desc.is_hash()) {
       if (column_refs_.find(desc.id()) != column_refs_.end()) {

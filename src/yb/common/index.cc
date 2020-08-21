@@ -103,10 +103,10 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   }
   pb->set_hash_column_count(hash_column_count_);
   pb->set_range_column_count(range_column_count_);
-  for (const auto id : indexed_hash_column_ids_) {
+  for (const auto& id : indexed_hash_column_ids_) {
     pb->add_indexed_hash_column_ids(id);
   }
-  for (const auto id : indexed_range_column_ids_) {
+  for (const auto& id : indexed_range_column_ids_) {
     pb->add_indexed_range_column_ids(id);
   }
   pb->set_use_mangled_column_name(use_mangled_column_name_);
@@ -115,15 +115,15 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
 
 vector<ColumnId> IndexInfo::index_key_column_ids() const {
   unordered_map<ColumnId, ColumnId> map;
-  for (const auto column : columns_) {
+  for (const auto& column : columns_) {
     map[column.indexed_column_id] = column.column_id;
   }
   vector<ColumnId> ids;
   ids.reserve(indexed_hash_column_ids_.size() + indexed_range_column_ids_.size());
-  for (const auto id : indexed_hash_column_ids_) {
+  for (const auto& id : indexed_hash_column_ids_) {
     ids.push_back(map[id]);
   }
-  for (const auto id : indexed_range_column_ids_) {
+  for (const auto& id : indexed_range_column_ids_) {
     ids.push_back(map[id]);
   }
   return ids;
@@ -224,7 +224,7 @@ void IndexMap::FromPB(const google::protobuf::RepeatedPtrField<IndexInfoPB>& ind
 
 void IndexMap::ToPB(google::protobuf::RepeatedPtrField<IndexInfoPB>* indexes) const {
   indexes->Clear();
-  for (const auto itr : *this) {
+  for (const auto& itr : *this) {
     itr.second.ToPB(indexes->Add());
   }
 }
