@@ -386,11 +386,17 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   // Let's allow for plenty of time for discovering the master the first
   // time around.
   auto deadline = CoarseMonoClock::Now() + c->default_admin_operation_timeout();
-  RETURN_NOT_OK_PREPEND(
-      c->data_->SetMasterServerProxy(deadline,
-          data_->skip_master_leader_resolution_,
-          data_->wait_for_leader_election_on_init_),
-      "Could not locate the leader master");
+  for (;;) {
+    auto status = c->data_->SetMasterServerProxy(deadline,
+            data_->skip_master_leader_resolution_,
+            data_->wait_for_leader_election_on_init_);
+    if (status.ok()) {
+      break;
+    }
+    if (!status.IsNotFound() || CoarseMonoClock::Now() >= deadline) {
+      RETURN_NOT_OK_PREPEND(status, "Could not locate the leader master")
+    }
+  }
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
 

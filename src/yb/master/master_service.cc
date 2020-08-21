@@ -618,7 +618,16 @@ void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequest
   }
   Status s = server_->GetMasterRegistration(resp->mutable_registration());
   CheckRespErrorOrSetUnknown(s, resp);
-  resp->set_role(server_->catalog_manager()->Role());
+  auto role = server_->catalog_manager()->Role();
+  if (role == RaftPeerPB::LEADER) {
+    if (!l.leader_status().ok()) {
+      YB_LOG_EVERY_N_SECS(INFO, 1)
+          << "Patching role from leader to follower because of: " << l.leader_status()
+          << THROTTLE_MSG;
+      role = RaftPeerPB::FOLLOWER;
+    }
+  }
+  resp->set_role(role);
   rpc.RespondSuccess();
 }
 

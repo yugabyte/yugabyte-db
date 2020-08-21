@@ -636,7 +636,7 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   }
 
   // Wait for all transactions to be committed.
-  const MonoTime deadline = MonoTime::Now() + timeout;
+  const CoarseTimePoint deadline = CoarseMonoClock::now() + timeout;
   RETURN_NOT_OK(tablet_peer()->operation_tracker()->WaitForAllToFinish(timeout));
 
   RETURN_NOT_OK(tablet_peer()->consensus()->WaitForLeaderLeaseImprecise(deadline));
@@ -7337,8 +7337,10 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
   int num_replicas = 0;
   if (GetReplicationFactorForTablet(tablet_info, &num_replicas).ok() && num_replicas > 0 &&
       locs_pb->replicas().size() != num_replicas) {
-    YB_LOG_EVERY_N(WARNING, 100) << "Expected replicas " << num_replicas << " but found "
-        << locs_pb->replicas().size() << " for tablet " << tablet_id;
+    YB_LOG_EVERY_N_SECS(WARNING, 1)
+        << "Expected replicas " << num_replicas << " but found "
+        << locs_pb->replicas().size() << " for tablet " << tablet_id << ": "
+        << locs_pb->ShortDebugString() << THROTTLE_MSG;
   }
 
   return s;
