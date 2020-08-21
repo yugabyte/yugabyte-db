@@ -217,7 +217,7 @@ bool TSManager::IsTsBlacklisted(const TSDescriptorPtr& ts,
   if (blacklist.empty()) {
     return false;
   }
-  for (const auto tserver : blacklist) {
+  for (const auto& tserver : blacklist) {
     HostPortPB hp;
     HostPortToPB(tserver, &hp);
     if (ts->IsRunningOn(hp)) {

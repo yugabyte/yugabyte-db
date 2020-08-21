@@ -1245,7 +1245,7 @@ Status YBClient::CreateUDType(const std::string& namespace_name,
   for (const string& field_name : field_names) {
     req.add_field_names(field_name);
   }
-  for (const std::shared_ptr<QLType> field_type : field_types) {
+  for (const std::shared_ptr<QLType>& field_type : field_types) {
     field_type->ToQLTypePB(req.add_field_types());
   }
 

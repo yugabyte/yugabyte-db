@@ -351,7 +351,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
   }
 
   // Send CreateSnapshot requests to all TServers (one tablet - one request).
-  for (const scoped_refptr<TabletInfo> tablet : all_tablets) {
+  for (const scoped_refptr<TabletInfo>& tablet : all_tablets) {
     TRACE("Locking tablet");
     auto l = tablet->LockForRead();
 

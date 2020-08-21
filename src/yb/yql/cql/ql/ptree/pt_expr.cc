@@ -1223,7 +1223,7 @@ CHECKED_STATUS PTAllColumns::AnalyzeOperator(SemContext *sem_context) {
   const auto* select_stmt = static_cast<const PTSelectStmt*>(stmt);
   columns_.clear();
   columns_.reserve(select_stmt->column_map().size());
-  for (const auto pair : select_stmt->column_map()) {
+  for (const auto& pair : select_stmt->column_map()) {
     columns_.emplace_back(pair.second);
   }
 
