@@ -208,6 +208,9 @@ public class Users extends Model {
    * @return Authenticated Users Info
    */
   public static Users getByEmail(String email) {
+    if (email == null) {
+      return null;
+    }
     Users user = Users.find.where().eq("email", email).findUnique();
     return user;
   }
