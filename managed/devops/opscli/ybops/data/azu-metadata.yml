@@ -6,6 +6,8 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+region_cidr_format: "{}.0.0/16"
+zone_cidr_format: "{}.{}.0/20"
 # All Azure regions that currently support Availability Zones
 # https://docs.microsoft.com/en-us/azure/availability-zones/az-region
 

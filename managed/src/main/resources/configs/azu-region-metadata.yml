@@ -42,7 +42,7 @@ eastus2:
   name: US East 2 (Virginia)
   latitude: 36.6681
   longitude: -78.3889
-francentral:
+francecentral:
   name: France Central (Paris)
   latitude: 46.3772
   longitude: 2.3730
