@@ -29,6 +29,19 @@ class AzureNetworkBootstrapMethod(AbstractNetworkMethod):
         self.cloud.network_bootstrap(args)
 
 
+class AzureNetworkCleanupMethod(AbstractNetworkMethod):
+    def __init__(self, base_command):
+        super(AzureNetworkCleanupMethod, self).__init__(base_command, "cleanup")
+
+    def add_extra_args(self):
+        super(AzureNetworkCleanupMethod, self).add_extra_args()
+        self.parser.add_argument("--custom_payload", required=False,
+                                 help="JSON payload of per-region data")
+
+    def callback(self, args):
+        self.cloud.network_cleanup(args)
+
+
 class AzureCreateInstancesMethod(CreateInstancesMethod):
     def __init__(self, base_command):
         super(AzureCreateInstancesMethod, self).__init__(base_command)
@@ -154,3 +167,22 @@ class AzureQueryVnetMethod(AbstractMethod):
 
     def callback(self, args):
         print(json.dumps(self.cloud.get_default_vnet(args)))
+
+
+class AzureQueryUltraMethod(AbstractMethod):
+    """
+    This method writes the instance types to a file that support ultra disks.
+    If no regions are provided, the metadata file is read. All regions are
+    written to their own unique file inside the folder path given.
+    """
+    def __init__(self, base_command):
+        super(AzureQueryUltraMethod, self).__init__(base_command, "ultra")
+
+    def callback(self, args):
+        self.cloud.get_ultra_instances(args)
+
+    def add_extra_args(self):
+        super(AzureQueryUltraMethod, self).add_extra_args()
+        self.parser.add_argument("--regions", nargs='+')
+        self.parser.add_argument("--folder", required=True,
+                                 help="Folder to write region ultra disk json.")
