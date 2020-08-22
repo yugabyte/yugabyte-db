@@ -11,7 +11,8 @@ from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCo
 from ybops.cloud.azure.method import AzureNetworkBootstrapMethod, AzureProvisionInstancesMethod, \
     AzureCreateInstancesMethod, AzureAccessAddKeyMethod, AzureQueryVPCMethod, \
     AzureQueryRegionsMethod, AzureQueryZonesMethod, AzureDestroyInstancesMethod, \
-    AzureQueryInstanceTypesMethod, AzureQueryVnetMethod, AzureAccessDeleteKeyMethod
+    AzureQueryInstanceTypesMethod, AzureQueryVnetMethod, AzureAccessDeleteKeyMethod, \
+    AzureNetworkCleanupMethod, AzureQueryUltraMethod
 from ybops.cloud.common.method import AccessCreateVaultMethod, ConfigureInstancesMethod, \
     ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod
 
@@ -22,6 +23,7 @@ class AzureNetworkCommand(NetworkCommand):
 
     def add_methods(self):
         self.add_method(AzureNetworkBootstrapMethod(self))
+        self.add_method(AzureNetworkCleanupMethod(self))
 
 
 class AzureInstanceCommand(InstanceCommand):
@@ -58,3 +60,4 @@ class AzureQueryCommand(QueryCommand):
         self.add_method(AzureQueryZonesMethod(self))
         self.add_method(AzureQueryInstanceTypesMethod(self))
         self.add_method(AzureQueryVnetMethod(self))
+        self.add_method(AzureQueryUltraMethod(self))

@@ -62,14 +62,22 @@ class AzureCloud(AbstractCloud):
 
         components = {}
         if user_provided_vnets > 0:
+            logging.info("Found custom payload info - simple return.")
             for region, metadata in perRegionMetadata.items():
                 # Assume the user has already set up peering/routing for specified network info
-                components[region] = self.get_admin().network(region, metadata).from_user_json()
+                components[region] = self.get_admin().network(metadata).to_components()
         else:
+            logging.info("Bootstrapping individual regions.")
             # Bootstrap the individual region items standalone (vnet, subnet, sg, RT, etc).
             for region, metadata in perRegionMetadata.items():
-                components[region] = self.get_admin().network(region, metadata).bootstrap()
+                components[region] = self.get_admin().network(metadata).bootstrap(region).to_components()
+            self.get_admin().network().peer(components)
         print(json.dumps(components))
+
+    def network_cleanup(self, args):
+        perRegionMetadata = json.loads(args.custom_payload).get("perRegionMetadata")
+        for region, metadata in perRegionMetadata.items():
+            self.get_admin().network(metadata).cleanup(region)
 
     def create_instance(self, args, adminSSH):
         vmName = args.search_pattern
@@ -86,9 +94,10 @@ class AzureCloud(AbstractCloud):
         nsg = args.security_group_id
         vnet = args.vpcId
         public_ip = args.assign_public_ip
-        self.get_admin().create_vm(vmName, zone, numVolumes, subnet, private_key_file,
-                                   volSize, instanceType, adminSSH, image, nsg, pub, offer,
-                                   sku, vnet, volType, args.type, region, public_ip)
+        nicId = self.get_admin().create_nic(vmName, vnet, subnet, zone, nsg, region, public_ip)
+        self.get_admin().create_vm(vmName, zone, numVolumes, private_key_file, volSize,
+                                   instanceType, adminSSH, image, nsg, pub, offer,
+                                   sku, volType, args.type, region, nicId)
 
     def destroy_instance(self, args):
         host_info = self.get_host_info(args)
@@ -119,7 +128,7 @@ class AzureCloud(AbstractCloud):
         result = {}
         regions = [args.region] if args.region else self.get_regions()
         for region in regions:
-            result[region] = self.get_admin().get_default_vnet(region)
+            result[region] = self.get_admin().network().get_default_vnet(region)
         return result
 
     def get_instance_types(self, args):
@@ -131,6 +140,10 @@ class AzureCloud(AbstractCloud):
 
     def get_device_names(self, args):
         return ["sd{}".format(chr(i)) for i in range(ord('c'), ord('c') + args.num_volumes)]
+
+    def get_ultra_instances(self, args):
+        regions = args.regions if args.regions else self.get_regions()
+        return self.get_admin().get_ultra_instances(regions, args.folder)
 
     def update_disk(self, args):
         raise YBOpsRuntimeError("Update Disk not implemented for Azure")
