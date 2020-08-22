@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2272
 aliases:
-  - /latest/api/redis/psetex
-  - /latest/api/yedis/psetex
+  - /stable/api/redis/psetex
+  - /stable/api/yedis/psetex
 isTocNested: true
 showAsideToc: true
 ---

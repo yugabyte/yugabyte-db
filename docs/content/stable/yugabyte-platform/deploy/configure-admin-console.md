@@ -4,7 +4,7 @@ headerTitle: Configure Yugabyte Platform
 linkTitle: 3. Configure Yugabyte Platform
 description: Configure Yugabyte Platform.
 aliases:
-  - /latest/deploy/enterprise-edition/configure-admin-console/
+  - /stable/deploy/enterprise-edition/configure-admin-console/
 menu:
   stable:
     identifier: configure-admin-console

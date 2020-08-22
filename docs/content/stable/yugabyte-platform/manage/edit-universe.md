@@ -4,7 +4,7 @@ headerTitle: Edit a universe
 linkTitle: Edit a universe
 description: Use Yugabyte Platform to edit a universe.
 aliases:
-  - /latest/manage/enterprise-edition/edit-universe/
+  - /stable/manage/enterprise-edition/edit-universe/
 menu:
   stable:
     identifier: edit-universe

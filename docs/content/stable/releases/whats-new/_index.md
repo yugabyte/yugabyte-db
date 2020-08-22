@@ -6,7 +6,7 @@ description: Enhancements, changes, and resolved issues in the latest YugabyteDB
 headcontent: Features, enhancements, and resolved issues in the latest release.
 image: /images/section_icons/quick_start/install.png
 aliases:
-  - /latest/releases/
+  - /stable/releases/
 section: RELEASES
 menu:
   stable:

@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2385
 aliases:
-  - /latest/api/redis/zrange
-  - /latest/api/yedis/zrange
+  - /stable/api/redis/zrange
+  - /stable/api/yedis/zrange
 isTocNested: true
 showAsideToc: true
 ---

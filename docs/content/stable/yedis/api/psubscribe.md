@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2554
 aliases:
-  - /latest/api/redis/psubscribe
-  - /latest/api/yedis/psubscribe
+  - /stable/api/redis/psubscribe
+  - /stable/api/yedis/psubscribe
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,7 +4,7 @@ headerTitle: Upgrade a universe
 linkTitle: Upgrade a universe
 description: Use Yugabyte Platform to upgrade a universe.
 aliases:
-  - /latest/manage/enterprise-edition/upgrade-universe/
+  - /stable/manage/enterprise-edition/upgrade-universe/
 menu:
   stable:
     identifier: upgrade-universes

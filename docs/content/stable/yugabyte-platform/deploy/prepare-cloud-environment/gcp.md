@@ -16,13 +16,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/yugabyte-platform/deploy/prepare-cloud-environment/aws" class="nav-link">
+    <a href="/stable/yugabyte-platform/deploy/prepare-cloud-environment/aws" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
   <li>
-    <a href="/latest/yugabyte-platform/deploy/prepare-cloud-environment/gcp" class="nav-link active">
+    <a href="/stable/yugabyte-platform/deploy/prepare-cloud-environment/gcp" class="nav-link active">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>

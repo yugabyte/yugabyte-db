@@ -4,10 +4,10 @@ linkTitle: Yugabyte Cloud
 description: Yugabyte Cloud
 headcontent: Fully-managed YugabyteDB-as-a-Service running on public clouds.
 image: /images/section_icons/deploy/public-clouds.png
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: YUGABYTE CLOUD
 aliases:
-  - /latest/deploy/yugabyte-cloud/
+  - /stable/deploy/yugabyte-cloud/
 menu:
   stable:
     identifier: yugabyte-cloud

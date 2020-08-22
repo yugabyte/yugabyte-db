@@ -4,7 +4,7 @@ headerTitle: Node status and actions
 linkTitle: Node status and actions
 description: Use Yugabyte Platform to view Node status and perform actions.
 aliases:
-  - /latest/manage/enterprise-edition/node-actions/
+  - /stable/manage/enterprise-edition/node-actions/
 menu:
   stable:
     identifier: node-status-actions

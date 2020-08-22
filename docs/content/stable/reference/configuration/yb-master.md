@@ -9,7 +9,7 @@ menu:
     parent: configuration
     weight: 2450
 aliases:
-  - /latest/admin/yb-master
+  - /stable/admin/yb-master
 isTocNested: true
 showAsideToc: true
 ---

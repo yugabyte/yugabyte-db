@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2233
 aliases:
-  - /latest/api/redis/pexpire
-  - /latest/api/yedis/pexpire
+  - /stable/api/redis/pexpire
+  - /stable/api/yedis/pexpire
 isTocNested: true
 showAsideToc: true
 ---

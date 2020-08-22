@@ -4,9 +4,9 @@ linkTitle: Manage database access
 description: Manage database access
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
-  - /latest/deploy/yugabyte-cloud/manage-access/
+  - /stable/deploy/yugabyte-cloud/manage-access/
 menu:
   stable:
     identifier: manage-access

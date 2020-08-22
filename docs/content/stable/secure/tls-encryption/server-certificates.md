@@ -7,7 +7,7 @@ headcontent: Generate server certificates and prepare YugabyteDB nodes for serve
 image: /images/section_icons/secure/prepare-nodes.png
 aliases:
   - /secure/tls-encryption/prepare-nodes
-  - /latest/secure/tls-encryption/prepare-nodes
+  - /stable/secure/tls-encryption/prepare-nodes
 menu:
   stable:
     identifier: prepare-nodes

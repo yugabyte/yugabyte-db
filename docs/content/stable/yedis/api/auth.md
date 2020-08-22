@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2020
 aliases:
-  - /latest/api/redis/auth
-  - /latest/api/yedis/auth
+  - /stable/api/redis/auth
+  - /stable/api/yedis/auth
 isTocNested: true
 showAsideToc: true
 ---

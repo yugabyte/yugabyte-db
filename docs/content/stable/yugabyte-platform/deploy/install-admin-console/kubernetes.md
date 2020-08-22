@@ -4,7 +4,7 @@ headerTitle: Install Yugabyte Platform
 linkTitle: 2. Install Yugabyte Platform
 description: Install Yugabyte Platform (aka YugaWare) on Kubernetes
 aliases:
-  - /latest/deploy/enterprise-edition/install-admin-console/kubernetes
+  - /stable/deploy/enterprise-edition/install-admin-console/kubernetes
 menu:
   stable:
     identifier: install-yp-3-kubernetes
@@ -16,19 +16,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/yugabyte-platform/deploy/install-admin-console/default" class="nav-link">
+    <a href="/stable/yugabyte-platform/deploy/install-admin-console/default" class="nav-link">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
   <li >
-    <a href="/latest/yugabyte-platform/deploy/install-admin-console/airgapped" class="nav-link">
+    <a href="/stable/yugabyte-platform/deploy/install-admin-console/airgapped" class="nav-link">
       <i class="fas fa-unlink"></i>
       Airgapped
     </a>
   </li>
   <li>
-    <a href="/latest/yugabyte-platform/deploy/install-admin-console/kubernetes" class="nav-link active">
+    <a href="/stable/yugabyte-platform/deploy/install-admin-console/kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

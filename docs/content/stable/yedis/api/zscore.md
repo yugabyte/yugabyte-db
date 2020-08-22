@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2545
 aliases:
-  - /latest/api/redis/zscore
-  - /latest/api/yedis/zscore
+  - /stable/api/redis/zscore
+  - /stable/api/yedis/zscore
 isTocNested: true
 showAsideToc: true
 ---

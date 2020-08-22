@@ -5,7 +5,7 @@ linkTitle: Create a multi-zone universe
 description: Use Yugabyte Platform to create a YugabyteDB universe that spans multiple availability zones.
 aliases:
   - /manage/enterprise-edition/create-universe/
-  - /latest/manage/enterprise-edition/create-universe-multi-zone
+  - /stable/manage/enterprise-edition/create-universe-multi-zone
 menu:
   stable:
     identifier: create-multi-zone-universe

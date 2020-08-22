@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2135
 aliases:
-  - /latest/api/redis/hincrby
-  - /latest/api/yedis/hincrby
+  - /stable/api/redis/hincrby
+  - /stable/api/yedis/hincrby
 isTocNested: true
 showAsideToc: true
 ---

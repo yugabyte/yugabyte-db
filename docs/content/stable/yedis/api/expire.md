@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2061
 aliases:
-  - /latest/api/redis/expire
-  - /latest/api/yedis/expire
+  - /stable/api/redis/expire
+  - /stable/api/yedis/expire
 isTocNested: true
 showAsideToc: true
 ---

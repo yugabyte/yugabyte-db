@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2034
 aliases:
-  - /latest/api/redis/deletedb
-  - /latest/api/yedis/deletedb
+  - /stable/api/redis/deletedb
+  - /stable/api/yedis/deletedb
 isTocNested: true
 showAsideToc: true
 ---

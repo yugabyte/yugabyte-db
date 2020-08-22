@@ -4,8 +4,8 @@ headerTitle: Prepare cloud environment for AWS
 linkTitle: 1. Prepare cloud environment
 description: Prepare your AWS environment for the Yugabyte Platform.
 aliases:
-  - /latest/deploy/enterprise-edition/prepare-cloud-environment/
-  - /latest/yugabyte-platform/deploy/prepare-cloud-environment/
+  - /stable/deploy/enterprise-edition/prepare-cloud-environment/
+  - /stable/yugabyte-platform/deploy/prepare-cloud-environment/
 menu:
   stable:
     identifier: prepare-cloud-1-aws
@@ -19,14 +19,14 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/yugabyte-platform/deploy/prepare-cloud-environment/aws" class="nav-link active">
+    <a href="/stable/yugabyte-platform/deploy/prepare-cloud-environment/aws" class="nav-link active">
       <i class="icon-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/deploy/prepare-cloud-environment/gcp" class="nav-link">
+    <a href="/stable/yugabyte-platform/deploy/prepare-cloud-environment/gcp" class="nav-link">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>

@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2217
 aliases:
-  - /latest/api/redis/keys
-  - /latest/api/yedis/keys
+  - /stable/api/redis/keys
+  - /stable/api/yedis/keys
 isTocNested: true
 showAsideToc: true
 ---

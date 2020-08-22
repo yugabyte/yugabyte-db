@@ -4,7 +4,7 @@ linkTitle: Troubleshoot universes
 description: Troubleshoot universes
 aliases:
   - /troubleshoot/enterprise-edition/universes/
-  - /latest/troubleshoot/enterprise-edition/universes/
+  - /stable/troubleshoot/enterprise-edition/universes/
 menu:
   stable:
     identifier: troubleshoot-universes

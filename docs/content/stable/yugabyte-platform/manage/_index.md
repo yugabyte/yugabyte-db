@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to manage YugabyteDB universes.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Use Yugabyte Platform's orchestration and monitoring to manage YugabyteDB universes.
 aliases:
-  - /latest/manage/enterprise-edition/
+  - /stable/manage/enterprise-edition/
 menu:
   stable:
     identifier: manage-yugabyte-platform

@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2036
 aliases:
-  - /latest/api/redis/listdb
-  - /latest/api/yedis/listdb
+  - /stable/api/redis/listdb
+  - /stable/api/yedis/listdb
 isTocNested: true
 showAsideToc: true
 ---

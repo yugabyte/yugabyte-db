@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to deploy and manage mission-critical Yugabyt
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:
-  - /latest/deploy/enterprise-edition/
+  - /stable/deploy/enterprise-edition/
 section: YUGABYTE PLATFORM
 menu:
   stable:

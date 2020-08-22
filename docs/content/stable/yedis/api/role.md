@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2240
 aliases:
-  - /latest/api/redis/role
-  - /latest/api/yedis/role
+  - /stable/api/redis/role
+  - /stable/api/yedis/role
 isTocNested: true
 showAsideToc: true
 ---

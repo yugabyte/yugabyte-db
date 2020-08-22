@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2080
 aliases:
-  - /latest/api/redis/getrange
-  - /latest/api/yedis/getrange
+  - /stable/api/redis/getrange
+  - /stable/api/yedis/getrange
 isTocNested: true
 showAsideToc: true
 ---
