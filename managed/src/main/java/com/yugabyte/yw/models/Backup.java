@@ -2,11 +2,8 @@
 
 package com.yugabyte.yw.models;
 
-import com.avaje.ebean.Model;
-import com.avaje.ebean.annotation.CreatedTimestamp;
-import com.avaje.ebean.annotation.DbJson;
-import com.avaje.ebean.annotation.EnumValue;
-import com.avaje.ebean.annotation.UpdatedTimestamp;
+import io.ebean.*;
+import io.ebean.annotation.*;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -79,7 +76,7 @@ public class Backup extends Model {
   private Date updateTime;
   public Date getUpdateTime() { return updateTime; }
 
-  public static final Find<UUID, Backup> find = new Find<UUID, Backup>(){};
+  public static final Finder<UUID, Backup> find = new Finder<UUID, Backup>(Backup.class){};
 
   // For creating new backup we would set the storage location based on
   // universe UUID and backup UUID.
@@ -148,18 +145,26 @@ public class Backup extends Model {
   }
 
   public static List<Backup> fetchByUniverseUUID(UUID customerUUID, UUID universeUUID) {
-      List<Backup> backupList = find.where().eq("customer_uuid", customerUUID).orderBy("create_time desc").findList();
+      List<Backup> backupList = find.query().where()
+        .eq("customer_uuid", customerUUID)
+        .orderBy("create_time desc")
+        .findList();
       return backupList.stream()
           .filter(backup -> backup.getBackupInfo().universeUUID.equals(universeUUID))
           .collect(Collectors.toList());
   }
 
   public static Backup get(UUID customerUUID, UUID backupUUID) {
-    return find.where().idEq(backupUUID).eq("customer_uuid", customerUUID).findUnique();
+    return find.query().where()
+      .idEq(backupUUID)
+      .eq("customer_uuid", customerUUID)
+      .findOne();
   }
 
   public static Backup fetchByTaskUUID(UUID taskUUID) {
-    return Backup.find.where().eq("task_uuid", taskUUID).findUnique();
+    return Backup.find.query().where()
+      .eq("task_uuid", taskUUID)
+      .findOne();
   }
 
   public void transitionState(BackupState newState) {

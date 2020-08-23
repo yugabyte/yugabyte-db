@@ -55,7 +55,6 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    when(mockAppConfig.getString("yb.storage.path")).thenReturn("/tmp");
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     for (String cert: test_certs) {

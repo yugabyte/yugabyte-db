@@ -22,6 +22,7 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyBoolean;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -96,6 +97,8 @@ import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
 
+import static play.test.Helpers.contextComponents;
+
 public class TablesControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(TablesControllerTest.class);
   private YBClientService mockService;
@@ -119,7 +122,7 @@ public class TablesControllerTest extends FakeDBApplication {
     mockService = mock(YBClientService.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
     mockSchemaResponse = mock(GetTableSchemaResponse.class);
-    when(mockService.getClient(any(String.class), any(String.class))).thenReturn(mockClient);
+    when(mockService.getClient(any(), any())).thenReturn(mockClient);
     tablesController = new TablesController(mockService);
   }
 
@@ -316,7 +319,7 @@ public class TablesControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(json.get("taskUUID").asText(), fakeTaskUUID.toString());
 
-    CustomerTask task = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
+    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
     assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("test_table")));
@@ -738,17 +741,19 @@ public class TablesControllerTest extends FakeDBApplication {
     Http.Request request = mock(Http.Request.class);
     Long id = 2L;
     play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-    Http.Context context = new Http.Context(id, header, request, flashData, flashData, argData);
+    Http.Context context = new Http.Context(
+      id, header, request, flashData, flashData, argData, contextComponents()
+    );
     Http.Context.current.set(context);
     tablesController.commissioner = mockCommissioner;
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(TaskType.class),
-        Matchers.any(DeleteTableFromUniverse.Params.class))).thenReturn(fakeTaskUUID);
-    when(mockClient.getTableSchemaByUUID(any(String.class))).thenReturn(mockSchemaResponse);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
 
     // Creating a fake table
     Schema schema = getFakeSchema();
     UUID tableUUID = UUID.randomUUID();
+    when(mockClient.getTableSchemaByUUID(eq(tableUUID.toString().replace("-", ""))))
+      .thenReturn(mockSchemaResponse);
     when(mockSchemaResponse.getSchema()).thenReturn(schema);
     when(mockSchemaResponse.getTableName()).thenReturn("mock_table");
     when(mockSchemaResponse.getNamespace()).thenReturn("mock_ks");

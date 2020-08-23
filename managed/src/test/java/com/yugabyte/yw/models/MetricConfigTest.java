@@ -8,13 +8,16 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import org.junit.Test;
 import play.libs.Json;
-import play.libs.Yaml;
+import static org.mockito.Matchers.any;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import javax.inject.Inject;
 
+import static org.mockito.Mockito.when;
+import org.hamcrest.core.*;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.instanceOf;
@@ -28,11 +31,16 @@ public class MetricConfigTest extends FakeDBApplication {
 
   @Test
   public void testMetricsYaml() {
+    Map<String, Object> map = new HashMap();
+    when(mockYamlWrapper.load(any())).thenReturn(map);
     // Make sure all the configs inside of metrics yaml are valid.
-    Map<String, Object> configs = (HashMap<String, Object>) Yaml.load("metrics.yml");
+    Map<String, Object> configs = (HashMap<String, Object>) mockYamlWrapper.load("metrics.yml");
     MetricConfig.loadConfig(configs);
     for (MetricConfig config : MetricConfig.find.all()) {
-      assertThat(config.getLayout(), allOf(notNullValue(), instanceOf(MetricConfig.Layout.class)));
+      assertThat(
+        config.getLayout(),
+        allOf(notNullValue(), IsInstanceOf.instanceOf(MetricConfig.Layout.class))
+      );
       assertThat(config.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS), allOf(notNullValue()));
     }
   }
