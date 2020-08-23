@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.NodeActionType;
 
@@ -14,6 +15,7 @@ import java.util.UUID;
 /**
  * Represents all the details of a cloud node that are of interest.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class NodeDetails {
   // The id of the node. This is usually present in the node name.
   public int nodeIdx = -1;

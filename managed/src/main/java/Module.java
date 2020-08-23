@@ -75,6 +75,7 @@ public class Module extends AbstractModule {
       bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
       bind(SetUniverseKey.class).asEagerSingleton();
       bind(CustomerTaskManager.class).asEagerSingleton();
+      bind(YamlWrapper.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
       callbackController.setDefaultUrl(config.getString("yb.url", ""));

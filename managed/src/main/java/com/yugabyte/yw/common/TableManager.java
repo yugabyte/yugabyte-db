@@ -112,7 +112,8 @@ public class TableManager extends DevopsBase {
             commandArgs.add(backupTableParams.keyspace);
           }
         }
-        Customer customer = Customer.find.where().idEq(universe.customerId).findUnique();
+
+        Customer customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         CustomerConfig customerConfig = CustomerConfig.get(customer.uuid,
                                                            backupTableParams.storageConfigUUID);
         File backupKeysFile = EncryptionAtRestUtil

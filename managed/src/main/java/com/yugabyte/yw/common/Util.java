@@ -142,7 +142,7 @@ public class Util {
    * @return The custom node prefix name.
    */
   public static String getNodePrefix(Long custId, String univName) {
-    Customer c = Customer.find.where().eq("id", custId).findUnique();
+    Customer c = Customer.find.query().where().eq("id", custId).findOne();
     if (c == null) {
       throw new RuntimeException("Invalid Customer Id: " + custId);
     }
