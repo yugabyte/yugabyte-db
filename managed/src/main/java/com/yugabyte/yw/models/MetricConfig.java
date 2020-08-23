@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.models;
 
-import com.avaje.ebean.Model;
-import com.avaje.ebean.annotation.DbJson;
+import io.ebean.*;
+import io.ebean.annotation.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import play.libs.Json;
 
@@ -11,8 +11,6 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Transient;
-import java.util.Arrays;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -220,7 +218,8 @@ public class MetricConfig extends Model {
     return filterStr.toString();
   }
 
-  public static final Find<String, MetricConfig> find = new Find<String, MetricConfig>() {};
+  public static final Finder<String, MetricConfig> find =
+    new Finder<String, MetricConfig>(MetricConfig.class) {};
 
   /**
    * returns metric config for the given key
