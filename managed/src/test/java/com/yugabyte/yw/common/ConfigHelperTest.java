@@ -10,6 +10,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.error.YAMLException;
@@ -64,6 +65,8 @@ public class ConfigHelperTest extends FakeDBApplication {
     map.put("config-1", "foo");
     map.put("config-2", "bar");
 
+    when(mockYamlWrapper.load(any(), any())).thenReturn(map);
+
     for (ConfigHelper.ConfigType configType: ConfigHelper.ConfigType.values()) {
       when(application.classloader()).thenReturn(ClassLoader.getSystemClassLoader());
       when(application.resourceAsStream(configType.getConfigFile())).thenReturn(asYamlStream(map));
@@ -81,6 +84,7 @@ public class ConfigHelperTest extends FakeDBApplication {
 
   @Test(expected = YAMLException.class)
   public void testLoadConfigsToDBWithoutFile() {
+    Mockito.doCallRealMethod().when(mockYamlWrapper).load(any(), any());
     when(application.classloader()).thenReturn(ClassLoader.getSystemClassLoader());
     configHelper.loadConfigsToDB(application);
   }

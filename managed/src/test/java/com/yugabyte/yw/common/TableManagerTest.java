@@ -270,7 +270,6 @@ import static org.mockito.Mockito.when;
     testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
     testCustomer.addUniverseUUID(testUniverse.universeUUID);
     testCustomer.save();
-    when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
     ReleaseManager.ReleaseMetadata metadata = new ReleaseManager.ReleaseMetadata();
     metadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(metadata);

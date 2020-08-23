@@ -7,15 +7,16 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.YugawareProperty;
 import play.Application;
 import play.libs.Json;
-import play.libs.Yaml;
 
 import javax.inject.Singleton;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import play.api.Play;
 
 @Singleton
 public class ConfigHelper {
+
   public enum ConfigType {
     AWSRegionMetadata,
     AWSInstanceTypeMetadata,
@@ -98,7 +99,8 @@ public class ConfigHelper {
       if (type.getConfigFile() == null) {
         continue;
       }
-      Map<String, Object> config = (HashMap<String, Object>) Yaml.load(
+      YamlWrapper yaml = Play.current().injector().instanceOf(YamlWrapper.class);
+      Map<String, Object> config = (HashMap<String, Object>) yaml.load(
           app.resourceAsStream(type.getConfigFile()),
           app.classloader()
       );

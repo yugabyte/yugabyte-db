@@ -892,16 +892,16 @@ public class MiniYBCluster implements AutoCloseable {
       // The TS is already dead, good.
       return;
     }
-    assert(cqlContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), CQL_PORT)));
+    assert(cqlContactPoints.remove(new InetSocketAddress(hostPort.getHost(), CQL_PORT)));
     // TODO: bug, we're using the multiple Hostnames with different ports for testing
     assertTrue(
         redisContactPoints.removeIf((InetSocketAddress addr) ->
-            addr.getHostName().equals(hostPort.getHostText())));
+            addr.getHostName().equals(hostPort.getHost())));
     assertTrue(
         pgsqlContactPoints.removeIf((InetSocketAddress addr) ->
-            addr.getHostName().equals(hostPort.getHostText())));
+            addr.getHostName().equals(hostPort.getHost())));
     destroyDaemonAndWait(ts);
-    usedBindIPs.remove(hostPort.getHostText());
+    usedBindIPs.remove(hostPort.getHost());
   }
 
   public Map<HostAndPort, MiniYBDaemon> getTabletServers() {

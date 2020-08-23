@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
-import com.avaje.ebean.annotation.EnumValue;
+import io.ebean.annotation.EnumValue;
 
 import java.util.UUID;
 import java.util.Map;

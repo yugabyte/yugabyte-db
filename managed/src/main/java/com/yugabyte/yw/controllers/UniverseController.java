@@ -1324,7 +1324,8 @@ public class UniverseController extends AuthenticatedController {
     // Get and return Leader IP
     try {
       client = ybService.getClient(hostPorts, certificate);
-      ObjectNode result = Json.newObject().put("privateIP", client.getLeaderMasterHostAndPort().getHostText());
+      ObjectNode result = Json.newObject()
+        .put("privateIP", client.getLeaderMasterHostAndPort().getHost());
       ybService.closeClient(client, hostPorts);
       return ApiResponse.success(result);
     } catch (RuntimeException e) {
