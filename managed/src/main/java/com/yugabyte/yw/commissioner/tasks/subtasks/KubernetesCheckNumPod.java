@@ -11,8 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -20,22 +18,12 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler.ShellResponse;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import play.Application;
 import play.api.Play;
 import play.libs.Json;
-import org.yaml.snakeyaml.Yaml;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 

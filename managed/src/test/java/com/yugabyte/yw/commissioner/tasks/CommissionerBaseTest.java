@@ -52,7 +52,6 @@ import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.anyLong;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -134,32 +133,12 @@ public abstract class CommissionerBaseTest extends WithApplication {
   }
 
   public void mockWaits(YBClient mockClient) {
-    when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
-    when(mockClient.waitForServer(any(), anyInt())).thenReturn(true);
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
-      when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
-    } catch (Exception ex) {}
-    ShellProcessHandler.ShellResponse dummyShellResponse = new ShellProcessHandler.ShellResponse();
-    dummyShellResponse.message = "true";
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
-    try {
-       // WaitForTServerHeartBeats mock.
-      ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
-      when(mockClient.listTabletServers()).thenReturn(mockResponse);
-      when(mockResponse.getTabletServersCount()).thenReturn(3);
-      // WaitForTServerHeartBeats mock.
-      doNothing().when(mockClient).waitForMasterLeader(anyLong());
       // PlacementUtil mock.
       Master.SysClusterConfigEntryPB.Builder configBuilder = Master.SysClusterConfigEntryPB.newBuilder();
       GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
       when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
-      ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
-      GetLoadMovePercentResponse gpr = new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
-      when(mockClient.getLoadMoveCompletion()).thenReturn(gpr);
-      when(mockClient.setFlag(any(HostAndPort.class), any(), any(), anyBoolean()))
-          .thenReturn(true);
     } catch (Exception e) {
       e.printStackTrace();
     }

@@ -10,38 +10,22 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.List;
 import java.util.UUID;
-
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
 
 public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UpgradeKubernetesUniverse.class);

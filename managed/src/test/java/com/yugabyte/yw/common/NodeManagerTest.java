@@ -215,7 +215,6 @@ public class NodeManagerTest extends FakeDBApplication {
     testData.addAll(getTestData(customer, Common.CloudType.aws));
     testData.addAll(getTestData(customer, Common.CloudType.gcp));
     testData.addAll(getTestData(customer, Common.CloudType.onprem));
-    when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
@@ -1220,8 +1219,6 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testDockerNodeCommandWithDockerNetwork() {
-    when(mockAppConfig.getString("yb.docker.network")).thenReturn(DOCKER_NETWORK);
-
     for (TestData t : testData) {
       NodeTaskParams params = new NodeTaskParams();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
