@@ -3542,13 +3542,13 @@ void CatalogManager::CleanUpDeletedTables() {
   // - why do we not delete these from disk?
   // - do we even need to remove these? seems the loaders read them from disk into maps anyway...
   // - what about the tablets? is it ok to have TabletInfos with missing tables for them?
-  {
-    std::lock_guard<LockType> l_map(lock_);
-    for (auto table : tables_to_delete) {
-      // TODO(bogdan): Come back to this once we figure out all concurrency issues.
-      // table_ids_map_.erase(table->id());
-    }
-  }
+  // {
+  //   std::lock_guard<LockType> l_map(lock_);
+  //   for (auto table : tables_to_delete) {
+  // TODO(bogdan): Come back to this once we figure out all concurrency issues.
+  //     table_ids_map_.erase(table->id());
+  //   }
+  // }
   // Update the table in-memory info as DELETED after we've removed them from the maps.
   for (auto table : tables_to_update_on_disk) {
     table->mutable_metadata()->CommitMutation();
