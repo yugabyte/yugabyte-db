@@ -84,9 +84,9 @@ public class KmsConfig extends Model {
     }
 
     public static KmsConfig getKMSConfig(UUID configUUID) {
-        return KmsConfig.find.where()
+        return KmsConfig.find.query().where()
                 .idEq(configUUID)
-                .findUnique();
+                .findOne();
     }
 
     public static ObjectNode getKMSAuthObj(UUID configUUID) {
