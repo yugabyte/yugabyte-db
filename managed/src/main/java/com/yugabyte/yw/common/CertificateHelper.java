@@ -76,6 +76,7 @@ public class CertificateHelper {
   public static final String CLIENT_KEY = "yugabytedb.key";
   public static final String DEFAULT_CLIENT = "yugabyte";
   public static final String CERT_PATH = "%s/certs/%s/%s";
+  public static final String ROOT_CERT = "root.crt";
 
   public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
       try {
@@ -117,8 +118,8 @@ public class CertificateHelper {
         JcaX509CertificateConverter converter = new JcaX509CertificateConverter();
         converter.setProvider(new BouncyCastleProvider());
         X509Certificate x509 = converter.getCertificate(holder);
-        String certPath = String.format(CERT_PATH + "/ca.root.crt", storagePath,
-            customerUUID.toString(), rootCA_UUID.toString());
+        String certPath = String.format(CERT_PATH + "/ca.%s", storagePath,
+            customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
         String keyPath = String.format(CERT_PATH + "/ca.key.pem", storagePath,
             customerUUID.toString(), rootCA_UUID.toString());
         File certfile = new File(certPath);
@@ -246,16 +247,17 @@ public class CertificateHelper {
     }
   }
 
-  public static UUID uploadRootCA(String label, UUID customerUUID, String storagePath, String certContent,
-                                  String keyContent, Date certStart, Date certExpiry) throws IOException {
+  public static UUID uploadRootCA(String label, UUID customerUUID, String storagePath,
+                                  String certContent, String keyContent, Date certStart,
+                                  Date certExpiry) throws IOException {
     if (certContent == null || keyContent == null) {
       throw new RuntimeException("Keyfile or certfile can't be null");
     }
     UUID rootCA_UUID = UUID.randomUUID();
     String keyPath = String.format("%s/certs/%s/%s/ca.key.pem", storagePath,
                                    customerUUID.toString(), rootCA_UUID.toString());
-    String certPath = String.format("%s/certs/%s/%s/ca.root.crt", storagePath,
-                                    customerUUID.toString(), rootCA_UUID.toString());
+    String certPath = String.format("%s/certs/%s/%s/ca.%s", storagePath,
+                                    customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
     
     File certfile = new File(certPath);
     File keyfile = new File(keyPath);
@@ -273,9 +275,14 @@ public class CertificateHelper {
 
   }
 
-  public static String getCertPEM(UUID rootCA){
+  public static String getCertPEMFileContents(UUID rootCA) {
     CertificateInfo cert = CertificateInfo.get(rootCA);
     String certPEM = FileUtils.readFileToString(new File(cert.certificate));
+    return certPEM;
+  }
+
+  public static String getCertPEM(UUID rootCA){
+    String certPEM = getCertPEMFileContents(rootCA);
     certPEM = Base64.getEncoder().encodeToString(certPEM.getBytes());
     return certPEM;
   }
