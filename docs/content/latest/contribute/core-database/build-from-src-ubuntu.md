@@ -18,21 +18,21 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/contribute/core-database/build-from-src-macos" class="nav-link">
+    <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/contribute/core-database/build-from-src-centos" class="nav-link">
+    <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       CentOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/contribute/core-database/build-from-src-ubuntu" class="nav-link active">
+    <a href="{{< relref "./build-from-src-ubuntu.md" >}}" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Ubuntu
     </a>
