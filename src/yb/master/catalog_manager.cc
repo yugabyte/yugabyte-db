@@ -7812,28 +7812,18 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
   SysClusterConfigEntryPB config;
   RETURN_NOT_OK(GetClusterConfig(&config));
 
-  Status s = CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, config.replication_info());
+  // Only need to fetch if txn tables are not using preferred zones.
+  vector<scoped_refptr<TableInfo>> tables;
+  if (!FLAGS_transaction_tables_use_preferred_zones) {
+    master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+  }
+
+  Status s = CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs,
+                                                           config.replication_info(),
+                                                           tables);
   if (!s.ok()) {
     return SetupError(
         resp->mutable_error(), MasterErrorPB::CAN_RETRY_ARE_LEADERS_ON_PREFERRED_ONLY_CHECK, s);
-  }
-
-  return Status::OK();
-}
-
-Status CatalogManager::AreTransactionLeadersSpread(
-    const AreTransactionLeadersSpreadRequestPB* req,
-    AreTransactionLeadersSpreadResponsePB* resp) {
-
-  TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
-  vector<scoped_refptr<TableInfo>> tables;
-  master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
-
-  Status s = CatalogManagerUtil::AreTransactionLeadersSpread(ts_descs, tables);
-  if (!s.ok()) {
-    return SetupError(
-        resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
   }
 
   return Status::OK();
