@@ -90,6 +90,11 @@ public class CertificateControllerTest extends FakeDBApplication {
                                                        bodyJson);
   }
 
+  private Result getRootCertificate(UUID customerUUID, UUID rootUUID) {
+    String uri = "/api/customers/" + customerUUID + "/certificates/" + rootUUID + "/download";
+    return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
+  }
+
   @Test
   public void testListCertificates() {
     Result result = listCertificates(customer.uuid);
@@ -165,6 +170,18 @@ public class CertificateControllerTest extends FakeDBApplication {
     String clientKey = json.get("yugabytedb.key").asText();
     assertNotNull(clientCert);
     assertNotNull(clientKey);
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testGetRootCertificate() {
+    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid,
+                                                 "/tmp");
+    Result result = getRootCertificate(customer.uuid, rootCA);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    String rootCert = json.get("root.crt").asText();
+    assertNotNull(rootCert);
     assertAuditEntry(1, customer.uuid);
   }
 
