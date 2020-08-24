@@ -973,7 +973,7 @@ export default class ClusterFields extends Component {
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
     const disableToggleOnChange = clusterType !== "primary";
     if (isDefinedNotNull(currentProvider) &&
-       (currentProvider.code === "aws" || currentProvider.code === "gcp" ||
+       (currentProvider.code === "aws" || currentProvider.code === "gcp" || currentProvider.code === "azu" ||
         currentProvider.code === "onprem" || currentProvider.code === "kubernetes")){
       enableYSQL = (
         <Field name={`${clusterType}.enableYSQL`}
@@ -1055,7 +1055,7 @@ export default class ClusterFields extends Component {
     }
 
     if (isDefinedNotNull(currentProvider) &&
-        (currentProvider.code === "aws" || currentProvider.code === "gcp")) {
+        (currentProvider.code === "aws" || currentProvider.code === "gcp" || currentProvider.code === "azu")) {
       // Assign public ip would be only enabled for primary and that same
       // value will be used for async as well.
       assignPublicIP = (
