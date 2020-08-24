@@ -778,13 +778,6 @@ void MasterServiceImpl::AreLeadersOnPreferredOnly(
   HandleIn(req, resp, &rpc, &CatalogManager::AreLeadersOnPreferredOnly);
 }
 
-void MasterServiceImpl::AreTransactionLeadersSpread(
-    const AreTransactionLeadersSpreadRequestPB* req,
-    AreTransactionLeadersSpreadResponsePB* resp,
-    RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::AreTransactionLeadersSpread);
-}
-
 void MasterServiceImpl::FlushTables(const FlushTablesRequestPB* req,
                                     FlushTablesResponsePB* resp,
                                     RpcContext rpc) {

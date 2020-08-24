@@ -252,10 +252,6 @@ class MasterServiceImpl : public MasterServiceIf,
                                  AreLeadersOnPreferredOnlyResponsePB* resp,
                                  rpc::RpcContext rpc) override;
 
-  void AreTransactionLeadersSpread(const AreTransactionLeadersSpreadRequestPB* req,
-                                   AreTransactionLeadersSpreadResponsePB* resp,
-                                   rpc::RpcContext rpc) override;
-
   void FlushTables(const FlushTablesRequestPB* req,
                    FlushTablesResponsePB* resp,
                    rpc::RpcContext rpc) override;

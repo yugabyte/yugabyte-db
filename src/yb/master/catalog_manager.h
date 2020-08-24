@@ -611,10 +611,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
                                            AreLeadersOnPreferredOnlyResponsePB* resp);
 
-  // Check that transaction tablet leaders are spread amongst tservers.
-  CHECKED_STATUS AreTransactionLeadersSpread(const AreTransactionLeadersSpreadRequestPB* req,
-                                             AreTransactionLeadersSpreadResponsePB* resp);
-
   // Return the placement uuid of the primary cluster containing this master.
   string placement_uuid() const;
 

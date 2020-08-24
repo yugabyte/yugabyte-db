@@ -1957,8 +1957,6 @@ service MasterService {
       returns (IsLoadBalancerIdleResponsePB);
   rpc AreLeadersOnPreferredOnly(AreLeadersOnPreferredOnlyRequestPB)
       returns (AreLeadersOnPreferredOnlyResponsePB);
-  rpc AreTransactionLeadersSpread(AreTransactionLeadersSpreadRequestPB)
-      returns (AreTransactionLeadersSpreadResponsePB);
 
   rpc FlushTables(FlushTablesRequestPB) returns (FlushTablesResponsePB);
   rpc IsFlushTablesDone(IsFlushTablesDoneRequestPB) returns (IsFlushTablesDoneResponsePB);
