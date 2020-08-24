@@ -12,7 +12,8 @@ import javax.inject.Singleton;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import play.api.Play;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
 
 @Singleton
 public class ConfigHelper {
@@ -107,10 +108,9 @@ public class ConfigHelper {
       if (type.getConfigFile() == null) {
         continue;
       }
-      YamlWrapper yaml = Play.current().injector().instanceOf(YamlWrapper.class);
+      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
       Map<String, Object> config = (HashMap<String, Object>) yaml.load(
-          app.resourceAsStream(type.getConfigFile()),
-          app.classloader()
+        app.resourceAsStream(type.getConfigFile())
       );
       loadConfigToDB(type, config);
     }
