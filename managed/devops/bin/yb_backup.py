@@ -78,6 +78,8 @@ DEFAULT_REMOTE_YB_ADMIN_PATH = os.path.join(YB_HOME_DIR, 'master/bin/yb-admin')
 DEFAULT_REMOTE_YSQL_DUMP_PATH = os.path.join(YB_HOME_DIR, 'master/postgres/bin/ysql_dump')
 DEFAULT_REMOTE_YSQL_SHELL_PATH = os.path.join(YB_HOME_DIR, 'master/bin/ysqlsh')
 
+DEFAULT_YB_USER = 'yugabyte'
+
 
 class BackupException(Exception):
     """A YugaByte backup exception."""
@@ -595,7 +597,9 @@ class YBBackup:
         parser.add_argument(
             '--ssh_key_path', required=False, help="Path to the ssh key file")
         parser.add_argument(
-            '--ssh_user', default='centos', help="Username to use for the ssh connection.")
+            '--ssh_user', default=DEFAULT_YB_USER, help="Username to use for the ssh connection.")
+        parser.add_argument(
+            '--remote_user', default=DEFAULT_YB_USER, help="User that will perform backup tasks.")
         parser.add_argument(
             '--ssh_port', default='54422', help="Port to use for the ssh connection.")
         parser.add_argument(
@@ -750,6 +754,9 @@ class YBBackup:
 
     def is_ysql_keyspace(self):
         return self.args.keyspace and keyspace_type(self.args.keyspace[0]) == 'ysql'
+
+    def needs_change_user():
+        return self.args.ssh_user != self.args.remote_user
 
     def get_leader_master_ip(self):
         if not self.leader_master_ip:
@@ -986,7 +993,6 @@ class YBBackup:
                     "Uploading {} to server {}".format(self.cloud_cfg_file_path, server_ip))
 
             this_script_dir = os.path.dirname(os.path.realpath(__file__))
-            ssh_wrapper_path = os.path.join(this_script_dir, 'ssh_wrapper_with_sudo.sh')
 
             output = self.create_remote_tmp_dir(server_ip)
             if self.is_k8s():
@@ -1001,16 +1007,30 @@ class YBBackup:
                     k8s_details.container
                 ], env=k8s_details.env_config)
             elif not self.args.no_ssh:
-                output += self.run_program(
-                    ['scp',
-                     '-S', ssh_wrapper_path,
-                     '-o', 'StrictHostKeyChecking=no',
-                     '-o', 'UserKnownHostsFile=/dev/null',
-                     '-i', self.args.ssh_key_path,
-                     '-P', self.args.ssh_port,
-                     '-q',
-                     self.cloud_cfg_file_path,
-                     '%s@%s:%s' % (self.args.ssh_user, server_ip, self.get_tmp_dir())])
+                if self.needs_change_user():
+                    # TODO: Currently ssh_wrapper_with_sudo.sh will only change users to yugabyte,
+                    # not args.remote_user.
+                    ssh_wrapper_path = os.path.join(this_script_dir, 'ssh_wrapper_with_sudo.sh')
+                    output += self.run_program(
+                        ['scp',
+                         '-S', ssh_wrapper_path,
+                         '-o', 'StrictHostKeyChecking=no',
+                         '-o', 'UserKnownHostsFile=/dev/null',
+                         '-i', self.args.ssh_key_path,
+                         '-P', self.args.ssh_port,
+                         '-q',
+                         self.cloud_cfg_file_path,
+                         '%s@%s:%s' % (self.args.ssh_user, server_ip, self.get_tmp_dir())])
+                else:
+                    output += self.run_program(
+                        ['scp',
+                         '-o', 'StrictHostKeyChecking=no',
+                         '-o', 'UserKnownHostsFile=/dev/null',
+                         '-i', self.args.ssh_key_path,
+                         '-P', self.args.ssh_port,
+                         '-q',
+                         self.cloud_cfg_file_path,
+                         '%s@%s:%s' % (self.args.ssh_user, server_ip, self.get_tmp_dir())])
 
             self.server_ips_with_uploaded_cloud_cfg[server_ip] = output
 
@@ -1058,6 +1078,7 @@ class YBBackup:
                 num_retry=num_retries,
                 env=k8s_details.env_config)
         elif not self.args.no_ssh:
+            change_user_cmd = 'sudo -u' if self.needs_change_user() else ''
             return self.run_program([
                 'ssh',
                 '-o', 'StrictHostKeyChecking=no',
@@ -1066,7 +1087,7 @@ class YBBackup:
                 '-p', self.args.ssh_port,
                 '-q',
                 '%s@%s' % (self.args.ssh_user, server_ip),
-                'cd / && sudo -u yugabyte bash -c ' + pipes.quote(cmd)],
+                'cd / && %s bash -c ' % (change_user_cmd) + pipes.quote(cmd)],
                 num_retry=num_retries)
         else:
             return self.run_program(['bash', '-c', cmd])
