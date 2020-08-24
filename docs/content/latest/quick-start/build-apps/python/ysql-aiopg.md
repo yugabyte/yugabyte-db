@@ -2,7 +2,7 @@
 title: Build a Python application that uses YSQL and aiopg
 headerTitle: Build a Python application
 linkTitle: Python
-description: Build a sample Python application with aiopg that use YSQL.
+description: Build a sample Python application with aiopg that uses YSQL.
 menu:
   latest:
     parent: build-apps
