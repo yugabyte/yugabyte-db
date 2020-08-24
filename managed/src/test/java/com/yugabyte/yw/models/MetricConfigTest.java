@@ -39,7 +39,7 @@ public class MetricConfigTest extends FakeDBApplication {
         config.getLayout(),
         allOf(notNullValue(), IsInstanceOf.instanceOf(MetricConfig.Layout.class))
       );
-      assertThat(config.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS), allOf(notNullValue()));
+      assertThat(config.getQuery(new HashMap<>()), allOf(notNullValue()));
     }
   }
 

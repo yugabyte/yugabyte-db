@@ -100,7 +100,7 @@ public class CustomerTaskController extends AuthenticatedController {
           ", TaskInfo with that taskUUID not found");
       }
     }
-    
+
     return taskListMap;
   }
 
