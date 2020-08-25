@@ -105,7 +105,7 @@ yugabyte=# COPY (SELECT name FROM users where name='Dorian Gray') TO '/home/yuga
 
 ### Import from CSV files
 
-In the following example, the data exported in the previous examples are imported.
+In the following example, the data exported in the previous examples are imported in the `users` table.
 
 
 ```postgresql
