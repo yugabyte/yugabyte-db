@@ -147,8 +147,7 @@ In practice, for each server, you will use the `--fs_data_dirs` flag, which is a
 {{< note title="Tip" >}}
 
 To get a snapshot of a multi-node cluster, you need to go into each node and copy
-the folders of ONLY the leader tablets on that node. There is no need to keep a copy for each replica, since each tablet-replica has
-a copy of the same data.
+the folders of ONLY the leader tablets on that node. Because each tablet-replica has a copy of the same data, you do not need to keep a copy for each replica.
 
 {{< /note >}}
 
