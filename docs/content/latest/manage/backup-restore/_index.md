@@ -50,7 +50,7 @@ This section goes into details of backing up data and restoring it from Yugabyte
         <div class="title">Distributed snapshot and restore data</div>
       </div>
       <div class="body">
-        This section describes how to use distributed snapshots for backup and restore.
+        This section describes how to back up and restore data using distributed snapshots.
       </div>
     </a>
   </div>
