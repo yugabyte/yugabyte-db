@@ -6,7 +6,6 @@
 # yb_pg_misc_serial_schedule, the tests in this schedule have no dependencies.
 ####################################################################################################
 test: yb_pg_insert
-test: yb_pg_copydml
 test: yb_index_including
 test: yb_pg_create_function_3
 test: yb_pg_create_cast

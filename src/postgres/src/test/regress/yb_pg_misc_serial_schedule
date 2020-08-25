@@ -5,8 +5,7 @@
 # This includes miscellaneous tests that are not yet characterized to a proper testsuite.  Unlike
 # yb_pg_misc_independent_serial_schedule, the tests in this schedule have dependencies.
 ####################################################################################################
-# Dependencies for `yb_pg_aggregates`
-test: yb_pg_int4
+# Dependencies for `yb_pg_limit`
 test: yb_pg_int8
 
 # Chain of dependencies for `yb_pg_create_operator`
@@ -18,14 +17,13 @@ test: yb_pg_create_table
 
 test: yb_pg_create_function_2
 
-# Dependency for `yb_pg_select`
+# Dependency for `yb_pg_select`, 'yb_pg_groupingsets', 'yb_pg_random', 'yb_pg_limit'
 test: yb_pg_copy
 
 test: yb_pg_create_operator
 
-# Dependency for `yb_pg_aggregates`
-test: yb_pg_create_aggregate
-
 test: yb_pg_errors
 test: yb_pg_select
-test: yb_pg_aggregates
+test: yb_pg_random
+test: yb_pg_groupingsets
+test: yb_pg_limit
