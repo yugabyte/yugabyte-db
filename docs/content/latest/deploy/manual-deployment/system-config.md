@@ -113,7 +113,7 @@ On CentOS, /etc/security/limits.d/20-nproc.conf must also be configured
 {{< note title="Note" >}}
 
 If you're using [systemd](https://systemd.io/) to start the processes, and the ulimits are not propagated, you
- have to add them also in the service section in the configuration file.
+ must add them also in the service section in the configuration file.
 
 ```
 [Unit]
