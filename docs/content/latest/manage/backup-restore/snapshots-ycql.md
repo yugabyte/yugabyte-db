@@ -260,7 +260,7 @@ Snapshot         	a9442525-c7a2-42c8-8d2e-658060028f0e 	27c331c0-4b5c-4027-85f9-
 After importing the `metadata file`, you see the following changes:
 
 1. `Old ID` and `New ID` for table, tablets, and snapshot.
-2. `table_id`, `tablet_id` and `snapshot_id` have changed, so you have a different paths from previously.
+2. `table_id`, `tablet_id` and `snapshot_id` have changed, therefore the paths are different.
 3. When restoring, you have to use the new IDs to get the right paths to move data.
 
 Using these IDs, you can restore the previous `.snapshot` folders to the new paths.
