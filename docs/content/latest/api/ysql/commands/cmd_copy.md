@@ -91,8 +91,10 @@ Copy the whole table to a comma separated CSV file with column names in the head
 yugabyte=# COPY users TO '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
 ```
 
-### Export partial table using WHERE clause with column selection
-Use a WHERE clause to filter rows and only `name` column.
+### Export a partial table using the WHERE clause with column selection
+
+In the following example, a `WHERE` clause is used to filter the rows and only the `name` column.
+
 
 ```postgresql
 yugabyte=# COPY (SELECT name FROM users where name='Dorian Gray') TO '/home/yuga/Desktop/users.txt.sql' DELIMITER
