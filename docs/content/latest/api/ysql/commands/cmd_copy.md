@@ -19,8 +19,8 @@ Use the `COPY` statement to transfer data between tables and files. `COPY TO` co
 
 {{< note title="Note" >}}
 
-`COPY` works with files that reside local to the yb-tserver that we're connecting to. To work with files that reside
- on the client, use `\copy` in [`ysqlsh` cli](../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option).
+The `COPY` statement can be used with files residing locally to the YB-TServer that you connect to. To work with files that reside on the client, use `\copy` in [`ysqlsh` cli](../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option).
+
 {{< /note >}}
 
 
