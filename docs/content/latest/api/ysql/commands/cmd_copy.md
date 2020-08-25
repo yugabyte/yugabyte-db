@@ -86,7 +86,7 @@ yugabyte=# SELECT * FROM users;
 
 ### Export an entire table
 
-Copy the entire table to a CSV file, with column names in the header.
+Copy the entire table to a CSV file using an absolute path, with column names in the header.
 
 
 ```postgresql
