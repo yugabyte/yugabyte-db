@@ -133,6 +133,9 @@ class YQLVirtualTable : public common::YQLStorageIf {
   Schema schema_;
 };
 
+extern const std::string kSystemTablesReleaseVersion;
+extern const std::string kSystemTablesReleaseVersionColumn;
+
 }  // namespace master
 }  // namespace yb
 #endif // YB_MASTER_YQL_VIRTUAL_TABLE_H
