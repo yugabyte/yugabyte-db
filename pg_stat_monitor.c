@@ -446,6 +446,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 	if (query->queryId == UINT64CONST(0))
 		query->queryId = UINT64CONST(1);
 
+
 	if (PGSM_ENABLED == 1)
 		if (jstate.clocations_count > 0)
 			pgss_store(pstate->p_sourcetext,
@@ -557,9 +558,8 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 	float   stime;
 	uint64	queryId = queryDesc->plannedstmt->queryId;
 
-	if (queryId != UINT64CONST(0) && queryDesc->totaltime && PGSM_ENABLED)
+	if (queryId != UINT64CONST(0) && queryDesc->totaltime)
 	{
-	 elog(WARNING, "PGSM_ENABLED = %d", PGSM_ENABLED);
 		/*
 		 * Make sure stats accumulation is done.  (Note: it's okay if several
 		 * levels of hook all do this.)
@@ -569,7 +569,8 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		utime = TIMEVAL_DIFF(rusage_start.ru_utime, rusage_end.ru_utime);
 		stime = TIMEVAL_DIFF(rusage_start.ru_stime, rusage_end.ru_stime);
 
-		pgss_store(queryDesc->sourceText,
+		if (PGSM_ENABLED == 1)
+			pgss_store(queryDesc->sourceText,
 				   queryId,
 				   queryDesc->plannedstmt->stmt_location,
 				   queryDesc->plannedstmt->stmt_len,
@@ -701,8 +702,8 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		/* calc differences of buffer counters. */
 		memset(&bufusage, 0, sizeof(BufferUsage));
 		BufferUsageAccumDiff(&bufusage, &pgBufferUsage, &bufusage_start);
-
-		pgss_store(queryString,
+		if (PGSM_ENABLED == 1)
+			pgss_store(queryString,
 				   0,			/* signal that it's a utility stmt */
 				   pstmt->stmt_location,
 				   pstmt->stmt_len,
@@ -840,6 +841,7 @@ static void pgss_store(const char *query, uint64 queryId,
 	char			tables_name[MAX_REL_LEN] = {0};
 
 	Assert(query != NULL);
+	Assert(PGSM_ENABLED);
 
 	/* Safety check... */
 	if (!IsHashInitialize() || !pgss_qbuf[pgss->current_wbucket])
