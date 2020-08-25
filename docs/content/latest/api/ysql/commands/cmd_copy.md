@@ -105,6 +105,6 @@ yugabyte=# COPY (SELECT name FROM users where name='Dorian Gray') TO '/home/yuga
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
 ```
 
-- Errors are raised if the table does not exist.
+- If the table does not exist, errors are raised.
 - `COPY TO` can only be used with regular tables.
-- `COPY FROM` can be used with tables, foreign tables, or views.
+- `COPY FROM` can be used with tables, foreign tables, and views.
