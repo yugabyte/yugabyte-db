@@ -1062,7 +1062,8 @@ class YBBackup:
                 num_retry=num_retries,
                 env=k8s_details.env_config)
         elif not self.args.no_ssh:
-            change_user_cmd = 'sudo -u' if self.needs_change_user() else ''
+            change_user_cmd = 'sudo -u %s' % (self.args.remote_user) \
+                if self.needs_change_user() else ''
             return self.run_program([
                 'ssh',
                 '-o', 'StrictHostKeyChecking=no',
