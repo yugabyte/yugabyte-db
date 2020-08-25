@@ -129,24 +129,25 @@ ulimits options here
 
 The mappings of ulimit options with values are:
 
-```
-Directive        ulimit equivalent     Value
-LimitCPU=        ulimit -t             infinity      
-LimitFSIZE=      ulimit -f             infinity
-LimitDATA=       ulimit -d             infinity
-LimitSTACK=      ulimit -s             8192
-LimitCORE=       ulimit -c             infinity
-LimitRSS=        ulimit -m             infinity
-LimitNOFILE=     ulimit -n             1048576 
-LimitAS=         ulimit -v             infinity
-LimitNPROC=      ulimit -u             12000 
-LimitMEMLOCK=    ulimit -l             64
-LimitLOCKS=      ulimit -x             infinity 
-LimitSIGPENDING= ulimit -i             119934 
-LimitMSGQUEUE=   ulimit -q             819200
-LimitNICE=       ulimit -e             0 
-LimitRTPRIO=     ulimit -r             0  
-```
+Data type | ulimit equivalent | Value |
+----------|-------------|-----|
+Directive       | ulimit equivalent    | Value |
+LimitCPU=       | ulimit -t            | infinity |
+LimitFSIZE=     | ulimit -f            | infinity |
+LimitDATA=      | ulimit -d            | infinity |
+LimitSTACK=     | ulimit -s            | 8192 |
+LimitCORE=      | ulimit -c            | infinity |
+LimitRSS=       | ulimit -m            | infinity |
+LimitNOFILE=    | ulimit -n            | 1048576  |
+LimitAS=        | ulimit -v            | infinity |
+LimitNPROC=     | ulimit -u            | 12000  |
+LimitMEMLOCK=   | ulimit -l            | 64 |
+LimitLOCKS=     | ulimit -x            | infinity |
+LimitSIGPENDING=| ulimit -i            | 119934 |
+LimitMSGQUEUE=  | ulimit -q            | 819200 |
+LimitNICE=      | ulimit -e            | 0 |
+LimitRTPRIO=    | ulimit -r            | 0 |
+
 If a ulimit is set to `unlimited`, set it to `infinity` in the systemd config.
 
 {{< /note >}}
