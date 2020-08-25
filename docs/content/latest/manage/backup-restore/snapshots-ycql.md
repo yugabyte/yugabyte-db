@@ -129,7 +129,8 @@ have to use a script that copies all data. The file path structure is:
 - `<yb_data_dir>` is the directory where YugabyteDB data is stored. (default=`~/yugabyte-data`)
 - `<node_number>` is used when multiple nodes are running on the same server (for testing, QA, and development). The default value is `1`.
 - `<disk_number>` when running yugabyte on multiple disks with the `--fs_data_dirs` flag. The default value is `1`.
-- `<table_id>` is the UUID of the table. You can get it from the Admin UI.
+- `<table_id>` is the UUID of the table. You can get it from the `http://<yb-master-ip>:7000/tables` url in the Admin
+ UI.
 - `<tablet_id>` in each table there is a list of tablets. Each tablet has a `<tablet_id>.snapshots` directory that you need to copy.
 - `<snapshot_id>` there is a directory for each snapshot since you can have multiple completed snapshots on each server.
 
