@@ -178,10 +178,28 @@ For a tutorial on building a sample Python application that uses `psycopg2`, see
 
 #### Install the psycopg2 binary
 
-To install the `psycopg2` binary package, run the following pip install` command:
+To install the `psycopg2` package, run the following `pip install` command:
 
 ```sh
-$ pip3 install psycopg2
+$ pip install psycopg2
+```
+
+### aiopg
+
+[aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP
+-3156/tulip) framework. It wraps
+ asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using `aiopg`, see
+  [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
+
+For a tutorial on building a sample Python application that uses `psycopg2`, see [Build a Python application
+](../../../quick-start/build-apps/python/ysql-aiopg).
+
+#### Install
+
+To install the `aio` package, run the following `pip3 install` command:
+
+```sh
+pip3 install aiopg
 ```
 
 ## Ruby

@@ -19,13 +19,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/latest/deploy/docker/docker-compose" class="nav-link active">
+    <a href="{{< relref "./docker-compose.md" >}}" class="nav-link active">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker Compose
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/docker/docker-swarm" class="nav-link">
+    <a href="{{< relref "./docker-swarm.md" >}}" class="nav-link">
       <i class="fas fa-layer-group"></i>
       Docker Swarm
     </a>
