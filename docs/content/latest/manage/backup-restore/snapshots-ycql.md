@@ -100,7 +100,7 @@ $ ./bin/yb-admin create_snapshot ydb test_tb
 Started snapshot creation: a9442525-c7a2-42c8-8d2e-658060028f0e
 ```
 
-To see when your snapshot is ready, you can run the [`yb-admin list_snapshots`](../../../admin/yb-admin/#list-snapshots) command.
+To see when your snapshot is ready, run the [`yb-admin list_snapshots`](../../../admin/yb-admin/#list-snapshots) command.
 
 ```sh
 ./bin/yb-admin list_snapshots
