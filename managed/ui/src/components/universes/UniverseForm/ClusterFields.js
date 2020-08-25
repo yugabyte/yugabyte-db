@@ -156,6 +156,7 @@ export default class ClusterFields extends Component {
           numNodes: userIntent.numNodes,
           replicationFactor: userIntent.replicationFactor,
           ybSoftwareVersion: userIntent.ybSoftwareVersion,
+          assignPublicIP: userIntent.assignPublicIP,
           useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
