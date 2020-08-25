@@ -96,6 +96,7 @@ public class TestSystemTables extends BaseCQLTest {
         assertNotNull(row.getUUID("host_id"));
         assertNotNull(row.getString("data_center"));
         assertNotNull(row.getString("rack"));
+        assertEquals(row.getString("release_version"), RELEASE_VERSION);
       }
       assertTrue(found);
     }
