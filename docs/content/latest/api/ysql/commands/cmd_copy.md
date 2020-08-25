@@ -103,7 +103,10 @@ yugabyte=# COPY (SELECT name FROM users where name='Dorian Gray') TO '/home/yuga
  ',' CSV HEADER;
 ```
 
-### Importing the previous exports
+### Import from CSV files
+
+In the following example, the data exported in the previous examples are imported.
+
 
 ```postgresql
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
