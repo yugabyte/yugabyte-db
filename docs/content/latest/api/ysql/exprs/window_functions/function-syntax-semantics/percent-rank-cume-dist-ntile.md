@@ -6,7 +6,7 @@ description: Describes the functionality of the YSQL window functions percent_ra
 menu:
   latest:
     identifier: percent-rank-cume-dist-ntile
-    parent: function-syntax-semantics
+    parent: window-function-syntax-semantics
     weight: 20
 isTocNested: true
 showAsideToc: true
@@ -36,7 +36,7 @@ This documentation assumes that you already understand the subtle difference bet
 input value:       <no formal parameter>
 return value:      double precision
 ```
-**Purpose:** Return the percentile rank of each row within the [_window_](../../sql-syntax-semantics/#the-window-definition-rule), with respect to the argument of the [**window_definition**](../../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _p_ returned by `percent_rank()` is a number in the range _0 <= p <= 1_. It is calculated like this:
+**Purpose:** Return the percentile rank of each row within the [_window_](../../sql-syntax-semantics/#the-window-definition-rule), with respect to the argument of the [`window_definition`](../../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _p_ returned by `percent_rank()` is a number in the range _0 <= p <= 1_. It is calculated like this:
 
 ```
 percentile_rank = (rank - 1) / ("no. of rows in window" - 1)
@@ -63,7 +63,7 @@ When `percent_rank()` for a particular row has a value of, say,`0.42`, it means 
 input value:       <no formal parameter>
 return value:      double precision
 ```
-**Purpose:** Return a value that represents the number of rows with values less than or equal to the current row’s value divided by the total number of rows—in other words, the relative position of a value in a set of values. The graph of all values of `cume_dist()` within the [_window_](../../sql-syntax-semantics/#the-window-definition-rule) is known as the cumulative distribution of the argument of the [**window_definition**](../../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _c_ returned by `cume_dist()` is a number in the range _0 <= c <= 1_. It is calculated like this:
+**Purpose:** Return a value that represents the number of rows with values less than or equal to the current row’s value divided by the total number of rows—in other words, the relative position of a value in a set of values. The graph of all values of `cume_dist()` within the [_window_](../../sql-syntax-semantics/#the-window-definition-rule) is known as the cumulative distribution of the argument of the [`window_definition`](../../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _c_ returned by `cume_dist()` is a number in the range _0 <= c <= 1_. It is calculated like this:
 
 ```
 cume_dist() =

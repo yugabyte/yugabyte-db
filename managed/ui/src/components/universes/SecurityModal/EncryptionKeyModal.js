@@ -32,7 +32,7 @@ export default class EncryptionKeyModal extends Component {
     // When the form is submitted without changing the KMS provider select,
     // we would have the value as string otherwise it would be an object.
     const kmsConfigUUID = isNonEmptyObject(values.selectKMSProvider) ?
-        values.selectKMSProvider.value : values.selectKMSProvider;
+      values.selectKMSProvider.value : values.selectKMSProvider;
 
     const data = {
       "key_op": values.enableEncryptionAtRest ? "ENABLE" : "DISABLE",
@@ -65,9 +65,9 @@ export default class EncryptionKeyModal extends Component {
     const validationSchema = Yup.object().shape({
       enableEncryptionAtRest: Yup.boolean(),
       selectKMSProvider: Yup.mixed()
-                            .when('enableEncryptionAtRest', {
-                              is: true,
-                              then: Yup.mixed().required('KMS Provider is required')})
+        .when('enableEncryptionAtRest', {
+          is: true,
+          then: Yup.mixed().required('KMS Provider is required')})
     });
 
     if (isNonEmptyObject(encryptionAtRestConfig) && encryptionAtRestConfig.kmsConfigUUID) {

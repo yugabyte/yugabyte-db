@@ -580,11 +580,38 @@ DefineIndex(Oid relationId,
 	/*
 	 * Select tablegroup to use. Default to the tablegroup of the indexed table.
 	 * If no tablegroup for the indexed table then set to InvalidOid (no tablegroup).
-	 * TODO(vivek/jason): Allow indexes to opt out of tablegroups (currently disabled from grammar).
+	 * If tablegroup specified then perform a lookup unless has_tablegroup is false.
 	 */
 	Oid tablegroupId = InvalidOid;
 	if (TablegroupCatalogExists)
-		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
+	{
+		if (!stmt->tablegroup)
+		{
+			// If NULL tablegroup, follow tablegroup of indexed table.
+			tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
+			if (OidIsValid(tablegroupId) && stmt->split_options)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 		errmsg("Cannot use TABLEGROUP with SPLIT."),
+				 		errdetail("Please supply NO TABLEGROUP to opt-out of indexed table's tablegroup.")));
+			}
+		}
+		else
+		{
+			OptTableGroup *grp = stmt->tablegroup;
+			if (grp->has_tablegroup)
+			{
+				if (stmt->split_options)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 		errmsg("Cannot use TABLEGROUP with SPLIT.")));
+				}
+				tablegroupId = get_tablegroup_oid(grp->tablegroup_name, false);
+			}
+		}
+	}
 
 	/*
 	 * Check permissions for tablegroup. To create an index within a tablegroup, a user must
@@ -1441,6 +1468,12 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		RelationClose(rel);
 	}
 
+	/* Get whether the index is part of a tablegroup */
+	Oid tablegroupId = InvalidOid;
+	if (TablegroupCatalogExists && IsYugaByteEnabled() &&
+		!IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
+		tablegroupId = get_tablegroup_oid_by_table_oid(relId);
+
 	/*
 	 * process attributeList
 	 */
@@ -1470,7 +1503,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 						 * colocated tables, the first attribute defaults to
 						 * ASC.
 						 */
-						if (attn > 0 || colocated)
+						if (attn > 0 || colocated || tablegroupId != InvalidOid)
 						{
 							range_index = true;
 							break;
@@ -1744,7 +1777,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (use_yb_ordering &&
 				attn == 0 &&
 				attribute->ordering == SORTBY_DEFAULT &&
-				!colocated)
+				!colocated && tablegroupId == InvalidOid)
 				colOptionP[attn] |= INDOPTION_HASH;
 
 			/* default null ordering is LAST for ASC, FIRST for DESC */

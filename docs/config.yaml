@@ -29,9 +29,9 @@ params:
     text: Inter
     code: Inconsolata
   algolia:
-    index: docs
+    index: yugabyte
     appID: 4LBMOWH4F9
-    apiKey: 76cc3c40acc9719f5cd0d45bc07e2aeb
+    apiKey: 7b0692a045ac138067b8a12041ecb01a
   bigpicture:
     projectId: 1064
 social: {}

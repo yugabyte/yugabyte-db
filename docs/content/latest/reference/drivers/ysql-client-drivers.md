@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The [Yugabyte Structured Query Language (YSQL) API](../../api/ysql) builds upon and extends a fork of the query layer from PostgreSQL v11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
+The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql) builds upon and extends a fork of the query layer from PostgreSQL 11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
 
 For details on PostgreSQL feature support in YSQL, see [What Features Does YSQL Support?](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/YSQL-Features-Supported.md)
 
@@ -121,7 +121,7 @@ The `pq` driver is ready for building Go applications that connect to and intera
 
 The [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) is the official PostgreSQL driver. PgJDBC is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication protocol](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256).
 
-For a tutorial on building a sample Go application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql/) and click **YSQL-JDBC**.
+For a tutorial on building a sample Go application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-jdbc/) and click **YSQL-JDBC**.
 
 #### Install the PostgreSQL JDBC Driver
 

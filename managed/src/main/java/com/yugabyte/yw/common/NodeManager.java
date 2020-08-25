@@ -144,6 +144,15 @@ public class NodeManager extends DevopsBase {
           }
         }
       }
+      if (params instanceof AnsibleSetupServer.Params &&
+          userIntent.providerType.equals(Common.CloudType.azu)) {
+        Region r = params.getRegion();
+        String customSecurityGroupId = r.getSecurityGroupId();
+          if (customSecurityGroupId != null) {
+            subCommand.add("--security_group_id");
+            subCommand.add(customSecurityGroupId);
+          }
+      }
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
@@ -221,6 +230,22 @@ public class NodeManager extends DevopsBase {
       subcommand.add(taskParam.itestS3PackagePath);
     }
 
+    NodeDetails node = universe.getNode(taskParam.nodeName);
+
+    // Pass in communication ports
+    subcommand.add("--master_http_port");
+    subcommand.add(Integer.toString(node.masterHttpPort));
+    subcommand.add("--master_rpc_port");
+    subcommand.add(Integer.toString(node.masterRpcPort));
+    subcommand.add("--tserver_http_port");
+    subcommand.add(Integer.toString(node.tserverHttpPort));
+    subcommand.add("--tserver_rpc_port");
+    subcommand.add(Integer.toString(node.tserverRpcPort));
+    subcommand.add("--cql_proxy_rpc_port");
+    subcommand.add(Integer.toString(node.yqlServerRpcPort));
+    subcommand.add("--redis_proxy_rpc_port");
+    subcommand.add(Integer.toString(node.redisServerRpcPort));
+
     switch(taskParam.type) {
       case Everything:
         boolean useHostname = universe.getUniverseDetails()
@@ -241,8 +266,8 @@ public class NodeManager extends DevopsBase {
         // Add in the nodeName during configure.
         extra_gflags.put("metric_node_name", taskParam.nodeName);
         // TODO: add a shared path to massage flags across different flavors of configure.
-        NodeDetails node = universe.getNode(taskParam.nodeName);
         String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
+
         if (useHostname) {
           subcommand.add("--server_broadcast_addresses");
           subcommand.add(node.cloudInfo.private_ip);
@@ -401,6 +426,10 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--assign_public_ip");
           }
         }
+
+        commandArgs.add("--node_exporter_port");
+        commandArgs.add(Integer.toString(taskParam.communicationPorts.nodeExporterPort));
+
         if (cloudType.equals(Common.CloudType.aws)) {
           if (taskParam.useTimeSync) {
             commandArgs.add("--use_chrony");
@@ -417,6 +446,14 @@ public class NodeManager extends DevopsBase {
           if (taskParam.ipArnString != null) {
             commandArgs.add("--iam_profile_arn");
             commandArgs.add(taskParam.ipArnString);
+          }
+        }
+        if (cloudType.equals(Common.CloudType.azu)) {
+          Region r = taskParam.getRegion();
+          String vnetName = r.getVnetName();
+          if (vnetName != null && !vnetName.isEmpty()) {
+            commandArgs.add("--vpcId");
+            commandArgs.add(vnetName);
           }
         }
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -439,6 +476,7 @@ public class NodeManager extends DevopsBase {
           commandArgs.add("--local_package_path");
           commandArgs.add(localPackagePath);
         }
+
         break;
       }
       case Configure: {

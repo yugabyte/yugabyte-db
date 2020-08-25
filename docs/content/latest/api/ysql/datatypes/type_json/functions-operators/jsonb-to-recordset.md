@@ -6,7 +6,7 @@ description: Convert a homogeneous JSON array of JSON objects into the equivalen
 menu:
   latest:
     identifier: jsonb-to-recordset
-    parent: functions-operators
+    parent: json-functions-operators
     weight: 240
 isTocNested: true
 showAsideToc: true

@@ -273,8 +273,14 @@ class YBClient {
   CHECKED_STATUS IsCreateTableInProgress(const YBTableName& table_name,
                                          bool *create_in_progress);
 
-  // Wait for create table is not in progress.
+  // Wait for create table to finish.
   CHECKED_STATUS WaitForCreateTableToFinish(const YBTableName& table_name);
+  CHECKED_STATUS WaitForCreateTableToFinish(const YBTableName& table_name,
+                                            const CoarseTimePoint& deadline);
+
+  CHECKED_STATUS WaitForCreateTableToFinish(const string& table_id);
+  CHECKED_STATUS WaitForCreateTableToFinish(const string& table_id,
+                                            const CoarseTimePoint& deadline);
 
   // Truncate the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
@@ -427,13 +433,17 @@ class YBClient {
   // Create a new tablegroup.
   CHECKED_STATUS CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
-                                  const std::string& tablegroup_name,
                                   const std::string& tablegroup_id);
 
   // Delete a tablegroup.
-  CHECKED_STATUS DeleteTablegroup(const std::string& tablegroup_name,
-                                  const std::string& namespace_id,
+  CHECKED_STATUS DeleteTablegroup(const std::string& namespace_id,
                                   const std::string& tablegroup_id);
+
+  // Check if the tablegroup given by 'tablegroup_id' exists.
+  // Result value is set only on success.
+  Result<bool> TablegroupExists(const std::string& namespace_name,
+                                const std::string& tablegroup_id);
+  Result<vector<master::TablegroupIdentifierPB>> ListTablegroups(const std::string& namespace_name);
 
   // Authentication and Authorization
   // Create a new role.

@@ -53,7 +53,6 @@ bool TabletSnapshots::IsTempSnapshotDir(const std::string& dir) {
 }
 
 Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
-  operation->state()->AcquireSchemaLock(&schema_lock());
   return Status::OK();
 }
 

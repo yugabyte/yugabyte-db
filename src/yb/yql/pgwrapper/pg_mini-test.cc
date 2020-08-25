@@ -11,22 +11,15 @@
 // under the License.
 //
 
-#include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/master/sys_catalog_initialization.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/logging.h"
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/row_mark.h"
@@ -35,97 +28,23 @@
 
 using namespace std::literals;
 
-DECLARE_bool(enable_ysql);
 DECLARE_bool(flush_rocksdb_on_shutdown);
-DECLARE_bool(hide_pg_catalog_table_creation_logs);
-DECLARE_bool(master_auto_run_initdb);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
-DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
-DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_bool(rocksdb_use_logging_iterator);
-DECLARE_int32(pgsql_proxy_webserver_port);
 
 namespace yb {
 namespace pgwrapper {
 
-class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
+class PgMiniTest : public PgMiniTestBase {
  protected:
-  // This allows modifying flags before we start the postgres process in SetUp.
-  virtual void BeforePgProcessStart() {
-  }
-
-  void SetUp() override {
-    HybridTime::TEST_SetPrettyToString(true);
-
-    constexpr int kNumMasters = 1;
-
-    FLAGS_client_read_write_timeout_ms = 120000;
-    FLAGS_enable_ysql = true;
-    FLAGS_hide_pg_catalog_table_creation_logs = true;
-    FLAGS_master_auto_run_initdb = true;
-    FLAGS_pggate_rpc_timeout_secs = 120;
-    FLAGS_ysql_num_shards_per_tserver = 1;
-
-    master::SetDefaultInitialSysCatalogSnapshotFlags();
-    YBMiniClusterTestBase::SetUp();
-
-    MiniClusterOptions mini_cluster_opt(kNumMasters, NumTabletServers());
-    cluster_ = std::make_unique<MiniCluster>(env_.get(), mini_cluster_opt);
-    ASSERT_OK(cluster_->Start());
-
-    ASSERT_OK(WaitForInitDb(cluster_.get()));
-
-    auto pg_ts = RandomElement(cluster_->mini_tablet_servers());
-    auto port = cluster_->AllocateFreePort();
-    PgProcessConf pg_process_conf = ASSERT_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
-        yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-        pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-        pg_ts->server()->GetSharedMemoryFd()));
-
-    pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
-    pg_process_conf.force_disable_log_file = true;
-    FLAGS_pgsql_proxy_webserver_port = cluster_->AllocateFreePort();
-
-    LOG(INFO) << "Starting PostgreSQL server listening on "
-              << pg_process_conf.listen_addresses << ":" << pg_process_conf.pg_port << ", data: "
-              << pg_process_conf.data_dir
-              << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-
-    BeforePgProcessStart();
-    pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf);
-    ASSERT_OK(pg_supervisor_->Start());
-
-    pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
-
-    DontVerifyClusterBeforeNextTearDown();
-  }
-
-  virtual int NumTabletServers() {
-    return 3;
-  }
-
-  void DoTearDown() override {
-    pg_supervisor_->Stop();
-    YBMiniClusterTestBase::DoTearDown();
-  }
-
-  Result<PGConn> Connect() {
-    return PGConn::Connect(pg_host_port_);
-  }
-
-  Result<PGConn> ConnectToDB(const std::string &dbname) {
-    return PGConn::Connect(pg_host_port_, dbname);
-  }
-
   // Have several threads doing updates and several threads doing large scans in parallel.
   // If deferrable is true, then the scans are in deferrable transactions, so no read restarts are
   // expected.
@@ -151,10 +70,6 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
   void TestRowLockConflictMatrix();
 
   void TestForeignKey(IsolationLevel isolation);
-
- private:
-  std::unique_ptr<PgSupervisor> pg_supervisor_;
-  HostPort pg_host_port_;
 };
 
 class PgMiniSingleTServerTest : public PgMiniTest {

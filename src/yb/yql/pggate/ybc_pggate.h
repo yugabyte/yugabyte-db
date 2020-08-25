@@ -144,19 +144,16 @@ void YBCPgInvalidateTableCache(
 YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
 
 // TABLEGROUP --------------------------------------------------------------------------------------
-// Create and drop tablegroup "database_name.tablegroup_name".
 
 // Create tablegroup.
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
                                    YBCPgOid database_oid,
-                                   const char *tablegroup_name,
                                    YBCPgOid tablegroup_oid,
                                    YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateTablegroup(YBCPgStatement handle);
 
 // Drop tablegroup.
-YBCStatus YBCPgNewDropTablegroup(const char *tablegroup_name,
-                                 YBCPgOid database_oid,
+YBCStatus YBCPgNewDropTablegroup(YBCPgOid database_oid,
                                  YBCPgOid tablegroup_oid,
                                  YBCPgStatement *handle);
 YBCStatus YBCPgExecDropTablegroup(YBCPgStatement handle);
@@ -174,6 +171,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool if_not_exist,
                               bool add_primary_key,
                               const bool colocated,
+                              YBCPgOid tablegroup_oid,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -257,6 +255,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_unique_index,
                               const bool skip_index_backfill,
                               bool if_not_exist,
+                              YBCPgOid tablegroup_oid,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,

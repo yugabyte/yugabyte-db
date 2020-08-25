@@ -4,16 +4,14 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.io.File;
+import java.util.*;
 
 import com.yugabyte.yw.common.PlacementInfoUtil;
 
@@ -79,6 +77,8 @@ public class TableManager extends DevopsBase {
     switch (subType) {
       case BACKUP:
         BackupTableParams backupTableParams = (BackupTableParams) taskParams;
+        commandArgs.add("--parallelism");
+        commandArgs.add(Integer.toString(backupTableParams.parallelism));
         if (backupTableParams.actionType == BackupTableParams.ActionType.CREATE) {
           if (backupTableParams.tableUUIDList != null && !backupTableParams.tableUUIDList.isEmpty()) {
             for (int listIndex = 0; listIndex < backupTableParams.tableNameList.size(); listIndex++) {
@@ -112,9 +112,27 @@ public class TableManager extends DevopsBase {
             commandArgs.add(backupTableParams.keyspace);
           }
         }
-        Customer customer = Customer.find.where().idEq(universe.customerId).findUnique();
+
+        Customer customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         CustomerConfig customerConfig = CustomerConfig.get(customer.uuid,
                                                            backupTableParams.storageConfigUUID);
+        File backupKeysFile = EncryptionAtRestUtil
+          .getUniverseBackupKeysFile(backupTableParams.storageLocation);
+
+        if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE)) {
+            if (backupKeysFile.exists()) {
+                commandArgs.add("--backup_keys_source");
+                commandArgs.add(backupKeysFile.getAbsolutePath());
+            }
+        } else if (
+          backupTableParams.actionType.equals(BackupTableParams.ActionType.RESTORE_KEYS)
+        ) {
+            if (!backupKeysFile.exists() && (backupKeysFile.getParentFile().exists() ||
+                backupKeysFile.getParentFile().mkdirs())) {
+                commandArgs.add("--restore_keys_destination");
+                commandArgs.add(backupKeysFile.getAbsolutePath());
+            }
+        }
 
         if (region.provider.code.equals("kubernetes")) {
             commandArgs.add("--k8s_config");

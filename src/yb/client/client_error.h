@@ -23,7 +23,9 @@ namespace client {
 YB_DEFINE_ENUM(
     ClientErrorCode,
     // Special value used to indicate no error of this type.
-    (kNone)(kTablePartitionsAreStale));
+    (kNone)
+    (kTablePartitionsAreStale)
+    (kGotOldTablePartitions));
 
 struct ClientErrorTag : IntegralErrorTag<ClientErrorCode> {
   // It is part of the wire protocol and should not be changed once released.

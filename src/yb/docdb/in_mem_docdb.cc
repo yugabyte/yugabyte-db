@@ -18,6 +18,7 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/common/hybrid_time.h"
+#include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"

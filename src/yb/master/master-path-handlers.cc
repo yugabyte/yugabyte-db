@@ -718,6 +718,17 @@ void MasterPathHandlers::HandleHealthCheck(
   jw.EndObject();
 }
 
+string MasterPathHandlers::GetParentTableOid(scoped_refptr<TableInfo> parent_table) {
+  TableId t_id = parent_table->id();;
+  if (master_->catalog_manager()->IsColocatedParentTable(*parent_table)) {
+    // No YSQL parent id for colocated database parent table
+    return "";
+  }
+  const auto parent_result = GetPgsqlTablegroupOidByTableId(t_id);
+  RETURN_NOT_OK_RET(ResultToStatus(parent_result), "");
+  return std::to_string(*parent_result);
+}
+
 void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                                               Webserver::WebResponse* resp,
                                               bool only_user_tables) {
@@ -726,6 +737,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
 
   vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables);
+
+  bool has_tablegroups = master_->catalog_manager()->HasTablegroups();
 
   typedef map<string, string> StringMap;
 
@@ -752,6 +765,9 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       table_cat = kUserIndex;
     } else if (master_->catalog_manager()->IsUserTable(*table)) {
       table_cat = kUserTable;
+    } else if (master_->catalog_manager()->IsTablegroupParentTable(*table) ||
+               master_->catalog_manager()->IsColocatedParentTable(*table)) {
+      table_cat = kColocatedParentTable;
     } else {
       table_cat = kSystemTable;
     }
@@ -764,36 +780,89 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
     string ysql_table_oid;
+    string ysql_parent_oid;
+
+    string display_info = Substitute(
+                          "<tr>" \
+                          "<td>$0</td>",
+                          EscapeForHtmlToString(keyspace));
+
     if (table->GetTableType() == PGSQL_TABLE_TYPE &&
-        !master_->catalog_manager()->IsColocatedParentTable(*table)) {
+        !master_->catalog_manager()->IsColocatedParentTable(*table) &&
+        !master_->catalog_manager()->IsTablegroupParentTable(*table)) {
       const auto result = GetPgsqlTableOid(table_uuid);
       if (result.ok()) {
         ysql_table_oid = std::to_string(*result);
       } else {
         LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
       }
+
+      display_info += Substitute(
+                      "<td><a href=\"/table?id=$3\">$0</a></td>" \
+                      "<td>$1</td>" \
+                      "<td>$2</td>" \
+                      "<td>$3</td>" \
+                      "<td>$4</td>",
+                      EscapeForHtmlToString(l->data().name()),
+                      state,
+                      EscapeForHtmlToString(l->data().pb.state_msg()),
+                      EscapeForHtmlToString(table_uuid),
+                      ysql_table_oid);
+
+      if (has_tablegroups) {
+        if (master_->catalog_manager()->IsColocatedUserTable(*table)) {
+          const auto parent_table = table->GetColocatedTablet()->table();
+          ysql_parent_oid = GetParentTableOid(parent_table);
+          display_info += Substitute("<td>$0</td>", ysql_parent_oid);
+        } else {
+          display_info += Substitute("<td></td>");
+        }
+      }
+    } else if (master_->catalog_manager()->IsTablegroupParentTable(*table) ||
+               master_->catalog_manager()->IsColocatedParentTable(*table)) {
+      // Colocated parent table.
+      ysql_table_oid = GetParentTableOid(table);
+
+      // Insert a newline in id and name to wrap long tablegroup text.
+      std::string parent_name = l->data().name();
+      display_info += Substitute(
+                      "<td><a href=\"/table?id=$0\">$1</a></td>" \
+                      "<td>$2</td>" \
+                      "<td>$3</td>" \
+                      "<td>$4</td>" \
+                      "<td>$5</td>",
+                      EscapeForHtmlToString(table_uuid),
+                      EscapeForHtmlToString(parent_name.insert(32, "\n")),
+                      state,
+                      EscapeForHtmlToString(l->data().pb.state_msg()),
+                      EscapeForHtmlToString(table_uuid.insert(32, "\n")),
+                      ysql_table_oid);
+    } else {
+      // System table - don't include parent table column
+      display_info += Substitute(
+                      "<td><a href=\"/table?id=$3\">$0</a></td>" \
+                      "<td>$1</td>" \
+                      "<td>$2</td>" \
+                      "<td>$3</td>" \
+                      "<td>$4</td>",
+                      EscapeForHtmlToString(l->data().name()),
+                      state,
+                      EscapeForHtmlToString(l->data().pb.state_msg()),
+                      EscapeForHtmlToString(table_uuid),
+                      ysql_table_oid);
     }
-    (*ordered_tables[table_cat])[table_uuid] = Substitute(
-        "<tr>" \
-        "<td>$0</td>" \
-        "<td><a href=\"/table?id=$4\">$1</a></td>" \
-        "<td>$2</td>" \
-        "<td>$3</td>" \
-        "<td>$4</td>" \
-        "<td>$5</td>" \
-        "</tr>\n",
-        EscapeForHtmlToString(keyspace),
-        EscapeForHtmlToString(l->data().name()),
-        state,
-        EscapeForHtmlToString(l->data().pb.state_msg()),
-        EscapeForHtmlToString(table_uuid),
-        ysql_table_oid);
+    display_info += "</tr>\n";
+    (*ordered_tables[table_cat])[table_uuid] = display_info;
   }
 
   for (int i = 0; i < kNumTypes; ++i) {
     if (only_user_tables && (table_type_[i] != "Index" && table_type_[i] != "User")) {
       continue;
     }
+    if (ordered_tables[i]->empty() && table_type_[i] == "Colocated") {
+      continue;
+    }
+
     (*output) << "<div class='panel panel-default'>\n"
               << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[i]
               << " tables</h2></div>\n";
@@ -807,9 +876,15 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       *output << "  <tr><th width='14%'>Keyspace</th>\n"
               << "      <th width='21%'>Table Name</th>\n"
               << "      <th width='9%'>State</th>\n"
-              << "      <th width='14%'>Message</th>\n"
-              << "      <th width='28%'>UUID</th>\n"
-              << "      <th width='14%'>YSQL OID</th></tr>\n";
+              << "      <th width='14%'>Message</th>\n";
+      if ((table_type_[i] == "User" || table_type_[i] == "Index") && has_tablegroups) {
+        *output << "      <th width='22%'>UUID</th>\n"
+                << "      <th width='10%'>YSQL OID</th>\n"
+                << "      <th width='10%'>Parent OID</th></tr>\n";
+      } else {
+        *output << "      <th width='28%'>UUID</th>\n"
+                << "      <th width='14%'>YSQL OID</th></tr>\n";
+      }
       for (const StringMap::value_type &table : *(ordered_tables[i])) {
         *output << table.second;
       }
@@ -1664,7 +1739,8 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       tablet->GetReplicaLocations(&replication_locations);
 
       for (const auto& replica : replication_locations) {
-        if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)) {
+        if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)
+                          || master_->catalog_manager()->IsTablegroupParentTable(*table)) {
           if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
             (*tablet_map)[replica.first].user_tablet_leaders++;
           } else {

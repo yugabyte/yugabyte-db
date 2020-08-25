@@ -119,6 +119,8 @@ static const char* const kSecurityConfigType = "security-configuration";
 static const char* const kYsqlCatalogConfigType = "ysql-catalog-configuration";
 static const char* const kColocatedParentTableIdSuffix = ".colocated.parent.uuid";
 static const char* const kColocatedParentTableNameSuffix = ".colocated.parent.tablename";
+static const char* const kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
+static const char* const kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
 
 using PlacementId = std::string;
 
@@ -364,6 +366,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                   DeleteTablegroupResponsePB* resp,
                                   rpc::RpcContext* rpc);
 
+  // List all the current tablegroups for a namespace.
+  CHECKED_STATUS ListTablegroups(const ListTablegroupsRequestPB* req,
+                                 ListTablegroupsResponsePB* resp,
+                                 rpc::RpcContext* rpc);
+
+  bool HasTablegroups();
+
   // Create a new User-Defined Type with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,
@@ -473,6 +482,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Is the table a table created for colocated database?
   bool IsColocatedParentTable(const TableInfo& table) const;
+
+  // Is the table a table created for a tablegroup?
+  bool IsTablegroupParentTable(const TableInfo& table) const;
 
   // Is the table a table created in a colocated database?
   bool IsColocatedUserTable(const TableInfo& table) const;
@@ -789,6 +801,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      const PartitionSchema& partition_schema,
                                      const bool create_tablets,
                                      const NamespaceId& namespace_id,
+                                     const NamespaceName& namespace_name,
                                      const vector<Partition>& partitions,
                                      IndexInfoPB* index_info,
                                      vector<TabletInfo*>* tablets,
@@ -826,6 +839,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                            const Schema& schema,
                                            const PartitionSchema& partition_schema,
                                            const NamespaceId& namespace_id,
+                                           const NamespaceName& namespace_name,
                                            IndexInfoPB* index_info) REQUIRES(lock_);
 
   // Helper for creating the initial TabletInfo state.
@@ -857,6 +871,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Returns Status::ServiceUnavailable if tablet is not running.
   CHECKED_STATUS BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
                                          TabletLocationsPB* locs_pb);
+
+  // Check whether the tservers in the current replica map differs from those in the cstate when
+  // processing a tablet report. Ignore the roles reported by the cstate, just compare the
+  // tservers.
+  bool ReplicaMapDiffersFromConsensusState(const scoped_refptr<TabletInfo>& tablet,
+                                           const consensus::ConsensusStatePB& consensus_state);
 
   void ReconcileTabletReplicasInLocalMemoryWithReport(
       const scoped_refptr<TabletInfo>& tablet,
@@ -1101,6 +1121,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Creates a new TableInfo object.
   scoped_refptr<TableInfo> NewTableInfo(TableId id);
 
+  // Register the tablet server with the ts manager using the Raft config. This is called for
+  // servers that are part of the Raft config but haven't registered as yet.
+  CHECKED_STATUS RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer);
+
   template <class Loader>
   CHECKED_STATUS Load(const std::string& title, const int64_t term);
 
@@ -1247,6 +1271,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Tablet of colocated namespaces indexed by the namespace id.
   std::unordered_map<NamespaceId, scoped_refptr<TabletInfo>> colocated_tablet_ids_map_
+      GUARDED_BY(lock_);
+
+  typedef std::unordered_map<TablegroupId, scoped_refptr<TabletInfo>> TablegroupTabletMap;
+
+  std::unordered_map<NamespaceId, TablegroupTabletMap> tablegroup_tablet_ids_map_
+      GUARDED_BY(lock_);
+
+  std::unordered_map<TablegroupId, scoped_refptr<TablegroupInfo>> tablegroup_ids_map_
       GUARDED_BY(lock_);
 
   boost::optional<std::future<Status>> initdb_future_;

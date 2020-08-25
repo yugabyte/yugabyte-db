@@ -6,7 +6,7 @@ description: Change an existing JSON value using jsonb_set() and insert a new va
 menu:
   latest:
     identifier: jsonb-set-jsonb-insert
-    parent: functions-operators
+    parent: json-functions-operators
     weight: 210
 isTocNested: true
 showAsideToc: true

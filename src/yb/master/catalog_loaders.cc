@@ -119,6 +119,10 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   // DELETING or DELETED state.
   bool should_delete_tablet = true;
 
+  // We need to check if this is a tablegroup parent tablet. If so, we need to add this to the
+  // catalog manager maps below.
+  bool is_tablegroup_tablet = catalog_manager_->IsTablegroupParentTable(*first_table);
+
   for (auto table_id : table_ids) {
     scoped_refptr<TableInfo> table(FindPtrOrNull(*catalog_manager_->table_ids_map_, table_id));
 
@@ -150,6 +154,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       // this tablet.
       should_delete_tablet = false;
     }
+
   }
 
 
@@ -167,6 +172,21 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   if (catalog_manager_->IsColocatedParentTable(*first_table)) {
     catalog_manager_->colocated_tablet_ids_map_[first_table->namespace_id()] =
         catalog_manager_->tablet_map_->find(tablet_id)->second;
+  }
+
+  // Add the tablet to tablegroup_tablet_ids_map_ if the tablet is a tablegroup parent.
+  if (is_tablegroup_tablet) {
+    catalog_manager_->tablegroup_tablet_ids_map_[first_table->namespace_id()]
+        [first_table->id().substr(0, 32)] = catalog_manager_->tablet_map_->find(tablet_id)->second;
+
+    TablegroupInfo *tg = new TablegroupInfo(first_table->id().substr(0, 32),
+                                            first_table->namespace_id());
+
+    // Loop through table_ids again to add them to our tablegroup info.
+    for (auto table_id : table_ids) {
+      tg->AddChildTable(table_id);
+    }
+    catalog_manager_->tablegroup_ids_map_[first_table->id().substr(0, 32)] = tg;
   }
 
   LOG(INFO) << "Loaded metadata for " << (tablet_deleted ? "deleted " : "")

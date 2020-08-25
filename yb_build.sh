@@ -190,6 +190,8 @@ Options:
     Force Maven to download all Java dependencies to the local repository
   --super-bash-debug
     Log the location of every command executed in this script
+  --no-tests
+    Do not build tests
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -1000,6 +1002,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --resolve-java-dependencies)
       resolve_java_dependencies=true
+    ;;
+    --no-tests)
+      export YB_DO_NOT_BUILD_TESTS=1
     ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then

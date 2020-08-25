@@ -6,7 +6,7 @@ description: Describes the functionality of the YSQL window functions lag(), lea
 menu:
   latest:
     identifier: lag-lead
-    parent: function-syntax-semantics
+    parent: window-function-syntax-semantics
     weight: 40
 isTocNested: true
 showAsideToc: true
@@ -17,7 +17,9 @@ These functions look backwards, or forwards, by the specified number of rows fro
 ## Example
 
 {{< note title=" " >}}
+
 If you haven't yet installed the tables that the code examples use, then go to the section [The data sets used by the code examples](../data-sets/).
+
 {{< /note >}}
 
 Try this basic demonstration. The actual argument, _2_, for each of `lag()` and `lead()` means, respectively, look back by two rows and look forward by two rows.
@@ -33,7 +35,9 @@ from t3
 window w as (order by day)
 order by day;
 ```
+
 This is the result:
+
 ```
     Day     | price  | last-but-one price | next-but-one price 
 ------------+--------+--------------------+--------------------
@@ -63,7 +67,8 @@ This is the result:
  Thu 16-Oct | $16.99 |             $17.69 |             <null>
  Fri 17-Oct | $17.02 |             $15.95 |             <null>
 ```
-Notice that _"last_but_one_price"_ is `NULL` for the first two rows. This is, of course, because looking back by two rows for each of these takes you to before the start of the window and so the result of _"lag(price, 2)"_ cannot be determined. In the same way,  _"next_but_one_price"_ is `NULL` for the last two rows. It's easier to check, visually, that the results are as promised by focusing on one particular row, say Wed 01-Oct, the previous-but-one row, Mon 29-Sep, and the next-but-one row, Fri 03-Oct, thus:
+
+Notice that _"last_but_one_price"_ is `NULL` for the first two rows. This is, of course, because looking back by two rows for each of these takes you to before the start of the window and so the result of_"lag(price, 2)"_ cannot be determined. In the same way,  _"next_but_one_price"_ is `NULL` for the last two rows. It's easier to check, visually, that the results are as promised by focusing on one particular row, say Wed 01-Oct, the previous-but-one row, Mon 29-Sep, and the next-but-one row, Fri 03-Oct, thus:
 
 ```plpgsql
 with v as (
@@ -84,6 +89,7 @@ where to_char(day, 'Dy DD-Mon') in
   ('Mon 29-Sep', 'Wed 01-Oct', 'Fri 03-Oct')
 order by day;
 ```
+
 Notice that the `WHERE` clause restriction must be applied only _after_ the `lag()` and `lead()` window functions have been able to access _all_ the rows in the window.
 
 The values for _"last-but-one price"_ and _"next-but-one price"_ have been manually blanked out in the results, here, to remove distractions from the visual check:
@@ -105,6 +111,7 @@ input value:       anyelement, int, [, anyelement]
                    
 return value:      anyelement
 ```
+
 **Purpose:** Return, for the current row, the designated value from the row in the ordered input set that is _"lag_distance "_ rows before it. The data type of the _return value_ matches that of the _input value_. `NULL` is returned when the value of _"lag_distance"_ places the earlier row before the start of the [_window_](../../sql-syntax-semantics/#the-window-definition-rule). This is illustrated by the example above.
 
 Use the optional last parameter to specify the value to be returned, instead of `NULL`, when the looked-up row falls outside of the current [_window_](../../sql-syntax-semantics/#the-window-definition-rule).
@@ -118,6 +125,7 @@ input value:       anyelement, int, [, anyelement]
                    
 return value:      anyelement
 ```
+
 **Purpose:** Return, for the current row, the designated value from the row in the ordered input set that is _"lead_distance"_ rows after it. The data type of the _return value_ matches that of the _input value_. `NULL` is returned when the value of _"lead_distance"_ places the later row after the start of the [_window_](../../sql-syntax-semantics/#the-window-definition-rule). This is illustrated by the example above.
 
 Use the optional last parameter to specify the value to be returned, instead of `NULL`, when the looked-up row falls outside of the current [_window_](../../sql-syntax-semantics/#the-window-definition-rule).
@@ -125,6 +133,7 @@ Use the optional last parameter to specify the value to be returned, instead of 
 ## Example of returning a row
 
 Here is the minimal demonstration of this technique. Notice that the syntax requires that the actual argument to `lag()` must used to construct a record or a _"row"_ type value. Usually, you want to access the individual column values, but, it can be tricky to work with records because they are anonymous data types. This means that you don't know what the fields are called. The better, therefore, is given by a user-defined _"row"_ type. Do this to demonstrate the technique:
+
 ```plpgsql
 drop type if exists rt cascade;
 create type rt as(day date, price money);
@@ -137,7 +146,9 @@ select
 from t3
 window w as (order by day);
 ```
+
 This is the result. (Some rows have been manually elided.)
+
 ```
     day     | price  |        lag_1        
 ------------+--------+---------------------
@@ -186,7 +197,9 @@ select
   lead_price                      as "Next Price"
 from v2;
 ```
+
 This is the result. (Again, some rows have been manually elided.)
+
 ```
   Curr Day  | Curr Price |    |  Prev Day  | Prev Price |    |  Next Day  | Next Price 
 ------------+------------+----+------------+------------+----+------------+------------
@@ -198,9 +211,11 @@ This is the result. (Again, some rows have been manually elided.)
  Thu 16-Oct |     $16.99 |    | Wed 15-Oct |     $15.95 |    | Fri 17-Oct |     $17.02
  Fri 17-Oct |     $17.02 |    | Thu 16-Oct |     $16.99 |    | <null>     |     <null>
 ```
+
 ## Realistic use case
 
 The first example lists the daily change in stock price for the available data, deliberately excluding the case where `lag()` would look before the start of the window:
+
 ```plpgsql
 with
   v1 as (
@@ -218,7 +233,9 @@ from v1
 where day <> (select min(day) from t3)
 order by day;
 ```
+
 This is the result:
+
 ```
     Day     | price  | prev_price | percent_change 
 ------------+--------+------------+----------------
@@ -247,7 +264,9 @@ This is the result:
  Thu 16-Oct | $16.99 |     $15.95 |    6.5
  Fri 17-Oct | $17.02 |     $16.99 |    0.2
 ```
+
 The second example uses conventional techniques to show the row that saw the biggest daily price change:
+
 ```plpgsql
 with
   v1 as (
@@ -272,7 +291,9 @@ select
 from v2
 where abs(change::numeric) = (select max(abs(change::numeric)) from v2);
 ```
+
 This is the result:
+
 ```
     Day     | price  | prev_price | percent_change 
 ------------+--------+------------+----------------
