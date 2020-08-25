@@ -70,7 +70,7 @@ Specify the path of the file to be copied. An input file name can be an absolute
 
 ## Examples
 
-Assuming we have a table like below:
+The examples below assume a table like this:
 
 ```postgresql
 yugabyte=# CREATE TABLE users(id BIGSERIAL PRIMARY KEY, name TEXT);
