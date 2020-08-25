@@ -23,7 +23,7 @@ $ sudo yum install wal2json12
 In Debian/Ubuntu:
 
 ```
-$ sudo apt-get install postgresql12-wal2json
+$ sudo apt-get install postgresql-12-wal2json
 ```
 
 You can also keep up with the latest fixes and features cloning the Git repository.
