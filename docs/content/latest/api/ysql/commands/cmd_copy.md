@@ -84,8 +84,10 @@ yugabyte=# SELECT * FROM users;
 (3 rows)
 ```
 
-### Export the whole table
-Copy the whole table to a comma separated CSV file with column names in the header.
+### Export an entire table
+
+Copy the entire table to a CSV file, with column names in the header.
+
 
 ```postgresql
 yugabyte=# COPY users TO '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
