@@ -143,6 +143,7 @@ class UniverseForm extends Component {
         accessKeyCode: formValues[clusterType].accessKeyCode,
         instanceTags: formValues[clusterType].instanceTags,
         useTimeSync: formValues[clusterType].useTimeSync,
+        assignPublicIP: formValues[clusterType].assignPublicIP,
         enableYSQL: formValues[clusterType].enableYSQL,
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
