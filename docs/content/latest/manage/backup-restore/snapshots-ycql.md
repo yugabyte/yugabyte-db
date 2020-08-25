@@ -79,7 +79,7 @@ ycqlsh> CREATE INDEX test_tb_name ON ydb.test_tb(name);
 ycqlsh> INSERT INTO ydb.test_tb(user_id,name) VALUES (5,'John Doe');
 ```
 
-You can verify that you have data in the database by running a simple SELECT statement.
+To verify that you have data in the database, run the following `SELECT` statement:
 
 ```sql
 ycqlsh> SELECT * FROM ydb.test_tb;
