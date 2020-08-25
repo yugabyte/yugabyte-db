@@ -257,7 +257,7 @@ Waiting for table 2c59396c7e214a188dbdbcb3206b04d6...
 Snapshot         	a9442525-c7a2-42c8-8d2e-658060028f0e 	27c331c0-4b5c-4027-85f9-75b7545641a7
 ```
 
-After you import the `metadata file`, you see some changes:
+After importing the `metadata file`, you see the following changes:
 
 1. `Old ID` and `New ID` for table, tablets and snapshot.
 2. `table_id`, `tablet_id` and `snapshot_id` have changed, so you have a different paths from previously.
