@@ -42,7 +42,7 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
-#include "yb/util/ulimit_info.h"
+#include "yb/util/ulimit_util.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/server/total_mem_watcher.h"
 #include "yb/util/net/net_util.h"
@@ -126,7 +126,8 @@ static int MasterMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Init());
 
   LOG(INFO) << "Starting Master server...";
-  LOG(INFO) << "ulimit cur(max)..." << UlimitInfo::GetUlimitInfo();
+  UlimitUtil::InitUlimits();
+  LOG(INFO) << "ulimit cur(max)..." << UlimitUtil::GetUlimitInfo();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Start());
 
   LOG(INFO) << "Master server successfully started.";

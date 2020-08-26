@@ -563,6 +563,108 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
       workload.rows_inserted()));
 }
 
+TEST_F(RemoteBootstrapITest, IncompleteWALDownloadDoesntCauseCrash) {
+  std::vector<std::string> master_flags = {
+      "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
+      "--enable_load_balancing=false"s
+  };
+
+  int constexpr kBootstrapIdleTimeoutMs = 5000;
+
+  std::vector<std::string> ts_flags = {
+      "--log_min_segments_to_retain=1000"s,
+      "--log_min_seconds_to_retain=900"s,
+      "--log_segment_size_bytes=65536"s,
+      "--enable_leader_failure_detection=false"s,
+      // Disable pre-elections since we wait for term to become 2,
+      // that does not happen with pre-elections.
+      "--use_preelection=false"s,
+      "--memstore_size_mb=1"s,
+      "--TEST_download_partial_wal_segments=true"s,
+      "--remote_bootstrap_idle_timeout_ms="s + std::to_string(kBootstrapIdleTimeoutMs)
+  };
+
+  const int kNumTabletServers = 3;
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumTabletServers));
+
+  // Elect a leader for term 1, then run some data through the cluster.
+  const int kLeaderIndex = 1;
+
+  constexpr int kNumTablets = RegularBuildVsSanitizers(10, 2);
+  MonoDelta timeout = MonoDelta::FromSeconds(RegularBuildVsSanitizers(15, 45));
+
+  vector<string> tablet_ids;
+
+  CreateTableAssignLeaderAndWaitForTabletServersReady(YBTableType::YQL_TABLE_TYPE,
+      TestWorkloadOptions::kDefaultTableName, kNumTablets, kNumTablets, kLeaderIndex, timeout,
+      &tablet_ids);
+
+  const int kFollowerIndex = 0;
+  TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()].get();
+
+  TestWorkload workload(cluster_.get());
+  workload.set_write_timeout_millis(10000);
+  workload.set_timeout_allowed(true);
+  workload.set_write_batch_size(10);
+  workload.set_num_write_threads(10);
+  workload.Setup(YBTableType::YQL_TABLE_TYPE);
+  workload.Start();
+  workload.WaitInserted(RegularBuildVsSanitizers(500, 5000));
+  workload.StopAndJoin();
+
+  // Ensure all the servers agree before we proceed.
+  for (const auto& tablet_id : tablet_ids) {
+    ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, 1));
+  }
+  LOG(INFO) << "All servers agree";
+  // Now tombstone the follower.
+  ASSERT_OK(itest::DeleteTablet(follower_ts, tablet_ids[0], TABLET_DATA_TOMBSTONED, boost::none,
+                                timeout));
+  LOG(INFO) << "Successfully sent delete request " << tablet_ids[0] << " on TS " << kFollowerIndex;
+  // Wait until the tablet has been tombstoned on the follower.
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_ids[0],
+                                                 tablet::TABLET_DATA_TOMBSTONED, timeout));
+  LOG(INFO) << "Tablet state on TS " << kFollowerIndex << " is TABLET_DATA_TOMBSTONED";
+  SleepFor(MonoDelta::FromMilliseconds(5000));  // Give a little time for a crash.
+  ASSERT_TRUE(cluster_->tablet_server(kFollowerIndex)->IsProcessAlive());
+  LOG(INFO) << "TS " << kFollowerIndex << " didn't crash";
+  // Now remove the crash flag, so the next replay will complete.
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(kFollowerIndex),
+                              "TEST_download_partial_wal_segments", "false"));
+  LOG(INFO) << "Successfully turned off flag TEST_download_partial_wal_segments";
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_ids[0],
+                                                 tablet::TABLET_DATA_READY, timeout * 4));
+  LOG(INFO) << "Tablet " << tablet_ids[0]
+            << " is in state TABLET_DATA_READY in TS " << kFollowerIndex;
+  TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()].get();
+  OpIdPB op_id;
+  ASSERT_OK(GetLastOpIdForReplica(tablet_ids[0], leader_ts,
+                                  consensus::COMMITTED_OPID, timeout,
+                                  &op_id));
+
+  auto expected_index = op_id.index();
+
+  ASSERT_OK(WaitForServersToAgree(timeout,
+                                  ts_map_,
+                                  tablet_ids[0],
+                                  expected_index,
+                                  &expected_index));
+
+  LOG(INFO) << "Op id index in TS " << kFollowerIndex << " is " << op_id.index()
+            << " for tablet " << tablet_ids[0];
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::EXACTLY,
+                                                  workload.rows_inserted()));
+
+  LOG(INFO) << "Cluster verifier succeeded";
+
+  // Sleep to make sure all the remote bootstrap sessions that were initiated but
+  // not completed are expired.
+  SleepFor(MonoDelta::FromMilliseconds(kBootstrapIdleTimeoutMs * 2));
+}
+
 // This test ensures that a leader can remote-bootstrap a tombstoned replica
 // that has a higher term recorded in the replica's consensus metadata if the
 // replica's last-logged opid has the same term (or less) as the leader serving
@@ -649,9 +751,9 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
 
   ClusterVerifier cluster_verifier(cluster_.get());
-  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
   // During this test we disable leader failure detection.
-  // So we use CONSISTENT_PREFIX for verification because it could end up w/o leader at all.
+  // So we use CONSISTENT_PREFIX for verification because it could end up w/o leader at all. We also
+  // don't call CheckCluster for this reason.
   ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
       workload.table_name(), ClusterVerifier::EXACTLY, workload.rows_inserted(),
       YBConsistencyLevel::CONSISTENT_PREFIX));

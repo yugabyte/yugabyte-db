@@ -258,6 +258,8 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/singleton.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/locks.h"
@@ -558,8 +560,11 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
     ExternalPrometheusMetricsCb;
 
   scoped_refptr<Counter> FindOrCreateCounter(const CounterPrototype* proto);
-  scoped_refptr<MillisLag> FindOrCreateMillisLag(const MillisLagPrototype* proto);
-  scoped_refptr<AtomicMillisLag> FindOrCreateAtomicMillisLag(const MillisLagPrototype* proto);
+  scoped_refptr<MillisLag> FindOrCreateMillisLag(const MillisLagPrototype* proto,
+                                                 const scoped_refptr<server::Clock>& clock);
+  scoped_refptr<AtomicMillisLag> FindOrCreateAtomicMillisLag(
+      const MillisLagPrototype* proto,
+      const scoped_refptr<server::Clock>& clock);
   scoped_refptr<Histogram> FindOrCreateHistogram(const HistogramPrototype* proto);
 
   template<typename T>
@@ -1306,7 +1311,8 @@ class MillisLagPrototype : public MetricPrototype {
  public:
   explicit MillisLagPrototype(const MetricPrototype::CtorArgs& args) : MetricPrototype(args) {
   }
-  scoped_refptr<MillisLag> Instantiate(const scoped_refptr<MetricEntity>& entity);
+  scoped_refptr<MillisLag> Instantiate(const scoped_refptr<MetricEntity>& entity,
+                                       const scoped_refptr<server::Clock>& clock);
 
   virtual MetricType::Type type() const override { return MetricType::kLag; }
 
@@ -1319,12 +1325,13 @@ class MillisLagPrototype : public MetricPrototype {
 // will be in charge of calculating the lag by doing now() - metric_timestamp_.
 class MillisLag : public Metric {
  public:
-  virtual int64_t lag_ms() const {
-    return std::max(static_cast<int64_t>(0),
-        static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count()) - timestamp_ms_);
+  MillisLag(const MillisLagPrototype* proto, const scoped_refptr<server::Clock>& clock);
+
+  virtual uint64_t lag_ms() const {
+    auto now = clock_->Now().GetPhysicalValueMillis();
+    return now > timestamp_ms_ ? now - timestamp_ms_ : 0;
   }
-  virtual void UpdateTimestampInMilliseconds(int64_t timestamp) {
+  virtual void UpdateTimestampInMilliseconds(uint64_t timestamp) {
     timestamp_ms_ = timestamp;
   }
   virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
@@ -1333,28 +1340,24 @@ class MillisLag : public Metric {
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
       const MetricPrometheusOptions& opts) const override;
 
+ protected:
+  const scoped_refptr<server::Clock>& clock_;
+
  private:
-  friend class MetricEntity;
-  friend class AtomicMillisLag;
-  friend class MetricsTest;
-
-  explicit MillisLag(const MillisLagPrototype* proto);
-
-  int64_t timestamp_ms_;
+  uint64_t timestamp_ms_;
 };
 
 class AtomicMillisLag : public MillisLag {
  public:
-  explicit AtomicMillisLag(const MillisLagPrototype* proto) : MillisLag(proto) {}
+  AtomicMillisLag(const MillisLagPrototype* proto, const scoped_refptr<server::Clock>& clock);
 
-  int64_t lag_ms() const override {
-    return std::max(static_cast<int64_t>(0),
-        static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count()) -
-                atomic_timestamp_ms_.load(std::memory_order_acquire));
+  uint64_t lag_ms() const override {
+    auto now = clock_->Now().GetPhysicalValueMillis();
+    auto timestamp = atomic_timestamp_ms_.load(std::memory_order_acquire);
+    return now > timestamp ? now - timestamp : 0;
   }
 
-  void UpdateTimestampInMilliseconds(int64_t timestamp) override {
+  void UpdateTimestampInMilliseconds(uint64_t timestamp) override {
     atomic_timestamp_ms_.store(timestamp, std::memory_order_release);
   }
 
@@ -1372,7 +1375,8 @@ class AtomicMillisLag : public MillisLag {
   }
 
  protected:
-  std::atomic<int64_t> atomic_timestamp_ms_;
+  std::atomic<uint64_t> atomic_timestamp_ms_;
+
  private:
   DISALLOW_COPY_AND_ASSIGN(AtomicMillisLag);
 };
@@ -1501,25 +1505,25 @@ inline scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
 }
 
 inline scoped_refptr<MillisLag> MetricEntity::FindOrCreateMillisLag(
-    const MillisLagPrototype* proto) {
+    const MillisLagPrototype* proto, const scoped_refptr<server::Clock>& clock) {
   CheckInstantiation(proto);
   std::lock_guard<simple_spinlock> l(lock_);
   scoped_refptr<MillisLag> m = down_cast<MillisLag*>(FindPtrOrNull(metric_map_, proto).get());
   if (!m) {
-    m = new MillisLag(proto);
+    m = new MillisLag(proto, clock);
     InsertOrDie(&metric_map_, proto, m);
   }
   return m;
 }
 
 inline scoped_refptr<AtomicMillisLag> MetricEntity::FindOrCreateAtomicMillisLag(
-    const MillisLagPrototype* proto) {
+     const MillisLagPrototype* proto, const scoped_refptr<server::Clock>& clock) {
   CheckInstantiation(proto);
   std::lock_guard<simple_spinlock> l(lock_);
   scoped_refptr<AtomicMillisLag> m = down_cast<AtomicMillisLag*>(
       FindPtrOrNull(metric_map_, proto).get());
   if (!m) {
-    m = new AtomicMillisLag(proto);
+    m = new AtomicMillisLag(proto, clock);
     InsertOrDie(&metric_map_, proto, m);
   }
   return m;

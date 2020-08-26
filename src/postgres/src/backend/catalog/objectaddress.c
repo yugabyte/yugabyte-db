@@ -2396,6 +2396,10 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 			}
 			break;
 		case OBJECT_TABLEGROUP:
+			if (!pg_tablegroup_ownercheck(address.objectId, roleid))
+				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
+							   strVal((Value *) object));
+			break;
 		case OBJECT_TABLESPACE:
 			if (!pg_tablespace_ownercheck(address.objectId, roleid))
 				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,

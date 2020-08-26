@@ -6,7 +6,7 @@ description: Format the text representation of the JSON value that the input jso
 menu:
   latest:
     identifier: jsonb-pretty
-    parent: functions-operators
+    parent: json-functions-operators
     weight: 200
 isTocNested: true
 showAsideToc: true

@@ -37,20 +37,25 @@ showAsideToc: true
 
 ## Prerequisites
 
-You must have a Kubernetes cluster that has [Helm](https://helm.sh/) configured.
-
-The Yugabyte Platform (YugaWare) Helm chart documented here has been tested with the following software versions:
+The Yugabyte Platform (YugaWare) Helm chart was tested using the following software versions:
 
 - Kubernetes 1.10 or later.
 - Helm 3.0 or later.
 - Yugabyte Platform (`yugaware`) Docker image 1.1.0 or later.
-- Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to Yugabyte Platform.
 
-Confirm that your `helm` is configured correctly.
+Before installing the YugbyteDB Admin Console, verify you have the following:
+
+- A Kubernetes cluster configured with [Helm](https://helm.sh/).
+- A Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to Yugabyte Platform.
+- A Kubernetes secret obtained from Yugabyte Support.
+
+To confirm that `helm` is configured correctly, run the following command:
 
 ```sh
 $ helm version
 ```
+
+The output should be similar to the following:
 
 ```
 version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
@@ -68,7 +73,7 @@ $ kubectl create namespace yw-test
 namespace/yw-test created
 ```
 
-2. Run the following `kubectl apply` command to apply the secret. To get the secret, contact Yugabyte Support.
+2. To apply the Kubernetes secret (obtained from Yugabyte Support), run the following `kubectl apply` command:
 
 ```sh
 $ kubectl apply -f ~/Desktop/K8s/yugabyte-k8s-secret.yml -n yw-test
@@ -108,13 +113,13 @@ The latest Helm Chart version and App version will be displayed.
 
 ```
 NAME               	CHART VERSION	APP VERSION	DESRIPTION                                       
-yugabytedb/yugabyte	2.2.0        	2.2.0.0	YugabyteDB is the high-performance distributed ..
+yugabytedb/yugabyte	2.2.2        	2.2.2.0	YugabyteDB is the high-performance distributed ..
 ```
 
 4. Run the following `helm install` command to install Yugabyte Platform (YugaWare).
 
 ```sh
-$ helm install yw-test yugabytedb/yugaware --version 2.2.0 -n yw-test --wait
+$ helm install yw-test yugabytedb/yugaware --version 2.2.2 -n yw-test --wait
 ```
 
 A message should appear showing that the deployment succeeded.
@@ -152,7 +157,7 @@ statefulset.apps/yw-test-yugaware   1/1     5m52s
 To upgrade your installed Yugabyte Platform, run the following `helm upgrade` command.
 
 ```sh
-$ helm upgrade yw-test yugabytedb/yugaware --version 2.2.0 --set image.tag=2.2.0.0-b80 -n yw-test
+$ helm upgrade yw-test yugabytedb/yugaware --version 2.2.2 --set image.tag=2.2.2.0-b15 -n yw-test
 ```
 
 ```

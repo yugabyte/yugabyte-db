@@ -152,8 +152,8 @@ typedef struct ImportQual
 #define parser_ybc_not_support_in_templates(pos, feature) \
 	ybc_not_support_in_templates(pos, yyscanner, feature " not supported yet in template0/template1")
 
-#define parser_ybc_beta_feature(pos, feature) \
-	check_beta_feature(pos, yyscanner, "FLAGS_ysql_beta_feature_" feature, feature)
+#define parser_ybc_beta_feature(pos, feature, has_own_flag) \
+	check_beta_feature(pos, yyscanner, has_own_flag ? "FLAGS_ysql_beta_feature_" feature : NULL, feature)
 
 static void base_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner,
 						 const char *msg);
@@ -276,6 +276,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	PartitionBoundSpec	*partboundspec;
 	RoleSpec			*rolespec;
 	OptSplit			*splitopt;
+	OptTableGroup		*grpopt;
 	RowBounds			*rowbounds;
 }
 
@@ -587,7 +588,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <rolespec> OptTableSpaceOwner
 %type <ival>	opt_check_option
 
-%type <str>	OptTableGroup
+%type <grpopt>	OptTableGroup
 %type <rolespec> OptTableGroupOwner
 
 %type <splitopt> OptSplit SplitClause
@@ -890,6 +891,7 @@ stmt :
 			| AlterDatabaseStmt
 			| AlterDefaultPrivilegesStmt
 			| AlterDomainStmt
+			| AlterGroupStmt
 			| AlterObjectSchemaStmt
 			| AlterOperatorStmt
 			| AlterOpFamilyStmt
@@ -954,14 +956,13 @@ stmt :
 			| ViewStmt
 
 			/* BETA features */
-			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension"); }
-			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension"); }
-			| AlterGroupStmt { parser_ybc_beta_feature(@1, "roles"); }
-			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze"); }
-			| BackfillIndexStmt { parser_ybc_beta_feature(@1, "backfill index"); }
-			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum"); }
-			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup"); }
-			| DropTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup"); }
+			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
+			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
+			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze", false); }
+			| BackfillIndexStmt { parser_ybc_beta_feature(@1, "backfill index", false); }
+			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
+			| DropTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
+			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum", false); }
 
 			/* Not supported in template0/template1 statements */
 			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
@@ -1360,7 +1361,6 @@ CreateGroupStmt:
 AlterGroupStmt:
 			ALTER GROUP_P RoleSpec add_drop USER role_list
 				{
-					parser_ybc_beta_feature(@1, "roles");
 					AlterRoleStmt *n = makeNode(AlterRoleStmt);
 					n->role = $3;
 					n->action = $4;
@@ -2339,7 +2339,6 @@ alter_table_cmd:
 			 */
 			| ALTER opt_column ColId opt_set_data TYPE_P Typename opt_collate_clause alter_using
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ALTER column", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					ColumnDef *def = makeNode(ColumnDef);
 					n->subtype = AT_AlterColumnType;
@@ -2467,7 +2466,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE TRIGGER <trig> */
 			| ENABLE_P TRIGGER name
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableTrig;
 					n->name = $3;
@@ -2476,7 +2474,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE ALWAYS TRIGGER <trig> */
 			| ENABLE_P ALWAYS TRIGGER name
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableAlwaysTrig;
 					n->name = $4;
@@ -2485,7 +2482,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE REPLICA TRIGGER <trig> */
 			| ENABLE_P REPLICA TRIGGER name
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableReplicaTrig;
 					n->name = $4;
@@ -2494,7 +2490,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE TRIGGER ALL */
 			| ENABLE_P TRIGGER ALL
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableTrigAll;
 					$$ = (Node *)n;
@@ -2502,7 +2497,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE TRIGGER USER */
 			| ENABLE_P TRIGGER USER
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableTrigUser;
 					$$ = (Node *)n;
@@ -2510,7 +2504,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DISABLE TRIGGER <trig> */
 			| DISABLE_P TRIGGER name
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DisableTrig;
 					n->name = $3;
@@ -2519,7 +2512,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DISABLE TRIGGER ALL */
 			| DISABLE_P TRIGGER ALL
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DisableTrigAll;
 					$$ = (Node *)n;
@@ -2527,7 +2519,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DISABLE TRIGGER USER */
 			| DISABLE_P TRIGGER USER
 				{
-					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DisableTrigUser;
 					$$ = (Node *)n;
@@ -2608,7 +2599,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> OWNER TO RoleSpec */
 			| OWNER TO RoleSpec
 				{
-					parser_ybc_beta_feature(@1, "roles");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_ChangeOwner;
 					n->newowner = $3;
@@ -2760,16 +2750,10 @@ opt_reloptions:		WITH reloptions					{ $$ = $2; }
 reloption_list:
 			reloption_elem
 				{
-					if (strcmp($1->defname, "colocated") == 0) {
-						parser_ybc_beta_feature(@1, "colocated table");
-					}
 					$$ = list_make1($1);
 				}
 			| reloption_list ',' reloption_elem
 				{
-					if (strcmp($3->defname, "colocated") == 0) {
-						parser_ybc_beta_feature(@1, "colocated table");
-					}
 					$$ = lappend($1, $3);
 				}
 		;
@@ -3359,7 +3343,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $12;
 					n->if_not_exists = false;
 					n->split_options = $13;
-					n->tablegroupname = $14;
+					n->tablegroup = $14;
 					if ($13 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3374,6 +3358,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
+					}
+					if ($13 && $14)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3394,7 +3383,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $15;
 					n->if_not_exists = true;
 					n->split_options = $16;
-					n->tablegroupname = $17;
+					n->tablegroup = $17;
 					if ($16 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3409,6 +3398,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
+					}
+					if ($16 && $17)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3430,7 +3424,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $11;
 					n->if_not_exists = false;
 					n->split_options = $12;
-					n->tablegroupname = $13;
+					n->tablegroup = $13;
 					if ($12 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3445,6 +3439,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
+					}
+					if ($12 && $13)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3466,7 +3465,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $14;
 					n->if_not_exists = true;
 					n->split_options = $15;
-					n->tablegroupname = $16;
+					n->tablegroup = $16;
 					if ($15 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3481,6 +3480,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
+					}
+					if ($15 && $16)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3502,7 +3506,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $13;
 					n->if_not_exists = false;
 					n->split_options = $14;
-					n->tablegroupname = $15;
+					n->tablegroup = $15;
 					if ($14 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3517,6 +3521,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
+					}
+					if ($14 && $15)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3538,7 +3547,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $16;
 					n->if_not_exists = true;
 					n->split_options = $17;
-					n->tablegroupname = $18;
+					n->tablegroup = $18;
 					if ($17 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3553,6 +3562,11 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
 										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
 										errdetail("The tablespace of the tablegroup will be used.")));
+					}
+					if ($17 && $18)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
@@ -4279,8 +4293,24 @@ OnCommitOption:  ON COMMIT DROP				{ $$ = ONCOMMIT_DROP; }
 		;
 
 OptTableGroup:
-			TABLEGROUP name { parser_ybc_beta_feature(@1, "tablegroup"); $$ = $2; }
-			| /*EMPTY*/								{ $$ = NULL; }
+			TABLEGROUP name
+				{
+					parser_ybc_beta_feature(@1, "tablegroup", true);
+					$$ = makeNode(OptTableGroup);
+					$$->has_tablegroup = true;
+					$$->tablegroup_name = $2;
+				}
+			| NO TABLEGROUP
+				{
+					parser_ybc_beta_feature(@1, "tablegroup", true);
+					$$ = makeNode(OptTableGroup);
+					$$->has_tablegroup = false;
+					$$->tablegroup_name = NULL;
+				}
+			| /*EMPTY*/
+				{
+					$$ = (OptTableGroup*) NULL;
+				}
 		;
 
 OptTableSpace:
@@ -4325,7 +4355,7 @@ SplitClause:
       	}
       | AT VALUES '(' yb_split_points ')'
         {
-          parser_ybc_beta_feature(@1, "split_at");
+          parser_ybc_beta_feature(@1, "split_at", false);
       	  $$ = makeNode(OptSplit);
       	  $$->split_type = SPLIT_POINTS;
       	  $$->num_tablets = -1;
@@ -4770,7 +4800,7 @@ opt_procedural:
 
  CreateTableGroupStmt: CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions
  				{
- 					parser_ybc_beta_feature(@1, "tablegroup");
+ 					parser_ybc_beta_feature(@1, "tablegroup", true);
  					CreateTableGroupStmt *n = makeNode(CreateTableGroupStmt);
  					n->tablegroupname = $3;
  					n->owner = $4;
@@ -4792,7 +4822,7 @@ OptTableGroupOwner: OWNER RoleSpec		{ $$ = $2; }
 
 DropTableGroupStmt: DROP TABLEGROUP name
  				{
- 					parser_ybc_beta_feature(@1, "tablegroup");
+ 					parser_ybc_beta_feature(@1, "tablegroup", true);
  					DropTableGroupStmt *n = makeNode(DropTableGroupStmt);
  					n->tablegroupname = $3;
  					$$ = (Node *) n;
@@ -6944,7 +6974,7 @@ opt_restart_seqs:
  *                 EXTENSION | EVENT TRIGGER | FOREIGN DATA WRAPPER |
  *                 FOREIGN TABLE | INDEX | [PROCEDURAL] LANGUAGE |
  *                 MATERIALIZED VIEW | POLICY | ROLE | SCHEMA | SEQUENCE |
- *                 SERVER | STATISTICS | TABLE | TABLESPACE |
+ *                 SERVER | STATISTICS | TABLE | TABLEGROUP | TABLESPACE |
  *                 TEXT SEARCH CONFIGURATION | TEXT SEARCH DICTIONARY |
  *                 TEXT SEARCH PARSER | TEXT SEARCH TEMPLATE | TYPE |
  *                 VIEW] <objname> |
@@ -7154,6 +7184,7 @@ comment_type_name:
 			| SCHEMA							{ $$ = OBJECT_SCHEMA; }
 			| SERVER							{ $$ = OBJECT_FOREIGN_SERVER; }
 			| SUBSCRIPTION						{ $$ = OBJECT_SUBSCRIPTION; }
+			| TABLEGROUP						{ $$ = OBJECT_TABLEGROUP; }
 			| TABLESPACE						{ $$ = OBJECT_TABLESPACE; }
 		;
 
@@ -7925,13 +7956,13 @@ defacl_privilege_target:
  *
  *		QUERY: CREATE INDEX
  *
- * Note: we cannot put TABLESPACE / SPLIT clause after WHERE clause
+ * Note: we cannot put TABLESPACE / TABLEGROUP / SPLIT clause after WHERE clause
  * unless we are willing to make them fully reserved words.
  *****************************************************************************/
 
 IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
-			opt_include opt_reloptions OptTableSpace OptSplit where_clause
+			opt_include opt_reloptions OptTableSpace OptSplit OptTableGroup where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
 					n->unique = $2;
@@ -7945,7 +7976,8 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 					n->options = $13;
 					n->tableSpace = $14;
 					n->split_options = $15;
-					n->whereClause = $16;
+					n->tablegroup = $16;
+					n->whereClause = $17;
 					n->excludeOpNames = NIL;
 					n->idxcomment = NULL;
 					n->indexOid = InvalidOid;
@@ -7960,7 +7992,7 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 				}
 			| CREATE opt_unique INDEX opt_concurrently IF_P NOT EXISTS index_name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
-			opt_include opt_reloptions OptTableSpace OptSplit where_clause
+			opt_include opt_reloptions OptTableSpace OptSplit OptTableGroup where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
 					n->unique = $2;
@@ -7974,7 +8006,8 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 					n->options = $16;
 					n->tableSpace = $17;
 					n->split_options = $18;
-					n->whereClause = $19;
+					n->tablegroup = $19;
+					n->whereClause = $20;
 					n->excludeOpNames = NIL;
 					n->idxcomment = NULL;
 					n->indexOid = InvalidOid;
@@ -9654,6 +9687,16 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 					n->missing_ok = false;
 					$$ = (Node *)n;
 				}
+			| ALTER TABLEGROUP name RENAME TO name
+				{
+					parser_ybc_beta_feature(@1, "tablegroup", true);
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_TABLEGROUP;
+					n->subname = $3;
+					n->newname = $6;
+					n->missing_ok = false;
+					$$ = (Node *)n;
+				}
 			| ALTER TABLESPACE name RENAME TO name
 				{
 					parser_ybc_not_support(@1, "ALTER TABLESPACE");
@@ -10245,6 +10288,15 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
 					n->objectType = OBJECT_TYPE;
 					n->object = (Node *) $3;
+					n->newowner = $6;
+					$$ = (Node *)n;
+				}
+			| ALTER TABLEGROUP name OWNER TO RoleSpec
+				{
+					parser_ybc_beta_feature(@1, "tablegroup", true);
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_TABLEGROUP;
+					n->object = (Node *) makeString($3);
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}
@@ -17324,7 +17376,7 @@ beta_features_enabled()
 	static int beta_enabled = -1;
 	if (beta_enabled == -1)
 	{
-		beta_enabled = YBCIsEnvVarTrueWithDefault("FLAGS_ysql_beta_features", true);
+		beta_enabled = YBCIsEnvVarTrueWithDefault("FLAGS_ysql_beta_features", false);
 	}
 	return beta_enabled;
 }
@@ -17332,26 +17384,19 @@ beta_features_enabled()
 static void
 check_beta_feature(int pos, core_yyscan_t yyscanner, const char *flag, const char *feature)
 {
-	// Special handling for tablegroup beta feature until fully implemented in docdb.
-	if (strcmp(feature, "tablegroup") == 0)
+	if (YBIsUsingYBParser() && !beta_features_enabled() && !(flag && YBCIsEnvVarTrue(flag)))
 	{
-		if (YBIsUsingYBParser() && !YBCIsEnvVarTrue(flag))
-		{
-			int signal_level = YBUnsupportedFeatureSignalLevel();
-			ereport(signal_level,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("'%s' is a beta feature and is disabled", feature),
-					 errhint("To enable this beta feature, set the 'ysql_beta_feature_tablegroup' yb-tserver gflag to 'true'."),
-					 parser_errposition(pos)));
-		}
-	}
-	else if (YBIsUsingYBParser() && !(beta_features_enabled() || YBCIsEnvVarTrue(flag)))
-	{
-		int signal_level = YBUnsupportedFeatureSignalLevel();
-		ereport(signal_level,
+		const char* general_hint =
+			"Set 'ysql_beta_features' yb-tserver gflag to true to suppress the warning"
+			" for all beta features.";
+
+		ereport(WARNING,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("'%s' is a beta feature and beta features are disabled.", feature),
-				 errhint("To enable beta features, set the 'ysql_beta_features' yb-tserver gflag to 'true'."),
+				 errmsg("'%s' is a beta feature!", feature),
+				 flag != NULL ?
+					 errhint("To suppress this warning, set the '%s' yb-tserver gflag to true.\n(%s)",
+					         (flag + 6), general_hint) :
+					 errhint("%s", general_hint),
 				 parser_errposition(pos)));
 	}
 }

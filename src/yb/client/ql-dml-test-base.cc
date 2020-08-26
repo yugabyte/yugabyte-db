@@ -67,7 +67,7 @@ void QLDmlTestBase::SetUp() {
 
   ASSERT_OK(CreateClient());
 
-  // Create test table
+  // Create test namespace.
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
                                                 kTableName.namespace_type()));
 }

@@ -6,7 +6,7 @@ description: Create a JSON object from a SQL record.
 menu:
   latest:
     identifier: row-to-json
-    parent: functions-operators
+    parent: json-functions-operators
     weight: 270
 isTocNested: true
 showAsideToc: true

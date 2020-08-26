@@ -1,8 +1,8 @@
 ---
-title: API client drivers for YCQL
-headerTitle: API client drivers for YCQL
-linkTitle: API client drivers for YCQL
-description: Lists the API client library drivers that you can use to build and access YCQL applications. 
+title: Client drivers for YCQL API
+headerTitle: Client drivers for YCQL
+linkTitle: Client drivers for YCQL
+description: Lists the client drivers that you can use to build and access YCQL applications. 
 menu:
   latest:
     identifier: ycql-client-libraries
@@ -14,9 +14,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following API client library drivers are supported for use with the [Yugabyte Cloud Query Language (YCQL) API](../../../api/ycql/), a SQL-based, semi-relational API, with roots in the Apache Cassandra Query Language (CQL).
+The following client drivers are supported for use with the [Yugabyte Cloud Query Language (YCQL) API](../../../api/ycql/), a SQL-based, semi-relational API, with roots in the Apache Cassandra Query Language (CQL).
 
-For tutorials on building a sample application with the following API client drivers, click the relevant link included below for each driver.
+For tutorials on building a sample application with the following client drivers, click the relevant link included below for each driver.
 
 ## C/C++
 

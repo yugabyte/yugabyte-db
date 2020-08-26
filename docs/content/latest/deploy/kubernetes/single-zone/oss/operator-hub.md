@@ -20,25 +20,25 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/oss/helm-chart" class="nav-link">
+    <a href="{{< relref "./helm-chart.md" >}}" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/oss/yugabyte-operator" class="nav-link">
+    <a href="{{< relref "./yugabyte-operator.md" >}}" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YugabyteDB operator
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/oss/operator-hub" class="nav-link active">
+    <a href="{{< relref "./operator-hub.md" >}}" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Operator Hub
     </a>
   </li>
   <li>
-    <a href="/latest/deploy/kubernetes/single-zone/oss/rook-operator" class="nav-link">
+    <a href="{{< relref "./rook-operator.md" >}}" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Rook operator
     </a>

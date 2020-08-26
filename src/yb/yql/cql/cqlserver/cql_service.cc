@@ -28,6 +28,7 @@
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
+#include "yb/yql/cql/cqlserver/system_query_cache.h"
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
@@ -43,6 +44,7 @@ using namespace std::placeholders;
 using namespace yb::size_literals;
 
 DECLARE_bool(use_cassandra_authentication);
+DECLARE_int32(cql_update_system_query_cache_msecs);
 
 DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 128_MB,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
@@ -120,6 +122,7 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
       cql_metrics_(std::make_shared<CQLMetrics>(server->metric_entity())),
       parser_pool_(ParserFactory(cql_metrics_.get()), ParserDeleter(cql_metrics_.get())),
       messenger_(server->messenger()) {
+
   // Setup prepared statements' memory tracker. Add garbage-collect function to delete least
   // recently used statements when limit is hit.
   prepared_stmts_mem_tracker_ = MemTracker::CreateTracker(
@@ -135,6 +138,12 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
       "",
       Substitute("SELECT $0, $1 FROM system_auth.roles WHERE role = ?",
                  kRoleColumnNameSaltedHash, kRoleColumnNameCanLogin));
+
+  if (FLAGS_cql_update_system_query_cache_msecs > 0) {
+    system_cache_ = std::make_shared<SystemQueryCache>(this);
+  } else {
+    VLOG(1) << "System query cache disabled.";
+  }
 }
 
 CQLServiceImpl::~CQLServiceImpl() {

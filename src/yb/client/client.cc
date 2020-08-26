@@ -50,6 +50,7 @@
 #include "yb/client/namespace_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
@@ -62,6 +63,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
+#include "yb/util/monotime.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
 #include "yb/rpc/messenger.h"
@@ -85,6 +87,8 @@ using yb::master::CreateTablegroupRequestPB;
 using yb::master::CreateTablegroupResponsePB;
 using yb::master::DeleteTablegroupRequestPB;
 using yb::master::DeleteTablegroupResponsePB;
+using yb::master::ListTablegroupsRequestPB;
+using yb::master::ListTablegroupsResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::GetTableSchemaRequestPB;
@@ -382,11 +386,17 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   // Let's allow for plenty of time for discovering the master the first
   // time around.
   auto deadline = CoarseMonoClock::Now() + c->default_admin_operation_timeout();
-  RETURN_NOT_OK_PREPEND(
-      c->data_->SetMasterServerProxy(deadline,
-          data_->skip_master_leader_resolution_,
-          data_->wait_for_leader_election_on_init_),
-      "Could not locate the leader master");
+  for (;;) {
+    auto status = c->data_->SetMasterServerProxy(deadline,
+            data_->skip_master_leader_resolution_,
+            data_->wait_for_leader_election_on_init_);
+    if (status.ok()) {
+      break;
+    }
+    if (!status.IsNotFound() || CoarseMonoClock::Now() >= deadline) {
+      RETURN_NOT_OK_PREPEND(status, "Could not locate the leader master")
+    }
+  }
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
 
@@ -456,7 +466,23 @@ Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
 
 Status YBClient::WaitForCreateTableToFinish(const YBTableName& table_name) {
   const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitForCreateTableToFinish(table_name, deadline);
+}
+
+Status YBClient::WaitForCreateTableToFinish(
+    const YBTableName& table_name, const CoarseTimePoint& deadline) {
   return data_->WaitForCreateTableToFinish(this, table_name, "" /* table_id */, deadline);
+}
+
+Status YBClient::WaitForCreateTableToFinish(const string& table_id) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitForCreateTableToFinish(table_id, deadline);
+}
+
+Status YBClient::WaitForCreateTableToFinish(
+    const string& table_id, const CoarseTimePoint& deadline) {
+  const YBTableName empty_table_name;
+  return data_->WaitForCreateTableToFinish(this, empty_table_name, table_id, deadline);
 }
 
 Status YBClient::TruncateTable(const string& table_id, bool wait) {
@@ -516,26 +542,28 @@ Status YBClient::DeleteIndexTable(const string& table_id,
                             wait);
 }
 
-Status YBClient::FlushTable(const std::string& table_id,
-                            int timeout_secs,
-                            bool is_compaction) {
+Status YBClient::FlushTables(const std::vector<TableId>& table_ids,
+                             bool add_indexes,
+                             int timeout_secs,
+                             bool is_compaction) {
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(timeout_secs);
-  return data_->FlushTable(this,
-                           YBTableName(),
-                           table_id,
-                           deadline,
-                           is_compaction);
+  return data_->FlushTables(this,
+                            table_ids,
+                            add_indexes,
+                            deadline,
+                            is_compaction);
 }
 
-Status YBClient::FlushTable(const YBTableName& table_name,
-                            int timeout_secs,
-                            bool is_compaction) {
+Status YBClient::FlushTables(const std::vector<YBTableName>& table_names,
+                             bool add_indexes,
+                             int timeout_secs,
+                             bool is_compaction) {
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(timeout_secs);
-  return data_->FlushTable(this,
-                           table_name,
-                           "" /* table_id */,
-                           deadline,
-                           is_compaction);
+  return data_->FlushTables(this,
+                            table_names,
+                            add_indexes,
+                            deadline,
+                            is_compaction);
 }
 
 std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {
@@ -862,32 +890,163 @@ Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
 
 Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
-                                  const std::string& tablegroup_name,
                                   const std::string& tablegroup_id) {
   CreateTablegroupRequestPB req;
   CreateTablegroupResponsePB resp;
-  req.set_name(tablegroup_name);
   req.set_id(tablegroup_id);
   req.set_namespace_id(namespace_id);
   req.set_namespace_name(namespace_name);
 
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateTablegroup);
+  int attempts = 0;
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+
+  Status s = data_->SyncLeaderMasterRpc<CreateTablegroupRequestPB, CreateTablegroupResponsePB>(
+      deadline, req, &resp, &attempts, "CreateTablegroup", &MasterServiceProxy::CreateTablegroup);
+
+  // This case should not happen but need to validate contents since fields are optional in PB.
+  if (!resp.has_parent_table_id() || !resp.has_parent_table_name()) {
+    return STATUS(NotFound, "Parent table information not found in CREATE TABLEGROUP response.");
+  }
+
+  const YBTableName table_name(YQL_DATABASE_PGSQL, namespace_name, resp.parent_table_name());
+
+  // Handle special cases based on resp.error().
+  if (resp.has_error()) {
+    LOG_IF(DFATAL, s.ok()) << "Expecting error status if response has error: " <<
+        resp.error().code() << " Status: " << resp.error().status().ShortDebugString();
+
+    if (resp.error().code() == master::MasterErrorPB::OBJECT_ALREADY_PRESENT && attempts > 1) {
+      // If the table already exists and the number of attempts is >
+      // 1, then it means we may have succeeded in creating the
+      // table, but client didn't receive the successful
+      // response (e.g., due to failure before the successful
+      // response could be sent back, or due to a I/O pause or a
+      // network blip leading to a timeout, etc...)
+      YBTableInfo info;
+
+      // A fix for https://yugabyte.atlassian.net/browse/ENG-529:
+      // If we've been retrying table creation, and the table is now in the process is being
+      // created, we can sometimes see an empty schema. Wait until the table is fully created
+      // before we compare the schema.
+      RETURN_NOT_OK_PREPEND(
+          data_->WaitForCreateTableToFinish(this, table_name, resp.parent_table_id(), deadline),
+          strings::Substitute("Failed waiting for table $0 to finish being created",
+                              table_name.ToString()));
+
+      RETURN_NOT_OK_PREPEND(
+          data_->GetTableSchema(this, table_name, deadline, &info),
+          strings::Substitute("Unable to check the schema of table $0", table_name.ToString()));
+
+      YBSchemaBuilder schemaBuilder;
+      schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
+      YBSchema ybschema;
+      CHECK_OK(schemaBuilder.Build(&ybschema));
+
+      if (!ybschema.Equals(info.schema)) {
+         string msg = Format("Table $0 already exists with a different "
+                             "schema. Requested schema was: $1, actual schema is: $2",
+                             table_name,
+                             internal::GetSchema(ybschema),
+                             internal::GetSchema(info.schema));
+        LOG(ERROR) << msg;
+        return STATUS(AlreadyPresent, msg);
+      }
+
+      return Status::OK();
+    }
+
+    return StatusFromPB(resp.error().status());
+  }
+
+  // Wait for create table to finish.
+  RETURN_NOT_OK_PREPEND(
+      data_->WaitForCreateTableToFinish(this, table_name, resp.parent_table_id(), deadline),
+      strings::Substitute("Failed waiting for parent table $0 to finish being created",
+                          table_name.ToString()));
 
   return Status::OK();
 }
 
-Status YBClient::DeleteTablegroup(const std::string& tablegroup_name,
-                                  const std::string& namespace_id,
+Status YBClient::DeleteTablegroup(const std::string& namespace_id,
                                   const std::string& tablegroup_id) {
   DeleteTablegroupRequestPB req;
   DeleteTablegroupResponsePB resp;
-  req.set_name(tablegroup_name);
   req.set_id(tablegroup_id);
   req.set_namespace_id(namespace_id);
 
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteTablegroup);
+  int attempts = 0;
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
 
+  Status s = data_->SyncLeaderMasterRpc<DeleteTablegroupRequestPB, DeleteTablegroupResponsePB>(
+      deadline, req, &resp, &attempts, "DeleteTablegroup", &MasterServiceProxy::DeleteTablegroup);
+
+  // This case should not happen but need to validate contents since fields are optional in PB.
+  if (!resp.has_parent_table_id()) {
+    return STATUS(NotFound, "Parent table information not found in DELETE TABLEGROUP response.");
+  }
+
+  // Handle special cases based on resp.error().
+  if (resp.has_error()) {
+    LOG_IF(DFATAL, s.ok()) << "Expecting error status if response has error: " <<
+        resp.error().code() << " Status: " << resp.error().status().ShortDebugString();
+
+    if (resp.error().code() == master::MasterErrorPB::OBJECT_NOT_FOUND && attempts > 1) {
+      // A prior attempt to delete the table has succeeded, but
+      // appeared as a failure to the client due to, e.g., an I/O or
+      // network issue.
+      LOG(INFO) << "Parent table for tablegroup with ID " << tablegroup_id << " already deleted.";
+      return Status::OK();
+    } else {
+      return StatusFromPB(resp.error().status());
+    }
+  } else {
+    // Check the status only if the response has no error.
+    RETURN_NOT_OK(s);
+  }
+
+  // Spin until the table is deleted. Currently only waits till the table reaches DELETING state
+  // See github issue #5290
+  RETURN_NOT_OK_PREPEND(data_->WaitForDeleteTableToFinish(this,
+                                                          resp.parent_table_id(),
+                                                          deadline),
+      strings::Substitute("Failed waiting for parent table with id $0 to finish being deleted",
+                          resp.parent_table_id()));
+
+  LOG(INFO) << "Deleted parent table for tablegroup with ID " << tablegroup_id;
   return Status::OK();
+}
+
+Result<vector<master::TablegroupIdentifierPB>>
+YBClient::ListTablegroups(const std::string& namespace_name) {
+  GetNamespaceInfoResponsePB ret;
+  Status s = GetNamespaceInfo("", namespace_name, YQL_DATABASE_PGSQL, &ret);
+  if (!s.ok()) {
+    return s;
+  }
+
+  ListTablegroupsRequestPB req;
+  ListTablegroupsResponsePB resp;
+
+  req.set_namespace_id(ret.namespace_().id());
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTablegroups);
+  auto* tablegroups = resp.mutable_tablegroups();
+  vector<master::TablegroupIdentifierPB> result;
+  result.reserve(tablegroups->size());
+  for (auto& tg : *tablegroups) {
+    result.push_back(std::move(tg));
+  }
+  return result;
+}
+
+Result<bool> YBClient::TablegroupExists(const std::string& namespace_name,
+                                        const std::string& tablegroup_id) {
+
+  for (const auto& tg : VERIFY_RESULT(ListTablegroups(namespace_name))) {
+    if (tg.id().compare(tablegroup_id) == 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Status YBClient::GetUDType(const std::string& namespace_name,

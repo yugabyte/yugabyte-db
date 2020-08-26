@@ -99,6 +99,7 @@ ADD_YB_TEST(master_sysnamespace-itest)
 ADD_YB_TEST(master_path_handlers-itest)
 ADD_YB_TEST(master_failover-itest)
 ADD_YB_TEST(master_config-itest)
+ADD_YB_TEST(network_failure-test)
 ADD_YB_TEST(system_table_fault_tolerance)
 ADD_YB_TEST(raft_consensus-itest)
 ADD_YB_TEST(flush-test)
@@ -134,21 +135,21 @@ set(CASS_DRIVER_INTERNAL_INCLUDE
     "${YB_THIRDPARTY_DIR}/src/cassandra-cpp-driver-${CASS_DRIVER_VERSION}/src")
 
 ADD_YB_TEST(cassandra_cpp_driver-test)
-target_include_directories(cassandra_cpp_driver-test PUBLIC
+YB_TEST_TARGET_INCLUDE_DIRECTORIES(cassandra_cpp_driver-test PUBLIC
   ${CASS_DRIVER_INTERNAL_INCLUDE}
   "${CASS_DRIVER_INTERNAL_INCLUDE}/third_party/sparsehash/src")
 
 if("${COMPILER_FAMILY}" STREQUAL "gcc8")
-  target_compile_options(cassandra_cpp_driver-test PUBLIC "-Wno-class-memaccess")
+  YB_TEST_TARGET_COMPILE_OPTIONS(cassandra_cpp_driver-test PUBLIC "-Wno-class-memaccess")
 endif()
 
 ADD_YB_TEST(cql-index-test)
-target_include_directories(cql-index-test PUBLIC ${CASS_DRIVER_INTERNAL_INCLUDE})
-target_link_libraries(cql-index-test yb-cql)
+YB_TEST_TARGET_INCLUDE_DIRECTORIES(cql-index-test PUBLIC ${CASS_DRIVER_INTERNAL_INCLUDE})
+YB_TEST_TARGET_LINK_LIBRARIES(cql-index-test yb-cql)
 
 ADD_YB_TEST(cql-test)
-target_include_directories(cql-test PUBLIC ${CASS_DRIVER_INTERNAL_INCLUDE})
-target_link_libraries(cql-test yb-cql)
+YB_TEST_TARGET_INCLUDE_DIRECTORIES(cql-test PUBLIC ${CASS_DRIVER_INTERNAL_INCLUDE})
+YB_TEST_TARGET_LINK_LIBRARIES(cql-test yb-cql)
 
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
 

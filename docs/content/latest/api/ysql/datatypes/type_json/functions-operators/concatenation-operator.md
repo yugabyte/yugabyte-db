@@ -6,7 +6,7 @@ description: Concatenate two jsonb values using the JSON concatenation operator 
 menu:
   latest:
     identifier: concatenation-operator
-    parent: functions-operators
+    parent: json-functions-operators
     weight: 14
 isTocNested: true
 showAsideToc: true

@@ -89,7 +89,7 @@ Take note of the following for configuring your K8s provider:
 
 - Give a meaningful name for your configuration.
 
-- **Service Account** provide the name of the service account which has necessary access to manage the cluster, refer to [Create cluster](../../kubernetes/single-zone/oss/helm-chart/#create-cluster).
+- **Service Account** provide the name of the service account which has necessary access to manage the cluster, refer to [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
 
 - **Kube Config** there are two ways to specify the kube config for an Availability Zone.
   - Specify at **provider level** in the provider form as shown above. If specified, this config file will be used for all AZ's in all regions.

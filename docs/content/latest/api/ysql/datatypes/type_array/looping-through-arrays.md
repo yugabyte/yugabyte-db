@@ -362,7 +362,12 @@ unnest()
 8 | 007
 9 | 008
 ```
-## Using a wrapper PL/pgSQL table function to expose the SLICE operand as a formal parameter.
+
+## Using FOREACH to iterate over the elements in an array of DOMAIN values
+
+You need to be aware of some special considerations to implement this scenario. [Using FOREACH with an array of DOMAINs](../array-of-domains/#using-foreach-with-an-array-of-domains), within the dedicated section [Using an array of DOMAIN values](../array-of-domains/) explains what you need to know. 
+
+## Using a wrapper PL/pgSQL table function to expose the SLICE operand as a formal parameter
 
 The fact that the `SLICE` operand must be a literal means that there are only two ways two parameterize this—and neither is satisfactory for real application code. Each uses a table function whose input is the iterand array and the value for the `SLICE` operand, and whose output is a `SETOF` iterator array values.
 

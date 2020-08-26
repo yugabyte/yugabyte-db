@@ -71,6 +71,7 @@ extern const std::string kSnapshotsDirSuffix;
 struct TableInfo {
   // Table id, name and type.
   std::string table_id;
+  std::string namespace_name;
   std::string table_name;
   TableType table_type;
 
@@ -94,6 +95,7 @@ struct TableInfo {
 
   TableInfo() = default;
   TableInfo(std::string table_id,
+            std::string namespace_name,
             std::string table_name,
             TableType table_type,
             const Schema& schema,
@@ -169,6 +171,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   static CHECKED_STATUS CreateNew(FsManager* fs_manager,
                                   const std::string& table_id,
                                   const RaftGroupId& raft_group_id,
+                                  const std::string& namespace_name,
                                   const std::string& table_name,
                                   const TableType table_type,
                                   const Schema& schema,
@@ -196,6 +199,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   static CHECKED_STATUS LoadOrCreate(FsManager* fs_manager,
                                      const std::string& table_id,
                                      const RaftGroupId& raft_group_id,
+                                     const std::string& namespace_name,
                                      const std::string& table_name,
                                      const TableType table_type,
                                      const Schema& schema,
@@ -229,6 +233,15 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   }
 
   // Returns the name, type, schema, index map, schema, etc of the table.
+  std::string namespace_name(const TableId& table_id = "") const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    if (table_id.empty()) {
+      return primary_table_info()->namespace_name;
+    }
+    const auto& table_info = CHECK_RESULT(GetTableInfo(table_id));
+    return table_info->namespace_name;
+  }
+
   std::string table_name(const TableId& table_id = "") const {
     DCHECK_NE(state_, kNotLoadedYet);
     if (table_id.empty()) {
@@ -367,9 +380,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   void SetPartitionSchema(const PartitionSchema& partition_schema);
 
-  void SetTableName(const std::string& table_name, const TableId& table_id = "");
+  void SetTableName(
+      const std::string& namespace_name, const std::string& table_name,
+      const TableId& table_id = "");
 
   void AddTable(const std::string& table_id,
+                const std::string& namespace_name,
                 const std::string& table_name,
                 const TableType table_type,
                 const Schema& schema,
@@ -470,6 +486,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   RaftGroupMetadata(FsManager* fs_manager,
                     TableId table_id,
                     RaftGroupId raft_group_id,
+                    std::string namespace_name,
                     std::string table_name,
                     TableType table_type,
                     const std::string rocksdb_dir,

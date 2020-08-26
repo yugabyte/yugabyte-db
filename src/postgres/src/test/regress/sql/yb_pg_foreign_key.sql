@@ -161,7 +161,10 @@ UPDATE PKTABLE SET ptest1=1 WHERE ptest1=2;
 -- Check FKTABLE for update of matched row
 SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
 
-\set VERBOSITY terse \\ -- suppress cascade details
+-- Suppress cascade details because it doesn't mismatch what Postgres prints.
+-- TODO(YB): PG show dependecy on table pktable, but for us it's either it or
+--           index pktable_pkey (at random)!
+\set VERBOSITY terse
 -- this should fail for lack of CASCADE
 DROP TABLE PKTABLE;
 \set VERBOSITY default
@@ -301,7 +304,7 @@ SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
 
 -- Try to delete something that should cascade
-DELETE FROM PKTABLE where ptest1=1 and ptest2=2 and ptest3=3;
+DELETE FROM PKTABLE where ptest1=1 and ptest2=5 and ptest3=3;
 
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
@@ -361,7 +364,7 @@ SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
 
 -- Try to delete something that should not set default
-DELETE FROM PKTABLE where ptest2=3;
+DELETE FROM PKTABLE where ptest2=5;
 
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
@@ -432,14 +435,19 @@ DROP TABLE PKTABLE;
 CREATE TABLE PKTABLE (ptest1 int PRIMARY KEY);
 CREATE TABLE FKTABLE_FAIL1 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest2) REFERENCES PKTABLE);
 CREATE TABLE FKTABLE_FAIL2 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest1) REFERENCES PKTABLE(ptest2));
+
 SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
 SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL2';
+DROP TABLE FKTABLE_FAIL1;
+DROP TABLE FKTABLE_FAIL2;
 DROP TABLE PKTABLE;
 
 -- Test for referencing column number smaller than referenced constraint
 CREATE TABLE PKTABLE (ptest1 int, ptest2 int, UNIQUE(ptest1, ptest2));
 CREATE TABLE FKTABLE_FAIL1 (ftest1 int REFERENCES pktable(ptest1));
+
 SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
+DROP TABLE FKTABLE_FAIL1;
 DROP TABLE PKTABLE;
 
 --
@@ -480,7 +488,7 @@ UPDATE FKTABLE SET ftest1 = ftest1 + 1;	-- should fail
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 
--- TODO (YB) changing inet->text below as we don't support indexes on inet type yet.
+-- TODO(YB) changing inet->text below as we don't support indexes on inet type yet.
 -- Two columns, two tables
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, PRIMARY KEY(ptest1, ptest2));
 -- This should fail, because we just chose really odd types
@@ -521,9 +529,9 @@ CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY 
 ptest3) REFERENCES pktable);
 
 -- TODO: YugaByte does not yet support table inheritance.
--- Leaving the first failing statement uncommented so that this test
--- will fail when the feature is implemented (the full test should
--- be uncommented then).
+--       Leaving the first failing statement uncommented so that this test
+--       will fail when the feature is implemented (the full test should
+--       be uncommented then).
 
 --
 -- Now some cases with inheritance
@@ -1084,6 +1092,7 @@ commit;
 
 drop table pktable2, fktable2;
 
+
 --
 -- Foreign keys and partitioned tables
 --
@@ -1151,6 +1160,8 @@ INSERT INTO fk_partitioned_fk (a,b) VALUES (1500, 1501);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2500, 2502);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2501, 2503);
 
+-- TODO(YB): When UPDATE changing partitions is supported, restore this section
+--           to its original form. (#5310)
 -- this update fails because there is no referenced row
 UPDATE fk_partitioned_fk SET a = a + 5 WHERE a = 2501;
 -- but we can fix it thusly:
@@ -1178,7 +1189,6 @@ DROP TABLE fk_notpartitioned_pk, fk_partitioned_fk;
 
 -- Test some other exotic foreign key features: MATCH SIMPLE, ON UPDATE/DELETE
 -- actions
-
 CREATE TABLE fk_notpartitioned_pk (a int, b int, primary key (a, b));
 CREATE TABLE fk_partitioned_fk (a int default 2501, b int default 142857) PARTITION BY LIST (a);
 CREATE TABLE fk_partitioned_fk_1 PARTITION OF fk_partitioned_fk FOR VALUES IN (NULL,500,501,502);
@@ -1200,19 +1210,26 @@ INSERT INTO fk_notpartitioned_pk VALUES (2502, 2503);
 INSERT INTO fk_partitioned_fk_3 (a, b) VALUES (2502, 2503);
 -- this always works
 INSERT INTO fk_partitioned_fk (a,b) VALUES (NULL, NULL);
+
 -- ON UPDATE SET NULL
 SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY a;
--- When update of primary keys is supported the below statement adding a null
--- entry into fk_partitioned_fk can be removed.
+-- TODO(YB): When UPDATE changing partitions is supported, the below section
+--           should be reworked. (#5310)
 UPDATE fk_notpartitioned_pk SET a = a + 1 WHERE a = 2502;
 DELETE FROM fk_partitioned_fk WHERE a = 2502;
 INSERT INTO fk_partitioned_fk (a,b) VALUES (NULL, NULL);
+INSERT INTO fk_partitioned_fk (a,b) VALUES (2502, NULL);
+UPDATE fk_notpartitioned_pk SET a = 2503 WHERE a = 2502;
+SELECT tableoid::regclass, a, b FROM fk_partitioned_fk ORDER BY a, b;
+SELECT tableoid::regclass, a, b FROM fk_notpartitioned_pk ORDER BY a;
+
 -- ON DELETE SET NULL
+-- TODO(YB): When UPDATE changing partitions is supported, restore this section
+--           to its original form. (#5310)
 DELETE FROM fk_notpartitioned_pk WHERE a=2502;
 INSERT INTO fk_notpartitioned_pk (a,b) VALUES (500, 500);
 INSERT INTO fk_partitioned_fk VALUES (500, 500);
 SELECT count(*) FROM fk_partitioned_fk WHERE a IS NULL;
-
 DELETE FROM fk_notpartitioned_pk;
 SELECT count(*) FROM fk_partitioned_fk WHERE a IS NULL;
 
@@ -1225,12 +1242,10 @@ INSERT INTO fk_notpartitioned_pk VALUES (2502, 2503);
 INSERT INTO fk_partitioned_fk_3 (a, b) VALUES (2502, 2503);
 -- this fails, because the defaults for the referencing table are not present
 -- in the referenced table:
--- Revive this test when update of primary keys is supported.
 UPDATE fk_notpartitioned_pk SET a = 1500 WHERE a = 2502;
-DELETE FROM fk_notpartitioned_pk WHERE a = 2502;
 -- but inserting the row we can make it work:
 INSERT INTO fk_notpartitioned_pk VALUES (2501, 142857);
-DELETE FROM fk_notpartitioned_pk WHERE a = 2502;
+UPDATE fk_notpartitioned_pk SET a = 1500 WHERE a = 2502;
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
 
 -- ON UPDATE/DELETE CASCADE
@@ -1238,10 +1253,9 @@ ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_fkey;
 ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
   REFERENCES fk_notpartitioned_pk
   ON DELETE CASCADE ON UPDATE CASCADE;
--- Revive this test when update of primary keys is supported.
 UPDATE fk_notpartitioned_pk SET a = 2502 WHERE a = 2501;
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
-INSERT INTO fk_partitioned_fk VALUES (2501, 142857);
+
 -- Now you see it ...
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
 DELETE FROM fk_notpartitioned_pk WHERE b = 142857;
@@ -1255,9 +1269,16 @@ DROP TABLE fk_partitioned_fk_2;
 -- partitions.
 CREATE TABLE fk_partitioned_fk_2 PARTITION OF fk_partitioned_fk FOR VALUES IN (1500,1502);
 ALTER TABLE fk_partitioned_fk DETACH PARTITION fk_partitioned_fk_2;
+-- TODO(YB): Uncomment when transactional DDLs are supported (#1404)
+-- BEGIN;
+-- DROP TABLE fk_partitioned_fk;
+-- -- constraint should still be there
+-- \d fk_partitioned_fk_2;
+-- ROLLBACK;
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2 FOR VALUES IN (1500,1502);
 DROP TABLE fk_partitioned_fk_2;
-CREATE TABLE fk_partitioned_fk_2 (b int, c text, a int, FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk ON UPDATE CASCADE ON DELETE CASCADE);
+CREATE TABLE fk_partitioned_fk_2 (b int, c text, a int,
+	FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk ON UPDATE CASCADE ON DELETE CASCADE);
 ALTER TABLE fk_partitioned_fk_2 DROP COLUMN c;
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2 FOR VALUES IN (1500,1502);
 -- should have only one constraint
@@ -1278,9 +1299,9 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_4 FOR VALUES IN
 \d fk_partitioned_fk_4_2
 
 CREATE TABLE fk_partitioned_fk_5 (a int, b int,
-FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE,
-FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE)
-PARTITION BY RANGE (a);
+	FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE,
+	FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE)
+  PARTITION BY RANGE (a);
 CREATE TABLE fk_partitioned_fk_5_1 (a int, b int, FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk);
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_5 FOR VALUES IN (4500);
 ALTER TABLE fk_partitioned_fk_5 ATTACH PARTITION fk_partitioned_fk_5_1 FOR VALUES FROM (0) TO (10);
@@ -1308,10 +1329,10 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2
   FOR VALUES IN (1600);
 
 -- leave these tables around intentionally
+
 -- Test creating a constraint at the parent that already exists in partitions.
 -- There should be no duplicated constraints, and attempts to drop the
 -- constraint in partitions should raise appropriate errors.
--- Import remaining tests from postgres after creating schema is supported.
 create schema fkpart0
   create table pkey (a int primary key)
   create table fk_part (a int) partition by list (a)
@@ -1321,13 +1342,14 @@ create schema fkpart0
       (foreign key (a) references fkpart0.pkey) for values in (2, 3)
       partition by list (a)
   create table fk_part_23_2 partition of fk_part_23 for values in (2);
+-- TODO(YB): Import remaining tests from postgres after creating schema is supported.
 /*
 alter table fkpart0.fk_part add foreign key (a) references fkpart0.pkey;
-\d fkpart0.fk_part_1    \\ -- should have only one FK
+\d fkpart0.fk_part_1	\\ -- should have only one FK
 alter table fkpart0.fk_part_1 drop constraint fk_part_1_a_fkey;
 
-\d fkpart0.fk_part_23   \\ -- should have only one FK
-\d fkpart0.fk_part_23_2 \\ -- should have only one FK
+\d fkpart0.fk_part_23	\\ -- should have only one FK
+\d fkpart0.fk_part_23_2	\\ -- should have only one FK
 alter table fkpart0.fk_part_23 drop constraint fk_part_23_a_fkey;
 alter table fkpart0.fk_part_23_2 drop constraint fk_part_23_a_fkey;
 
@@ -1351,13 +1373,13 @@ create schema fkpart1
   create table fk_part_1 partition of fk_part for values in (1) partition by list (a)
   create table fk_part_1_1 partition of fk_part_1 for values in (1);
 alter table fkpart1.fk_part add foreign key (a) references fkpart1.pkey;
-insert into fkpart1.fk_part values (1);         -- should fail
+insert into fkpart1.fk_part values (1);		-- should fail
 insert into fkpart1.pkey values (1);
 insert into fkpart1.fk_part values (1);
-delete from fkpart1.pkey where a = 1;           -- should fail
+delete from fkpart1.pkey where a = 1;		-- should fail
 alter table fkpart1.fk_part detach partition fkpart1.fk_part_1;
 create table fkpart1.fk_part_1_2 partition of fkpart1.fk_part_1 for values in (2);
-insert into fkpart1.fk_part_1 values (2);       -- should fail
+insert into fkpart1.fk_part_1 values (2);	-- should fail
 delete from fkpart1.pkey where a = 1;
 
 -- verify that attaching and detaching partitions manipulates the inheritance
@@ -1368,12 +1390,13 @@ create schema fkpart2
   create table fk_part_1 partition of fkpart2.fk_part for values in (1) partition by list (a)
   create table fk_part_1_1 (a int, constraint my_fkey foreign key (a) references fkpart2.pkey);
 alter table fkpart2.fk_part_1 attach partition fkpart2.fk_part_1_1 for values in (1);
-alter table fkpart2.fk_part_1 drop constraint fkey;     -- should fail
-alter table fkpart2.fk_part_1_1 drop constraint my_fkey;        -- should fail
+alter table fkpart2.fk_part_1 drop constraint fkey;	-- should fail
+alter table fkpart2.fk_part_1_1 drop constraint my_fkey;	-- should fail
 alter table fkpart2.fk_part detach partition fkpart2.fk_part_1;
-alter table fkpart2.fk_part_1 drop constraint fkey;     -- ok
-alter table fkpart2.fk_part_1_1 drop constraint my_fkey;        -- doesn't exist
-\set VERBOSITY terse    \\ -- suppress cascade details
+alter table fkpart2.fk_part_1 drop constraint fkey;	-- ok
+alter table fkpart2.fk_part_1_1 drop constraint my_fkey;	-- doesn't exist
+
+\set VERBOSITY terse	\\ -- suppress cascade details
 drop schema fkpart0, fkpart1, fkpart2 cascade;
 \set VERBOSITY default
 */

@@ -15,11 +15,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.UniverseUpdater;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -49,15 +46,9 @@ public class MultiTableBackup extends UniverseTaskBase {
 
   public YBClientService ybService;
 
-  public static class Params extends UniverseTaskParams {
+  public static class Params extends BackupTableParams {
     public UUID customerUUID;
-    public UUID storageConfigUUID;
-    public long schedulingFrequency = 0L;
-    public String cronExpression = null;
-    public String keyspace = null;
-    public List<UUID> tableUUIDList = new ArrayList<UUID>();
-    public boolean sse = false;
-    public boolean transactionalBackup = false;
+    public List<UUID> tableUUIDList = new ArrayList<>();
   }
 
   public Params params() {
@@ -200,6 +191,9 @@ public class MultiTableBackup extends UniverseTaskBase {
       if (params().transactionalBackup) {
         if (params().keyspace != null) {
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+          createEncryptedUniverseKeyBackupTask(backup.getBackupInfo()).setSubTaskGroupType(
+            UserTaskDetails.SubTaskGroupType.CreatingTableBackup
+          );
           createTableBackupTask(tableBackupParams, backup).setSubTaskGroupType(
             UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         } else {
@@ -210,14 +204,25 @@ public class MultiTableBackup extends UniverseTaskBase {
           tableBackupParams.storageConfigUUID = params().storageConfigUUID;
           tableBackupParams.universeUUID = params().universeUUID;
           tableBackupParams.sse = params().sse;
+          tableBackupParams.parallelism = params().parallelism;
           tableBackupParams.transactionalBackup = params().transactionalBackup;
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+
+          for (BackupTableParams backupParams : backupParamsList) {
+            createEncryptedUniverseKeyBackupTask(backupParams).setSubTaskGroupType(
+              UserTaskDetails.SubTaskGroupType.CreatingTableBackup
+            );
+          }
+
           createTableBackupTask(tableBackupParams, backup).setSubTaskGroupType(
             UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         }
       } else {
         for (BackupTableParams tableParams : backupParamsList) {
           Backup backup = Backup.create(params().customerUUID, tableParams);
+          createEncryptedUniverseKeyBackupTask(tableParams).setSubTaskGroupType(
+            UserTaskDetails.SubTaskGroupType.CreatingTableBackup
+          );
           createTableBackupTask(tableParams, backup).setSubTaskGroupType(
             UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         }
@@ -253,6 +258,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     backupParams.storageConfigUUID = params().storageConfigUUID;
     backupParams.universeUUID = params().universeUUID;
     backupParams.sse = params().sse;
+    backupParams.parallelism = params().parallelism;
     backupParams.keyspace = tableKeySpace;
     backupParams.transactionalBackup = params().transactionalBackup;
 
@@ -294,6 +300,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     backupParams.storageConfigUUID = params().storageConfigUUID;
     backupParams.universeUUID = params().universeUUID;
     backupParams.sse = params().sse;
+    backupParams.parallelism = params().parallelism;
     return backupParams;
   }
 }

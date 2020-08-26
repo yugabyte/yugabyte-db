@@ -110,12 +110,10 @@ Status PgAlterDatabase::RenameDatabase(const char *newname) {
 PgCreateTablegroup::PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
                                        const char *database_name,
                                        const PgOid database_oid,
-                                       const char *tablegroup_name,
                                        const PgOid tablegroup_oid)
     : PgDdl(pg_session),
       database_name_(database_name),
       database_oid_(database_oid),
-      tablegroup_name_(tablegroup_name),
       tablegroup_oid_(tablegroup_oid) {
 }
 
@@ -123,16 +121,27 @@ PgCreateTablegroup::~PgCreateTablegroup() {
 }
 
 Status PgCreateTablegroup::Exec() {
-  return pg_session_->CreateTablegroup(database_name_, database_oid_,
-                                       tablegroup_name_, tablegroup_oid_);
+  Status s = pg_session_->CreateTablegroup(database_name_, database_oid_, tablegroup_oid_);
+
+  if (PREDICT_FALSE(!s.ok())) {
+    if (s.IsAlreadyPresent()) {
+      return STATUS(InvalidArgument, "Duplicate tablegroup.");
+    }
+    if (s.IsNotFound()) {
+      return STATUS(InvalidArgument, "Database not found", database_name_);
+    }
+    return STATUS_FORMAT(
+        InvalidArgument, "Invalid table definition: $0",
+        s.ToString(false /* include_file_and_line */, false /* include_code */));
+  }
+
+  return Status::OK();
 }
 
 PgDropTablegroup::PgDropTablegroup(PgSession::ScopedRefPtr pg_session,
-                                   const char *tablegroup_name,
                                    const PgOid database_oid,
                                    const PgOid tablegroup_oid)
     : PgDdl(pg_session),
-      tablegroup_name_(tablegroup_name),
       database_oid_(database_oid),
       tablegroup_oid_(tablegroup_oid) {
 }
@@ -141,7 +150,11 @@ PgDropTablegroup::~PgDropTablegroup() {
 }
 
 Status PgDropTablegroup::Exec() {
-  return pg_session_->DropTablegroup(tablegroup_name_, database_oid_, tablegroup_oid_);
+  Status s = pg_session_->DropTablegroup(database_oid_, tablegroup_oid_);
+  if (s.IsNotFound()) {
+    return Status::OK();
+  }
+  return s;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -156,7 +169,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              bool is_shared_table,
                              bool if_not_exist,
                              bool add_primary_key,
-                             const bool colocated)
+                             const bool colocated,
+                             const PgObjectId& tablegroup_oid)
     : PgDdl(pg_session),
       table_name_(YQL_DATABASE_PGSQL,
                   GetPgsqlNamespaceId(table_id.database_oid),
@@ -168,13 +182,14 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                            strcmp(schema_name, "information_schema") == 0),
       is_shared_table_(is_shared_table),
       if_not_exist_(if_not_exist),
-      colocated_(colocated) {
+      colocated_(colocated),
+      tablegroup_oid_(tablegroup_oid) {
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   if (add_primary_key) {
     // For regular user table, ybrowid should be a hash key because ybrowid is a random uuid.
     // For colocated or sys catalog table, ybrowid should be a range key because they are
     // unpartitioned tables in a single tablet.
-    bool is_hash = !(is_pg_catalog_table_ || colocated);
+    bool is_hash = !(is_pg_catalog_table_ || colocated || tablegroup_oid.IsValid());
     CHECK_OK(AddColumn("ybrowid", static_cast<int32_t>(PgSystemAttrNum::kYBRowId),
                        YB_YQL_DATA_TYPE_BINARY, is_hash, true /* is_range */));
   }
@@ -322,6 +337,10 @@ Status PgCreateTable::Exec() {
     table_creator->set_range_partition_columns(range_columns_, split_rows);
   }
 
+  if (tablegroup_oid_.IsValid()) {
+    table_creator->tablegroup_id(tablegroup_oid_.GetYBTablegroupId());
+  }
+
   // For index, set indexed (base) table id.
   if (indexed_table_id()) {
     table_creator->indexed_table_id(indexed_table_id()->GetYBTableId());
@@ -410,10 +429,11 @@ PgCreateIndex::PgCreateIndex(PgSession::ScopedRefPtr pg_session,
                              bool is_shared_index,
                              bool is_unique_index,
                              const bool skip_index_backfill,
-                             bool if_not_exist)
+                             bool if_not_exist,
+                             const PgObjectId& tablegroup_oid)
     : PgCreateTable(pg_session, database_name, schema_name, index_name, index_id,
                     is_shared_index, if_not_exist, false /* add_primary_key */,
-                    true /* colocated */),
+                    tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid),
       base_table_id_(base_table_id),
       is_unique_index_(is_unique_index),
       skip_index_backfill_(skip_index_backfill) {
@@ -491,10 +511,10 @@ Status PgDropIndex::Exec() {
   client::YBTableName indexed_table_name;
   Status s = pg_session_->DropIndex(table_id_, &indexed_table_name);
   DSCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
-  PgObjectId index_table_id(indexed_table_name.table_id());
+  PgObjectId indexed_table_id(indexed_table_name.table_id());
 
   pg_session_->InvalidateTableCache(table_id_);
-  pg_session_->InvalidateTableCache(index_table_id);
+  pg_session_->InvalidateTableCache(indexed_table_id);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     return Status::OK();
   }

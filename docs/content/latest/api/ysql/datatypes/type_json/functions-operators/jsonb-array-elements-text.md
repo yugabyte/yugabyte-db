@@ -6,7 +6,7 @@ description: Transform JSON values of an JSON array into a SQL table of text val
 menu:
   latest:
     identifier: jsonb-array-elements-text
-    parent: functions-operators
+    parent: json-functions-operators
     weight: 70
 isTocNested: true
 showAsideToc: true

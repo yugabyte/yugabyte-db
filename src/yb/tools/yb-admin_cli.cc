@@ -32,6 +32,7 @@
 #include "yb/tools/yb-admin_cli.h"
 
 #include <iostream>
+#include <utility>
 
 #include <boost/lexical_cast.hpp>
 #include <boost/range.hpp>
@@ -41,6 +42,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/stol_utils.h"
 #include "yb/master/master_defaults.h"
+#include "yb/util/string_case.h"
 
 DEFINE_string(master_addresses, "localhost:7100",
               "Comma-separated list of YB Master server addresses");
@@ -49,8 +51,26 @@ DEFINE_string(init_master_addrs, "",
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 DEFINE_bool(exclude_dead, false, "Exclude dead tservers from output");
 
+
+using std::cerr;
+using std::endl;
+using std::ostringstream;
+using std::make_pair;
+using std::next;
+using std::pair;
+using std::string;
+
+using yb::client::YBTableName;
+using strings::Substitute;
+
+using namespace std::placeholders;
+
 namespace yb {
 namespace tools {
+
+const Status ClusterAdminCli::kInvalidArguments = STATUS(
+                                  InvalidArgument, "Invalid arguments for operation");
+
 namespace {
 
 const int32 kDefaultRpcPort = 9100;
@@ -103,20 +123,40 @@ CHECKED_STATUS LeaderStepDown(
   return Status::OK();
 }
 
+bool IsEqCaseInsensitive(const string& check, const string& expected) {
+  string upper_check, upper_expected;
+  ToUpperCase(check, &upper_check);
+  ToUpperCase(expected, &upper_expected);
+  return upper_check == upper_expected;
+}
+
+Result<pair<int, bool>> GetTimeoutAndAddIndexesFlag(
+    CLIArgumentsIterator begin,
+    const CLIArgumentsIterator& end) {
+  bool add_indexes = false;
+  int timeout_secs = 20;
+  bool seen_timeout_secs = false;
+  for (auto iter = begin; iter != end; iter = next(iter)) {
+    if (IsEqCaseInsensitive(*iter, "ADD_INDEXES")) {
+      if (add_indexes) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+      add_indexes = true;
+    } else if (!seen_timeout_secs) {
+      auto maybe_timeout_secs = CheckedStoi(*iter);
+      if (!maybe_timeout_secs.ok()) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+      timeout_secs = maybe_timeout_secs.get();
+      seen_timeout_secs = true;
+    } else {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+  }
+  return make_pair(timeout_secs, add_indexes);
+}
+
 } // namespace
-
-const Status ClusterAdminCli::kInvalidArguments = STATUS(
-                                  InvalidArgument, "Invalid arguments for operation");
-
-using std::cerr;
-using std::endl;
-using std::ostringstream;
-using std::string;
-
-using client::YBTableName;
-using strings::Substitute;
-
-using namespace std::placeholders;
 
 Status ClusterAdminCli::Run(int argc, char** argv) {
   const string prog_name = argv[0];
@@ -414,78 +454,86 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "flush_table",
-      " <(<keyspace> <table_name>)|tableid.<table_id>> [timeout_in_seconds] (default 20)",
+      " <(<keyspace> <table_name>)|tableid.<table_id>> [timeout_in_seconds] (default 20)"
+      " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
+        bool add_indexes = false;
         int timeout_secs = 20;
         const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
             client, args.begin() + 2, args.end(),
-            [&timeout_secs](auto i, const auto& end) -> Status {
-              if (std::next(i) == end) {
-                timeout_secs = VERIFY_RESULT(CheckedStoi(*i));
-                return Status::OK();
-              }
-              return ClusterAdminCli::kInvalidArguments;
+            [&add_indexes, &timeout_secs](auto i, const auto& end) -> Status {
+              std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(
+                  GetTimeoutAndAddIndexesFlag(i, end));
+              return Status::OK();
             }
         ));
-        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name,
-                                                 timeout_secs,
-                                                 false /* is_compaction */),
+        RETURN_NOT_OK_PREPEND(client->FlushTables({table_name},
+                                                  add_indexes,
+                                                  timeout_secs,
+                                                  false /* is_compaction */),
                               Substitute("Unable to flush table $0", table_name.ToString()));
         return Status::OK();
       });
 
   Register(
-      "flush_table_by_id", " <table_id> [timeout_in_seconds] (default 20)",
+      "flush_table_by_id", " <table_id> [timeout_in_seconds] (default 20)"
+      " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3 && args.size() != 4) {
+        bool add_indexes = false;
+        int timeout_secs = 20;
+        if (args.size() < 3) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        int timeout_secs = 20;
-        if (args.size() > 3) {
-          timeout_secs = VERIFY_RESULT(CheckedStoi(args[3]));
-        }
-        RETURN_NOT_OK_PREPEND(client->FlushTableById(args[2], timeout_secs,
-                                                     false /* is_compaction */),
+        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(
+          args.begin() + 3, args.end()));
+        RETURN_NOT_OK_PREPEND(client->FlushTablesById({args[2]},
+                                                      add_indexes,
+                                                      timeout_secs,
+                                                      false /* is_compaction */),
                               Substitute("Unable to flush table $0", args[2]));
         return Status::OK();
       });
 
   Register(
       "compact_table",
-      " <(<keyspace> <table_name>)|tableid.<table_id>> [timeout_in_seconds] (default 20)",
+      " <(<keyspace> <table_name>)|tableid.<table_id>> [timeout_in_seconds] (default 20)"
+      " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
+        bool add_indexes = false;
         int timeout_secs = 20;
         const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
             client, args.begin() + 2, args.end(),
-            [&timeout_secs](auto i, const auto& end) -> Status {
-              if (std::next(i) == end) {
-                timeout_secs = VERIFY_RESULT(CheckedStoi(*i));
-                return Status::OK();
-              }
-              return ClusterAdminCli::kInvalidArguments;
+            [&add_indexes, &timeout_secs](auto i, const auto& end) -> Status {
+              std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(
+                  GetTimeoutAndAddIndexesFlag(i, end));
+              return Status::OK();
             }
         ));
         // We use the same FlushTables RPC to trigger compaction.
-        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name,
-                                                 timeout_secs,
-                                                 true /* is_compaction */),
+        RETURN_NOT_OK_PREPEND(client->FlushTables({table_name},
+                                                  add_indexes,
+                                                  timeout_secs,
+                                                  true /* is_compaction */),
                               Substitute("Unable to compact table $0", table_name.ToString()));
         return Status::OK();
       });
 
   Register(
-      "compact_table_by_id", " <table_id> [timeout_in_seconds] (default 20)",
+      "compact_table_by_id", " <table_id> [timeout_in_seconds] (default 20)"
+      " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3 && args.size() != 4) {
+        bool add_indexes = false;
+        int timeout_secs = 20;
+        if (args.size() < 3) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        int timeout_secs = 20;
-        if (args.size() > 3) {
-          timeout_secs = VERIFY_RESULT(CheckedStoi(args[3]));
-        }
+        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(
+            GetTimeoutAndAddIndexesFlag(args.begin() + 3, args.end()));
         // We use the same FlushTables RPC to trigger compaction.
-        RETURN_NOT_OK_PREPEND(client->FlushTableById(args[2], timeout_secs,
-                                                     true /* is_compaction */),
+        RETURN_NOT_OK_PREPEND(client->FlushTablesById({args[2]},
+                                                      add_indexes,
+                                                      timeout_secs,
+                                                      true /* is_compaction */),
                               Substitute("Unable to compact table $0", args[2]));
         return Status::OK();
       });
@@ -537,12 +585,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "dump_masters_state", " [console]",
+      "dump_masters_state", " [CONSOLE]",
       [client](const CLIArguments& args) -> Status {
         bool to_console = false;
         if (args.size() > 2) {
-          const string output_type = args[2];
-          if (output_type == "console") {
+          if (IsEqCaseInsensitive(args[2], "CONSOLE")) {
             to_console = true;
           } else {
             return ClusterAdminCli::kInvalidArguments;

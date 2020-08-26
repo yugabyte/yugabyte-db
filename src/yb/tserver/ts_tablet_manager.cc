@@ -687,16 +687,17 @@ TSTabletManager::StartTabletStateTransitionForCreation(const TabletId& tablet_id
 }
 
 Status TSTabletManager::CreateNewTablet(
-    const string &table_id,
-    const string &tablet_id,
-    const Partition &partition,
-    const string &table_name,
+    const string& table_id,
+    const string& tablet_id,
+    const Partition& partition,
+    const string& namespace_name,
+    const string& table_name,
     TableType table_type,
-    const Schema &schema,
-    const PartitionSchema &partition_schema,
+    const Schema& schema,
+    const PartitionSchema& partition_schema,
     const boost::optional<IndexInfo>& index_info,
     RaftConfigPB config,
-    TabletPeerPtr *tablet_peer,
+    TabletPeerPtr* tablet_peer,
     const bool colocated) {
   if (state() != MANAGER_RUNNING) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
@@ -723,6 +724,7 @@ Status TSTabletManager::CreateNewTablet(
   Status create_status = RaftGroupMetadata::CreateNew(fs_manager_,
                                                    table_id,
                                                    tablet_id,
+                                                   namespace_name,
                                                    table_name,
                                                    table_type,
                                                    schema,

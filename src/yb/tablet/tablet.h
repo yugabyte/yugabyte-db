@@ -212,11 +212,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS UpdateIndexInBatches(
       const QLTableRow& row, const std::vector<IndexInfo>& indexes,
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests);
+      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      CoarseTimePoint* last_flushed_at);
 
   CHECKED_STATUS FlushIndexBatchIfRequired(
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-      bool force_flush = false);
+      bool force_flush,
+      CoarseTimePoint* last_flushed_at);
 
   CHECKED_STATUS
   FlushWithRetries(
@@ -682,19 +684,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // atomically to avoid race conditions.
   std::shared_ptr<client::YBMetaDataCache> YBMetaDataCache();
 
-  // Lock protecting schema_ and key_schema_.
-  //
-  // Writers take this lock in shared mode before decoding and projecting
-  // their requests. They hold the lock until after APPLY.
-  //
-  // Readers take this lock in shared mode only long enough to copy the
-  // current schema into the iterator, after which all projection is taken
-  // care of based on that copy.
-  //
-  // On an AlterSchema, this is taken in exclusive mode during Prepare() and
-  // released after the schema change has been applied.
-  mutable rw_semaphore schema_lock_;
-
   const Schema key_schema_;
 
   RaftGroupMetadataPtr metadata_;
@@ -849,7 +838,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   IsSysCatalogTablet is_sys_catalog_;
   TransactionsEnabled txns_enabled_;
-  CoarseTimePoint last_backfill_flush_at_;
 
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
 

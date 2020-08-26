@@ -43,10 +43,9 @@ showAsideToc: true
   
 </ul>
 
+After [creating a local cluster](../../create-local-cluster/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../api/ysql/).
 
-After [creating a local cluster](../../create-local-cluster/), you can now begin to explore YugabyteDB's PostgreSQL-compatible fully-relational [Yugabyte SQL](../../api/ysql/) API.
-
-[**ysqlsh**](../../../admin/ysqlsh/) is the command line shell for interacting with the YSQL API. You will use ysqlsh for this tutorial.
+[**ysqlsh**](../../../admin/ysqlsh/) is the command line shell for interacting with the YSQL API. You will use `ysqlsh` for this tutorial.
 
 ## 1. Load sample data
 

@@ -6,7 +6,7 @@ description: Return the count of values in an array using jsonb_array_length() a
 menu:
   latest:
     identifier: jsonb-array-length
-    parent: functions-operators
+    parent: json-functions-operators
     weight: 80
 isTocNested: true
 showAsideToc: true

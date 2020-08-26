@@ -320,7 +320,7 @@ string MiniCluster::GetMasterAddresses() const {
   return peer_addrs;
 }
 
-MiniMaster* MiniCluster::leader_mini_master() {
+int MiniCluster::LeaderMasterIdx() {
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < kMasterLeaderElectionWaitTimeSeconds) {
@@ -331,14 +331,19 @@ MiniMaster* MiniCluster::leader_mini_master() {
       }
       CatalogManager::ScopedLeaderSharedLock l(master->master()->catalog_manager());
       if (l.catalog_status().ok() && l.leader_status().ok()) {
-        return master;
+        return i;
       }
     }
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
   LOG(ERROR) << "No leader master elected after " << kMasterLeaderElectionWaitTimeSeconds
              << " seconds.";
-  return nullptr;
+  return -1;
+}
+
+MiniMaster* MiniCluster::leader_mini_master() {
+  auto idx = LeaderMasterIdx();
+  return idx != -1 ? mini_master(idx) : nullptr;
 }
 
 void MiniCluster::Shutdown() {
@@ -839,6 +844,22 @@ void ShutdownAllMasters(MiniCluster* cluster) {
 Status StartAllMasters(MiniCluster* cluster) {
   for (int i = 0; i != cluster->num_masters(); ++i) {
     RETURN_NOT_OK(cluster->mini_master(i)->Start());
+  }
+
+  return Status::OK();
+}
+
+Status BreakConnectivity(MiniCluster* cluster, int idx1, int idx2) {
+  for (int from_idx : {idx1, idx2}) {
+    int to_idx = idx1 ^ idx2 ^ from_idx;
+    for (auto type : {server::Private::kFalse, server::Private::kTrue}) {
+      // TEST_RpcAddress is 1-indexed; we expect from_idx/to_idx to be 0-indexed.
+      auto address = VERIFY_RESULT(HostToAddress(TEST_RpcAddress(to_idx + 1, type)));
+      for (auto messenger : { cluster->mini_master(from_idx)->master()->messenger(),
+                              cluster->mini_tablet_server(from_idx)->server()->messenger() }) {
+        messenger->BreakConnectivityTo(address);
+      }
+    }
   }
 
   return Status::OK();
