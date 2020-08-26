@@ -755,7 +755,7 @@ class YBBackup:
     def is_ysql_keyspace(self):
         return self.args.keyspace and keyspace_type(self.args.keyspace[0]) == 'ysql'
 
-    def needs_change_user():
+    def needs_change_user(self):
         return self.args.ssh_user != self.args.remote_user
 
     def get_leader_master_ip(self):
