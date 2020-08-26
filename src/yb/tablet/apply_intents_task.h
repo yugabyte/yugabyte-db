@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_REMOVE_INTENTS_TASK_H
-#define YB_TABLET_REMOVE_INTENTS_TASK_H
+#ifndef YB_TABLET_APPLY_INTENTS_TASK_H
+#define YB_TABLET_APPLY_INTENTS_TASK_H
 
 #include "yb/rpc/strand.h"
 
@@ -21,27 +21,30 @@
 namespace yb {
 namespace tablet {
 
-// Used by RunningTransaction to remove its intents.
-class RemoveIntentsTask : public rpc::StrandTask {
+// Used by RunningTransaction to apply its intents.
+class ApplyIntentsTask : public rpc::StrandTask {
  public:
-  RemoveIntentsTask(TransactionIntentApplier* applier,
-                    TransactionParticipantContext* participant_context,
-                    RunningTransactionContext* running_transaction_context,
-                    const TransactionId& id);
+  ApplyIntentsTask(TransactionIntentApplier* applier,
+                   RunningTransactionContext* running_transaction_context,
+                   const TransactionApplyData* apply_data);
 
+  // Returns true if task was successfully prepared and could be submitted to the thread pool.
   bool Prepare(RunningTransactionPtr transaction);
   void Run() override;
   void Done(const Status& status) override;
 
-  virtual ~RemoveIntentsTask() = default;
+  virtual ~ApplyIntentsTask() = default;
 
  private:
   std::string LogPrefix() const;
 
   TransactionIntentApplier& applier_;
-  TransactionParticipantContext& participant_context_;
   RunningTransactionContext& running_transaction_context_;
-  TransactionId id_;
+  const TransactionApplyData& apply_data_;
+
+  // Whether this task was already in use or not.
+  // Helps to avoid multiple submissions of the same task.
+  // The task can be submitted only once, so this flag never reverts its state to false.
   std::atomic<bool> used_{false};
   RunningTransactionPtr transaction_;
 };
@@ -49,4 +52,4 @@ class RemoveIntentsTask : public rpc::StrandTask {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_REMOVE_INTENTS_TASK_H
+#endif // YB_TABLET_APPLY_INTENTS_TASK_H

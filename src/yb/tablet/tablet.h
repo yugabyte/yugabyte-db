@@ -242,7 +242,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS ImportData(const std::string& source_dir);
 
-  CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) override;
+  Result<docdb::ApplyTransactionState> ApplyIntents(const TransactionApplyData& data) override;
 
   CHECKED_STATUS RemoveIntents(const RemoveIntentsData& data, const TransactionId& id) override;
 

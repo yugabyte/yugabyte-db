@@ -186,10 +186,40 @@ void PrepareTransactionWriteBatch(
     const Slice& replicated_batches_state,
     IntraTxnWriteId* write_id);
 
-CHECKED_STATUS PrepareApplyIntentsBatch(
-    const TransactionId& transaction_id, HybridTime commit_ht, const KeyBounds* key_bounds,
+// See ApplyTransactionStatePB for details.
+struct ApplyTransactionState {
+  std::string key;
+  IntraTxnWriteId write_id = 0;
+
+  bool active() const {
+    return !key.empty();
+  }
+
+  std::string ToString() const;
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_key(key);
+    pb->set_write_id(write_id);
+  }
+
+  template <class PB>
+  static ApplyTransactionState FromPB(const PB& pb) {
+    return ApplyTransactionState {
+      .key = pb.key(),
+      .write_id = pb.write_id(),
+    };
+  }
+};
+
+Result<ApplyTransactionState> PrepareApplyIntentsBatch(
+    const TransactionId& transaction_id,
+    HybridTime commit_ht,
+    const KeyBounds* key_bounds,
+    const ApplyTransactionState* apply_state,
     rocksdb::WriteBatch* regular_batch,
-    rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch);
+    rocksdb::DB* intents_db,
+    rocksdb::WriteBatch* intents_batch);
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
 

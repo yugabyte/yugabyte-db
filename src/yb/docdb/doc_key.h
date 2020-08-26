@@ -907,9 +907,9 @@ struct KeyBounds {
 // Combined DB to store regular records and intents.
 // TODO: move this to a more appropriate header file.
 struct DocDB {
-  rocksdb::DB* regular;
-  rocksdb::DB* intents;
-  const KeyBounds* key_bounds;
+  rocksdb::DB* regular = nullptr;
+  rocksdb::DB* intents = nullptr;
+  const KeyBounds* key_bounds = nullptr;
 
   static DocDB FromRegularUnbounded(rocksdb::DB* regular) {
     return {regular, nullptr /* intents */, &KeyBounds::kNoBounds};
