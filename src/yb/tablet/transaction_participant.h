@@ -67,12 +67,14 @@ namespace tablet {
 
 struct TransactionApplyData {
   int64_t leader_term = -1;
-  TransactionId transaction_id;
+  TransactionId transaction_id = TransactionId::Nil();
   OpIdPB op_id;
   HybridTime commit_ht;
   HybridTime log_ht;
   bool sealed = false;
   TabletId status_tablet;
+  // Owned by running transaction if non-null.
+  const docdb::ApplyTransactionState* apply_state = nullptr;
 
   std::string ToString() const;
 };
@@ -85,7 +87,7 @@ struct RemoveIntentsData {
 // Interface to object that should apply intents in RocksDB when transaction is applying.
 class TransactionIntentApplier {
  public:
-  virtual CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) = 0;
+  virtual Result<docdb::ApplyTransactionState> ApplyIntents(const TransactionApplyData& data) = 0;
   virtual CHECKED_STATUS RemoveIntents(
       const RemoveIntentsData& data, const TransactionId& transaction_id) = 0;
   virtual CHECKED_STATUS RemoveIntents(
@@ -195,7 +197,7 @@ class TransactionParticipant : public TransactionStatusManager {
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
 
   void SetDB(
-      rocksdb::DB* db, const docdb::KeyBounds* key_bounds,
+      const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
       RWOperationCounter* pending_op_counter);
 
   CHECKED_STATUS CheckAborted(const TransactionId& id);

@@ -1102,11 +1102,9 @@ DocKeyEncoderAfterTableIdStep DocKeyEncoder::Schema(const class Schema& schema) 
 }
 
 Result<bool> DocKeyDecoder::DecodeCotableId(Uuid* uuid) {
-  if (input_.empty() || input_[0] != ValueTypeAsChar::kTableId) {
+  if (!input_.TryConsumeByte(ValueTypeAsChar::kTableId)) {
     return false;
   }
-
-  input_.consume_byte();
 
   if (input_.size() < kUuidSize) {
     return STATUS_FORMAT(

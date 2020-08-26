@@ -53,10 +53,11 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/enums.h"
-#include "yb/util/logging.h"
-#include "yb/util/status.h"
-#include "yb/util/metrics.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/status.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 
@@ -82,6 +83,10 @@ DEFINE_bool(enable_transaction_sealing, false,
             "Whether transaction sealing is enabled.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
+DEFINE_int32(txn_max_apply_batch_records, 100000,
+             "Max number of apply records allowed in single RocksDB batch. "
+             "When a transaction's data in one tablet does not fit into specified number of "
+             "records, it will be applied using multiple RocksDB write batches.");
 
 namespace yb {
 namespace docdb {
@@ -835,16 +840,11 @@ CHECKED_STATUS IntentToWriteRequest(
 #if defined(DUMP_APPLY)
     SubDocKey sub_doc_key;
     CHECK_OK(sub_doc_key.FullyDecodeFrom(intent.doc_path, HybridTimeRequired::kFalse));
-    if (!sub_doc_key.subkeys().empty() && sub_doc_key.subkeys().front().GetColumnId() == 11) {
-      CHECK_OK(value.DecodeFromValue(intent_value));
+    if (!sub_doc_key.subkeys().empty()) {
       auto txn_id = FullyDecodeTransactionId(transaction_id_slice);
-      LOG(INFO) << "Apply: " << sub_doc_key.doc_key().hashed_group().front()
-                << ", time: " << commit_ht << ", txn: " << txn_id
-                << ", raw: " << intent_iter->key().ToDebugHexString()
-                << ", value: " << value.GetString()
-                << ", subkey: " << sub_doc_key.subkeys().front();
-      LOG(INFO) << txn_id << " APPLY: " << sub_doc_key.doc_key().hashed_group().front().GetInt32()
-                << " = " << value.GetString();
+      LOG(INFO) << "Apply: " << sub_doc_key.ToString()
+                << ", time: " << commit_ht << ", write id: " << *write_id << ", txn: " << txn_id
+                << ", value: " << intent_value.ToDebugString();
     }
 #endif
 
@@ -855,10 +855,59 @@ CHECKED_STATUS IntentToWriteRequest(
   return Status::OK();
 }
 
-Status PrepareApplyIntentsBatch(
-    const TransactionId& transaction_id, HybridTime commit_ht, const KeyBounds* key_bounds,
+template <size_t N>
+void PutApplyState(
+    const Slice& transaction_id_slice, HybridTime commit_ht, IntraTxnWriteId write_id,
+    const std::array<Slice, N>& value_parts, rocksdb::WriteBatch* regular_batch) {
+  char transaction_apply_state_value_type = ValueTypeAsChar::kTransactionApplyState;
+  char group_end_value_type = ValueTypeAsChar::kGroupEnd;
+  char hybrid_time_value_type = ValueTypeAsChar::kHybridTime;
+  DocHybridTime doc_hybrid_time(commit_ht, write_id);
+  char doc_hybrid_time_buffer[kMaxBytesPerEncodedHybridTime];
+  char* doc_hybrid_time_buffer_end = doc_hybrid_time.EncodedInDocDbFormat(
+      doc_hybrid_time_buffer);
+  std::array<Slice, 5> key_parts = {{
+      Slice(&transaction_apply_state_value_type, 1),
+      transaction_id_slice,
+      Slice(&group_end_value_type, 1),
+      Slice(&hybrid_time_value_type, 1),
+      Slice(doc_hybrid_time_buffer, doc_hybrid_time_buffer_end),
+  }};
+  regular_batch->Put(key_parts, value_parts);
+}
+
+ApplyTransactionState StoreApplyState(
+    const Slice& transaction_id_slice, const Slice& key, IntraTxnWriteId write_id,
+    HybridTime commit_ht, rocksdb::WriteBatch* regular_batch) {
+  auto result = ApplyTransactionState {
+    .key = key.ToBuffer(),
+    .write_id = write_id,
+  };
+  ApplyTransactionStatePB pb;
+  result.ToPB(&pb);
+  pb.set_commit_ht(commit_ht.ToUint64());
+  faststring encoded_pb;
+  pb_util::SerializeToString(pb, &encoded_pb);
+  char string_value_type = ValueTypeAsChar::kString;
+  std::array<Slice, 2> value_parts = {{
+    Slice(&string_value_type, 1),
+    Slice(encoded_pb.data(), encoded_pb.size())
+  }};
+  PutApplyState(transaction_id_slice, commit_ht, write_id, value_parts, regular_batch);
+  return result;
+}
+
+Result<ApplyTransactionState> PrepareApplyIntentsBatch(
+    const TransactionId& transaction_id,
+    HybridTime commit_ht,
+    const KeyBounds* key_bounds,
+    const ApplyTransactionState* apply_state,
     rocksdb::WriteBatch* regular_batch,
-    rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch) {
+    rocksdb::DB* intents_db,
+    rocksdb::WriteBatch* intents_batch) {
+  SCHECK_EQ((regular_batch != nullptr) + (intents_batch != nullptr), 1, InvalidArgument,
+            "Exactly one write batch should be non-null, either regular or intents");
+
   // regular_batch or intents_batch could be null. In this case we don't fill apply batch for
   // appropriate DB.
 
@@ -892,8 +941,23 @@ Status PrepareApplyIntentsBatch(
   const auto& log_prefix = intents_db->GetOptions().log_prefix;
 
   IntraTxnWriteId write_id = 0;
+  if (apply_state) {
+    reverse_index_iter.Seek(apply_state->key);
+    write_id = apply_state->write_id;
+    if (regular_batch) {
+      // This sanity check is invalid for remove case, because .SST file could be deleted.
+      LOG_IF(DFATAL, !reverse_index_iter.Valid() || reverse_index_iter.key() != apply_state->key)
+          << "Continue from wrong key: " << Slice(apply_state->key).ToDebugString() << ", txn: "
+          << transaction_id << ", position: "
+          << (reverse_index_iter.Valid() ? reverse_index_iter.key().ToDebugString() : "<INVALID>")
+          << ", write id: " << write_id;
+    }
+  }
+
+  const uint64_t max_records = FLAGS_txn_max_apply_batch_records;
+  const uint64_t write_id_limit = write_id + max_records;
   while (reverse_index_iter.Valid()) {
-    rocksdb::Slice key_slice(reverse_index_iter.key());
+    const Slice key_slice(reverse_index_iter.key());
 
     if (!key_slice.starts_with(key_prefix)) {
       break;
@@ -916,8 +980,14 @@ Status PrepareApplyIntentsBatch(
       // Value of reverse index is a key of original intent record, so seek it and check match.
       if (regular_batch &&
           (!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
+        // We store apply state only if there are some more intents left.
+        // So doing this check here, instead of right after write_id was incremented.
+        if (write_id >= write_id_limit) {
+          return StoreApplyState(
+              transaction_id_slice, key_slice, write_id, commit_ht, regular_batch);
+        }
         RETURN_NOT_OK(IntentToWriteRequest(
-            transaction_id_slice, commit_ht, reverse_index_iter.key(), reverse_index_value,
+            transaction_id_slice, commit_ht, key_slice, reverse_index_value,
             &intent_iter, regular_batch, &write_id));
       }
 
@@ -927,13 +997,30 @@ Status PrepareApplyIntentsBatch(
     }
 
     if (intents_batch) {
-      intents_batch->SingleDelete(reverse_index_iter.key());
+      if (intents_batch->Count() >= max_records) {
+        return ApplyTransactionState {
+          .key = key_slice.ToBuffer(),
+          .write_id = write_id,
+        };
+      }
+
+      intents_batch->SingleDelete(key_slice);
     }
 
     reverse_index_iter.Next();
   }
 
-  return Status::OK();
+  if (apply_state && regular_batch) {
+    char tombstone_value_type = ValueTypeAsChar::kTombstone;
+    std::array<Slice, 1> value_parts = {{Slice(&tombstone_value_type, 1)}};
+    PutApplyState(transaction_id_slice, commit_ht, write_id, value_parts, regular_batch);
+  }
+
+  return ApplyTransactionState {};
+}
+
+std::string ApplyTransactionState::ToString() const {
+  return Format("{ key: $0 write_id: $1 }", Slice(key).ToDebugString(), write_id);
 }
 
 }  // namespace docdb
