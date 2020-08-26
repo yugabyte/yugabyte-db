@@ -140,51 +140,8 @@ $ mkdir -p src/main/java/com/yugabyte/sample/apps
 Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YBSqlHelloWorld.java`.
 
 ```java
-package com.yugabyte.sample.apps;
-import java.net.InetSocketAddress;
-import java.util.List;
-import com.datastax.oss.driver.api.core.CqlSession;
-import com.datastax.oss.driver.api.core.cql.ResultSet;
-import com.datastax.oss.driver.api.core.cql.Row;
-public class YBCqlHelloWorld {
-    public static void main(String[] args) {
-        try {
-            // Create a Cassandra client.
-            CqlSession session = CqlSession
-                .builder()
-                .addContactPoint(new InetSocketAddress("127.0.0.1", 9042))
-                .withLocalDatacenter("datacenter1")
-                .build();
-            // Create keyspace 'ybdemo' if it does not exist.
-            String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS ybdemo;";
-            session.execute(createKeyspace);
-            System.out.println("Created keyspace ybdemo");
-            // Create table 'employee' if it does not exist.
-            String createTable = "CREATE TABLE IF NOT EXISTS ybdemo.employee (id int PRIMARY KEY, " + "name varchar, " +
-                "age int, " + "language varchar);";
-            session.execute(createTable);
-            System.out.println("Created table employee");
-            // Insert a row.
-            String insert = "INSERT INTO ybdemo.employee (id, name, age, language)" +
-                " VALUES (1, 'John', 35, 'Java');";
-            session.execute(insert);
-            System.out.println("Inserted data: " + insert);
-            // Query the row and print out the result.
-            String select = "SELECT name, age, language FROM ybdemo.employee WHERE id = 1;";
-            ResultSet selectResult = session.execute(select);
-            List < Row > rows = selectResult.all();
-            String name = rows.get(0).getString(0);
-            int age = rows.get(0).getInt(1);
-            String language = rows.get(0).getString(2);
-            System.out.println("Query returned " + rows.size() + " row: " + "name=" + name + ", age=" + age +
-                ", language: " + language);
-            // Close the client.
-            session.close();
-        } catch (Exception e) {
-            System.err.println("Error: " + e.getMessage());
-        }
-    }
-}
+
+
 ```
 
 ### Build the project
