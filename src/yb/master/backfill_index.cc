@@ -113,7 +113,7 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
-DEFINE_int32(index_backfill_rpc_timeout_ms, 1 * 60 * 1000, // 1 min.
+DEFINE_int32(index_backfill_rpc_timeout_ms, 1 * 30 * 1000, // 30 sec.
              "Timeout used by the master when attempting to backfilll a tablet "
              "during index creation.");
 TAG_FLAG(index_backfill_rpc_timeout_ms, advanced);

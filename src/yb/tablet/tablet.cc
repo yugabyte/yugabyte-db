@@ -185,7 +185,7 @@ DEFINE_int32(backfill_index_rate_rows_per_sec, 0, "Rate of at which the "
 TAG_FLAG(backfill_index_rate_rows_per_sec, advanced);
 TAG_FLAG(backfill_index_rate_rows_per_sec, runtime);
 
-DEFINE_int32(backfill_index_timeout_grace_margin_ms, 50,
+DEFINE_int32(backfill_index_timeout_grace_margin_ms, 500,
              "The time we give the backfill process to wrap up the current set "
              "of writes and return successfully the RPC with the information about "
              "how far we have processed the rows.");
