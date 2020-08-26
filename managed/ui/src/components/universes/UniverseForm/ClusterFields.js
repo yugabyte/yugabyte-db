@@ -5,8 +5,10 @@ import { Row, Col } from 'react-bootstrap';
 import { Field, FieldArray } from 'redux-form';
 import {browserHistory} from 'react-router';
 import _ from 'lodash';
-import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
-  isNonEmptyArray, trimSpecialChars } from '../../../utils/ObjectUtils';
+import {
+  isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
+  isNonEmptyArray, trimSpecialChars, normalizeToValidPort
+} from '../../../utils/ObjectUtils';
 import {
   YBTextInput,YBTextInputWithLabel, YBSelectWithLabel, YBMultiSelectWithLabel,
   YBRadioButtonBarWithLabel, YBToggle, YBUnControlledNumericInput,
@@ -34,6 +36,20 @@ const API_UI_STORAGE_TYPES = {
   'IO1': 'IO1',
   'GP2': 'GP2'
 };
+
+const DEFAULT_PORTS = {
+  MASTER_HTTP_PORT: 7000,
+  MASTER_RPC_PORT: 7100,
+  TSERVER_HTTP_PORT: 9000,
+  TSERVER_RPC_PORT: 9100,
+  YEDIS_HTTP_PORT: 11000,
+  YEDIS_RPC_PORT: 6379,
+  YQL_HTTP_PORT: 12000,
+  YQL_RPC_PORT: 9042,
+  YSQL_HTTP_PORT: 13000,
+  YSQL_RPC_PORT: 5433,
+  NODE_EXPORTER_PORT: 9300
+}
 
 const DEFAULT_STORAGE_TYPES = {
   'AWS': 'GP2',
@@ -64,7 +80,8 @@ const initialState = {
   enableYSQL: false,
   enableNodeToNodeEncrypt: false,
   enableClientToNodeEncrypt: false,
-  enableEncryptionAtRest: false
+  enableEncryptionAtRest: false,
+  customizePorts: false
 };
 
 export default class ClusterFields extends Component {
@@ -96,6 +113,7 @@ export default class ClusterFields extends Component {
     this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
     this.accessKeyChanged = this.accessKeyChanged.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
+    this.toggleCustomizePorts = this.toggleCustomizePorts.bind(this);
 
     this.currentInstanceType = _.get(this.props.universe,
       'currentUniverse.data.universeDetails.clusters[0].userIntent.instanceType');
@@ -115,6 +133,20 @@ export default class ClusterFields extends Component {
     }
   }
 
+  portsCustomized = (communicationPorts) => {
+    return communicationPorts.masterHttpPort !== DEFAULT_PORTS.MASTER_HTTP_PORT ||
+      communicationPorts.masterRpcPort !== DEFAULT_PORTS.MASTER_RPC_PORT ||
+      communicationPorts.tserverHttpPort !== DEFAULT_PORTS.TSERVER_HTTP_PORT ||
+      communicationPorts.tserverRpcPort !== DEFAULT_PORTS.TSERVER_RPC_PORT ||
+      communicationPorts.redisServerHttpPort !== DEFAULT_PORTS.YEDIS_HTTP_PORT ||
+      communicationPorts.redisServerRpcPort !== DEFAULT_PORTS.YEDIS_RPC_PORT ||
+      communicationPorts.yqlServerHttpPort !== DEFAULT_PORTS.YQL_HTTP_PORT ||
+      communicationPorts.yqlServerRpcPort !== DEFAULT_PORTS.YQL_RPC_PORT ||
+      communicationPorts.ysqlServerHttpPort !== DEFAULT_PORTS.YSQL_HTTP_PORT ||
+      communicationPorts.ysqlServerRpcPort !== DEFAULT_PORTS.YSQL_RPC_PORT ||
+      communicationPorts.nodeExporterPort !== DEFAULT_PORTS.NODE_EXPORTER_PORT;
+  }
+
   UNSAFE_componentWillMount() {
     const { formValues, clusterType, updateFormField, type } = this.props;
     const { universe: { currentUniverse: { data: { universeDetails }}}} = this.props;
@@ -122,6 +154,36 @@ export default class ClusterFields extends Component {
     if (isNonEmptyArray(this.props.softwareVersions) && !isNonEmptyString(this.state.ybSoftwareVersion) && type === "Create") {
       this.setState({ybSoftwareVersion: this.props.softwareVersions[0]});
       updateFormField(`${clusterType}.ybSoftwareVersion`, this.props.softwareVersions[0]);
+    }
+
+    if (type === "Create") {
+      updateFormField("primary.masterHttpPort", DEFAULT_PORTS.MASTER_HTTP_PORT);
+      updateFormField("primary.masterRpcPort", DEFAULT_PORTS.MASTER_RPC_PORT);
+      updateFormField("primary.tserverHttpPort", DEFAULT_PORTS.TSERVER_HTTP_PORT);
+      updateFormField("primary.tserverRpcPort", DEFAULT_PORTS.TSERVER_RPC_PORT);
+      updateFormField("primary.redisHttpPort", DEFAULT_PORTS.YEDIS_HTTP_PORT);
+      updateFormField("primary.redisRpcPort", DEFAULT_PORTS.YEDIS_RPC_PORT);
+      updateFormField("primary.yqlHttpPort", DEFAULT_PORTS.YQL_HTTP_PORT);
+      updateFormField("primary.yqlRpcPort", DEFAULT_PORTS.YQL_RPC_PORT);
+      updateFormField("primary.ysqlHttpPort", DEFAULT_PORTS.YSQL_HTTP_PORT);
+      updateFormField("primary.ysqlRpcPort", DEFAULT_PORTS.YSQL_RPC_PORT);
+      updateFormField("primary.nodeExporterPort", DEFAULT_PORTS.NODE_EXPORTER_PORT);
+    } else if (type === "Edit") {
+      const { communicationPorts } = universeDetails;
+      const customPorts = this.portsCustomized(communicationPorts);
+      updateFormField("primary.customizePorts", customPorts);
+      this.setState({customizePorts: customPorts});
+      updateFormField("primary.masterHttpPort", communicationPorts.masterHttpPort);
+      updateFormField("primary.masterRpcPort", communicationPorts.masterRpcPort);
+      updateFormField("primary.tserverHttpPort", communicationPorts.tserverHttpPort);
+      updateFormField("primary.tserverRpcPort", communicationPorts.tserverRpcPort);
+      updateFormField("primary.redisHttpPort", communicationPorts.redisServerHttpPort);
+      updateFormField("primary.redisRpcPort", communicationPorts.redisServerRpcPort);
+      updateFormField("primary.yqlHttpPort", communicationPorts.yqlServerHttpPort);
+      updateFormField("primary.yqlRpcPort", communicationPorts.yqlServerRpcPort);
+      updateFormField("primary.ysqlHttpPort", communicationPorts.ysqlServerHttpPort);
+      updateFormField("primary.ysqlRpcPort", communicationPorts.ysqlServerRpcPort);
+      updateFormField("primary.nodeExporterPort", communicationPorts.nodeExporterPort);
     }
 
     if (isNonEmptyObject(formValues['primary']) && clusterType !== 'primary') {
@@ -537,6 +599,10 @@ export default class ClusterFields extends Component {
       updateFormField('primary.enableEncryptionAtRest', event.target.checked);
       this.setState({enableEncryptionAtRest: event.target.checked});
     }
+  }
+
+  toggleCustomizePorts(event) {
+    this.setState({customizePorts: event.target.checked});
   }
 
   handleAwsArnChange(event) {
@@ -1109,6 +1175,8 @@ export default class ClusterFields extends Component {
         label="Name" isReadOnly={isFieldReadOnly}/>);
     }
 
+    const portValidation = value => value && value < 65536 ? undefined : 'Invalid Port';
+
     return (
       <div>
         <div className="form-section" data-yb-section="cloud-config">
@@ -1242,6 +1310,166 @@ export default class ClusterFields extends Component {
                 </div>
               </Col>
             </Row>
+          }
+          <Row>
+            <Col md={12}>
+              <div className="form-right-aligned-labels">
+                <Field
+                  name={`${clusterType}.customizePorts`}
+                  component={YBToggle}
+                  defaultChecked={false}
+                  disableOnChange={disableToggleOnChange}
+                  checkedVal={this.state.customizePorts}
+                  onToggle={this.toggleCustomizePorts}
+                  label="Override Deployment Ports" isReadOnly={isFieldReadOnly}
+                />
+              </div>
+            </Col>
+          </Row>
+          {this.state.customizePorts &&
+            <Row>
+              <Col sm={3}>
+                <div className="form-right-aligned-labels">
+                  <Field
+                    name={`${clusterType}.masterHttpPort`}
+                    type="text" component={YBTextInputWithLabel}
+                    normalize={normalizeToValidPort}
+                    validate={portValidation}
+                    label="Master HTTP Port" isReadOnly={isFieldReadOnly}
+                  />
+                </div>
+              </Col>
+              <Col sm={3}>
+                <div className="form-right-aligned-labels">
+                  <Field
+                    name={`${clusterType}.masterRpcPort`}
+                    type="text" component={YBTextInputWithLabel}
+                    normalize={normalizeToValidPort}
+                    validate={portValidation}
+                    label="Master RPC Port" isReadOnly={isFieldReadOnly}
+                  />
+                </div>
+              </Col>
+            </Row>
+          }
+          {this.state.customizePorts &&
+          <Row>
+            <Col sm={3}>
+              <div className="form-right-aligned-labels">
+                <Field
+                  name={`${clusterType}.tserverHttpPort`}
+                  type="text" component={YBTextInputWithLabel}
+                  normalize={normalizeToValidPort}
+                  validate={portValidation}
+                  label="Tserver HTTP Port" isReadOnly={isFieldReadOnly}
+                />
+              </div>
+            </Col>
+            <Col sm={3}>
+              <div className="form-right-aligned-labels">
+                <Field
+                  name={`${clusterType}.tserverRpcPort`}
+                  type="text" component={YBTextInputWithLabel}
+                  normalize={normalizeToValidPort}
+                  validate={portValidation}
+                  label="Tserver RPC Port" isReadOnly={isFieldReadOnly}
+                />
+              </div>
+            </Col>
+          </Row>
+          }
+          {this.state.customizePorts &&
+          <Row>
+            <Col sm={3}>
+              <div className="form-right-aligned-labels">
+                <Field
+                  name={`${clusterType}.yqlHttpPort`}
+                  type="text" component={YBTextInputWithLabel}
+                  normalize={normalizeToValidPort}
+                  validate={portValidation}
+                  label="YCQL HTTP Port" isReadOnly={isFieldReadOnly}
+                />
+              </div>
+            </Col>
+            <Col sm={3}>
+              <div className="form-right-aligned-labels">
+                <Field
+                  name={`${clusterType}.yqlRpcPort`}
+                  type="text" component={YBTextInputWithLabel}
+                  normalize={normalizeToValidPort}
+                  validate={portValidation}
+                  label="YCQL RPC Port" isReadOnly={isFieldReadOnly}
+                />
+              </div>
+            </Col>
+          </Row>
+          }
+          {this.state.customizePorts && this.state.enableYSQL &&
+          <Row>
+            <Col sm={3}>
+              <div className="form-right-aligned-labels">
+                <Field
+                  name={`${clusterType}.ysqlHttpPort`}
+                  type="text" component={YBTextInputWithLabel}
+                  normalize={normalizeToValidPort}
+                  validate={portValidation}
+                  label="YSQL HTTP Port" isReadOnly={isFieldReadOnly}
+                />
+              </div>
+            </Col>
+            <Col sm={3}>
+              <div className="form-right-aligned-labels">
+                <Field
+                  name={`${clusterType}.ysqlRpcPort`}
+                  type="text" component={YBTextInputWithLabel}
+                  normalize={normalizeToValidPort}
+                  validate={portValidation}
+                  label="YSQL RPC Port" isReadOnly={isFieldReadOnly}
+                />
+              </div>
+            </Col>
+          </Row>
+          }
+          {this.state.customizePorts &&
+          <Row>
+            <Col sm={3}>
+              <div className="form-right-aligned-labels">
+                <Field
+                  name={`${clusterType}.redisHttpPort`}
+                  type="text" component={YBTextInputWithLabel}
+                  normalize={normalizeToValidPort}
+                  validate={portValidation}
+                  label="Yedis HTTP Port" isReadOnly={isFieldReadOnly}
+                />
+              </div>
+            </Col>
+            <Col sm={3}>
+              <div className="form-right-aligned-labels">
+                <Field
+                  name={`${clusterType}.redisRpcPort`}
+                  type="text" component={YBTextInputWithLabel}
+                  normalize={normalizeToValidPort}
+                  validate={portValidation}
+                  label="Yedis RPC Port" isReadOnly={isFieldReadOnly}
+                />
+              </div>
+            </Col>
+          </Row>
+          }
+          {this.state.customizePorts &&
+          <Row>
+            <Col sm={3}>
+              <div className="form-right-aligned-labels">
+                <Field
+                  name={`${clusterType}.nodeExporterPort`}
+                  type="text" component={YBTextInputWithLabel}
+                  normalize={normalizeToValidPort}
+                  validate={portValidation}
+                  label="Node Exporter Port" isReadOnly={isFieldReadOnly}
+                />
+              </div>
+            </Col>
+          </Row>
           }
         </div>
         <div className="form-section" data-yb-section="g-flags">

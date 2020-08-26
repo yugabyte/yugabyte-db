@@ -352,6 +352,21 @@ class UniverseForm extends Component {
           submitPayload.encryptionAtRestConfig = {
             "key_op": formValues['primary'].enableEncryptionAtRest ? "ENABLE" : "UNDEFINED"
           };
+
+          submitPayload.communicationPorts = {
+            "masterHttpPort": formValues['primary'].masterHttpPort,
+            "masterRpcPort": formValues['primary'].masterRpcPort,
+            "tserverHttpPort": formValues['primary'].tserverHttpPort,
+            "tserverRpcPort": formValues['primary'].tserverRpcPort,
+            "redisServerHttpPort": formValues['primary'].redisHttpPort,
+            "redisServerRpcPort": formValues['primary'].redisRpcPort,
+            "yqlServerHttpPort": formValues['primary'].yqlHttpPort,
+            "yqlServerRpcPort": formValues['primary'].yqlRpcPort,
+            "ysqlServerHttpPort": formValues['primary'].ysqlHttpPort,
+            "ysqlServerRpcPort": formValues['primary'].ysqlRpcPort,
+            "nodeExporterPort": formValues['primary'].nodeExporterPort
+          };
+
           // Ensure a configuration was actually selected
           if (kmsConfigUUID !== null) {
             submitPayload.encryptionAtRestConfig['configUUID'] = kmsConfigUUID;
@@ -382,22 +397,6 @@ class UniverseForm extends Component {
         }
       ];
     }
-
-    // TODO: (Daniel) - Pipe this in to UI for universe create #5354
-    // Default communication ports
-    submitPayload.communicationPorts = {
-      "masterHttpPort": 7000,
-      "masterRpcPort": 7100,
-      "tserverHttpPort": 9000,
-      "tserverRpcPort": 9100,
-      "redisServerHttpPort": 11000,
-      "redisServerRpcPort": 6379,
-      "yqlServerHttpPort": 12000,
-      "yqlServerRpcPort": 9042,
-      "ysqlServerHttpPort": 13000,
-      "ysqlServerRpcPort": 5433,
-      "nodeExporterPort": 9300
-    };
 
     submitPayload.clusters = submitPayload.clusters.filter((c)=>(c.userIntent !== null));
     // filter clusters array if configuring(adding only) Read Replica due to server side validation
