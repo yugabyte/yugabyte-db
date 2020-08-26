@@ -220,3 +220,6 @@ FROM (SELECT 10*cosd(a), 10*sind(a)
       FROM generate_series(0, 360, 90) AS t(a)) AS t(x,y);
 
 RESET extra_float_digits;
+
+DROP TABLE FLOAT8_TBL;
+
