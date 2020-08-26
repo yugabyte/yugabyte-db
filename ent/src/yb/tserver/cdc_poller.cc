@@ -24,8 +24,14 @@
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
 
+// Similar heuristic to heartbeat_interval in heartbeater.cc.
 DEFINE_int32(async_replication_polling_delay_ms, 0,
-             "How long to delay in ms between applying and repolling.");
+             "How long to delay in ms between applying and polling.");
+DEFINE_int32(async_replication_idle_delay_ms, 100,
+             "How long to delay between polling when we expect no data at the destination.");
+DEFINE_int32(async_replication_max_idle_wait, 3,
+             "Maximum number of consecutive empty GetChanges until the poller "
+             "backs off to the idle interval, rather than immediately retrying.");
 DEFINE_int32(replication_failure_delay_exponent, 16 /* ~ 2^16/1000 ~= 65 sec */,
              "Max number of failures (N) to use when calculating exponential backoff (2^N-1).");
 DEFINE_bool(cdc_consumer_use_proxy_forwarding, false,
@@ -94,9 +100,14 @@ void CDCPoller::DoPoll() {
   std::lock_guard<std::mutex> l(data_mutex_);
 
   // determine if we should delay our upcoming poll
-  if (FLAGS_async_replication_polling_delay_ms > 0 || poll_failures_ > 0) {
-    int64_t delay = max(FLAGS_async_replication_polling_delay_ms, // user setting
-                        (1 << poll_failures_) -1); // failure backoff
+  int64_t delay = FLAGS_async_replication_polling_delay_ms; // normal throttling.
+  if (idle_polls_ >= FLAGS_async_replication_max_idle_wait) {
+    delay = max(delay, (int64_t)FLAGS_async_replication_idle_delay_ms); // idle backoff.
+  }
+  if (poll_failures_ > 0) {
+    delay = max(delay, (int64_t)1 << poll_failures_); // exponential backoff for failures.
+  }
+  if (delay > 0) {
     SleepFor(MonoDelta::FromMilliseconds(delay));
   }
 
@@ -208,6 +219,8 @@ void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
   apply_failures_ = max(apply_failures_ - 2, 0); // recover slowly if we've gotten congested
 
   op_id_ = response.last_applied_op_id;
+
+  idle_polls_ = (response.processed_record_count == 0) ? idle_polls_ + 1 : 0;
 
   Poll();
 }

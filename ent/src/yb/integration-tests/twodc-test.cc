@@ -28,6 +28,7 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -73,6 +74,8 @@ DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_int32(replication_failure_delay_exponent);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_int32(cdc_max_apply_batch_num_records);
+DECLARE_int32(async_replication_idle_delay_ms);
+DECLARE_int32(async_replication_max_idle_wait);
 
 namespace yb {
 
@@ -842,6 +845,124 @@ TEST_P(TwoDCTest, PollWithProducerClusterRestart) {
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
   WriteWorkload(0, 5, producer_client(), tables[0]->name());
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  // Cleanup.
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  Destroy();
+}
+
+
+TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
+  uint32_t replication_factor = 3, tablet_count = 1, master_count = 1;
+  auto tables = ASSERT_RESULT(
+      SetUpWithParams({tablet_count}, {tablet_count}, replication_factor,  master_count));
+
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, {tables[0]} , false ));
+
+  // After creating the cluster, make sure all tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
+
+  // Write some Info and query GetChanges to setup the CDCTabletMetrics.
+  WriteWorkload(0, 5, producer_client(), tables[0]->name());
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  /*****************************************************************
+   * Find the CDC Tablet Metrics, which we will use for this test. *
+   *****************************************************************/
+  // Find the stream.
+  master::ListCDCStreamsResponsePB stream_resp;
+  ASSERT_OK(GetCDCStreamForTable(tables[0]->id(), &stream_resp));
+  ASSERT_EQ(stream_resp.streams_size(), 1);
+  ASSERT_EQ(stream_resp.streams(0).table_id(), tables[0]->id());
+  auto stream_id = stream_resp.streams(0).stream_id();
+
+  // Find the tablet id for the stream.
+  TabletId tablet_id;
+  {
+    yb::cdc::ListTabletsRequestPB tablets_req;
+    yb::cdc::ListTabletsResponsePB tablets_resp;
+    rpc::RpcController rpc;
+    tablets_req.set_stream_id(stream_id);
+
+    auto producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+        &producer_client()->proxy_cache(),
+        HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+    ASSERT_OK(producer_cdc_proxy->ListTablets(tablets_req, &tablets_resp, &rpc));
+    ASSERT_FALSE(tablets_resp.has_error());
+    ASSERT_EQ(tablets_resp.tablets_size(), 1);
+    tablet_id = tablets_resp.tablets(0).tablet_id();
+  }
+
+  // Find the TServer that is hosting this tablet.
+  tserver::TabletServer* cdc_ts = nullptr;
+  std::string ts_uuid;
+  std::mutex data_mutex;
+  {
+    ASSERT_OK(WaitFor([this, &tablet_id, &ts_uuid, &data_mutex] {
+        producer_client()->LookupTabletById(
+            tablet_id, CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
+            [&ts_uuid, &data_mutex](const Result<client::internal::RemoteTabletPtr>& result) {
+              if (result.ok()) {
+                std::lock_guard<std::mutex> l(data_mutex);
+                ts_uuid = (*result)->LeaderTServer()->permanent_uuid();
+              }
+            },
+            client::UseCache::kFalse);
+        std::lock_guard<std::mutex> l(data_mutex);
+        return !ts_uuid.empty();
+      }, MonoDelta::FromSeconds(10), "Get TS for Tablet"));
+
+    for (auto ts : producer_cluster()->mini_tablet_servers()) {
+      if (ts->server()->permanent_uuid() == ts_uuid) {
+        cdc_ts = ts->server();
+        break;
+      }
+    }
+  }
+  ASSERT_NOTNULL(cdc_ts);
+
+  // Find the CDCTabletMetric associated with the above pair.
+  auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
+    cdc_ts->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  std::shared_ptr<cdc::CDCTabletMetrics> metrics =
+      cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id});
+
+  /***********************************
+   * Setup Complete.  Starting test. *
+   ***********************************/
+  // Log the first heartbeat count for baseline
+  auto first_heartbeat_count = metrics->rpc_heartbeats_responded->value();
+  LOG(INFO) << "first_heartbeat_count = " << first_heartbeat_count;
+
+  // Write some Info to the producer, which should be consumed quickly by GetChanges.
+  WriteWorkload(6, 10, producer_client(), tables[0]->name());
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  // Sleep for the idle timeout.
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_async_replication_idle_delay_ms));
+  auto active_heartbeat_count = metrics->rpc_heartbeats_responded->value();
+  LOG(INFO) << "active_heartbeat_count  = " << active_heartbeat_count;
+  // The new heartbeat count should be at least 3 (idle_wait)
+  ASSERT_GE(active_heartbeat_count - first_heartbeat_count, FLAGS_async_replication_max_idle_wait);
+
+  // Now, wait past update request frequency, so we should be using idle timing.
+  auto multiplier = 2;
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_async_replication_idle_delay_ms * multiplier));
+  auto idle_heartbeat_count = metrics->rpc_heartbeats_responded->value();
+  ASSERT_LE(idle_heartbeat_count - active_heartbeat_count, multiplier + 1 /*allow subtle race*/);
+  LOG(INFO) << "idle_heartbeat_count = " << idle_heartbeat_count;
+
+  // Write some more data to the producer and call GetChanges with some real data.
+  WriteWorkload(11, 15, producer_client(), tables[0]->name());
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  // Sleep for the idle timeout and Verify that the idle behavior ended now that we have new data.
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_async_replication_idle_delay_ms));
+  active_heartbeat_count = metrics->rpc_heartbeats_responded->value();
+  LOG(INFO) << "active_heartbeat_count  = " << active_heartbeat_count;
+  // The new heartbeat count should be at least 3 (idle_wait)
+  ASSERT_GE(active_heartbeat_count - idle_heartbeat_count, FLAGS_async_replication_max_idle_wait);
 
   // Cleanup.
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
