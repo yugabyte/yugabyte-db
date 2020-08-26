@@ -68,6 +68,11 @@
 #define FUNC_BSUBSTR    {"substring",  "b_substr",   ANYOID,    ANYOID, ANYOID, AGTYPEOID, -1, 1, false}
 #define FUNC_SPLIT      {"split",      "split",      ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false}
 #define FUNC_REPLACE    {"replace",    "replace",    ANYOID,    ANYOID, 0, AGTYPEOID, 3, 1, false}
+#define FUNC_RSIN       {"sin",        "r_sin",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_RCOS       {"cos",        "r_cos",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_RTAN       {"tan",        "r_tan",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_RCOT       {"cot",        "r_cot",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+
 
 /* supported functions */
 #define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
@@ -78,7 +83,8 @@
                              FUNC_TOUPPER, FUNC_TOLOWER, FUNC_LTRIM, \
                              FUNC_RTRIM, FUNC_BTRIM, FUNC_RSUBSTR, \
                              FUNC_LSUBSTR, FUNC_BSUBSTR, FUNC_SPLIT, \
-                             FUNC_REPLACE}
+                             FUNC_REPLACE, FUNC_RSIN, FUNC_RCOS, FUNC_RTAN, \
+                             FUNC_RCOT}
 
 /* structure for supported function signatures */
 typedef struct function_signature

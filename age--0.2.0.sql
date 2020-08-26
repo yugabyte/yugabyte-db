@@ -910,6 +910,9 @@ STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+--
+-- String functions
+--
 CREATE FUNCTION reverse(variadic "any")
 RETURNS agtype
 LANGUAGE c
@@ -994,9 +997,39 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 --
+-- Trig functions - radian input
+--
+CREATE FUNCTION r_sin(variadic "any")
+RETURNS agtype
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION r_cos(variadic "any")
+RETURNS agtype
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION r_tan(variadic "any")
+RETURNS agtype
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION r_cot(variadic "any")
+RETURNS agtype
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
 -- function for typecasting an agtype value to another agtype value
 --
-
 CREATE FUNCTION agtype_typecast_numeric(agtype)
 RETURNS agtype
 LANGUAGE c

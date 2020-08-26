@@ -2957,6 +2957,191 @@ ERROR:  replace() unsuppoted argument type 23
 SELECT * FROM replace('Hello', 1, 'E');
 ERROR:  replace() unsuppoted argument type 23
 --
+-- sin, cos, tan, cot
+--
+SELECT * FROM cypher('expr', $$
+    RETURN sin(3.1415)
+$$) AS (results agtype), sin(3.1415);
+       results        |         sin          
+----------------------+----------------------
+ 9.26535896604903e-05 | 9.26535896604903e-05
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN cos(3.1415)
+$$) AS (results agtype), cos(3.1415);
+      results       |        cos         
+--------------------+--------------------
+ -0.999999995707656 | -0.999999995707656
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN tan(3.1415)
+$$) AS (results agtype), tan(3.1415);
+        results        |          tan          
+-----------------------+-----------------------
+ -9.26535900581913e-05 | -9.26535900581913e-05
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN cot(3.1415)
+$$) AS (results agtype), cot(3.1415);
+      results      |        cot        
+-------------------+-------------------
+ -10792.8899395258 | -10792.8899395258
+(1 row)
+
+SELECT * FROM sin(3.1415), r_sin(3.1415);
+         sin          |        r_sin         
+----------------------+----------------------
+ 9.26535896604903e-05 | 9.26535896604903e-05
+(1 row)
+
+SELECT * FROM cos(3.1415), r_cos(3.1415);
+        cos         |       r_cos        
+--------------------+--------------------
+ -0.999999995707656 | -0.999999995707656
+(1 row)
+
+SELECT * FROM tan(3.1415), r_tan(3.1415);
+          tan          |         r_tan         
+-----------------------+-----------------------
+ -9.26535900581913e-05 | -9.26535900581913e-05
+(1 row)
+
+SELECT * FROM cot(3.1415), r_cot(3.1415);
+        cot        |       r_cot       
+-------------------+-------------------
+ -10792.8899395258 | -10792.8899395258
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN sin(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN cos(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN tan(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN cot(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM r_sin(null);
+ r_sin 
+-------
+ 
+(1 row)
+
+SELECT * FROM r_cos(null);
+ r_cos 
+-------
+ 
+(1 row)
+
+SELECT * FROM r_tan(null);
+ r_tan 
+-------
+ 
+(1 row)
+
+SELECT * FROM r_cot(null);
+ r_cot 
+-------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN sin("0")
+$$) AS (results agtype);
+ERROR:  sin() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN cos("0")
+$$) AS (results agtype);
+ERROR:  cos() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN tan("0")
+$$) AS (results agtype);
+ERROR:  tan() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN cot("0")
+$$) AS (results agtype);
+ERROR:  cot() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN sin()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN cos()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN tan()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN cot()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM r_sin('0');
+ERROR:  sin() unsuppoted argument type 25
+SELECT * FROM r_cos('0');
+ERROR:  cos() unsuppoted argument type 25
+SELECT * FROM r_tan('0');
+ERROR:  tan() unsuppoted argument type 25
+SELECT * FROM r_cot('0');
+ERROR:  cot() unsuppoted argument type 25
+SELECT * FROM r_sin();
+ERROR:  function r_sin() does not exist
+LINE 1: SELECT * FROM r_sin();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM r_cos();
+ERROR:  function r_cos() does not exist
+LINE 1: SELECT * FROM r_cos();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM r_tan();
+ERROR:  function r_tan() does not exist
+LINE 1: SELECT * FROM r_tan();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM r_cot();
+ERROR:  function r_cot() does not exist
+LINE 1: SELECT * FROM r_cot();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

@@ -129,6 +129,8 @@ static Datum get_vertex(const char *graph, const char *vertex_label,
 static Datum column_get_datum(TupleDesc tupdesc, HeapTuple tuple, int column,
                         const char *attname, Oid typid, bool isnull);
 static char *get_label_name(const char *graph_name, int64 graph_id);
+static float8 get_float_compatible_arg(Datum arg, Oid type, char *funcname,
+                                       bool *is_null);
 
 PG_FUNCTION_INFO_V1(agtype_in);
 
@@ -5608,6 +5610,300 @@ Datum replace(PG_FUNCTION_ARGS)
     agtv_result.type = AGTV_STRING;
     agtv_result.val.string.val = string;
     agtv_result.val.string.len = string_len;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+/*
+ * Helper function to extract one float8 compatible value from a variadic any.
+ * It supports integer2/4/8, float4/8, and numeric or the agtype integer, float,
+ * and numeric for the argument. It does not support a character based float,
+ * otherwise we would just use tofloat. It returns an agtype float on success or
+ * fails with a message stating the funcname that called it and a specific
+ * message stating the error.
+ */
+static float8 get_float_compatible_arg(Datum arg, Oid type, char *funcname,
+                                       bool *is_null)
+{
+    float8 result;
+
+    /* Assume the value is null. Although, this is only necessary for agtypes */
+    *is_null = true;
+
+    if (type != AGTYPEOID)
+    {
+        if (type == INT2OID)
+            result = (float8) DatumGetInt16(arg);
+        else if (type == INT4OID)
+            result = (float8) DatumGetInt32(arg);
+        else if (type == INT8OID)
+        {
+            /*
+             * Get the string representation of the integer because it could be
+             * too large to fit in a float. Let the float routine determine
+             * what to do with it.
+             */
+            char *string = DatumGetCString(DirectFunctionCall1(int8out, arg));
+            bool is_valid = false;
+            /* turn it into a float */
+            result = float8in_internal_null(string, NULL, "double precision",
+                                            string, &is_valid);
+
+            /* return null if it was not a invalid float */
+            if (!is_valid)
+                return 0;
+        }
+        else if (type == FLOAT4OID)
+            result = (float8) DatumGetFloat4(arg);
+        else if (type == FLOAT8OID)
+            result = DatumGetFloat8(arg);
+        else if (type == NUMERICOID)
+            result = DatumGetFloat8(DirectFunctionCall1(
+                numeric_float8_no_overflow, arg));
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("%s() unsuppoted argument type %d", funcname,
+                                   type)));
+    }
+    else
+    {
+        agtype *agt_arg;
+        agtype_value *agtv_value;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("%s() only supports scalar arguments",
+                                   funcname)));
+
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        /* check for agtype null */
+        if (agtv_value->type == AGTV_NULL)
+            return 0;
+
+        if (agtv_value->type == AGTV_INTEGER)
+        {
+            /*
+             * Get the string representation of the integer because it could be
+             * too large to fit in a float. Let the float routine determine
+             * what to do with it.
+             */
+            bool is_valid = false;
+            char *string = DatumGetCString(DirectFunctionCall1(int8out,
+                                                               Int64GetDatum(agtv_value->val.int_value)));
+            /* turn it into a float */
+            result = float8in_internal_null(string, NULL, "double precision",
+                                            string, &is_valid);
+
+            /* return null if it was not a valid float */
+            if (!is_valid)
+                return 0;
+        }
+        else if (agtv_value->type == AGTV_FLOAT)
+            result = agtv_value->val.float_value;
+        else if (agtv_value->type == AGTV_NUMERIC)
+            result = DatumGetFloat8(DirectFunctionCall1(
+                numeric_float8_no_overflow,
+                NumericGetDatum(agtv_value->val.numeric)));
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("%s() unsuppoted argument agtype %d",
+                                   funcname, agtv_value->type)));
+    }
+
+    /* there is a valid non null value */
+    *is_null = false;
+
+    return result;
+}
+
+PG_FUNCTION_INFO_V1(r_sin);
+
+Datum r_sin(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    float8 angle;
+    float8 result;
+    bool is_null = true;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs != 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("sin() invalid number of arguments")));
+
+    /* check for a null input */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /*
+     * sin() supports integer, float, and numeric or the agtype integer, float,
+     * and numeric for the angle
+     */
+
+    angle = get_float_compatible_arg(args[0], types[0], "sin", &is_null);
+
+    /* check for a agtype null input */
+    if (is_null)
+        PG_RETURN_NULL();
+
+    /* We need the numeric input as a float8 so that we can pass it off to PG */
+    result = DatumGetFloat8(DirectFunctionCall1(dsin,
+                                                Float8GetDatum(angle)));
+
+    /* build the result */
+    agtv_result.type = AGTV_FLOAT;
+    agtv_result.val.float_value = result;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(r_cos);
+
+Datum r_cos(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    float8 angle;
+    float8 result;
+    bool is_null = true;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs != 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("cos() invalid number of arguments")));
+
+    /* check for a null input */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /*
+     * cos() supports integer, float, and numeric or the agtype integer, float,
+     * and numeric for the angle
+     */
+
+    angle = get_float_compatible_arg(args[0], types[0], "cos", &is_null);
+
+    /* check for a agtype null input */
+    if (is_null)
+        PG_RETURN_NULL();
+
+    /* We need the numeric input as a float8 so that we can pass it off to PG */
+    result = DatumGetFloat8(DirectFunctionCall1(dcos,
+                                                Float8GetDatum(angle)));
+
+    /* build the result */
+    agtv_result.type = AGTV_FLOAT;
+    agtv_result.val.float_value = result;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(r_tan);
+
+Datum r_tan(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    float8 angle;
+    float8 result;
+    bool is_null = true;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs != 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("tan() invalid number of arguments")));
+
+    /* check for a null input */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /*
+     * tan() supports integer, float, and numeric or the agtype integer, float,
+     * and numeric for the angle
+     */
+
+    angle = get_float_compatible_arg(args[0], types[0], "tan", &is_null);
+
+    /* check for a agtype null input */
+    if (is_null)
+        PG_RETURN_NULL();
+
+    /* We need the numeric input as a float8 so that we can pass it off to PG */
+    result = DatumGetFloat8(DirectFunctionCall1(dtan,
+                                                Float8GetDatum(angle)));
+
+    /* build the result */
+    agtv_result.type = AGTV_FLOAT;
+    agtv_result.val.float_value = result;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(r_cot);
+
+Datum r_cot(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    float8 angle;
+    float8 result;
+    bool is_null = true;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs != 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("cot() invalid number of arguments")));
+
+    /* check for a null input */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /*
+     * cot() supports integer, float, and numeric or the agtype integer, float,
+     * and numeric for the angle
+     */
+
+    angle = get_float_compatible_arg(args[0], types[0], "cot", &is_null);
+
+    /* check for a agtype null input */
+    if (is_null)
+        PG_RETURN_NULL();
+
+    /* We need the numeric input as a float8 so that we can pass it off to PG */
+    result = DatumGetFloat8(DirectFunctionCall1(dcot,
+                                                Float8GetDatum(angle)));
+
+    /* build the result */
+    agtv_result.type = AGTV_FLOAT;
+    agtv_result.val.float_value = result;
 
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }

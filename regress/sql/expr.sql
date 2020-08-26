@@ -1270,6 +1270,76 @@ SELECT * FROM replace('Hello', 'e', 1);
 SELECT * FROM replace('Hello', 1, 'E');
 
 --
+-- sin, cos, tan, cot
+--
+SELECT * FROM cypher('expr', $$
+    RETURN sin(3.1415)
+$$) AS (results agtype), sin(3.1415);
+SELECT * FROM cypher('expr', $$
+    RETURN cos(3.1415)
+$$) AS (results agtype), cos(3.1415);
+SELECT * FROM cypher('expr', $$
+    RETURN tan(3.1415)
+$$) AS (results agtype), tan(3.1415);
+SELECT * FROM cypher('expr', $$
+    RETURN cot(3.1415)
+$$) AS (results agtype), cot(3.1415);
+SELECT * FROM sin(3.1415), r_sin(3.1415);
+SELECT * FROM cos(3.1415), r_cos(3.1415);
+SELECT * FROM tan(3.1415), r_tan(3.1415);
+SELECT * FROM cot(3.1415), r_cot(3.1415);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN sin(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN cos(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN tan(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN cot(null)
+$$) AS (results agtype);
+SELECT * FROM r_sin(null);
+SELECT * FROM r_cos(null);
+SELECT * FROM r_tan(null);
+SELECT * FROM r_cot(null);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN sin("0")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN cos("0")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN tan("0")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN cot("0")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN sin()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN cos()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN tan()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN cot()
+$$) AS (results agtype);
+SELECT * FROM r_sin('0');
+SELECT * FROM r_cos('0');
+SELECT * FROM r_tan('0');
+SELECT * FROM r_cot('0');
+SELECT * FROM r_sin();
+SELECT * FROM r_cos();
+SELECT * FROM r_tan();
+SELECT * FROM r_cot();
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
