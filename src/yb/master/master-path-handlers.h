@@ -182,6 +182,8 @@ class MasterPathHandlers {
   std::string RegistrationToHtml(
       const ServerRegistrationPB& reg, const std::string& link_text) const;
 
+  std::string GetHttpHostPortFromServerRegistration(const ServerRegistrationPB& reg) const;
+
   Master* master_;
 
   const int output_precision_;

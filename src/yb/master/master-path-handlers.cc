@@ -149,12 +149,14 @@ void MasterPathHandlers::RedirectToLeader(const Webserver::WebRequest& req, stri
 
     if (master.role() == consensus::RaftPeerPB::LEADER) {
       // URI already starts with a /, so none is needed between $1 and $2.
-      redirect = Substitute(
-          "http://$0:$1$2$3",
-          master.registration().http_addresses(0).host(),
-          master.registration().http_addresses(0).port(),
-          req.redirect_uri,
-          req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
+      if (master.registration().http_addresses().size() > 0) {
+        redirect = Substitute(
+            "http://$0:$1$2$3",
+            master.registration().http_addresses(0).host(),
+            master.registration().http_addresses(0).port(),
+            req.redirect_uri,
+            req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
+      }
       break;
     }
   }
@@ -248,6 +250,16 @@ string UptimeString(uint64_t seconds) {
 
 } // anonymous namespace
 
+string MasterPathHandlers::GetHttpHostPortFromServerRegistration(
+    const ServerRegistrationPB& reg) const {
+  if (reg.http_addresses().size() > 0) {
+    return Substitute("$0:$1",
+                      reg.http_addresses(0).host(),
+                      reg.http_addresses(0).port());
+  }
+  return "";
+}
+
 void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         std::vector<std::shared_ptr<TSDescriptor>>* descs,
                                         TabletCountMap* tablet_map,
@@ -256,9 +268,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
     if (desc->placement_uuid() == current_uuid) {
       const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
       TSRegistrationPB reg = desc->GetRegistration();
-      string host_port = Substitute("$0:$1",
-                                    reg.common().http_addresses(0).host(),
-                                    reg.common().http_addresses(0).port());
+      string host_port = GetHttpHostPortFromServerRegistration(reg.common());
       *output << "  <tr>\n";
       *output << "  <td>" << RegistrationToHtml(reg.common(), host_port) << "</br>";
       *output << "  " << desc->permanent_uuid() << "</td>";
@@ -498,9 +508,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
     for (auto desc : descs) {
       if (desc->placement_uuid() == cur_uuid) {
         TSRegistrationPB reg = desc->GetRegistration();
-        string host_port = Substitute("$0:$1",
-                                      reg.common().http_addresses(0).host(),
-                                      reg.common().http_addresses(0).port());
+        string host_port = GetHttpHostPortFromServerRegistration(reg.common());
         jw.String(host_port);
 
         jw.StartObject();
@@ -1168,8 +1176,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
       continue;
     }
     auto reg = master.registration();
-    string host_port = Substitute("$0:$1",
-                                  reg.http_addresses(0).host(), reg.http_addresses(0).port());
+    string host_port = GetHttpHostPortFromServerRegistration(reg);
     string reg_text = RegistrationToHtml(reg, host_port);
     if (master.instance_id().permanent_uuid() == master_->instance_pb().permanent_uuid()) {
       reg_text = Substitute("<b>$0</b>", reg_text);
