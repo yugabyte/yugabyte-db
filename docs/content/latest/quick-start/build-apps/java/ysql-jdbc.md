@@ -46,27 +46,15 @@ showAsideToc: true
   </li>
 </ul>
 
-## Maven
-
-To build your Java application with the [PostgreSQL JDBC driver](https://jdbc.postgresql.org/), add the following Maven dependency to your application:
-
-```mvn
-<dependency>
-  <groupId>org.postgresql</groupId>
-  <artifactId>postgresql</artifactId>
-  <version>4.2.2.14</version>
-</dependency>
-```
-
-## Create the sample Java application
-
-### Prerequisites
+## Prerequisites
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in the [Quick Start guide](../../../../quick-start/).
+- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
+
+## Create the sample Java application
 
 ### Create the project's POM
 
@@ -167,8 +155,8 @@ public class YBSqlHelloWorld {
     } catch (SQLException e) {
       System.err.println(e.getMessage());
 
-		}
-	}
+    }
+  }
 }
 
 ```
