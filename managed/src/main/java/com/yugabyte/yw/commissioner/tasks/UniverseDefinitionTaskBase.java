@@ -581,6 +581,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the ports to provision a node to use
       params.communicationPorts = UniverseTaskParams.CommunicationPorts
         .exportToCommunicationPorts(node);
+      // Whether to install node_exporter on nodes or not.
+      params.extraDependencies.installNodeExporter =
+        taskParams().extraDependencies.installNodeExporter;
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();

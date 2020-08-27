@@ -280,7 +280,8 @@ function mapStateToProps(state, ownProps) {
       'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.diskIops', 'async.numVolumes',
       'async.volumeSize',  'async.storageType', 'async.assignPublicIP', 'async.enableYSQL',
       'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints',
-      'async.useTimeSync', 'masterGFlags', 'tserverGFlags', 'instanceTags'
+      'async.useTimeSync', 'masterGFlags', 'tserverGFlags', 'instanceTags',
+      'primary.installNodeExporter'
     )
   };
 }
