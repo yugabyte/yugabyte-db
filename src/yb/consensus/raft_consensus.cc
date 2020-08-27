@@ -951,6 +951,10 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 
   peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
 
+  // Set the timestamp to max uint64_t so that every time this metric is queried, the returned
+  // lag is 0. We will need to restore the timestamp once this peer steps down.
+  follower_last_update_time_ms_metric_->UpdateTimestampInMilliseconds(
+      std::numeric_limits<uint64_t>::max());
   is_raft_leader_metric_->set_value(1);
 
   return Status::OK();
@@ -984,6 +988,14 @@ Status RaftConsensus::BecomeReplicaUnlocked(
 
   peer_manager_->Close();
 
+  // TODO: https://github.com/yugabyte/yugabyte-db/issues/5522. Add unit tests for this metric.
+  // We update the follower lag metric timestamp here because it's possible that a leader
+  // that step downs could get partitioned before it receives any replicate message. If we
+  // don't update the timestamp here, and the above scenario happens, the metric will keep the
+  // uint64_t max value, which would make the metric return a 0 lag every time it is queried,
+  // even though that's not the case.
+  follower_last_update_time_ms_metric_->UpdateTimestampInMilliseconds(
+      clock_->Now().GetPhysicalValueMicros() / 1000);
   is_raft_leader_metric_->set_value(0);
 
   return Status::OK();
