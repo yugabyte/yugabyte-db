@@ -114,6 +114,11 @@ public class UniverseTaskParams extends AbstractTaskParams {
     }
   }
 
+  public static class ExtraDependencies {
+    // Flag to install node_exporter on nodes.
+    public boolean installNodeExporter = true;
+  }
+
   // The primary device info.
   public DeviceInfo deviceInfo;
 
@@ -135,6 +140,9 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // readOnly clusters.
   public Set<NodeDetails> nodeDetailsSet = null;
 
-  // A list of ports to configure different parts of YB to listen on
+  // A list of ports to configure different parts of YB to listen on.
   public CommunicationPorts communicationPorts = new CommunicationPorts();
+
+  // Dependencies that can be install on nodes or not
+  public ExtraDependencies extraDependencies = new ExtraDependencies();
 }

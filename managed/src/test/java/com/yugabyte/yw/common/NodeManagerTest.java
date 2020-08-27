@@ -272,6 +272,8 @@ public class NodeManagerTest extends FakeDBApplication {
 
         expectedCommand.add("--node_exporter_port");
         expectedCommand.add("9300");
+        expectedCommand.add("--install_node_exporter");
+        expectedCommand.add("true");
 
         break;
       case Configure:
@@ -563,8 +565,12 @@ public class NodeManagerTest extends FakeDBApplication {
       if (t.cloudType.equals(Common.CloudType.aws)) {
         expectedCommandArrayList.add(15, "--node_exporter_port");
         expectedCommandArrayList.add(16, "9300");
-        expectedCommandArrayList.remove(20);
-        expectedCommandArrayList.remove(19);
+        expectedCommandArrayList.add(17, "--install_node_exporter");
+        expectedCommandArrayList.add(18, "true");
+        expectedCommandArrayList.remove(24);
+        expectedCommandArrayList.remove(23);
+        expectedCommandArrayList.remove(22);
+        expectedCommandArrayList.remove(21);
       }
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
