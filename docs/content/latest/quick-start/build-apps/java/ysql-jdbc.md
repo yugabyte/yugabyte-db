@@ -140,7 +140,36 @@ $ mkdir -p src/main/java/com/yugabyte/sample/apps
 Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YBSqlHelloWorld.java`.
 
 ```java
+package com.yugabyte.sample.apps;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 
+public class YBSqlHelloWorld {
+
+  public static void main(String[] args) throws ClassNotFoundException, SQLException {
+    Class.forName("org.postgresql.Driver");
+    try (Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/postgres", "postgres", "");
+        Statement stmt = conn.createStatement();) {
+      System.out.println("Connected to the PostgreSQL server successfully.");
+
+      String createTableQuery = "CREATE TABLE IF NOT EXISTS emp(employid int primary key,first_name varchar, last_name varchar) ";
+      stmt.executeUpdate(createTableQuery);
+
+      String insertQuery = "INSERT INTO emp(employid ,first_name, last_name) values (1,'Siddharth','Jamadari') ";
+      stmt.executeUpdate(insertQuery);
+
+      ResultSet rs = stmt.executeQuery("select * from emp");
+      while (rs.next())
+        System.out.println(rs.getInt(1) + "  " + rs.getString(2) + "  " + rs.getString(3));
+    } catch (SQLException e) {
+      System.err.println(e.getMessage());
+
+		}
+	}
+}
 
 ```
 
