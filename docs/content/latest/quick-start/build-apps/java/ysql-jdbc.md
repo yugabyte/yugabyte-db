@@ -77,7 +77,7 @@ Create a file, named `pom.xml`, and then copy the following content into it. The
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <version>4.2.2.14</version>
+      <version>42.2.14</version>
     </dependency>
   </dependencies>
 
