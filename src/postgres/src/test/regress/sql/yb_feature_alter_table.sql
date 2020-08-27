@@ -275,6 +275,15 @@ drop rule def_view_test_ins on def_view_test;
 drop view def_view_test;
 drop table def_test;
 
+-- test CREATE or REPLACE VIEW
+create or replace view v as select 17 as c1;
+select * from v;
+create or replace view v as select 42 as c1;
+select * from v;
+create or replace view v as select 11 as
+	c1, 12 AS c2, 13 AS c3; -- testing replace/alter view by adding columns
+select * from v;
+drop view v;
 -- test ADD COLUMN IF NOT EXISTS
 CREATE TABLE test_add_column(c1 integer);
 \d test_add_column
