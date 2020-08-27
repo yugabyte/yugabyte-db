@@ -3456,12 +3456,6 @@ AlterTableInternal(Oid relid, List *cmds, bool recurse)
 	EventTriggerAlterTableRelid(relid);
 
 	ATController(NULL, rel, cmds, recurse, lockmode);
-
-	if (IsYugaByteEnabled())
-	{
-		YBReportFeatureUnsupported("Alter table is not yet supported");
-	}
-
 }
 
 /*
