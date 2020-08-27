@@ -68,8 +68,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "create_snapshot",
-      " <(<keyspace> <table_name>)|tableid.<table_id>> " \
-      "[<(<keyspace> <table_name>)|tableid.<table_id>>]..."
+      " <table>"
+      " [<table>]..."
       " [flush_timeout_in_seconds] (default 60, set 0 to skip flushing)",
       [client](const CLIArguments& args) -> Status {
         int timeout_secs = 60;
@@ -81,8 +81,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                 return Status::OK();
               }
               return ClusterAdminCli::kInvalidArguments;
-            }
-        ));
+            }));
         RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables, true, timeout_secs),
                               Substitute("Unable to create snapshot of tables: $0",
                                          yb::ToString(tables)));
@@ -90,7 +89,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "create_keyspace_snapshot", " keyspace",
+      "create_keyspace_snapshot", " [ycql.]<keyspace_name>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 3) {
           return ClusterAdminCli::kInvalidArguments;
@@ -108,7 +107,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "create_database_snapshot", " database",
+      "create_database_snapshot", " [ysql.]<database_name>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 3) {
           return ClusterAdminCli::kInvalidArguments;
@@ -156,7 +155,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "import_snapshot", " <file_name> [<keyspace> <table_name> [<table_name>]...]",
+      "import_snapshot", " <file_name> [[ycql.]<keyspace_name> <table_name> [<table_name>]...]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3) {
           return ClusterAdminCli::kInvalidArguments;
@@ -205,7 +204,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "list_replica_type_counts",
-      " <(<keyspace> <table_name>)|tableid.<table_id>>",
+      " <table>",
       [client](const CLIArguments& args) -> Status {
         const auto table_name = VERIFY_RESULT(
             ResolveSingleTableName(client, args.begin() + 2, args.end()));

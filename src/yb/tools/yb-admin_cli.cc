@@ -32,6 +32,7 @@
 #include "yb/tools/yb-admin_cli.h"
 
 #include <iostream>
+#include <memory>
 #include <utility>
 
 #include <boost/lexical_cast.hpp>
@@ -73,9 +74,9 @@ const Status ClusterAdminCli::kInvalidArguments = STATUS(
 
 namespace {
 
-const int32 kDefaultRpcPort = 9100;
-const string kBlacklistAdd("ADD");
-const string kBlacklistRemove("REMOVE");
+constexpr auto kBlacklistAdd = "ADD";
+constexpr auto kBlacklistRemove = "REMOVE";
+constexpr int32 kDefaultRpcPort = 9100;
 
 CHECKED_STATUS GetUniverseConfig(ClusterAdminClientClass* client,
                                  const ClusterAdminCli::CLIArguments&) {
@@ -237,6 +238,14 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
     str << ' ' << i + 1 << ". " << commands_[i].name_ << commands_[i].usage_arguments_ << endl;
   }
 
+  str << endl;
+  str << "<namespace>:" << endl;
+  str << "  [(ycql|ysql).]<namespace_name>" << endl;
+  str << "<table>:" << endl;
+  str << "  <namespace> <table_name> | tableid.<table_id>" << endl;
+  str << "<index>:" << endl;
+  str << "  <namespace> <index_name> | tableid.<index_id>" << endl;
+
   google::SetUsageMessage(str.str());
 }
 
@@ -317,7 +326,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "list_tablets",
-      " <(<keyspace> <table_name>)|tableid.<table_id>> [max_tablets] (default 10, set 0 for max)",
+      " <table> [max_tablets] (default 10, set 0 for max)",
       [client](const CLIArguments& args) -> Status {
         int max = -1;
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
@@ -328,8 +337,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                 return Status::OK();
               }
               return ClusterAdminCli::kInvalidArguments;
-            }
-        ));
+            }));
         RETURN_NOT_OK_PREPEND(
             client->ListTablets(table_name, max),
             Substitute("Unable to list tablets of table $0", table_name.ToString()));
@@ -388,7 +396,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_namespace", " <keyspace>",
+      "delete_namespace", " <namespace>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 3) {
           return ClusterAdminCli::kInvalidArguments;
@@ -400,7 +408,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_namespace_by_id", " <keyspace_id>",
+      "delete_namespace_by_id", " <namespace_id>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 3) {
           return ClusterAdminCli::kInvalidArguments;
@@ -411,7 +419,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_table", " <(<keyspace> <table_name>)|tableid.<table_id>>",
+      "delete_table", " <table>",
       [client](const CLIArguments& args) -> Status {
         const auto table_name = VERIFY_RESULT(
             ResolveSingleTableName(client, args.begin() + 2, args.end()));
@@ -432,7 +440,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_index", " <(<keyspace> <index_name>)|<index_id>>",
+      "delete_index", " <index>",
       [client](const CLIArguments& args) -> Status {
         const auto table_name = VERIFY_RESULT(
             ResolveSingleTableName(client, args.begin() + 2, args.end()));
@@ -454,7 +462,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "flush_table",
-      " <(<keyspace> <table_name>)|tableid.<table_id>> [timeout_in_seconds] (default 20)"
+      " <table> [timeout_in_seconds] (default 20)"
       " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
         bool add_indexes = false;
@@ -465,8 +473,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
               std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(
                   GetTimeoutAndAddIndexesFlag(i, end));
               return Status::OK();
-            }
-        ));
+            }));
         RETURN_NOT_OK_PREPEND(client->FlushTables({table_name},
                                                   add_indexes,
                                                   timeout_secs,
@@ -496,7 +503,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "compact_table",
-      " <(<keyspace> <table_name>)|tableid.<table_id>> [timeout_in_seconds] (default 20)"
+      " <table> [timeout_in_seconds] (default 20)"
       " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
         bool add_indexes = false;
@@ -507,8 +514,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
               std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(
                   GetTimeoutAndAddIndexesFlag(i, end));
               return Status::OK();
-            }
-        ));
+            }));
         // We use the same FlushTables RPC to trigger compaction.
         RETURN_NOT_OK_PREPEND(client->FlushTables({table_name},
                                                   add_indexes,
@@ -670,7 +676,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "list_leader_counts", " <(<keyspace> <table_name>)|tableid.<table_id>>",
+      "list_leader_counts", " <table>",
       [client](const CLIArguments& args) -> Status {
         const auto table_name = VERIFY_RESULT(
             ResolveSingleTableName(client, args.begin() + 2, args.end()));
