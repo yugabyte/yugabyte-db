@@ -368,6 +368,10 @@ class UniverseForm extends Component {
             "nodeExporterPort": formValues['primary'].nodeExporterPort
           };
 
+          submitPayload.extraDependencies = {
+            "installNodeExporter": formValues['primary'].installNodeExporter
+          };
+
           // Ensure a configuration was actually selected
           if (kmsConfigUUID !== null) {
             submitPayload.encryptionAtRestConfig['configUUID'] = kmsConfigUUID;
