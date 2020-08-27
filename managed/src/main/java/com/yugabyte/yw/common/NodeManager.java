@@ -421,6 +421,9 @@ public class NodeManager extends DevopsBase {
         commandArgs.add("--node_exporter_port");
         commandArgs.add(Integer.toString(taskParam.communicationPorts.nodeExporterPort));
 
+        commandArgs.add("--install_node_exporter");
+        commandArgs.add(Boolean.toString(taskParam.extraDependencies.installNodeExporter));
+
         if (cloudType.equals(Common.CloudType.aws)) {
           if (taskParam.useTimeSync) {
             commandArgs.add("--use_chrony");

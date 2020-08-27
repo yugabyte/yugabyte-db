@@ -354,6 +354,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Path to local directory with the prometheus tarball.")
         self.parser.add_argument("--node_exporter_port", type=int, default=9300,
                                  help="The port for node_exporter to bind to")
+        self.parser.add_argument("--install_node_exporter", default=True)
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -376,6 +377,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"air_gap": args.air_gap})
         if args.node_exporter_port:
             self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
+        if args.install_node_exporter:
+            self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)

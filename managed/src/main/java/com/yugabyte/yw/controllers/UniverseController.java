@@ -1462,7 +1462,6 @@ public class UniverseController extends AuthenticatedController {
 
     if (communicationPortsJson != null) {
       formData.remove("communicationPorts");
-
       communicationPorts = mapper.treeToValue(communicationPortsJson, CommunicationPorts.class);
     }
 

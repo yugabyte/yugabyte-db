@@ -81,7 +81,8 @@ const initialState = {
   enableNodeToNodeEncrypt: false,
   enableClientToNodeEncrypt: false,
   enableEncryptionAtRest: false,
-  customizePorts: false
+  customizePorts: false,
+  installNodeExporter: true
 };
 
 export default class ClusterFields extends Component {
@@ -114,6 +115,7 @@ export default class ClusterFields extends Component {
     this.accessKeyChanged = this.accessKeyChanged.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.toggleCustomizePorts = this.toggleCustomizePorts.bind(this);
+    this.toggleInstallNodeExporter = this.toggleInstallNodeExporter.bind(this);
 
     this.currentInstanceType = _.get(this.props.universe,
       'currentUniverse.data.universeDetails.clusters[0].userIntent.instanceType');
@@ -157,6 +159,7 @@ export default class ClusterFields extends Component {
     }
 
     if (type === "Create") {
+      updateFormField("primary.installNodeExporter", this.state.installNodeExporter);
       updateFormField("primary.masterHttpPort", DEFAULT_PORTS.MASTER_HTTP_PORT);
       updateFormField("primary.masterRpcPort", DEFAULT_PORTS.MASTER_RPC_PORT);
       updateFormField("primary.tserverHttpPort", DEFAULT_PORTS.TSERVER_HTTP_PORT);
@@ -169,8 +172,10 @@ export default class ClusterFields extends Component {
       updateFormField("primary.ysqlRpcPort", DEFAULT_PORTS.YSQL_RPC_PORT);
       updateFormField("primary.nodeExporterPort", DEFAULT_PORTS.NODE_EXPORTER_PORT);
     } else if (type === "Edit") {
-      const { communicationPorts } = universeDetails;
+      const { communicationPorts, extraDependencies } = universeDetails;
       const customPorts = this.portsCustomized(communicationPorts);
+      const installNodeExporter = _.get(extraDependencies, "installNodeExporter", true);
+      updateFormField("primary.installNodeExporter", installNodeExporter);
       updateFormField("primary.customizePorts", customPorts);
       this.setState({customizePorts: customPorts});
       updateFormField("primary.masterHttpPort", communicationPorts.masterHttpPort);
@@ -603,6 +608,12 @@ export default class ClusterFields extends Component {
 
   toggleCustomizePorts(event) {
     this.setState({customizePorts: event.target.checked});
+  }
+
+  toggleInstallNodeExporter(event) {
+    const { updateFormField, clusterType } = this.props;
+    updateFormField(`${clusterType}.installNodeExporter`, event.target.checked);
+    this.setState({installNodeExporter: event.target.checked});
   }
 
   handleAwsArnChange(event) {
@@ -1311,6 +1322,21 @@ export default class ClusterFields extends Component {
               </Col>
             </Row>
           }
+          <Row>
+            <Col md={12}>
+              <div className="form-right-aligned-labels">
+                <Field
+                  name={`${clusterType}.installNodeExporter`}
+                  component={YBToggle}
+                  defaultChecked={true}
+                  disableOnChange={disableToggleOnChange}
+                  checkedVal={this.state.installNodeExporter}
+                  onToggle={this.toggleInstallNodeExporter}
+                  label="Install Node Exporter" isReadOnly={isFieldReadOnly}
+                />
+              </div>
+            </Col>
+          </Row>
           <Row>
             <Col md={12}>
               <div className="form-right-aligned-labels">
