@@ -454,8 +454,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         // This situation is normal and could be caused by 2 scenarios:
         // 1) Write batch failed, but originator doesn't know that.
         // 2) Failed to notify status tablet that we applied transaction.
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
-            << Format("Apply of unknown transaction: $0", data);
+        LOG_WITH_PREFIX(WARNING) << Format("Apply of unknown transaction: $0", data);
         NotifyApplied(data);
         CHECK(!FLAGS_TEST_fail_in_apply_if_no_metadata);
         return Status::OK();
@@ -981,16 +980,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   LockAndFindResult LockAndFind(
       const TransactionId& id, const std::string& reason, TransactionLoadFlags flags) {
     WaitLoaded(id);
-    bool recently_removed;
-    {
-      std::unique_lock<std::mutex> lock(mutex_);
-      auto it = transactions_.find(id);
-      if (it != transactions_.end()) {
-        return LockAndFindResult{ std::move(lock), it };
-      }
-      recently_removed = WasTransactionRecentlyRemoved(id);
+    std::unique_lock<std::mutex> lock(mutex_);
+    auto it = transactions_.find(id);
+    if (it != transactions_.end()) {
+      return LockAndFindResult{std::move(lock), it};
     }
-    if (recently_removed) {
+    if (WasTransactionRecentlyRemoved(id)) {
       VLOG_WITH_PREFIX(1)
           << "Attempt to load recently removed transaction: " << id << ", for: " << reason;
       LockAndFindResult result;
@@ -999,11 +994,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
     metric_transaction_not_found_->Increment();
     if (flags.Test(TransactionLoadFlag::kMustExist)) {
-      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
-          << "Transaction not found: " << id << ", for: " << reason;
+      LOG_WITH_PREFIX(WARNING) << "Transaction not found: " << id << ", for: " << reason;
     } else {
-      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
-          << "Transaction not found: " << id << ", for: " << reason;
+      LOG_WITH_PREFIX(INFO) << "Transaction not found: " << id << ", for: " << reason;
     }
     if (flags.Test(TransactionLoadFlag::kCleanup)) {
       VLOG_WITH_PREFIX(2) << "Schedule cleanup for: " << id;

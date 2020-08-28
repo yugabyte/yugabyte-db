@@ -36,7 +36,6 @@
 #include "nodes/nodeFuncs.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
-#include "utils/float.h"
 #include "utils/guc.h"
 #include "utils/int8.h"
 #include "utils/numeric.h"

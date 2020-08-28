@@ -2,10 +2,10 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
-import io.ebean.annotation.DbJson;
-import io.ebean.annotation.EnumValue;
-import io.ebean.annotation.JsonIgnore;
+import com.avaje.ebean.Model;
+import com.avaje.ebean.annotation.DbJson;
+import com.avaje.ebean.annotation.EnumValue;
+import com.avaje.ebean.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -75,8 +75,7 @@ public class CustomerConfig extends Model {
   @JsonIgnore
   public JsonNode data;
 
-  public static final Finder<UUID, CustomerConfig> find =
-    new Finder<UUID, CustomerConfig>(CustomerConfig.class){};
+  public static final Find<UUID, CustomerConfig> find = new Find<UUID, CustomerConfig>(){};
 
   public Map<String, String> dataAsMap() {
     return new ObjectMapper().convertValue(data, Map.class);
@@ -102,18 +101,11 @@ public class CustomerConfig extends Model {
   }
 
   public static List<CustomerConfig> getAll(UUID customerUUID) {
-    return CustomerConfig.find.query().where().eq("customer_uuid", customerUUID).findList();
+    return CustomerConfig.find.where().eq("customer_uuid", customerUUID).findList();
   }
 
   public static CustomerConfig get(UUID customerUUID, UUID configUUID) {
-    return CustomerConfig.find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .idEq(configUUID)
-      .findOne();
-  }
-
-  public static CustomerConfig get(UUID configUUID) {
-    return CustomerConfig.find.query().where().idEq(configUUID).findOne();
+    return CustomerConfig.find.where().eq("customer_uuid", customerUUID).idEq(configUUID).findUnique();
   }
 
   public static CustomerConfig createAlertConfig(UUID customerUUID, JsonNode payload) {
@@ -137,19 +129,19 @@ public class CustomerConfig extends Model {
   }
 
   public static CustomerConfig getAlertConfig(UUID customerUUID) {
-    return CustomerConfig.find.query().where()
+    return CustomerConfig.find.where()
       .eq("customer_uuid", customerUUID)
       .eq("type", ConfigType.ALERTS.toString())
       .eq("name", ALERTS_PREFERENCES)
-      .findOne();
+      .findUnique();
   }
 
   public static CustomerConfig getSmtpConfig(UUID customerUUID) {
-    return CustomerConfig.find.query().where()
+    return CustomerConfig.find.where()
       .eq("customer_uuid", customerUUID)
       .eq("type", ConfigType.ALERTS.toString())
       .eq("name", SMTP_INFO)
-      .findOne();
+      .findUnique();
   }
 
   public static CustomerConfig createCallHomeConfig(UUID customerUUID) {
@@ -168,11 +160,11 @@ public class CustomerConfig extends Model {
   }
 
   public static CustomerConfig getCallhomeConfig(UUID customerUUID) {
-    return CustomerConfig.find.query().where()
+    return CustomerConfig.find.where()
       .eq("customer_uuid", customerUUID)
       .eq("type", ConfigType.CALLHOME.toString())
       .eq("name", CALLHOME_PREFERENCES)
-      .findOne();
+      .findUnique();
   }
 
   public static CollectionLevel getOrCreateCallhomeLevel(UUID customerUUID){

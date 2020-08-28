@@ -479,7 +479,6 @@ typedef enum NodeTag
 	T_PartitionCmd,
 	T_VacuumRelation,
 	T_OptSplit,
-	T_OptTableGroup,
 	T_RowBounds,
 
 	/*

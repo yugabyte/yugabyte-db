@@ -2,8 +2,9 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
-import io.ebean.annotation.*;
+import com.avaje.ebean.Model;
+import com.avaje.ebean.annotation.CreatedTimestamp;
+import com.avaje.ebean.annotation.DbJson;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
@@ -89,7 +90,7 @@ public class Audit extends Model {
     this.timestamp = new Date();
   }
 
-  public static final Finder<UUID, Audit> find = new Finder<UUID, Audit>(Audit.class){};
+  public static final Find<UUID, Audit> find = new Find<UUID, Audit>(){};
 
   public static void createAuditEntry(Http.Context ctx, Http.Request request) {
     createAuditEntry(ctx, request, null, null);
@@ -135,14 +136,14 @@ public class Audit extends Model {
   }
 
   public static List<Audit> getAll(UUID customerUUID) {
-    return find.query().where().eq("customer_uuid", customerUUID).findList();
+    return find.where().eq("customer_uuid", customerUUID).findList();
   }
 
   public static Audit getFromTaskUUID(UUID taskUUID) {
-    return find.query().where().eq("task_uuid", taskUUID).findOne();
+    return find.where().eq("task_uuid", taskUUID).findUnique();
   }
 
   public static List<Audit> getAllUserEntries(UUID userUUID) {
-    return find.query().where().eq("user_uuid", userUUID).findList();
+    return find.where().eq("user_uuid", userUUID).findList();
   }
 }

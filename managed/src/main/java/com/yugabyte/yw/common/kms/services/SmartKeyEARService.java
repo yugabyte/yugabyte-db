@@ -16,7 +16,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.kms.algorithms.SmartKeyAlgorithm;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
@@ -28,7 +27,23 @@ import java.util.UUID;
 import play.api.Play;
 import play.libs.Json;
 
+/**
+ * The different encryption algorithms allowed and a mapping of
+ * encryption algorithm -> valid encryption key sizes (bits)
+ */
+enum SmartKeyAlgorithm implements SupportedAlgorithmInterface {
+    AES(Arrays.asList(128, 192, 256));
 
+    private List<Integer> keySizes;
+
+    public List<Integer> getKeySizes() {
+        return this.keySizes;
+    }
+
+    private SmartKeyAlgorithm(List<Integer> keySizes) {
+        this.keySizes = keySizes;
+    }
+}
 
 /**
  * An implementation of EncryptionAtRestService to communicate with Equinix SmartKey
@@ -36,7 +51,7 @@ import play.libs.Json;
  */
 public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorithm> {
 
-    private final ApiHelper apiHelper;
+    private ApiHelper apiHelper;
 
     public SmartKeyEARService() {
         super(KeyProvider.SMARTKEY);

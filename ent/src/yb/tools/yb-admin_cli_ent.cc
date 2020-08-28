@@ -37,11 +37,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
   Register(
-      "list_snapshots", " [SHOW_DETAILS] [NOT_SHOW_RESTORED] [SHOW_DELETED]",
+      "list_snapshots", " [SHOW_DETAILS] [NOT_SHOW_RESTORED]",
       [client](const CLIArguments& args) -> Status {
         bool show_details = false;
         bool show_restored = true;
-        bool show_deleted = false;
 
         if (args.size() > 4) {
           return ClusterAdminCli::kInvalidArguments;
@@ -54,14 +53,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             show_details = true;
           } else if (uppercase_flag == "NOT_SHOW_RESTORED") {
             show_restored = false;
-          } else if (uppercase_flag == "SHOW_DELETED") {
-            show_deleted = true;
           } else {
             return ClusterAdminCli::kInvalidArguments;
           }
         }
 
-        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details, show_restored, show_deleted),
+        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details, show_restored),
                               "Unable to list snapshots");
         return Status::OK();
       });
@@ -70,20 +67,21 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "create_snapshot",
       " <(<keyspace> <table_name>)|tableid.<table_id>> " \
       "[<(<keyspace> <table_name>)|tableid.<table_id>>]..."
-      " [flush_timeout_in_seconds] (default 60, set 0 to skip flushing)",
+      " [deprecated_flush_timeout_in_seconds]",
       [client](const CLIArguments& args) -> Status {
-        int timeout_secs = 60;
         const auto tables = VERIFY_RESULT(ResolveTableNames(
             client, args.begin() + 2, args.end(),
-            [&timeout_secs](auto i, const auto& end) -> Status {
+            [](auto i, const auto& end) -> Status {
               if (std::next(i) == end) {
-                timeout_secs = VERIFY_RESULT(CheckedStoi(*i));
+                // Keep the deprecated flush timeout parsing for backward compatibility.
+                const int timeout_secs = VERIFY_RESULT(CheckedStoi(*i));
+                cerr << "Ignored deprecated table flush timeout: " << timeout_secs << endl;
                 return Status::OK();
               }
               return ClusterAdminCli::kInvalidArguments;
             }
         ));
-        RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables, true, timeout_secs),
+        RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables),
                               Substitute("Unable to create snapshot of tables: $0",
                                          yb::ToString(tables)));
         return Status::OK();

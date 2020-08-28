@@ -2176,22 +2176,18 @@ TEST_F(ClientTest, FlushTable) {
     // Test flush table.
     InsertTestRows(client_table2_, 1, current_row++);
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 1);
 
     // Insert and flush more rows.
     InsertTestRows(client_table2_, 1, current_row++);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
     InsertTestRows(client_table2_, 1, current_row++);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
 
     // Test compact table.
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 3);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, true /* is_compaction */));
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, true /* is_compaction */));
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), 1);
   });
 
@@ -2200,11 +2196,9 @@ TEST_F(ClientTest, FlushTable) {
 
   auto test_bad_flush_and_compact = ([&]<class T>(T table_id_or_name) {
     // Test flush table.
-    ASSERT_NOK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_NOK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
     // Test compact table.
-    ASSERT_NOK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, true /* is_compaction */));
+    ASSERT_NOK(client_->FlushTable(table_id_or_name, kTimeoutSecs, true /* is_compaction */));
   });
 
   test_bad_flush_and_compact("bad table id");

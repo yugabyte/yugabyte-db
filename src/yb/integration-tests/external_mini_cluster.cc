@@ -1285,12 +1285,7 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   *idx = 0;  // default to 0'th index, even in case of errors.
 
   for (const scoped_refptr<ExternalMaster>& master : masters_) {
-    if (master->IsProcessAlive()) {
-      addrs.push_back({ master->bound_rpc_addr() });
-    }
-  }
-  if (addrs.empty()) {
-    return STATUS(IllegalState, "No running masters");
+    addrs.push_back({master->bound_rpc_addr()});
   }
   rpc::Rpcs rpcs;
   auto rpc = rpc::StartRpc<GetLeaderMasterRpc>(

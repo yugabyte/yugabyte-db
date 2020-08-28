@@ -317,7 +317,7 @@ It produces this result:
    9
 ```
 
-This `SETOF` result lists all of the input array's "leaf" values in row-major order. This term is explained in [Joint semantics](../properties/#joint-semantics)) within the _"Functions for reporting the geometric properties of an array"_ section.
+This `SETOF` result lists all of the input array's "leaf" values in row-major order. This term is explained in [Joint semantics](./functions-operators/properties/#joint-semantics)) within the _"Functions for reporting the geometric properties of an array"_ section.
 
 Notice that, for the multidimensional case, the original input to `array_agg()` was _not_, therefore, regained. This point is emphasized by aggregating the result:
 
@@ -501,7 +501,7 @@ end;
 $body$;
 ```
 
-Notice that this is not a general purpose function. Rather, it expects that the input is a _"details&#95;t[]"_ array. So it first checks that this pre-condition is met. It then discovers the lower and upper bounds of the array so that it can loop over its values. It uses these functions for reporting the geometric properties of the input array: [`array_ndims()`](../properties/#array-ndims); [`array_lower()`](../properties/#array-lower); and [`array_upper()`](../properties/#array-upper).
+Notice that this is not a general purpose function. Rather, it expects that the input is a _"details&#95;t[]"_ array. So it first checks that this pre-condition is met. It then discovers the lower and upper bounds of the array so that it can loop over its values. It uses these functions for reporting the geometric properties of the input array: [`array_ndims()`](../../functions-operators/properties/#array-ndims); [`array_lower()`](../../functions-operators/properties/#array-lower); and [`array_upper()`](../../functions-operators/properties/#array-upper).
 
 Invoke it like this:
 

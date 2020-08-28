@@ -77,7 +77,6 @@ public class BackupsController extends AuthenticatedController {
         subParams.tableUUID = null;
         subParams.tableName = null;
         subParams.keyspace = null;
-        subParams.parallelism = taskParams.parallelism;;
       }
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, taskParams.storageConfigUUID);

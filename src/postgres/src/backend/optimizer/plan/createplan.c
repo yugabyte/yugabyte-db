@@ -2665,8 +2665,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 			if (needs_pushdown)
 			{
-				pushdown_update_attrs = bms_add_member(
-				    pushdown_update_attrs, tle->resno - attr_offset);
+				pushdown_update_attrs = bms_add_member(pushdown_update_attrs, tle->resno);
 			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);
@@ -2811,19 +2810,16 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		primary_key_attrs = bms_add_member(primary_key_attrs, tle->resno - attr_offset);
 	}
 
-	/*
-	 * Verify RETURNING columns are either primary key or
-	 * UPDATE's SET and not pushed down columns.
-	 * TODO(dmitry): Remove restriction for pushed down columns on #5392 completion.
-	 */
+	/* Verify RETURNING columns are either primary key columns or UPDATE's SET columns. */
 	if (list_length(path->returningLists) > 0)
 	{
 		foreach(values, linitial(path->returningLists))
 		{
-			int attr = lfirst_node(TargetEntry, values)->resorigcol - attr_offset;
-			if ((!bms_is_member(attr, update_attrs) &&
-				!bms_is_member(attr, primary_key_attrs)) ||
-				bms_is_member(attr, pushdown_update_attrs))
+			TargetEntry *tle;
+
+			tle = lfirst_node(TargetEntry, values);
+			if (!bms_is_member(tle->resorigcol - attr_offset, update_attrs) &&
+				!bms_is_member(tle->resorigcol - attr_offset, primary_key_attrs))
 			{
 				RelationClose(relation);
 				return false;
@@ -2871,7 +2867,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		}
 		else if (subpath_tlist_values && subpath_tlist_tle->resno == attr_num)
 		{
-			if (bms_is_member(subpath_tlist_tle->resno  - attr_offset, pushdown_update_attrs))
+			if (bms_is_member(subpath_tlist_tle->resno, pushdown_update_attrs))
 			{
 				/*
 				 * If the expr needs pushdown bypass query-layer evaluation.

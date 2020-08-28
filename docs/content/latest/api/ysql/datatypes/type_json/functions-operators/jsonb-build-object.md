@@ -6,7 +6,7 @@ description: Build a JSON object from a variadic list that specifies keys with v
 menu:
   latest:
     identifier: jsonb-build-object
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 100
 isTocNested: true
 showAsideToc: true

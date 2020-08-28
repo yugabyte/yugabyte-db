@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.common;
 
-import io.ebean.Ebean;
+import com.avaje.ebean.Ebean;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -59,7 +59,7 @@ public class CustomerTaskManager {
         "WHERE ti.uuid = ct.task_uuid " +
         "AND ct.completion_time IS NULL " +
         "AND ti.task_state IN ('Created', 'Initializing', 'Running')";
-      Ebean.createSqlQuery(query).findList().forEach(row -> {
+      Ebean.createSqlQuery(query).findSet().forEach(row -> {
         TaskInfo taskInfo = TaskInfo.get(row.getUUID("task_uuid"));
         CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
         failPendingTask(customerTask, taskInfo);

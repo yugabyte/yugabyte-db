@@ -121,6 +121,7 @@ public class ApiHelperTest {
     ObjectNode jsonResponse = Json.newObject();
     jsonResponse.put("Success", true);
 
+    when(mockRequest.get()).thenReturn(mockCompletion);
     when(mockRequest.post(Matchers.any(JsonNode.class))).thenReturn(mockCompletion);
     when(mockResponse.asJson()).thenReturn(jsonResponse);
     JsonNode result = apiHelper.postRequest("http://foo.com/test", postData);

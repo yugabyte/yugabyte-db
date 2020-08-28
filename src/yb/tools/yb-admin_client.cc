@@ -111,6 +111,10 @@ using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 
+using master::FlushTablesRequestPB;
+using master::FlushTablesResponsePB;
+using master::IsFlushTablesDoneRequestPB;
+using master::IsFlushTablesDoneResponsePB;
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
 using master::ListMasterRaftPeersRequestPB;
@@ -1393,26 +1397,20 @@ Status ClusterAdminClient::GetLoadBalancerState() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::FlushTables(const std::vector<YBTableName>& table_names,
-                                       bool add_indexes,
-                                       int timeout_secs,
-                                       bool is_compaction) {
-  RETURN_NOT_OK(yb_client_->FlushTables(table_names, add_indexes, timeout_secs, is_compaction));
-  cout << (is_compaction ? "Compacted " : "Flushed ")
-       << ToString(table_names) << " tables"
-       << (add_indexes ? " and associated indexes." : ".") << endl;
+Status ClusterAdminClient::FlushTable(const YBTableName& table_name,
+                                      int timeout_secs,
+                                      bool is_compaction) {
+  RETURN_NOT_OK(yb_client_->FlushTable(table_name, timeout_secs, is_compaction));
+  cout << (is_compaction ? "Compacted " : "Flushed ") << table_name.ToString() << endl;
   return Status::OK();
 }
 
-Status ClusterAdminClient::FlushTablesById(
-    const std::vector<TableId>& table_ids,
-    bool add_indexes,
+Status ClusterAdminClient::FlushTableById(
+    const TableId& table_id,
     int timeout_secs,
     bool is_compaction) {
-  RETURN_NOT_OK(yb_client_->FlushTables(table_ids, add_indexes, timeout_secs, is_compaction));
-  cout << (is_compaction ? "Compacted " : "Flushed ")
-       << ToString(table_ids) << " tables"
-       << (add_indexes ? " and associated indexes." : ".") << endl;
+  RETURN_NOT_OK(yb_client_->FlushTable(table_id, timeout_secs, is_compaction));
+  cout << (is_compaction ? "Compacted " : "Flushed ") << table_id << endl;
   return Status::OK();
 }
 

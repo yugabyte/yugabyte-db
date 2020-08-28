@@ -147,9 +147,15 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
 
 -- Try altering the column type where foreign keys are involved
 ALTER TABLE PKTABLE ALTER COLUMN ptest1 TYPE bigint;
-ERROR:  This ALTER TABLE command is not yet supported.
+ERROR:  ALTER TABLE ALTER column not supported yet
+LINE 1: ALTER TABLE PKTABLE ALTER COLUMN ptest1 TYPE bigint;
+                            ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 ALTER TABLE FKTABLE ALTER COLUMN ftest1 TYPE bigint;
-ERROR:  This ALTER TABLE command is not yet supported.
+ERROR:  ALTER TABLE ALTER column not supported yet
+LINE 1: ALTER TABLE FKTABLE ALTER COLUMN ftest1 TYPE bigint;
+                            ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 SELECT * FROM PKTABLE ORDER BY ptest1, ptest2;
  ptest1 | ptest2 | ptest3
 --------+--------+---------
@@ -256,10 +262,7 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
         |        |      0
 (5 rows)
 
--- Suppress cascade details because it doesn't mismatch what Postgres prints.
--- TODO(YB): PG show dependecy on table pktable, but for us it's either it or
---           index pktable_pkey (at random)!
-\set VERBOSITY terse
+\set VERBOSITY terse \\ -- suppress cascade details
 -- this should fail for lack of CASCADE
 DROP TABLE PKTABLE;
 ERROR:  cannot drop table pktable because other objects depend on it
@@ -462,24 +465,26 @@ SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
 (5 rows)
 
 -- Try to delete something that should cascade
-DELETE FROM PKTABLE where ptest1=1 and ptest2=5 and ptest3=3;
+DELETE FROM PKTABLE where ptest1=1 and ptest2=2 and ptest3=3;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
  ptest1 | ptest2 | ptest3 | ptest4
 --------+--------+--------+--------
       1 |      3 |      3 | test2
       1 |      3 |      4 | test3
+      1 |      5 |      3 | test1
       2 |      4 |      5 | test4
-(3 rows)
+(4 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
  ftest1 | ftest2 | ftest3 | ftest4
 --------+--------+--------+--------
+      1 |      5 |      3 |      1
       2 |        |      3 |      3
         |      2 |      3 |      2
         |      2 |      7 |      4
         |      3 |      4 |      5
-(4 rows)
+(5 rows)
 
 -- Try to delete something that should not have a cascade
 DELETE FROM PKTABLE where ptest1=2;
@@ -489,16 +494,18 @@ SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
 --------+--------+--------+--------
       1 |      3 |      3 | test2
       1 |      3 |      4 | test3
-(2 rows)
+      1 |      5 |      3 | test1
+(3 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
  ftest1 | ftest2 | ftest3 | ftest4
 --------+--------+--------+--------
+      1 |      5 |      3 |      1
       2 |        |      3 |      3
         |      2 |      3 |      2
         |      2 |      7 |      4
         |      3 |      4 |      5
-(4 rows)
+(5 rows)
 
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
@@ -583,14 +590,15 @@ SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
 (6 rows)
 
 -- Try to delete something that should not set default
-DELETE FROM PKTABLE where ptest2=5;
+DELETE FROM PKTABLE where ptest2=3;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
  ptest1 | ptest2 | ptest3 | ptest4
 --------+--------+--------+--------
       1 |      2 |      3 | test2
+      1 |      5 |      3 | test1
       2 |      4 |      5 | test4
-(2 rows)
+(3 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
  ftest1 | ftest2 | ftest3 | ftest4
@@ -739,10 +747,6 @@ SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL2';
      0
 (1 row)
 
-DROP TABLE FKTABLE_FAIL1;
-ERROR:  table "fktable_fail1" does not exist
-DROP TABLE FKTABLE_FAIL2;
-ERROR:  table "fktable_fail2" does not exist
 DROP TABLE PKTABLE;
 -- Test for referencing column number smaller than referenced constraint
 CREATE TABLE PKTABLE (ptest1 int, ptest2 int, UNIQUE(ptest1, ptest2));
@@ -754,8 +758,6 @@ SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
      0
 (1 row)
 
-DROP TABLE FKTABLE_FAIL1;
-ERROR:  table "fktable_fail1" does not exist
 DROP TABLE PKTABLE;
 --
 -- Tests for mismatched types
@@ -808,7 +810,7 @@ ERROR:  insert or update on table "fktable" violates foreign key constraint "fkt
 DETAIL:  Key (ftest1)=(43) is not present in table "pktable".
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
--- TODO(YB) changing inet->text below as we don't support indexes on inet type yet.
+-- TODO (YB) changing inet->text below as we don't support indexes on inet type yet.
 -- Two columns, two tables
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, PRIMARY KEY(ptest1, ptest2));
 -- This should fail, because we just chose really odd types
@@ -863,9 +865,9 @@ ptest3) REFERENCES pktable);
 ERROR:  foreign key constraint "pktable_ptest4_fkey" cannot be implemented
 DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: text and integer.
 -- TODO: YugaByte does not yet support table inheritance.
---       Leaving the first failing statement uncommented so that this test
---       will fail when the feature is implemented (the full test should
---       be uncommented then).
+-- Leaving the first failing statement uncommented so that this test
+-- will fail when the feature is implemented (the full test should
+-- be uncommented then).
 --
 -- Now some cases with inheritance
 -- Basic 2 table case: 1 column of matching types.
@@ -1559,8 +1561,6 @@ INSERT INTO fk_partitioned_fk (a,b) VALUES (500, 501);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (1500, 1501);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2500, 2502);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2501, 2503);
--- TODO(YB): When UPDATE changing partitions is supported, restore this section
---           to its original form. (#5310)
 -- this update fails because there is no referenced row
 UPDATE fk_partitioned_fk SET a = a + 5 WHERE a = 2501;
 ERROR:  insert or update on table "fk_partitioned_fk_3_0" violates foreign key constraint "fk_partitioned_fk_a_fkey"
@@ -1570,14 +1570,14 @@ INSERT INTO fk_notpartitioned_pk (a,b) VALUES (2506, 2503);
 UPDATE fk_partitioned_fk SET a = a + 5 WHERE a = 2501;
 -- these updates would leave lingering rows in the referencing table; disallow
 UPDATE fk_notpartitioned_pk SET b = 502 WHERE a = 500;
-ERROR:  update or delete on table "fk_notpartitioned_pk" violates foreign key constraint "fk_partitioned_fk_a_fkey" on table "fk_partitioned_fk"
-DETAIL:  Key (a, b)=(500, 501) is still referenced from table "fk_partitioned_fk".
+ERROR:  Update PRIMARY KEY columns are not yet supported
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
 UPDATE fk_notpartitioned_pk SET b = 1502 WHERE a = 1500;
-ERROR:  update or delete on table "fk_notpartitioned_pk" violates foreign key constraint "fk_partitioned_fk_a_fkey" on table "fk_partitioned_fk"
-DETAIL:  Key (a, b)=(1500, 1501) is still referenced from table "fk_partitioned_fk".
+ERROR:  Update PRIMARY KEY columns are not yet supported
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
 UPDATE fk_notpartitioned_pk SET b = 2504 WHERE a = 2500;
-ERROR:  update or delete on table "fk_notpartitioned_pk" violates foreign key constraint "fk_partitioned_fk_a_fkey" on table "fk_partitioned_fk"
-DETAIL:  Key (a, b)=(2500, 2502) is still referenced from table "fk_partitioned_fk".
+ERROR:  Update PRIMARY KEY columns are not yet supported
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
 ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_fkey;
 -- done.
 DROP TABLE fk_notpartitioned_pk, fk_partitioned_fk;
@@ -1589,7 +1589,10 @@ CREATE TABLE fk_partitioned_fk_1 PARTITION OF fk_partitioned_fk FOR VALUES FROM 
 INSERT INTO fk_notpartitioned_pk VALUES (1);
 INSERT INTO fk_partitioned_fk VALUES (1);
 ALTER TABLE fk_notpartitioned_pk ALTER COLUMN a TYPE bigint;
-ERROR:  This ALTER TABLE command is not yet supported.
+ERROR:  ALTER TABLE ALTER column not supported yet
+LINE 1: ALTER TABLE fk_notpartitioned_pk ALTER COLUMN a TYPE bigint;
+                                         ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 DELETE FROM fk_notpartitioned_pk WHERE a = 1;
 ERROR:  update or delete on table "fk_notpartitioned_pk" violates foreign key constraint "fk_partitioned_fk_a_fkey" on table "fk_partitioned_fk"
 DETAIL:  Key (a)=(1) is still referenced from table "fk_partitioned_fk".
@@ -1628,33 +1631,14 @@ SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY 
  fk_partitioned_fk_1 |      |
 (2 rows)
 
--- TODO(YB): When UPDATE changing partitions is supported, the below section
---           should be reworked. (#5310)
+-- When update of primary keys is supported the below statement adding a null
+-- entry into fk_partitioned_fk can be removed.
 UPDATE fk_notpartitioned_pk SET a = a + 1 WHERE a = 2502;
-ERROR:  This operation would cause a row to change the partition, this is not yet supported
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/5310. Click '+' on the description to raise its priority
-CONTEXT:  SQL statement "UPDATE "public"."fk_partitioned_fk" SET "a" = NULL, "b" = NULL WHERE $1 OPERATOR(pg_catalog.=) "a" AND $2 OPERATOR(pg_catalog.=) "b""
+ERROR:  Update PRIMARY KEY columns are not yet supported
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
 DELETE FROM fk_partitioned_fk WHERE a = 2502;
 INSERT INTO fk_partitioned_fk (a,b) VALUES (NULL, NULL);
-INSERT INTO fk_partitioned_fk (a,b) VALUES (2502, NULL);
-UPDATE fk_notpartitioned_pk SET a = 2503 WHERE a = 2502;
-SELECT tableoid::regclass, a, b FROM fk_partitioned_fk ORDER BY a, b;
-      tableoid       |  a   | b
----------------------+------+---
- fk_partitioned_fk_3 | 2502 |
- fk_partitioned_fk_1 |      |
- fk_partitioned_fk_1 |      |
-(3 rows)
-
-SELECT tableoid::regclass, a, b FROM fk_notpartitioned_pk ORDER BY a;
-       tableoid       |  a   |  b
-----------------------+------+------
- fk_notpartitioned_pk | 2503 | 2503
-(1 row)
-
 -- ON DELETE SET NULL
--- TODO(YB): When UPDATE changing partitions is supported, restore this section
---           to its original form. (#5310)
 DELETE FROM fk_notpartitioned_pk WHERE a=2502;
 INSERT INTO fk_notpartitioned_pk (a,b) VALUES (500, 500);
 INSERT INTO fk_partitioned_fk VALUES (500, 500);
@@ -1680,12 +1664,16 @@ INSERT INTO fk_notpartitioned_pk VALUES (2502, 2503);
 INSERT INTO fk_partitioned_fk_3 (a, b) VALUES (2502, 2503);
 -- this fails, because the defaults for the referencing table are not present
 -- in the referenced table:
+-- Revive this test when update of primary keys is supported.
 UPDATE fk_notpartitioned_pk SET a = 1500 WHERE a = 2502;
+ERROR:  Update PRIMARY KEY columns are not yet supported
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
+DELETE FROM fk_notpartitioned_pk WHERE a = 2502;
 ERROR:  insert or update on table "fk_partitioned_fk_3" violates foreign key constraint "fk_partitioned_fk_a_fkey"
 DETAIL:  Key (a, b)=(2501, 142857) is not present in table "fk_notpartitioned_pk".
 -- but inserting the row we can make it work:
 INSERT INTO fk_notpartitioned_pk VALUES (2501, 142857);
-UPDATE fk_notpartitioned_pk SET a = 1500 WHERE a = 2502;
+DELETE FROM fk_notpartitioned_pk WHERE a = 2502;
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
   a   |   b
 ------+--------
@@ -1697,19 +1685,24 @@ ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_fkey;
 ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
   REFERENCES fk_notpartitioned_pk
   ON DELETE CASCADE ON UPDATE CASCADE;
+-- Revive this test when update of primary keys is supported.
 UPDATE fk_notpartitioned_pk SET a = 2502 WHERE a = 2501;
+ERROR:  Update PRIMARY KEY columns are not yet supported
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
   a   |   b
 ------+--------
- 2502 | 142857
+ 2501 | 142857
 (1 row)
 
+INSERT INTO fk_partitioned_fk VALUES (2501, 142857);
 -- Now you see it ...
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
   a   |   b
 ------+--------
- 2502 | 142857
-(1 row)
+ 2501 | 142857
+ 2501 | 142857
+(2 rows)
 
 DELETE FROM fk_notpartitioned_pk WHERE b = 142857;
 -- now you don't.
@@ -1724,16 +1717,9 @@ DROP TABLE fk_partitioned_fk_2;
 -- partitions.
 CREATE TABLE fk_partitioned_fk_2 PARTITION OF fk_partitioned_fk FOR VALUES IN (1500,1502);
 ALTER TABLE fk_partitioned_fk DETACH PARTITION fk_partitioned_fk_2;
--- TODO(YB): Uncomment when transactional DDLs are supported (#1404)
--- BEGIN;
--- DROP TABLE fk_partitioned_fk;
--- -- constraint should still be there
--- \d fk_partitioned_fk_2;
--- ROLLBACK;
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2 FOR VALUES IN (1500,1502);
 DROP TABLE fk_partitioned_fk_2;
-CREATE TABLE fk_partitioned_fk_2 (b int, c text, a int,
-	FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk ON UPDATE CASCADE ON DELETE CASCADE);
+CREATE TABLE fk_partitioned_fk_2 (b int, c text, a int, FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk ON UPDATE CASCADE ON DELETE CASCADE);
 ALTER TABLE fk_partitioned_fk_2 DROP COLUMN c;
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2 FOR VALUES IN (1500,1502);
 -- should have only one constraint
@@ -1791,9 +1777,9 @@ Foreign-key constraints:
     "fk_partitioned_fk_4_a_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE
 
 CREATE TABLE fk_partitioned_fk_5 (a int, b int,
-	FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE,
-	FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE)
-  PARTITION BY RANGE (a);
+FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE,
+FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE)
+PARTITION BY RANGE (a);
 CREATE TABLE fk_partitioned_fk_5_1 (a int, b int, FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk);
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_5 FOR VALUES IN (4500);
 ALTER TABLE fk_partitioned_fk_5 ATTACH PARTITION fk_partitioned_fk_5_1 FOR VALUES FROM (0) TO (10);
@@ -1849,6 +1835,7 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2
 -- Test creating a constraint at the parent that already exists in partitions.
 -- There should be no duplicated constraints, and attempts to drop the
 -- constraint in partitions should raise appropriate errors.
+-- Import remaining tests from postgres after creating schema is supported.
 create schema fkpart0
   create table pkey (a int primary key)
   create table fk_part (a int) partition by list (a)
@@ -1862,14 +1849,13 @@ ERROR:  CREATE SCHEMA with elements not supported yet
 LINE 2:   create table pkey (a int primary key)
           ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
--- TODO(YB): Import remaining tests from postgres after creating schema is supported.
 /*
 alter table fkpart0.fk_part add foreign key (a) references fkpart0.pkey;
-\d fkpart0.fk_part_1	\\ -- should have only one FK
+\d fkpart0.fk_part_1    \\ -- should have only one FK
 alter table fkpart0.fk_part_1 drop constraint fk_part_1_a_fkey;
 
-\d fkpart0.fk_part_23	\\ -- should have only one FK
-\d fkpart0.fk_part_23_2	\\ -- should have only one FK
+\d fkpart0.fk_part_23   \\ -- should have only one FK
+\d fkpart0.fk_part_23_2 \\ -- should have only one FK
 alter table fkpart0.fk_part_23 drop constraint fk_part_23_a_fkey;
 alter table fkpart0.fk_part_23_2 drop constraint fk_part_23_a_fkey;
 
@@ -1893,13 +1879,13 @@ create schema fkpart1
   create table fk_part_1 partition of fk_part for values in (1) partition by list (a)
   create table fk_part_1_1 partition of fk_part_1 for values in (1);
 alter table fkpart1.fk_part add foreign key (a) references fkpart1.pkey;
-insert into fkpart1.fk_part values (1);		-- should fail
+insert into fkpart1.fk_part values (1);         -- should fail
 insert into fkpart1.pkey values (1);
 insert into fkpart1.fk_part values (1);
-delete from fkpart1.pkey where a = 1;		-- should fail
+delete from fkpart1.pkey where a = 1;           -- should fail
 alter table fkpart1.fk_part detach partition fkpart1.fk_part_1;
 create table fkpart1.fk_part_1_2 partition of fkpart1.fk_part_1 for values in (2);
-insert into fkpart1.fk_part_1 values (2);	-- should fail
+insert into fkpart1.fk_part_1 values (2);       -- should fail
 delete from fkpart1.pkey where a = 1;
 
 -- verify that attaching and detaching partitions manipulates the inheritance
@@ -1910,13 +1896,12 @@ create schema fkpart2
   create table fk_part_1 partition of fkpart2.fk_part for values in (1) partition by list (a)
   create table fk_part_1_1 (a int, constraint my_fkey foreign key (a) references fkpart2.pkey);
 alter table fkpart2.fk_part_1 attach partition fkpart2.fk_part_1_1 for values in (1);
-alter table fkpart2.fk_part_1 drop constraint fkey;	-- should fail
-alter table fkpart2.fk_part_1_1 drop constraint my_fkey;	-- should fail
+alter table fkpart2.fk_part_1 drop constraint fkey;     -- should fail
+alter table fkpart2.fk_part_1_1 drop constraint my_fkey;        -- should fail
 alter table fkpart2.fk_part detach partition fkpart2.fk_part_1;
-alter table fkpart2.fk_part_1 drop constraint fkey;	-- ok
-alter table fkpart2.fk_part_1_1 drop constraint my_fkey;	-- doesn't exist
-
-\set VERBOSITY terse	\\ -- suppress cascade details
+alter table fkpart2.fk_part_1 drop constraint fkey;     -- ok
+alter table fkpart2.fk_part_1_1 drop constraint my_fkey;        -- doesn't exist
+\set VERBOSITY terse    \\ -- suppress cascade details
 drop schema fkpart0, fkpart1, fkpart2 cascade;
 \set VERBOSITY default
 */

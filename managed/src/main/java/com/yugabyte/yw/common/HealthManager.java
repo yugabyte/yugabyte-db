@@ -36,9 +36,7 @@ public class HealthManager extends DevopsBase {
     public String ybSoftwareVersion = null;
     public boolean enableTlsClient = false;
     public boolean enableYSQL = false;
-    public int ysqlPort = 5433;
-    public int ycqlPort = 9042;
-    public int redisPort = 6379;
+    public int ysqlPort = 0;
   }
 
   public ShellProcessHandler.ShellResponse runCommand(

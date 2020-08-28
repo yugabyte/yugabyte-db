@@ -25,10 +25,9 @@
 
 #include "yb/yql/cql/cqlserver/cql_message.h"
 #include "yb/yql/cql/cqlserver/cql_processor.h"
-#include "yb/yql/cql/cqlserver/cql_server_options.h"
-#include "yb/yql/cql/cqlserver/cql_service.service.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
-#include "yb/yql/cql/cqlserver/system_query_cache.h"
+#include "yb/yql/cql/cqlserver/cql_service.service.h"
+#include "yb/yql/cql/cqlserver/cql_server_options.h"
 #include "yb/yql/cql/ql/statement.h"
 
 #include "yb/util/object_pool.h"
@@ -61,9 +60,6 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // Processing all incoming request from RPC and sending response back.
   void Handle(yb::rpc::InboundCallPtr call) override;
-
-  // Either gets an available processor or creates a new one.
-  Result<CQLProcessor*> GetProcessor();
 
   // Return CQL processor at pos as available.
   void ReturnProcessor(const CQLProcessorListPos& pos);
@@ -110,10 +106,11 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   server::Clock* clock();
 
-  std::shared_ptr<SystemQueryCache> system_cache() { return system_cache_; }
-
  private:
   constexpr static int kRpcTimeoutSec = 5;
+
+  // Either gets an available processor or creates a new one.
+  Result<CQLProcessor*> GetProcessor();
 
   // Insert a prepared statement at the front of the LRU list. "prepared_stmts_mutex_" needs to be
   // locked before this call.
@@ -169,8 +166,6 @@ class CQLServiceImpl : public CQLServerServiceIf,
   boost::compute::detail::lru_cache<std::string, bool> password_cache_
     GUARDED_BY(password_cache_mutex_);
   std::mutex password_cache_mutex_;
-
-  std::shared_ptr<SystemQueryCache> system_cache_;
 
   // Metrics to be collected and reported.
   yb::rpc::RpcMethodMetrics metrics_;

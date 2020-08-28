@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
+import com.avaje.ebean.Model;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -49,7 +49,7 @@ public class Alert extends Model {
   public String message;
 
   public static final Logger LOG = LoggerFactory.getLogger(Alert.class);
-  private static final Finder<UUID, Alert> find = new Finder<UUID, Alert>(Alert.class) {};
+  private static final Find<UUID, Alert> find = new Find<UUID, Alert>() {};
 
   /**
    * Create new alert.
@@ -91,14 +91,14 @@ public class Alert extends Model {
   }
 
   public static Boolean exists(String errCode) {
-    return find.query().where().eq("errCode", errCode).findCount() != 0;
+    return find.where().eq("errCode", errCode).findRowCount() != 0;
   }
 
   public static List<Alert> get(UUID customerUUID) {
-    return find.query().where().eq("customer_uuid", customerUUID).findList();
+    return find.where().eq("customer_uuid", customerUUID).findList();
   }
 
   public static List<Alert> get(UUID customerUUID, String errCode) {
-    return find.query().where().eq("customer_uuid", customerUUID).eq("errCode", errCode).findList();
+    return find.where().eq("customer_uuid", customerUUID).eq("errCode", errCode).findList();
   }
 }

@@ -1,8 +1,8 @@
 ---
-title: Start YB-TServer servers
+title: Start YB-TServer servers of YugabyteDB cluster
 headerTitle: Start YB-TServers
 linkTitle: 4. Start YB-TServers
-description: Steps to start YB-TServers when deploying for a single region or data center in a multi-zone/multi-rack configuration.
+description: Start YB-TServer servers of your YugabyteDB cluster
 aliases:
   - /deploy/manual-deployment/start-tservers
 menu:
@@ -51,6 +51,8 @@ $ ./bin/yb-tserver \
 
 For the full list of configuration flags, see the [YB-TServer reference](../../../reference/configuration/yb-tserver/).
 
+If you need to turn on the YEDIS API as well, add `--redis_proxy_bind_address=172.151.17.130:6379` to the above list.
+
 {{< note title="Note" >}}
 
 The number of comma-separated values in the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs)) flag should match the total number of YB-Master servers (or the replication factor).
@@ -72,6 +74,8 @@ Alternatively, you can also create a `tserver.conf` file with the following flag
 --placement_region=us-west 
 --placement_zone=us-west-2a 
 ```
+
+Add `--redis_proxy_bind_address=172.22.25.108:6379` to the above list if you need to turn on the YEDIS API as well.
 
 ```sh
 $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out &

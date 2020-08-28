@@ -18,7 +18,6 @@
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace master {
@@ -51,8 +50,6 @@ class TSHeartbeatResponsePB;
 
 typedef scoped_refptr<TabletInfo> TabletInfoPtr;
 typedef std::vector<TabletInfoPtr> TabletInfos;
-
-YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 
 } // namespace master
 } // namespace yb

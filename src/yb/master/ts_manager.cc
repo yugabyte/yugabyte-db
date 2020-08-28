@@ -106,8 +106,7 @@ bool HasSameHostPort(const google::protobuf::RepeatedPtrField<HostPortPB>& old_a
 Status TSManager::RegisterTS(const NodeInstancePB& instance,
                              const TSRegistrationPB& registration,
                              CloudInfoPB local_cloud_info,
-                             rpc::ProxyCache* proxy_cache,
-                             RegisteredThroughHeartbeat registered_through_heartbeat) {
+                             rpc::ProxyCache* proxy_cache) {
   TSCountCallback callback_to_call;
 
   {
@@ -142,8 +141,7 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
       }
 
       auto new_desc = VERIFY_RESULT(TSDescriptor::RegisterNew(
-          instance, registration, std::move(local_cloud_info), proxy_cache,
-          registered_through_heartbeat));
+          instance, registration, std::move(local_cloud_info), proxy_cache));
       InsertOrDie(&servers_by_id_, uuid, std::move(new_desc));
       LOG(INFO) << "Registered new tablet server { " << instance.ShortDebugString()
                 << " } with Master, full list: " << yb::ToString(servers_by_id_);

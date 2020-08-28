@@ -105,7 +105,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
             // Do nothing
           }
         } while (!status.equals("Running") && iters < MAX_ITERS);
-        if (iters > MAX_ITERS) {
+        if (MAX_ITERS > 10) {
           throw new RuntimeException("Pod " + taskParams().podName + " creation taking too long.");
         }
         break;

@@ -26,11 +26,9 @@ import static junit.framework.TestCase.assertTrue;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.instanceOf;
-import org.hamcrest.core.*;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.times;
@@ -100,10 +98,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     verify(mockApiHelper).getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
     assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query")));
-    assertThat(
-      queryParam.getValue(),
-      allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class))
-    );
+    assertThat(queryParam.getValue(), allOf(notNullValue(), instanceOf(Map.class)));
 
     Map<String, String> graphQueryParam = queryParam.getValue();
     assertThat(graphQueryParam.get("query"), allOf(notNullValue(), equalTo("sum(my_valid_metric)")));
@@ -132,10 +127,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     verify(mockApiHelper).getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
     assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query_range")));
-    assertThat(
-      queryParam.getValue(),
-      allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class))
-    );
+    assertThat(queryParam.getValue(), allOf(notNullValue(), instanceOf(Map.class)));
 
     Map<String, String> graphQueryParam = queryParam.getValue();
     assertThat(graphQueryParam.get("query"), allOf(notNullValue(), equalTo("sum(my_valid_metric)")));
@@ -165,14 +157,11 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     JsonNode result = metricQueryHelper.query(metricKeys, params);
     verify(mockApiHelper, times(2)).getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
     assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query_range")));
-    assertThat(
-      queryParam.getValue(),
-      allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class))
-    );
+    assertThat(queryParam.getValue(), allOf(notNullValue(), instanceOf(Map.class)));
 
     List<String> expectedQueryStrings = new ArrayList<>();
-    expectedQueryStrings.add(validMetric.getQuery(new HashMap<>(), 60 /* queryRangeSecs */));
-    expectedQueryStrings.add(validMetric2.getQuery(new HashMap<>(), 60 /* queryRangeSecs */));
+    expectedQueryStrings.add(validMetric.getQuery(new HashMap<>()));
+    expectedQueryStrings.add(validMetric2.getQuery(new HashMap<>()));
 
     for (Map<String, String> capturedQueryParam: queryParam.getAllValues()) {
       assertTrue(expectedQueryStrings.contains(capturedQueryParam.get("query")));

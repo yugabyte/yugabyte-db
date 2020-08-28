@@ -6,7 +6,7 @@ description:  Test whether one jsonb value contains another jsonb value using th
 menu:
   latest:
     identifier: containment-operators
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 16
 isTocNested: true
 showAsideToc: true

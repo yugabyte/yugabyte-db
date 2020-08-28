@@ -222,10 +222,12 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
 
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
                                    YBCPgOid database_oid,
+                                   const char *tablegroup_name,
                                    YBCPgOid tablegroup_oid,
                                    YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateTablegroup(database_name,
                                                 database_oid,
+                                                tablegroup_name,
                                                 tablegroup_oid,
                                                 handle));
 }
@@ -234,10 +236,12 @@ YBCStatus YBCPgExecCreateTablegroup(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateTablegroup(handle));
 }
 
-YBCStatus YBCPgNewDropTablegroup(YBCPgOid database_oid,
+YBCStatus YBCPgNewDropTablegroup(const char *tablegroup_name,
+                                 YBCPgOid database_oid,
                                  YBCPgOid tablegroup_oid,
                                  YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->NewDropTablegroup(database_oid,
+  return ToYBCStatus(pgapi->NewDropTablegroup(tablegroup_name,
+                                              database_oid,
                                               tablegroup_oid,
                                               handle));
 }
@@ -309,13 +313,11 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool if_not_exist,
                               bool add_primary_key,
                               const bool colocated,
-                              const YBCPgOid tablegroup_oid,
                               YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  const PgObjectId tablegroup_id(database_oid, tablegroup_oid);
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
-      if_not_exist, add_primary_key, colocated, tablegroup_id, handle));
+      if_not_exist, add_primary_key, colocated, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -469,14 +471,12 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_unique_index,
                               const bool skip_index_backfill,
                               bool if_not_exist,
-                              const YBCPgOid tablegroup_oid,
                               YBCPgStatement *handle) {
   const PgObjectId index_id(database_oid, index_oid);
   const PgObjectId table_id(database_oid, table_oid);
-  const PgObjectId tablegroup_id(database_oid, tablegroup_oid);
   return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
                                            table_id, is_shared_index, is_unique_index,
-                                           skip_index_backfill, if_not_exist, tablegroup_id,
+                                           skip_index_backfill, if_not_exist,
                                            handle));
 }
 
@@ -845,10 +845,6 @@ void YBCInitFlags() {
 
 YBCStatus YBCPgIsInitDbDone(bool* initdb_done) {
   return ExtractValueFromResult(pgapi->IsInitDbDone(), initdb_done);
-}
-
-const bool YBCGetDisableTransparentCacheRefreshRetry() {
-  return pgapi->GetDisableTransparentCacheRefreshRetry();
 }
 
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {

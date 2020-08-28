@@ -6,7 +6,7 @@ description: Create a JSON object from SQL arrays that specify keys with their v
 menu:
   latest:
     identifier: jsonb-object
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 150
 isTocNested: true
 showAsideToc: true

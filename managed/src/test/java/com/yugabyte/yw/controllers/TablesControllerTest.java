@@ -7,7 +7,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertForbidden;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -22,7 +21,6 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyBoolean;
-import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -97,8 +95,6 @@ import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
 
-import static play.test.Helpers.contextComponents;
-
 public class TablesControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(TablesControllerTest.class);
   private YBClientService mockService;
@@ -122,7 +118,7 @@ public class TablesControllerTest extends FakeDBApplication {
     mockService = mock(YBClientService.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
     mockSchemaResponse = mock(GetTableSchemaResponse.class);
-    when(mockService.getClient(any(), any())).thenReturn(mockClient);
+    when(mockService.getClient(any(String.class), any(String.class))).thenReturn(mockClient);
     tablesController = new TablesController(mockService);
   }
 
@@ -319,7 +315,7 @@ public class TablesControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(json.get("taskUUID").asText(), fakeTaskUUID.toString());
 
-    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    CustomerTask task = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
     assertNotNull(task);
     assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("test_table")));
@@ -513,66 +509,6 @@ public class TablesControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateBackupWithReadOnlyUser() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer, Users.Role.ReadOnly);
-    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
-        "/tables/" + UUID.randomUUID() + "/create_backup";
-    ObjectNode bodyJson = Json.newObject();
-    UUID randomUUID = UUID.randomUUID();
-    bodyJson.put("keyspace", "foo");
-    bodyJson.put("tableName", "bar");
-    bodyJson.put("actionType", "CREATE");
-    bodyJson.put("storageConfigUUID", randomUUID.toString());
-
-    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
-        user.createAuthToken(), bodyJson);
-    assertForbidden(result, "User doesn't have access");
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testCreateBackupWithBackupAdminUser() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer, Users.Role.BackupAdmin);
-    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
-    UUID tableUUID = UUID.randomUUID();
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
-        "/tables/" + tableUUID + "/create_backup";
-    ObjectNode bodyJson = Json.newObject();
-    UUID randomUUID = UUID.randomUUID();
-    bodyJson.put("keyspace", "foo");
-    bodyJson.put("tableName", "bar");
-    bodyJson.put("actionType", "CREATE");
-    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
-
-    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);;
-    ArgumentCaptor<BackupTableParams> taskParams =
-        ArgumentCaptor.forClass(BackupTableParams.class);
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
-        user.createAuthToken(), bodyJson);
-    System.out.println(result);
-    verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
-    assertEquals(TaskType.BackupUniverse, taskType.getValue());
-    String storageRegex = "s3://foo/univ-" + universe.universeUUID + "/backup-"+
-        "\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar-[a-zA-Z0-9]*";
-    assertThat(taskParams.getValue().storageLocation, RegexMatcher.matchesRegex(storageRegex));
-    assertOk(result);
-    JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
-    CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
-    assertNotNull(ct);
-    Backup backup = Backup.fetchByTaskUUID(fakeTaskUUID);
-    assertNotNull(backup);
-    assertEquals(tableUUID, backup.getBackupInfo().tableUUID);
-    assertAuditEntry(1, customer.uuid);
-  }
-
-  @Test
   public void testCreateBackupWithValidParams() {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
@@ -662,7 +598,6 @@ public class TablesControllerTest extends FakeDBApplication {
         "/multi_table_backup";
     ObjectNode bodyJson = Json.newObject();
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
-    bodyJson.put("actionType", "CREATE");
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
 
     ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);;
@@ -692,7 +627,6 @@ public class TablesControllerTest extends FakeDBApplication {
         "/multi_table_backup";
     ObjectNode bodyJson = Json.newObject();
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
-    bodyJson.put("actionType", "CREATE");
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "5 * * * *");
 
@@ -717,7 +651,6 @@ public class TablesControllerTest extends FakeDBApplication {
         "/multi_table_backup";
     ObjectNode bodyJson = Json.newObject();
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
-    bodyJson.put("actionType", "CREATE");
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("schedulingFrequency", "6000");
 
@@ -741,19 +674,17 @@ public class TablesControllerTest extends FakeDBApplication {
     Http.Request request = mock(Http.Request.class);
     Long id = 2L;
     play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-    Http.Context context = new Http.Context(
-      id, header, request, flashData, flashData, argData, contextComponents()
-    );
+    Http.Context context = new Http.Context(id, header, request, flashData, flashData, argData);
     Http.Context.current.set(context);
     tablesController.commissioner = mockCommissioner;
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+        Matchers.any(DeleteTableFromUniverse.Params.class))).thenReturn(fakeTaskUUID);
+    when(mockClient.getTableSchemaByUUID(any(String.class))).thenReturn(mockSchemaResponse);
 
     // Creating a fake table
     Schema schema = getFakeSchema();
     UUID tableUUID = UUID.randomUUID();
-    when(mockClient.getTableSchemaByUUID(eq(tableUUID.toString().replace("-", ""))))
-      .thenReturn(mockSchemaResponse);
     when(mockSchemaResponse.getSchema()).thenReturn(schema);
     when(mockSchemaResponse.getTableName()).thenReturn("mock_table");
     when(mockSchemaResponse.getNamespace()).thenReturn("mock_ks");

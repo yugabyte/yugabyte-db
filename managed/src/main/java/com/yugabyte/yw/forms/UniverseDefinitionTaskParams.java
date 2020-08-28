@@ -178,7 +178,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       ObjectNode clusterJson = (ObjectNode) Json.toJson(this);
       if (userIntent.regionList != null && !userIntent.regionList.isEmpty()) {
-        List<Region> regions = Region.find.query().where().idIn(userIntent.regionList).findList();
+        List<Region> regions = Region.find.where().idIn(userIntent.regionList).findList();
         if (!regions.isEmpty()) {
           clusterJson.set("regions", Json.toJson(regions));
         }

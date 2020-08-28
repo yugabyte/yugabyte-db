@@ -1,8 +1,8 @@
 ---
-title: Client drivers for YSQL API
-headerTitle: Client drivers for YSQL API
-linkTitle: Client drivers for YSQL API
-description: Lists the client drivers that you can use to connect to and interact with the YSQL API.
+title: API client drivers for YSQL
+headerTitle: API client drivers for YSQL
+linkTitle: API client drivers for YSQL
+description: Lists the API client library drivers that you can use to build and access YSQL applications.
 aliases:
   - /latest/reference/drivers/postgresql-jdbc-driver/
 menu:
@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql) builds upon and extends a fork of the query layer from PostgreSQL 11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
+The [Yugabyte Structured Query Language (YSQL) API](../../api/ysql) builds upon and extends a fork of the query layer from PostgreSQL v11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
 
 For details on PostgreSQL feature support in YSQL, see [What Features Does YSQL Support?](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/YSQL-Features-Supported.md)
 
@@ -121,7 +121,7 @@ The `pq` driver is ready for building Go applications that connect to and intera
 
 The [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) is the official PostgreSQL driver. PgJDBC is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication protocol](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256).
 
-For a tutorial on building a sample Go application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-jdbc/) and click **YSQL-JDBC**.
+For a tutorial on building a sample Go application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql/) and click **YSQL-JDBC**.
 
 #### Install the PostgreSQL JDBC Driver
 
@@ -177,28 +177,10 @@ For a tutorial on building a sample Python application that uses `psycopg2`, see
 
 #### Install the psycopg2 binary
 
-To install the `psycopg2` package, run the following `pip install` command:
+To install the `psycopg2` binary package, run the following pip install` command:
 
 ```sh
-$ pip install psycopg2
-```
-
-### aiopg
-
-[aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP
--3156/tulip) framework. It wraps
- asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using `aiopg`, see
-  [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
-
-For a tutorial on building a sample Python application that uses `psycopg2`, see [Build a Python application
-](../../../quick-start/build-apps/python/ysql-aiopg).
-
-#### Install
-
-To install the `aio` package, run the following `pip3 install` command:
-
-```sh
-pip3 install aiopg
+$ pip3 install psycopg2
 ```
 
 ## Ruby

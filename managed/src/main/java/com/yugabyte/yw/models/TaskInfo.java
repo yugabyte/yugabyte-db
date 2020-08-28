@@ -14,11 +14,12 @@ import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
 
-import io.ebean.*;
-import io.ebean.annotation.CreatedTimestamp;
-import io.ebean.annotation.DbJson;
-import io.ebean.annotation.EnumValue;
-import io.ebean.annotation.UpdatedTimestamp;
+import com.avaje.ebean.Model;
+import com.avaje.ebean.Query;
+import com.avaje.ebean.annotation.CreatedTimestamp;
+import com.avaje.ebean.annotation.DbJson;
+import com.avaje.ebean.annotation.EnumValue;
+import com.avaje.ebean.annotation.UpdatedTimestamp;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -180,7 +181,7 @@ public class TaskInfo extends Model {
     this.details = details;
   }
 
-  public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class){};
+  public static final Find<UUID, TaskInfo> find = new Find<UUID, TaskInfo>(){};
 
   public static TaskInfo get(UUID taskUUID) {
     // Return the instance details object.
@@ -188,7 +189,7 @@ public class TaskInfo extends Model {
   }
 
   public List<TaskInfo> getSubTasks() {
-    Query<TaskInfo> subTaskQuery = TaskInfo.find.query().where()
+    Query<TaskInfo> subTaskQuery = TaskInfo.find.where()
         .eq("parent_uuid", getTaskUUID())
         .orderBy("position asc");
     return subTaskQuery.findList();
@@ -196,7 +197,7 @@ public class TaskInfo extends Model {
 
   public List<TaskInfo> getIncompleteSubTasks() {
     Object[] incompleteStates = {State.Created, State.Initializing, State.Running};
-    return TaskInfo.find.query().where()
+    return TaskInfo.find.where()
       .eq("parent_uuid", getTaskUUID())
       .in("task_state", incompleteStates)
       .findList();
@@ -261,7 +262,7 @@ public class TaskInfo extends Model {
    * @return a number between 0.0 and 100.0.
    */
   public double getPercentCompleted() {
-    Query<TaskInfo> subTaskQuery = TaskInfo.find.query().where()
+    Query<TaskInfo> subTaskQuery = TaskInfo.find.where()
         .eq("parent_uuid", getTaskUUID())
         .orderBy("position asc");
     List<TaskInfo> result = subTaskQuery.findList();

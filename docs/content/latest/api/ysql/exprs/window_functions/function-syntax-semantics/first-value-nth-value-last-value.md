@@ -6,7 +6,7 @@ description: Describes the functionality of the YSQL window functions first_valu
 menu:
   latest:
     identifier: first-value-nth-value-last-value
-    parent: window-function-syntax-semantics
+    parent: function-syntax-semantics
     weight: 30
 isTocNested: true
 showAsideToc: true
@@ -24,8 +24,7 @@ If you have a use case that requires a specifically tailored [_window frame_](..
 input value:       anyelement
 return value:      anyelement
 ```
-
-**Purpose:** Return the specified value from the first row, in the specified sort order, in the current [_window frame_](../../sql-syntax-semantics/#frame-clause-semantics-for-window-functions). If you specify the [`frame_clause`](../../../../syntax_resources/grammar_diagrams/#frame-clause) to start at a fixed offset before the current row, then `first_value()` would produce the same result as would the correspondingly parameterized `lag()`. If this is your aim, then you should use `lag()` for clarity.
+**Purpose:** Return the specified value from the first row, in the specified sort order, in the current [_window frame_](../../sql-syntax-semantics/#frame-clause-semantics-for-window-functions). If you specify the [**frame_clause**](../../../../syntax_resources/grammar_diagrams/#frame-clause) to start at a fixed offset before the current row, then `first_value()` would produce the same result as would the correspondingly parameterized `lag()`. If this is your aim, then you should use `lag()` for clarity.
 
 ## nth_value()
 
@@ -46,21 +45,17 @@ return value:      anyelement
 input value:       anyelement
 return value:      anyelement
 ```
-
 **Purpose:** Return the specified value from the last row, in the specified sort order, in the current [_window frame_](../../sql-syntax-semantics/#frame-clause-semantics-for-window-functions).
 
 ## Examples that illustrate all three functions
 
 {{< note title=" " >}}
-
 If you haven't yet installed the tables that the code examples use, then go to the section [The data sets used by the code examples](../data-sets/).
-
 {{< /note >}}
 
-This example uses table _"t1"_. Notice that it has been contrived so that the last _"v"_ (ordered by _"k"_) for each value of _"class"_ is `NULL`.
+This example uses table _"t1"_. Notice that it has been contrived so that the last _"v"_ (ordered by _"k"_) for each value of _"class"_ is `NULL`. 
 
 Use the technique shown in the section [Using `nth_value()` and `last_value()` to return the whole row](../#using-nth-value-and-last-value-to-return-the-whole-row) so that each of the three window functions produces all of the fields in each row:
-
 ```plpgsql
 drop type if exists rt cascade;
 create type rt as (class int, k int, v int);
@@ -77,9 +72,7 @@ window w as (
   order by k
   range between unbounded preceding and unbounded following);
 ```
-
 Here is the result. To make it easier to see the pattern, a break has been manually inserted here between each successive set of rows with the same value for _"class"_.
-
 ```
  class | k  |    fv     |    nv     |   lv    
 -------+----+-----------+-----------+---------
@@ -113,9 +106,7 @@ Here is the result. To make it easier to see the pattern, a break has been manua
      5 | 24 | (5,21,21) | (5,23,23) | (5,25,)
      5 | 25 | (5,21,21) | (5,23,23) | (5,25,)
 ```
-
 Notice that the `::text` typecast of a _"row"_ type value renders `NULL` simply as an absence. This explains why you see, for example, _"(1,5,)"_ for each value produced by `last_value()` in the [_window_](../../sql-syntax-semantics/#the-window-definition-rule) where _"k=1"_. This basic example certainly demonstrates the meaning of _"first"_, _"Nth"_ (for _"N=3"_), and _"last"_. But it isn't very useful because, just as these names suggest, the output is the same for each row in a particular [_window_](../../sql-syntax-semantics/#the-window-definition-rule). The following query adds a conventional `GROUP BY` clause. It also extracts the interesting fields from the _"row"_ type value that each window function produces as individual values.
-
 ```plpgsql
 drop type if exists rt cascade;
 create type rt as (class int, k int, v int);
@@ -151,9 +142,7 @@ group by
   (lv).v
 order by 1;
 ```
-
 This is the result:
-
 ```
  fv_class | fv_k | fv_v | nv_k | nv_v | lv_k | lv_v 
 ----------+------+------+------+------+------+------
@@ -163,3 +152,4 @@ This is the result:
         4 |   16 |   16 |   18 |   18 |   20 |   ??
         5 |   21 |   21 |   23 |   23 |   25 |   ??
 ```
+

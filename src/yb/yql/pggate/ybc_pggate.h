@@ -59,9 +59,6 @@ YBCStatus YBCPgClearBinds(YBCPgStatement handle);
 // Check if initdb has been already run.
 YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 
-// Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
-const bool YBCGetDisableTransparentCacheRefreshRetry();
-
 // Sets catalog_version to the local tserver's catalog version stored in shared
 // memory, or an error if the shared memory has not been initialized (e.g. in initdb).
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
@@ -144,16 +141,19 @@ void YBCPgInvalidateTableCache(
 YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
 
 // TABLEGROUP --------------------------------------------------------------------------------------
+// Create and drop tablegroup "database_name.tablegroup_name".
 
 // Create tablegroup.
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
                                    YBCPgOid database_oid,
+                                   const char *tablegroup_name,
                                    YBCPgOid tablegroup_oid,
                                    YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateTablegroup(YBCPgStatement handle);
 
 // Drop tablegroup.
-YBCStatus YBCPgNewDropTablegroup(YBCPgOid database_oid,
+YBCStatus YBCPgNewDropTablegroup(const char *tablegroup_name,
+                                 YBCPgOid database_oid,
                                  YBCPgOid tablegroup_oid,
                                  YBCPgStatement *handle);
 YBCStatus YBCPgExecDropTablegroup(YBCPgStatement handle);
@@ -171,7 +171,6 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool if_not_exist,
                               bool add_primary_key,
                               const bool colocated,
-                              YBCPgOid tablegroup_oid,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -255,7 +254,6 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_unique_index,
                               const bool skip_index_backfill,
                               bool if_not_exist,
-                              YBCPgOid tablegroup_oid,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,

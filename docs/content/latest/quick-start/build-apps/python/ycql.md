@@ -16,25 +16,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./ysql-psycopg2.md" >}}" class="nav-link">
+    <a href="/latest/quick-start/build-apps/python/ysql-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - psycopg2
+      YSQL - Psycopg2
     </a>
   </li>
   <li >
-    <a href="{{< relref "./ysql-aiopg.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - aiopg
-    </a>
-  </li>
-  <li >
-    <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link">
+    <a href="/latest/quick-start/build-apps/python/ysql-sqlalchemy" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - SQL Alchemy
     </a>
   </li>
   <li>
-    <a href="" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/python/ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

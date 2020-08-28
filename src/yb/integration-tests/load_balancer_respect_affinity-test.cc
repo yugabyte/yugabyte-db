@@ -57,6 +57,16 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
     return 3;
   }
 
+  Result<bool> AreTransactionLeadersSpread() {
+    master::AreTransactionLeadersSpreadRequestPB req;
+    master::AreTransactionLeadersSpreadResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(kDefaultTimeout);
+    auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
+    RETURN_NOT_OK(proxy->AreTransactionLeadersSpread(req, &resp, &rpc));
+    return !resp.has_error();
+  }
+
   Result<bool> AreLeadersOnPreferredOnly() {
     master::AreLeadersOnPreferredOnlyRequestPB req;
     master::AreLeadersOnPreferredOnlyResponsePB resp;
@@ -95,8 +105,13 @@ TEST_F(LoadBalancerRespectAffinityTest,
   }, kDefaultTimeout * 2, "IsLoadBalanced"));
 
   ASSERT_OK(WaitFor([&]() {
+    return AreTransactionLeadersSpread();
+  }, kDefaultTimeout, "AreTransactionLeadersSpread"));
+
+  Status s = WaitFor([&]() {
     return AreLeadersOnPreferredOnly();
-  }, kDefaultTimeout, "AreLeadersOnPreferredOnly"));
+  }, kDefaultTimeout, "AreLeadersOnPreferredOnly");
+  ASSERT_FALSE(s.ok());
 
   // Now test that once setting this gflag, after leader load re-balances all leaders are
   // in the preferred zone.
@@ -125,8 +140,13 @@ TEST_F(LoadBalancerRespectAffinityTest,
   },  kDefaultTimeout * 2, "IsLoadBalanced"));
 
   ASSERT_OK(WaitFor([&]() {
+    return AreTransactionLeadersSpread();
+  },  kDefaultTimeout, "AreTransactionLeadersSpread"));
+
+  s = WaitFor([&]() {
     return AreLeadersOnPreferredOnly();
-  }, kDefaultTimeout, "AreLeadersOnPreferredOnly"));
+  }, kDefaultTimeout, "AreLeadersOnPreferredOnly");
+  ASSERT_FALSE(s.ok());
 }
 
 } // namespace integration_tests

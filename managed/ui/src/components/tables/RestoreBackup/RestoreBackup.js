@@ -1,10 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
-import _ from 'lodash';
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
-import {YBFormSelect, YBFormInput} from '../../common/forms/fields';
+import { YBFormSelect, YBFormInput } from '../../common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isNonEmptyArray, isNonEmptyObject, isEmptyString } from '../../../utils/ObjectUtils';
 import { YBModalForm } from '../../common/forms';
@@ -29,10 +28,8 @@ export default class RestoreBackup extends Component {
       const payload = {
         storageConfigUUID: values.storageConfigUUID,
         storageLocation:  values.storageLocation,
-        actionType: 'RESTORE',
-        parallelism: values.parallelism
-      };
-
+        actionType: 'RESTORE',      
+      };   
       if (values.backupList) {
         payload.backupList = values.backupList;
       } else if (values.restoreToTableName !== initialValues.restoreToTableName) {
@@ -41,11 +38,6 @@ export default class RestoreBackup extends Component {
       } else if (values.restoreToKeyspace !== initialValues.restoreToKeyspace) {
         payload.keyspace = values.restoreToKeyspace;
       }
-
-      if (_.get(values, "kmsConfigUUID.value.length", 0) > 0) {
-        payload['kmsConfigUUID'] = values.kmsConfigUUID.value;
-      }
-
       onHide();
       restoreTableBackup(restoreToUniverseUUID, payload);
       browserHistory.push('/universes/' + restoreToUniverseUUID + "/backups");
@@ -56,29 +48,25 @@ export default class RestoreBackup extends Component {
   }
 
   render() {
-    const { backupInfo, visible, onHide, universeList, storageConfigs, currentUniverse, cloud } = this.props;
+    const { backupInfo, visible, onHide, universeList, storageConfigs, currentUniverse } = this.props;
 
     // If the backup information is not provided, most likely we are trying to load the backup
     // from pre-existing location (specified by the user) into the current universe in context.
     let universeOptions = [];
     const hasBackupInfo = this.hasBackupInfo();
     const validationSchema = Yup.object().shape({
-      restoreToUniverseUUID: Yup.string().required('Restore To Universe is Required'),
+      restoreToUniverseUUID: Yup.string()
+      .required('Restore To Universe is Required'),
       restoreToKeyspace: Yup.string().nullable(),
       restoreToTableName: Yup.string().nullable(),
-      storageConfigUUID: Yup.string().required('Storage Config is Required'),
+      storageConfigUUID: Yup.string()
+      .required('Storage Config is Required'),
       storageLocation: Yup.string().nullable()
         .when('backupList', {
           is: x => !x || !Array.isArray(x),
           then: Yup.string().required('Storage Location is Required'),
         }),
-      backupList: Yup.mixed().nullable(),
-      parallelism: Yup.number('Parallelism must be a number')
-        .min(1)
-        .max(100)
-        .integer('Value must be a whole number')
-        .required('Number of threads is required'),
-      kmsConfigUUID: Yup.string()
+      backupList: Yup.mixed().nullable()
     });
 
     if (hasBackupInfo) {
@@ -94,11 +82,6 @@ export default class RestoreBackup extends Component {
           label: currentUniverse.data.name}];
       }
     }
-
-    const kmsConfigList = cloud.authConfig.data.map((config) => {
-      const labelName = config.metadata.provider + " - " + config.metadata.name;
-      return {value: config.metadata.configUUID, label: labelName};
-    });
 
     const storageOptions = storageConfigs.map((config) => {
       return {value: config.configUUID, label: config.name + " Storage"};
@@ -117,63 +100,49 @@ export default class RestoreBackup extends Component {
       (backupInfo.keyspace && (!backupInfo.tableNameList || !backupInfo.tableNameList.length) && !backupInfo.tableUUID)
     );
 
-    const kmsConfigInfoContent = "This field is optional and should only be specified if backup was from universe encrypted at rest";
-
     return (
       <div className="universe-apps-modal" onClick={(e) => e.stopPropagation()}>
-        <YBModalForm
-          title={"Restore backup To"}
-          visible={visible}
-          onHide={onHide}
-          showCancelButton={true}
-          cancelLabel={"Cancel"}
-          onFormSubmit={(values) => {
-            let restoreToUniverseUUID = values.restoreToUniverseUUID;
+        <YBModalForm title={"Restore backup To"}
+                visible={visible}
+                onHide={onHide}
+                showCancelButton={true}
+                cancelLabel={"Cancel"}
+                onFormSubmit={(values) => {
+                  let restoreToUniverseUUID = values.restoreToUniverseUUID;
 
-            // Check if not default value
-            if (typeof restoreToUniverseUUID !== 'string') {
-              restoreToUniverseUUID = values.restoreToUniverseUUID.value;
-            }
-            const payload = {
-              ...values,
-              restoreToUniverseUUID,
-              storageConfigUUID: values.storageConfigUUID.value,
-              kmsConfigUUID: values.kmsConfigUUID
-            };
-            if (values.storageLocation) {
-              payload.storageLocation = values.storageLocation.trim();
-            }
-            this.restoreBackup(payload);
-          }}
-          initialValues= {initialValues}
-          validationSchema={validationSchema}>
+                  // Check if not default value
+                  if (typeof restoreToUniverseUUID !== 'string') {
+                    restoreToUniverseUUID = values.restoreToUniverseUUID.value;
+                  }
+                  const payload = {
+                    ...values,
+                    restoreToUniverseUUID,                    
+                    storageConfigUUID: values.storageConfigUUID.value,
+                  };
+                  if (values.storageLocation) {
+                    payload.storageLocation = values.storageLocation.trim()
+                  }                   
+                  this.restoreBackup(payload);
+                }}
+                initialValues= {initialValues}
+                validationSchema={validationSchema}>
 
           <Field name="storageConfigUUID" {...(hasBackupInfo ? {type: "hidden"} : null)} component={YBFormSelect}
-            label={"Storage"} options={storageOptions} />
+                 label={"Storage"} options={storageOptions} />
           <Field name="storageLocation" {...(hasBackupInfo ? {type: "hidden"} : null)} component={YBFormInput}
-            componentClass="textarea"
-            className="storage-location"
-            label={"Storage Location"} />
+                 componentClass="textarea"
+                 className="storage-location"
+                 label={"Storage Location"} />
           <Field name="restoreToUniverseUUID" component={YBFormSelect}
-            label={"Universe"} options={universeOptions} />
+                label={"Universe"} options={universeOptions} />
           <Field name="restoreToKeyspace"
-            component={YBFormInput}
-            disabled={isUniverseBackup}
-            label={"Keyspace"} />
+                component={YBFormInput} 
+                disabled={isUniverseBackup}               
+                label={"Keyspace"} />
           <Field name="restoreToTableName"
-            component={YBFormInput}
-            disabled={isMultiTableBackup}
-            label={"Table"}/>
-          <Field
-            name="parallelism"
-            component={YBFormInput}
-            label={"Parallel Threads"}/>
-          <Field name="kmsConfigUUID"{...(hasBackupInfo ? {type: "hidden"} : null)}
-            component={YBFormSelect}
-            label={"KMS Configuration"}
-            infoTitle="KMS Configuration"
-            infoContent={kmsConfigInfoContent}
-            options={kmsConfigList} />
+                component={YBFormInput}
+                disabled={isMultiTableBackup}
+                label={"Table"}/>
         </YBModalForm>
       </div>
     );

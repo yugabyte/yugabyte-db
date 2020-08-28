@@ -1432,7 +1432,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		 * If it has options, append "WITH (options)"
 		 */
 		str = flatten_reloptions(indexrelid);
-		if (str && strcmp(str,"") != 0)
+		if (str)
 		{
 			appendStringInfo(&buf, " WITH (%s)", str);
 			pfree(str);
@@ -11177,16 +11177,6 @@ flatten_reloptions(Oid relid)
 			}
 			else
 				value = "";
-
-			/*
-			 * We ignore the reloption for tablegroup.
-			 * It is parsed seperately in describe.c.
-			 */
-			if (strcmp(name, "tablegroup") == 0)
-			{
-				pfree(option);
-				continue;
-			}
 
 			if (i > 0)
 				appendStringInfoString(&buf, ", ");

@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
+import com.avaje.ebean.Model;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,19 +63,18 @@ public class CertificateInfo extends Model {
         return cert;
     }
 
-    private static final Finder<UUID, CertificateInfo> find =
-      new Finder<UUID, CertificateInfo>(CertificateInfo.class) {};
+    private static final Find<UUID, CertificateInfo> find = new Find<UUID, CertificateInfo>() {};
 
     public static CertificateInfo get(UUID certUUID) {
         return find.byId(certUUID);
     }
 
     public static CertificateInfo get(String label) {
-        return find.query().where().eq("label", label).findOne();
+        return find.where().eq("label", label).findUnique();
     }
 
 
     public static List<CertificateInfo> getAll(UUID customerUUID) {
-        return find.query().where().eq("customer_uuid", customerUUID).findList();
+        return find.where().eq("customer_uuid", customerUUID).findList();
     }
 }

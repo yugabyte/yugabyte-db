@@ -39,6 +39,11 @@ public class MetaMasterController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetaMasterController.class);
 
+  public static final int MASTER_RPC_PORT = 7100;
+  public static final int YEDIS_SERVER_RPC_PORT = 6379;
+  public static final int YCQL_SERVER_RPC_PORT = 9042;
+  public static final int YSQL_SERVER_RPC_PORT = 5433;
+
   @Inject
   KubernetesManager kubernetesManager;
 
@@ -162,16 +167,16 @@ public class MetaMasterController extends Controller {
         int rpcPort;
         switch (type) {
           case MASTER:
-            rpcPort = universeDetails.communicationPorts.masterRpcPort;
+            rpcPort = MASTER_RPC_PORT;
             break;
           case YSQLSERVER:
-            rpcPort = universeDetails.communicationPorts.ysqlServerRpcPort;
+            rpcPort = YSQL_SERVER_RPC_PORT;
             break;
           case YQLSERVER:
-            rpcPort = universeDetails.communicationPorts.yqlServerRpcPort;
+            rpcPort = YCQL_SERVER_RPC_PORT;
             break;
           case REDISSERVER:
-            rpcPort = universeDetails.communicationPorts.redisServerRpcPort;
+            rpcPort = YEDIS_SERVER_RPC_PORT;
             break;
           default:
             throw new IllegalArgumentException("Unexpected type " + type);

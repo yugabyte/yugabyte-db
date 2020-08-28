@@ -98,7 +98,9 @@ public class UsersController extends AuthenticatedController {
     try {
       user = Users.create(formData.get().email, formData.get().password,
                           formData.get().role, customerUUID);
-      updateFeatures(user);
+      if (formData.get().role == Role.ReadOnly) {
+        updateFeatures(user);
+      }
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not create user");
     }
@@ -167,7 +169,11 @@ public class UsersController extends AuthenticatedController {
         try {
           user.setRole(Role.valueOf(role));
           user.save();
-          updateFeatures(user);
+          if (user.getRole() == Role.ReadOnly) {
+            updateFeatures(user);
+          } else {
+            user.setFeatures(Json.newObject());
+          }
         } catch (Exception e) {
           return ApiResponse.error(BAD_REQUEST, "Incorrect Role Specified");
         }
@@ -214,13 +220,9 @@ public class UsersController extends AuthenticatedController {
   private void updateFeatures(Users user) {
     try {
       Customer customer = Customer.get(user.customerUUID);
-      String configFile = user.getRole().getFeaturesFile();
+      String configFile = "readOnlyFeatureConfig.json";
       if (customer.code.equals("cloud")) {
         configFile = "cloudFeatureConfig.json";
-      }
-      if (configFile == null) {
-        user.setFeatures(Json.newObject());
-        return;
       }
       InputStream featureStream = environment.resourceAsStream(configFile);
       ObjectMapper mapper = new ObjectMapper();

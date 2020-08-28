@@ -170,17 +170,6 @@ message TableIdentifierPB {
   optional NamespaceIdentifierPB namespace = 3;
 }
 
-message TablegroupIdentifierPB {
-  // The tablegroup ID to fetch info.
-  optional bytes id = 1;
-
-  // The tablegroup name to fetch info.
-  optional string name = 2;
-
-  // The namespace that the tablegroup is in
-  optional bytes namespace_id = 3;
-}
-
 // This represents one instance of a placement constraint for a table. It is
 // used to dictate what is the minimum number of expected replicas in a certain
 // cloud/region/zone combo.
@@ -340,8 +329,6 @@ message SysTablesEntryPB {
 
   // The table namespace ID.
   optional bytes namespace_id = 11;
-  // The table namespace name.
-  optional bytes namespace_name = 30;
 
   // sequence-id for the table metadata.
   // Used on tablet-report to avoid sending "alter-table" notifications.
@@ -880,9 +867,6 @@ message CreateTableRequestPB {
 
   // Is this a colocated table? This field is only applicable for a colocated database.
   optional bool colocated = 17 [ default = true ];
-
-  // This is only applicable for tablegroups. Eventually colocated will be deprecated.
-  optional bytes tablegroup_id = 19;
 }
 
 message CreateTableResponsePB {
@@ -1445,40 +1429,26 @@ message GetNamespaceInfoResponsePB {
 // ============================================================================
 
 message CreateTablegroupRequestPB {
-  required bytes id = 1;
-  required bytes namespace_id = 2;
-  optional string namespace_name = 3;
+  required string name = 1;
+  required bytes id = 2;
+  required bytes namespace_id = 3;
+  optional string namespace_name = 4;
 }
 
 message CreateTablegroupResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
-
-  optional bytes parent_table_id = 2;
-  optional bytes parent_table_name = 3;
 }
 
 message DeleteTablegroupRequestPB {
-  required bytes id = 1;
-  required bytes namespace_id = 2;
+  required string name = 1;
+  required bytes id = 2;
+  required bytes namespace_id = 3;
 }
 
 message DeleteTablegroupResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
-
-  optional bytes parent_table_id = 2;
-}
-
-message ListTablegroupsRequestPB {
-  optional bytes namespace_id = 1;
-}
-
-message ListTablegroupsResponsePB {
-  // The error, if an error occurred with this request.
-  optional MasterErrorPB error = 1;
-
-  repeated TablegroupIdentifierPB tablegroups = 2;
 }
 
 // ============================================================================
@@ -1732,10 +1702,6 @@ message FlushTablesRequestPB {
 
   // Whether we want to compact the tablets instead of flushing them.
   optional bool is_compaction = 2;
-
-  // Whether we want to include index tables in this flush. If there are index tables in the tables
-  // field this field must be set to false, otherwise the request will fail.
-  optional bool add_indexes = 3;
 }
 
 message FlushTablesResponsePB {
@@ -1891,7 +1857,6 @@ service MasterService {
   // For Tablegroup:
   rpc CreateTablegroup(CreateTablegroupRequestPB) returns (CreateTablegroupResponsePB);
   rpc DeleteTablegroup(DeleteTablegroupRequestPB) returns (DeleteTablegroupResponsePB);
-  rpc ListTablegroups(ListTablegroupsRequestPB) returns (ListTablegroupsResponsePB);
 
   // For Postgres:
   rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);
@@ -1957,6 +1922,8 @@ service MasterService {
       returns (IsLoadBalancerIdleResponsePB);
   rpc AreLeadersOnPreferredOnly(AreLeadersOnPreferredOnlyRequestPB)
       returns (AreLeadersOnPreferredOnlyResponsePB);
+  rpc AreTransactionLeadersSpread(AreTransactionLeadersSpreadRequestPB)
+      returns (AreTransactionLeadersSpreadResponsePB);
 
   rpc FlushTables(FlushTablesRequestPB) returns (FlushTablesResponsePB);
   rpc IsFlushTablesDone(IsFlushTablesDoneRequestPB) returns (IsFlushTablesDoneResponsePB);

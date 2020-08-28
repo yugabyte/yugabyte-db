@@ -66,7 +66,7 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Drop table from connection 2.
       statement2.execute("DROP TABLE cache_test1");
 
-      // Check that insert now fails on both connections.
+      // Check that insert now fails on both tables.
       runInvalidQuery(statement1, "INSERT INTO cache_test1(a) VALUES (3)", "does not exist");
       runInvalidQuery(statement2, "INSERT INTO cache_test1(a) VALUES (4)", "does not exist");
 

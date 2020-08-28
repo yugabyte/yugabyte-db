@@ -126,8 +126,6 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--instance_tags",
                                  required=False,
                                  help="Tags for instances being created.")
-        self.parser.add_argument("--vpcId", required=False,
-                                 help="name of the virtual network associated with the subnet")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -354,8 +352,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--local_package_path",
                                  required=False,
                                  help="Path to local directory with the prometheus tarball.")
-        self.parser.add_argument("--node_exporter_port", type=int, default=9300,
-                                 help="The port for node_exporter to bind to")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -376,8 +372,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"local_package_path": args.local_package_path})
         if args.air_gap:
             self.extra_vars.update({"air_gap": args.air_gap})
-        if args.node_exporter_port:
-            self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)

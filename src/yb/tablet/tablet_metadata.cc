@@ -90,7 +90,6 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 // ============================================================================
 
 TableInfo::TableInfo(std::string table_id,
-                     std::string namespace_name,
                      std::string table_name,
                      TableType table_type,
                      const Schema& schema,
@@ -99,7 +98,6 @@ TableInfo::TableInfo(std::string table_id,
                      const uint32_t schema_version,
                      PartitionSchema partition_schema)
     : table_id(std::move(table_id)),
-      namespace_name(std::move(namespace_name)),
       table_name(std::move(table_name)),
       table_type(table_type),
       schema(schema),
@@ -115,7 +113,6 @@ TableInfo::TableInfo(const TableInfo& other,
                      const std::vector<DeletedColumn>& deleted_cols,
                      const uint32_t schema_version)
     : table_id(other.table_id),
-      namespace_name(other.namespace_name),
       table_name(other.table_name),
       table_type(other.table_type),
       schema(schema),
@@ -129,7 +126,6 @@ TableInfo::TableInfo(const TableInfo& other,
 
 Status TableInfo::LoadFromPB(const TableInfoPB& pb) {
   table_id = pb.table_id();
-  namespace_name = pb.namespace_name();
   table_name = pb.table_name();
   table_type = pb.table_type();
 
@@ -153,7 +149,6 @@ Status TableInfo::LoadFromPB(const TableInfoPB& pb) {
 
 void TableInfo::ToPB(TableInfoPB* pb) const {
   pb->set_table_id(table_id);
-  pb->set_namespace_name(namespace_name);
   pb->set_table_name(table_name);
   pb->set_table_type(table_type);
 
@@ -244,7 +239,6 @@ std::string MakeTabletDirName(const TabletId& tablet_id) {
 Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
                                  const TableId& table_id,
                                  const RaftGroupId& raft_group_id,
-                                 const string& namespace_name,
                                  const string& table_name,
                                  const TableType table_type,
                                  const Schema& schema,
@@ -289,7 +283,6 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(fs_manager,
                                                        table_id,
                                                        raft_group_id,
-                                                       namespace_name,
                                                        table_name,
                                                        table_type,
                                                        rocksdb_dir,
@@ -319,7 +312,6 @@ Status RaftGroupMetadata::Load(FsManager* fs_manager,
 Status RaftGroupMetadata::LoadOrCreate(FsManager* fs_manager,
                                     const string& table_id,
                                     const RaftGroupId& raft_group_id,
-                                    const string& namespace_name,
                                     const string& table_name,
                                     TableType table_type,
                                     const Schema& schema,
@@ -337,10 +329,9 @@ Status RaftGroupMetadata::LoadOrCreate(FsManager* fs_manager,
     }
     return Status::OK();
   } else if (s.IsNotFound()) {
-    return CreateNew(
-        fs_manager, table_id, raft_group_id, namespace_name, table_name, table_type, schema,
-        IndexMap(), partition_schema, partition, index_info, 0 /* schema_version */,
-        initial_tablet_data_state, metadata);
+    return CreateNew(fs_manager, table_id, raft_group_id, table_name, table_type,
+                     schema, IndexMap(), partition_schema, partition, index_info,
+                     0 /* schema_version */, initial_tablet_data_state, metadata);
   } else {
     return s;
   }
@@ -478,7 +469,6 @@ Status RaftGroupMetadata::DeleteSuperBlock() {
 RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
                                TableId table_id,
                                RaftGroupId raft_group_id,
-                               string namespace_name,
                                string table_name,
                                TableType table_type,
                                const string rocksdb_dir,
@@ -507,7 +497,6 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
       primary_table_id_,
       std::make_shared<TableInfo>(
           std::move(table_id),
-          std::move(namespace_name),
           std::move(table_name),
           table_type,
           schema,
@@ -705,18 +694,15 @@ void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_sche
   tables[primary_table_id_]->partition_schema = partition_schema;
 }
 
-void RaftGroupMetadata::SetTableName(
-    const string& namespace_name, const string& table_name, const TableId& table_id) {
+void RaftGroupMetadata::SetTableName(const string& table_name, const TableId& table_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   auto& id = table_id.empty() ? primary_table_id_ : table_id;
   DCHECK(tables.find(id) != tables.end());
-  tables[id]->namespace_name = namespace_name;
   tables[id]->table_name = table_name;
 }
 
 void RaftGroupMetadata::AddTable(const std::string& table_id,
-                              const std::string& namespace_name,
                               const std::string& table_name,
                               const TableType table_type,
                               const Schema& schema,
@@ -726,7 +712,6 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
                               const uint32_t schema_version) {
   DCHECK(schema.has_column_ids());
   TableInfoPtr new_table_info = std::make_shared<TableInfo>(table_id,
-                                                            namespace_name,
                                                             table_name,
                                                             table_type,
                                                             schema,

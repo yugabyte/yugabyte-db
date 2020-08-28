@@ -1,9 +1,9 @@
 Ensure that the node/npm binaries are recent. For example,
 $ npm -v
-6.14.4
+3.10.3
 
 $ node -v
-v12.18.0
+v6.3.1
 
 
 ### `npm install`

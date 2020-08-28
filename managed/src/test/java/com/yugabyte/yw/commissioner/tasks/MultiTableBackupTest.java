@@ -117,23 +117,34 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
       when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
+      when(mockClient.getTablesList(null, true, "$$$Default0")).thenReturn(mockListTablesResponse1);
+      when(mockClient.getTablesList(null, true, "$$$Default2")).thenReturn(mockListTablesResponse2);
       when(mockClient.getTableSchemaByUUID(table1UUID.toString().replace("-", "")))
           .thenReturn(mockSchemaResponse1);
       when(mockClient.getTableSchemaByUUID(table2UUID.toString().replace("-", "")))
           .thenReturn(mockSchemaResponse2);
       when(mockClient.getTableSchemaByUUID(table3UUID.toString().replace("-", "")))
           .thenReturn(mockSchemaResponse3);
+      when(mockClient.getTableSchemaByUUID(table4UUID.toString().replace("-", "")))
+        .thenReturn(mockSchemaResponse4);
     } catch (Exception e) {
       // Do nothing.
     }
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+    when(mockListTablesResponse1.getTableInfoList()).thenReturn(tableInfoList1);
+    when(mockListTablesResponse2.getTableInfoList()).thenReturn(tableInfoList2);
     when(mockSchemaResponse1.getTableName()).thenReturn("Table1");
     when(mockSchemaResponse1.getNamespace()).thenReturn("$$$Default0");
     when(mockSchemaResponse1.getTableType()).thenReturn(TableType.REDIS_TABLE_TYPE);
     when(mockSchemaResponse2.getTableName()).thenReturn("Table2");
     when(mockSchemaResponse2.getNamespace()).thenReturn("$$$Default1");
     when(mockSchemaResponse2.getTableType()).thenReturn(TableType.YQL_TABLE_TYPE);
+    when(mockSchemaResponse3.getTableName()).thenReturn("Table3");
+    when(mockSchemaResponse3.getNamespace()).thenReturn("$$$Default2");
     when(mockSchemaResponse3.getTableType()).thenReturn(TableType.PGSQL_TABLE_TYPE);
+    when(mockSchemaResponse4.getTableName()).thenReturn("Table4");
+    when(mockSchemaResponse4.getNamespace()).thenReturn("$$$Default2");
+    when(mockSchemaResponse4.getTableType()).thenReturn(TableType.PGSQL_TABLE_TYPE);
   }
 
   private TaskInfo submitTask(String keyspace, List<UUID> tableUUIDs, boolean transactional) {

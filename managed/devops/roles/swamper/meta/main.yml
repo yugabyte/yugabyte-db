@@ -12,5 +12,5 @@ dependencies:
     become_method: sudo
     prometheus_go_version: 1.7
     prometheus_use_service: true
-    prometheus_node_exporter_opts: "-web.listen-address=:{{ node_exporter_port }}"
+    prometheus_node_exporter_opts: "-web.listen-address=:9300"
     prometheus_node_exporter_use_systemd: true

@@ -648,21 +648,14 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 * an error.
 	 */
 	Oid tablegroupId = InvalidOid;
-	if (stmt->tablegroup)
+	if (stmt->tablegroupname)
 	{
-		OptTableGroup *grp = stmt->tablegroup;
 		if (MyDatabaseColocated)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot use tablegroups in a colocated database")));
-		else if (!grp->has_tablegroup)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("Cannot use NO TABLEGROUP in CREATE TABLE statement.")));
-		}
 		else
-			tablegroupId = get_tablegroup_oid(grp->tablegroup_name, false);
+			tablegroupId = get_tablegroup_oid(stmt->tablegroupname, false);
 	}
 
 	/*

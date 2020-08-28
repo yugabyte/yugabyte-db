@@ -26,7 +26,6 @@ class AuthenticatedComponent extends Component {
     this.props.fetchTableColumnTypes();
     this.props.getEBSListItems();
     this.props.getGCPListItems();
-    this.props.getAZUListItems();
     this.props.getProviderListItems();
     this.props.getSupportedRegionList();
     this.props.getYugaWareVersion();

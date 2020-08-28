@@ -148,11 +148,8 @@ public enum TaskType {
 
   CloudSetup("subtasks.cloud.CloudSetup"),
 
+
   BackupTable("subtasks.BackupTable"),
-
-  BackupUniverseKeys("subtasks.BackupUniverseKeys"),
-
-  RestoreUniverseKeys("subtasks.RestoreUniverseKeys"),
 
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 
@@ -165,8 +162,6 @@ public enum TaskType {
   KubernetesCommandExecutor("subtasks.KubernetesCommandExecutor"),
 
   KubernetesWaitForPod("subtasks.KubernetesWaitForPod"),
-
-  KubernetesCheckNumPod("subtasks.KubernetesCheckNumPod"),
 
   @Deprecated
   CopyEncryptionKeyFile("subtasks.CopyEncryptionKeyFile"),

@@ -18,21 +18,21 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link">
+    <a href="/latest/contribute/core-database/build-from-src-macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link">
+    <a href="/latest/contribute/core-database/build-from-src-centos" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       CentOS
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-ubuntu.md" >}}" class="nav-link active">
+    <a href="/latest/contribute/core-database/build-from-src-ubuntu" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Ubuntu
     </a>
@@ -53,7 +53,7 @@ Update packages on your system, install development tools and additional package
 ```sh
 sudo apt-get update
 sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build \
-                     cmake curl rsync python3-pip python3-venv zip autoconf libtool \
+                     cmake curl rsync python3-pip zip autoconf libtool \
                      pkg-config libssl1.0-dev libicu-dev bison flex \
                      libncurses5-dev 
 ```
@@ -65,14 +65,7 @@ cd ~/code/yugabyte-db
 ./yb_build.sh release
 ```
 
-{{< note title="Note" >}}
-
-If you see errors, such as `g++: internal compiler error: Killed`, the system has probably run out of memory.
-Try again by running the build script with less concurrency, for example, `-j1`.
-
-{{< /note >}}
-
-The command above will build the release configuration, add the C++ binaries into the `build/release-gcc-dynamic-ninja` directory, and create a `build/latest` symlink to that directory.
+The above command will build the release configuration, put the C++ binaries in `build/release-gcc-dynamic-ninja`, and will also create the `build/latest` symlink to that directory.
 
 
 {{< note title="Note" >}}

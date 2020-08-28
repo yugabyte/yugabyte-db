@@ -19,14 +19,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="{{< relref "./ysql.md" >}}" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/csharp/ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li>
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link">
+    <a href="/latest/quick-start/build-apps/csharp/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

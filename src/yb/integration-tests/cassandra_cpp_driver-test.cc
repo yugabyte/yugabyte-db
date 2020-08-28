@@ -800,7 +800,7 @@ Result<IndexPermissions> WaitUntilIndexPermissionIsAtLeast(
       (exponential_backoff ? CoarseMonoClock::Duration::max() : 50ms));
   Result<IndexPermissions> result = GetIndexPermissions(client, table_name, index_table_name);
   // After INDEX_UNUSED, the index info may get deleted from the indexes.
-  const bool retry_on_not_found = (min_permission != INDEX_PERM_NOT_USED);
+  bool retry_on_not_found = (min_permission != INDEX_PERM_NOT_USED);
   while ((!result.ok() && retry_on_not_found) || (result.ok() && *result < min_permission)) {
     YB_LOG_EVERY_N_SECS(INFO, 1)
         << "Waiting since GetIndexPermissions returned "
@@ -1582,12 +1582,8 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateMultipleIndex, CppCassandraDriverTes
       session2.ExecuteGetFuture("create index test_table_index_by_v on test_table (v);");
 
   LOG(INFO) << "Inserting one row";
-  WARN_NOT_OK(
-      session_.ExecuteQuery("insert into test_table (k1, k2, v) values (2, 2,'two');"),
-      "insert failed");
-  WARN_NOT_OK(
-      session_.ExecuteQuery("insert into test_table (k1, k2, v) values (3, 3, 'three');"),
-      "insert failed");
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k1, k2, v) values (2, 2,'two');"));
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k1, k2, v) values (3, 3, 'three');"));
 
   constexpr auto kNamespace = "test";
   const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
@@ -1601,16 +1597,15 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateMultipleIndex, CppCassandraDriverTes
 
   IndexPermissions perm;
   perm = ASSERT_RESULT(WaitUntilIndexPermissionIsAtLeast(
-      client_.get(), table_name, index_table_name,
-      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
-  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+      client_.get(), table_name, index_table_name, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE));
+  ASSERT_TRUE(perm != IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
   LOG(INFO) << "Index table " << index_table_name.ToString()
             << " created to INDEX_PERM_READ_WRITE_AND_DELETE";
 
   perm = ASSERT_RESULT(WaitUntilIndexPermissionIsAtLeast(
       client_.get(), table_name, index_table_name2,
       IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
-  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
   LOG(INFO) << "Index " << index_table_name2.ToString()
             << " created to INDEX_PERM_READ_WRITE_AND_DELETE";
 

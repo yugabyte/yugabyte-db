@@ -7,7 +7,7 @@ description: Create a JSON array from a SQL array using the array_to_json() func
 menu:
   latest:
     identifier: array-to-json
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 53
 isTocNested: true
 showAsideToc: true

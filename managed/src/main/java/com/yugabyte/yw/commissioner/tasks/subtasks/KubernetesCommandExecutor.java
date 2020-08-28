@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -111,6 +112,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
   static final double burstVal = 1.2;
 
   static final String defaultStorageClass = "standard";
+
+  @VisibleForTesting
+  static final String YSQL_PORT = "5433";
 
   @Override
   public void initialize(ITaskParams params) {

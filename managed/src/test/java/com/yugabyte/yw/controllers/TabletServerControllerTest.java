@@ -13,6 +13,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
 
+import java.lang.String;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -33,7 +34,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
-import static org.mockito.Matchers.anyString;
 import com.yugabyte.yw.models.Universe;
 
 import play.Application;
@@ -50,11 +50,11 @@ public class TabletServerControllerTest extends FakeDBApplication {
     mockClient = mock(YBClient.class);
     mockResponse = mock(ListTabletServersResponse.class);
     when(mockClient.listTabletServers()).thenReturn(mockResponse);
+    when(mockService.getClient(any(String.class))).thenReturn(mockClient);
+    when(mockService.getClient(any(String.class), any(String.class))).thenReturn(mockClient);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(testHostAndPort);
-    when(mockService.getClient(any())).thenReturn(mockClient);
-    when(mockService.getClient(any(), any())).thenReturn(mockClient);
     tabletController = new TabletServerController(mockService);
-    when(mockApiHelper.getRequest(anyString())).thenReturn(Json.newObject());
+    when(mockApiHelper.getRequest(any(String.class))).thenReturn(Json.newObject());
     tabletController.apiHelper = mockApiHelper;
   }
 
@@ -95,7 +95,7 @@ public class TabletServerControllerTest extends FakeDBApplication {
 
   @Test
   public void testListTabletServersWrapperFailure() {
-    when(mockApiHelper.getRequest(anyString()))
+    when(mockApiHelper.getRequest(any(String.class)))
             .thenThrow(new RuntimeException("Unknown Error"));
     Customer customer = ModelFactory.testCustomer();
     Universe u1 = createUniverse(customer.getCustomerId());

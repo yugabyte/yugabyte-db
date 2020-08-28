@@ -69,7 +69,6 @@ set(DOCDB_SRCS
         docdb_compaction_filter.cc
         docdb_compaction_filter_intents.cc
         docdb-internal.cc
-        doc_reader.cc
         docdb_rocksdb_util.cc
         doc_expr.cc
         doc_pgsql_scanspec.cc

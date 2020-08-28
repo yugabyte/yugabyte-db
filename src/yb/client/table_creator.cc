@@ -90,11 +90,6 @@ YBTableCreator& YBTableCreator::colocated(const bool colocated) {
   return *this;
 }
 
-YBTableCreator& YBTableCreator::tablegroup_id(const std::string& tablegroup_id) {
-  tablegroup_id_ = tablegroup_id;
-  return *this;
-}
-
 YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
   schema_ = schema;
   return *this;
@@ -221,10 +216,6 @@ Status YBTableCreator::Create() {
   }
   if (is_pg_shared_table_) {
     req.set_is_pg_shared_table(*is_pg_shared_table_);
-  }
-
-  if (!tablegroup_id_.empty()) {
-    req.set_tablegroup_id(tablegroup_id_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or

@@ -6,7 +6,7 @@ description: Provide identical functionality to the "#>>" operator.
 menu:
   latest:
     identifier: jsonb-extract-path-text
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 140
 isTocNested: true
 showAsideToc: true

@@ -10,14 +10,11 @@ import java.util.UUID;
 public class BackupTableParams extends TableManagerParams {
   public enum ActionType {
     CREATE,
-    RESTORE,
-    RESTORE_KEYS
+    RESTORE
   }
 
   @Constraints.Required
   public UUID storageConfigUUID;
-
-  public UUID kmsConfigUUID = null;
 
   // Specifies the backup storage location in case of S3 it would have
   // the S3 url based on universeUUID and timestamp.
@@ -49,7 +46,4 @@ public class BackupTableParams extends TableManagerParams {
 
   // Should the backup be transactional across tables
   public boolean transactionalBackup = false;
-
-  // The number of concurrent commands to run on nodes over SSH
-  public int parallelism = 8;
 }

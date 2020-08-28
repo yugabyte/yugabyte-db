@@ -6,7 +6,7 @@ description: Test if two jsonb values are equal using the JSON equality operator
 menu:
   latest:
     identifier: equality-operator
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 15
 isTocNested: true
 showAsideToc: true

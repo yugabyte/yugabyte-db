@@ -582,7 +582,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
   do {
     // Always update lag metrics, default every 1s.
 
-    if (ANNOTATE_UNPROTECTED_READ(FLAGS_enable_collect_cdc_metrics)) {
+    if (FLAGS_enable_collect_cdc_metrics) {
       UpdateLagMetrics();
     }
 

@@ -18,7 +18,7 @@ isTocNested: true
 ---
 
 ## Overview
-Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
+Follow the steps below to run the open-source [oltpbench](https://github.com/oltpbenchmark/oltpbench) TPC-C workload against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
 
 ### Results at a glance
 | Warehouses| TPMC | Efficiency (approx) | Cluster Details
@@ -42,6 +42,10 @@ $ wget https://github.com/yugabyte/tpcc/releases/download/1.3/tpcc.tar.gz
 $ tar -zxvf tpcc.tar.gz
 $ cd tpcc
 ```
+
+{{< note title="Note" >}}
+The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
+{{< /note >}}
 
 ### Start the Database
 

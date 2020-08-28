@@ -40,7 +40,6 @@ import "yb/tablet/metadata.proto";
 
 message TabletStatusPB {
   required string tablet_id = 1;
-  optional string namespace_name = 15;
   required string table_name = 2;
   required string table_id = 10;
   optional RaftGroupStatePB state = 3 [ default = UNKNOWN ];

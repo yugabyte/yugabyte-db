@@ -273,14 +273,8 @@ class YBClient {
   CHECKED_STATUS IsCreateTableInProgress(const YBTableName& table_name,
                                          bool *create_in_progress);
 
-  // Wait for create table to finish.
+  // Wait for create table is not in progress.
   CHECKED_STATUS WaitForCreateTableToFinish(const YBTableName& table_name);
-  CHECKED_STATUS WaitForCreateTableToFinish(const YBTableName& table_name,
-                                            const CoarseTimePoint& deadline);
-
-  CHECKED_STATUS WaitForCreateTableToFinish(const string& table_id);
-  CHECKED_STATUS WaitForCreateTableToFinish(const string& table_id,
-                                            const CoarseTimePoint& deadline);
 
   // Truncate the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
@@ -302,15 +296,15 @@ class YBClient {
                                   YBTableName* indexed_table_name = nullptr,
                                   bool wait = true);
 
-  // Flush or compact the specified tables.
-  CHECKED_STATUS FlushTables(const std::vector<TableId>& table_ids,
-                             bool add_indexes,
-                             int timeout_secs,
-                             bool is_compaction);
-  CHECKED_STATUS FlushTables(const std::vector<YBTableName>& table_names,
-                             bool add_indexes,
-                             int timeout_secs,
-                             bool is_compaction);
+  // Flush or compact the specified table.
+  // TODO(jason): it would be nice to have this take a list of table_ids.
+  CHECKED_STATUS FlushTable(const std::string& table_id,
+                            int timeout_secs,
+                            bool is_compaction);
+  // TODO(jason): it would be nice to have this take a list of table_names.
+  CHECKED_STATUS FlushTable(const YBTableName& table_name,
+                            int timeout_secs,
+                            bool is_compaction);
 
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const string id);
@@ -433,17 +427,13 @@ class YBClient {
   // Create a new tablegroup.
   CHECKED_STATUS CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
+                                  const std::string& tablegroup_name,
                                   const std::string& tablegroup_id);
 
   // Delete a tablegroup.
-  CHECKED_STATUS DeleteTablegroup(const std::string& namespace_id,
+  CHECKED_STATUS DeleteTablegroup(const std::string& tablegroup_name,
+                                  const std::string& namespace_id,
                                   const std::string& tablegroup_id);
-
-  // Check if the tablegroup given by 'tablegroup_id' exists.
-  // Result value is set only on success.
-  Result<bool> TablegroupExists(const std::string& namespace_name,
-                                const std::string& tablegroup_id);
-  Result<vector<master::TablegroupIdentifierPB>> ListTablegroups(const std::string& namespace_name);
 
   // Authentication and Authorization
   // Create a new role.
@@ -597,12 +587,6 @@ class YBClient {
   Result<YBTablePtr> OpenTable(const TableId& table_id) {
     YBTablePtr result;
     RETURN_NOT_OK(OpenTable(table_id, &result));
-    return result;
-  }
-
-  Result<YBTablePtr> OpenTable(const YBTableName& name) {
-    YBTablePtr result;
-    RETURN_NOT_OK(OpenTable(name, &result));
     return result;
   }
 

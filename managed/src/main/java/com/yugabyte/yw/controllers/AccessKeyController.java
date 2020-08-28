@@ -155,9 +155,9 @@ public class AccessKeyController extends AuthenticatedController {
     if (customer == null) {
       return "Invalid Customer UUID: " + customerUUID;
     }
-    Provider provider = Provider.find.query().where()
+    Provider provider = Provider.find.where()
         .eq("customer_uuid", customerUUID)
-        .idEq(providerUUID).findOne();
+        .idEq(providerUUID).findUnique();
     if (provider == null) {
       return "Invalid Provider UUID: " + providerUUID;
     }

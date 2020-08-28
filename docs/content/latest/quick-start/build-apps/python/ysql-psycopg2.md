@@ -1,5 +1,5 @@
 ---
-title: Build a Python application that uses YSQL and psycopg2
+title: Build a Python application that uses YSQL and Psycopg2
 headerTitle: Build a Python application
 linkTitle: Python
 description: Build a sample Python application with psycopg2 that use YSQL.
@@ -21,25 +21,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/python/ysql-psycopg2" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - psycopg2
+      YSQL - Psycopg2
     </a>
   </li>
   <li >
-    <a href="{{< relref "./ysql-aiopg.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - aiopg
-    </a>
-  </li>
-  <li >
-    <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link">
+    <a href="/latest/quick-start/build-apps/python/ysql-sqlalchemy" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - SQL Alchemy
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link">
+    <a href="/latest/quick-start/build-apps/python/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -60,7 +54,7 @@ YugabyteDB is up and running. If you are new to YugabyteDB, you can have Yugabyt
 
 Python 3, or later, is installed.
 
-### psycopg2 database adapter
+### Psycopg2 database adapter
 
 [Psycopg](http://initd.org/psycopg/),the popular PostgreSQL database adapter for Python, is installed. To install a binary version of `psycopg2`, run the following `pip3` command.
 

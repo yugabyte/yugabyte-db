@@ -508,7 +508,7 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
 TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
+  FLAGS_enable_collect_cdc_metrics = true;
 
   std::string tablet_id;
   GetTablet(&tablet_id);
@@ -565,7 +565,7 @@ TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
 TEST_F(CDCServiceTest, TestGetChanges) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
+  FLAGS_enable_collect_cdc_metrics = true;
 
   std::string tablet_id;
   GetTablet(&tablet_id);
@@ -742,7 +742,7 @@ class CDCServiceTestMultipleServersOneTablet : public CDCServiceTest {
 TEST_F_EX(CDCServiceTest, TestUpdateLagMetrics, CDCServiceTestMultipleServersOneTablet) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
+  FLAGS_enable_collect_cdc_metrics = true;
 
   std::string tablet_id;
   GetTablet(&tablet_id);

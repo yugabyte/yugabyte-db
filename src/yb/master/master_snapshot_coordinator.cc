@@ -132,7 +132,9 @@ class StateWithTablets {
       tablets_.emplace(id, state);
     }
     num_tablets_in_initial_state_ = state == initial_state_ ? tablet_ids.size() : 0;
-    CheckCompleteness();
+    if (num_tablets_in_initial_state_ == 0) {
+      complete_at_ = CoarseMonoClock::Now();
+    }
   }
 
   // Initialize tablet states using tablet ids, i.e. put all tablets in initial state.
@@ -150,7 +152,6 @@ class StateWithTablets {
         ++num_tablets_in_initial_state_;
       }
     }
-    CheckCompleteness();
   }
 
   StateWithTablets(const StateWithTablets&) = delete;
@@ -188,12 +189,7 @@ class StateWithTablets {
   }
 
   bool PassedSinceCompletion(const MonoDelta& duration) const {
-    if (!AllTabletsDone()) {
-      return false;
-    }
-
-    if (complete_at_ == CoarseTimePoint()) {
-      YB_LOG_EVERY_N_SECS(DFATAL, 30) << "All tablets done but complete done was not set";
+    if (!AllTabletsDone() || complete_at_ == CoarseTimePoint()) {
       return false;
     }
 
@@ -287,7 +283,9 @@ class StateWithTablets {
         }
       }
       --num_tablets_in_initial_state_;
-      CheckCompleteness();
+      if (num_tablets_in_initial_state_ == 0) {
+        complete_at_ = CoarseMonoClock::Now();
+      }
     } else {
       LOG(DFATAL) << "Finished " << InitialStateName() << " snapshot at tablet " << tablet_id
                   << " in a wrong state " << state << ": " << status;
@@ -374,12 +372,6 @@ class StateWithTablets {
   }
 
  private:
-  void CheckCompleteness() {
-    if (num_tablets_in_initial_state_ == 0) {
-      complete_at_ = CoarseMonoClock::Now();
-    }
-  }
-
   SnapshotCoordinatorContext& context_;
   SysSnapshotEntryPB::State initial_state_;
 

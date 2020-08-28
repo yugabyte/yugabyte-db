@@ -24,7 +24,7 @@ $ ./tpccbenchmark --create=true --load=true \
     </tr>
     <tr>
       <td>Loading Time</td>
-      <td>~3.5 hours</td>
+      <td>~5.5 hours</td>
     </tr>
     <tr>
       <td>Data Set Size</td>

@@ -46,8 +46,7 @@ use_keyspace ::= 'USE' keyspace_name ;
 delete ::= 'DELETE' 'FROM' table_name
                [ 'USING' 'TIMESTAMP' timestamp_expression ]
                'WHERE' where_expression
-               [ 'IF' ( [ 'NOT' ] 'EXISTS' | if_expression ) ]
-               [ 'RETURNS STATUS AS ROW' ];
+               [ 'IF' ( [ 'NOT' ] 'EXISTS' | if_expression ) ] ;
 
 where_expression ::= ( column_name ( '<' | '<=' | '=' |  '>=' | '>' | 'IN' | 'NOT IN' ) expression ) { 'AND' ( column_name ( '<' | '<=' | '=' |  '>=' | '>' | 'IN' | 'NOT IN' ) expression ) } ;
 
@@ -56,8 +55,7 @@ if_expression ::= ( column_name ( '<' | '<=' | '=' |  '>=' | '>' | 'IN' | 'NOT I
 insert ::= 'INSERT' 'INTO' table_name '(' column_name { ',' column_name } ')'
                'VALUES' '(' expression { ',' expression } ')' \
                [ 'IF' ( [ 'NOT' ] 'EXISTS' | if_expression ) ]
-               [ 'USING' using_expression ]
-               [ 'RETURNS STATUS AS ROW' ];
+               [ 'USING' using_expression ] ;
 
 using_expression ::= ( ttl_or_timestamp_expression ) { 'AND' ( ttl_or_timestamp_expression ) } ;
 
@@ -77,8 +75,7 @@ update ::= 'UPDATE' table_name
               [ 'USING' using_expression ]
               'SET' assignment { ',' assignment } \
               'WHERE' where_expression
-              [ 'IF' ( [ 'NOT' ] 'EXISTS' | if_expression ) ]
-              [ 'RETURNS STATUS AS ROW' ];
+              [ 'IF' ( [ 'NOT' ] 'EXISTS' | if_expression ) ] ;
 
 transaction_block ::= 'BEGIN' 'TRANSACTION' \
                       ( ( insert | update | delete ) ';' )

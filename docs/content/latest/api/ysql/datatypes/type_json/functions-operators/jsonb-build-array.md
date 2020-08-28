@@ -6,7 +6,7 @@ description: Build a JSON array from a variadic list of array values of arbitrar
 menu:
   latest:
     identifier: jsonb_build_array-each
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 110
 isTocNested: true
 showAsideToc: true

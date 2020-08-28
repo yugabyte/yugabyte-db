@@ -200,10 +200,6 @@ Status PgApiImpl::InvalidateCache() {
   return Status::OK();
 }
 
-const bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
-  return FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry;
-}
-
 //--------------------------------------------------------------------------------------------------
 
 PgMemctx *PgApiImpl::CreateMemctx() {
@@ -407,10 +403,11 @@ void PgApiImpl::InvalidateTableCache(const PgObjectId& table_id) {
 
 Status PgApiImpl::NewCreateTablegroup(const char *database_name,
                                       const PgOid database_oid,
+                                      const char *tablegroup_name,
                                       const PgOid tablegroup_oid,
                                       PgStatement **handle) {
-  auto stmt = make_scoped_refptr<PgCreateTablegroup>(pg_session_, database_name,
-                                                     database_oid, tablegroup_oid);
+  auto stmt = make_scoped_refptr<PgCreateTablegroup>(pg_session_, database_name, database_oid,
+                                                     tablegroup_name, tablegroup_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
@@ -424,10 +421,12 @@ Status PgApiImpl::ExecCreateTablegroup(PgStatement *handle) {
   return down_cast<PgCreateTablegroup*>(handle)->Exec();
 }
 
-Status PgApiImpl::NewDropTablegroup(const PgOid database_oid,
+Status PgApiImpl::NewDropTablegroup(const char *tablegroup_name,
+                                    const PgOid database_oid,
                                     const PgOid tablegroup_oid,
                                     PgStatement **handle) {
-  auto stmt = make_scoped_refptr<PgDropTablegroup>(pg_session_, database_oid, tablegroup_oid);
+  auto stmt = make_scoped_refptr<PgDropTablegroup>(pg_session_, tablegroup_name,
+                                                   database_oid, tablegroup_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
@@ -452,11 +451,10 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  bool if_not_exist,
                                  bool add_primary_key,
                                  const bool colocated,
-                                 const PgObjectId& tablegroup_oid,
                                  PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
-      table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid);
+      table_id, is_shared_table, if_not_exist, add_primary_key, colocated);
   RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
@@ -681,11 +679,10 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  bool is_unique_index,
                                  const bool skip_index_backfill,
                                  bool if_not_exist,
-                                 const PgObjectId& tablegroup_oid,
                                  PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgCreateIndex>(
       pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
-      is_shared_index, is_unique_index, skip_index_backfill, if_not_exist, tablegroup_oid);
+      is_shared_index, is_unique_index, skip_index_backfill, if_not_exist);
   RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }

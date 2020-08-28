@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import { formValueSelector, reduxForm } from 'redux-form';
+import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 import { RollingUpgradeForm }  from '../../../common/forms';
 import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../../actions/tasks';
@@ -11,8 +11,6 @@ import { rollingUpgrade, rollingUpgradeResponse, closeUniverseDialog, resetRolli
 import { isDefinedNotNull, isNonEmptyObject } from "../../../../utils/ObjectUtils";
 import { getPrimaryCluster } from "../../../../utils/UniverseUtils";
 import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
-
-const FORM_NAME = "RollingUpgradeForm";
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -89,19 +87,16 @@ function mapStateToProps(state, ownProps) {
   initalGFlagValues.timeDelay = TASK_LONG_TIMEOUT / 1000;
   initalGFlagValues.upgradeOption = "Rolling";
   initalGFlagValues.rollingUpgrade = true;
-  const selector = formValueSelector(FORM_NAME);
-  const upgradeOption = selector(state, 'upgradeOption');
   return {
     modal: state.modal,
     universe: state.universe,
     softwareVersions: state.customer.softwareVersions,
-    initialValues: initalGFlagValues,
-    upgradeOption,
+    initialValues: initalGFlagValues
   };
 }
 
 const rollingUpgradeForm = reduxForm({
-  form: FORM_NAME
+  form: 'RollingUpgradeForm'
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(rollingUpgradeForm(RollingUpgradeForm));

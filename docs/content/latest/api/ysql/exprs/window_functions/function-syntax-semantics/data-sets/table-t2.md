@@ -13,9 +13,7 @@ showAsideToc: true
 ---
 
 {{< note title=" " >}}
-
 Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t2"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../extensions/#pgcrypto) extension.
-
 {{< /note >}}
 
 The rows in table  _"t2"_ are inserted in random order. It is used for demonstrating these window functions:
@@ -24,7 +22,7 @@ The rows in table  _"t2"_ are inserted in random order. It is used for demonstra
 [`dense_rank()`](../../row-number-rank-dense-rank/#dense-rank),
 [`percent_rank()`](../../percent-rank-cume-dist-ntile/#percent-rank),
 [`cume_dist()`](../../percent-rank-cume-dist-ntile/#cume-dist),
-and [`ntile()`](../../percent-rank-cume-dist-ntile/#ntile).
+and [`ntile()`](../../percent-rank-cume-dist-ntile-main/#ntile).
 
 It contains eighteen rows. It has primary key _"k"_ (`int`) whose values are the dense sequence from _1_ through _18_. The column _"class"_ (`int`) has two distinct values, _1_ and _2_, and there are nine rows with each _"class"_ value.
 The values for the column _"score"_, for _"class = 1"_, are the dense sequence from _1_ through _9_.

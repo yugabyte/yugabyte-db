@@ -90,7 +90,6 @@ using docdb::DocKey;
 using docdb::PrimitiveValue;
 using docdb::ValueType;
 
-const char* kTestNamespace = "test-ns";
 const char* kTestTable = "test-log-table";
 const char* kTestTablet = "test-log-tablet";
 

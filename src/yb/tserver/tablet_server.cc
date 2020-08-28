@@ -417,17 +417,11 @@ TabletServiceImpl* TabletServer::tablet_server_service() {
   return tablet_server_service_;
 }
 
-Status GetDynamicUrlTile(
-  const string& path, const string& hostport, const int port,
-  const string& http_addr_host, string* url) {
+Status GetDynamicUrlTile(const string& path, const string& hostport, const int port, string* url) {
   // We get an incoming hostport string like '127.0.0.1:5433' or '[::1]:5433' or [::1]
-  // and a port 13000 which has to be converted to '127.0.0.1:13000'. If the hostport is
-  // a wildcard - 0.0.0.0 - the URLs are formed based on the http address for web instead
+  // and a port 13000 which has to be converted to '127.0.0.1:13000'
   HostPort hp;
   RETURN_NOT_OK(hp.ParseString(hostport, port));
-  if (IsWildcardAddress(hp.host())) {
-    hp.set_host(http_addr_host);
-  }
   hp.set_port(port);
 
   *url = strings::Substitute("http://$0$1", hp.ToString(), path);
@@ -435,39 +429,31 @@ Status GetDynamicUrlTile(
 }
 
 Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
-
-  ServerRegistrationPB reg;
-  RETURN_NOT_OK(GetRegistration(&reg));
-  string http_addr_host = reg.http_addresses(0).host();
-
   // RPCs in Progress.
   DisplayIconTile(output, "fa-tasks", "TServer Live Ops", "/rpcz");
   // YCQL RPCs in Progress.
   string cass_url;
   RETURN_NOT_OK(GetDynamicUrlTile(
-      "/rpcz", FLAGS_cql_proxy_bind_address, FLAGS_cql_proxy_webserver_port,
-      http_addr_host, &cass_url));
+      "/rpcz", FLAGS_cql_proxy_bind_address, FLAGS_cql_proxy_webserver_port, &cass_url));
   DisplayIconTile(output, "fa-tasks", "YCQL Live Ops", cass_url);
 
   // YEDIS RPCs in Progress.
   string redis_url;
   RETURN_NOT_OK(GetDynamicUrlTile(
-      "/rpcz", FLAGS_redis_proxy_bind_address, FLAGS_redis_proxy_webserver_port,
-      http_addr_host,  &redis_url));
+      "/rpcz", FLAGS_redis_proxy_bind_address, FLAGS_redis_proxy_webserver_port, &redis_url));
   DisplayIconTile(output, "fa-tasks", "YEDIS Live Ops", redis_url);
 
   // YSQL RPCs in Progress.
   string sql_url;
   RETURN_NOT_OK(GetDynamicUrlTile(
-      "/rpcz", FLAGS_pgsql_proxy_bind_address, FLAGS_pgsql_proxy_webserver_port,
-      http_addr_host, &sql_url));
+      "/rpcz", FLAGS_pgsql_proxy_bind_address, FLAGS_pgsql_proxy_webserver_port, &sql_url));
   DisplayIconTile(output, "fa-tasks", "YSQL Live Ops", sql_url);
 
   // YSQL All Ops
   string sql_all_url;
   RETURN_NOT_OK(GetDynamicUrlTile(
       "/statements", FLAGS_pgsql_proxy_bind_address, FLAGS_pgsql_proxy_webserver_port,
-      http_addr_host, &sql_all_url));
+      &sql_all_url));
   DisplayIconTile(output, "fa-tasks", "YSQL All Ops", sql_all_url);
   return Status::OK();
 }

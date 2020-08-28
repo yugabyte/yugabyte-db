@@ -3,7 +3,6 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.NodeActionType;
 
@@ -15,7 +14,6 @@ import java.util.UUID;
 /**
  * Represents all the details of a cloud node that are of interest.
  */
-@JsonIgnoreProperties(ignoreUnknown = true)
 public class NodeDetails {
   // The id of the node. This is usually present in the node name.
   public int nodeIdx = -1;
@@ -99,9 +97,6 @@ public class NodeDetails {
   public boolean isYsqlServer = true;
   public int ysqlServerHttpPort = 13000;
   public int ysqlServerRpcPort = 5433;
-
-  // Which port node_exporter is running on.
-  public int nodeExporterPort = 9300;
 
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
   public static final Set<NodeState> IN_TRANSIT_STATES =

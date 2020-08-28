@@ -6,7 +6,7 @@ description: Convert a single SQL value of any primitive or compound data type, 
 menu:
   latest:
     identifier: to-jsonb
-    parent: json-functions-operators
+    parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---

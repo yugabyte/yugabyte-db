@@ -21,9 +21,12 @@
 
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
-#include "utils/float.h"
-#include "utils/fmgrprotos.h"
+#include "utils/builtins.h"
 #include "utils/geo_decls.h"
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 
 /*

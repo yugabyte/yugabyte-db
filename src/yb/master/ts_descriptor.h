@@ -86,8 +86,7 @@ class TSDescriptor {
       const NodeInstancePB& instance,
       const TSRegistrationPB& registration,
       CloudInfoPB local_cloud_info,
-      rpc::ProxyCache* proxy_cache,
-      RegisteredThroughHeartbeat registered_through_heartbeat = RegisteredThroughHeartbeat::kTrue);
+      rpc::ProxyCache* proxy_cache);
 
   static std::string generate_placement_id(const CloudInfoPB& ci);
 
@@ -111,8 +110,6 @@ class TSDescriptor {
 
   bool has_tablet_report() const;
   void set_has_tablet_report(bool has_report);
-
-  bool registered_through_heartbeat() const;
 
   // Returns TSRegistrationPB for this TSDescriptor.
   TSRegistrationPB GetRegistration() const;
@@ -363,10 +360,6 @@ class TSDescriptor {
   // the master's map. As a result, we just store a boolean indicating this entry is removed and
   // shouldn't be surfaced.
   bool removed_ = false;
-
-  // Did this tserver register by heartbeating through master. If false, we registered through
-  // peer's Raft config.
-  RegisteredThroughHeartbeat registered_through_heartbeat_ = RegisteredThroughHeartbeat::kTrue;
 
   DISALLOW_COPY_AND_ASSIGN(TSDescriptor);
 };

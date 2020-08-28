@@ -38,7 +38,6 @@ namespace pggate {
 YB_STRONGLY_TYPED_BOOL(OpBuffered);
 
 class PgTxnManager;
-class PgSession;
 
 // Convenience typedefs.
 struct BufferableOperation {
@@ -53,23 +52,15 @@ typedef std::vector<BufferableOperation> PgsqlOpBuffer;
 // This class provides access to run operation's result by reading std::future<Status>
 // and analyzing possible pending errors of YBSession object in GetStatus() method.
 // If GetStatus() method will not be called, possible errors in YBSession object will be preserved.
-// Also GetStatus() checks results of buffered operations (if any) executed in same RPC.
 class PgSessionAsyncRunResult {
  public:
-  using StatusProvider = std::function<Status()>;
-
   PgSessionAsyncRunResult() = default;
-  PgSessionAsyncRunResult(PgsqlOpBuffer buffered_operations,
-                          std::future<Status> future_status,
+  PgSessionAsyncRunResult(std::future<Status> future_status,
                           client::YBSessionPtr session);
-  CHECKED_STATUS GetStatus(const PgSession& session);
+  CHECKED_STATUS GetStatus();
   bool InProgress() const;
 
  private:
-  // buffered_operations_ holds buffered operations (if any) which were applied to
-  // the YBSession object before the very first non-bufferable operation.
-  // Result of these operations will be checked in the GetStatus() method.
-  PgsqlOpBuffer       buffered_operations_;
   std::future<Status> future_status_;
   client::YBSessionPtr session_;
 };
@@ -181,9 +172,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS CreateTablegroup(const std::string& database_name,
                                   const PgOid database_oid,
+                                  const std::string& tablegroup_name,
                                   PgOid tablegroup_oid);
 
-  CHECKED_STATUS DropTablegroup(const PgOid database_oid,
+  CHECKED_STATUS DropTablegroup(const std::string& tablegroup_name,
+                                const PgOid database_oid,
                                 PgOid tablegroup_oid);
 
   // API for schema operations.
@@ -237,6 +230,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                            const PgObjectId& relation_id,
                                            uint64_t* read_time,
                                            bool force_non_bufferable) {
+    DCHECK(!ops.empty());
     return RunAsync(ops.data(), ops.size(), relation_id, read_time, force_non_bufferable);
   }
 
@@ -247,10 +241,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                            const PgObjectId& relation_id,
                                            uint64_t* read_time,
                                            bool force_non_bufferable) {
-    SCHECK_GT(ops_count, 0, IllegalState, "Operation list must not be empty");
-    RunHelper runner(relation_id, this, ShouldHandleTransactionally(**op));
+    DCHECK_GT(ops_count, 0);
+    RunHelper runner(this, ShouldHandleTransactionally(**op));
     for (auto end = op + ops_count; op != end; ++op) {
-      RETURN_NOT_OK(runner.Apply(*op, read_time, force_non_bufferable));
+      RETURN_NOT_OK(runner.Apply(*op, relation_id, read_time, force_non_bufferable));
     }
     return runner.Flush();
   }
@@ -313,7 +307,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Deletes the row referenced by ybctid from FK reference cache.
   CHECKED_STATUS DeleteForeignKeyReference(uint32_t table_id, std::string&& ybctid);
 
-  CHECKED_STATUS HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id) const;
+  CHECKED_STATUS HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id);
 
   CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
       bool use_cache = false);
@@ -329,34 +323,25 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
 
  private:
-  using Flusher = std::function<Status(PgsqlOpBuffer, bool)>;
-
-  CHECKED_STATUS FlushBufferedOperationsImpl(const Flusher& flusher);
-  CHECKED_STATUS FlushOperations(PgsqlOpBuffer ops, bool transactional);
-  CHECKED_STATUS ApplyOperation(client::YBSession* session,
-                                bool transactional,
-                                const BufferableOperation& bop);
+  CHECKED_STATUS FlushBufferedOperationsImpl();
+  CHECKED_STATUS FlushBufferedOperationsImpl(const PgsqlOpBuffer& ops, bool transactional);
 
   // Helper class to run multiple operations on single session.
   // This class allows to keep implementation of RunAsync template method simple
   // without moving its implementation details into header file.
   class RunHelper {
    public:
-    RunHelper(const PgObjectId& relation_id, PgSession* pg_session, bool transactional);
+    RunHelper(PgSession* pg_session, bool transactional);
     CHECKED_STATUS Apply(std::shared_ptr<client::YBPgsqlOp> op,
+                         const PgObjectId& relation_id,
                          uint64_t* read_time,
                          bool force_non_bufferable);
     Result<PgSessionAsyncRunResult> Flush();
 
    private:
-    const PgObjectId& relation_id_;
     PgSession& pg_session_;
-    const bool transactional_;
-    PgsqlOpBuffer& buffer_;
-    // pending_ops_ holds previously buffered operations which were applied to YBSession
-    // before the very first non-bufferable operation. Result of these operations will be checked
-    // by the PgSessionAsyncRunResult object returned from the Flush() method.
-    PgsqlOpBuffer pending_ops_;
+    bool transactional_;
+    PgsqlOpBuffer& buffered_ops_;
     client::YBSessionPtr yb_session_;
   };
 

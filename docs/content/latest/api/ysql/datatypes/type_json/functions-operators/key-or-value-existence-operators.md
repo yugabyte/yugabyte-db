@@ -6,7 +6,7 @@ description: Test if JSONB values exist as keys in an object or as string value(
 menu:
   latest:
     identifier: key-or-value-existence-operators
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 17
 isTocNested: true
 showAsideToc: true

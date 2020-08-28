@@ -4541,7 +4541,7 @@ bool DBImpl::KeyMayExist(const ReadOptions& read_options,
   roptions.read_tier = kBlockCacheTier; // read from block cache only
   auto s = GetImpl(roptions, column_family, key, value, value_found);
 
-  // If block_cache is enabled and the index block of the table was
+  // If block_cache is enabled and the index block of the table didn't
   // not present in block_cache, the return value will be Status::Incomplete.
   // In this case, key may still exist in the table.
   return s.ok() || s.IsIncomplete();

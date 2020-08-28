@@ -132,10 +132,6 @@ class MasterServiceImpl : public MasterServiceIf,
                         DeleteTablegroupResponsePB* resp,
                         rpc::RpcContext rpc) override;
 
-  void ListTablegroups(const ListTablegroupsRequestPB* req,
-                       ListTablegroupsResponsePB* resp,
-                       rpc::RpcContext rpc) override;
-
   void CreateRole(const CreateRoleRequestPB* req,
                   CreateRoleResponsePB* resp,
                   rpc::RpcContext rpc) override;
@@ -251,6 +247,10 @@ class MasterServiceImpl : public MasterServiceIf,
   void AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
                                  AreLeadersOnPreferredOnlyResponsePB* resp,
                                  rpc::RpcContext rpc) override;
+
+  void AreTransactionLeadersSpread(const AreTransactionLeadersSpreadRequestPB* req,
+                                   AreTransactionLeadersSpreadResponsePB* resp,
+                                   rpc::RpcContext rpc) override;
 
   void FlushTables(const FlushTablesRequestPB* req,
                    FlushTablesResponsePB* resp,

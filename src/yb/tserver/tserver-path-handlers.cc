@@ -62,7 +62,6 @@ namespace {
 
 // A struct representing some information about a tablet peer.
 struct TabletPeerInfo {
-  string namespace_name;
   string name;
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
@@ -78,7 +77,6 @@ struct TableIdentifier {
 
 // A struct representing some information about a table.
 struct TableInfo {
-  string namespace_name;
   string name;
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
@@ -86,8 +84,7 @@ struct TableInfo {
   std::map<yb::consensus::RaftPeerPB::Role, size_t> raft_role_counts;
 
   explicit TableInfo(TabletPeerInfo info)
-      : namespace_name(info.namespace_name),
-        name(info.name),
+      : name(info.name),
         num_sst_files(info.num_sst_files),
         disk_size_info(info.disk_size_info),
         has_complete_on_disk_size(info.has_on_disk_size) {
@@ -497,7 +494,6 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
 
     auto info = TabletPeerInfo {
-      .namespace_name = std::move(status.namespace_name()),
       .name = std::move(status.table_name()),
       .num_sst_files = num_sst_files,
       .disk_size_info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status),
@@ -529,7 +525,7 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
   *output << "<h1>Tables</h1>\n"
           << "<table class='table table-striped'>\n"
           << "  <tr>\n"
-          << "    <th>Namespace</th><th>Table name</th><th>Table UUID</th>\n"
+          << "    <th>Table name</th><th>Table UUID</th>\n"
           << "    <th>State</th><th>Num SST Files</th><th>On-disk size</th><th>Raft roles</th>\n"
           << "  </tr>\n";
 
@@ -552,8 +548,7 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     role_counts_html << "</ul>";
 
     *output << Substitute(
-        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td><td>$6</td></tr>\n",
-        EscapeForHtmlToString(info.namespace_name),
+        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td></tr>\n",
         EscapeForHtmlToString(info.name),
         EscapeForHtmlToString(identifier.uuid),
         EscapeForHtmlToString(identifier.state),
@@ -579,7 +574,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
 
   *output << "<h1>Tablets</h1>\n";
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Namespace</th><th>Table name</th><th>Table UUID</th><th>Tablet ID</th>"
+  *output << "  <tr><th>Table name</th><th>Table UUID</th><th>Tablet ID</th>"
       "<th>Partition</th>"
       "<th>State</th><th>Num SST Files</th><th>On-disk size</th><th>RaftConfig</th>"
       "<th>Last status</th></tr>\n";
@@ -587,7 +582,6 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
     string id = status.tablet_id();
-    string namespace_name = status.namespace_name();
     string table_name = status.table_name();
     string table_id = status.table_id();
     string tablet_id_or_link;
@@ -610,20 +604,19 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     // TODO: would be nice to include some other stuff like memory usage
     shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
     (*output) << Substitute(
-        // Table name, UUID of namespace, table, tablet id, partition
-        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
+        // Table name, UUID of table, tablet id, partition
+        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td>"
         // State, num_sst_files, on-disk size, consensus configuration, last status
-        "<td>$8</td><td>$5</td><td>$6</td><td>$7</td><td>$8</td></tr>\n",
-        EscapeForHtmlToString(namespace_name),  // $0
-        EscapeForHtmlToString(table_name),  // $1
-        EscapeForHtmlToString(table_id),  // $2
-        tablet_id_or_link,  // $3
-        EscapeForHtmlToString(partition),  // $4
-        EscapeForHtmlToString(peer->HumanReadableState()), tablets_disk_size_html,  // $5, $6
+        "<td>$4</td><td>$8</td><td>$5</td><td>$6</td><td>$7</td></tr>\n",
+        EscapeForHtmlToString(table_name),  // $0
+        EscapeForHtmlToString(table_id),  // $1
+        tablet_id_or_link,  // $2
+        EscapeForHtmlToString(partition),  // $3
+        EscapeForHtmlToString(peer->HumanReadableState()), tablets_disk_size_html,  // $4, $5
         consensus ? ConsensusStatePBToHtml(consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
-                  : "",  // $7
-        EscapeForHtmlToString(status.last_status()),  // $8
-        num_sst_files); // $9
+                  : "",  // $6
+        EscapeForHtmlToString(status.last_status()),  // $7
+        num_sst_files); // $8
   }
   *output << "</table>\n";
 }

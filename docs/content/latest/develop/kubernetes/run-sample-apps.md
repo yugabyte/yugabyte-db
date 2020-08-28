@@ -2,7 +2,7 @@
 
 ## 1. Create a cluster
 
-Create a cluster.
+Create a cluster. 
 
 ```sh
 $ kubectl apply -f yugabyte-statefulset.yaml

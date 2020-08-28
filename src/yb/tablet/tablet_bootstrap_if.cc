@@ -52,10 +52,6 @@ const string TabletStatusListener::tablet_id() const {
   return meta_->raft_group_id();
 }
 
-const string TabletStatusListener::namespace_name() const {
-  return meta_->namespace_name();
-}
-
 const string TabletStatusListener::table_name() const {
   return meta_->table_name();
 }

@@ -55,7 +55,7 @@ YCQL allows the TTL property to be specified at the level of each INSERT/UPDATE 
 Row level TTL expires the whole row. The value is specified at insert/update time with `USING TTL` clause.
 In such cases, the TTL is stored as part of the DocDB value. A simple query would be:
 
-```sql
+```cassandraql
 INSERT INTO pageviews(path) VALUES ('/index') USING TTL 10;
 SELECT * FROM pageviews;
 
@@ -67,7 +67,7 @@ SELECT * FROM pageviews;
 ```
 After 10 seconds, the row is expired:
 
-```sql
+```cassandraql
 SELECT * FROM pageviews;
 
  path | views
@@ -81,7 +81,7 @@ SELECT * FROM pageviews;
 YCQL also allows to set column level TTL. In such cases, the TTL is stored as part of the DocDB column value. 
 But you can set it only when updating the column:
 
-```sql
+```cassandraql
 INSERT INTO pageviews(path,views) VALUES ('/index', 10);
 
 SELECT * FROM pageviews;
@@ -97,7 +97,7 @@ UPDATE pageviews USING TTL 10 SET views=10 WHERE path='/index';
 
 After 10 seconds, querying for the rows the `views` column will return `NULL` but notice that the row still exists:
 
-```sql
+```cassandraql
 SELECT * FROM pageviews;
 
  path   | views

@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -42,7 +41,6 @@ public class FakeDBApplication extends WithApplication {
   public YBClientService mockService;
   public DnsManager mockDnsManager;
   public NetworkManager mockNetworkManager;
-  public YamlWrapper mockYamlWrapper;
 
   @Override
   protected Application provideApplication() {
@@ -62,7 +60,6 @@ public class FakeDBApplication extends WithApplication {
     mockService = mock(YBClientService.class);
     mockNetworkManager = mock(NetworkManager.class);
     mockDnsManager = mock(DnsManager.class);
-    mockYamlWrapper = mock(YamlWrapper.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
@@ -82,7 +79,6 @@ public class FakeDBApplication extends WithApplication {
         .overrides(bind(YBClientService.class).toInstance(mockService))
         .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
         .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
-        .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
         .build();
   }
 }

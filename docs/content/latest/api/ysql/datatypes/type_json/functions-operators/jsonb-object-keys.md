@@ -6,7 +6,7 @@ description: Transform the list of key names in the supplied JSON object into a 
 menu:
   latest:
     identifier: jsonb-object-keys
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 160
 isTocNested: true
 showAsideToc: true

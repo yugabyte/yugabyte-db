@@ -486,8 +486,6 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   req_.set_tablet_id(tablet->tablet_id());
   req_.set_table_type(tablet->table()->metadata().state().pb.table_type());
   req_.mutable_partition()->CopyFrom(tablet_pb.partition());
-  req_.set_namespace_id(table_lock->data().pb.namespace_id());
-  req_.set_namespace_name(table_lock->data().pb.namespace_name());
   req_.set_table_name(table_lock->data().pb.name());
   req_.mutable_schema()->CopyFrom(table_lock->data().pb.schema());
   req_.mutable_partition_schema()->CopyFrom(table_lock->data().pb.partition_schema());

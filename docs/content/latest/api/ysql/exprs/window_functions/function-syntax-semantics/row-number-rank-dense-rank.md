@@ -6,7 +6,7 @@ description: Describes the functionality of the YSQL window functions row_number
 menu:
   latest:
     identifier: row-number-rank-dense-rank
-    parent: window-function-syntax-semantics
+    parent: function-syntax-semantics
     weight: 10
 isTocNested: true
 showAsideToc: true

@@ -28,14 +28,12 @@
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
 #include "yb/util/jsonwriter.h"
-#include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/encryption_util.h"
 
 DECLARE_bool(use_client_to_server_encryption);
-DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 namespace yb {
 
@@ -87,11 +85,10 @@ using master::SysSnapshotEntryPB;
 
 PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 
-Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored, bool show_deleted) {
+Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored) {
   RpcController rpc;
   rpc.set_timeout(timeout_);
   ListSnapshotsRequestPB req;
-  req.set_list_deleted_snapshots(show_deleted);
   ListSnapshotsResponsePB resp;
   RETURN_NOT_OK(master_backup_proxy_->ListSnapshots(req, &resp, &rpc));
 
@@ -169,20 +166,7 @@ Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored, 
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateSnapshot(
-    const vector<YBTableName>& tables,
-    const bool add_indexes,
-    const int flush_timeout_secs) {
-
-  if (flush_timeout_secs > 0) {
-    const auto status = FlushTables(tables, add_indexes, flush_timeout_secs, false);
-    if (status.IsTimedOut()) {
-      cout << status.ToString(false) << " (ignored)" << endl;
-    } else if (!status.ok() && !status.IsNotFound()) {
-      return status;
-    }
-  }
-
+Status ClusterAdminClient::CreateSnapshot(const vector<YBTableName>& tables, bool add_indexes) {
   RpcController rpc;
   rpc.set_timeout(timeout_);
   CreateSnapshotRequestPB req;
@@ -425,6 +409,8 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
 
   const RepeatedPtrField<ImportSnapshotMetaResponsePB_TableMetaPB>& tables_meta =
       resp.tables_meta();
+  IsCreateTableDoneRequestPB wait_req;
+  IsCreateTableDoneResponsePB wait_resp;
   CreateSnapshotRequestPB snapshot_req;
   CreateSnapshotResponsePB snapshot_resp;
 
@@ -448,10 +434,25 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
            << pair.new_id() << endl;
     }
 
-    RETURN_NOT_OK(yb_client_->WaitForCreateTableToFinish(
-        new_table_id,
-        CoarseMonoClock::Now() + MonoDelta::FromSeconds(FLAGS_yb_client_admin_operation_timeout_sec)
-    ));
+    // Wait for table creation.
+    wait_req.mutable_table()->set_table_id(new_table_id);
+
+    for (int k = 0; k < 30; ++k) {
+      rpc.Reset();
+      RETURN_NOT_OK(master_proxy_->IsCreateTableDone(wait_req, &wait_resp, &rpc));
+
+      if (wait_resp.done()) {
+        break;
+      } else {
+        cout << "Waiting for table " << new_table_id << "..." << endl;
+        std::this_thread::sleep_for(1s);
+      }
+    }
+
+    if (!wait_resp.done()) {
+      return STATUS_FORMAT(
+          TimedOut, "Table creation timeout: table id $0", new_table_id);
+    }
 
     snapshot_req.mutable_tables()->Add()->set_table_id(new_table_id);
   }

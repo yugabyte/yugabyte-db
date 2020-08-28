@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
-import {IN_DEVELOPMENT_MODE, ROOT_URL, USE_SSO} from '../config';
+import { IN_DEVELOPMENT_MODE, ROOT_URL, USE_SSO } from '../config';
 import Cookies from 'js-cookie';
 
 // Get current user(me) from token in localStorage
@@ -120,8 +120,6 @@ export function validateToken() {
   if (apiToken && apiToken !== '') {
     axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
   }
-
-  axios.defaults.headers.common['Csrf-Token'] = Cookies.get("csrfCookie");
 
   // in dev mode UI and API usually run on different hosts, so need to include cookies for cross-domain requests
   if (IN_DEVELOPMENT_MODE) {

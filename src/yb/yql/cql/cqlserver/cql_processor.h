@@ -70,9 +70,6 @@ class CQLProcessor : public ql::QLProcessor {
   // Processing an inbound call.
   void ProcessCall(rpc::InboundCallPtr call);
 
-  // Release the processor back to the CQLServiceImpl.
-  void Release();
-
   void Shutdown();
 
  protected:

@@ -208,12 +208,7 @@ Result<bool> YBTable::MaybeRefreshPartitions() {
     return partitions.status();
   }
   {
-    std::lock_guard<rw_spinlock> partitions_lock(mutex_);
-    if (partitions->version <= partitions_.version) {
-      return STATUS_FORMAT(
-          TryAgain, "Received table $0 partitions version: $1, ours is: $2", id(),
-          partitions->version, partitions_.version);
-    }
+    std::unique_lock<rw_spinlock> partitions_lock(mutex_);
     std::swap(partitions_, *partitions);
   }
   partitions_are_stale_ = false;
@@ -335,9 +330,9 @@ Result<YBTable::VersionedPartitions> YBTable::FetchPartitions() {
 }
 
 Status YBTable::Open() {
-  std::lock_guard<rw_spinlock> partitions_lock(mutex_);
-  partitions_ = VERIFY_RESULT(FetchPartitions());
-  partitions_are_stale_ = false;
+  partitions_are_stale_ = true;
+  bool refreshed = VERIFY_RESULT(MaybeRefreshPartitions());
+  SCHECK(refreshed, IllegalState, "Expected to fetch partitions on YBTable::Open");
   return Status::OK();
 }
 

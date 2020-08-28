@@ -1105,9 +1105,8 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
             << partition_schema.PartitionDebugString(partition, schema);
   VLOG(1) << "Full request: " << req->DebugString();
 
-  s = server_->tablet_manager()->CreateNewTablet(
-      req->table_id(), req->tablet_id(), partition, req->namespace_name(), req->table_name(),
-      req->table_type(), schema, partition_schema,
+  s = server_->tablet_manager()->CreateNewTablet(req->table_id(), req->tablet_id(), partition,
+      req->table_name(), req->table_type(), schema, partition_schema,
       req->has_index_info() ? boost::optional<IndexInfo>(req->index_info()) : boost::none,
       req->config(), /* tablet_peer */ nullptr, req->colocated());
   if (PREDICT_FALSE(!s.ok())) {

@@ -317,14 +317,19 @@ class ExclusiveSchemaOperationStateBase : public OperationState {
   explicit ExclusiveSchemaOperationStateBase(Args&&... args)
       : OperationState(std::forward<Args>(args)...) {}
 
+  void AcquireSchemaLock(rw_semaphore* mutex);
+
   // Release the acquired schema lock.
-  void ReleasePermitToken();
+  void ReleaseSchemaLock();
 
   void UsePermitToken(ScopedRWOperationPause&& token) {
     permit_token_ = std::move(token);
   }
 
  private:
+  // The lock held on the tablet's schema_lock_.
+  std::unique_lock<rw_semaphore> schema_lock_;
+
   // Used to pause write operations from being accepted while alter is in progress.
   ScopedRWOperationPause permit_token_;
 };
@@ -339,7 +344,7 @@ class ExclusiveSchemaOperationState :
             std::forward<Args>(args)...) {}
 
   void Finish() {
-    ExclusiveSchemaOperationStateBase::ReleasePermitToken();
+    ExclusiveSchemaOperationStateBase::ReleaseSchemaLock();
 
     // Make the request NULL since after this operation commits
     // the request may be deleted at any moment.

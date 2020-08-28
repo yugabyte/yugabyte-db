@@ -104,10 +104,10 @@ class ScheduleDisplayItem extends Component {
             {taskType}
           </div>
           <div className="description-item-list">
-            <DescriptionItem title={"Schedule (UTC)"}>
+            <DescriptionItem title={"Schedule"}>
               <span>{schedule.frequency || schedule.cronExpression}</span>
             </DescriptionItem>
-            <DescriptionItem title={"Encrypt Backup"}>
+            <DescriptionItem title={"Server-Side Encryption"}>
               <span>{schedule.taskParams.sse ? "On" : "Off"}</span>
             </DescriptionItem>
             <DescriptionItem title={"Keyspace"}>

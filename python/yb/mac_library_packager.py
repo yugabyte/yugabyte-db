@@ -59,7 +59,7 @@ class MacLibraryPackager:
 
         bin_dir_files = []
         for seed_executable_glob in self.seed_executable_patterns:
-            if seed_executable_glob.find('postgres/bin/') >= 0:
+            if seed_executable_glob.endswith('postgres/bin/*'):
                 # Skip postgres binaries since they are copied with the postgres root directory
                 # which is handled below.
                 continue

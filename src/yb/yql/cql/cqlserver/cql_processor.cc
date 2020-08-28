@@ -197,15 +197,6 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   PrepareAndSendResponse(response);
 }
 
-void CQLProcessor::Release() {
-  call_ = nullptr;
-  request_ = nullptr;
-  stmts_.clear();
-  parse_trees_.clear();
-  SetCurrentSession(nullptr);
-  service_impl_->ReturnProcessor(pos_);
-}
-
 void CQLProcessor::PrepareAndSendResponse(const unique_ptr<CQLResponse>& response) {
   if (response) {
     const CQLConnectionContext& context =
@@ -235,7 +226,13 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   cql_metrics_->time_to_queue_cql_response_->Increment(
       response_done.GetDeltaSince(response_begin).ToMicroseconds());
 
-  Release();
+  // Release the processor.
+  call_ = nullptr;
+  request_ = nullptr;
+  stmts_.clear();
+  parse_trees_.clear();
+  SetCurrentSession(nullptr);
+  service_impl_->ReturnProcessor(pos_);
 }
 
 CQLResponse* CQLProcessor::ProcessRequest(const CQLRequest& req) {
@@ -341,16 +338,6 @@ CQLResponse* CQLProcessor::ProcessRequest(const ExecuteRequest& req) {
 
 CQLResponse* CQLProcessor::ProcessRequest(const QueryRequest& req) {
   VLOG(1) << "QUERY " << req.query();
-  if (service_impl_->system_cache() != nullptr) {
-    auto cached_response = service_impl_->system_cache()->Lookup(req.query());
-    if (cached_response) {
-      VLOG(1) << "Using cached response for " << req.query();
-      statement_executed_cb_.Run(
-          Status::OK(),
-          std::static_pointer_cast<ExecutedResult>(*cached_response));
-      return nullptr;
-    }
-  }
   RunAsync(req.query(), req.params(), statement_executed_cb_);
   return nullptr;
 }

@@ -7,7 +7,7 @@ description: Learn about JSON functions and operators categorized by the goal yo
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
-    identifier: json-functions-operators
+    identifier: functions-operators
     parent: api-ysql-datatypes-json
     weight: 50
 isTocNested: true

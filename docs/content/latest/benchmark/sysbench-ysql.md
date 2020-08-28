@@ -17,7 +17,7 @@ isTocNested: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="{{< relref "./sysbench-ysql.md" >}}" class="nav-link active">
+    <a href="/latest/benchmark/sysbench-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>

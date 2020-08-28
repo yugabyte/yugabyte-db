@@ -269,11 +269,6 @@ const NamespaceId TableInfo::namespace_id() const {
   return l->data().namespace_id();
 }
 
-const NamespaceName TableInfo::namespace_name() const {
-  auto l = LockForRead();
-  return l->data().namespace_name();
-}
-
 const Status TableInfo::GetSchema(Schema* schema) const {
   auto l = LockForRead();
   return SchemaFromPB(l->data().schema(), schema);
@@ -633,41 +628,6 @@ string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
 }
 
-// ================================================================================================
-// TablegroupInfo
-// ================================================================================================
-
-TablegroupInfo::TablegroupInfo(TablegroupId tablegroup_id, NamespaceId namespace_id) :
-                               tablegroup_id_(tablegroup_id), namespace_id_(namespace_id) {}
-
-void TablegroupInfo::AddChildTable(const TableId& table_id) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  if (table_set_.find(table_id) != table_set_.end()) {
-    LOG(WARNING) << "Table ID " << table_id << " already in Tablegroup " << tablegroup_id_;
-  } else {
-    table_set_.insert(table_id);
-  }
-}
-
-void TablegroupInfo::DeleteChildTable(const TableId& table_id) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  if (table_set_.find(table_id) != table_set_.end()) {
-    table_set_.erase(table_id);
-  } else {
-    LOG(WARNING) << "Table ID " << table_id << " not found in Tablegroup " << tablegroup_id_;
-  }
-}
-
-bool TablegroupInfo::HasChildTables() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return !table_set_.empty();
-}
-
-
-std::size_t TablegroupInfo::NumChildTables() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return table_set_.size();
-}
 
 // ================================================================================================
 // UDTypeInfo

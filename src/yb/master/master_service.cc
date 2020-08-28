@@ -423,12 +423,6 @@ void MasterServiceImpl::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::DeleteTablegroup);
 }
 
-void MasterServiceImpl::ListTablegroups(const ListTablegroupsRequestPB* req,
-                                        ListTablegroupsResponsePB* resp,
-                                        rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::ListTablegroups);
-}
-
 // ------------------------------------------------------------------------------------------------
 // Permissions
 // ------------------------------------------------------------------------------------------------
@@ -618,16 +612,7 @@ void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequest
   }
   Status s = server_->GetMasterRegistration(resp->mutable_registration());
   CheckRespErrorOrSetUnknown(s, resp);
-  auto role = server_->catalog_manager()->Role();
-  if (role == RaftPeerPB::LEADER) {
-    if (!l.leader_status().ok()) {
-      YB_LOG_EVERY_N_SECS(INFO, 1)
-          << "Patching role from leader to follower because of: " << l.leader_status()
-          << THROTTLE_MSG;
-      role = RaftPeerPB::FOLLOWER;
-    }
-  }
-  resp->set_role(role);
+  resp->set_role(server_->catalog_manager()->Role());
   rpc.RespondSuccess();
 }
 
@@ -776,6 +761,13 @@ void MasterServiceImpl::AreLeadersOnPreferredOnly(
     const AreLeadersOnPreferredOnlyRequestPB* req, AreLeadersOnPreferredOnlyResponsePB* resp,
     RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::AreLeadersOnPreferredOnly);
+}
+
+void MasterServiceImpl::AreTransactionLeadersSpread(
+    const AreTransactionLeadersSpreadRequestPB* req,
+    AreTransactionLeadersSpreadResponsePB* resp,
+    RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::AreTransactionLeadersSpread);
 }
 
 void MasterServiceImpl::FlushTables(const FlushTablesRequestPB* req,

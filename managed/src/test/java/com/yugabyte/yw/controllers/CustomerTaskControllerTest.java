@@ -106,7 +106,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       // creation time.
       try {
         TimeUnit.SECONDS.sleep(3);
-        task.markAsCompleted();
+        task.markAsCompleted(); 
       } catch (Exception e) {
         // Do nothing
       }
@@ -272,9 +272,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         Create, "Foo", "Success", 100.0);
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
         customer.uuid + "/tasks", authToken);
-    CustomerTask ct = CustomerTask.find.query().where()
-      .eq("task_uuid", taskUUID.toString())
-      .findOne();
+    CustomerTask ct = CustomerTask.find.where().eq("task_uuid", taskUUID.toString()).findUnique();
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(),
         containsString("Created Universe : Foo")));

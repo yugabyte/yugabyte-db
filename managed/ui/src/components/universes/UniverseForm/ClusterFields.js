@@ -32,16 +32,12 @@ const API_UI_STORAGE_TYPES = {
   'Scratch': 'Local Scratch',
   'Persistent': 'Persistent',
   'IO1': 'IO1',
-  'GP2': 'GP2',
-  'Premium_LRS': 'Premium',
-  'StandardSSD_LRS': 'Standard',
-  'UltraSSD_LRS': 'Ultra'
+  'GP2': 'GP2'
 };
 
 const DEFAULT_STORAGE_TYPES = {
   'AWS': 'GP2',
-  'GCP': 'Scratch',
-  'AZU': 'Premium_LRS'
+  'GCP': 'Scratch'
 };
 
 const initialState = {
@@ -156,7 +152,6 @@ export default class ClusterFields extends Component {
           numNodes: userIntent.numNodes,
           replicationFactor: userIntent.replicationFactor,
           ybSoftwareVersion: userIntent.ybSoftwareVersion,
-          assignPublicIP: userIntent.assignPublicIP,
           useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
@@ -643,7 +638,7 @@ export default class ClusterFields extends Component {
       universeTaskParams.expectedUniverseVersion = currentUniverse.data.version;
     }
 
-    const userIntent = getCurrentUserIntent(clusterType);
+    const userIntent = getCurrentUserIntent(clusterType);    
     if (hasInstanceTypeChanged !==
       (formValues[clusterType].instanceType !== this.currentInstanceType)
     ) {
@@ -699,8 +694,6 @@ export default class ClusterFields extends Component {
         this.storageTypeChanged(DEFAULT_STORAGE_TYPES['GCP']);
       } else if (currentProviderData.code === "aws") {
         this.storageTypeChanged(DEFAULT_STORAGE_TYPES['AWS']);
-      } else if (currentProviderData.code === "azu") {
-        this.storageTypeChanged(DEFAULT_STORAGE_TYPES['AZU']);
       }
 
       this.setState({nodeSetViaAZList: false, regionList: [], providerSelected: providerUUID,
@@ -783,10 +776,6 @@ export default class ClusterFields extends Component {
       cloud.gcpTypes.data && cloud.gcpTypes.data.sort().map(function (gcpType, idx) {
         return <option key={gcpType} value={gcpType}>{API_UI_STORAGE_TYPES[gcpType]}</option>;
       });
-    const azuTypesList =
-      cloud.azuTypes.data && cloud.azuTypes.data.sort().map(function (azuType, idx) {
-      return <option key={azuType} value={azuType}>{API_UI_STORAGE_TYPES[azuType]}</option>
-      });
     const kmsConfigList = [
       <option value="0" key={`kms-option-0`}>Select Configuration</option>,
       ...cloud.authConfig.data.map((config, index) => {
@@ -825,14 +814,11 @@ export default class ClusterFields extends Component {
       if ((self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD') && isDefinedNotNull(currentProvider)) {
         const isInAws = currentProvider.code === 'aws';
         const isInGcp = currentProvider.code === 'gcp';
-        const isInAzu = currentProvider.code === 'azu';
         // We don't want to keep the volume fixed in case of Kubernetes or persistent GCP storage.
         const fixedVolumeInfo = self.state.volumeType === 'SSD' &&
-          currentProvider.code !== 'kubernetes' && deviceInfo.storageType === "Scratch" &&
-          currentProvider.code !== 'azu';
+          currentProvider.code !== 'kubernetes' && deviceInfo.storageType === "Scratch";
         const fixedNumVolumes = self.state.volumeType === 'SSD' &&
-          currentProvider.code !== 'kubernetes' && currentProvider.code !== 'gcp' &&
-          currentProvider.code !== 'azu';
+          currentProvider.code !== 'kubernetes' && currentProvider.code !== 'gcp';
         const isIoType = deviceInfo.storageType === 'IO1';
         if (isIoType) {
           iopsField = (
@@ -881,14 +867,6 @@ export default class ClusterFields extends Component {
             <span className="volume-info form-group-shrinked">
               <Field name={`${clusterType}.storageType`} component={YBSelectWithLabel}
                 options={gcpTypesList} label="Storage Type (SSD)" defaultValue={DEFAULT_STORAGE_TYPES['GCP']} onInputChanged={self.storageTypeChanged}
-                readOnlySelect={isFieldReadOnly} />
-            </span>
-          );
-        } else if (isInAzu) {
-          storageTypeSelector = (
-            <span className="volume-info form-group-shrinked">
-              <Field name={`${clusterType}.storageType`} component={YBSelectWithLabel}
-                options={azuTypesList} label="Storage Type (SSD)" defaultValue={DEFAULT_STORAGE_TYPES['AZU']} onInputChanged={self.storageTypeChanged}
                 readOnlySelect={isFieldReadOnly} />
             </span>
           );

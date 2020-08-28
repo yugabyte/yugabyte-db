@@ -12,6 +12,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Users;
 
 import org.apache.commons.lang3.RandomStringUtils;
+import org.h2.jdbc.JdbcSQLException;
 import org.junit.Before;
 import org.junit.Test;
 import org.mindrot.jbcrypt.BCrypt;
@@ -33,7 +34,6 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static com.yugabyte.yw.models.Users.Role;
-import static play.test.Helpers.contextComponents;
 
 public class AuditTest extends FakeDBApplication {
 
@@ -51,9 +51,7 @@ public class AuditTest extends FakeDBApplication {
     request = mock(Http.Request.class);
     Long id = 2L;
     play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-    context = new Http.Context(
-      id, header, request, flashData, flashData, argData, contextComponents()
-    );
+    context = new Http.Context(id, header, request, flashData, flashData, argData);
     Http.Context.current.set(context);
     when(request.method()).thenReturn("PUT");
     when(request.path()).thenReturn("/api/customer/test/universe/test");

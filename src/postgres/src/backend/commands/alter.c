@@ -51,7 +51,6 @@
 #include "commands/schemacmds.h"
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
-#include "commands/tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
@@ -339,9 +338,6 @@ ExecRenameStmt(RenameStmt *stmt)
 
 		case OBJECT_SCHEMA:
 			return RenameSchema(stmt->subname, stmt->newname);
-
-		case OBJECT_TABLEGROUP:
-			return RenameTablegroup(stmt->subname, stmt->newname);
 
 		case OBJECT_TABLESPACE:
 			return RenameTableSpace(stmt->subname, stmt->newname);
@@ -840,10 +836,6 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 		case OBJECT_SUBSCRIPTION:
 			return AlterSubscriptionOwner(strVal((Value *) stmt->object),
 										  newowner);
-
-		case OBJECT_TABLEGROUP:
-			return AlterTablegroupOwner(strVal((Value *) stmt->object),
-										newowner);
 
 			/* Generic cases */
 		case OBJECT_AGGREGATE:

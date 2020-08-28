@@ -118,7 +118,7 @@ Here is the result of the second `SELECT`. To make it easier to see the pattern,
      5 | 25 | ??
 ```
 
-Do the following to demonstrate that the result set produced by invoking a window function with an `OVER` clause whose [`window_definition`](../../../../../syntax_resources/grammar_diagrams/#window-definition) doesn't include a window `ORDER BY` clause is unreliable. Be sure to re-run the table creation and population script each time before you run this query:
+Do the following to demonstrate that the result set produced by invoking a window function with an `OVER` clause whose [**window_definition**](../../../../../syntax_resources/grammar_diagrams/#window-definition) doesn't include a window `ORDER BY` clause is unreliable. Be sure to re-run the table creation and population script each time before you run this query:
 
 ```plpgsql
 select
@@ -207,4 +207,4 @@ This is the result:
      5 | 25 |     21
 ```
 
-This demonstrates a plausible use of the `OVER` clause whose [`window_definition`](../../../../../syntax_resources/grammar_diagrams/#window-definition) doesn't have a window `ORDER BY` clause but _does_ have a `PARTITION BY` clause. If you run and re-run the table creation and population script, then you'll see that the result set of the invocation of an aggregate function with an `OVER` clause is reliably reproducible.
+This demonstrates a plausible use of the `OVER` clause whose [**window_definition**](../../../../../syntax_resources/grammar_diagrams/#window-definition) doesn't have a window `ORDER BY` clause but _does_ have a `PARTITION BY` clause. If you run and re-run the table creation and population script, then you'll see that the result set of the invocation of an aggregate function with an `OVER` clause is reliably reproducible.

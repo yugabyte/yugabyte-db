@@ -22,19 +22,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./ysql-pg.md" >}}" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/nodejs/ysql-pg" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - pg driver
     </a>
   </li>
   <li >
-    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link">
+    <a href="/latest/quick-start/build-apps/nodejs/ysql-sequelize" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Sequelize
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link">
+    <a href="/latest/quick-start/build-apps/nodejs/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -43,7 +43,7 @@ showAsideToc: true
 
 ## Install the node-postgres driver
 
-Install the [`node-postgres` driver](../../../../reference/drivers/ysql-client-drivers/#node-postgres) using the following command.
+Install the [`node-postgres` driver](../../reference/drivers/ysql-client-drivers/#node-postgres) using the following command.
 
 ```sh
 $ npm install pg
@@ -55,7 +55,7 @@ The `node-postgres` module is installed.
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe. If not, follow the steps in [Quick Start](../../../../quick-start).
+- installed YugabyteDB and created a universe. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
 - installed a recent version of [`node`](https://nodejs.org/en/download/).
 - installed the [async](https://github.com/caolan/async) JS utility to work with asynchronous Javascript. Install this by running the following command:
 

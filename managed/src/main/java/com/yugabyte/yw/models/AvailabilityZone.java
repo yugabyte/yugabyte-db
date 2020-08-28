@@ -11,8 +11,12 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 
-import io.ebean.annotation.DbJson;
-import io.ebean.*;
+import com.avaje.ebean.annotation.DbJson;
+import com.avaje.ebean.Ebean;
+import com.avaje.ebean.Model;
+import com.avaje.ebean.Query;
+import com.avaje.ebean.RawSql;
+import com.avaje.ebean.RawSqlBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -83,8 +87,7 @@ public class AvailabilityZone extends Model {
   /**
    * Query Helper for Availability Zone with primary key
    */
-  public static final Finder<UUID, AvailabilityZone> find =
-    new Finder<UUID,AvailabilityZone>(AvailabilityZone.class){};
+  public static final Find<UUID, AvailabilityZone> find = new Find<UUID,AvailabilityZone>(){};
 
   public static AvailabilityZone create(Region region, String code, String name, String subnet) {
     AvailabilityZone az = new AvailabilityZone();
@@ -97,20 +100,15 @@ public class AvailabilityZone extends Model {
   }
 
   public static List<AvailabilityZone> getAZsForRegion(UUID regionUUID) {
-    return find.query().where().eq("region_uuid", regionUUID).findList();
+    return find.where().eq("region_uuid", regionUUID).findList();
   }
 
   public static AvailabilityZone getByCode(String code) {
-    return find.query().where().eq("code", code).findOne();
+    return find.where().eq("code", code).findUnique();
   }
 
   public static AvailabilityZone get(UUID zoneUuid) {
-    return AvailabilityZone.find.query().
-      fetch("region")
-      .fetch("region.provider")
-      .where()
-      .idEq(zoneUuid)
-      .findOne();
+    return AvailabilityZone.find.fetch("region").fetch("region.provider").where().idEq(zoneUuid).findUnique();
   }
 
   @JsonBackReference
@@ -121,6 +119,6 @@ public class AvailabilityZone extends Model {
     Query<Provider> query = Ebean.find(Provider.class);
     query.setRawSql(rawSql);
     query.setParameter("p_uuid", region.provider.uuid);
-    return query.findOne();
+    return query.findUnique();
   }
 }

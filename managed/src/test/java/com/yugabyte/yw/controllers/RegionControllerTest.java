@@ -5,7 +5,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import org.hamcrest.core.*;
+import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.core.IsInstanceOf.instanceOf;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
@@ -154,10 +155,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(json.get(0).path("uuid").asText(), r.uuid.toString());
     assertEquals(json.get(0).path("code").asText(), r.code);
     assertEquals(json.get(0).path("name").asText(), r.name);
-    assertThat(
-      json.get(0).path("zones"),
-      AllOf.allOf(IsNull.notNullValue(), IsInstanceOf.instanceOf(JsonNode.class))
-    );
+    assertThat(json.get(0).path("zones"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -206,7 +204,7 @@ public class RegionControllerTest extends FakeDBApplication {
     Result result = createRegion(provider.uuid, regionJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
-    assertThat(json.get("uuid").toString(), Is.is(IsNull.notNullValue()));
+    assertThat(json.get("uuid").toString(), is(notNullValue()));
     assertValue(json, "code", "foo-region");
     assertValue(json, "name", "Foo PlacementRegion");
     assertAuditEntry(1, customer.uuid);
@@ -221,7 +219,7 @@ public class RegionControllerTest extends FakeDBApplication {
     Result result = createRegion(gcpProvider.uuid, regionJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
-    assertThat(json.get("uuid").toString(), Is.is(IsNull.notNullValue()));
+    assertThat(json.get("uuid").toString(), is(notNullValue()));
     assertValue(json, "code", "us-west1");
     assertValue(json, "name", "Gcp US West 1");
     assertAuditEntry(1, customer.uuid);
@@ -239,11 +237,12 @@ public class RegionControllerTest extends FakeDBApplication {
     regionJson.put("destVpcId", "dest-vpc-id");
     JsonNode vpcInfo = Json.parse("{\"foo-region\": {\"zones\": {\"zone-1\": \"subnet-1\"}}}");
     // TODO:
-    when(mockNetworkManager.bootstrap(any(), any(), any())).thenReturn(vpcInfo);
+    when(mockNetworkManager.bootstrap(any(UUID.class), any(UUID.class), any(String.class)))
+        .thenReturn(vpcInfo);
     Result result = createRegion(provider.uuid, regionJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
-    assertThat(json.get("uuid").toString(), Is.is(IsNull.notNullValue()));
+    assertThat(json.get("uuid").toString(), is(notNullValue()));
     assertValue(json, "code", "foo-region");
     assertValue(json, "name", "Foo Region");
     assertValue(json, "ybImage", "yb image");
@@ -265,7 +264,8 @@ public class RegionControllerTest extends FakeDBApplication {
     regionJson.put("destVpcId", "dest-vpc-id");
     ObjectNode vpcInfo = Json.newObject();
     vpcInfo.put("error", "Something went wrong!!.");
-    when(mockNetworkManager.bootstrap(any(), any(), any())).thenReturn(vpcInfo);
+    when(mockNetworkManager.bootstrap(any(UUID.class), any(UUID.class), any(String.class)))
+        .thenReturn(vpcInfo);
     Result result = createRegion(provider.uuid, regionJson);
     assertInternalServerError(result, "Region Bootstrap failed.");
     Region r = Region.getByCode(provider, "foo-region");

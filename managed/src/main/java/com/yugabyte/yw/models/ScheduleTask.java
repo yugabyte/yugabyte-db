@@ -2,10 +2,14 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
-import io.ebean.annotation.*;
+import com.avaje.ebean.*;
+import com.avaje.ebean.annotation.DbJson;
+import com.avaje.ebean.annotation.EnumValue;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
+
+import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.forms.ITaskParams;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +25,14 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
+import static java.lang.Math.abs;
 
 @Entity
 public class ScheduleTask extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(ScheduleTask.class);
+  SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
   @Id
   public UUID taskUUID;
@@ -38,14 +46,13 @@ public class ScheduleTask extends Model {
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date completedTime;
   public Date getCompletedTime() { return completedTime; }
-
+  
   @Column
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date scheduledTime;
   public Date getScheduledTime() { return scheduledTime; }
 
-  public static final Finder<UUID, ScheduleTask> find =
-    new Finder<UUID, ScheduleTask>(ScheduleTask.class){};
+  public static final Find<UUID, ScheduleTask> find = new Find<UUID, ScheduleTask>(){};
 
   public static ScheduleTask create(UUID taskUUID, UUID scheduleUUID) {
     ScheduleTask task = new ScheduleTask();
@@ -57,18 +64,15 @@ public class ScheduleTask extends Model {
   }
 
   public static ScheduleTask fetchByTaskUUID(UUID taskUUID) {
-    return find.query().where().eq("task_uuid", taskUUID).findOne();
+    return find.where().eq("task_uuid", taskUUID).findUnique();
   }
 
   public static List<ScheduleTask> getAll() {
-    return find.query().findList();
+    return find.findList();
   }
 
   public static ScheduleTask getLastTask(UUID scheduleUUID) {
-    List<ScheduleTask> tasks = find.query().where()
-      .eq("schedule_uuid", scheduleUUID)
-      .orderBy("scheduled_time desc")
-      .findList();
+    List<ScheduleTask> tasks = find.where().eq("schedule_uuid", scheduleUUID).orderBy("scheduled_time desc").findList();
     if (tasks.isEmpty()) {
       return null;
     }

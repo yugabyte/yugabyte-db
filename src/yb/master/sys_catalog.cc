@@ -289,20 +289,19 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   DCHECK_EQ(1, partitions.size());
 
   RETURN_NOT_OK(tablet::RaftGroupMetadata::CreateNew(
-      fs_manager,
-      kSysCatalogTableId,
-      kSysCatalogTabletId,
-      "",
-      table_name(),
-      TableType::YQL_TABLE_TYPE,
-      schema,
-      IndexMap(),
-      partition_schema,
-      partitions[0],
-      boost::none /* index_info */,
-      0 /* schema_version */,
-      tablet::TABLET_DATA_READY,
-      &metadata));
+    fs_manager,
+    kSysCatalogTableId,
+    kSysCatalogTabletId,
+    table_name(),
+    TableType::YQL_TABLE_TYPE,
+    schema,
+    IndexMap(),
+    partition_schema,
+    partitions[0],
+    boost::none /* index_info */,
+    0 /* schema_version */,
+    tablet::TABLET_DATA_READY,
+    &metadata));
 
   RaftConfigPB config;
   RETURN_NOT_OK_PREPEND(SetupConfig(master_->opts(), &config),

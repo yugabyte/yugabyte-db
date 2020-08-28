@@ -215,6 +215,7 @@ public class NodeManagerTest extends FakeDBApplication {
     testData.addAll(getTestData(customer, Common.CloudType.aws));
     testData.addAll(getTestData(customer, Common.CloudType.gcp));
     testData.addAll(getTestData(customer, Common.CloudType.onprem));
+    when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
@@ -269,10 +270,6 @@ public class NodeManagerTest extends FakeDBApplication {
                 Json.toJson(setupParams.clusters.get(0).userIntent.instanceTags)));
           }
         }
-
-        expectedCommand.add("--node_exporter_port");
-        expectedCommand.add("9300");
-
         break;
       case Configure:
         AnsibleConfigureServers.Params configureParams = (AnsibleConfigureServers.Params) params;
@@ -283,25 +280,10 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--master_addresses_for_master");
           expectedCommand.add(MASTER_ADDRESSES);
         }
-
-        expectedCommand.add("--master_http_port");
-        expectedCommand.add("7000");
-        expectedCommand.add("--master_rpc_port");
-        expectedCommand.add("7100");
-        expectedCommand.add("--tserver_http_port");
-        expectedCommand.add("9000");
-        expectedCommand.add("--tserver_rpc_port");
-        expectedCommand.add("9100");
-        expectedCommand.add("--cql_proxy_rpc_port");
-        expectedCommand.add("9042");
-        expectedCommand.add("--redis_proxy_rpc_port");
-        expectedCommand.add("6379");
-
         if (configureParams.ybSoftwareVersion != null) {
           expectedCommand.add("--package");
           expectedCommand.add("/yb/release.tar.gz");
         }
-
 
         if (configureParams.getProperty("taskSubType") != null) {
           UpgradeUniverse.UpgradeTaskSubType taskSubType =
@@ -551,25 +533,10 @@ public class NodeManagerTest extends FakeDBApplication {
         ApiUtils.insertInstanceTags(univUUID);
         setInstanceTags(params);
       }
-
-      ArrayList<String> expectedCommandArrayList = new ArrayList();
-      expectedCommandArrayList.addAll(t.baseCommand);
-      expectedCommandArrayList.addAll(nodeCommand(
-        NodeManager.NodeCommandType.Provision,
-        params,
-        t
-      ));
-
-      if (t.cloudType.equals(Common.CloudType.aws)) {
-        expectedCommandArrayList.add(15, "--node_exporter_port");
-        expectedCommandArrayList.add(16, "9300");
-        expectedCommandArrayList.remove(20);
-        expectedCommandArrayList.remove(19);
-      }
-
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
-      verify(shellProcessHandler, times(1))
-        .run(expectedCommandArrayList, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
 
@@ -1219,6 +1186,8 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testDockerNodeCommandWithDockerNetwork() {
+    when(mockAppConfig.getString("yb.docker.network")).thenReturn(DOCKER_NETWORK);
+
     for (TestData t : testData) {
       NodeTaskParams params = new NodeTaskParams();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,

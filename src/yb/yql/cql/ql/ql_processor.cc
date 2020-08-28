@@ -27,7 +27,6 @@
 #include "yb/yql/cql/ql/statement.h"
 
 DECLARE_bool(use_cassandra_authentication);
-DECLARE_bool(ycql_require_drop_privs_for_truncate);
 
 METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_yb_cqlserver_SQLProcessor_ParseRequest,
@@ -244,11 +243,7 @@ Status QLProcessor::CheckNodePermissions(const TreeNode* tnode) {
     }
     case TreeNodeOpcode::kPTTruncateStmt: {
       const YBTableName table_name = static_cast<const PTTruncateStmt*>(tnode)->yb_table_name();
-      if (FLAGS_ycql_require_drop_privs_for_truncate) {
-        s = ql_env_.HasTablePermission(table_name, PermissionType::DROP_PERMISSION);
-      } else {
-        s = ql_env_.HasTablePermission(table_name, PermissionType::MODIFY_PERMISSION);
-      }
+      s = ql_env_.HasTablePermission(table_name, PermissionType::MODIFY_PERMISSION);
       break;
     }
     case TreeNodeOpcode::kPTExplainStmt: {

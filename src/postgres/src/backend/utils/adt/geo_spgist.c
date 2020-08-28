@@ -76,8 +76,7 @@
 #include "access/spgist.h"
 #include "access/stratnum.h"
 #include "catalog/pg_type.h"
-#include "utils/float.h"
-#include "utils/fmgrprotos.h"
+#include "utils/builtins.h"
 #include "utils/geo_decls.h"
 
 /*

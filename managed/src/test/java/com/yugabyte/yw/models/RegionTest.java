@@ -92,9 +92,7 @@ public class RegionTest extends FakeDBApplication {
     Provider provider2 = ModelFactory.gcpProvider(defaultCustomer);
     Region.create(provider2, "region-3", "region 3", "default-image");
 
-    Set<Region> regions = Region.find.query().where()
-      .eq("provider_uuid", defaultProvider.uuid)
-      .findSet();
+    Set<Region> regions = Region.find.where().eq("provider_uuid", defaultProvider.uuid).findSet();
     assertEquals(regions.size(), 2);
     for (Region region:regions) {
       assertThat(region.code, containsString("region-"));
@@ -205,7 +203,7 @@ public class RegionTest extends FakeDBApplication {
     List<Region> fetchedRegions = Region.getByProvider(defaultProvider.uuid);
     assertEquals(fetchedRegions.size(), 2);
   }
-
+  
   @Test
   public void testNullConfig() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");

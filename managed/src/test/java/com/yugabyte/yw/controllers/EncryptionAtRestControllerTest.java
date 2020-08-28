@@ -11,7 +11,6 @@
 package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.services.AwsEARService;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
@@ -98,16 +97,27 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
                 "Authorization", String.format("Bearer %s", mockApiKey),
                 "Content-Type", "application/json"
         );
+        when(mockApiHelper.postRequest(any(String.class), any(ObjectNode.class), any(Map.class)))
+                .thenReturn(
+                        Json.newObject()
+                                .put("kid", mockKid)
+                                .put("access_token", "some_access_token")
+                );
         Map<String, String> getReqHeaders = ImmutableMap.of(
                 "Authorization", String.format("Bearer %s", mockApiKey)
         );
         String getKeyUrl = String.format("https://some_base_url/crypto/v1/keys/%s/export", mockKid);
+        when(mockApiHelper.getRequest(any(String.class), any(Map.class)))
+                .thenReturn(Json.newObject().put("value", mockEncryptionKey));
         Map<String, String> mockQueryParams = ImmutableMap.of(
                 "name", universe.universeUUID.toString(),
                 "limit", "1"
         );
+        when(mockApiHelper.getRequest(any(String.class), any(Map.class), any(Map.class)))
+                .thenReturn(Json.newArray());
         when(mockEARManager.getServiceInstance(eq("SMARTKEY")))
-          .thenReturn(new SmartKeyEARService());
+                           .thenReturn(new SmartKeyEARService());
+        when(mockEARManager.getServiceInstance(eq("AWS"))).thenReturn(new AwsEARService());
     }
 
     @Test

@@ -85,7 +85,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     // Mock region metadata.
     mockRegionMetadata(Common.CloudType.valueOf(provider.code));
     // TODO(bogdan): we don't really care about the output now..
-    when(mockNetworkManager.bootstrap(any(), any(), anyString()))
+    when(mockNetworkManager.bootstrap(any(UUID.class), any(UUID.class), anyString()))
         .thenReturn(Json.parse("{}"));
     when(mockCloudQueryHelper.getZones(any(UUID.class), anyString()))
         .thenReturn(zoneInfo);
@@ -275,7 +275,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
   @Test
   public void testCloudBootstrapWithNetworkBootstrapError() throws InterruptedException {
     JsonNode vpcInfo = Json.parse("{\"error\": \"Something failed\"}");
-    when(mockNetworkManager.bootstrap(any(), any(), anyString()))
+    when(mockNetworkManager.bootstrap(any(UUID.class), any(UUID.class), anyString()))
         .thenReturn(vpcInfo);
     CloudBootstrap.Params taskParams = getBaseTaskParams();
     taskParams.perRegionMetadata.put("us-west-1", new CloudBootstrap.Params.PerRegionMetadata());

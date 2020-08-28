@@ -331,7 +331,6 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   if (strcmp(prototype_->name(), "tablet") == 0)  {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
-    prometheus_attr["namespace_name"] = attrs["namespace_name"];
   } else if (strcmp(prototype_->name(), "server") == 0 ||
       strcmp(prototype_->name(), "cluster") == 0) {
     prometheus_attr = attrs;
@@ -340,7 +339,6 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   } else if (strcmp(prototype_->name(), "cdc") == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
-    prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
   } else {
     return Status::OK();
@@ -776,12 +774,11 @@ CHECKED_STATUS Counter::WriteForPrometheus(
 //
 
 scoped_refptr<MillisLag> MillisLagPrototype::Instantiate(
-    const scoped_refptr<MetricEntity>& entity, const scoped_refptr<server::Clock>& clock) {
-  return entity->FindOrCreateMillisLag(this, clock);
+    const scoped_refptr<MetricEntity>& entity) {
+  return entity->FindOrCreateMillisLag(this);
 }
 
-MillisLag::MillisLag(const MillisLagPrototype* proto, const scoped_refptr<server::Clock>& clock)
-  : Metric(proto), clock_(clock), timestamp_ms_(clock_->Now().GetPhysicalValueMillis()) {
+MillisLag::MillisLag(const MillisLagPrototype* proto) : Metric(proto) {
 }
 
 Status MillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions& opts) const {
@@ -794,7 +791,7 @@ Status MillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions& opts)
   prototype_->WriteFields(writer, opts);
 
   writer->String("value");
-  writer->Uint64(lag_ms());
+  writer->Int64(lag_ms());
 
   writer->EndObject();
   return Status::OK();
@@ -810,11 +807,6 @@ Status MillisLag::WriteForPrometheus(
   return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms());
 }
 
-AtomicMillisLag::AtomicMillisLag(const MillisLagPrototype* proto,
-                                 const scoped_refptr<server::Clock>& clock)
-  : MillisLag(proto, clock), atomic_timestamp_ms_(clock_->Now().GetPhysicalValueMillis()) {
-}
-
 Status AtomicMillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions& opts) const {
   if (prototype_->level() < opts.level) {
     return Status::OK();
@@ -825,7 +817,7 @@ Status AtomicMillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions&
   prototype_->WriteFields(writer, opts);
 
   writer->String("value");
-  writer->Uint64(this->lag_ms());
+  writer->Int64(this->lag_ms());
 
   writer->EndObject();
   return Status::OK();

@@ -23,8 +23,6 @@ CREATE TABLE tab_range (a INT, PRIMARY KEY (a ASC));
 CREATE TABLE tab_range_nonkey (a INT, b INT, PRIMARY KEY (a ASC));
 -- opt out of using colocated tablet
 CREATE TABLE tab_nonkey_noco (a INT) WITH (colocated = false);
--- colocated tables with no primary keys should not be hash partitioned
-CREATE TABLE split_table ( a integer, b text ) SPLIT INTO 4 TABLETS;
 -- multi column primary key table
 CREATE TABLE tab_range_range (a INT, b INT, PRIMARY KEY (a, b DESC));
 CREATE TABLE tab_range_colo (a INT, PRIMARY KEY (a ASC)) WITH (colocated = true);

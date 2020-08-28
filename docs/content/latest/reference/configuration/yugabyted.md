@@ -263,69 +263,6 @@ The base directory for the yugabtyed server that whose version is desired.
 
 -----
 
-### collect_logs
-
-Use the `yugabyted collect_logs` command to generate a zipped file with all logs.
-
-#### Syntax
-
-```
-Usage: yugabyted collect_logs [-h] [--config CONFIG]
-                                       [--data_dir DATA_DIR]
-                                       [--base_dir BASE_DIR]
-```
-
-#### Flags
-
-##### -h | --help
-
-Print the command line help and exit.
-  
-##### --config *config-file*
-
-The path to the configuration file of the yugabyted server whose logs are desired.
-  
-##### --data_dir *data-directory*
-
-The data directory for the yugabtyed server whose logs are desired.
-
-##### --base_dir *base-directory*
-
-The base directory for the yugabtyed server that whose logs are desired.
-
------
-
-### connect
-
-Use the `yugabyted connect` command to connect to the cluster with `ysqlsh` or `ycqlsh` cli.
-
-#### Syntax
-
-```
-Usage: yugabyted connect [-h] {ycql,ysql} ...
-
-Commands:
-  {ycql,ysql}
-    ycql       Use YCQL through the CLI.
-    ysql       Use YSQL through the CLI.
-```
-
-#### Flags
-
-##### -h | --help
-
-Print the command line help and exit.
-  
-##### --ysql
-
-Connect with `ysqlsh` cli.
-  
-##### --ycql
-
-Connect with `ycqlsh` cli.
-
------
-
 ### demo
 
 Use the `yugabyted demo connect` command to start YugabyteDB with the [northwind sample dataset](../../../sample-data/northwind/). 
@@ -361,16 +298,16 @@ Deletes the `yb_demo_northwind` northwind database.
 Create a single-node cluster with a given base dir and listen address. Note the need to provide a fully-qualified directory path for the base dir parameter.
 
 ```sh
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.2.0/data1 --listen=127.0.0.1
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.0.0/data1 --listen=127.0.0.1
 ```
 
-### Create a multi-node cluster
+### Create a multi-node cluster 
 
 Add two more nodes to the cluster using the `join` option.
 
 ```sh
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.2.0/data2 --listen=127.0.0.2 --join=127.0.0.1
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.2.0/data3 --listen=127.0.0.3 --join=127.0.0.1
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.0.0/data2 --listen=127.0.0.2 --join=127.0.0.1
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.0.0/data3 --listen=127.0.0.3 --join=127.0.0.1
 ```
 
 ### Destroy a multi-node cluster
@@ -378,7 +315,7 @@ bin/yugabyted start --base_dir=/Users/username/yugabyte-2.2.2.0/data3 --listen=1
 Destroy the above multi-node cluster.
 
 ```sh
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.2.0/data1
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.2.0/data2
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.2.0/data1
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.0.0/data1
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.0.0/data2
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.2.0.0/data1
 ```

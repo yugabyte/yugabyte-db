@@ -27,7 +27,6 @@ link_directories(${YB_BUILD_ROOT}/postgres/lib)
 
 add_library(
     pg_wrapper_test_base
-    pg_mini_test_base.cc
     pg_wrapper_test_base.cc
     libpq_test_base.cc
     libpq_utils.cc)
@@ -44,7 +43,6 @@ ADD_YB_TEST(pg_libpq-test)
 ADD_YB_TEST(pg_libpq_err-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_mini-test)
-ADD_YB_TEST(pg_txn-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

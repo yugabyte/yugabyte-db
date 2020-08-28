@@ -6,7 +6,7 @@ description: Remove key-value pairs from an object or remove a single value from
 menu:
   latest:
     identifier: remove-operators
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 13
 isTocNested: true
 showAsideToc: true

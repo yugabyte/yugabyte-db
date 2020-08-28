@@ -9,7 +9,6 @@
 #include "btree_utils_num.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
-#include "utils/float.h"
 
 typedef struct
 {

@@ -170,13 +170,4 @@ public class InstanceTypeController extends AuthenticatedController {
     return ok(Json.toJson(Arrays.stream(PublicCloudConstants.StorageType.values())
             .filter(name->name.getCloudType().equals(Common.CloudType.gcp)).toArray()));
   }
-
-  /**
-   * Metadata endpoint for getting a list of all supported types of AZU disks.
-   * @return a list of all supported types of AZU disks.
-   */
-  public Result getAZUTypes() {
-    return ok(Json.toJson(Arrays.stream(PublicCloudConstants.StorageType.values())
-            .filter(name->name.getCloudType().equals(Common.CloudType.azu)).toArray()));
-  }
 }

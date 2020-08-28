@@ -131,6 +131,7 @@ class PgCreateTablegroup : public PgDdl {
   PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
                      const char *database_name,
                      const PgOid database_oid,
+                     const char *tablegroup_name,
                      const PgOid tablegroup_oid);
   virtual ~PgCreateTablegroup();
 
@@ -142,6 +143,7 @@ class PgCreateTablegroup : public PgDdl {
  private:
   const char *database_name_;
   const PgOid database_oid_;
+  const char *tablegroup_name_;
   const PgOid tablegroup_oid_;
 };
 
@@ -156,6 +158,7 @@ class PgDropTablegroup : public PgDdl {
 
   // Constructors.
   PgDropTablegroup(PgSession::ScopedRefPtr pg_session,
+                   const char *tablegroup_name,
                    PgOid database_oid,
                    PgOid tablegroup_oid);
   virtual ~PgDropTablegroup();
@@ -166,6 +169,7 @@ class PgDropTablegroup : public PgDdl {
   CHECKED_STATUS Exec();
 
  private:
+  const char *tablegroup_name_;
   const PgOid database_oid_;
   const PgOid tablegroup_oid_;
 };
@@ -192,8 +196,7 @@ class PgCreateTable : public PgDdl {
                 bool is_shared_table,
                 bool if_not_exist,
                 bool add_primary_key,
-                const bool colocated,
-                const PgObjectId& tablegroup_oid);
+                const bool colocated);
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLE; }
 
@@ -251,7 +254,6 @@ class PgCreateTable : public PgDdl {
   bool is_shared_table_;
   bool if_not_exist_;
   bool colocated_ = true;
-  const PgObjectId tablegroup_oid_;
   boost::optional<YBHashSchema> hash_schema_;
   std::vector<std::string> range_columns_;
   std::vector<std::vector<QLValuePB>> split_rows_; // Split rows for range tables
@@ -326,8 +328,7 @@ class PgCreateIndex : public PgCreateTable {
                 bool is_shared_index,
                 bool is_unique_index,
                 const bool skip_index_backfill,
-                bool if_not_exist,
-                const PgObjectId& tablegroup_oid);
+                bool if_not_exist);
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_INDEX; }
 

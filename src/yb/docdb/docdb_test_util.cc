@@ -22,7 +22,6 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_compaction_filter.h"

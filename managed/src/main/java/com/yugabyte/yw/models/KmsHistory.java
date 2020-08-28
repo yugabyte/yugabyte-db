@@ -10,7 +10,7 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
+import com.avaje.ebean.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -28,7 +28,7 @@ import javax.persistence.IdClass;
 import javax.persistence.EmbeddedId;
 
 @Entity
-//@IdClass(KmsHistoryId.class)
+@IdClass(KmsHistoryId.class)
 public class KmsHistory extends Model {
     public static final Logger LOG = LoggerFactory.getLogger(KmsHistory.class);
 
@@ -54,8 +54,7 @@ public class KmsHistory extends Model {
     @Column(nullable = false)
     public boolean active;
 
-    public static final Finder<KmsHistoryId, KmsHistory> find =
-      new Finder<KmsHistoryId, KmsHistory>(KmsHistory.class){};
+    public static final Find<KmsHistoryId, KmsHistory> find = new Find<KmsHistoryId, KmsHistory>(){};
 
     public static KmsHistory createKmsHistory(
             UUID configUUID,
@@ -140,7 +139,7 @@ public class KmsHistory extends Model {
             UUID targetUUID,
             KmsHistoryId.TargetType type
     ) {
-        return KmsHistory.find.query().where()
+        return KmsHistory.find.where()
                 .eq("config_uuid", configUUID)
                 .eq("target_uuid", targetUUID)
                 .eq("type", type)
@@ -153,7 +152,7 @@ public class KmsHistory extends Model {
             UUID targetUUID,
             KmsHistoryId.TargetType type
     ) {
-        return KmsHistory.find.query().where()
+        return KmsHistory.find.where()
                 .eq("target_uuid", targetUUID)
                 .eq("type", type)
                 .orderBy()
@@ -167,32 +166,22 @@ public class KmsHistory extends Model {
             String keyRef,
             KmsHistoryId.TargetType type
     ) {
-        return KmsHistory.find.query().where()
+        return KmsHistory.find.where()
                 .idEq(new KmsHistoryId(keyRef, targetUUID, type))
                 .eq("config_uuid", configUUID)
                 .eq("type", type)
-                .findOne();
+                .findUnique();
     }
 
     public static KmsHistory getActiveHistory(
             UUID targetUUID,
             KmsHistoryId.TargetType type
     ) {
-        return KmsHistory.find.query().where()
+        return KmsHistory.find.where()
                 .eq("target_uuid", targetUUID)
                 .eq("type", type)
                 .eq("active", true)
-                .findOne();
-    }
-
-    public static boolean entryExists(
-            UUID targetUUID,
-            String keyRef,
-            KmsHistoryId.TargetType type
-    ) {
-        return KmsHistory.find.query().where()
-                .idEq(new KmsHistoryId(keyRef, targetUUID, type))
-                .exists();
+                .findUnique();
     }
 
     public static KmsHistory getLatestConfigHistory(
@@ -226,7 +215,7 @@ public class KmsHistory extends Model {
     ) { getAllConfigTargetKeyRefs(configUUID, targetUUID, type).forEach(KmsHistory::deleteKeyRef); }
 
     public static boolean configHasHistory(UUID configUUID, KmsHistoryId.TargetType type) {
-        return KmsHistory.find.query().where()
+        return KmsHistory.find.where()
                 .eq("config_uuid", configUUID)
                 .eq("type", type)
                 .findList().size() != 0;

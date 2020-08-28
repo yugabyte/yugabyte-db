@@ -13,17 +13,14 @@ package com.yugabyte.yw.common.kms.util;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
-import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
 import com.yugabyte.yw.models.Universe;
-
-import java.io.File;
 import java.lang.reflect.Constructor;
-import java.util.*;
-
+import java.util.Base64;
+import java.util.List;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.encrypt.Encryptors;
@@ -34,20 +31,16 @@ import play.libs.Json;
 public class EncryptionAtRestUtil {
     protected static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestUtil.class);
 
-    private static final String BACKUP_KEYS_FILE_NAME = "backup_keys.json";
-
-    // Retrieve the constructor from an EncryptionAtRestService implementation that takes no args
-    public static <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>> Constructor<T> getConstructor(
-      Class<T> serviceClass
-    ) {
-        Constructor<T> serviceConstructor = null;
-        for (Constructor<?> constructor : serviceClass.getConstructors()) {
+    public static Constructor getConstructor(Class serviceClass) {
+        Constructor serviceConstructor = null;
+        Class[] parameterTypes;
+        for (Constructor constructor : serviceClass.getConstructors()) {
+            parameterTypes = constructor.getParameterTypes();
             if (constructor.getParameterCount() == 0) {
-                serviceConstructor = (Constructor<T>) constructor;
+                serviceConstructor = constructor;
                 break;
             }
         }
-
         return serviceConstructor;
     }
 
@@ -144,20 +137,12 @@ public class EncryptionAtRestUtil {
                 .removeCacheEntry(universeUUID);
     }
 
-    public static void addKeyRef(UUID universeUUID, UUID configUUID, byte[] keyRef) {
+    public static void addKeyRef(UUID universeUUID, UUID configUUID, byte[] ref) {
         KmsHistory.createKmsHistory(
                 configUUID,
                 universeUUID,
                 KmsHistoryId.TargetType.UNIVERSE_KEY,
-                Base64.getEncoder().encodeToString(keyRef)
-        );
-    }
-
-    public static boolean keyRefExists(UUID universeUUID, byte[] keyRef) {
-        return KmsHistory.entryExists(
-                universeUUID,
-                Base64.getEncoder().encodeToString(keyRef),
-                KmsHistoryId.TargetType.UNIVERSE_KEY
+                Base64.getEncoder().encodeToString(ref)
         );
     }
 
@@ -211,7 +196,12 @@ public class EncryptionAtRestUtil {
 
     public static int getNumKeyRotations(UUID universeUUID, UUID configUUID) {
         int numRotations = 0;
-
+        Universe universe = Universe.get(universeUUID);
+        if (universe == null) {
+            String errMsg = String.format("Invalid Universe UUID: %s", universeUUID.toString());
+            LOG.error(errMsg);
+            throw new IllegalArgumentException(errMsg);
+        }
         try {
             List<KmsHistory> keyRotations = configUUID == null ?
                     KmsHistory.getAllTargetKeyRefs(
@@ -244,53 +234,5 @@ public class EncryptionAtRestUtil {
                 KmsHistoryId.TargetType.UNIVERSE_KEY,
                 Base64.getEncoder().encodeToString(keyRef)
         );
-    }
-
-    public static List<KmsHistory> getAllUniverseKeys(UUID universeUUID) {
-        return KmsHistory.getAllTargetKeyRefs(universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
-    }
-
-    public static File getUniverseBackupKeysFile(String storageLocation) {
-        play.Configuration appConfig = Play.current().injector()
-            .instanceOf(play.Configuration.class);
-        File backupKeysDir = new File(
-            appConfig.getString("yb.storage.path"),
-            "backupKeys"
-        );
-
-        String[] dirParts = storageLocation.split("/");
-
-        File storageLocationDir = new File(
-            backupKeysDir.getAbsoluteFile(),
-            String.join("/", Arrays.asList(Arrays.copyOfRange(
-                dirParts,
-                dirParts.length - 3,
-                dirParts.length - 1
-            )))
-        );
-
-        return new File(storageLocationDir.getAbsolutePath(), BACKUP_KEYS_FILE_NAME);
-    }
-
-    public static class BackupEntry {
-        public byte[] keyRef;
-
-        public KeyProvider keyProvider;
-
-        public BackupEntry(byte[] keyRef, KeyProvider keyProvider) {
-            this.keyRef = keyRef;
-            this.keyProvider = keyProvider;
-        }
-
-        public ObjectNode toJson() {
-            return Json.newObject()
-                    .put("key_ref", Base64.getEncoder().encodeToString(keyRef))
-                    .put("key_provider", keyProvider.name());
-        }
-
-        @Override
-        public String toString() {
-            return this.toJson().toString();
-        }
     }
 }

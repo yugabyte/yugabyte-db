@@ -186,6 +186,7 @@ class GraphPanel extends Component {
     // Perform metric query only if the graph filter has changed.
     // TODO: add the nodePrefixes to the queryParam
     if(prevProps.graph.graphFilter !== this.props.graph.graphFilter) {
+      this.props.resetMetrics();
       if(this.state.isOpen) {
         this.queryMetricsType(this.props.graph.graphFilter);
       }

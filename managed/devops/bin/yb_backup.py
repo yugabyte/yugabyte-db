@@ -78,8 +78,6 @@ DEFAULT_REMOTE_YB_ADMIN_PATH = os.path.join(YB_HOME_DIR, 'master/bin/yb-admin')
 DEFAULT_REMOTE_YSQL_DUMP_PATH = os.path.join(YB_HOME_DIR, 'master/postgres/bin/ysql_dump')
 DEFAULT_REMOTE_YSQL_SHELL_PATH = os.path.join(YB_HOME_DIR, 'master/bin/ysqlsh')
 
-DEFAULT_YB_USER = 'yugabyte'
-
 
 class BackupException(Exception):
     """A YugaByte backup exception."""
@@ -409,13 +407,13 @@ class S3BackupStorage(AbstractBackupStorage):
         return self._command_list_prefix() + ["get", src, dest]
 
     def upload_dir_cmd(self, src, dest):
-        cmd_list = ["sync", "--no-check-md5", src, dest]
+        cmd_list = ["sync", src, dest]
         if self.options.args.sse:
             cmd_list.append("--server-side-encryption")
         return self._command_list_prefix() + cmd_list
 
     def download_dir_cmd(self, src, dest):
-        return self._command_list_prefix() + ["sync", "--no-check-md5", src, dest]
+        return self._command_list_prefix() + ["sync", src, dest]
 
 
 class NfsBackupStorage(AbstractBackupStorage):
@@ -597,9 +595,7 @@ class YBBackup:
         parser.add_argument(
             '--ssh_key_path', required=False, help="Path to the ssh key file")
         parser.add_argument(
-            '--ssh_user', default=DEFAULT_YB_USER, help="Username to use for the ssh connection.")
-        parser.add_argument(
-            '--remote_user', default=DEFAULT_YB_USER, help="User that will perform backup tasks.")
+            '--ssh_user', default='centos', help="Username to use for the ssh connection.")
         parser.add_argument(
             '--ssh_port', default='54422', help="Port to use for the ssh connection.")
         parser.add_argument(
@@ -645,7 +641,7 @@ class YBBackup:
             default=S3BackupStorage.storage_type(),
             help="Storage backing for backups, eg: s3, nfs, gcs, ..")
         parser.add_argument(
-            'command', choices=['create', 'restore', 'restore_keys'],
+            'command', choices=['create', 'restore'],
             help='Create or restore the backup from the provided backup location.')
         parser.add_argument(
             '--certs_dir', required=False,
@@ -653,14 +649,6 @@ class YBBackup:
         parser.add_argument(
             '--sse', required=False, action='store_true',
             help='Enable server side encryption on storage')
-        parser.add_argument(
-            '--backup_keys_source', required=False,
-            help="Location of universe encryption keys backup file to upload to backup location"
-        )
-        parser.add_argument(
-            '--restore_keys_destination', required=False,
-            help="Location to download universe encryption keys backup file to"
-        )
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 
@@ -754,9 +742,6 @@ class YBBackup:
 
     def is_ysql_keyspace(self):
         return self.args.keyspace and keyspace_type(self.args.keyspace[0]) == 'ysql'
-
-    def needs_change_user():
-        return self.args.ssh_user != self.args.remote_user
 
     def get_leader_master_ip(self):
         if not self.leader_master_ip:
@@ -993,6 +978,7 @@ class YBBackup:
                     "Uploading {} to server {}".format(self.cloud_cfg_file_path, server_ip))
 
             this_script_dir = os.path.dirname(os.path.realpath(__file__))
+            ssh_wrapper_path = os.path.join(this_script_dir, 'ssh_wrapper_with_sudo.sh')
 
             output = self.create_remote_tmp_dir(server_ip)
             if self.is_k8s():
@@ -1007,30 +993,16 @@ class YBBackup:
                     k8s_details.container
                 ], env=k8s_details.env_config)
             elif not self.args.no_ssh:
-                if self.needs_change_user():
-                    # TODO: Currently ssh_wrapper_with_sudo.sh will only change users to yugabyte,
-                    # not args.remote_user.
-                    ssh_wrapper_path = os.path.join(this_script_dir, 'ssh_wrapper_with_sudo.sh')
-                    output += self.run_program(
-                        ['scp',
-                         '-S', ssh_wrapper_path,
-                         '-o', 'StrictHostKeyChecking=no',
-                         '-o', 'UserKnownHostsFile=/dev/null',
-                         '-i', self.args.ssh_key_path,
-                         '-P', self.args.ssh_port,
-                         '-q',
-                         self.cloud_cfg_file_path,
-                         '%s@%s:%s' % (self.args.ssh_user, server_ip, self.get_tmp_dir())])
-                else:
-                    output += self.run_program(
-                        ['scp',
-                         '-o', 'StrictHostKeyChecking=no',
-                         '-o', 'UserKnownHostsFile=/dev/null',
-                         '-i', self.args.ssh_key_path,
-                         '-P', self.args.ssh_port,
-                         '-q',
-                         self.cloud_cfg_file_path,
-                         '%s@%s:%s' % (self.args.ssh_user, server_ip, self.get_tmp_dir())])
+                output += self.run_program(
+                    ['scp',
+                     '-S', ssh_wrapper_path,
+                     '-o', 'StrictHostKeyChecking=no',
+                     '-o', 'UserKnownHostsFile=/dev/null',
+                     '-i', self.args.ssh_key_path,
+                     '-P', self.args.ssh_port,
+                     '-q',
+                     self.cloud_cfg_file_path,
+                     '%s@%s:%s' % (self.args.ssh_user, server_ip, self.get_tmp_dir())])
 
             self.server_ips_with_uploaded_cloud_cfg[server_ip] = output
 
@@ -1078,8 +1050,6 @@ class YBBackup:
                 num_retry=num_retries,
                 env=k8s_details.env_config)
         elif not self.args.no_ssh:
-            change_user_cmd = 'sudo -u %s' % (self.args.remote_user) \
-                if self.needs_change_user() else ''
             return self.run_program([
                 'ssh',
                 '-o', 'StrictHostKeyChecking=no',
@@ -1088,7 +1058,7 @@ class YBBackup:
                 '-p', self.args.ssh_port,
                 '-q',
                 '%s@%s' % (self.args.ssh_user, server_ip),
-                'cd / && %s bash -c ' % (change_user_cmd) + pipes.quote(cmd)],
+                'cd / && sudo -u yugabyte bash -c ' + pipes.quote(cmd)],
                 num_retry=num_retries)
         else:
             return self.run_program(['bash', '-c', cmd])
@@ -1168,46 +1138,39 @@ class YBBackup:
         tserver_ip_to_tablet_id_to_snapshot_dirs = {}
         deleted_tablets_by_tserver_ip = {}
 
-        tserver_ip_to_tablet_dirs = {}
         for tserver_ip in tablets_by_tserver_ip:
-            tserver_ip_to_tablet_dirs.setdefault(tserver_ip, [])
+            tablets = tablets_by_tserver_ip[tserver_ip]
+            tablet_dirs = []
+            data_dirs = data_dir_by_tserver[tserver_ip]
+            deleted_tablets = deleted_tablets_by_tserver_ip.setdefault(tserver_ip, set())
 
-        for table_id in table_ids:
-            for tserver_ip in tablets_by_tserver_ip:
-                data_dirs = data_dir_by_tserver[tserver_ip]
-                tablet_dirs = tserver_ip_to_tablet_dirs[tserver_ip]
-
+            for table_id in table_ids:
                 for data_dir in data_dirs:
                     # Find all tablets for this table on this TS in this data_dir:
                     output = self.run_ssh_cmd(
-                      ['find', data_dir,
-                       '-mindepth', TABLET_DIR_DEPTH,
-                       '-maxdepth', TABLET_DIR_DEPTH,
-                       '-name', TABLET_MASK,
-                       '-and',
-                       '-wholename', TABLET_DIR_GLOB.format(table_id)],
-                      tserver_ip)
+                        ['find', data_dir,
+                         '-mindepth', TABLET_DIR_DEPTH,
+                         '-maxdepth', TABLET_DIR_DEPTH,
+                         '-name', TABLET_MASK,
+                         '-and',
+                         '-wholename', TABLET_DIR_GLOB.format(table_id)],
+                        tserver_ip)
                     tablet_dirs += [line.strip() for line in output.split("\n") if line.strip()]
 
-                if self.args.verbose:
-                    msg = "Found tablet directories for table '{}' on  tablet server '{}': {}"
-                    logging.info(msg.format(table_id, tserver_ip, tablet_dirs))
+            if self.args.verbose:
+                logging.info("Found tablet directories for table '{}' on  tablet server '{}': {}"
+                             .format(table_id, tserver_ip, tablet_dirs))
 
-                if not tablet_dirs:
-                    logging.error("No tablet directory found for table '{}' on "
-                                  "tablet server '{}'.".format(table_id, tserver_ip))
+            if not tablet_dirs:
+                logging.error("No tablet directory found for table '{}' on "
+                              "tablet server '{}'.".format(table_id, tserver_ip))
+                raise BackupException("Tablets for table " + table_id
+                                      + " not found on tablet server " + tserver_ip)
 
-                    raise BackupException("Tablets for table " + table_id
-                                          + " not found on tablet server " + tserver_ip)
-
-        for tserver_ip in tablets_by_tserver_ip:
-            tablets = tablets_by_tserver_ip[tserver_ip]
-            tablet_dirs = tserver_ip_to_tablet_dirs[tserver_ip]
-            tablet_id_to_snapshot_dirs = \
+            tablet_id_to_snapshot_dirs =\
                 tserver_ip_to_tablet_id_to_snapshot_dirs.setdefault(tserver_ip, {})
-            deleted_tablets = deleted_tablets_by_tserver_ip.setdefault(tserver_ip, set())
-            tablet_dir_by_id = {}
 
+            tablet_dir_by_id = {}
             for tablet_dir in tablet_dirs:
                 tablet_dir_by_id[tablet_dir[-TABLET_UUID_LEN:]] = tablet_dir
 
@@ -1222,8 +1185,8 @@ class YBBackup:
                     # tablet location on the next downloading round.
                     deleted_tablets.add(tablet_id)
                     if self.args.verbose:
-                        logging.info("Tablet '{}' directory was not found on "
-                                     "tablet server '{}'.".format(tablet_id, tserver_ip))
+                        logging.info("Tablet '{}' directory in table '{}' was not found on "
+                                     "tablet server '{}'.".format(tablet_id, table_id, tserver_ip))
 
             if self.args.verbose:
                 logging.info("Downloading list for tablet server '{}': {}".format(
@@ -1271,18 +1234,10 @@ class YBBackup:
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
 
         parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
-        while len(tserver_ips) > 0:
-            for tserver_ip in list(tserver_ips):
-                data_dirs = data_dir_by_tserver[tserver_ip]
-                if len(data_dirs) > 0:
-                    data_dir = data_dirs[0]
-                    parallel_find_snapshots.add_args(data_dir, snapshot_id, tserver_ip)
-                    data_dirs.remove(data_dir)
-
-                    if len(data_dirs) == 0:
-                        tserver_ips.remove(tserver_ip)
-                else:
-                    tserver_ips.remove(tserver_ip)
+        for tserver_ip in tserver_ips:
+            data_dirs = data_dir_by_tserver[tserver_ip]
+            for data_dir in data_dirs:
+                parallel_find_snapshots.add_args(data_dir, snapshot_id, tserver_ip)
 
         find_snapshot_dir_results = parallel_find_snapshots.run(pool)
 
@@ -1468,53 +1423,38 @@ class YBBackup:
         :param snapshot_metadata: In case of downloading files from cloud to restore a backup,
             this is the snapshot metadata stored in cloud for the backup.
         """
-        tserver_ip_to_tablet_ids_with_data_dirs = {}
         for tserver_ip in tserver_ip_to_tablet_id_to_snapshot_dirs:
-            tserver_ip_to_tablet_ids_with_data_dirs.setdefault(tserver_ip, set())
+            tablet_id_to_snapshot_dirs = tserver_ip_to_tablet_id_to_snapshot_dirs[tserver_ip]
+            tablet_ids_with_data_dirs = set()
+            for tablet_id in tablet_id_to_snapshot_dirs:
+                snapshot_dirs = tablet_id_to_snapshot_dirs[tablet_id]
+                if len(snapshot_dirs) > 1:
+                    raise BackupException(
+                        ('Found multiple snapshot directories on tserver {} for snapshot id '
+                         '{}: {}').format(tserver_ip, snapshot_id, snapshot_dirs))
+                assert len(snapshot_dirs) == 1
+                snapshot_dir = list(snapshot_dirs)[0] + '/'
+                parallel_commands.start_command()
 
-        while len(tserver_ip_to_tablet_id_to_snapshot_dirs) > 0:
-            for tserver_ip in list(tserver_ip_to_tablet_id_to_snapshot_dirs):
-                tablet_id_to_snapshot_dirs = tserver_ip_to_tablet_id_to_snapshot_dirs[tserver_ip]
-                tablet_ids_with_data_dirs = tserver_ip_to_tablet_ids_with_data_dirs[tserver_ip]
-                if len(tablet_id_to_snapshot_dirs) > 0:
-                    tablet_id = list(tablet_id_to_snapshot_dirs)[0]
-                    snapshot_dirs = tablet_id_to_snapshot_dirs[tablet_id]
-
-                    if len(snapshot_dirs) > 1:
-                        raise BackupException(
-                            ('Found multiple snapshot directories on tserver {} for snapshot id '
-                             '{}: {}').format(tserver_ip, snapshot_id, snapshot_dirs))
-
-                    assert len(snapshot_dirs) == 1
-                    snapshot_dir = list(snapshot_dirs)[0] + '/'
-                    parallel_commands.start_command()
-
-                    if upload:
-                        self.prepare_upload_command(
-                            parallel_commands, snapshot_filepath, tablet_id, tserver_ip,
-                            snapshot_dir)
-                    else:
-                        self.prepare_download_command(
-                            parallel_commands, snapshot_filepath, tablet_id, tserver_ip,
-                            snapshot_dir, snapshot_metadata)
-
-                    tablet_ids_with_data_dirs.add(tablet_id)
-                    tablet_id_to_snapshot_dirs.pop(tablet_id)
-
-                    if len(tablet_id_to_snapshot_dirs) == 0:
-                        tserver_ip_to_tablet_id_to_snapshot_dirs.pop(tserver_ip)
-
-                        if tablet_ids_with_data_dirs != tablets_by_tserver_ip[tserver_ip]:
-                            for possible_tablet_id in tablets_by_tserver_ip[tserver_ip]:
-                                if possible_tablet_id not in tablet_ids_with_data_dirs:
-                                    logging.error(
-                                        ("No snapshot directory found for tablet id '{}' on "
-                                            "tablet server '{}'.").format(
-                                                possible_tablet_id, tserver_ip))
-                            raise BackupException("Did not find snapshot directories for some "
-                                                  + "tablets on tablet server " + tserver_ip)
+                if upload:
+                    self.prepare_upload_command(
+                        parallel_commands, snapshot_filepath, tablet_id, tserver_ip, snapshot_dir)
                 else:
-                    tserver_ip_to_tablet_id_to_snapshot_dirs.pop(tserver_ip)
+                    self.prepare_download_command(
+                        parallel_commands, snapshot_filepath, tablet_id, tserver_ip, snapshot_dir,
+                        snapshot_metadata)
+
+                tablet_ids_with_data_dirs.add(tablet_id)
+
+            if tablet_ids_with_data_dirs != tablets_by_tserver_ip[tserver_ip]:
+                for possible_tablet_id in tablets_by_tserver_ip[tserver_ip]:
+                    if possible_tablet_id not in tablet_ids_with_data_dirs:
+                        logging.error(
+                            ("No snapshot directory found for tablet id '{}' on "
+                             "tablet server '{}'.").format(
+                                possible_tablet_id, tserver_ip))
+                raise BackupException("Did not find snapshot directories for some tablets on "
+                                      + "tablet server " + tserver_ip)
 
     def get_tmp_dir(self):
         if not self.tmp_dir_name:
@@ -1524,19 +1464,6 @@ class YBBackup:
             self.tmp_dir_name = tmp_dir
 
         return self.tmp_dir_name
-
-    def upload_encryption_key_file(self):
-        key_file = os.path.basename(self.args.backup_keys_source)
-        key_file_dest = os.path.join("/".join(self.args.backup_location.split("/")[:-1]), key_file)
-        self.run_program(self.storage.upload_file_cmd(self.args.backup_keys_source, key_file_dest))
-        self.run_program(["rm", self.args.backup_keys_source])
-
-    def download_encryption_key_file(self):
-        key_file = os.path.basename(self.args.restore_keys_destination)
-        key_file_src = os.path.join("/".join(self.args.backup_location.split("/")[:-1]), key_file)
-        self.run_program(
-            self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination)
-        )
 
     def upload_metadata_and_checksum(self, src_path, dest_path):
         """
@@ -1720,8 +1647,6 @@ class YBBackup:
         logging.info(
             'Backed up tables %s to %s successfully!' %
             (self.table_names_str(), snapshot_filepath))
-        if self.args.backup_keys_source:
-            self.upload_encryption_key_file()
         print(json.dumps({"snapshot_url": snapshot_filepath}))
 
     def download_file(self, src_path, target_path):
@@ -1944,8 +1869,6 @@ class YBBackup:
         if self.args.keyspace:
             if len(self.args.keyspace) > 1:
                 raise BackupException('Only one --keyspace expected for the restore mode.')
-        elif self.args.table:
-            raise BackupException('Need to specify --keyspace')
 
         logging.info('Restoring backup from {}'.format(self.args.backup_location))
 
@@ -2018,16 +1941,6 @@ class YBBackup:
 
     # At exit callbacks
 
-    def restore_keys(self):
-        """
-        Restore universe keys from the backup stored in the given backup path.
-        """
-        if self.args.restore_keys_destination:
-            self.download_encryption_key_file()
-
-        logging.info('Restored backup universe keys successfully!')
-        print(json.dumps({"success": True}))
-
     def cleanup_temporary_directory(self, tmp_dir):
         """
         Callback run on exit to clean up temporary directories.
@@ -2063,8 +1976,6 @@ class YBBackup:
                 self.restore_table()
             elif self.args.command == 'create':
                 self.backup_table()
-            elif self.args.command == 'restore_keys':
-                self.restore_keys()
             else:
                 logging.error('Command was not specified')
                 print(json.dumps({"error": "Command was not specified"}))

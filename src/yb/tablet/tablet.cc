@@ -416,7 +416,6 @@ Tablet::Tablet(const TabletInitData& data)
     // TODO(KUDU-745): table_id is apparently not set in the metadata.
     attrs["table_id"] = metadata_->table_id();
     attrs["table_name"] = metadata_->table_name();
-    attrs["namespace_name"] = metadata_->namespace_name();
     attrs["partition"] = metadata_->partition_schema()->PartitionDebugString(
         *metadata_->partition(), *schema());
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
@@ -1557,7 +1556,6 @@ void Tablet::UpdateQLIndexesFlushed(
 
 //--------------------------------------------------------------------------------------------------
 // PGSQL Request Processing.
-//--------------------------------------------------------------------------------------------------
 Status Tablet::HandlePgsqlReadRequest(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
@@ -1945,6 +1943,11 @@ Status Tablet::CreatePreparedChangeMetadata(ChangeMetadataOperationState *operat
     }
   }
 
+  if (!operation_state->op_id().IsInitialized()) {
+    // Acquire schema lock only on the leader.
+    operation_state->AcquireSchemaLock(&schema_lock_);
+  }
+
   operation_state->set_schema(schema);
   return Status::OK();
 }
@@ -1957,9 +1960,8 @@ Status Tablet::AddTable(const TableInfoPB& table_info) {
   RETURN_NOT_OK(PartitionSchema::FromPB(table_info.partition_schema(), schema, &partition_schema));
 
   metadata_->AddTable(
-      table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
-      table_info.table_type(), schema, IndexMap(), partition_schema, boost::none,
-      table_info.schema_version());
+      table_info.table_id(), table_info.table_name(), table_info.table_type(), schema, IndexMap(),
+      partition_schema, boost::none, table_info.schema_version());
 
   RETURN_NOT_OK(metadata_->Flush());
 
@@ -2021,10 +2023,9 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   metadata_->SetSchema(*operation_state->schema(), operation_state->index_map(), deleted_cols,
                        operation_state->schema_version(), current_table_info->table_id);
   if (operation_state->has_new_table_name()) {
-    metadata_->SetTableName(current_table_info->namespace_name, operation_state->new_table_name());
+    metadata_->SetTableName(operation_state->new_table_name());
     if (metric_entity_) {
       metric_entity_->SetAttribute("table_name", operation_state->new_table_name());
-      metric_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
     }
   }
 
@@ -2195,7 +2196,6 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
   constexpr auto kProgressInterval = 1000;
   int num_rows_processed = 0;
   string resume_from;
-  CoarseTimePoint last_flushed_at;
   while (VERIFY_RESULT(iter->HasNext())) {
     RETURN_NOT_OK(iter->NextRow(&row));
 
@@ -2207,14 +2207,14 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
     }
 
     DVLOG(2) << "Building index for fetched row: " << row.ToString();
-    RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, &index_requests, &last_flushed_at));
+    RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, &index_requests));
     if (++num_rows_processed % kProgressInterval == 0) {
       VLOG(1) << "Processed " << num_rows_processed << " rows";
     }
   }
 
   VLOG(1) << "Processed " << num_rows_processed << " rows";
-  RETURN_NOT_OK(FlushIndexBatchIfRequired(&index_requests, /* forced */ true, &last_flushed_at));
+  RETURN_NOT_OK(FlushIndexBatchIfRequired(&index_requests, /* forced */ true));
   LOG(INFO) << "Done BackfillIndexes at " << read_time << " for "
             << yb::ToString(index_ids) << " until "
             << (resume_from.empty() ? "<end of the tablet>"
@@ -2224,8 +2224,7 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
 
 Status Tablet::UpdateIndexInBatches(
     const QLTableRow& row, const std::vector<IndexInfo>& indexes,
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-    CoarseTimePoint* last_flushed_at) {
+    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests) {
   const QLTableRow& kEmptyRow = QLTableRow::empty_row();
   QLExprExecutor expr_executor;
 
@@ -2240,12 +2239,11 @@ Status Tablet::UpdateIndexInBatches(
   }
 
   // Update the index write op.
-  return FlushIndexBatchIfRequired(index_requests, false, last_flushed_at);
+  return FlushIndexBatchIfRequired(index_requests, false);
 }
 
 Status Tablet::FlushIndexBatchIfRequired(
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests, bool force_flush,
-    CoarseTimePoint* last_flushed_at) {
+    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests, bool force_flush) {
   if (!force_flush && index_requests->size() < FLAGS_backfill_index_write_batch_size) {
     return Status::OK();
   }
@@ -2300,7 +2298,7 @@ Status Tablet::FlushIndexBatchIfRequired(
 
   auto now = CoarseMonoClock::Now();
   if (FLAGS_backfill_index_rate_rows_per_sec > 0) {
-    auto duration_since_last_batch = MonoDelta(now - *last_flushed_at);
+    auto duration_since_last_batch = MonoDelta(now - last_backfill_flush_at_);
     auto expected_duration_ms = MonoDelta::FromMilliseconds(
         index_requests->size() * 1000 / FLAGS_backfill_index_rate_rows_per_sec);
     DVLOG(3) << "Duration since last batch " << duration_since_last_batch
@@ -2310,7 +2308,7 @@ Status Tablet::FlushIndexBatchIfRequired(
       SleepFor(expected_duration_ms - duration_since_last_batch);
     }
   }
-  *last_flushed_at = now;
+  last_backfill_flush_at_ = now;
 
   index_requests->clear();
   return Status::OK();

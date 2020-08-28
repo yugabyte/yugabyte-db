@@ -15,9 +15,6 @@ import './Replication.scss';
 
 const GRAPH_TYPE = 'replication';
 const METRIC_NAME = 'tserver_async_replication_lag_micros';
-const MICROS_IN_MIN = 60000000.00;
-const MICROS_IN_SEC = 1000000.00;
-const MICROS_IN_MS = 1000.00;
 
 export default class ListBackups extends Component {
   static defaultProps = {
@@ -60,7 +57,7 @@ export default class ListBackups extends Component {
     let latestStat = null;
     let latestTimestamp = null;
     let showMetrics = false;
-    if (_.get(metrics, `${GRAPH_TYPE}.${METRIC_NAME}.layout.yaxis.alias`, null)) {
+    if (_.get(metrics, `metrics.${GRAPH_TYPE}.${METRIC_NAME}.layout.yaxis.alias`, null)) {
       // Get alias 
       const metricAliases = metrics[GRAPH_TYPE][METRIC_NAME].layout.yaxis.alias;
       const displayName = metricAliases['async_replication_committed_lag_micros']
@@ -83,13 +80,11 @@ export default class ListBackups extends Component {
           </div>
         </div>;
       }
-      let resourceNumber = <YBResourceCount size={latestStat} kind="μs" inline={true} />;
-      if (latestStat > MICROS_IN_MIN) {
-        resourceNumber = <YBResourceCount size={(latestStat / MICROS_IN_MIN).toFixed(4)} kind="min" inline={true} />;
-      } else if (latestStat > MICROS_IN_SEC) {
-        resourceNumber = <YBResourceCount size={(latestStat / MICROS_IN_SEC).toFixed(4)} kind="s" inline={true} />;
-      } else if (latestStat > MICROS_IN_MS) {
-        resourceNumber = <YBResourceCount size={(latestStat / MICROS_IN_MS).toFixed(4)} kind="ms" inline={true} />;
+      let resourceNumber = <YBResourceCount size={latestStat} kind="ms" inline={true} />;
+      if (latestStat > 60000) {
+        resourceNumber = <YBResourceCount size={(latestStat / 60000.00).toFixed(4)} kind="min" inline={true} />;
+      } else if (latestStat > 1000) {
+        resourceNumber = <YBResourceCount size={(latestStat / 1000.00).toFixed(4)} kind="s" inline={true} />;
       }
       recentStatBlock = <div className="metric-block">
         <h3>Current Replication Lag</h3>

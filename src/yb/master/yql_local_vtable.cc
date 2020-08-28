@@ -35,6 +35,7 @@ const std::string kSystemLocalNativeProtocolVersionColumn =
     "native_protocol_version";
 const std::string kSystemLocalPartitionerColumn = "partitioner";
 const std::string kSystemLocalRackColumn = "rack";
+const std::string kSystemLocalReleaseVersionColumn = "release_version";
 const std::string kSystemLocalRpcAddressColumn = "rpc_address";
 const std::string kSystemLocalSchemaVersionColumn = "schema_version";
 const std::string kSystemLocalThriftVersionColumn = "thrift_version";
@@ -113,8 +114,7 @@ Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kSystemLocalPartitionerColumn,
                                  "org.apache.cassandra.dht.Murmur3Partitioner", &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalRackColumn, cloud_info.placement_zone(), &row));
-    RETURN_NOT_OK(SetColumnValue(yb::master::kSystemTablesReleaseVersionColumn,
-                                yb::master::kSystemTablesReleaseVersion, &row));
+    RETURN_NOT_OK(SetColumnValue(kSystemLocalReleaseVersionColumn, "3.9-SNAPSHOT", &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalRpcAddressColumn, public_ip, &row));
 
     Uuid schema_version;
@@ -145,8 +145,7 @@ Schema LocalVTable::CreateSchema() const {
                              QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kSystemLocalPartitionerColumn, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kSystemLocalRackColumn, QLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(yb::master::kSystemTablesReleaseVersionColumn,
-                            QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalReleaseVersionColumn, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kSystemLocalRpcAddressColumn, QLType::Create(DataType::INET)));
   CHECK_OK(builder.AddColumn(kSystemLocalSchemaVersionColumn, QLType::Create(DataType::UUID)));
   CHECK_OK(builder.AddColumn(kSystemLocalThriftVersionColumn, QLType::Create(DataType::STRING)));

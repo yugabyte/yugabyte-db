@@ -6,7 +6,7 @@ description: Create a row set with columns "key" (as a SQL text) and "value" (as
 menu:
   latest:
     identifier: jsonb-each-text
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 120
 isTocNested: true
 showAsideToc: true

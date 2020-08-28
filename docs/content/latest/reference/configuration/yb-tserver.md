@@ -134,18 +134,6 @@ Specifies the public IP or DNS hostname of the server (with an optional port). T
 
 Default: `""`
 
-##### --dns_cache_expiration_ms
-
-Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided, thereby reducing latency, improving load times, and reducing bandwidth and CPU consumption.
-
-Default: `60000` (1 minute)
-
-{{< note title="Note" >}}
-
-If this value is changed from the default, make sure to add the identical value to all YB-Master and YB-TSever configurations.
-
-{{< /note >}}
-
 ##### --use_private_ip
 
 Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration flags](#placement-flags).
@@ -257,13 +245,6 @@ The maximum heartbeat periods that the leader can fail to heartbeat in before th
 For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
-
-##### --max_stale_read_bound_time_ms
-
-Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
-In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
-
-Default: `10000` (10 seconds)
 
 ##### --raft_heartbeat_interval_ms
 

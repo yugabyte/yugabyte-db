@@ -6,7 +6,7 @@ description: Find all key-value pairs in the hierarchy of the supplied JSON comp
 menu:
   latest:
     identifier: jsonb-strip-nulls
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 220
 isTocNested: true
 showAsideToc: true

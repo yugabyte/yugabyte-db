@@ -336,7 +336,7 @@ class Consensus {
 
   // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's
   // lease has expired, and we have replicated a new lease that has not expired yet).
-  virtual CHECKED_STATUS WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) = 0;
+  virtual CHECKED_STATUS WaitForLeaderLeaseImprecise(MonoTime deadline) = 0;
 
   // Check that this Consensus is a leader and has lease, returns Status::OK in this case.
   // Otherwise error status is returned.

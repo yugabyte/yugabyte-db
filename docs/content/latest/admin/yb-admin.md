@@ -829,27 +829,6 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
 ```
 
-##### alter_universe_replication
-
-Changes the universe replication for the specified producer universe. Use this command to:
-
-- Add or remove tables in an existing replication UUID.
-- Modify the master addresses.
-
-**Syntax**
-
-```sh
-yb-admin master_addresses <master-addresses> alter_universe_replication <producer_universe_uuid> { set_master_addresses <producer_master_addresses> |  add_table <table_id>[, <table_id>...] | remove_table <table_id>[, <table_id>...] }
-```
-
-- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *producer_universe_uuid*: The UUID of the producer universe.
-- set_master_addresses: Use this subcommand to modify master addresses.
-- *producer_master_addresses*: Comma-separated list of new producer master addresses.
-- add_table: Subcommand to add a table.
-- remove_table: Subcommand to remove a table.
-- *table_id*: The identifier (ID) of the table.
-
 ##### delete_universe_replication <producer_universe_uuid>
 
 Deletes universe replication for the specified producer universe.
@@ -1122,10 +1101,6 @@ If specified, `des_ts_uuid` becomes the new leader. If the argument is empty (`"
 ---
 
 ### Rebalancing commands
-
-For information on YB-Master load balancing, see [Data placement and load balancing](../../architecture/concepts/yb-master/#data-placement-and-load-balancing)
-
-For YB-Master load balancing flags, see [Load balancing flags](../../reference/configuration/yb-master/#load-balancing-flags).
 
 #### set_load_balancer_enabled
 

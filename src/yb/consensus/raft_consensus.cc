@@ -340,7 +340,7 @@ RaftConsensus::RaftConsensus(
       term_metric_(metric_entity->FindOrCreateGauge(&METRIC_raft_term,
                                                     cmeta->current_term())),
       follower_last_update_time_ms_metric_(
-          metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms, clock_)),
+          metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms)),
       is_raft_leader_metric_(metric_entity->FindOrCreateGauge(&METRIC_is_raft_leader,
                                                               static_cast<int64_t>(0))),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
@@ -482,9 +482,10 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
   // If pre-elections disabled or we already won pre-election then start regular election,
   // otherwise pre-election is started.
   // Pre-elections could be disable via flag, or temporarily if some nodes do not support them.
-  auto preelection = ANNOTATE_UNPROTECTED_READ(FLAGS_use_preelection) && !preelected &&
+  auto preelection = FLAGS_use_preelection && !preelected &&
                      disable_pre_elections_until_ < CoarseMonoClock::now();
   const char* election_name = preelection ? "pre-election" : "election";
+
 
   LeaderElectionPtr election;
   {
@@ -2436,9 +2437,9 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg
   return state_->AddPendingOperation(round);
 }
 
-Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
-  CoarseTimePoint now;
-  while ((now = CoarseMonoClock::Now()) < deadline) {
+Status RaftConsensus::WaitForLeaderLeaseImprecise(MonoTime deadline) {
+  MonoTime now;
+  while ((now = MonoTime::Now()) < deadline) {
     MonoDelta remaining_old_leader_lease;
     LeaderLeaseStatus leader_lease_status;
     {
@@ -2460,14 +2461,19 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
           // ReplicaState lock and re-checking, here we simply block for up to 100ms in that case,
           // because this function is currently (08/14/2017) only used in a context when it is OK,
           // such as catalog manager initialization.
-          leader_lease_wait_cond_.wait_for(
-              lock, std::max<MonoDelta>(100ms, deadline - now).ToSteadyDuration());
+          leader_lease_wait_cond_.wait_for(lock,
+              max(MonoDelta::FromMilliseconds(100), deadline - now).ToSteadyDuration());
         }
         continue;
-      case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE: {
-        auto wait_deadline = std::min({deadline, now + 100ms, now + remaining_old_leader_lease});
-        std::this_thread::sleep_until(wait_deadline);
-      } continue;
+      case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE:
+        if (now + remaining_old_leader_lease > deadline) {
+          return STATUS_FORMAT(
+              TimedOut,
+              "Old leader still has lease for $0 but we only have $1 left to wait",
+              remaining_old_leader_lease, deadline - now);
+        }
+        SleepFor(remaining_old_leader_lease);
+        continue;
     }
     FATAL_INVALID_ENUM_VALUE(LeaderLeaseStatus, leader_lease_status);
   }

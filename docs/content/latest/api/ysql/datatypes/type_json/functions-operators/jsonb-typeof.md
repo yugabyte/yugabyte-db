@@ -6,7 +6,7 @@ description: Return the data type of the JSON value as a SQL text value.
 menu:
   latest:
     identifier: jsonb-typeof
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 250
 isTocNested: true
 showAsideToc: true

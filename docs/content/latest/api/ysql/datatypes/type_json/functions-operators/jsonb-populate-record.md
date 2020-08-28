@@ -6,7 +6,7 @@ description: Convert a JSON object into the equivalent SQL record.
 menu:
   latest:
     identifier: jsonb-populate-record
-    parent: json-functions-operators
+    parent: functions-operators
     weight: 180
 isTocNested: true
 showAsideToc: true

@@ -75,7 +75,6 @@ public class Module extends AbstractModule {
       bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
       bind(SetUniverseKey.class).asEagerSingleton();
       bind(CustomerTaskManager.class).asEagerSingleton();
-      bind(YamlWrapper.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
       callbackController.setDefaultUrl(config.getString("yb.url", ""));
@@ -90,10 +89,7 @@ public class Module extends AbstractModule {
     if (config.getString("yb.security.type", "").equals("OIDC")) {
       oidcConfiguration.setClientId(config.getString("yb.security.clientID", ""));
       oidcConfiguration.setSecret(config.getString("yb.security.secret", ""));
-      oidcConfiguration.setScope(config.getString("yb.security.oidcScope", ""));
       oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI", ""));
-      oidcConfiguration.setMaxClockSkew(3600);
-      oidcConfiguration.setResponseType("code");
       final OidcClient oidcClient = new OidcClient(oidcConfiguration);
       return oidcClient;
     } else {

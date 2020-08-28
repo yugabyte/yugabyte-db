@@ -35,8 +35,7 @@ function mapStateToProps(state, ownProps) {
   const storageConfigs = configs.data.filter( (config) => config.type === "STORAGE");
   const initialFormValues = {
     enableSSE: false,
-    transactionalBackup: false,
-    parallelism: 8
+    transactionalBackup: false
   };
 
   if (isNonEmptyObject(ownProps.tableInfo)) {

@@ -12,7 +12,7 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
 
-import io.ebean.annotation.DbJson;
+import com.avaje.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -25,7 +25,7 @@ import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.ebean.*;
+import com.avaje.ebean.Model;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -101,7 +101,7 @@ public class Provider extends Model {
   /**
    * Query Helper for Provider with uuid
    */
-  public static final Finder<UUID, Provider> find = new Finder<UUID, Provider>(Provider.class){};
+  public static final Find<UUID, Provider> find = new Find<UUID, Provider>(){};
 
   /**
    * Create a new Cloud Provider
@@ -145,7 +145,7 @@ public class Provider extends Model {
    * @return instance of cloud provider.
    */
   public static Provider get(UUID customerUUID, UUID providerUUID) {
-    return find.query().where().eq("customer_uuid", customerUUID).idEq(providerUUID).findOne();
+    return find.where().eq("customer_uuid", customerUUID).idEq(providerUUID).findUnique();
   }
 
   /**
@@ -154,7 +154,7 @@ public class Provider extends Model {
    * @return list of cloud providers.
    */
   public static List<Provider> getAll(UUID customerUUID) {
-    return find.query().where().eq("customer_uuid", customerUUID).findList();
+    return find.where().eq("customer_uuid", customerUUID).findList();
   }
 
   /**
@@ -165,7 +165,7 @@ public class Provider extends Model {
    * @return
    */
   public static Provider get(UUID customerUUID, Common.CloudType code) {
-    List<Provider> providerList = find.query().where().eq("customer_uuid", customerUUID)
+    List<Provider> providerList = find.where().eq("customer_uuid", customerUUID)
             .eq("code", code.toString()).findList();
     int size = providerList.size();
 

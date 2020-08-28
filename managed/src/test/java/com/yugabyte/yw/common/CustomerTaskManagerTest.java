@@ -9,7 +9,7 @@ import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.Universe;
-import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -78,9 +78,8 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     verify(taskManager, times(CustomerTask.TargetType.values().length))
       .failPendingTask(any(), any());
 
-    List<CustomerTask> customerTasks = CustomerTask.find.query().where()
-      .eq("customer_uuid", customer.uuid)
-      .findList();
+    Set<CustomerTask> customerTasks = CustomerTask.find.where()
+      .eq("customer_uuid", customer.uuid).findSet();
 
     // Verify tasks have been marked as failure properly
     for (CustomerTask task : customerTasks) {

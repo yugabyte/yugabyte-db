@@ -122,7 +122,7 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 [`BLOB`](type_blob) | Yes | - | String of binary characters |
 [`BOOLEAN`](type_bool) | Yes | - | Boolean |
 [`COUNTER`](type_int) | No | - | 64-bit signed integer |
-[`DECIMAL`](type_number) | Yes | - | Exact, arbitrary-precision number, no upper-bound on decimal precision |
+[`DECIMAL`](type_number) | Yes | - | Exact, fixed-point number |
 [`DATE`](type_datetime) | Yes | - | Date |
 [`DOUBLE`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
 [`FLOAT`](type_number) | Yes | - | 64-bit, inexact, floating-point number |

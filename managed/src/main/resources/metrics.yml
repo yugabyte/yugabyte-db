@@ -3,8 +3,8 @@
 ---
 cpu_usage_user:
   metric: "node_cpu"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   operator: "* 100"
   filters:
     mode: "user"
@@ -17,8 +17,7 @@ cpu_usage_user:
 
 cpu_usage_system:
   metric: "node_cpu"
-  function: "rate|avg"
-  range: true
+  function: "irate|avg"
   operator: "* 100"
   filters:
     mode: "system"
@@ -49,8 +48,8 @@ disk_usage:
 
 cpu_usage:
   metric: "node_cpu"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   operator: "* 100"
   filters:
     mode: "user|system"
@@ -65,7 +64,7 @@ cpu_usage:
 disk_iops:
   metric: ""
   function: "rate|sum without (device)|avg"
-  range : true
+  range: "1m"
   filters:
     saved_name: "node_disk_reads_completed|node_disk_writes_completed"
   group_by: "saved_name"
@@ -80,8 +79,8 @@ disk_iops:
 
 tserver_rpcs_per_sec_by_universe:
   metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  function: "irate|sum"
+  range: "1m"
   filters:
     export_type: "tserver_export"
     server_type: "yb_tserver"
@@ -114,7 +113,7 @@ memory_usage:
 container_cpu_usage:
   metric: "container_cpu_usage_seconds_total/container_cpu_request"
   function: "rate|avg"
-  range : true
+  range: "1m"
   filters:
     pod_name: "yb-tserver-(.*)"
     container_name: "yb-tserver"
@@ -145,7 +144,7 @@ container_cpu_request:
 container_cpu_usage_seconds_total:
   metric: "container_cpu_usage_seconds_total"
   function: "rate|avg"
-  range : true
+  range: "1m"
   filters:
     pod_name: "yb-tserver-(.*)"
     container_name: "yb-tserver"
@@ -207,7 +206,7 @@ container_volume_max_usage:
 network_bytes:
   metric: ""
   function: "rate|avg"
-  range : true
+  range: "1m"
   filters:
     saved_name: "node_network_receive_bytes|node_network_transmit_bytes"
     # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
@@ -225,7 +224,7 @@ network_bytes:
 network_packets:
   metric: ""
   function: "rate|avg"
-  range : true
+  range: "1m"
   filters:
     saved_name: "node_network_receive_packets|node_network_transmit_packets"
     # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
@@ -243,7 +242,7 @@ network_packets:
 network_errors:
   metric: ""
   function: "rate|avg"
-  range : true
+  range: "1m"
   filters:
     saved_name: "node_network_receive_errs|node_network_transmit_errs"
     # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
@@ -279,7 +278,7 @@ disk_bytes_per_second_per_node:
   filters:
     saved_name: "node_disk_bytes_read|node_disk_bytes_written"
   group_by: "saved_name"
-  range : true
+  range: "1m"
   function: "rate|sum without (device)|avg"
   layout:
     title: "Disk Bytes / Sec / Node"
@@ -293,7 +292,7 @@ disk_bytes_per_second_per_node:
 redis_rpcs_per_sec_all:
   metric: "rpc_latency_count"
   function: "rate|sum"
-  range : true
+  range: "1m"
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -469,7 +468,7 @@ redis_server_rpc_p99:
 redis_rpcs_per_sec_hash:
   metric: "rpc_latency_count"
   function: "rate|sum"
-  range : true
+  range: "1m"
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -498,7 +497,7 @@ redis_rpcs_per_sec_hash:
 redis_rpcs_per_sec_ts:
   metric: "rpc_latency_count"
   function: "rate|sum"
-  range : true
+  range: "1m"
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -519,7 +518,7 @@ redis_rpcs_per_sec_ts:
 redis_rpcs_per_sec_set:
   metric: "rpc_latency_count"
   function: "rate|sum"
-  range : true
+  range: "1m"
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -543,7 +542,7 @@ redis_rpcs_per_sec_set:
 redis_rpcs_per_sec_sortedset:
   metric: "rpc_latency_count"
   function: "rate|sum"
-  range : true
+  range: "1m"
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -565,7 +564,7 @@ redis_rpcs_per_sec_sortedset:
 redis_rpcs_per_sec_str:
   metric: "rpc_latency_count"
   function: "rate|sum"
-  range : true
+  range: "1m"
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -594,7 +593,7 @@ redis_rpcs_per_sec_str:
 redis_rpcs_per_sec_local:
   metric: "rpc_latency_count"
   function: "rate|sum"
-  range : true
+  range: "1m"
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -622,7 +621,7 @@ redis_ops_latency_all:
   function: "rate|avg"
   # operator: "/ 1000 > 0"
   operator: " > 0"
-  range : true
+  range: "1m"
   filters:
     server_type: "yb_redisserver"
     service_type: "RedisServerService"
@@ -684,7 +683,7 @@ redis_ops_latency_hash:
   function: "rate|avg"
   # operator: "/ 1000 > 0"
   operator: " > 0"
-  range : true
+  range: "1m"
   filters:
     server_type: "yb_redisserver"
     service_type: "RedisServerService"
@@ -716,7 +715,7 @@ redis_ops_latency_ts:
   function: "rate|avg"
   # operator: "/ 1000 > 0"
   operator: " > 0"
-  range : true
+  range: "1m"
   filters:
     server_type: "yb_redisserver"
     service_type: "RedisServerService"
@@ -740,7 +739,7 @@ redis_ops_latency_set:
   function: "rate|avg"
   # operator: "/ 1000 > 0"
   operator: " > 0"
-  range : true
+  range: "1m"
   filters:
     server_type: "yb_redisserver"
     service_type: "RedisServerService"
@@ -766,7 +765,7 @@ redis_ops_latency_sorted_set:
   function: "rate|avg"
   # operator: "/ 1000 > 0"
   operator: " > 0"
-  range : true
+  range: "1m"
   filters:
     server_type: "yb_redisserver"
     service_type: "RedisServerService"
@@ -791,7 +790,7 @@ redis_ops_latency_str:
   function: "rate|avg"
   # operator: "/ 1000 > 0"
   operator: " > 0"
-  range : true
+  range: "1m"
   filters:
     server_type: "yb_redisserver"
     service_type: "RedisServerService"
@@ -823,7 +822,7 @@ redis_ops_latency_local:
   function: "rate|avg"
   # operator: "/ 1000 > 0"
   operator: " > 0"
-  range : true
+  range: "1m"
   filters:
     server_type: "yb_redisserver"
     service_type: "RedisServerService"
@@ -851,7 +850,7 @@ redis_ops_latency_local:
 redis_yb_local_vs_remote_ops:
   metric: "rpc_latency_count"
   function: "rate|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "redis_export"
     service_type: "read|write"
@@ -870,8 +869,8 @@ redis_yb_local_vs_remote_ops:
 
 redis_yb_local_vs_remote_latency:
   metric: "rpc_latency.avg"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   filters:
     export_type: "redis_export"
     service_type: "read|write"
@@ -891,8 +890,8 @@ redis_yb_local_vs_remote_latency:
 
 redis_reactor_latency:
   metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_transfer.avg|handler_latency_outbound_call_queue_time.avg"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   filters:
     export_type: "redis_export"
   layout:
@@ -909,8 +908,8 @@ redis_reactor_latency:
 # tserver metrics
 tserver_ops_latency:
   metric: "rpc_latency.avg"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   # operator: "/ 1000"
   filters:
     export_type: "tserver_export"
@@ -928,8 +927,8 @@ tserver_ops_latency:
 
 tserver_handler_latency:
   metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   # operator: "/ 1000"
   filters:
     export_type: "tserver_export"
@@ -947,8 +946,8 @@ tserver_handler_latency:
 
 total_rpcs_per_sec:
   metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  function: "irate|sum"
+  range: "1m"
   filters:
     export_type: "tserver_export"
     server_type: "yb_tserver"
@@ -962,8 +961,8 @@ total_rpcs_per_sec:
 
 tserver_rpcs_per_sec_per_node:
   metric: "rpc_latency_count"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   filters:
     export_type: "tserver_export"
     server_type: "yb_tserver"
@@ -978,7 +977,7 @@ tserver_rpcs_per_sec_per_node:
 tserver_consensus_rpcs_per_sec:
   metric: "rpc_latency_count"
   function: "rate|sum"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
     server_type: "yb_consensus"
@@ -1026,9 +1025,9 @@ tserver_remote_bootstraps:
 
 tserver_consensus_rpcs_latency:
   metric: "rpc_latency.avg"
-  function: "rate|avg"
+  function: "irate|avg"
   # operator: "/ 1000"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
     server_type: "yb_consensus"
@@ -1044,9 +1043,9 @@ tserver_consensus_rpcs_latency:
 
 tserver_change_config_latency:
   metric: "rpc_latency.avg"
-  function: "rate|avg"
+  function: "irate|avg"
   # operator: "/ 1000"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
     server_type: "yb_consensus"
@@ -1078,8 +1077,8 @@ tserver_threads:
 
 tserver_context_switches:
   metric: ""
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   filters:
     export_type: "tserver_export"
     saved_name: "involuntary_context_switches|voluntary_context_switches"
@@ -1096,7 +1095,7 @@ tserver_spinlock_server:
   metric: "spinlock_contention_time"
   function: "rate|avg"
   operator: "/ 1000000"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
@@ -1109,8 +1108,8 @@ tserver_spinlock_server:
       ticksuffix: "&nbsp;sec"
 tserver_log_latency:
   metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   layout:
     title: "TServer Log Latency"
     xaxis:
@@ -1125,7 +1124,7 @@ tserver_log_latency:
 tserver_log_bytes_written:
   metric: "log_bytes_logged"
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
@@ -1139,7 +1138,7 @@ tserver_log_bytes_written:
 tserver_log_bytes_read:
   metric: "log_reader_bytes_read"
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
@@ -1153,7 +1152,7 @@ tserver_log_bytes_read:
 tserver_log_ops_second:
   metric: ""
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
     saved_name: "log_group_commit_latency_count|log_append_latency_count|log_sync_latency_count"
@@ -1219,7 +1218,7 @@ tserver_cache_reader_num_ops:
 tserver_glog_info_messages:
   metric: ""
   function: "rate|sum"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
     saved_name: "glog_info_messages|glog_warning_messages|glog_error_messages"
@@ -1241,7 +1240,7 @@ node_up:
 lsm_rocksdb_num_seek_or_next:
   metric: ""
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
     saved_name: "rocksdb_number_db_seek|rocksdb_number_db_next"
@@ -1258,7 +1257,7 @@ lsm_rocksdb_num_seek_or_next:
 lsm_rocksdb_num_seeks_per_node:
   metric: "rocksdb_number_db_seek"
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
@@ -1301,7 +1300,7 @@ lsm_rocksdb_avg_num_sst_per_node:
 lsm_rocksdb_blooms_checked_and_useful:
   metric: ""
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
     saved_name: "rocksdb_bloom_filter_checked|rocksdb_bloom_filter_useful"
@@ -1318,7 +1317,7 @@ lsm_rocksdb_blooms_checked_and_useful:
 lsm_rocksdb_latencies_get:
   metric: "rocksdb_db_get_micros.avg"
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
@@ -1333,7 +1332,7 @@ lsm_rocksdb_latencies_get:
 lsm_rocksdb_latencies_write:
   metric: "rocksdb_db_write_micros.avg"
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
@@ -1348,7 +1347,7 @@ lsm_rocksdb_latencies_write:
 lsm_rocksdb_latencies_seek:
   metric: "rocksdb_db_seek_micros.avg"
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   layout:
     title: "LSM-DB Seek Latencies"
     xaxis:
@@ -1361,7 +1360,7 @@ lsm_rocksdb_latencies_seek:
 lsm_rocksdb_latencies_mutex:
   metric: "rocksdb_db_mutex_wait_micros.avg"
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
@@ -1376,7 +1375,7 @@ lsm_rocksdb_latencies_mutex:
 lsm_rocksdb_block_cache_hit_miss:
   metric: ""
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_miss"
     export_type: "tserver_export"
@@ -1411,7 +1410,7 @@ lsm_rocksdb_block_cache_usage:
 lsm_rocksdb_block_cache_add:
   metric: ""
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     saved_name: "rocksdb_block_cache_add|rocksdb_block_cache_single_touch_add|rocksdb_block_cache_multi_touch_add"
     export_type: "tserver_export"
@@ -1429,7 +1428,7 @@ lsm_rocksdb_block_cache_add:
 lsm_rocksdb_stalls:
   metric: "rocksdb_stall_micros"
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
@@ -1444,7 +1443,7 @@ lsm_rocksdb_stalls:
 lsm_rocksdb_write_rejections:
   metric: "majority_sst_files_rejections"
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
@@ -1458,7 +1457,7 @@ lsm_rocksdb_write_rejections:
 lsm_rocksdb_flush_size:
   metric: "rocksdb_flush_write_bytes"
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   operator: "/ 1048576"
   layout:
     title: "Flush write"
@@ -1472,7 +1471,7 @@ lsm_rocksdb_flush_size:
 lsm_rocksdb_compaction:
   metric: ""
   function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  range: "1m"
   operator: "/ 1048576"
   filters:
     export_type: "tserver_export"
@@ -1490,8 +1489,8 @@ lsm_rocksdb_compaction:
 
 lsm_rocksdb_compaction_numfiles:
   metric: "rocksdb_numfiles_in_singlecompaction.avg"
-  function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  function: "irate|sum without (table_id, table_name)|avg"
+  range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
@@ -1504,8 +1503,8 @@ lsm_rocksdb_compaction_numfiles:
 
 lsm_rocksdb_compaction_time:
   metric: "rocksdb_compaction_times_micros.avg"
-  function: "rate|sum without (table_id, table_name)|avg"
-  range : true
+  function: "irate|sum without (table_id, table_name)|avg"
+  range: "1m"
   #operator: "/ 1000000"
   filters:
     export_type: "tserver_export"
@@ -1520,8 +1519,8 @@ lsm_rocksdb_compaction_time:
 
 docdb_transaction:
   metric: ""
-  function: "rate|sum"
-  range : true
+  function: "irate|sum"
+  range: "1m"
   filters:
     saved_name: "transaction_conflicts|expired_transactions"
     export_type: "tserver_export"
@@ -1538,8 +1537,8 @@ docdb_transaction:
 #Ysql Metrics
 ysql_server_rpc_per_second:
   metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  function: "irate|sum"
+  range : "1m"
   filters:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
@@ -1561,8 +1560,8 @@ ysql_server_rpc_per_second:
 
 ysql_sql_latency:
   metric: "rpc_latency.avg"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range : "1m"
   filters:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
@@ -1634,9 +1633,9 @@ ysql_server_rpc_p99:
 #Cassandra Metrics
 cql_server_rpc_per_second:
   metric: "rpc_latency_count"
-  function: "rate|sum"
+  function: "irate|sum"
   # operator: "/ 1000"
-  range : true
+  range : "1m"
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
@@ -1657,9 +1656,9 @@ cql_server_rpc_per_second:
 
 cql_sql_latency:
   metric: "rpc_latency.avg"
-  function: "rate|avg"
+  function: "irate|avg"
   # operator: "/ 1000"
-  range : true
+  range : "1m"
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
@@ -1728,8 +1727,8 @@ cql_server_rpc_p99:
 
 cql_sql_latency_breakdown:
   metric: "rpc_latency.avg"
-  function: "rate|sum"
-  range : true
+  function: "irate|sum"
+  range : "1m"
   filters:
     export_type: "cql_export"
     server_type: "yb_cqlserver"
@@ -1761,7 +1760,7 @@ cql_yb_rpc_connections:
 cql_yb_local_vs_remote:
   metric: "rpc_latency_count"
   function: "rate|avg"
-  range : true
+  range: "1m"
   filters:
     export_type: "cql_export|tserver_export"
     service_type: "read|write"
@@ -1780,8 +1779,8 @@ cql_yb_local_vs_remote:
 
 cql_yb_latency:
   metric: "rpc_latency.avg"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   filters:
     export_type: "cql_export|tserver_export"
     service_type: "read|write"
@@ -1801,8 +1800,8 @@ cql_yb_latency:
 
 cql_yb_transaction:
   metric: "rpc_latency.avg"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   filters:
     export_type: "cql_export"
     service_type: "SQLProcessor"
@@ -1819,8 +1818,8 @@ cql_yb_transaction:
 
 cql_reactor_latency:
   metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   # operator: "/ 1000"
   filters:
     export_type: "cql_export"
@@ -1838,8 +1837,8 @@ cql_reactor_latency:
 
 response_sizes:
   metric: "rpc_latency.avg"
-  function: "rate|avg"
-  range : true
+  function: "irate|avg"
+  range: "1m"
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
@@ -1929,13 +1928,13 @@ tserver_async_replication_lag_micros:
       type: "date"
     yaxis:
       alias:
-        "async_replication_sent_lag_micros": "Sent Lag (Microseconds)"
-        "async_replication_committed_lag_micros": "Committed Lag (Microseconds)"
+        "async_replication_sent_lag_micros": "Sent Lag (Milliseconds)"
+        "async_replication_committed_lag_micros": "Committed Lag (Milliseconds)"
 
 master_overall_rpc_rate:
   metric: "rpc_inbound_calls_created"
   function: "rate"
-  range : true
+  range: "1m"
   filters:
     export_type: "master_export"
   layout:
@@ -1949,7 +1948,7 @@ master_overall_rpc_rate:
 master_get_tablet_location:
   metric: "rpc_latency_count"
   function: "rate"
-  range : true
+  range: "1m"
   filters:
     export_type: "master_export"
     service_type: "MasterService"
@@ -1965,7 +1964,7 @@ master_get_tablet_location:
 master_tsservice_reads:
   metric: "rpc_latency_count"
   function: "rate"
-  range : true
+  range: "1m"
   filters:
     export_type: "master_export"
     service_type: "TabletServerService"
@@ -1981,7 +1980,7 @@ master_tsservice_reads:
 master_tsservice_writes:
   metric: "rpc_latency_count"
   function: "rate"
-  range : true
+  range: "1m"
   filters:
     export_type: "master_export"
     service_type: "TabletServerService"
@@ -1997,7 +1996,7 @@ master_tsservice_writes:
 master_ts_heartbeats:
   metric: "rpc_latency_count"
   function: "rate"
-  range : true
+  range: "1m"
   filters:
     export_type: "master_export"
     service_type: "MasterService"
@@ -2013,7 +2012,7 @@ master_ts_heartbeats:
 master_consensus_update:
   metric: "rpc_latency_count"
   function: "rate"
-  range : true
+  range: "1m"
   filters:
     export_type: "master_export"
     service_type: "ConsensusService"
@@ -2046,7 +2045,7 @@ master_table_ops:
 master_cpu_util_secs:
   metric: "cpu_utime|cpu_stime"
   function: "rate"
-  range : true
+  range: "1m"
   operator: "/ 1000"
   filters:
     export_type: "master_export"
@@ -2063,7 +2062,7 @@ master_cpu_util_secs:
 tserver_cpu_util_secs:
   metric: "cpu_utime|cpu_stime"
   function: "rate|avg"
-  range : true
+  range: "1m"
   operator: "/ 1000"
   filters:
     export_type: "tserver_export"

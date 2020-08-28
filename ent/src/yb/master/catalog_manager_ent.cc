@@ -52,7 +52,6 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
-#include "yb/util/status.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
 #include "yb/util/random_util.h"
@@ -290,6 +289,44 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
   }
 
   return CreateNonTransactionAwareSnapshot(req, resp, rpc);
+}
+
+Result<vector<TableDescription>> CatalogManager::CollectTables(
+    const RepeatedPtrField<TableIdentifierPB>& tables, bool add_indexes) {
+  vector<TableDescription> all_tables;
+
+  for (const auto& table_id_pb : tables) {
+    TableDescription table_description = VERIFY_RESULT(DescribeTable(table_id_pb));
+    all_tables.push_back(table_description);
+
+    if (add_indexes) {
+      TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
+      auto l = table_description.table_info->LockForRead();
+
+      if (table_description.table_info->is_index()) {
+        return STATUS(InvalidArgument, "Expected table, but found index",
+                      table_description.table_info->id(),
+                      MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+      }
+
+      if (l->data().table_type() == PGSQL_TABLE_TYPE) {
+        return STATUS(InvalidArgument, "Getting indexes for YSQL table is not supported",
+                      table_description.table_info->id(),
+                      MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
+      }
+
+      for (const auto& index_info : l->data().pb.indexes()) {
+        LOG_IF(DFATAL, table_description.table_info->id() != index_info.indexed_table_id())
+                << "Wrong indexed table id in index descriptor";
+        TableIdentifierPB index_id_pb;
+        index_id_pb.set_table_id(index_info.table_id());
+        index_id_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
+        all_tables.push_back(VERIFY_RESULT(DescribeTable(index_id_pb)));
+      }
+    }
+  }
+
+  return all_tables;
 }
 
 Status CatalogManager::CreateNonTransactionAwareSnapshot(

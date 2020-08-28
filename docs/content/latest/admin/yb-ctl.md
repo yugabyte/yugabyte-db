@@ -315,7 +315,6 @@ $ ./bin/yb-ctl status
 ```
 
 Following is the output shown for a 3-node RF3 cluster.
-
 ```
 ----------------------------------------------------------------------------------------------------
 | Node Count: 3 | Replication Factor: 3                                                            |
@@ -360,6 +359,7 @@ Following is the output shown for a 3-node RF3 cluster.
 | yb-tserver Logs     : /Users/testuser12/yugabyte-data/node-3/disk-1/yb-data/tserver/logs         |
 | yb-master Logs      : /Users/testuser12/yugabyte-data/node-3/disk-1/yb-data/master/logs          |
 ----------------------------------------------------------------------------------------------------
+
 ```
 
 ## Start and stop an existing cluster
@@ -417,6 +417,7 @@ You can test the failure of a node in a 3-node RF3 cluster by killing 1 instance
 
 The command `./bin/yb-ctl start_node 3` will start yb-tserver3. However, it will throw an error even though the command will succeed. This is because there are only 2 yb-masters present in the cluster at this point. This is not an error in the cluster configuration but rather a warning to highlight that the cluster is under-replicated and does not have enough yb-masters to ensure continued fault tolerance. Following [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/4156) tracks the work to convert this error into a user-friendly warning.
 
+
 ## Initialize the YEDIS API
 
 The `setup_redis` command to initialize YugabyteDB's Redis-compatible YEDIS API.
@@ -451,9 +452,9 @@ To add a node:
 $ ./bin/yb-ctl add_node --placement_info "cloud1.region1.zone1"
 ```
 
-### Create a local cluster with custom flags
+### Create a cluster with custom flags
 
-When you use `yb-ctl`, you can pass "custom" flags (flags unavailable directly in `yb-ctl`) to the YB-Master and YB-TServer servers.
+You can also pass custom flags to the YB-Master and YB-TServer servers.
 
 ```sh
 $ ./bin/yb-ctl --rf 1 create --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"

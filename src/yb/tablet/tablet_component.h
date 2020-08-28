@@ -38,6 +38,8 @@ class TabletComponent {
 
   std::string LogPrefix() const;
 
+  rw_semaphore& schema_lock() const;
+
   RaftGroupMetadata& metadata() const;
 
   RWOperationCounter& pending_op_counter() const;

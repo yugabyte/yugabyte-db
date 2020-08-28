@@ -74,8 +74,6 @@ bool IsPgsqlId(const string& id);
 // Get Postgres database and table oids from a YB namespace/table id.
 Result<uint32_t> GetPgsqlDatabaseOid(const NamespaceId& namespace_id);
 Result<uint32_t> GetPgsqlTableOid(const TableId& table_id);
-Result<uint32_t> GetPgsqlTablegroupOid(const TablegroupId& tablegroup_id);
-Result<uint32_t> GetPgsqlTablegroupOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id);
 
 }  // namespace yb

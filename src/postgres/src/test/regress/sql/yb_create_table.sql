@@ -358,11 +358,6 @@ CREATE TABLE tbl1 (
 	a			int4 primary key
 ) SPLIT (INTO 20 TABLETS);
 
-CREATE TABLE tbl1_5 (
-	a       int4,
- 	primary key(a asc)
-) SPLIT (INTO 20 TABLETS);
-
 CREATE TABLE tbl2 (
 	a			int4,
 	primary key (a asc)

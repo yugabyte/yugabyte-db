@@ -659,7 +659,6 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   DCHECK(status_listener_.get() != nullptr);
   const auto disk_size_info = GetOnDiskSizeInfo();
   status_pb_out->set_tablet_id(status_listener_->tablet_id());
-  status_pb_out->set_namespace_name(status_listener_->namespace_name());
   status_pb_out->set_table_name(status_listener_->table_name());
   status_pb_out->set_table_id(status_listener_->table_id());
   status_pb_out->set_last_status(status_listener_->last_status());
