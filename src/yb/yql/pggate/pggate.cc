@@ -94,9 +94,8 @@ using client::YBSession;
 
 //--------------------------------------------------------------------------------------------------
 
-PggateOptions::PggateOptions() {
+PggateOptions::PggateOptions() : ServerBaseOptions(kDefaultPort) {
   server_type = "tserver";
-  rpc_opts.default_port = kDefaultPort;
   rpc_opts.connection_keepalive_time_ms = FLAGS_pgsql_rpc_keepalive_time_ms;
 
   if (FLAGS_pggate_proxy_bind_address.empty()) {
