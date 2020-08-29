@@ -90,6 +90,7 @@ void CDCPoller::Poll() {
 void CDCPoller::DoPoll() {
   RETURN_WHEN_OFFLINE();
 
+  auto retained = shared_from_this();
   std::lock_guard<std::mutex> l(data_mutex_);
 
   // determine if we should delay our upcoming poll
@@ -143,11 +144,13 @@ void CDCPoller::DoPoll() {
 void CDCPoller::HandlePoll(yb::Status status,
                            std::shared_ptr<cdc::GetChangesResponsePB> resp) {
   RETURN_WHEN_OFFLINE();
+
+  auto retained = shared_from_this();
+  std::lock_guard<std::mutex> l(data_mutex_);
+
   if (!should_continue_polling_()) {
     return remove_self_from_pollers_map_();
   }
-
-  std::lock_guard<std::mutex> l(data_mutex_);
 
   status_ = status;
   resp_ = resp;
@@ -185,11 +188,13 @@ void CDCPoller::HandleApplyChanges(cdc::OutputClientResponse response) {
 
 void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
   RETURN_WHEN_OFFLINE();
+
+  auto retained = shared_from_this();
+  std::lock_guard<std::mutex> l(data_mutex_);
+
   if (!should_continue_polling_()) {
     return remove_self_from_pollers_map_();
   }
-
-  std::lock_guard<std::mutex> l(data_mutex_);
 
   if (!response.status.ok()) {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "ApplyChanges failure: " << response.status;

@@ -47,7 +47,7 @@ namespace enterprise {
 class CDCConsumer;
 
 
-class CDCPoller {
+class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
  public:
   CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
             const cdc::ConsumerTabletInfo& consumer_tablet_info,
@@ -79,8 +79,8 @@ class CDCPoller {
 
   cdc::ProducerTabletInfo producer_tablet_info_;
   cdc::ConsumerTabletInfo consumer_tablet_info_;
-  std::function<bool()> should_continue_polling_;
-  std::function<void(void)> remove_self_from_pollers_map_;
+  std::function<bool()> should_continue_polling_ GUARDED_BY(data_mutex_);
+  std::function<void(void)> remove_self_from_pollers_map_ GUARDED_BY(data_mutex_);
 
   // Although this is processing serially, it might be on a different thread in the ThreadPool.
   // Using mutex to guarantee cache flush, preventing TSAN warnings.
