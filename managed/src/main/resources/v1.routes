@@ -7,6 +7,7 @@
 ###################################################################################################
 
 # Session specific API
++ nocsrf
 POST    /login                                                                 com.yugabyte.yw.controllers.SessionController.login()
 GET     /platform_config                                                 	   com.yugabyte.yw.controllers.SessionController.getPlatformConfig()
 GET     /third_party_login                                                     com.yugabyte.yw.controllers.SessionController.thirdPartyLogin()
@@ -14,6 +15,7 @@ GET     /insecure_login                                                        c
 PUT     /customers/:cUUID/security                                             com.yugabyte.yw.controllers.SessionController.set_security(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/api_token                                            com.yugabyte.yw.controllers.SessionController.api_token(cUUID: java.util.UUID)
 GET     /logout                                                                com.yugabyte.yw.controllers.SessionController.logout()
++ nocsrf
 POST    /register                                                              com.yugabyte.yw.controllers.SessionController.register()
 GET     /customer_count                                                        com.yugabyte.yw.controllers.SessionController.customerCount()
 GET     /customers/:cUUID/host_info                                            com.yugabyte.yw.controllers.CustomerController.getHostInfo(cUUID: java.util.UUID)
