@@ -4,8 +4,6 @@ import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { components } from 'react-select';
 import { browserHistory } from 'react-router';
-import cronParser from 'cron-parser';
-import moment from 'moment';
 import { YBFormSelect, YBFormToggle, YBFormInput } from '../../common/forms/fields';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { Row, Col } from 'react-bootstrap';
@@ -189,12 +187,8 @@ export default class CreateBackup extends Component {
             this.createBackup(payload);
           }}
           initialValues={initialValues}
-          validationSchema={schemaValidation}
-          render={({
-            values: { cronExpression, schedulingFrequency, backupTableUUID, storageConfigUUID, tableKeyspace },
-            values,
-            errors
-          }) => {
+          validationSchema={schemaValidation}         
+          render={({values: { cronExpression, schedulingFrequency, backupTableUUID, storageConfigUUID, tableKeyspace  }, values}) => {
             const isKeyspaceSelected = tableKeyspace && tableKeyspace.value;
             const universeBackupSelected = isKeyspaceSelected && tableKeyspace.value === 'allkeyspaces';
             const isYSQLKeyspace = isKeyspaceSelected && !universeBackupSelected &&
@@ -234,18 +228,7 @@ export default class CreateBackup extends Component {
               value: 'keyspaces',
               options: [...keyspaces].map(key => ({ value: key, label: key }))
             }];
-            
-            let nextCronExec = null;
-            if (!isCronExpressionReadOnly && cronExpression && !errors.cronExpression) {
-              try {
-                const localDate = moment().utc();
-                let iterator = cronParser.parseExpression(cronExpression, { currentDate: localDate })                
-                nextCronExec = iterator.next().toDate().toString();
-              } catch (e) {
-                console.error('Invalid characters in cron expression');
-              }
-            }
-
+ 
             // params for backupTableUUID <Field>
             // NOTE: No entire keyspace selection implemented
             return (<Fragment>
@@ -271,7 +254,7 @@ export default class CreateBackup extends Component {
                         component={YBFormInput}
                         readOnly={isCronExpressionReadOnly}
                         placeholder={"Cron expression"}
-                        label={"Cron expression (UTC)"}
+                        label={"Cron expression"}
                       />
                     </Col>
                     <Col lg={1} className="cron-expr-tooltip">
@@ -287,12 +270,6 @@ export default class CreateBackup extends Component {
                         </div>} />  
                     </Col>
                   </Row>
-                  {nextCronExec && 
-                    <Row className="cron-description">
-                      <Col lg={2}>Next job:</Col>
-                      <Col>{nextCronExec}</Col>
-                    </Row>
-                  }
                 </div>
               }
               <Field
