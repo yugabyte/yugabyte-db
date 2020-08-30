@@ -594,7 +594,7 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
   // Verify that the table has no custom placement policy set for it.
   std::shared_ptr<client::YBTable> table;
   ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_FALSE(table->has_replication_info());
+  ASSERT_FALSE(table->replication_info());
 
   // Use yb-admin_cli to set a custom placement policy different from that of
   // the cluster placement policy for the new table.
@@ -608,9 +608,9 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
   ASSERT_OK(client->OpenTable(extra_table, &table));
   vector<bool> found_zones;
   found_zones.assign(3, false);
-  ASSERT_EQ(table->replication_info().live_replicas().placement_blocks_size(), 3);
+  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 3);
   for (int ii = 0; ii < 3; ++ii) {
-    auto pb = table->replication_info().live_replicas().placement_blocks(ii).cloud_info();
+    auto pb = table->replication_info().get().live_replicas().placement_blocks(ii).cloud_info();
     ASSERT_EQ(pb.placement_cloud(), "c");
     ASSERT_EQ(pb.placement_region(), "r");
     if (pb.placement_zone() == "z0") {
@@ -637,8 +637,8 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
   // Fetch the placement policy for the table and verify that it matches
   // the custom info set previously.
   ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_EQ(table->replication_info().live_replicas().placement_blocks_size(), 1);
-  auto pb = table->replication_info().live_replicas().placement_blocks(0).cloud_info();
+  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 1);
+  auto pb = table->replication_info().get().live_replicas().placement_blocks(0).cloud_info();
   ASSERT_EQ(pb.placement_cloud(), "c");
   ASSERT_EQ(pb.placement_region(), "r");
   ASSERT_EQ(pb.placement_zone(), "z1");

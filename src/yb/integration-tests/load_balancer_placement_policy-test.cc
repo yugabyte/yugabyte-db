@@ -20,7 +20,9 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/test_workload.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
 #include "yb/rpc/rpc_controller.h"
@@ -114,7 +116,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
 
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
       return client_->IsLoadBalancerIdle();
-    },  kDefaultTimeout * 2, "IsLoadBalancerIdle"));
+    },  kDefaultTimeout * 4, "IsLoadBalancerIdle"));
   }
 
   void AddNewTserverToZone(const string zone, const int expected_num_tservers) {
@@ -171,6 +173,19 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {
   // Verify that the tservers in z1 and z2 have tablets assigned to them.
   ASSERT_EQ(counts_per_ts[1], 4);
   ASSERT_EQ(counts_per_ts[2], 4);
+
+  // Verify that modifying the placement info for a table with custom placement
+  // policy works as expected.
+  ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
+    placement_table, "c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  WaitForLoadBalancer();
+
+  // The replication factor increased to 3, and the placement info now has all 3 zones.
+  // Thus, all tservers should have 4 tablets.
+  GetLoadOnTservers(create_custom_policy_table, num_tservers, &counts_per_ts);
+  for (int ii = 0; ii < 3; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 4);
+  }
 }
 
 TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
@@ -265,6 +280,56 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   for (int ii = 0; ii < num_tservers; ++ii) {
     ASSERT_GT(counts_per_ts[ii], 0);
   }
+}
+
+TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
+  // Set cluster placement policy.
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1", 2, ""));
+
+  // Start workload on a table.
+  const string& table = "placement-data-consistency-test";
+  const yb::client::YBTableName placement_table(
+    YQL_DATABASE_CQL, table_name().namespace_name(), table);
+
+  TestWorkload workload(external_mini_cluster());
+  workload.set_table_name(placement_table);
+  workload.Setup();
+  workload.Start();
+
+  // Change its placement policy such that it now has additional replicas spanning additional
+  // tservers.
+  ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(placement_table, "c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  WaitForLoadBalancer();
+
+  // Verify that the placement policy is honored.
+  vector<int> counts_per_ts;
+  GetLoadOnTservers(table, num_tablet_servers(), &counts_per_ts);
+  for (int ii = 0; ii < 3; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 1);
+  }
+
+  // Change placement policy such that it now spans lesser replicas spanning fewer tservers.
+  ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(placement_table, "c.r.z0", 1, ""));
+  WaitForLoadBalancer();
+
+  // Verify that placement policy is honored.
+  GetLoadOnTservers(table, num_tablet_servers(), &counts_per_ts);
+  // The table is RF1 and confined to zone 0. Ts0 should have 1 tablet.
+  // The other two tablet servers should not have any tablets.
+  ASSERT_EQ(counts_per_ts[0], 1);
+  ASSERT_EQ(counts_per_ts[1], 0);
+  ASSERT_EQ(counts_per_ts[2], 0);
+
+  // Verify that the data inserted is still sane.
+  workload.StopAndJoin();
+  int rows_inserted = workload.rows_inserted();
+  LOG(INFO) << "Number of rows inserted: " << rows_inserted;
+
+  // Verify that number of rows is as expected.
+  ClusterVerifier cluster_verifier(external_mini_cluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
+    placement_table, ClusterVerifier::EXACTLY, rows_inserted));
 }
 
 } // namespace integration_tests

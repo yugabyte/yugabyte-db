@@ -1619,16 +1619,17 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
                         "Fetching table schema failed!");
 
   // If it does not exist, fetch the cluster replication info.
-  if (!table->has_replication_info()) {
+  if (!table->replication_info()) {
     auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
     master::SysClusterConfigEntryPB* sys_cluster_config_entry =
       resp_cluster_config.mutable_cluster_config();
     replication_info.CopyFrom(sys_cluster_config_entry->replication_info());
   } else {
     // Table replication info exists, copy it over.
-    replication_info.CopyFrom(table->replication_info());
+    replication_info.CopyFrom(table->replication_info().get());
   }
-  // Put in the placement info.
+
+  // Put in the new live placement info.
   replication_info.set_allocated_live_replicas(live_replicas);
 
   std::unique_ptr<yb::client::YBTableAlterer> table_alterer(

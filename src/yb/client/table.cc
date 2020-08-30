@@ -131,22 +131,8 @@ const bool YBTable::colocated() const {
   return info_.colocated;
 }
 
-const master::ReplicationInfoPB& YBTable::replication_info() const {
+const boost::optional<master::ReplicationInfoPB>& YBTable::replication_info() const {
   return info_.replication_info;
-}
-
-const bool YBTable::has_replication_info() const {
-  const auto& live_placement_info = info_.replication_info.live_replicas();
-  // TODO: This will fail if replication_info is extended with more fields,
-  // find a nicer way to do this.
-  if (live_placement_info.placement_blocks().empty() &&
-      live_placement_info.num_replicas() <= 0 &&
-      live_placement_info.placement_uuid().empty() &&
-      info_.replication_info.read_replicas().empty() &&
-      info_.replication_info.affinitized_leaders().empty())  {
-    return false;
-  }
-  return true;
 }
 
 std::string YBTable::ToString() const {

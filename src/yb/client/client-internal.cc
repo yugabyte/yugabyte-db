@@ -1345,7 +1345,7 @@ void GetTableSchemaRpc::Finished(const Status& status) {
         info_->index_info.emplace(resp_.index_info());
       }
       if (resp_.has_replication_info()) {
-        info_->replication_info.CopyFrom(resp_.replication_info());
+        info_->replication_info.emplace(resp_.replication_info());
       }
       CHECK_GT(info_->table_id.size(), 0) << "Running against a too-old master";
       info_->colocated = resp_.colocated();

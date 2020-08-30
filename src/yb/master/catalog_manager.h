@@ -1062,7 +1062,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Returns 'table_replication_info' itself if set. Otherwise returns the cluster level
   // replication info.
-  const ReplicationInfoPB& ResolveReplicationInfo(const ReplicationInfoPB& table_replication_info);
+  Result<ReplicationInfoPB> ResolveReplicationInfo(const ReplicationInfoPB& table_replication_info);
+
+  // Returns whether 'replication_info' has any relevant fields set.
+  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+
+  // Validates that 'replication_info' for a table has supported fields set.
+  CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
 
   // Report metrics.
   void ReportMetrics();

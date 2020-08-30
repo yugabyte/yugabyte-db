@@ -1466,17 +1466,12 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   return CheckIfNoLongerLeaderAndSetupError(s, resp);
 }
 
-const ReplicationInfoPB& CatalogManager::ResolveReplicationInfo(
+Result<ReplicationInfoPB> CatalogManager::ResolveReplicationInfo(
   const ReplicationInfoPB& table_replication_info) {
 
-  const auto& live_placement_info = table_replication_info.live_replicas();
-  if (!(live_placement_info.placement_blocks().empty() &&
-        live_placement_info.num_replicas() <= 0 &&
-        live_placement_info.placement_uuid().empty()) ||
-      !table_replication_info.read_replicas().empty() ||
-      !table_replication_info.affinitized_leaders().empty()) {
-
-      // The table has custom replication info set for it, return it.
+  if (IsReplicationInfoSet(table_replication_info)) {
+      // The table has custom replication info set for it, return it if valid.
+      RETURN_NOT_OK(ValidateTableReplicationInfo(table_replication_info));
       return table_replication_info;
   }
 
@@ -1484,6 +1479,54 @@ const ReplicationInfoPB& CatalogManager::ResolveReplicationInfo(
   // replication info.
   auto l = cluster_config_->LockForRead();
   return l->data().pb.replication_info();
+}
+
+bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
+  const auto& live_placement_info = replication_info.live_replicas();
+  if (!(live_placement_info.placement_blocks().empty() &&
+        live_placement_info.num_replicas() <= 0 &&
+        live_placement_info.placement_uuid().empty()) ||
+      !replication_info.read_replicas().empty() ||
+      !replication_info.affinitized_leaders().empty()) {
+
+      return true;
+  }
+  return false;
+}
+
+Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) {
+  if (!IsReplicationInfoSet(replication_info)) {
+    return STATUS(InvalidArgument, "No replication info set.");
+  }
+  // We don't support setting any other fields other than live replica placements for now.
+  if (!replication_info.read_replicas().empty() ||
+      !replication_info.affinitized_leaders().empty()) {
+
+      return STATUS(InvalidArgument, "Only live placement info can be set for table "
+          "level replication info.");
+  }
+  // Today we support setting table level replication info only in clusters where read replica
+  // placements is not set. Return error if the cluster has read replica placements set.
+  auto l = cluster_config_->LockForRead();
+  const ReplicationInfoPB& cluster_replication_info = l->data().pb.replication_info();
+  if (!cluster_replication_info.read_replicas().empty() ||
+      !cluster_replication_info.affinitized_leaders().empty()) {
+
+      return STATUS(InvalidArgument, "Setting table level replication info is not supported "
+          "for clusters with read replica placements");
+  }
+  // If the replication info has placement_uuid set, verify that it matches the cluster
+  // placement_uuid.
+  if (replication_info.live_replicas().placement_uuid().empty()) {
+    return Status::OK();
+  }
+  if (replication_info.live_replicas().placement_uuid() !=
+      cluster_replication_info.live_replicas().placement_uuid()) {
+
+      return STATUS(InvalidArgument, "Placement uuid for table level replication info "
+          "must match that of the cluster's live placement info.");
+  }
+  return Status::OK();
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
@@ -2120,8 +2163,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
+  // Verify that custom placement policy has not been specified for colocated table.
+  if (colocated && IsReplicationInfoSet(req.replication_info())) {
+    Status s = STATUS(InvalidArgument, "Custom placement policy should not be set for "
+      "colocated tables");
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
+  }
+
   // Get placement info.
-  const ReplicationInfoPB& replication_info = ResolveReplicationInfo(req.replication_info());
+  const ReplicationInfoPB& replication_info = VERIFY_RESULT(
+  ResolveReplicationInfo(req.replication_info()));
 
   // Calculate number of tablets to be used.
   int num_tablets = req.schema().table_properties().num_tablets();
@@ -3812,7 +3863,16 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   // Check if there has been any changes to the placement policies for this table.
   if (req->has_replication_info()) {
-    // TODO: Add checks to verify the sanity of this replication info.
+    // If this is a colocated table, it does not make sense to set placement
+    // policy for this table, as the tablet associated with it is shared by
+    // multiple tables.
+    if (table->colocated()) {
+      const Status s = STATUS(InvalidArgument,
+          "Placement policy cannot be altered for a colocated table");
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+    }
+    // Validate table replication info.
+    RETURN_NOT_OK(ValidateTableReplicationInfo(req->replication_info()));
     table_pb.mutable_replication_info()->CopyFrom(req->replication_info());
     has_changes = true;
   }
@@ -4034,7 +4094,9 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     VLOG(1) << " Returning pb.schema() ";
   }
   resp->mutable_partition_schema()->CopyFrom(l->data().pb.partition_schema());
-  resp->mutable_replication_info()->CopyFrom(l->data().pb.replication_info());
+  if (IsReplicationInfoSet(l->data().pb.replication_info())) {
+    resp->mutable_replication_info()->CopyFrom(l->data().pb.replication_info());
+  }
   resp->set_create_table_done(!table->IsCreateInProgress());
   resp->set_table_type(table->metadata().state().pb.table_type());
   resp->mutable_identifier()->set_table_name(l->data().pb.name());
@@ -6981,8 +7043,8 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
         tablet->tablet_id());
   }
 
-  const ReplicationInfoPB& replication_info = ResolveReplicationInfo(
-    table_guard->data().pb.replication_info());
+  const ReplicationInfoPB& replication_info = VERIFY_RESULT(ResolveReplicationInfo(
+    table_guard->data().pb.replication_info()));
 
   // Select the set of replicas for the tablet.
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
