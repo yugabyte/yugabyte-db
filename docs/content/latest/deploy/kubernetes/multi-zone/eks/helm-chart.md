@@ -229,7 +229,7 @@ gflags:
     placement_zone: "us-east-1b"
 ```
 
-Copy the contents below to a file named `overrides-us-east-1b.yaml`.
+Copy the contents below to a file named `overrides-us-east-1c.yaml`.
 
 ```sh
 isMultiAz: True
