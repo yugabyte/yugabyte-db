@@ -8,6 +8,7 @@ aliases:
   - /troubleshoot/enterprise-edition/
   - /stable/troubleshoot/enterprise-edition/
   - /stable/troubleshoot/yugabyte-platform/
+block_indexing: true
 menu:
   stable:
     identifier: troubleshoot-yugabyte-platform

@@ -3,6 +3,7 @@ title: Indexes and check constraints on json and jsonb columns
 headerTitle: Create indexes and check constraints on JSON columns
 linkTitle: Indexes and check constraints
 description: Create indexes and check constraints on "json" and "jsonb" columns.
+block_indexing: true
 menu:
   stable:
     identifier: create-indexes-check-constraints

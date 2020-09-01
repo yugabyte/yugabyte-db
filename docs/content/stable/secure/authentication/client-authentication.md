@@ -5,6 +5,7 @@ linkTitle: Fine-grained authentication
 description: Manage access control for localhost, remote hosts, and clients.
 headcontent: Configure fine-grained access control for YSQL clients
 image: /images/section_icons/secure/authentication.png
+block_indexing: true
 menu:
   stable:
     identifier: client-authentication

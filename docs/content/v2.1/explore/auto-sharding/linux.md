@@ -3,8 +3,9 @@ title: Explore auto sharding on Linux
 headerTitle: Auto sharding
 linkTitle: Auto sharding
 description: Follow this Linux-based tutorial to learn how YugabyteDB automatically splits tables into shards.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: auto-sharding-2-linux
     parent: explore
     weight: 225

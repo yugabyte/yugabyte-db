@@ -3,8 +3,9 @@ title: Read replicas
 headerTitle: Read replicas
 linkTitle: Read replicas
 description: Learn about read replicas in YugabyteDB.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: architecture-docdb-replication-read-replicas
     parent: architecture-docdb-replication
     weight: 1155

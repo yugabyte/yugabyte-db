@@ -2,8 +2,9 @@
 title: APPEND
 linkTitle: APPEND
 description: APPEND
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2010
 isTocNested: true

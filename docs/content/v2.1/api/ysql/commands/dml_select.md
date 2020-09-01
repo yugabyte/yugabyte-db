@@ -3,8 +3,9 @@ title: SELECT statement [YSQL]
 headerTitle: SELECT
 linkTitle: SELECT
 description: Use the SELECT statement to retrieve rows of specified columns that meet a given condition from a table.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-select
     parent: api-ysql-commands
 isTocNested: true

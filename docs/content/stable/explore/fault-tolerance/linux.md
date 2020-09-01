@@ -5,6 +5,7 @@ linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on Linux.
 aliases:
   - /stable/explore/fault-tolerance-linux/
+block_indexing: true
 menu:
   stable:
     identifier: fault-tolerance-2-linux

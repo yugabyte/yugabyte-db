@@ -7,8 +7,9 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Contribute code and docs to improve YugabyteDB.
 type: page
 section: CONTRIBUTOR GUIDES
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: contribute
     weight: 2800
 ---

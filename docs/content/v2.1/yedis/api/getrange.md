@@ -2,8 +2,9 @@
 title: GETRANGE
 linkTitle: GETRANGE
 description: GETRANGE
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2080
 isTocNested: true

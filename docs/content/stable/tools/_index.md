@@ -10,6 +10,7 @@ aliases:
   - /stable/develop/tools/
 type: page
 section: REFERENCE
+block_indexing: true
 menu:
   stable:
     identifier: tools

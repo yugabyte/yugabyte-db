@@ -6,8 +6,9 @@ description: YCQL is a SQL-based, semi-relational API that is best fit for inter
 summary: Reference for the YCQL API
 image: /images/section_icons/api/ycql.png
 headcontent:
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-cassandra
     parent: api
     weight: 3000

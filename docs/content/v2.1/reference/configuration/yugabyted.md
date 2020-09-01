@@ -4,8 +4,9 @@ headerTitle: yugabyted
 linkTitle: yugabyted
 description: Use yugabyted to simplify creating, running, and managing yb-tserver and yb-master servers.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: yugabyted
     parent: configuration
     weight: 2451

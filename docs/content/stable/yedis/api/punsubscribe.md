@@ -2,6 +2,7 @@
 title: PUNSUBSCRIBE
 linkTitle: PUNSUBSCRIBE
 description: PUNSUBSCRIBE
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

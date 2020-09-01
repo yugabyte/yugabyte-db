@@ -3,8 +3,9 @@ title: Prepare cloud environments for Yugabyte Platform
 headerTitle: Prepare cloud environment
 linkTitle: 1. Prepare cloud environment
 description: Prepare your cloud environment for the Yugabyte Platform.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: prepare-cloud-environment
     parent: deploy-enterprise-edition
     weight: 669

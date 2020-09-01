@@ -8,6 +8,7 @@ aliases:
   - /architecture/concepts/docdb/
   - /stable/architecture/concepts/docdb/
 headcontent: DocDB is YugabyteDB's distributed document store responsible for transactions, sharding, replication, and persistence.
+block_indexing: true
 menu:
   stable:
     identifier: docdb

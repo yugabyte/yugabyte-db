@@ -2,8 +2,9 @@
 title: TSRANGEBYTIME
 linkTitle: TSRANGEBYTIME
 description: TSRANGEBYTIME
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2440
 isTocNested: true

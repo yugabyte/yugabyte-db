@@ -6,6 +6,7 @@ description: Learn how to work with date and time in YSQL.
 aliases:
   - /stable/explore/date-and-time/
   - /stable/develop/learn/date-and-time/
+block_indexing: true
 menu:
   stable:
     parent: learn

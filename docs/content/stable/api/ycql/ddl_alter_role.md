@@ -3,6 +3,7 @@ title: ALTER ROLE statement [YCQL]
 headerTitle: ALTER ROLE
 linkTitle: ALTER ROLE
 description: Use the ALTER ROLE statement to change the properties of an existing role.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

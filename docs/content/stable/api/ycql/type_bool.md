@@ -3,6 +3,7 @@ title: BOOLEAN data type [YCQL]
 headerTitle: BOOLEAN data type
 linkTitle: BOOLEAN
 description: Use the `BOOLEAN` data type to specify values of either "true" or "false".
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

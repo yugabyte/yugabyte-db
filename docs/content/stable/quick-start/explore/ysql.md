@@ -14,6 +14,7 @@ aliases:
   - /stable/explore/postgresql/aggregations/
   - /stable/explore/postgresql/expressions/
   - /stable/explore/postgresql/views/
+block_indexing: true
 menu:
   stable:
     parent: quick-start

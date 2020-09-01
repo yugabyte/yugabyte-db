@@ -2,8 +2,9 @@
 title: SETRANGE
 linkTitle: SETRANGE
 description: SETRANGE
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2280
 isTocNested: true

@@ -3,8 +3,9 @@ title: UPDATE statement [YSQL]
 headerTitle: UPDATE
 linkTitle: UPDATE
 description: Use UPDATE to modify values of specified columns in all rows that meet certain conditions. When conditions are not provided in WHERE clause, all rows update.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-update
     parent: api-ysql-commands
 isTocNested: true

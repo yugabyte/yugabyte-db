@@ -3,8 +3,9 @@ title: Troubleshooting
 linkTitle: Troubleshooting
 headerTitle: Troubleshooting overview
 description: Troubleshooting overview
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: troubleshooting-overview
     parent: troubleshoot
     weight: 702

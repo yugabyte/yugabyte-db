@@ -3,8 +3,9 @@ title: Configure Amazon Web Services (AWS) for YugabyteDB deployments
 headerTitle: Configure cloud providers
 linkTitle: 4. Configure cloud providers
 description: Configure Amazon Web Services (AWS) for YugabyteDB deployments using the YugabyteDB Admin Console
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: configure-cloud-providers-1-aws
     parent: deploy-enterprise-edition
     weight: 680

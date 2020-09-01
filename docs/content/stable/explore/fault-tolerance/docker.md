@@ -5,6 +5,7 @@ linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on Docker.
 aliases:
   - /stable/explore/fault-tolerance-docker/
+block_indexing: true
 menu:
   stable:
     identifier: fault-tolerance-3-docker

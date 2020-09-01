@@ -3,8 +3,9 @@ title: "|| (concatenation operator) [JSON]"
 headerTitle:  "|| (concatenation)"
 linkTitle: "|| (concatenation)"
 description: Concatenate two jsonb values using the JSON concatenation operator ("||").
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: concatenation-operator
     parent: functions-operators
     weight: 14

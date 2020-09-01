@@ -4,6 +4,7 @@ headerTitle: Install and use extensions
 linkTitle: Extensions
 description: Install and use extensions with PostgreSQL-compatible YSQL.
 summary: Reference for YSQL extensions
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-extensions

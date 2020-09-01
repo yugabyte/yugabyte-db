@@ -4,6 +4,7 @@ headerTitle: Functions and operators
 linkTitle: Functions and operators
 description: YSQL supports all PostgreSQL-compatible built-in functions and operators.
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-exprs

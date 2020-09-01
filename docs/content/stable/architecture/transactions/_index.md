@@ -7,6 +7,7 @@ image: /images/section_icons/architecture/distributed_acid.png
 headcontent: DocDB is YugabyteDB's distributed document store responsible for transactions, sharding, replication, and persistence.
 aliases:
   - /architecture/transactions/
+block_indexing: true
 menu:
   stable:
     identifier: architecture-acid-transactions

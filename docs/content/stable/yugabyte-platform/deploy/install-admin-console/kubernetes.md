@@ -5,6 +5,7 @@ linkTitle: 2. Install Yugabyte Platform
 description: Install Yugabyte Platform (aka YugaWare) on Kubernetes
 aliases:
   - /stable/deploy/enterprise-edition/install-admin-console/kubernetes
+block_indexing: true
 menu:
   stable:
     identifier: install-yp-3-kubernetes

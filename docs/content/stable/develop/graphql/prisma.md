@@ -2,6 +2,7 @@
 title: Prisma
 linkTitle: Prisma
 description: Prisma
+block_indexing: true
 menu:
   stable:
     identifier: prisma

@@ -6,8 +6,9 @@ description: Enhancements, changes, and resolved issues in the latest YugabyteDB
 headcontent: Features, enhancements, and resolved issues in the latest release.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: whats-new
     weight: 2589 
 ---

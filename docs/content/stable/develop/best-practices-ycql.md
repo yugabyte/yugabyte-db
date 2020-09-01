@@ -3,6 +3,7 @@ title: Best practices for YCQL applications
 headerTitle: Best practices
 linkTitle: Best practices
 description: Learn best practices for developing YCQL applications.
+block_indexing: true
 menu:
   stable:
     identifier: best-practices-ycql

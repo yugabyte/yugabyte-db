@@ -5,8 +5,9 @@ linkTitle: Back up and restore
 description: Back up and restore YugabyteDB.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Create backups and restore your data.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: backup-restore
     parent: manage
     weight: 702

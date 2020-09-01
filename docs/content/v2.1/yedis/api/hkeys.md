@@ -2,8 +2,9 @@
 title: HKEYS
 linkTitle: HKEYS
 description: HKEYS
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2140
 isTocNested: true

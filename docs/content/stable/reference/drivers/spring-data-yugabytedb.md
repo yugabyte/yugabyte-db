@@ -5,6 +5,7 @@ linkTitle: Spring Data YugabyteDB
 description: Spring Data YugabyteDB
 beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
+block_indexing: true
 menu:
   stable:
     identifier: spring-data-yugabytedb

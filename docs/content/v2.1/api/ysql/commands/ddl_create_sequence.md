@@ -3,8 +3,9 @@ title: CREATE SEQUENCE statement [YSQL]
 headerTitle: CREATE SEQUENCE
 linkTitle: CREATE SEQUENCE
 description: Use the CREATE SEQUENCE statement to create a new sequence in the current schema.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-sequence
     parent: api-ysql-commands
 isTocNested: true

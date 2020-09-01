@@ -3,6 +3,7 @@ title: Explore colocated tables on Linux
 headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Create and use colocated tables in a local YugabyteDB cluster on Linux.
+block_indexing: true
 menu:
   stable:
     identifier: colocated-tables-2-linux

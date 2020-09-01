@@ -5,6 +5,7 @@ linkTitle: Google Cloud Spanner
 description: Compare Google Cloud Spanner with YugabyteDB.
 aliases:
   - /comparisons/google-spanner/
+block_indexing: true
 menu:
   stable:
     parent: comparisons

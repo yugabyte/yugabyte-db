@@ -3,8 +3,9 @@ title: array_position() and array_positions()
 linkTitle: array_position(), array_positions()
 headerTitle: array_position() and array_positions()
 description: array_position() and array_positions()
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: array-position
     parent: array-functions-operators
 isTocNested: true

@@ -3,8 +3,9 @@ title: cr_do_cume_dist.sql
 linkTitle: cr_do_cume_dist.sql
 headerTitle: cr_do_cume_dist.sql
 description: Create the function that creates the histogram output.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: cr-do-cume-dist
     parent: analyzing-a-normal-distribution
     weight: 130

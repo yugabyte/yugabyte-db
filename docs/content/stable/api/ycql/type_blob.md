@@ -3,6 +3,7 @@ title: BLOB data type [YCQL]
 headerTitle: BLOB data type
 linkTitle: BLOB
 description: Use the BLOB data type to represent arbitrary binary data of variable length.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

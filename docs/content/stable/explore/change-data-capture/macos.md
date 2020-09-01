@@ -8,6 +8,7 @@ aliases:
   - /stable/deploy/cdc/cdc-to-stdout/
   - /stable/explore/change-data-capture/
   - /stable/explore/change-data-capture-macos/
+block_indexing: true
 menu:
   stable:
     identifier: change-data-capture-1-macos

@@ -4,6 +4,7 @@ headerTitle: SET CONSTRAINTS
 linkTitle: SET CONSTRAINTS
 summary: SET CONSTRAINTS
 description: Use the `SET CONSTRAINTS` statement to set the timing of constraint checking within the current transaction.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-set-constraints

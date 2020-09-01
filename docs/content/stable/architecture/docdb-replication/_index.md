@@ -7,6 +7,7 @@ image: /images/section_icons/architecture/concepts.png
 aliases:
   - /stable/architecture/docdb/replication/
 headcontent: Learn how synchronous and asynchronous replication work in DocDB.
+block_indexing: true
 menu:
   stable:
     identifier: architecture-docdb-replication

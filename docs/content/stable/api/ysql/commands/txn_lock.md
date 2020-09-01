@@ -3,6 +3,7 @@ title: LOCK statement [YSQL]
 headerTitle: LOCK
 linkTitle: LOCK
 description: Use the LOCK statement to lock a table.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-lock

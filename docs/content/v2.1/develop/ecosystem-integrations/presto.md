@@ -2,8 +2,9 @@
 title: Presto
 linkTitle: Presto
 description: Presto
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: presto
     parent: ecosystem-integrations
     weight: 575

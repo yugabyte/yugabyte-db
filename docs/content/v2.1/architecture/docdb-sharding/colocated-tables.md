@@ -3,8 +3,9 @@ title: Colocated tables
 headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Learn about how colocated tables aggregate data into a single tablet.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: docdb-colocated-tables
     parent: architecture-docdb-sharding
     weight: 1144

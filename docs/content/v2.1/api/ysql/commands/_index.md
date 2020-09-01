@@ -4,8 +4,9 @@ headerTitle: Statements
 description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL).
 headcontent:
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands
     parent: api-ysql
     weight: 4100

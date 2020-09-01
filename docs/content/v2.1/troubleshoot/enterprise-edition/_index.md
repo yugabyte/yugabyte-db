@@ -4,8 +4,9 @@ linkTitle: Yugabyte Platform
 description: Yugabyte Platform
 image: /images/section_icons/manage/enterprise.png
 headcontent: Tools and issues specific to the Yugabyte Platform.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: troubleshoot-enterprise-edition
     parent: troubleshoot
     weight: 850

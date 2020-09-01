@@ -3,8 +3,9 @@ title: UUID data type [YSQL]
 headerTitle: UUID data type
 linkTitle: UUID
 description: Represents Universally Unique Identifiers (UUIDs).
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-datatypes-uuid
     parent: api-ysql-datatypes
 isTocNested: true

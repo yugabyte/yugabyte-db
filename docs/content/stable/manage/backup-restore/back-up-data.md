@@ -5,6 +5,7 @@ linkTitle: Back up data
 description: Back up data in YugabyteDB for YSQL.
 aliases:
   - /manage/backup-restore/backing-up-data
+block_indexing: true
 menu:
   stable:
     identifier: back-up-data

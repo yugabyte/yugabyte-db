@@ -2,6 +2,7 @@
 title: RENAME
 linkTitle: RENAME
 description: RENAME
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

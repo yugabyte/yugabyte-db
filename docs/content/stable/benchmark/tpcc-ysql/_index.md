@@ -8,6 +8,7 @@ image: /images/section_icons/quick_start/explore_ysql.png
 aliases:
   - /benchmark/tpcc
   - /benchmark/tpcc-ysql
+block_indexing: true
 menu:
   stable:
     identifier: tpcc-ysql

@@ -8,6 +8,7 @@ aliases:
   - /stable/develop/client-drivers/ruby/
   - /stable/develop/build-apps/ruby/
   - /stable/quick-start/build-apps/ruby/
+block_indexing: true
 menu:
   stable:
     parent: build-apps

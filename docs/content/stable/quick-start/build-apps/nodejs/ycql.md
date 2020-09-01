@@ -3,6 +3,7 @@ title: Build a Node.js application that uses YCQL
 headerTitle: Build a Node.js application
 linkTitle: Node.js
 description: Build a sample Node.js application with the Yugabyte Node.js driver for YCQL.
+block_indexing: true
 menu:
   stable:
     parent: build-apps

@@ -3,6 +3,7 @@ title: nextval() function [YSQL]
 headerTitle: nextval()
 linkTitle: nextval()
 description: Returns the next value from the sequence cache for the current session. 
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-exprs-nextval

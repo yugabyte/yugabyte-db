@@ -2,8 +2,9 @@
 title: PSUBSCRIBE
 linkTitle: PSUBSCRIBE
 description: PSUBSCRIBE
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2554
 isTocNested: true

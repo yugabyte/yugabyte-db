@@ -5,8 +5,9 @@ linkTitle: Spring Data YugabyteDB
 description: Spring Data YugabyteDB
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: spring-data-yugabytedb
     parent: drivers
     weight: 2940

@@ -3,8 +3,9 @@ title: CREATE AGGREGATE statement [YSQL]
 headerTitle: CREATE AGGREGATE
 linkTitle: CREATE AGGREGATE
 description: Use the CREATE AGGREGATE statement to create a new aggregate function.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-aggregate
     parent: api-ysql-commands
 isTocNested: true

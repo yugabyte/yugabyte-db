@@ -5,6 +5,7 @@ linkTitle: Go
 description: Build a sample Go application with the Yugabyte Go Driver for YCQL.
 aliases:
   - /stable/develop/client-drivers/cassandra/go/
+block_indexing: true
 menu:
   stable:
     parent: build-apps

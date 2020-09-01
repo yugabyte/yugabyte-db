@@ -2,8 +2,9 @@
 title: SET
 linkTitle: SET
 description: SET
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2270
 isTocNested: true

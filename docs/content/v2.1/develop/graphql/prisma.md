@@ -2,8 +2,9 @@
 title: Prisma
 linkTitle: Prisma
 description: Prisma
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: prisma
     parent: graphql
     weight: 583

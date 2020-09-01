@@ -3,6 +3,7 @@ title: lag(), lead()
 linkTitle: lag(), lead()
 headerTitle: lag(), lead()
 description: Describes the functionality of the YSQL window functions lag(), lead()
+block_indexing: true
 menu:
   stable:
     identifier: lag-lead

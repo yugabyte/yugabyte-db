@@ -4,8 +4,9 @@ headerTitle: CREATE EXTENSION
 linkTitle: CREATE EXTENSION
 summary: Create a new extension in a database
 description: Use the CREATE EXTENSION statement to load an extension into a database.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-extension
     parent: api-ysql-commands
 isTocNested: true

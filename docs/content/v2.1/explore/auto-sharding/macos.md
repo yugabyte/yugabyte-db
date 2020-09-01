@@ -3,8 +3,9 @@ title: Explore auto sharding on macOS
 headerTitle: Auto sharding
 linkTitle: Auto sharding
 description: Follow this macOS-based tutorial to learn how YugabyteDB automatically splits tables into shards.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: auto-sharding-1-macos
     parent: explore
     weight: 225

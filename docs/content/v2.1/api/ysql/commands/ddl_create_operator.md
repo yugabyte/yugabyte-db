@@ -3,8 +3,9 @@ title: CREATE OPERATOR statement [YSQL]
 headerTitle: CREATE OPERATOR
 linkTitle: CREATE OPERATOR
 description: Use the CREATE OPERATOR statement to create a new operator.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-operator
     parent: api-ysql-commands
 isTocNested: true

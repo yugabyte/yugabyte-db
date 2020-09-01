@@ -3,6 +3,7 @@ title: DROP ROLE statement [YCQL]
 headerTitle: DROP ROLE
 linkTitle: DROP ROLE
 description: Use the DROP ROLE statement to delete an existing role.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

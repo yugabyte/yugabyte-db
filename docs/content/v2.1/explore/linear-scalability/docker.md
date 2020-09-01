@@ -3,8 +3,9 @@ title: Explore linear scalability on Docker
 headerTitle: Linear scalability
 linkTitle: Linear scalability
 description: Learn how to scale a local three-node YugabyteDB cluster (on Docker) while a workload is running.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: linear-scalability-3-docker
     parent: explore
     weight: 210

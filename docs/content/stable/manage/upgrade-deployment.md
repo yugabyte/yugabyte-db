@@ -6,6 +6,7 @@ description: Upgrade a deployment
 aliases:
   - /deploy/manual-deployment/upgrade-deployment
   - /stable/manage/upgrade-deployment
+block_indexing: true
 menu:
   stable:
     identifier: manage-upgrade-deployment

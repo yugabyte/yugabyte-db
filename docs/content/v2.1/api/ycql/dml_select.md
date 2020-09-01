@@ -4,8 +4,9 @@ headerTitle: SELECT
 linkTitle: SELECT
 summary: Retrieves rows from a table
 description: Use the SELECT statement to retrieve (part of) rows of specified columns that meet a given condition from a table.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-cassandra
     weight: 1310
 isTocNested: true

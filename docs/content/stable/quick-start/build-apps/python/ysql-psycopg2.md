@@ -8,6 +8,7 @@ aliases:
   - /stable/develop/client-drivers/python/
   - /stable/develop/build-apps/python/
   - /stable/quick-start/build-apps/python/
+block_indexing: true
 menu:
   stable:
     parent: build-apps

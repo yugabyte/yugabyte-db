@@ -7,6 +7,7 @@ aliases:
   - /stable/architecture/docdb/sharding/
   - /stable/architecture/concepts/sharding/
   - /stable/architecture/concepts/docdb/sharding/
+block_indexing: true
 menu:
   stable:
     identifier: docdb-sharding

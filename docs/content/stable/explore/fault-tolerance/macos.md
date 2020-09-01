@@ -9,6 +9,7 @@ aliases:
   - /stable/explore/cloud-native/fault-tolerance/
   - /stable/explore/postgresql/fault-tolerance/
   - /stable/explore/fault-tolerance-macos/
+block_indexing: true
 menu:
   stable:
     identifier: fault-tolerance-1-macos

@@ -2,8 +2,9 @@
 title: GETSET
 linkTitle: GETSET
 description: GETSET
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2090
 isTocNested: true

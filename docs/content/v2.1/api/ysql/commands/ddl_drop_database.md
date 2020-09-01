@@ -3,8 +3,9 @@ title: DROP DATABASE statement [YSQL]
 headerTitle: DROP DATABASE
 linkTitle: DROP DATABASE
 description: Use the DROP DATABASE statement to remove a database and all of its associated objects from the system. 
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-drop-database
     parent: api-ysql-commands
 isTocNested: true

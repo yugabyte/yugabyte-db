@@ -7,6 +7,7 @@ aliases:
   - /develop/learn/ttl-data-expiry/
   - /stable/develop/learn/ttl-data-expiry/
   - /stable/develop/learn/ttl-data-expiration/
+block_indexing: true
 menu:
   stable:
     identifier: ttl-data-expiration-ysql

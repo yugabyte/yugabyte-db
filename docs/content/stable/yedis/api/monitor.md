@@ -2,6 +2,7 @@
 title: MONITOR
 linkTitle: MONITOR
 description: MONITOR
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

@@ -9,6 +9,7 @@ aliases:
   - /deploy/multi-node-cluster/
   - /stable/deploy/multi-node-cluster/
   - /deploy/manual-deployment/
+block_indexing: true
 menu:
   stable:
     identifier: deploy-manual-deployment

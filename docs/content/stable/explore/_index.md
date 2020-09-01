@@ -12,6 +12,7 @@ aliases:
   - /stable/explore/planet-scale/
   - /stable/explore/cloud-native/orchestration-readiness/
 section: YUGABYTEDB CORE
+block_indexing: true
 menu:
   stable:
     identifier: explore

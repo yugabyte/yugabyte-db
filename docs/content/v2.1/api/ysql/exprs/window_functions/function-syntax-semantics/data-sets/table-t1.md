@@ -3,8 +3,9 @@ title: table t1
 linkTitle: table t1
 headerTitle: Create and populate table t1
 description: Creates and populate table t1 with data that allows the demonstration of the SQL window function row_number().
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: table-t1
     parent: data-sets
     weight: 20

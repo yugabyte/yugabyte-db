@@ -3,8 +3,9 @@ title: Money data types [YSQL]
 headerTitle: Money data types
 linkTitle: Money
 description: The MONEY data type represents currency with a fixed precision for fraction.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-datatypes-money
     parent: api-ysql-datatypes
 isTocNested: true

@@ -3,8 +3,9 @@ title: Using an array of DOMAIN values
 linkTitle: array of DOMAINs
 headerTitle: Using an array of DOMAIN values
 description: Using an array of DOMAIN values
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: array-of-domains
     parent: api-ysql-datatypes-array
     weight: 10

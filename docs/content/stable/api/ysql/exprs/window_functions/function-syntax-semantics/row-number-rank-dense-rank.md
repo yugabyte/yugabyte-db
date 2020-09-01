@@ -3,6 +3,7 @@ title: row_number(), rank() and dense_rank()
 linkTitle: row_number(), rank() and dense_rank()
 headerTitle: row_number(), rank() and dense_rank()
 description: Describes the functionality of the YSQL window functions row_number(), rank() and dense_rank().
+block_indexing: true
 menu:
   stable:
     identifier: row-number-rank-dense-rank

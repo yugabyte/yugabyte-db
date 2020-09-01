@@ -3,6 +3,7 @@ title: CREATE KEYSPACE statement [YCQL]
 headerTitle: CREATE KEYSPACE
 linkTitle: CREATE KEYSPACE
 description: Use the CREATE KEYSPACE statement to create a keyspace that functions as a grouping mechanism for database objects, such as tables or types.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

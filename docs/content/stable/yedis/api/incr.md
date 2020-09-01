@@ -2,6 +2,7 @@
 title: INCR
 linkTitle: INCR
 description: INCR
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

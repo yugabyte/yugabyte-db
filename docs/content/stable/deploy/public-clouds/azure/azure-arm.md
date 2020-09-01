@@ -6,6 +6,7 @@ description: Deploy YugabyteDB on Microsoft Azure using Azure Resource Manager (
 aliases:
   - /deploy/public-clouds/azure/
   - /stable/deploy/public-clouds/azure
+block_indexing: true
 menu:
   stable:
     identifier: deploy-on-azure-1-azure-arm

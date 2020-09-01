@@ -5,6 +5,7 @@ description: Troubleshoot universes
 aliases:
   - /troubleshoot/enterprise-edition/universes/
   - /stable/troubleshoot/enterprise-edition/universes/
+block_indexing: true
 menu:
   stable:
     identifier: troubleshoot-universes

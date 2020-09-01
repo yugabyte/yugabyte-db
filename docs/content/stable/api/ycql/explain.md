@@ -3,6 +3,7 @@ title: EXPLAIN statement [YCQL]
 headerTitle: EXPLAIN
 linkTitle: EXPLAIN
 description: Use the EXPLAIN statement to show the execution plan for a YCQL statement.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

@@ -2,6 +2,7 @@
 title: KEYS
 linkTitle: KEYS
 description: KEYS
+block_indexing: true
 menu:
   stable:
     parent: api-yedis
