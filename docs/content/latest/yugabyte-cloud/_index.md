@@ -89,7 +89,7 @@ not suitable for production workloads, the Free Tier includes enough resources t
               <div class="title">Connect to clusters</div>
           </div>
           <div class="body">
-              Connect to clusters using YugabyteDB CLIs and third party clients.
+              Connect to clusters using cloud shells, remote clients, and third party clients.
           </div>
       </a>
   </div>
