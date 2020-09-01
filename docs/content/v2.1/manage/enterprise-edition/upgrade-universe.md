@@ -3,8 +3,9 @@ title: Upgrade a universe using Yugabyte Platform
 headerTitle: Upgrade a universe
 linkTitle: Upgrade a universe
 description: Use Yugabyte Platform to upgrade a universe.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: upgrade-universes
     parent: enterprise-edition
     weight: 750

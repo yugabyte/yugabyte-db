@@ -3,6 +3,7 @@ title: DROP TYPE statement [YCQL]
 headerTitle: DROP TYPE
 linkTitle: DROP TYPE
 description: Use the DROP TYPE statement to remove an existing user-defined data type.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

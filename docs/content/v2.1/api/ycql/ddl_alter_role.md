@@ -4,8 +4,9 @@ headerTitle: ALTER ROLE
 linkTitle: ALTER ROLE
 summary: Change the properties of a role
 description: Use the ALTER ROLE statement to change the properties of an existing role.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-cassandra
     weight: 1210
 isTocNested: true

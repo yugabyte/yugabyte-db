@@ -3,8 +3,9 @@ title: COMMIT statement [YSQL]
 headerTitle: COMMIT
 linkTitle: COMMIT
 description: Use the COMMIT statement to commit the current transaction.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-txn-commit
     parent: api-ysql-commands
 isTocNested: true

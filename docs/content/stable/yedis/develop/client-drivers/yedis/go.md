@@ -5,6 +5,7 @@ linkTitle: Go
 description: Use Go to build a YugabyteDB application that interacts with YEDIS
 aliases:
  - /stable/yedis/develop/client-drivers/go
+block_indexing: true
 menu:
   stable:
     identifier: client-drivers-yedis-go

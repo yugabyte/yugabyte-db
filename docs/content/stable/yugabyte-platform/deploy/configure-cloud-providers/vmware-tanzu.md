@@ -6,6 +6,7 @@ description: Configure Kubernetes for YugabyteDB deployments using the YugabyteD
 aliases:
   - /deploy/pivotal-cloud-foundry/
   - /stable/deploy/pivotal-cloud-foundry/
+block_indexing: true
 menu:
   stable:
     identifier: configure-cloud-providers-5-vmwtanzu

@@ -9,6 +9,7 @@ aliases:
   - /stable/explore/cloud-native/linear-scalability/
   - /stable/explore/postgresql/linear-scalability/
   - /stable/explore/linear-scalability-macos/
+block_indexing: true
 menu:
   stable:
     identifier: linear-scalability-1-macos

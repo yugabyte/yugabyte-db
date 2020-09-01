@@ -5,8 +5,9 @@ linkTitle: Query layer
 description: Learn how YugabyteDB's extensible query layer implements YSQL and YCQL.
 image: /images/section_icons/index/api.png
 headcontent: 
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: architecture-query-layer
     parent: architecture
     weight: 1110

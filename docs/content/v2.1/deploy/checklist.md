@@ -3,8 +3,9 @@ title: Deployment checklist for YugabyteDB clusters
 headerTitle: Deployment checklist
 linkTitle: Deployment checklist
 description: Deployment checklist for multi-node YugabyteDB clusters used for production and performance testing
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: checklist
     parent: deploy
     weight: 605

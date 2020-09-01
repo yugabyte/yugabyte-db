@@ -3,8 +3,9 @@ title: BEGIN statement [YSQL]
 headerTitle: BEGIN
 linkTitle: BEGIN
 description: Use the `BEGIN` statement to start a new transaction with the default (or given) isolation level.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-txn-begin
     parent: api-ysql-commands
 isTocNested: true

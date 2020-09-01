@@ -3,8 +3,9 @@ title: Build a C application that uses YSQL
 headerTitle: Build a C application
 linkTitle: C
 description: Build a C application that uses YSQL.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: build-apps-c-1-ysql
     parent: build-apps
     weight: 557

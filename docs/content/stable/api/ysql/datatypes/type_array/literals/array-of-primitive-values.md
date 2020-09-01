@@ -3,6 +3,7 @@ title: The literal for an array of primitive values
 linkTitle: Array of primitive values
 headerTitle: The literal for an array of primitive values
 description: The literal for an array of primitive values
+block_indexing: true
 menu:
   stable:
     identifier: array-of-primitive-values

@@ -7,6 +7,7 @@ headcontent:
 image: /images/section_icons/index/develop.png
 aliases:
   - /develop/realworld-apps/
+block_indexing: true
 menu:
   stable:
     identifier: realworld-apps

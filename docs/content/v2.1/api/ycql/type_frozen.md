@@ -4,8 +4,9 @@ summary: Binary format for complex data types.
 headerTitle: FROZEN data type
 linkTitle: FROZEN
 description: Use the FROZEN data type to specify columns of binary strings that result from serializing collections, tuples, or user-defined types.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-cassandra
     weight: 1401
 isTocNested: true

@@ -5,6 +5,7 @@ linkTitle: Global distribution
 description: Simulate globally distributed SQL across regions using a local YugabyteDB cluster on Linux.
 aliases:
   - /stable/explore/global-distribution-linux/
+block_indexing: true
 menu:
   stable:
     identifier: global-distribution-2-linux

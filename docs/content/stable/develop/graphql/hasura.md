@@ -2,6 +2,7 @@
 title: Hasura
 linkTitle: Hasura
 description: Hasura GraphQL engine
+block_indexing: true
 menu:
   stable:
     identifier: hasura

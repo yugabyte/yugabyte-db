@@ -7,6 +7,7 @@ beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /stable/architecture/cdc-architecture/
   - /stable/architecture/change-data-capture/
+block_indexing: true
 menu:
   stable:
     parent: architecture-docdb-replication

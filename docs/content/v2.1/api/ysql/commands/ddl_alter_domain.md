@@ -3,8 +3,9 @@ title: ALTER DOMAIN statement [YSQL]
 headerTitle: ALTER DOMAIN
 linkTitle: ALTER DOMAIN
 description: Use the ALTER DOMAIN statement to change the definition of an existing domain.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-alter-domain
     parent: api-ysql-commands
 isTocNested: true

@@ -2,8 +2,9 @@
 title: GET
 linkTitle: GET
 description: GET
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2070
 isTocNested: true

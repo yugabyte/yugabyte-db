@@ -8,6 +8,7 @@ aliases:
   - /stable/yugabyte-platform/deploy/configure-cloud-providers/
   - /stable/deploy/enterprise-edition/configure-cloud-providers/
   - /stable/deploy/enterprise-edition/configure-cloud-providers/aws
+block_indexing: true
 menu:
   stable:
     identifier: configure-cloud-providers-1-aws

@@ -4,8 +4,9 @@ headerTitle: Quick start YCQL
 linkTitle: Quick start YCQL
 description: Quick start to explore YCQL in YugabyteDB.
 image: /images/section_icons/quick_start/explore_ycql.png
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-cassandra
     weight: 1101
 ---

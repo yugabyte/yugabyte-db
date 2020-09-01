@@ -5,8 +5,9 @@ linkTitle: YSQL authentication
 description: Identify that your YSQL users are who they say they are.
 headcontent: Identify that your YSQL users are who they say they are.
 image: /images/section_icons/secure/authentication.png
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     name: Authentication
     identifier: ysql-authentication
     parent: authentication

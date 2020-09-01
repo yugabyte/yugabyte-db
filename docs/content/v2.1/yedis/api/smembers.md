@@ -2,8 +2,9 @@
 title: SMEMBERS
 linkTitle: SMEMBERS
 description: SMEMBERS
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2300
 isTocNested: true

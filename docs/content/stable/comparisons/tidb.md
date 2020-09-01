@@ -5,6 +5,7 @@ linkTitle: TiDB
 description: Compare TiDB with YugabyteDB.
 aliases:
   - /comparisons/tidb/
+block_indexing: true
 menu:
   stable:
     parent: comparisons

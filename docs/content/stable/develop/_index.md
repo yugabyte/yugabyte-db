@@ -8,6 +8,7 @@ image: /images/section_icons/index/develop.png
 aliases:
   - /develop/
 section: YUGABYTEDB CORE
+block_indexing: true
 menu:
   stable:
     identifier: develop

@@ -3,8 +3,9 @@ title: DROP POLICY statement [YSQL]
 headerTitle: DROP POLICY
 linkTitle: DROP POLICY
 description: Use the DROP POLICY statement to remove the specified row level security policy from the table.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-drop-policy
     parent: api-ysql-commands
 isTocNested: true

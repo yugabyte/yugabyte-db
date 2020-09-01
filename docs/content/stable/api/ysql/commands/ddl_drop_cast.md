@@ -3,6 +3,7 @@ title: DROP CAST statement [YSQL]
 headerTitle: DROP CAST
 linkTitle: DROP CAST
 description: Use the DROP CAST statement to remove a cast.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-drop-cast

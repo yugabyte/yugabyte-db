@@ -4,6 +4,7 @@ title: Import Data
 headerTitle: Import Data
 linkTitle: Import Data
 description: How to import data into YugabyteDB.
+block_indexing: true
 menu:
   stable:
     identifier: migrate-postgresql-import-data

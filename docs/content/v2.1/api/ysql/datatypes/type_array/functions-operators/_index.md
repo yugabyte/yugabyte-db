@@ -4,8 +4,9 @@ linkTitle: Functions and operators
 headerTitle: Array functions and operators
 description: Array functions and operators
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: array-functions-operators
     parent: api-ysql-datatypes-array
     weight: 30

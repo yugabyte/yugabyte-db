@@ -2,8 +2,9 @@
 title: SREM
 linkTitle: SREM
 description: SREM
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2310
 isTocNested: true

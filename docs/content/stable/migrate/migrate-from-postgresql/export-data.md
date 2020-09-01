@@ -3,6 +3,7 @@ title: Export Data
 headerTitle: Export Data
 linkTitle: Export Data
 description: How to export data from PostgreSQL.
+block_indexing: true
 menu:
   stable:
     identifier: migrate-postgresql-export

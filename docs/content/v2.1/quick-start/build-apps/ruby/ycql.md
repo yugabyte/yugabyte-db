@@ -3,8 +3,9 @@ title: Build a Ruby application that uses YCQL
 headerTitle: Build a Ruby application
 linkTitle: Ruby
 description: Build a Ruby application that uses YCQL.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: build-apps
     name: Ruby
     identifier: ruby-3

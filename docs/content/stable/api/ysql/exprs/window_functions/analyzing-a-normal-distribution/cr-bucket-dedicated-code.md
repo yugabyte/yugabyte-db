@@ -3,6 +3,7 @@ title: cr_bucket_dedicated_code.sql
 linkTitle: cr_bucket_dedicated_code.sql
 headerTitle: cr_bucket_dedicated_code.sql
 description: cr_bucket_dedicated_code.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
+block_indexing: true
 menu:
   stable:
     identifier: cr-bucket-dedicated-code

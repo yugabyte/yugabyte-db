@@ -4,6 +4,7 @@ linkTitle: KairosDB
 description: KairosDB
 aliases:
   - /develop/ecosystem-integrations/kairosdb/
+block_indexing: true
 menu:
   stable:
     identifier: kairosdb

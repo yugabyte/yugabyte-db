@@ -5,6 +5,7 @@ linkTitle: Client drivers for YSQL API
 description: Lists the client drivers that you can use to connect to and interact with the YSQL API.
 aliases:
   - /stable/reference/drivers/postgresql-jdbc-driver/
+block_indexing: true
 menu:
   stable:
     identifier: ysql-client-libraries

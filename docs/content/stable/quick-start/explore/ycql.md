@@ -9,6 +9,7 @@ aliases:
   - /stable/quick-start/test-cassandra/
   - /stable/quick-start/test-ycql/
   - /stable/api/ycql/quick-start/
+block_indexing: true
 menu:
   stable:
     parent: quick-start

@@ -3,6 +3,7 @@ title: Array concatenation functions and operators
 linkTitle: Array concatenation
 headerTitle: Array concatenation functions and operators
 description: Array concatenation functions and operators
+block_indexing: true
 menu:
   stable:
     identifier: array-concatenation

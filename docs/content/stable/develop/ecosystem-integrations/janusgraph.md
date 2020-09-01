@@ -4,6 +4,7 @@ linkTitle: JanusGraph
 description: JanusGraph
 aliases:
   - /develop/ecosystem-integrations/janusgraph/
+block_indexing: true
 menu:
   stable:
     identifier: janusgraph

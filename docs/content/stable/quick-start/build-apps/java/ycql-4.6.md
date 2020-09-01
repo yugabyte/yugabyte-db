@@ -3,6 +3,7 @@ title: Build a Java application that uses YCQL
 headerTitle: Build a Java application
 linkTitle: Java
 description: Build a sample Java application with the Yugabyte Java Driver for YCQL v4.6.
+block_indexing: true
 menu:
   stable:
     parent: build-apps

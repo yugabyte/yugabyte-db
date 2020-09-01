@@ -3,8 +3,9 @@ title: array_agg() and unnest()
 linkTitle: array_agg() / unnest()
 headerTitle: array_agg() and unnest()
 description: array_agg() and unnest()
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: array-agg-unnest
     parent: array-functions-operators
 isTocNested: true

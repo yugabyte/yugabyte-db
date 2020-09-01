@@ -3,6 +3,7 @@ title: Schema Migration
 headerTitle: Schema Migration
 linkTitle: Schema Migration
 description: How to migrate PostgreSQL schema to YugabyteDB.
+block_indexing: true
 menu:
   stable:
     identifier: migrate-postgresql-schema

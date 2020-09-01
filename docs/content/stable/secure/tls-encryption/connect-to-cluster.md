@@ -6,6 +6,7 @@ description: Connect clients to remote YugabyteDB clusters that have client-to-s
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 aliases:
   - /secure/tls-encryption/connect-to-cluster
+block_indexing: true
 menu:
   stable:
     identifier: connect-to-cluster

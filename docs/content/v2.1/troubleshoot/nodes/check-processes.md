@@ -3,8 +3,9 @@ title: Check processes
 linkTitle: Check processes
 headerTitle: Check YugabyteDB processes
 description: How to check if your YugabyteDB processes are running
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: troubleshoot-nodes
     weight: 842
 isTocNested: true

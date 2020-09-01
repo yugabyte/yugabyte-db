@@ -5,6 +5,7 @@ linkTitle: Colocated tables
 description: Create and use colocated tables in a local YugabyteDB cluster on macOS.
 aliases:
   - /stable/explore/colocated-tables/
+block_indexing: true
 menu:
   stable:
     identifier: colocated-tables-1-macos

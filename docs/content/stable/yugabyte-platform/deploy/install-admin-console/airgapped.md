@@ -5,6 +5,7 @@ linkTitle: 2. Install Yugabyte Platform
 description: Install Yugabyte Platform (aka YugaWare).
 aliases:
   - /stable/deploy/enterprise-edition/install-admin-console/airgapped
+block_indexing: true
 menu:
   stable:
     identifier: install-yp-2-airgapped

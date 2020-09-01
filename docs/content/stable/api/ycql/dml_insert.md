@@ -3,6 +3,7 @@ title: INSERT statement [YCQL]
 headerTitle: INSERT
 linkTitle: INSERT
 description: Use the INSERT statement to add a row to a specified table.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

@@ -2,8 +2,9 @@
 title: HMGET
 linkTitle: HMGET
 description: HMGET
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2160
 isTocNested: true

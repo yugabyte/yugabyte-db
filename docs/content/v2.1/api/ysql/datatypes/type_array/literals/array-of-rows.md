@@ -3,8 +3,9 @@ title: The literal for an array of rows
 linkTitle: Array of rows
 headerTitle: The literal for an array of "row" type values
 description: The literal for an array of "row" type values
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: array-of-rows
     parent: array-literals
     weight: 40

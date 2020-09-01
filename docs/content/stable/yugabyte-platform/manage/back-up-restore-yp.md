@@ -5,6 +5,7 @@ linkTitle: Back up and restore Yugabyte Platform
 description: Use a script file to back up and restore Yugabyte Platform.
 aliases:
   - /stable/manage/enterprise-edition/back-up-restore-yp
+block_indexing: true
 menu:
   stable:
     identifier: back-up-restore-yp

@@ -3,8 +3,9 @@ title: lag(), lead()
 linkTitle: lag(), lead()
 headerTitle: lag(), lead()
 description: The SQL window functions lag(), lead()
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: lag-lead
     parent: function-syntax-semantics
     weight: 40

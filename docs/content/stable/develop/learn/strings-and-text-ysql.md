@@ -6,6 +6,7 @@ description: Learn how to work with string and text data types in YSQL.
 aliases:
   - /develop/learn/strings-and-text/
   - /stable/develop/learn/strings-and-text/
+block_indexing: true
 menu:
   stable:
     identifier: strings-and-text-1-ysql

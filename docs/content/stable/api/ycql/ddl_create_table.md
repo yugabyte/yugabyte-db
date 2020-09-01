@@ -3,6 +3,7 @@ title: CREATE TABLE statement [YCQL]
 headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a new table in a keyspace.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

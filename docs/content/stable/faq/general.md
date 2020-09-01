@@ -10,6 +10,7 @@ aliases:
   - /stable/introduction/core-features/
   - /stable/introduction/
   - /stable/faq/architecture/
+block_indexing: true
 menu:
   stable:
     identifier: faq-general

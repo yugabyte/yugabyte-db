@@ -3,8 +3,9 @@ title: Build a Python application that uses SQLAlchemy and YSQL
 headerTitle: Build a Python application
 linkTitle: Python
 description: Build a Python e-commerce application that uses SQLAlchemy and YSQL.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: build-apps
     name: Python
     identifier: python-2

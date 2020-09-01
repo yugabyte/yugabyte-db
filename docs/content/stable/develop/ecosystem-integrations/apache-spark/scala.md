@@ -6,6 +6,7 @@ description: Build a Scala application using Apache Spark and YugabyteDB
 aliases:
   - /develop/ecosystem-integrations/apache-spark/
   - /stable/develop/ecosystem-integrations/apache-spark/
+block_indexing: true
 menu:
   stable:
     identifier: apache-spark-1-scala

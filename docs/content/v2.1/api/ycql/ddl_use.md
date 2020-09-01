@@ -4,8 +4,9 @@ headerTitle: USE
 linkTitle: USE
 summary: Create a new database
 description: Use the USE statement to specify a default keyspace for the current client session.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-cassandra
     weight: 1290
 isTocNested: true

@@ -3,8 +3,9 @@ title: jsonb_each_text() and json_each_text() [JSON]
 headerTitle: jsonb_each_text() and json_each_text()
 linkTitle: jsonb_each_text()
 description: Create a row set with columns "key" (as a SQL text) and "value" (as a SQL text) from a JSON object. Useful when the results are primitive values.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: jsonb-each-text
     parent: functions-operators
     weight: 120

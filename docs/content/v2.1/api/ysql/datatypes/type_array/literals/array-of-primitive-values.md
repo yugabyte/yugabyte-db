@@ -3,8 +3,9 @@ title: The literal for an array of primitive values
 linkTitle: Array of primitive values
 headerTitle: The literal for an array of primitive values
 description: The literal for an array of primitive values
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: array-of-primitive-values
     parent: array-literals
     weight: 10

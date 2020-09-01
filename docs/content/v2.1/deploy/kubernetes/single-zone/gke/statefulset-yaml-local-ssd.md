@@ -3,8 +3,9 @@ title: Deploy on Google Kubernetes Engine (GKE) using YAML (local disk)
 headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Deploy a single-zone YugabyteDB cluster on Google Kubernetes Engine (GKE) using YAML (local disk).
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: deploy-kubernetes-sz
     name: Google Kubernetes Engine
     identifier: k8s-gke-3

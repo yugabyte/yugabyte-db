@@ -3,8 +3,9 @@ title: CREATE TABLE AS statement [YSQL]
 headerTitle: CREATE TABLE AS
 linkTitle: CREATE TABLE AS
 description: Use the CREATE TABLE AS statement to create a new table using the output of a subquery.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-table-as
     parent: api-ysql-commands
 isTocNested: true

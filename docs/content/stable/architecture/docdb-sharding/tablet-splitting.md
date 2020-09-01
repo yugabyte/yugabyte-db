@@ -3,6 +3,7 @@ title: Tablet splitting
 headerTitle: Tablet splitting
 linkTitle: Tablet splitting
 description: Learn about tablet splitting mechanisms for resharding data, including presplitting, manual, and automatic.
+block_indexing: true
 menu:
   stable:
     identifier: docdb-tablet-splitting

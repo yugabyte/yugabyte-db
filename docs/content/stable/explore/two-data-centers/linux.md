@@ -5,6 +5,7 @@ linkTitle: Two data center (2DC)
 description: Simulate a geo-distributed two data center (2DC) deployment with two local YugabyteDB clusters on Linux.
 aliases:
   - /stable/explore/two-data-centers-linux/
+block_indexing: true
 menu:
   stable:
     identifier: two-data-centers-2-linux

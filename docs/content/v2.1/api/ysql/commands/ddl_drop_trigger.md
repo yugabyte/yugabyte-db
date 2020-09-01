@@ -3,8 +3,9 @@ title: DROP TRIGGER statement [YSQL]
 headerTitle: DROP TRIGGER
 linkTitle: DROP TRIGGER
 description: Use the DROP TRIGGER statement to remove a trigger from the database.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-drop-trigger
     parent: api-ysql-commands
 isTocNested: true

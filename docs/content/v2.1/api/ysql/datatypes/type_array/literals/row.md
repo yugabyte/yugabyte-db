@@ -3,8 +3,9 @@ title: The literal for a row
 linkTitle: Row
 headerTitle: The literal for a "row" type value
 description: The literal for a "row" type value
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: row
     parent: array-literals
     weight: 30

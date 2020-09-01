@@ -3,6 +3,7 @@ title: GRANT statement [YSQL]
 headerTitle: GRANT
 linkTitle: GRANT
 description: Use the GRANT statement to grant access privileges on database objects as well as to assign membership in roles.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-grant

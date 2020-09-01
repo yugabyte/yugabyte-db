@@ -3,8 +3,9 @@ title: yb-ts-cli - command line tool for advanced yb-tserver operations
 headerTitle: yb-ts-cli
 linkTitle: yb-ts-cli
 description: Use the yb-ts-cli command line utility to perform advanced YB-TServer operations.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: yb-ts-cli
     parent: admin
     weight: 2466

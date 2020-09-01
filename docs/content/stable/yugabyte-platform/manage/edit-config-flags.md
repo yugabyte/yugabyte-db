@@ -6,6 +6,7 @@ description: Use Yugabyte Platform to manage configuration flags.
 aliases:
   - /stable/manage/enterprise-edition/edit-flags/
   - /stable/manage/enterprise-edition/edit-config-flags/
+block_indexing: true
 menu:
   stable:
     identifier: edit-config-flags

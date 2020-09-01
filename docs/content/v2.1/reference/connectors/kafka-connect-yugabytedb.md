@@ -4,8 +4,9 @@ headerTitle: Kafka Connect YugabyteDB
 linkTitle: Kafka Connect YugabyteDB
 description: Use Kafka Connect YugabyteDB to stream YugabyteDB table updates to Kafka topics.
 section: REFERENCE
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: kafka-connect-yugabytedb
     parent: connectors
     weight: 2930

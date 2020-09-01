@@ -4,8 +4,9 @@ headerTitle: Date and time functions
 linkTitle: Date and time
 summary: Functions that work on data types related to date and time.
 description: Use date and time functions to work on date and time data types.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-cassandra
     weight: 1560
 isTocNested: false

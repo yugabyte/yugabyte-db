@@ -7,8 +7,9 @@ image: /images/section_icons/index/admin.png
 headcontent: Command line interfaces (CLIs) and tools reference.
 type: page
 section: REFERENCE
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: admin
     weight: 1400
 ---

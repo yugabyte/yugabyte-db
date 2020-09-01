@@ -3,8 +3,9 @@ title: Inspect logs
 linkTitle: Inspect logs
 headerTitle: Inspect YugabyteDB logs
 description: Inspect YugabyteDB logs
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: troubleshoot-nodes
     weight: 844
 isTocNested: true

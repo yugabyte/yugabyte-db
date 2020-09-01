@@ -3,8 +3,9 @@ title: ALTER USER statement [YSQL]
 headerTitle: ALTER USER
 linkTitle: ALTER USER
 description: Use the ALTER USER statement to alter a role. ALTER USER is an alias for ALTER ROLE and is used to alter a role.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-alter-user
     parent: api-ysql-commands
 isTocNested: true

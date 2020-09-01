@@ -3,8 +3,9 @@ title: DROP SEQUENCE statement [YSQL]
 headerTitle: DROP SEQUENCE
 linkTitle: DROP SEQUENCE
 description: Use the DROP SEQUENCE statement to delete a sequence in the current schema.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-drop-sequence
     parent: api-ysql-commands
 isTocNested: true

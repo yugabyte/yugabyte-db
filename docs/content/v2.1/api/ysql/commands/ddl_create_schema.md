@@ -3,8 +3,9 @@ title: CREATE SCHEMA statement [YSQL]
 headerTitle: CREATE SCHEMA
 linkTitle: CREATE SCHEMA
 description: Use the CREATE SCHEMA statement to create a new schema in the current database.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-schema
     parent: api-ysql-commands
 isTocNested: true

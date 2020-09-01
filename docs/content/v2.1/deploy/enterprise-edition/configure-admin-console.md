@@ -3,8 +3,9 @@ title: Configure Yugabyte Platform
 headerTitle: Configure Yugabyte Platform
 linkTitle: 3. Configure Yugabyte Platform
 description: Configure Yugabyte Platform.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: configure-admin-console
     parent: deploy-enterprise-edition
     weight: 675

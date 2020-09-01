@@ -5,6 +5,7 @@ linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on Kubernetes (Minikube).
 aliases:
   - /stable/explore/fault-tolerance-kubernetes/
+block_indexing: true
 menu:
   stable:
     identifier: fault-tolerance-4-kubernetes

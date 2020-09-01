@@ -9,6 +9,7 @@ aliases:
   - /stable/deploy/kubernetes/single-zone/oss/
   - /stable/deploy/kubernetes/helm-chart/
   - /stable/deploy/kubernetes/helm-configuration/
+block_indexing: true
 menu:
   stable:
     parent: deploy-kubernetes-sz

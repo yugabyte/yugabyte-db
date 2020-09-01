@@ -5,6 +5,7 @@ description: Release history
 headcontent: Download links and release information for earlier releases.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
+block_indexing: true
 menu:
   stable:
     identifier: earlier-releases

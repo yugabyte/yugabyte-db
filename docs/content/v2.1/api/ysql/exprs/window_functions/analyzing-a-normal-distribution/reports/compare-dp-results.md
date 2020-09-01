@@ -3,8 +3,9 @@ title: compare-dp-results
 linkTitle: compare-dp-results
 headerTitle: Output from running do_compare_dp_results.sql on dp_results
 description: compare-dp-results
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: compare-dp-results
     parent: normal-distribution-analysis-reports
     weight: 30

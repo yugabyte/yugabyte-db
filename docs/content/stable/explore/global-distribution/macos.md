@@ -8,6 +8,7 @@ aliases:
   - /stable/explore/global-distribution/
   - /stable/explore/planet-scale/global-distribution/
   - /stable/explore/global-distribution-macos/
+block_indexing: true
 menu:
   stable:
     identifier: global-distribution-1-macos

@@ -3,8 +3,9 @@ title: Restore data for YSQL
 headerTitle: Restore data
 linkTitle: Restore data
 description: Restore data in YugabyteDB for YSQL
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: restore-data
     parent: backup-restore
     weight: 703

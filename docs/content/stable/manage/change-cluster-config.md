@@ -5,6 +5,7 @@ linkTitle: Change cluster configuration
 description: Migrate a YugabyteDB cluster to a new set of nodes.
 aliases:
   - manage/change-cluster-config
+block_indexing: true
 menu:
   stable:
     identifier: manage-change-cluster-config

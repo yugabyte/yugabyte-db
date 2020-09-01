@@ -4,6 +4,7 @@ headerTitle: sysbench
 linkTitle: sysbench
 description: Benchmark YSQL performance using sysbench.
 headcontent: Benchmark YSQL performance using sysbench.
+block_indexing: true
 menu:
   stable:
     identifier: sysbench-ysql

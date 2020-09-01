@@ -3,8 +3,9 @@ title: YSQL data modeling in YugabyteDB
 headerTitle: Data modeling
 linkTitle: 2. Data modeling
 description: Learn data modeling in YSQL and how to identify the patterns used to access data and the types of queries to be performed.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: data-modeling-2-ysql
     parent: learn
     weight: 562

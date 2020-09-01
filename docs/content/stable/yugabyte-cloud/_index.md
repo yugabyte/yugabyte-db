@@ -8,6 +8,7 @@ beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: YUGABYTE CLOUD
 aliases:
   - /stable/deploy/yugabyte-cloud/
+block_indexing: true
 menu:
   stable:
     identifier: yugabyte-cloud

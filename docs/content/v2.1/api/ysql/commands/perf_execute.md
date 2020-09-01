@@ -3,8 +3,9 @@ title: EXECUTE statement [YSQL]
 headerTitle: EXECUTE
 linkTitle: EXECUTE
 description: Use the EXECUTE statement to execute a previously prepared statement. 
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-execute
     parent: api-ysql-commands
 isTocNested: true

@@ -3,8 +3,9 @@ title: Build a Java application using Apache Spark and YugabyteDB
 headerTitle: Apache Spark
 linkTitle: Apache Spark
 description: Build and run a Java-based sample word-count application using Apache Spark and YugabyteDB.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: apache-spark-2-java
     parent: ecosystem-integrations
     weight: 572

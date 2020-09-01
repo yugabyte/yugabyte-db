@@ -3,8 +3,9 @@ title: Explore observability with Prometheus on Linux
 headerTitle: Observability with Prometheus
 linkTitle: Observability 
 description: Learn about observability and monitoring with Prometheus in a local three-node YugabyteDB cluster on Linux.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: observability-2-linux
     parent: explore
     weight: 240

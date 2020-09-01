@@ -3,8 +3,9 @@ title: SportsDB sample database
 headerTitle: SportsDB sample database
 linkTitle: SportsDB
 description: Use the SportsDB to query sports statistics while learning YugabyteDB.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: sportsdb
     parent: sample-data
     weight: 2754

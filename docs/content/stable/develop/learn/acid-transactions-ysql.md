@@ -6,6 +6,7 @@ description: Learn how ACID transactions work in YSQL on YugabyteDB.
 aliases:
   - /stable/explore/transactional/acid-transactions/
   - /stable/develop/learn/acid-transactions/
+block_indexing: true
 menu:
   stable:
     identifier: acid-transactions-2-ysql

@@ -3,8 +3,9 @@ title: CREATE TRIGGER statement [YSQL]
 headerTitle: CREATE TRIGGER
 linkTitle: CREATE TRIGGER
 description: Use the CREATE TRIGGER statement to define a new trigger.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-trigger
     parent: api-ysql-commands
 isTocNested: true

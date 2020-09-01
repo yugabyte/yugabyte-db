@@ -3,8 +3,9 @@ title: CREATE ROLE statement [YSQL]
 headerTitle: CREATE ROLE
 linkTitle: CREATE ROLE
 description: Use the CREATE ROLE statement to add a new role to a YugabyteDB database cluster.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-role
     parent: api-ysql-commands
 isTocNested: true
