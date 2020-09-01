@@ -112,6 +112,8 @@ public class TestIndex extends BaseCQLTest {
     // Test retrieving non-existent index.
     assertNull(table.getIndex("i3"));
 
+    runInvalidStmt("CREATE INDEX i1 ON cql_test_keyspace.test_create_index (r1) where r1 = 5;");
+
     // Test create index with duplicate name.
     try {
       session.execute("create index i1 on test_create_index (r1) include (c1);");
@@ -617,6 +619,27 @@ public class TestIndex extends BaseCQLTest {
                            Arrays.asList("i5.c2"),
                            new Object[] {"c"},
                            "Row[1, a, 2, b, 3, c]");
+  }
+
+  @Test
+  public void testCreateIndexWithWhereClause() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+    destroyMiniCluster();
+    BaseMiniClusterTest.tserverArgs.add("--cql_raise_index_where_clause_error=false");
+    createMiniCluster();
+    setUpCqlClient();
+
+    // Create test table.
+    LOG.info("create test table");
+    session.execute("create table test_create_index " +
+                    "(h1 int, h2 text, r1 int, r2 text, " +
+                    "c1 int, c2 text, c3 decimal, c4 timestamp, c5 boolean, " +
+                    "primary key ((h1, h2), r1, r2)) " +
+                    "with transactions = {'enabled' : true};");
+    LOG.info("create test index");
+    session.execute("CREATE INDEX i1 ON test_create_index (r1) where r1 = 5;");
+    BaseMiniClusterTest.tserverArgs.remove("--cql_raise_index_where_clause_error=false");
+    LOG.info("End test: " + getCurrentTestMethodName());
   }
 
   @Test
