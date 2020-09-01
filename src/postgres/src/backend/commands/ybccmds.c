@@ -33,6 +33,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_type_d.h"
 #include "catalog/ybctype.h"
 #include "commands/dbcommands.h"
 #include "commands/ybccmds.h"
@@ -838,6 +839,70 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 							errmsg("This ALTER TABLE command is not yet supported.")));
 				}
 
+				break;
+			}
+
+			case AT_AlterColumnType:
+			{
+				/*
+				 * Only supports variants that don't require on-disk changes.
+				 * For now, that is just varchar and varbit.
+				 */
+				ColumnDef*			colDef = (ColumnDef *) cmd->def;
+				HeapTuple			typeTuple;
+				Form_pg_attribute	attTup;
+				Oid					curTypId;
+				Oid					newTypId;
+				int32				curTypMod;
+				int32				newTypMod;
+
+				/* Get current typid and typmod of the column. */
+				typeTuple = SearchSysCacheAttName(RelationGetRelid(rel), cmd->name);
+				if (!HeapTupleIsValid(typeTuple))
+				{
+					ereport(ERROR, (errcode(ERRCODE_UNDEFINED_COLUMN),
+							errmsg("column \"%s\" of relation \"%s\" does not exist",
+									cmd->name, RelationGetRelationName(rel))));
+				}
+				attTup = (Form_pg_attribute) GETSTRUCT(typeTuple);
+				curTypId = attTup->atttypid;
+				curTypMod = attTup->atttypmod;
+				ReleaseSysCache(typeTuple);
+
+				/* Get the new typid and typmod of the column. */
+				typenameTypeIdAndMod(NULL, colDef->typeName, &newTypId, &newTypMod);
+
+				/* Only varbit and varchar don't cause on-disk changes. */
+				switch (newTypId)
+				{
+					case VARCHAROID:
+					case VARBITOID:
+					{
+						/*
+						* Check for type equality, and that the new size is greater than or equal
+						* to the old size, unless the current size is infinite (-1).
+						*/
+						if (newTypId != curTypId ||
+							(newTypMod < curTypMod && newTypMod != -1) ||
+							(newTypMod > curTypMod && curTypMod == -1))
+						{
+							ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									errmsg("This ALTER TABLE command is not yet supported.")));
+						}
+						break;
+					}
+
+					default:
+					{
+						if (newTypId == curTypId && newTypMod == curTypMod)
+						{
+							/* Types are the same, no changes will occur. */
+							break;
+						}
+						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("This ALTER TABLE command is not yet supported.")));
+					}
+				}
 				break;
 			}
 

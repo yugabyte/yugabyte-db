@@ -151,15 +151,9 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
 
 -- Try altering the column type where foreign keys are involved
 ALTER TABLE PKTABLE ALTER COLUMN ptest1 TYPE bigint;
-ERROR:  ALTER TABLE ALTER column not supported yet
-LINE 1: ALTER TABLE PKTABLE ALTER COLUMN ptest1 TYPE bigint;
-                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ERROR:  This ALTER TABLE command is not yet supported.
 ALTER TABLE FKTABLE ALTER COLUMN ftest1 TYPE bigint;
-ERROR:  ALTER TABLE ALTER column not supported yet
-LINE 1: ALTER TABLE FKTABLE ALTER COLUMN ftest1 TYPE bigint;
-                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+ERROR:  This ALTER TABLE command is not yet supported.
 SELECT * FROM PKTABLE ORDER BY ptest1, ptest2;
  ptest1 | ptest2 | ptest3
 --------+--------+---------
