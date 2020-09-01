@@ -269,6 +269,9 @@ message ConsensusStatusPB {
   // The last committed index that is known to the peer.
   optional int64 last_committed_idx = 2;
 
+  // The last operation applied by the peer.
+  optional OpIdPB last_applied = 5;
+
   // When the last request failed for some consensus related (internal) reason.
   // In some cases the error will have a specific code that the caller will
   // have to handle in certain ways.

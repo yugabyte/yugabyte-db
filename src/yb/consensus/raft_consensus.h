@@ -201,16 +201,21 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // can cause consensus to deadlock.
   ReplicaState* GetReplicaStateForTests();
 
-  void UpdateMajorityReplicatedInTests(const OpIdPB&majority_replicated, OpIdPB*committed_index) {
+  void UpdateMajorityReplicatedInTests(
+      const OpIdPB&majority_replicated, OpIdPB* committed_index, OpId* last_committed_op_id) {
     UpdateMajorityReplicated({ majority_replicated,
                                CoarseTimePoint::min(),
                                HybridTime::kMin.GetPhysicalValueMicros() },
-                             committed_index);
+                             committed_index, last_committed_op_id);
   }
 
   yb::OpId GetLastReceivedOpId() override;
 
   yb::OpId GetLastCommittedOpId() override;
+
+  yb::OpId GetLastAppliedOpId() override;
+
+  yb::OpId TEST_GetAllAppliedOpId();
 
   yb::OpId GetSplitOpId() override;
 
@@ -300,11 +305,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       MonoDelta timeout,
       PreElection preelection);
 
-  // Updates the committed_index and triggers the Apply()s for whatever
-  // operations were pending.
+  // Updates the committed_index, triggers the Apply()s for whatever
+  // operations were pending and updates last_applied_op_id.
   // This is idempotent.
   void UpdateMajorityReplicated(
-      const MajorityReplicatedData& data, OpIdPB* committed_op_id) override;
+      const MajorityReplicatedData& data, OpIdPB* committed_op_id,
+      OpId* last_applied_op_id) override;
 
   void NotifyTermChange(int64_t term) override;
 

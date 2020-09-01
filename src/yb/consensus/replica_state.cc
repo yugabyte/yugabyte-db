@@ -746,7 +746,8 @@ scoped_refptr<ConsensusRound> ReplicaState::GetPendingOpByIndexOrNullUnlocked(in
 }
 
 Status ReplicaState::UpdateMajorityReplicatedUnlocked(
-    const OpIdPB& majority_replicated, OpIdPB* committed_op_id, bool* committed_op_id_changed) {
+    const OpIdPB& majority_replicated, OpIdPB* committed_op_id,
+    bool* committed_op_id_changed, OpId* last_applied_op_id) {
   DCHECK(IsLocked());
   DCHECK(majority_replicated.IsInitialized());
   if (PREDICT_FALSE(state_ == kShuttingDown || state_ == kShutDown)) {
@@ -762,6 +763,7 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(
     *committed_op_id_changed = VERIFY_RESULT(AdvanceCommittedOpIdUnlocked(
         yb::OpId::FromPB(majority_replicated), CouldStop::kFalse));
     last_committed_op_id_.ToPB(committed_op_id);
+    *last_applied_op_id = GetLastAppliedOpIdUnlocked();
     return Status::OK();
   }
 
@@ -773,6 +775,7 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(
     *committed_op_id_changed = VERIFY_RESULT(AdvanceCommittedOpIdUnlocked(
         yb::OpId::FromPB(majority_replicated), CouldStop::kFalse));
     last_committed_op_id_.ToPB(committed_op_id);
+    *last_applied_op_id = GetLastAppliedOpIdUnlocked();
     LOG_WITH_PREFIX(INFO)
         << "Advanced the committed_op_id across terms."
         << " Last committed operation was: " << previous
@@ -781,6 +784,7 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(
   }
 
   last_committed_op_id_.ToPB(committed_op_id);
+  *last_applied_op_id = GetLastAppliedOpIdUnlocked();
   YB_LOG_EVERY_N_SECS(WARNING, 1) << LogPrefix()
           << "Can't advance the committed index across term boundaries"
           << " until operations from the current term are replicated."

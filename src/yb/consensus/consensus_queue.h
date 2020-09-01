@@ -155,6 +155,9 @@ class PeerMessageQueue {
     // The last committed index this peer knows about.
     int64_t last_known_committed_idx;
 
+    // The ID of the operation last applied by this peer.
+    OpId last_applied;
+
     // Whether the last exchange with this peer was successful.
     bool is_last_exchange_successful = false;
 
@@ -214,6 +217,7 @@ class PeerMessageQueue {
   // tracked peers, and that is enforced with runtime CHECKs.
   virtual void SetLeaderMode(const OpIdPB& committed_op_id,
                              int64_t current_term,
+                             const OpId& last_applied_op_id,
                              const RaftConfigPB& active_config);
 
   // Changes the queue to non-leader mode. Currently tracked peers will still be tracked so that the
@@ -300,10 +304,14 @@ class PeerMessageQueue {
 
   OpIdPB GetCommittedIndexForTests() const;
 
+  OpId TEST_GetAllAppliedOpId() const;
+
   // Returns the current majority replicated OpId, for tests.
   OpIdPB GetMajorityReplicatedOpIdForTests() const;
 
   OpIdPB TEST_GetLastAppended() const;
+
+  OpId TEST_GetLastAppliedOpId() const;
 
   // Returns true if specified peer accepted our lease request.
   bool PeerAcceptedOurLease(const std::string& uuid) const;
@@ -401,11 +409,14 @@ class PeerMessageQueue {
 
   struct QueueState {
 
-    // The first operation that has been replicated to all currently tracked peers.
+    // The last operation that has been replicated to all currently tracked peers.
     OpIdPB all_replicated_op_id = MinimumOpId();
 
-    // The first operation that has been replicated to all currently non-lagging tracked peers.
+    // The last operation that has been replicated to all currently non-lagging tracked peers.
     OpIdPB all_nonlagging_replicated_op_id = MinimumOpId();
+
+    // The last operation that has been applied by all currently tracked peers.
+    yb::OpId all_applied_op_id = yb::OpId::Min();
 
     // The index of the last operation replicated to a majority.  This is usually the same as
     // 'committed_op_id' but might not be if the terms changed.
@@ -413,6 +424,9 @@ class PeerMessageQueue {
 
     // The index of the last operation to be considered committed.
     OpIdPB committed_op_id = MinimumOpId();
+
+    // The ID of the last applied operation.
+    OpId last_applied_op_id = OpId::Min();
 
     // The opid of the last operation appended to the queue.
     OpIdPB last_appended = MinimumOpId();
@@ -485,6 +499,9 @@ class PeerMessageQueue {
 
   // Updates op id replicated on each node.
   void UpdateAllReplicatedOpId(OpIdPB* result) REQUIRES(queue_lock_);
+
+  // Updates op id applied on each node.
+  void UpdateAllAppliedOpId(yb::OpId* result) REQUIRES(queue_lock_);
 
   // Updates op id replicated on each non-lagging node.
   void UpdateAllNonLaggingReplicatedOpId(int32_t threshold) REQUIRES(queue_lock_);
@@ -572,11 +589,12 @@ class PeerMessageQueueObserver {
   // triggers the apply for pending transactions.
   //
   // 'committed_index' is set to the id of the last operation considered committed by consensus.
+  // `last_applied_op_id` is set the ID of the last operation applied by consensus.
   //
   // The implementation is idempotent, i.e. independently of the ordering of calls to this method
   // only non-triggered applys will be started.
   virtual void UpdateMajorityReplicated(
-      const MajorityReplicatedData& data, OpIdPB* committed_index) = 0;
+      const MajorityReplicatedData& data, OpIdPB* committed_index, OpId* last_applied_op_id) = 0;
 
   // Notify the Consensus implementation that a follower replied with a term higher than that
   // established in the queue.

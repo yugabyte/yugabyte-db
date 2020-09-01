@@ -330,6 +330,8 @@ class Consensus {
 
   virtual yb::OpId GetLastCommittedOpId() = 0;
 
+  virtual yb::OpId GetLastAppliedOpId() = 0;
+
   // Return the ID of the split operation requesting to split this Raft group if it has been added
   // to Raft log and uninitialized OpId otherwise.
   virtual yb::OpId GetSplitOpId() = 0;

@@ -1110,7 +1110,8 @@ void RaftConsensus::MajorityReplicatedNumSSTFilesChanged(
 }
 
 void RaftConsensus::UpdateMajorityReplicated(
-    const MajorityReplicatedData& majority_replicated_data, OpIdPB* committed_op_id) {
+    const MajorityReplicatedData& majority_replicated_data, OpIdPB* committed_op_id,
+    OpId* last_applied_op_id) {
   TEST_PAUSE_IF_FLAG(TEST_pause_update_majority_replicated);
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
@@ -1142,7 +1143,8 @@ void RaftConsensus::UpdateMajorityReplicated(
   TRACE("Marking majority replicated up to $0", majority_replicated_data.op_id.ShortDebugString());
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
-      majority_replicated_data.op_id, committed_op_id, &committed_index_changed);
+      majority_replicated_data.op_id, committed_op_id, &committed_index_changed,
+      last_applied_op_id);
   auto leader_state = state_->GetLeaderStateUnlocked();
   if (leader_state.ok() && leader_state.status == LeaderStatus::LEADER_AND_READY) {
     state_->context()->MajorityReplicated();
@@ -1980,6 +1982,7 @@ void RaftConsensus::FillConsensusResponseOKUnlocked(ConsensusResponsePB* respons
   state_->GetLastReceivedOpIdCurLeaderUnlocked().ToPB(
       response->mutable_status()->mutable_last_received_current_leader());
   response->mutable_status()->set_last_committed_idx(state_->GetCommittedOpIdUnlocked().index);
+  state_->GetLastAppliedOpIdUnlocked().ToPB(response->mutable_status()->mutable_last_applied());
 }
 
 void RaftConsensus::FillConsensusResponseError(ConsensusResponsePB* response,
@@ -2689,6 +2692,7 @@ void RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
   peer_manager_->ClosePeersNotInConfig(active_config);
   queue_->SetLeaderMode(state_->GetCommittedOpIdUnlocked().ToPB<OpIdPB>(),
                         state_->GetCurrentTermUnlocked(),
+                        state_->GetLastAppliedOpIdUnlocked(),
                         active_config);
 
   ScopedDnsTracker dns_tracker(update_raft_config_dns_latency_.get());
@@ -2923,6 +2927,15 @@ yb::OpId RaftConsensus::GetLastReceivedOpId() {
 yb::OpId RaftConsensus::GetLastCommittedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetCommittedOpIdUnlocked();
+}
+
+yb::OpId RaftConsensus::GetLastAppliedOpId() {
+  auto lock = state_->LockForRead();
+  return state_->GetLastAppliedOpIdUnlocked();
+}
+
+yb::OpId RaftConsensus::TEST_GetAllAppliedOpId() {
+  return queue_->TEST_GetAllAppliedOpId();
 }
 
 yb::OpId RaftConsensus::GetSplitOpId() {

@@ -200,7 +200,7 @@ struct ReplayState {
   // The last replicate message's ID.
   OpIdPB prev_op_id = consensus::MinimumOpId();
 
-  // The last operation known to be committed.  All other operations with lower IDs are also
+  // The last operation known to be committed. All other operations with lower IDs are also
   // committed.
   OpIdPB committed_op_id = consensus::MinimumOpId();
 
@@ -1306,16 +1306,16 @@ class TabletBootstrap {
     LOG_WITH_PREFIX(INFO)
         << "Number of orphaned replicates: " << consensus_info->orphaned_replicates.size()
         << ", last id: " << replay_state_->prev_op_id
-        << ", commited id: " << replay_state_->committed_op_id;
+        << ", committed id: " << replay_state_->committed_op_id;
 
     SCHECK(replay_state_->prev_op_id.term() >= replay_state_->committed_op_id.term() &&
            replay_state_->prev_op_id.index() >= replay_state_->committed_op_id.index(),
            IllegalState, "WAL files missing, or committed op id is incorrect");
 
-    tablet_->mvcc_manager()->SetLastReplicated(replay_state_->max_committed_hybrid_time);
-    consensus_info->last_id = replay_state_->prev_op_id;
-    consensus_info->last_committed_id = replay_state_->committed_op_id;
-    consensus_info->split_op_id = replay_state_->split_op_id;
+  tablet_->mvcc_manager()->SetLastReplicated(replay_state_->max_committed_hybrid_time);
+  consensus_info->last_id = replay_state_->prev_op_id;
+  consensus_info->last_committed_id = replay_state_->committed_op_id;
+  consensus_info->split_op_id = replay_state_->split_op_id;
 
     if (data_.retryable_requests) {
       data_.retryable_requests->Clock().Adjust(last_entry_time);
