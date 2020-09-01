@@ -1340,6 +1340,104 @@ SELECT * FROM r_tan();
 SELECT * FROM r_cot();
 
 --
+-- Arc functions: asin, acos, atan, & atan2
+--
+SELECT * FROM cypher('expr', $$
+    RETURN asin(1)*2
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN acos(0)*2
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan(1)*4
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(1, 1)*4
+$$) AS (results agtype);
+SELECT * FROM asin(1), r_asin(1);
+SELECT * FROM acos(0), r_acos(0);
+SELECT * FROM atan(1), r_atan(1);
+SELECT * FROM atan2(1, 1), r_atan2(1, 1);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN asin(1.1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN acos(1.1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN asin(-1.1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN acos(-1.1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN asin(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN acos(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(null, null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(null, 1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(1, null)
+$$) AS (results agtype);
+SELECT * FROM r_asin(null);
+SELECT * FROM r_acos(null);
+SELECT * FROM r_atan(null);
+SELECT * FROM r_atan2(null, null);
+SELECT * FROM r_atan2(1, null);
+SELECT * FROM r_atan2(null, 1);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN asin("0")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN acos("0")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan("0")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan2("0", 1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(0, "1")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN asin()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN acos()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan2()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(null)
+$$) AS (results agtype);
+SELECT * FROM r_asin('0');
+SELECT * FROM r_acos('0');
+SELECT * FROM r_atan('0');
+SELECT * FROM r_atan2('0', 1);
+SELECT * FROM r_atan2(1, '0');
+SELECT * FROM r_asin();
+SELECT * FROM r_acos();
+SELECT * FROM r_atan();
+SELECT * FROM r_atan2();
+SELECT * FROM r_atan2(1);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

@@ -72,7 +72,10 @@
 #define FUNC_RCOS       {"cos",        "r_cos",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
 #define FUNC_RTAN       {"tan",        "r_tan",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
 #define FUNC_RCOT       {"cot",        "r_cot",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-
+#define FUNC_RASIN      {"asin",        "r_asin",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_RACOS      {"acos",        "r_acos",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_RATAN      {"atan",        "r_atan",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_RATAN2     {"atan2",       "r_atan2",   ANYOID,    0, 0, AGTYPEOID, 2, 1, false}
 
 /* supported functions */
 #define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
@@ -84,7 +87,8 @@
                              FUNC_RTRIM, FUNC_BTRIM, FUNC_RSUBSTR, \
                              FUNC_LSUBSTR, FUNC_BSUBSTR, FUNC_SPLIT, \
                              FUNC_REPLACE, FUNC_RSIN, FUNC_RCOS, FUNC_RTAN, \
-                             FUNC_RCOT}
+                             FUNC_RCOT, FUNC_RASIN, FUNC_RACOS, FUNC_RATAN, \
+                             FUNC_RATAN2}
 
 /* structure for supported function signatures */
 typedef struct function_signature

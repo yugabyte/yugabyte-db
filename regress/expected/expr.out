@@ -3142,6 +3142,265 @@ LINE 1: SELECT * FROM r_cot();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
+-- Arc functions: asin, acos, atan, & atan2
+--
+SELECT * FROM cypher('expr', $$
+    RETURN asin(1)*2
+$$) AS (results agtype);
+     results      
+------------------
+ 3.14159265358979
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN acos(0)*2
+$$) AS (results agtype);
+     results      
+------------------
+ 3.14159265358979
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN atan(1)*4
+$$) AS (results agtype);
+     results      
+------------------
+ 3.14159265358979
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(1, 1)*4
+$$) AS (results agtype);
+     results      
+------------------
+ 3.14159265358979
+(1 row)
+
+SELECT * FROM asin(1), r_asin(1);
+      asin       |     r_asin      
+-----------------+-----------------
+ 1.5707963267949 | 1.5707963267949
+(1 row)
+
+SELECT * FROM acos(0), r_acos(0);
+      acos       |     r_acos      
+-----------------+-----------------
+ 1.5707963267949 | 1.5707963267949
+(1 row)
+
+SELECT * FROM atan(1), r_atan(1);
+       atan        |      r_atan       
+-------------------+-------------------
+ 0.785398163397448 | 0.785398163397448
+(1 row)
+
+SELECT * FROM atan2(1, 1), r_atan2(1, 1);
+       atan2       |      r_atan2      
+-------------------+-------------------
+ 0.785398163397448 | 0.785398163397448
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN asin(1.1)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN acos(1.1)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN asin(-1.1)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN acos(-1.1)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN asin(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN acos(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN atan(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(null, null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(null, 1)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(1, null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM r_asin(null);
+ r_asin 
+--------
+ 
+(1 row)
+
+SELECT * FROM r_acos(null);
+ r_acos 
+--------
+ 
+(1 row)
+
+SELECT * FROM r_atan(null);
+ r_atan 
+--------
+ 
+(1 row)
+
+SELECT * FROM r_atan2(null, null);
+ r_atan2 
+---------
+ 
+(1 row)
+
+SELECT * FROM r_atan2(1, null);
+ r_atan2 
+---------
+ 
+(1 row)
+
+SELECT * FROM r_atan2(null, 1);
+ r_atan2 
+---------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN asin("0")
+$$) AS (results agtype);
+ERROR:  asin() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN acos("0")
+$$) AS (results agtype);
+ERROR:  acos() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN atan("0")
+$$) AS (results agtype);
+ERROR:  atan() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN atan2("0", 1)
+$$) AS (results agtype);
+ERROR:  atan2() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(0, "1")
+$$) AS (results agtype);
+ERROR:  atan2() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN asin()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN acos()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN atan()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN atan2()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN atan2(null)
+$$) AS (results agtype);
+ERROR:  invalid number of input parameters for atan2()
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM r_asin('0');
+ERROR:  asin() unsuppoted argument type 25
+SELECT * FROM r_acos('0');
+ERROR:  acos() unsuppoted argument type 25
+SELECT * FROM r_atan('0');
+ERROR:  atan() unsuppoted argument type 25
+SELECT * FROM r_atan2('0', 1);
+ERROR:  atan2() unsuppoted argument type 25
+SELECT * FROM r_atan2(1, '0');
+ERROR:  atan2() unsuppoted argument type 25
+SELECT * FROM r_asin();
+ERROR:  function r_asin() does not exist
+LINE 1: SELECT * FROM r_asin();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM r_acos();
+ERROR:  function r_acos() does not exist
+LINE 1: SELECT * FROM r_acos();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM r_atan();
+ERROR:  function r_atan() does not exist
+LINE 1: SELECT * FROM r_atan();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM r_atan2();
+ERROR:  function r_atan2() does not exist
+LINE 1: SELECT * FROM r_atan2();
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM r_atan2(1);
+ERROR:  atan2() invalid number of arguments
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
