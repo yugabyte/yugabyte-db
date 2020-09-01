@@ -32,13 +32,13 @@ To access the YSQL cloud shell, follow these steps:
 
 1. Go to your cluster by clicking **Clusters > Go to cluster**.
 2. Click **Connect** (above the dashboard). The **Connection Info** window appears.
-3. Click **Run in Cloud Shell**. The YSQL shell prompt appears in a separate page and is ready to use.
+3. Select **YSQL Shell** and then click **Run in Cloud Shell**. The YSQL shell prompt appears in a separate page and is ready to use.
 
-```sh
+```
+ysqlsh (11.2-YB-2.2.0.0-b0)
+Type "help" for help.
 
-
-
-
+yugabyte=#
 ```
 
 Related information:
@@ -86,9 +86,9 @@ To access the YCQL cloud shell, follow these steps:
 
 1. Go to your cluster by clicking **Clusters > Go to cluster**.
 2. Click **Connect** (above the dashboard). The **Connection Info** window appears.
-3. Click **Run in Cloud Shell**. The YSQL shell prompt appears in a separate page and is ready to use.
+3. Select **YCQL Shell** and then click **Run in Cloud Shell**. The YCQL shell prompt appears in a separate page and is ready to use.
 
-```sh
+```
 Connected to local cluster at acd4d7803e26911ea85700affa0900f1-1535195171.us-west-2.elb.amazonaws.com:12600.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
