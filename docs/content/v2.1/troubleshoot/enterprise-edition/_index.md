@@ -6,7 +6,7 @@ image: /images/section_icons/manage/enterprise.png
 headcontent: Tools and issues specific to the Yugabyte Platform.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: troubleshoot-enterprise-edition
     parent: troubleshoot
     weight: 850

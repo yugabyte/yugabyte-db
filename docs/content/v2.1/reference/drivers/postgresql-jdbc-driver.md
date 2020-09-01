@@ -6,7 +6,7 @@ description: Use the PostgreSQL JDBC Driver with PostgreSQL-compatible YSQL.
 section: REFERENCE
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: postgresql-jdbc-driver
     parent: drivers
     weight: 2910

@@ -5,7 +5,7 @@ linkTitle: 3. Data types
 description: Learn about the data types in YSQL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: data-types-2-ysql
     parent: learn
     weight: 565

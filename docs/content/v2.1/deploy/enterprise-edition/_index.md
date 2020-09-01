@@ -7,7 +7,7 @@ headcontent:
 image: /images/section_icons/deploy/enterprise.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: deploy-enterprise-edition
     parent: deploy
     weight: 638

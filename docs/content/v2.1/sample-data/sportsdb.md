@@ -5,7 +5,7 @@ linkTitle: SportsDB
 description: Use the SportsDB to query sports statistics while learning YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: sportsdb
     parent: sample-data
     weight: 2754

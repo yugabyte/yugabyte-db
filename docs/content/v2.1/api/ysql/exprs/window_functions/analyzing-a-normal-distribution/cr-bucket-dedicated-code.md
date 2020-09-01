@@ -5,7 +5,7 @@ headerTitle: cr_bucket_dedicated_code.sql
 description: Create the bucket() function using dedicated original code.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: cr-bucket-dedicated-code
     parent: analyzing-a-normal-distribution
     weight: 80

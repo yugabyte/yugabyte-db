@@ -6,7 +6,7 @@ headcontent: Creating roles
 image: /images/section_icons/secure/create-roles.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: create-roles
     parent: authorization
     weight: 717

@@ -5,7 +5,7 @@ linkTitle: 2. Create a local cluster
 description: Create a local YugabyteDB cluster on Linux in less than five minutes.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: quick-start
     name: 2. Create a local cluster
     identifier: create-local-cluster-2-linux

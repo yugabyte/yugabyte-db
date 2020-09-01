@@ -5,7 +5,7 @@ headerTitle: Check YugabyteDB processes
 description: How to check if your YugabyteDB processes are running
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: troubleshoot-nodes
     weight: 842
 isTocNested: true

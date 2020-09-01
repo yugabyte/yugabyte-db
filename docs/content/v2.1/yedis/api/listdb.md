@@ -4,7 +4,7 @@ linkTitle: LISTDB
 description: LISTDB
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-yedis
     weight: 2036
 isTocNested: true

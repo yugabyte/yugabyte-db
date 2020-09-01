@@ -6,7 +6,7 @@ summary: Grant a permission to a role
 description: Use the GRANT PERMISSION statement to grant a permission (or all the available permissions) to a role.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1281
 isTocNested: true

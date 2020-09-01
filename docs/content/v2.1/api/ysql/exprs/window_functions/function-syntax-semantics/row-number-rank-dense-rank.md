@@ -5,7 +5,7 @@ headerTitle: row_number(), rank() and dense_rank()
 description: The SQL window functions row_number(), rank() and dense_rank()
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: row-number-rank-dense-rank
     parent: function-syntax-semantics
     weight: 10

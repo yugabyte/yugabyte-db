@@ -7,7 +7,7 @@ headcontent: How role-based access control works
 image: /images/section_icons/secure/rbac-model.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: rbac-model-ycql
     parent: authorization
     weight: 716

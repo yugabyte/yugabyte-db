@@ -6,7 +6,7 @@ summary: Change the properties of a role
 description: Use the ALTER ROLE statement to change the properties of an existing role.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1210
 isTocNested: true

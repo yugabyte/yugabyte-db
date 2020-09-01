@@ -5,7 +5,7 @@ linkTitle: Docker
 description: Use Docker Compose to create and manage local YugabyteDB clusters.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: deploy
     name: Docker
     identifier: docker-1-compose

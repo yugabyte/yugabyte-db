@@ -5,7 +5,7 @@ headerTitle: do_assert_bucket_ok
 description: DO/assert block to test that bucket() gives the correct results
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: do-assert-bucket-ok
     parent: analyzing-a-normal-distribution
     weight: 90

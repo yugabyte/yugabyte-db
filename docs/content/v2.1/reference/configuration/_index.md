@@ -8,7 +8,7 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 section: REFERENCE
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: configuration
     weight: 2600
 ---

@@ -7,7 +7,7 @@ headcontent: Deploy YugabyteDB across multiple data centers (DC).
 image: /images/section_icons/explore/planet_scale.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: multi-dc
     parent: deploy
     weight: 631

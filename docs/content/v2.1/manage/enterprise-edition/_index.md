@@ -7,7 +7,7 @@ image: /images/section_icons/manage/enterprise.png
 headcontent: Use Yugabyte Platform's orchestration and monitoring to manage YugabyteDB universes.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: enterprise-edition
     parent: manage
     weight: 707

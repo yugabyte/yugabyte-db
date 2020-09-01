@@ -5,7 +5,7 @@ linkTitle: jsonb_to_recordset()
 description: Convert a homogeneous JSON array of JSON objects into the equivalent set of SQL records. Offers no practical advantage over the jsonb_populate_recordset() variant.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: jsonb-to-recordset
     parent: functions-operators
     weight: 240

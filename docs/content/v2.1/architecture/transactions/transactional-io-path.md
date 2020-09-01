@@ -5,7 +5,7 @@ linkTitle: Transactional IO path
 description: Learn how YugabyteDB manages the write path of a transaction.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: architecture-transactional-io-path
     parent: architecture-acid-transactions
     weight: 1156

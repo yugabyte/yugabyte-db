@@ -5,7 +5,7 @@ linkTitle: Create a read replica cluster
 description: Use Yugabyte Platform to create a read replica cluster.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: create-read-replica-cluster
     parent: enterprise-edition
     weight: 745

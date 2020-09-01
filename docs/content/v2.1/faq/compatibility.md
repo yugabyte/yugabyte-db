@@ -5,7 +5,7 @@ linkTitle: API compatibility FAQ
 description: Answers to common questions about YugabyteDB API compatibility.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: faq-api-compatibility
     parent: faq
     weight: 2730

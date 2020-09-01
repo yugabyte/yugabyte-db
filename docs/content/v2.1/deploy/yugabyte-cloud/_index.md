@@ -7,7 +7,7 @@ image: /images/section_icons/deploy/public-clouds.png
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: yugabyte-cloud
     parent: deploy
     weight: 639

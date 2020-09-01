@@ -4,7 +4,7 @@ linkTitle: ZSCORE
 description: ZSCORE
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-yedis
     weight: 2545
 isTocNested: true

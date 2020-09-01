@@ -5,7 +5,7 @@ linkTitle: Ruby
 description: Build a Ruby application that uses YCQL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: build-apps
     name: Ruby
     identifier: ruby-3

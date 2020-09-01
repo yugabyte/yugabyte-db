@@ -5,7 +5,7 @@ linkTitle: Python
 description: Build a Python application that uses YCQL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: build-apps
     name: Python
     identifier: python-3

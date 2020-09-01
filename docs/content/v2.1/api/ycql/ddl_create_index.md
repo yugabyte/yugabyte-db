@@ -6,7 +6,7 @@ summary: Create a new index on a table
 description: Use the CREATE INDEX statement to create a new index on a table.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1225
 isTocNested: true

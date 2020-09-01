@@ -5,7 +5,7 @@ headerTitle: array_agg() and unnest()
 description: array_agg() and unnest()
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: array-agg-unnest
     parent: array-functions-operators
 isTocNested: true

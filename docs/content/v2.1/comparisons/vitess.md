@@ -5,7 +5,7 @@ linkTitle: Vitess
 description: Compare Vitess with YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: comparisons
     weight: 1077
 isTocNested: false

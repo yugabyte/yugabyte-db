@@ -7,7 +7,7 @@ headcontent: Identify that your YSQL users are who they say they are.
 image: /images/section_icons/secure/authentication.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     name: Authentication
     identifier: ysql-authentication
     parent: authentication

@@ -6,7 +6,7 @@ description: Create and use colocated tables in a local YugabyteDB cluster on Li
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: colocated-tables-2-linux
     parent: explore
     weight: 245

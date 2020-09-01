@@ -7,7 +7,7 @@ summary: List of reserved names
 image: /images/section_icons/api/ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-reserved-names
     parent: api-ysql
     weight: 4600

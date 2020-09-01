@@ -5,7 +5,7 @@ linkTitle: FoundationDB
 description: Compare FoundationDB with YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: comparisons
     weight: 1100
 isTocNested: false

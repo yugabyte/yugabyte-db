@@ -4,7 +4,7 @@ linkTitle: PEXPIRE
 description: PEXPIRE
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-yedis
     weight: 2233
 isTocNested: true

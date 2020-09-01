@@ -5,7 +5,7 @@ linkTitle: C++
 description: Build a C++ application that uses the YSQL API.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: build-apps-cpp-1-ysql
     parent: build-apps
     weight: 556

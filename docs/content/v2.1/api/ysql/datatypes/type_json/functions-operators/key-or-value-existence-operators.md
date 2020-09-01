@@ -5,7 +5,7 @@ linkTitle: "? and ?| and ?& (key or value existence)"
 description: Test if JSONB values exist as keys in an object or as string value(s) in array.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: key-or-value-existence-operators
     parent: functions-operators
     weight: 17

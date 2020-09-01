@@ -5,7 +5,7 @@ linkTitle: Bulk export
 description: Bulk export for YCQL using cassandra-loader and cassandra-unloader.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: manage-bulk-export
     parent: manage-bulk-import-export
     weight: 707

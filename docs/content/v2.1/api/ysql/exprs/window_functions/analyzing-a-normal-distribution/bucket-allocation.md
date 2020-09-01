@@ -5,7 +5,7 @@ headerTitle: The bucket allocation scheme
 description: Explains the algorithm for assigning output values from percent_rank and cume_dist into equal with buckets.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: bucket-allocation
     parent: analyzing-a-normal-distribution
     weight: 10

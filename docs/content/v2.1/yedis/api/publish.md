@@ -4,7 +4,7 @@ linkTitle: PUBLISH
 description: PUBLISH
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-yedis
     weight: 2551
 isTocNested: true

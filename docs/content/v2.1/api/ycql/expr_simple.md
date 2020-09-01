@@ -6,7 +6,7 @@ summary: Columns, constants, and null.
 description: A simple expression can be a column, constant, or NULL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1331
 isTocNested: true

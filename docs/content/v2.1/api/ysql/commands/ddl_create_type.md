@@ -5,7 +5,7 @@ linkTitle: CREATE TYPE
 description: Use the CREATE TYPE statement to create a new user-defined type in a database.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-create-type
     parent: api-ysql-commands
 isTocNested: true

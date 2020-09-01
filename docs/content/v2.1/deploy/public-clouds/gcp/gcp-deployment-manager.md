@@ -5,7 +5,7 @@ linkTitle: Google Cloud Platform
 description: Use the GCP Deployment Manager to deploy a YugabyteDB cluster in Google Cloud Platform.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: deploy-in-gcp-1-deployment-manager
     parent: public-clouds
     weight: 640

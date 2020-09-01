@@ -7,7 +7,7 @@ headcontent: This section describes how to deploy YugabyteDB natively on Kuberne
 image: /images/section_icons/deploy/kubernetes.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: deploy-kubernetes
     parent: deploy
     weight: 620

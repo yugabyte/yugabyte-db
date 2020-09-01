@@ -4,7 +4,7 @@ linkTitle: SCARD
 description: SCARD
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-yedis
     weight: 2260
 isTocNested: true

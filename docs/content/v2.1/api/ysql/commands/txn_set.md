@@ -6,7 +6,7 @@ description: Use the `SET TRANSACTION` statement to set the current transaction 
 summary: SET TRANSACTION
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-txn-set
     parent: api-ysql-commands
 isTocNested: true

@@ -5,7 +5,7 @@ headerTitle: Output from running do_ntile(), do_percent_rank(), and do_cume_dist
 description: dp-results
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: dp-results
     parent: normal-distribution-analysis-reports
     weight: 20

@@ -5,7 +5,7 @@ linkTitle: Java
 description: Use Java to build a YugabyteDB application that interacts with YEDIS
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: client-drivers-yedis-java
     parent: develop-yedis
 isTocNested: true

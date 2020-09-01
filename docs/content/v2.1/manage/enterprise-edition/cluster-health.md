@@ -5,7 +5,7 @@ linkTitle: Configure health checks and alerts
 description: Use Yugabyte Platform to configure health checks and alerts for universes.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: cluster-health
     parent: enterprise-edition
     weight: 740

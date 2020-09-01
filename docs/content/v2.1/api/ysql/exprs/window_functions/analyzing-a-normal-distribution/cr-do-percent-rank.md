@@ -5,7 +5,7 @@ headerTitle: cr_do_percent_rank.sql
 description: Create the function that creates the histogram output.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: cr-do-percent-rank
     parent: analyzing-a-normal-distribution
     weight: 120

@@ -6,7 +6,7 @@ summary: Change values of a row in a table
 description: Use the UPDATE statement to update one or more column values for a row in table.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1320
 isTocNested: true

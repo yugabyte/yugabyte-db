@@ -8,7 +8,7 @@ headcontent:
 section: USER GUIDES
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: troubleshoot
     weight: 1000
 ---

@@ -5,7 +5,7 @@ linkTitle: 8. Strings and text
 description: Learn how to work with string and text data types in YSQL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: strings-and-text-1-ysql
     parent: learn
     weight: 570

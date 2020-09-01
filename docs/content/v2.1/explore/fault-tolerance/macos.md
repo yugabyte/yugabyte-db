@@ -5,7 +5,7 @@ linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on macOS.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: fault-tolerance-1-macos
     parent: explore
     weight: 215

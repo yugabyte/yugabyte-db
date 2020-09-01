@@ -4,7 +4,7 @@ linkTitle: ZREVRANGE
 description: ZREVRANGE
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-yedis
     weight: 2540
 isTocNested: true

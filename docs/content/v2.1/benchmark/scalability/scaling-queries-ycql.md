@@ -5,7 +5,7 @@ linkTitle: Scaling queries
 description: Benchmark scaling YCQL queries in YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: scaling-queries-2-ycql
     parent: scalability
     weight: 11

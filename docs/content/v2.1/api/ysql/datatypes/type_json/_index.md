@@ -7,7 +7,7 @@ description: Learn about YSQL support for JSON data types (json and jsonb) and t
 image: /images/section_icons/api/ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-datatypes-json
     parent: api-ysql-datatypes
 isTocNested: true
