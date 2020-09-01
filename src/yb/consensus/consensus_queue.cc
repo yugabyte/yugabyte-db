@@ -168,12 +168,13 @@ std::string MajorityReplicatedData::ToString() const {
 }
 
 std::string PeerMessageQueue::TrackedPeer::ToString() const {
-  return Format("{ peer: $0 is_new: $1 last_received: $2 next_index: $3 "
-                    "last_known_committed_idx: $4, is_last_exchange_successful: $5, "
-                    "needs_remote_bootstrap: $6 member_type: $7 num_sst_files: $8 }",
-                uuid, is_new, last_received, next_index, last_known_committed_idx,
-                is_last_exchange_successful, needs_remote_bootstrap,
-                RaftPeerPB::MemberType_Name(member_type), num_sst_files);
+  return Format(
+      "{ peer: $0 is_new: $1 last_received: $2 next_index: $3 last_known_committed_idx: $4 "
+      "is_last_exchange_successful: $5 needs_remote_bootstrap: $6 member_type: $7 "
+      "num_sst_files: $8 last_applied: $9 }",
+      uuid, is_new, last_received, next_index, last_known_committed_idx,
+      is_last_exchange_successful, needs_remote_bootstrap, RaftPeerPB::MemberType_Name(member_type),
+      num_sst_files, last_applied);
 }
 
 void PeerMessageQueue::TrackedPeer::ResetLeaderLeases() {
@@ -229,11 +230,13 @@ void PeerMessageQueue::Init(const OpIdPB& last_locally_replicated) {
 
 void PeerMessageQueue::SetLeaderMode(const OpIdPB& committed_op_id,
                                      int64_t current_term,
+                                     const OpId& last_applied_op_id,
                                      const RaftConfigPB& active_config) {
   LockGuard lock(queue_lock_);
   CHECK(committed_op_id.IsInitialized());
   queue_state_.current_term = current_term;
   queue_state_.committed_op_id = committed_op_id;
+  queue_state_.last_applied_op_id = last_applied_op_id;
   queue_state_.majority_replicated_op_id = committed_op_id;
   queue_state_.active_config.reset(new RaftConfigPB(active_config));
   CHECK(IsRaftConfigVoter(local_peer_uuid_, *queue_state_.active_config))
@@ -362,6 +365,7 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpIdPB& id,
       queue_state_.last_appended = id;
     }
     fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_op_id.index());
+    queue_state_.last_applied_op_id.ToPB(fake_response.mutable_status()->mutable_last_applied());
 
     if (queue_state_.mode != Mode::LEADER) {
       log_cache_.EvictThroughOp(id.index());
@@ -759,6 +763,19 @@ void PeerMessageQueue::UpdateAllReplicatedOpId(OpIdPB* result) {
   *result = new_op_id;
 }
 
+void PeerMessageQueue::UpdateAllAppliedOpId(OpId* result) {
+  OpId all_applied_op_id = OpId::Max();
+  for (const auto& peer : peers_map_) {
+    if (!peer.second->is_last_exchange_successful) {
+      return;
+    }
+    all_applied_op_id = std::min(all_applied_op_id, peer.second->last_applied);
+  }
+
+  CHECK_NE(OpId::Max(), all_applied_op_id);
+  *result = all_applied_op_id;
+}
+
 void PeerMessageQueue::UpdateAllNonLaggingReplicatedOpId(int32_t threshold) {
   OpIdPB new_op_id = MaximumOpId();
 
@@ -1073,6 +1090,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       DCHECK(status.has_last_committed_idx());
 
       peer->last_known_committed_idx = status.last_committed_idx();
+      peer->last_applied = OpId::FromPB(status.last_applied());
 
       // If the reported last-received op for the replica is in our local log, then resume sending
       // entries from that point onward. Otherwise, resume after the last op they received from us.
@@ -1175,6 +1193,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     }
 
     UpdateAllReplicatedOpId(&queue_state_.all_replicated_op_id);
+    UpdateAllAppliedOpId(&queue_state_.all_applied_op_id);
 
     auto evict_index = GetCDCConsumerOpIdToEvict().index;
 
@@ -1209,6 +1228,11 @@ OpIdPB PeerMessageQueue::GetAllReplicatedIndexForTests() const {
   return queue_state_.all_replicated_op_id;
 }
 
+OpId PeerMessageQueue::TEST_GetAllAppliedOpId() const {
+  LockGuard lock(queue_lock_);
+  return queue_state_.all_applied_op_id;
+}
+
 OpIdPB PeerMessageQueue::GetCommittedIndexForTests() const {
   LockGuard lock(queue_lock_);
   return queue_state_.committed_op_id;
@@ -1222,6 +1246,11 @@ OpIdPB PeerMessageQueue::GetMajorityReplicatedOpIdForTests() const {
 OpIdPB PeerMessageQueue::TEST_GetLastAppended() const {
   LockGuard lock(queue_lock_);
   return queue_state_.last_appended;
+}
+
+OpId PeerMessageQueue::TEST_GetLastAppliedOpId() const {
+  LockGuard lock(queue_lock_);
+  return queue_state_.last_applied_op_id;
 }
 
 void PeerMessageQueue::UpdateMetrics() {
@@ -1382,8 +1411,10 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
   // TODO move commit index advancement here so that the queue is not dependent on consensus at all,
   // but that requires a bit more work.
   OpIdPB new_committed_index;
+  OpId last_applied_op_id;
   for (PeerMessageQueueObserver* observer : copy) {
-    observer->UpdateMajorityReplicated(majority_replicated_data, &new_committed_index);
+    observer->UpdateMajorityReplicated(
+        majority_replicated_data, &new_committed_index, &last_applied_op_id);
   }
 
   {
@@ -1392,6 +1423,7 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
         new_committed_index.index() > queue_state_.committed_op_id.index()) {
       queue_state_.committed_op_id.CopyFrom(new_committed_index);
     }
+    queue_state_.last_applied_op_id.MakeAtLeast(last_applied_op_id);
   }
 }
 
@@ -1488,18 +1520,19 @@ string PeerMessageQueue::LogPrefixUnlocked() const {
 }
 
 string PeerMessageQueue::QueueState::ToString() const {
-  return Substitute("All replicated op: $0, Majority replicated op: $1, "
-      "Committed index: $2, Last appended: $3, Current term: $4, Majority size: $5, "
-      "State: $6, Mode: $7$8",
-      /* 0 */ OpIdToString(all_replicated_op_id),
-      /* 1 */ OpIdToString(majority_replicated_op_id),
-      /* 2 */ OpIdToString(committed_op_id),
-      /* 3 */ OpIdToString(last_appended),
-      /* 4 */ current_term,
-      /* 5 */ majority_size_,
-      /* 6 */ StateToStr(state),
-      /* 7 */ ModeToStr(mode),
-      /* 8 */ active_config ? ", active raft config: " + active_config->ShortDebugString() : "");
+  return Format(
+      "All replicated op: $0, Majority replicated op: $1, Committed index: $2, Last applied: $3, "
+      "Last appended: $4, Current term: $5, Majority size: $6, State: $7, Mode: $8$9",
+      /* 0 */ all_replicated_op_id,
+      /* 1 */ majority_replicated_op_id,
+      /* 2 */ committed_op_id,
+      /* 3 */ last_applied_op_id,
+      /* 4 */ last_appended,
+      /* 5 */ current_term,
+      /* 6 */ majority_size_,
+      /* 7 */ StateToStr(state),
+      /* 8 */ ModeToStr(mode),
+      /* 9 */ active_config ? ", active raft config: " + active_config->ShortDebugString() : "");
 }
 
 size_t PeerMessageQueue::LogCacheSize() {

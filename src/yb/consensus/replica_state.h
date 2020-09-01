@@ -277,10 +277,12 @@ class ReplicaState {
   // Marks ReplicaOperations up to 'id' as majority replicated, meaning the
   // transaction may Apply() (immediately if Prepare() has completed or when Prepare()
   // completes, if not).
+  // Sets last_applied_op_id to the ID of last operation applied.
   //
   // If this advanced the committed index, sets *committed_op_id_changed to true.
   CHECKED_STATUS UpdateMajorityReplicatedUnlocked(
-      const OpIdPB& majority_replicated, OpIdPB* committed_op_id, bool* committed_op_id_changed);
+      const OpIdPB& majority_replicated, OpIdPB* committed_op_id, bool* committed_op_id_changed,
+      OpId* last_applied_op_id);
 
   // Advances the committed index.
   // This is a no-op if the committed index has not changed.
@@ -296,6 +298,13 @@ class ReplicaState {
   //
   // This must be called under a lock.
   const yb::OpId& GetCommittedOpIdUnlocked() const;
+
+  // Returns the watermark below which all operations are known to be applied according to
+  // consensus.
+  const yb::OpId& GetLastAppliedOpIdUnlocked() const {
+    // See comment for last_committed_op_id_ for why we return committed op ID here.
+    return GetCommittedOpIdUnlocked();
+  }
 
   // Returns the ID of the split operation requesting to split this Raft group if it has been added
   // to Raft log and uninitialized OpId otherwise.
@@ -480,8 +489,9 @@ class ReplicaState {
   // involved in resetting this every time a new node becomes leader.
   yb::OpId last_received_op_id_current_leader_;
 
-  // The id of the Apply that was last triggered when the last message from the leader
-  // was received. Initialized to MinimumOpId().
+  // The ID of the operation that was last committed. Initialized to MinimumOpId().
+  // NOTE: due to implementation details at this and lower layers all operations up to
+  // last_committed_op_id_ are guaranteed to be already applied.
   yb::OpId last_committed_op_id_;
 
   // The id of the split operation requesting to split this tablet. This is set when split

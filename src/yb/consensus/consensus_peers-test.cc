@@ -120,6 +120,7 @@ class ConsensusPeersTest : public YBTest {
     message_queue_->Init(MinimumOpId());
     message_queue_->SetLeaderMode(MinimumOpId(),
                                   MinimumOpId().term(),
+                                  OpId::Min(),
                                   BuildRaftConfigPBForTests(3));
   }
 
@@ -149,18 +150,6 @@ class ConsensusPeersTest : public YBTest {
 
   void CheckLastRemoteEntry(DelayablePeerProxy<NoOpTestPeerProxy>* proxy, int term, int index) {
     ASSERT_EQ(yb::OpId::FromPB(proxy->proxy()->last_received()), yb::OpId(term, index));
-  }
-
-  // Registers a callback triggered when the op with the provided term and index
-  // is committed in the test consensus impl.
-  // This must be called _before_ the operation is committed.
-  void WaitForMajorityReplicatedIndex(int index, MonoDelta timeout = MonoDelta(30s)) {
-    ASSERT_OK(WaitFor(
-        [&]() {
-          return consensus_->IsMajorityReplicated(index);
-        },
-        timeout,
-        Format("waiting for index $0 to be replicated", index)));
   }
 
  protected:
@@ -207,7 +196,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeer) {
 
   // Now wait on the status of the last operation. This will complete once the peer has logged all
   // requests.
-  WaitForMajorityReplicatedIndex(20);
+  consensus_->WaitForMajorityReplicatedIndex(20);
   // Verify that the replicated watermark corresponds to the last replicated message.
   CheckLastRemoteEntry(proxy, 2, 20);
 }
@@ -245,7 +234,7 @@ TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
   ASSERT_OK(remote_peer2->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
 
   // Replication should time out, because of the delayed response.
-  WaitForMajorityReplicatedIndex(first.index());
+  consensus_->WaitForMajorityReplicatedIndex(first.index());
   const auto elapsed_time = MonoTime::Now() - start_time;
   LOG(INFO) << "Replication elapsed time: " << elapsed_time;
   // Replication should take at least as much time as it takes the local peer to append, because
@@ -283,7 +272,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
   // Now wait for the message to be replicated, this should succeed since
   // majority = 2 and only one peer was delayed. The majority is made up
   // of remote-peer1 and the local log.
-  WaitForMajorityReplicatedIndex(first.index());
+  consensus_->WaitForMajorityReplicatedIndex(first.index());
 
   SCOPED_TRACE(Format(
       "Written to log locally: $0, Received by peer1: {$1}, by peer2: {$2}",
@@ -314,7 +303,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
   ASSERT_OK(remote_peer1->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
   // We should now be able to wait for it to replicate, since two peers (a majority)
   // have replicated the message.
-  WaitForMajorityReplicatedIndex(2);
+  consensus_->WaitForMajorityReplicatedIndex(2);
 }
 
 // Regression test for KUDU-699: even if a peer isn't making progress,
@@ -379,7 +368,7 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
 
   // Now wait for the message to be replicated, this should succeed since the local (leader) peer
   // always acks and the follower also acked this time.
-  WaitForMajorityReplicatedIndex(1);
+  consensus_->WaitForMajorityReplicatedIndex(1);
   LOG(INFO) << "Message replicated, setting error response";
 
   // Set up the peer to respond with an error.
