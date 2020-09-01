@@ -2,8 +2,9 @@
 title: SETEX
 linkTitle: SETEX
 description: SETEX
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2271
 isTocNested: true

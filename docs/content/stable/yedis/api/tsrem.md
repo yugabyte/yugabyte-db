@@ -2,6 +2,7 @@
 title: TSREM
 linkTitle: TSREM
 description: TSREM
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

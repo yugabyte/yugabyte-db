@@ -5,8 +5,9 @@ description: Yugabyte Cloud
 headcontent: Use Yugabyte Cloud to build and deploy YugabyteDB clusters.
 image: /images/section_icons/deploy/public-clouds.png
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: yugabyte-cloud
     parent: deploy
     weight: 639

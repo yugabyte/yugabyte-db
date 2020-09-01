@@ -2,8 +2,9 @@
 title: HSET
 linkTitle: HSET
 description: HSET
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2180
 isTocNested: true

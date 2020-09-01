@@ -3,6 +3,7 @@ title: currval() function [YSQL]
 headerTitle: currval()
 linkTitle: currval()
 description: Returns the last value returned by the nextval() function for the specified sequence in the current session.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-exprs-currval

@@ -3,8 +3,9 @@ title: CREATE DATABASE statement [YSQL]
 headerTitle: CREATE DATABASE
 linkTitle: CREATE DATABASE
 description: Use the CREATE DATABASE statement to create a database that functions as a grouping mechanism for database objects, such as tables.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-db
     parent: api-ysql-commands
 isTocNested: true

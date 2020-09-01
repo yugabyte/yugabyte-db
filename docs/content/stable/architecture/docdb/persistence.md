@@ -7,6 +7,7 @@ aliases:
   - /stable/architecture/docdb/persistence/
   - /stable/architecture/concepts/persistence/
   - /stable/architecture/concepts/docdb/persistence/
+block_indexing: true
 menu:
   stable:
     identifier: docdb-persistence

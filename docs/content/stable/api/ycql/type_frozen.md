@@ -3,6 +3,7 @@ title: FROZEN data type [YCQL]
 headerTitle: FROZEN data type
 linkTitle: FROZEN
 description: Use the FROZEN data type to specify columns of binary strings that result from serializing collections, tuples, or user-defined types.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

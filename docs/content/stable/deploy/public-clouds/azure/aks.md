@@ -5,6 +5,7 @@ linkTitle: Microsoft Azure
 description: Deploy on Microsoft Azure Kubernetes Service (AKS)
 aliases:
   - /deploy/public-clouds/azure/
+block_indexing: true
 menu:
   stable:
     identifier: deploy-in-azure-2-aks

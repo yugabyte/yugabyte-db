@@ -5,6 +5,7 @@ linkTitle: 4. Configure cloud providers
 description: Configure Google Cloud Platform (GCP) for YugabyteDB deployments using the YugabyteDB Admin Console
 aliases:
   - /stable/deploy/enterprise-edition/configure-cloud-providers/gcp
+block_indexing: true
 menu:
   stable:
     identifier: configure-cloud-providers-2-gcp

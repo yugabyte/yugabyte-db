@@ -3,8 +3,9 @@ title: ABORT statement [YSQL]
 headerTitle: ABORT
 linkTitle: ABORT
 description: Use the ABORT statement to roll back the current transaction and discards all updates by the transaction.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-txn-abort
     parent: api-ysql-commands
 isTocNested: true

@@ -8,6 +8,7 @@ aliases:
   - /stable/develop/client-drivers/java/
   - /stable/develop/build-apps/java/
   - /stable/quick-start/build-apps/java/
+block_indexing: true
 menu:
   stable:
     parent: build-apps

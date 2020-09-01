@@ -4,6 +4,7 @@ linkTitle: Analyzing a normal distribution
 headerTitle: Analyzing a normal distribution with percent_rank(), cume_dist(), and ntile()
 description: Compare and contrast the window functions percent_rank(), cume_dist(), and ntile() on large sets of normally distributed values.
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
   stable:
     identifier: analyzing-a-normal-distribution

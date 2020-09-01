@@ -3,8 +3,9 @@ title: Tablet splitting
 headerTitle: Tablet splitting
 linkTitle: Tablet splitting
 description: Learn how YugabyteDB splits tablets.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: docdb-tablet-splitting
     parent: architecture-docdb-sharding
     weight: 1143

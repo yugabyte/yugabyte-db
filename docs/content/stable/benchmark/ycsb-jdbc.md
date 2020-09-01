@@ -3,6 +3,7 @@ title: Benchmark YSQL performance with YCSB
 headerTitle: YCSB
 linkTitle: YCSB
 description: Benchmark YSQL performance with YCSB using the standard JDBC binding.
+block_indexing: true
 menu:
   stable:
     identifier: ycsb-1-ysql

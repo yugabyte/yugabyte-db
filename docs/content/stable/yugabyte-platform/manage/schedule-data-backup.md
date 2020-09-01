@@ -6,6 +6,7 @@ description: Use Yugabyte Platform to create a scheduled backup of a universe or
 aliases:
   - /stable/manage/enterprise-edition/schedule-backups/
   - /stable/manage/enterprise-edition/schedule-data-backup/
+block_indexing: true
 menu:
   stable:
     identifier: schedule-data-backup

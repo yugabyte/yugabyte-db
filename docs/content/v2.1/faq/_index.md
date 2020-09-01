@@ -6,8 +6,9 @@ description: FAQs
 image: /images/section_icons/index/faq.png
 headcontent:
 section: FAQ
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: faq
     weight: 2730
 ---

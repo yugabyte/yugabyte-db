@@ -5,6 +5,7 @@ linkTitle: Linear scalability
 description: Learn how to scale a local 3-node YugabyteDB cluster (on Kubernetes) while a workload is running.
 aliases:
   - /stable/explore/linear-scalability-kubernetes/
+block_indexing: true
 menu:
   stable:
     identifier: linear-scalability-4-kubernetes

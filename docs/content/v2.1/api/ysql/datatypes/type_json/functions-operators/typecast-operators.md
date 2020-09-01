@@ -3,8 +3,9 @@ title: "::jsonb and ::json and ::text (JSON typecast)"
 headerTitle: "::jsonb and ::json and ::text (typecast)"
 linkTitle: "::jsonb, ::json, ::text (typecast)"
 description: Typecast between any pair of text, json, and jsonb values.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: typecast-operators
     parent: functions-operators
     weight: 10

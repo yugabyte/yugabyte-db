@@ -2,8 +2,9 @@
 title: HVALS
 linkTitle: HVALS
 description: HVALS
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2200
 isTocNested: true

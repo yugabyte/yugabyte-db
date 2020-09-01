@@ -3,8 +3,9 @@ title: CREATE POLICY statement [YSQL]
 headerTitle: CREATE POLICY
 linkTitle: CREATE POLICY
 description: Use the CREATE POLICY statement to create a new row level security policy for a table to select, insert, update, or delete rows that match the relevant policy expression.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-policy
     parent: api-ysql-commands
 isTocNested: true

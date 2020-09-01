@@ -5,6 +5,7 @@ description: Cannot connect to YEDIS API
 aliases:
   - /troubleshoot/cluster/connect-redis/
   - /stable/troubleshoot/cluster/connect-yedis/
+block_indexing: true
 menu:
   stable:
     parent: troubleshoot-cluster

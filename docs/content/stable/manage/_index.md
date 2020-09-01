@@ -8,6 +8,7 @@ headcontent:
 aliases:
   - /stable/manage/
 section: YUGABYTEDB CORE
+block_indexing: true
 menu:
   stable:
     identifier: manage

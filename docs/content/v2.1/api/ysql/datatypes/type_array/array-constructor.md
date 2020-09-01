@@ -3,8 +3,9 @@ title: The array[] value constructor
 linkTitle: array[] constructor
 headerTitle: The array[] value constructor
 description: The array[] value constructor
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: array-constructor
     parent: api-ysql-datatypes-array
     weight: 10

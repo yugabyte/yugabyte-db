@@ -3,8 +3,9 @@ title: Build a Go application that uses YCQL
 headerTitle: Build a Go application
 linkTitle: Go
 description: Build a Go application that uses YCQL.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: build-apps
     name: Go
     identifier: go-3

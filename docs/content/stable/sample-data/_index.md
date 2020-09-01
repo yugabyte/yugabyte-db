@@ -4,6 +4,7 @@ linkTitle: Sample datasets
 description: Sample datasets
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 section: REFERENCE
+block_indexing: true
 menu:
   stable:
    identifier: sample-data

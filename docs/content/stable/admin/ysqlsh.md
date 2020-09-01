@@ -6,6 +6,7 @@ description: Use the YSQL shell (ysqlsh) to interact with YugabyteDB.
 aliases:
   - /develop/tools/ysqlsh/
   - /stable/develop/tools/ysqlsh/
+block_indexing: true
 menu:
   stable:
     identifier: ysqlsh

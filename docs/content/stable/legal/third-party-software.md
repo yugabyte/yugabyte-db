@@ -5,6 +5,7 @@ linkTitle: Third party software
 description: Learn about the third party software contained in YugabyteDB.
 aliases:
  - /stable/
+block_indexing: true
 menu:
   stable:
     parent: legal

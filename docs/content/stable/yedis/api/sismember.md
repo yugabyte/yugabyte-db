@@ -2,6 +2,7 @@
 title: SISMEMBER
 linkTitle: SISMEMBER
 description: SISMEMBER
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

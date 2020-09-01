@@ -3,8 +3,9 @@ title: DROP OPERATOR CLASS statement [YSQL]
 headerTitle: DROP OPERATOR CLASS
 linkTitle: DROP OPERATOR CLASS
 description: Use the DROP OPERATOR CLASS statement to remove an operator class.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-drop-operator-class
     parent: api-ysql-commands
 isTocNested: true

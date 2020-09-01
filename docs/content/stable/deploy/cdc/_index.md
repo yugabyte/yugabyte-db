@@ -6,6 +6,7 @@ description: Use change data capture (CDC) to asynchronously stream data changes
 headcontent: Asynchronously stream data changes from YugabyteDB to external systems.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   stable:
     identifier: cdc

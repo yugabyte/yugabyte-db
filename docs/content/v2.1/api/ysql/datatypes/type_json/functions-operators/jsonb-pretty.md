@@ -3,8 +3,9 @@ title: jsonb_pretty()
 headerTitle: jsonb_pretty()
 linkTitle: jsonb_pretty()
 description: Format the text representation of the JSON value that the input jsonb actual argument represents, using whitespace, to make it more human-readable.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: jsonb-pretty
     parent: functions-operators
     weight: 200

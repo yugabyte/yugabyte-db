@@ -8,6 +8,7 @@ image: /images/section_icons/deploy/enterprise.png
 aliases:
   - /stable/deploy/enterprise-edition/
 section: YUGABYTE PLATFORM
+block_indexing: true
 menu:
   stable:
     identifier: deploy-yugabyte-platform

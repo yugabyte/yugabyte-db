@@ -4,8 +4,9 @@ headerTitle: Default ports
 linkTitle: Default ports
 description: Default ports for YugabyteDB including client APIs, RPC communication, and monitoring.
 section: REFERENCE
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: default-ports
     parent: configuration
     weight: 2740

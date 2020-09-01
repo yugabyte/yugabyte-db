@@ -4,6 +4,7 @@ linkTitle: Metabase
 description: Metabase
 aliases:
   - /develop/ecosystem-integrations/metabase/
+block_indexing: true
 menu:
   stable:
     identifier: metabase

@@ -4,8 +4,9 @@ headerTitle: UPDATE
 linkTitle: UPDATE
 summary: Change values of a row in a table
 description: Use the UPDATE statement to update one or more column values for a row in table.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-cassandra
     weight: 1320
 isTocNested: true

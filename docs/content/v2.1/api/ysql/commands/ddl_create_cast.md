@@ -3,8 +3,9 @@ title: CREATE CAST statement [YSQL]
 headerTitle: CREATE CAST
 linkTitle: CREATE CAST
 description: Use the CREATE CAST statement to create a new cast.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-cast
     parent: api-ysql-commands
 isTocNested: true

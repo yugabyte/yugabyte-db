@@ -5,8 +5,9 @@ linkTitle: Yugabyte Platform
 description: Use Yugabyte Platform to deploy and manage mission-critical YugabyteDB clusters.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: deploy-enterprise-edition
     parent: deploy
     weight: 638

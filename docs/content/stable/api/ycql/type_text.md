@@ -3,6 +3,7 @@ title: TEXT data type [YCQL]
 headerTitle: TEXT type
 linkTitle: TEXT
 description: Use the TEXT data type to specify data of a string of Unicode characters.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

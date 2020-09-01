@@ -8,6 +8,7 @@ headcontent:
 aliases:
   - /faq/
 section: FAQ
+block_indexing: true
 menu:
   stable:
     identifier: faq

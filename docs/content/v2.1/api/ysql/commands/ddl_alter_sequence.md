@@ -3,8 +3,9 @@ title: ALTER SEQUENCE statement [YSQL]
 headerTitle: ALTER SEQUENCE
 linkTitle: ALTER SEQUENCE
 description: Use the ALTER SEQUENCE statement to change the definition of an existing sequence in the current schema.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-alter-sequence
     parent: api-ysql-commands
 isTocNested: true

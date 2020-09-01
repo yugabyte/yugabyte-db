@@ -5,6 +5,7 @@ linkTitle: Scaling queries
 description: Benchmark scaling YSQL queries in YugabyteDB
 aliases:
   - /stable/benchmark/scalability/scaling-queries/
+block_indexing: true
 menu:
   stable:
     identifier: scaling-queries-1-ysql

@@ -3,8 +3,9 @@ title: DROP AGGREGATE statement [YSQL]
 headerTitle: DROP AGGREGATE
 linkTitle: DROP AGGREGATE
 description: Use the DROP AGGREGATE statement to remove an aggregate.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-drop-aggregate
     parent: api-ysql-commands
 isTocNested: true

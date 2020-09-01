@@ -2,8 +2,9 @@
 title: INCRBY
 linkTitle: INCRBY
 description: INCRBY
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2215
 isTocNested: true

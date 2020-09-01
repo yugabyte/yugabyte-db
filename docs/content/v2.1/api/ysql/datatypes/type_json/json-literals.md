@@ -3,8 +3,9 @@ title: JSON literals
 headerTitle: JSON literals
 linkTitle: JSON literals
 description: JSON literals.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: json-literals
     parent: api-ysql-datatypes-json
     weight: 10

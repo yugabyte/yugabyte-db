@@ -3,8 +3,9 @@ title: CREATE USER statement [YSQL]
 headerTitle: CREATE USER
 linkTitle: CREATE USER
 description: Use the CREATE USER statement to create a user. The CREATE USER statement is an alias for CREATE ROLE, but creates a role that has LOGIN privileges by default.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-create-user
     parent: api-ysql-commands
 isTocNested: true

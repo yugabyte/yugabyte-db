@@ -4,8 +4,9 @@ headerTitle: INET type
 linkTitle: INET
 summary: IP Address String
 description: Use the INET data type to specify columns for data of IP addresses.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-cassandra
     weight: 1410
 isTocNested: true

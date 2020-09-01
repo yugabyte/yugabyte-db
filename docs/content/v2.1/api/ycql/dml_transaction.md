@@ -4,8 +4,9 @@ headerTitle: TRANSACTION
 linkTitle: TRANSACTION
 summary: Make changes to multiple rows in a transaction
 description: Use the TRANSACTION statement block to make changes to multiple rows in one or more tables in a distributed ACID transaction.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-cassandra
     weight: 1330
 isTocNested: true

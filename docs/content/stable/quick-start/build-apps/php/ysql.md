@@ -7,6 +7,7 @@ aliases:
   - /develop/client-drivers/php/
   - /stable/develop/client-drivers/php/
   - /stable/quick-start/build-apps/php/
+block_indexing: true
 menu:
   stable:
     identifier: build-apps-php-1-ysql

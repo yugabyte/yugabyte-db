@@ -2,6 +2,7 @@
 title: TSGET
 linkTitle: TSGET
 description: TSGET
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

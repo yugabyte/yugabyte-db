@@ -3,6 +3,7 @@ title: yugabyted reference
 headerTitle: yugabyted
 linkTitle: yugabyted
 description: Use yugabyted to run single-node YugabyteDB clusters.
+block_indexing: true
 menu:
   stable:
     identifier: yugabyted

@@ -5,6 +5,7 @@ linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on Kubernetes in less than five minutes.
 aliases:
   - /quick-start/install/
+block_indexing: true
 menu:
   stable:
     parent: quick-start

@@ -7,6 +7,7 @@ aliases:
   - /develop/client-drivers/cpp/
   - /stable/develop/client-drivers/cpp/
   - /stable/quick-start/build-apps/cpp/
+block_indexing: true
 menu:
   stable:
     identifier: build-apps-cpp-1-ysql

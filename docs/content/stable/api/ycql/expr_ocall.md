@@ -3,6 +3,7 @@ title: Operators [YCQL]
 headerTitle: YCQL operators
 linkTitle: Operators
 description: Combine multiple expressions using YCQL operators supported in YugabyteDB.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

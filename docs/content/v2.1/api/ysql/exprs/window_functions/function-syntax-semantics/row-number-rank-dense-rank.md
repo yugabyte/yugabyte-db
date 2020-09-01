@@ -3,8 +3,9 @@ title: row_number(), rank() and dense_rank()
 linkTitle: row_number(), rank() and dense_rank()
 headerTitle: row_number(), rank() and dense_rank()
 description: The SQL window functions row_number(), rank() and dense_rank()
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: row-number-rank-dense-rank
     parent: function-syntax-semantics
     weight: 10

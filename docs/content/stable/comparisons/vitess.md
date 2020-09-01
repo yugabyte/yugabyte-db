@@ -5,6 +5,7 @@ linkTitle: Vitess
 description: Compare Vitess with YugabyteDB.
 aliases:
   - /comparisons/vitess/
+block_indexing: true
 menu:
   stable:
     parent: comparisons

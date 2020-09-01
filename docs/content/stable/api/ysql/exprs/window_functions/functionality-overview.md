@@ -3,6 +3,7 @@ title: Function invocation using the OVER clause
 linkTitle: Informal functionality overview
 headerTitle: Informal overview of function invocation using the OVER clause
 description: This section provides an informal introduction to the invocation of window functions and aggregate functions using the OVER clause.
+block_indexing: true
 menu:
   stable:
     identifier: functionality-overview

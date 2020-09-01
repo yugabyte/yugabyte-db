@@ -3,8 +3,9 @@ title: Numeric data types [YSQL]
 headerTitle: Numeric data types
 linkTitle: Numeric
 description: YSQL numeric data types represent integers, floating-point numbers, and fixed-point numbers of different value ranges and precisions.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-datatypes-numeric
     parent: api-ysql-datatypes
 isTocNested: true

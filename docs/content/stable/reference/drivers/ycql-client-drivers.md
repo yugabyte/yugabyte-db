@@ -3,6 +3,7 @@ title: Client drivers for YCQL API
 headerTitle: Client drivers for YCQL
 linkTitle: Client drivers for YCQL
 description: Lists the client drivers that you can use to build and access YCQL applications. 
+block_indexing: true
 menu:
   stable:
     identifier: ycql-client-libraries

@@ -2,6 +2,7 @@
 title: HSET
 linkTitle: HSET
 description: HSET
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

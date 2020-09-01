@@ -7,6 +7,7 @@ aliases:
   - /stable/architecture/docdb/replication/
   - /stable/architecture/concepts/replication/
   - /stable/architecture/concepts/docdb/replication/
+block_indexing: true
 menu:
   stable:
     identifier: architecture-docdb-replication-default

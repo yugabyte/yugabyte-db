@@ -2,6 +2,7 @@
 title: ZRANGEBYSCORE
 linkTitle: ZRANGEBYSCORE
 description: ZRANGEBYSCORE
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

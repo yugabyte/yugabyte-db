@@ -3,8 +3,9 @@ title: COMMENT statement [YSQL]
 headerTitle: COMMENT
 linkTitle: COMMENT
 description: Use the COMMENT statement to set, update, or remove a comment on a database object.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-comment
     parent: api-ysql-commands
 isTocNested: true

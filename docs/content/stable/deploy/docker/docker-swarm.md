@@ -7,6 +7,7 @@ aliases:
  - /deploy/docker-swarm/
  - /stable/deploy/docker-swarm/
  - /stable/deploy/docker/
+block_indexing: true
 menu:
   stable:
     parent: deploy

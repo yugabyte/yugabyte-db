@@ -2,8 +2,9 @@
 title: PEXPIREAT
 linkTitle: PEXPIREAT
 description: PEXPIREAT
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2234
 isTocNested: true

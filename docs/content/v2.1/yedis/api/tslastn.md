@@ -2,8 +2,9 @@
 title: TSLASTN
 linkTitle: TSLASTN
 description: TSLASTN
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2430
 isTocNested: true

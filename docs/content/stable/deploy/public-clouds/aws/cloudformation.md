@@ -5,6 +5,7 @@ linkTitle: Amazon Web Services
 description: Deploy a YugabyteDB cluster on Amazon Web Services using AWS CloudFormation
 aliases:
   - /stable/deploy/public-clouds/aws/
+block_indexing: true
 menu:
   stable:
     identifier: deploy-in-aws-1-cloudformation

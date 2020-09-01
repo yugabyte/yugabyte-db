@@ -3,8 +3,9 @@ title: Compare Apache HBase with YugabyteDB
 headerTitle: Apache HBase
 linkTitle: Apache HBase
 description: Compare Apache HBase with YugabyteDB.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: comparisons
     weight: 1130
 isTocNested: false

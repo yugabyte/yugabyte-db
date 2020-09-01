@@ -7,6 +7,7 @@ aliases:
   - /stable/deploy/enterprise-edition/admin-console/
   - /stable/deploy/enterprise-edition/install-admin-console/
   - /stable/yugabyte-platform/deploy/install-admin-console/
+block_indexing: true
 menu:
   stable:
     identifier: install-yp-1-default

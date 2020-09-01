@@ -8,6 +8,7 @@ image: /images/section_icons/quick_start/install.png
 aliases:
   - /stable/releases/
 section: RELEASES
+block_indexing: true
 menu:
   stable:
     identifier: whats-new

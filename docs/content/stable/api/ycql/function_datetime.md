@@ -5,6 +5,7 @@ title: Date and time functions [YCQL]
 headerTitle: Date and time functions
 linkTitle: Date and time 
 description: Use date and time functions to work on date and time data types.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

@@ -3,8 +3,9 @@ title: E-commerce sample application
 headerTitle: E-Commerce app
 linkTitle: E-Commerce app
 description: Run an e-commerce sample application built on YugabyteDB.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: ecommerce-app
     parent: realworld-apps
     weight: 582

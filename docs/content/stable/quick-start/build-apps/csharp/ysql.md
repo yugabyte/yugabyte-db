@@ -7,6 +7,7 @@ aliases:
   - /develop/client-drivers/csharp/
   - /stable/develop/client-drivers/csharp/
   - /stable/quick-start/build-apps/csharp/
+block_indexing: true
 menu:
   stable:
     identifier: build-apps-csharp-1-ysql

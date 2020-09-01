@@ -5,6 +5,7 @@ linkTitle: 5. Verify deployment
 description: Verify deployment of your YugabyteDB cluster
 aliases:
   - /deploy/manual-deployment/verify-deployment
+block_indexing: true
 menu:
   stable:
     identifier: deploy-manual-deployment-verify-deployment

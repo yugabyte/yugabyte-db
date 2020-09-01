@@ -4,6 +4,7 @@ linkTitle: Window functions
 headerTitle: Window functions
 description: This section covers the syntax and semantics for all supported window functions in YSQL.
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
   stable:
     identifier: window-functions

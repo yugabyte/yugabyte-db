@@ -3,6 +3,7 @@ title: Deploy on Google Kubernetes Engine (GKE) using Helm Chart
 headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Deploy a multi-zonal or regional Google Kubernetes Engine (GKE) using Helm Chart.
+block_indexing: true
 menu:
   stable:
     parent: deploy-kubernetes-mz

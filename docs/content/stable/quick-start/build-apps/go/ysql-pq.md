@@ -8,6 +8,7 @@ aliases:
   - /stable/develop/client-drivers/go/
   - /stable/develop/build-apps/go/
   - /stable/quick-start/build-apps/go/
+block_indexing: true
 menu:
   stable:
     parent: build-apps

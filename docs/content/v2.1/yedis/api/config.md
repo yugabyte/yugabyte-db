@@ -2,8 +2,9 @@
 title: CONFIG
 linkTitle: CONFIG
 description: CONFIG
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2030
 isTocNested: true

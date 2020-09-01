@@ -4,8 +4,9 @@ headerTitle: Connect to clusters
 linkTitle: Connect to clusters
 description: Connect to clusters in Yugabyte Cloud using locally installed YugabyteDB clients.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: connect-to-clusters
     parent: yugabyte-cloud
     weight: 645

@@ -3,6 +3,7 @@ title: INET data type [YCQL]
 headerTitle: INET type
 linkTitle: INET
 description: Use the INET data type to specify columns for data of IP addresses.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

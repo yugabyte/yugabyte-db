@@ -3,8 +3,9 @@ title: "-> and ->> and #> and #>> (JSON subvalue operators)"
 headerTitle: "-> and ->> and #> and #>> (JSON subvalue operators)"
 linkTitle: "->, ->>, #>, #>> (JSON subvalues)"
 description: Read a JSON value at a specified path.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: subvalue-operators
     parent: functions-operators
     weight: 12

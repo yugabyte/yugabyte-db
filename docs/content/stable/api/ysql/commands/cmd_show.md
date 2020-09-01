@@ -3,6 +3,7 @@ title: SHOW statement [YSQL]
 headerTitle: SHOW
 linkTitle: SHOW
 description: Use the SHOW statement to display the value of a run-time parameter.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-show

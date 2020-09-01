@@ -3,8 +3,9 @@ title: Transaction isolation levels
 headerTitle: Transaction isolation levels
 linkTitle: Transaction isolation levels
 description: Learn how YugabyteDB supports two transaction isolation levels, Snapshot Isolation and Serializable.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: architecture-isolation-levels
     parent: architecture-acid-transactions
     weight: 1152

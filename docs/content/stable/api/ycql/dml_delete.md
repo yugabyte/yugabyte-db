@@ -3,6 +3,7 @@ title: DELETE statement [YCQL]
 headerTitle: DELETE
 linkTitle: DELETE
 description: Use the DELETE statement to remove rows from a specified table that meet a given condition. 
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

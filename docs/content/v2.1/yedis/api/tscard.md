@@ -2,8 +2,9 @@
 title: TSCARD
 linkTitle: TSCARD
 description: TSCARD
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2420
 isTocNested: true

@@ -3,6 +3,7 @@ title: cr_bucket_using_width_bucket.sql
 linkTitle: cr_bucket_using_width_bucket.sql
 headerTitle: cr_bucket_using_width_bucket.sql
 description: cr_bucket_using_width_bucket.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
+block_indexing: true
 menu:
   stable:
     identifier: cr-bucket-using-width-bucket

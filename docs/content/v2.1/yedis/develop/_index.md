@@ -4,8 +4,9 @@ linkTitle: Develop
 description: Develop applications on YEDIS
 headcontent: 
 image: /images/section_icons/index/develop.png
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: develop-yedis
     parent: yedis
     weight: 2900
