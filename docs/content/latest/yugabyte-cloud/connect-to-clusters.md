@@ -1,8 +1,8 @@
 ---
-title: Connect clients to YugabyteDB clusters
-headerTitle: Connect to clusters
+title: Connect clients to Yugabyte Cloud clusters
+headerTitle: Connect to Yugabyte Cloud clusters
 linkTitle: Connect to clusters
-description: Connect to clusters in Yugabyte Cloud.
+description: Connect to clusters in Yugabyte Cloud using Yugabyte Cloud shells, remote clients, and third party clients.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /latest/deploy/yugabyte-cloud/connect-to-clusters/
@@ -26,7 +26,7 @@ Connect to your YugabyteDB clusters in Yugabyte Cloud using Yugabyte Cloud shell
 
 ## YSQL shell (`ysqlsh`)
 
-### Use the Yugabyte Cloud YSQL shell
+### Use the YSQL cloud shell
 
 To access the YSQL cloud shell, follow these steps:
 
