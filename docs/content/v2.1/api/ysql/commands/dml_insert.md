@@ -5,7 +5,7 @@ linkTitle: INSERT
 description: Use the INSERT statement to add one or more rows to the specified table.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-insert
     parent: api-ysql-commands
 isTocNested: true

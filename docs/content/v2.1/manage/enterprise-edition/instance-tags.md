@@ -5,7 +5,7 @@ linkTitle: Create and edit instance tags
 description: Use Yugabyte Platform to create and edit instance tags.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: create-edit-instance-tags
     parent: enterprise-edition
     weight: 742

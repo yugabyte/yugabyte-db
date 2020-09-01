@@ -5,7 +5,7 @@ headerTitle: array_to_string()
 description: array_to_string()
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: array-to-string
     parent: array-functions-operators
 isTocNested: true

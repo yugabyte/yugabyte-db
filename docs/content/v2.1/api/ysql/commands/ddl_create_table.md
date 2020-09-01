@@ -5,7 +5,7 @@ linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a new table in a database.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-create-table
     parent: api-ysql-commands
 isTocNested: true

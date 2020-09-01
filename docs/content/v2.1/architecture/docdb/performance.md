@@ -5,7 +5,7 @@ linkTitle: Performance
 description: Learn how DocDB enhances RocksDB for scale and performance.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: docdb-performance
     parent: docdb
     weight: 1148

@@ -5,7 +5,7 @@ linkTitle: Amazon Web Services
 description: Manually deploy a YugabyteDB cluster on Amazon Web Services.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: deploy-in-aws-3-manual-deployment
     parent: public-clouds
     weight: 630

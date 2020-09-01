@@ -5,7 +5,7 @@ linkTitle: Schedule a data backup
 description: Use Yugabyte Platform to create a scheduled backup of a universe or cluster.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: schedule-data-backup
     parent: enterprise-edition
     weight: 749

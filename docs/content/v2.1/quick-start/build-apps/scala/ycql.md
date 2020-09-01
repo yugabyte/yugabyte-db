@@ -5,7 +5,7 @@ linkTitle: Scala
 description: Build a Scala application that uses YCQL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: build-apps
     name: Scala
     identifier: scala-1

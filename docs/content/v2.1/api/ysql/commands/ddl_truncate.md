@@ -5,7 +5,7 @@ linkTitle: TRUNCATE
 description:  Use the TRUNCATE statement to clear all rows in a table.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-truncate
     parent: api-ysql-commands
 isTocNested: true

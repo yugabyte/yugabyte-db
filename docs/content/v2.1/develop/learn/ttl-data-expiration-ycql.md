@@ -5,7 +5,7 @@ linkTitle: 9. TTL for data expiration
 description: Learn how to use TTL for data expiration in YCQL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: ttl-data-expiration-ycql
     parent: learn
     weight: 581

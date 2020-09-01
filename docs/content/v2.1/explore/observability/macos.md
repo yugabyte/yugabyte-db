@@ -5,7 +5,7 @@ linkTitle: Observability
 description: Learn about observability with Prometheus in a local three-node YugabyteDB cluster on macOS.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: observability-1-macos
     parent: explore
     weight: 240

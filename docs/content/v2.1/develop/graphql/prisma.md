@@ -4,7 +4,7 @@ linkTitle: Prisma
 description: Prisma
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: prisma
     parent: graphql
     weight: 583

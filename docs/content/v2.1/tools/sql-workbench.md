@@ -5,7 +5,7 @@ linkTitle: SQL Workbench/J
 description: Query distributed SQL databases using SQL Workbench/J.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: sql-workbench
     parent: tools
     weight: 2740

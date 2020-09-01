@@ -5,7 +5,7 @@ linkTitle: Edit configuration flags
 description: Use Yugabyte Platform to manage configuration flags.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: edit-config-flags
     parent: enterprise-edition
     weight: 740

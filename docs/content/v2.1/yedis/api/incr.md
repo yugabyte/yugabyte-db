@@ -4,7 +4,7 @@ linkTitle: INCR
 description: INCR
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-yedis
     weight: 2210
 isTocNested: true

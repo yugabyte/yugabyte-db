@@ -4,7 +4,7 @@ linkTitle: RENAME
 description: RENAME
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-yedis
     weight: 2265
 isTocNested: true

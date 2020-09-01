@@ -6,7 +6,7 @@ description: Use yugabyted to simplify creating, running, and managing yb-tserve
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: yugabyted
     parent: configuration
     weight: 2451

@@ -5,7 +5,7 @@ linkTitle: ycqlsh
 description: Use the YCQL shell (ycqlsh) to interact with YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: ycqlsh
     parent: admin
     weight: 2460

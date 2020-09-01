@@ -5,7 +5,7 @@ linkTitle: NodeJS
 description: Use NodeJS to build a YugabyteDB application that interacts with YEDIS
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: client-drivers-yedis-nodejs
     parent: develop-yedis
 isTocNested: true

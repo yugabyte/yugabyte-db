@@ -5,7 +5,7 @@ linkTitle: Delete a universe
 description: Use Yugabyte Platform to delete a universe.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: delete-universe
     parent: enterprise-edition
     weight: 760

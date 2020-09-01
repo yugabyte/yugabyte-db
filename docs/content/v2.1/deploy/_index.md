@@ -8,7 +8,7 @@ image: /images/section_icons/index/deploy.png
 section: USER GUIDES
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: deploy
     weight: 634
 ---

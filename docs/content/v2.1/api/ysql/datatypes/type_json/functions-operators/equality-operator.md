@@ -5,7 +5,7 @@ linkTitle: = (equality)
 description: Test if two jsonb values are equal using the JSON equality operator (=).
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: equality-operator
     parent: functions-operators
     weight: 15

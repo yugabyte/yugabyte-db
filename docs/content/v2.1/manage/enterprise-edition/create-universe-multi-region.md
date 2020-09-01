@@ -5,7 +5,7 @@ linkTitle: Create a multi-region universe
 description: Create a YugabyteDB universe that spans multiple geographic regions using Yugabyte Platform.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: create-universe-multi-region
     parent: enterprise-edition
     weight: 721

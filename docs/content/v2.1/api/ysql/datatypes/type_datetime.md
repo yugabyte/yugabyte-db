@@ -5,7 +5,7 @@ linkTitle: Date and time
 description: YSQL supports the DATE, TIME, TIMESTAMP, and INTERVAL data types.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-datatypes-datetime
     parent: api-ysql-datatypes
 isTocNested: true

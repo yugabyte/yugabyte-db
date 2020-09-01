@@ -5,7 +5,7 @@ headerTitle: cr_bucket_using_width_bucket.sql
 description: Create the bucket function using the width_bucket built-in.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: cr-bucket-using-width-bucket
     parent: analyzing-a-normal-distribution
     weight: 70

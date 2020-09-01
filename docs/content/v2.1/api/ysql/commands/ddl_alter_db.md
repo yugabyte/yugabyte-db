@@ -5,7 +5,7 @@ linkTitle: ALTER DATABASE
 description: Use the ALTER DATABASE statement to redefine the attributes of a database.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-alter-db
     parent: api-ysql-commands
 isTocNested: true

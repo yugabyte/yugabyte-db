@@ -5,7 +5,7 @@ linkTitle: LOCK
 description: Use the LOCK statement to lock a table.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-lock
     parent: api-ysql-commands
 isTocNested: true

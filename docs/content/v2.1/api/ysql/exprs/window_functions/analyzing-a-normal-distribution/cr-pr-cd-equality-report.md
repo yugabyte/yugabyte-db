@@ -5,7 +5,7 @@ headerTitle: cr_pr_cd_equality_report.sql
 description: Create a function to compute some basic facts about table t4.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: cr-pr-cd-equality-report
     parent: analyzing-a-normal-distribution
     weight: 60

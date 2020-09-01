@@ -5,7 +5,7 @@ linkTitle: jsonb_object_keys()
 description: Transform the list of key names in the supplied JSON object into a set (that is, table) of text values.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: jsonb-object-keys
     parent: functions-operators
     weight: 160

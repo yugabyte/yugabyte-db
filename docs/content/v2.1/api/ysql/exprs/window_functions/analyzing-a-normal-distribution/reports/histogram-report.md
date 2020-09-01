@@ -5,7 +5,7 @@ headerTitle: Output from running histogram() on t4.dp_score
 description: Output from running histogram() on t4.dp_score
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: histogram-report
     parent: normal-distribution-analysis-reports
     weight: 10

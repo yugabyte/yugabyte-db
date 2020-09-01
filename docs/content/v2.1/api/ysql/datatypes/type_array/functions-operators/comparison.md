@@ -5,7 +5,7 @@ headerTitle: Operators for comparing two arrays
 description: Operators for comparing two arrays
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: array-comparison
     parent: array-functions-operators
 isTocNested: true

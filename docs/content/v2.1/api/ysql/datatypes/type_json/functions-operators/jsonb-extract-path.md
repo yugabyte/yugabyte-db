@@ -5,7 +5,7 @@ linkTitle: jsonb_extract_path()
 description: Provide identical functionality to the "#>" operator.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: jsonb-extract-path
     parent: functions-operators
     weight: 130

@@ -5,7 +5,7 @@ linkTitle: 2. Install Yugabyte Platform
 description: Install Yugabyte Platform (aka YugaWare) on Kubernetes
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: install-yp-3-kubernetes
     parent: deploy-enterprise-edition
     weight: 670

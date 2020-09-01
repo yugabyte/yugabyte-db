@@ -5,7 +5,7 @@ linkTitle: REVOKE
 description: Use the REVOKE statement to remove access privileges from one or more roles.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-revoke
     parent: api-ysql-commands
 isTocNested: true

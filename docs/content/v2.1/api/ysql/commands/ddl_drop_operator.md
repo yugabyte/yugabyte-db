@@ -5,7 +5,7 @@ linkTitle: DROP OPERATOR
 description: Use the DROP OPERATOR statement to remove an operator.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-drop-operator
     parent: api-ysql-commands
 isTocNested: true

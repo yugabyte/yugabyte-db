@@ -5,7 +5,7 @@ linkTitle: Google Cloud Platform
 description: Use Google Kubernetes Engine (GKE) to deploy a YugabyteDB cluster in Google Cloud Platform.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: deploy-in-gcp-2-gke
     parent: public-clouds
     weight: 640

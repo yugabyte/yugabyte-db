@@ -5,7 +5,7 @@ linkTitle: Observability
 description: Learn about observability and monitoring with Prometheus using a local three-node YugabyteDB cluster on Kubernetes.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: observability-4-kubernetes
     parent: explore
     weight: 240

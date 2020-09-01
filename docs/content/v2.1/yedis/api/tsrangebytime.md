@@ -4,7 +4,7 @@ linkTitle: TSRANGEBYTIME
 description: TSRANGEBYTIME
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-yedis
     weight: 2440
 isTocNested: true

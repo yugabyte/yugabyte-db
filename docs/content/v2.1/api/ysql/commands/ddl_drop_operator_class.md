@@ -5,7 +5,7 @@ linkTitle: DROP OPERATOR CLASS
 description: Use the DROP OPERATOR CLASS statement to remove an operator class.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-drop-operator-class
     parent: api-ysql-commands
 isTocNested: true

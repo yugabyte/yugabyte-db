@@ -5,7 +5,7 @@ linkTitle: 3. Configure Yugabyte Platform
 description: Configure Yugabyte Platform.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: configure-admin-console
     parent: deploy-enterprise-edition
     weight: 675

@@ -5,7 +5,7 @@ headerTitle: cr_histogram.sql
 description: Create the function that creates the histogram output.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: cr-histogram
     parent: analyzing-a-normal-distribution
     weight: 100

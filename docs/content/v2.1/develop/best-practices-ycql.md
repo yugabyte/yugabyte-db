@@ -5,7 +5,7 @@ linkTitle: Best practices
 description: Learn best practices for developing YCQL applications.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: best-practices-ycql
     parent: develop
     weight: 582

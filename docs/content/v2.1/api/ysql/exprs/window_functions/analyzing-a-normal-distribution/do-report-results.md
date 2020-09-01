@@ -5,7 +5,7 @@ headerTitle: do_report_results.sql
 description: Create the function that creates the histogram output.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: do-report-results
     parent: analyzing-a-normal-distribution
     weight: 150

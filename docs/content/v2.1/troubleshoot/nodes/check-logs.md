@@ -5,7 +5,7 @@ headerTitle: Inspect YugabyteDB logs
 description: Inspect YugabyteDB logs
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: troubleshoot-nodes
     weight: 844
 isTocNested: true

@@ -5,7 +5,7 @@ linkTitle: COMMENT
 description: Use the COMMENT statement to set, update, or remove a comment on a database object.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-comment
     parent: api-ysql-commands
 isTocNested: true

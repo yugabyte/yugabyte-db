@@ -5,7 +5,7 @@ linkTitle: 4. ACID transactions
 description: Learn how ACID transactions work in YCQL on YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: acid-transactions-1-ycql
     parent: learn
     weight: 566

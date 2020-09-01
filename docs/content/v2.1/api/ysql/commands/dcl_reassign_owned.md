@@ -5,7 +5,7 @@ linkTitle: REASSIGN OWNED
 description: Use the REASSIGN OWNED statement to change the ownership of database objects owned by any of the "old_roles" to "new_role".
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-reassign-owned
     parent: api-ysql-commands
 isTocNested: true

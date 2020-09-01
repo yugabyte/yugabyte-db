@@ -5,7 +5,7 @@ linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on macOS in less than five minutes.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-1-macos

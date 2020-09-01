@@ -5,7 +5,7 @@ linkTitle: Back up data
 description: Back up data in YugabyteDB for YSQL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: back-up-data
     parent: backup-restore
     weight: 703

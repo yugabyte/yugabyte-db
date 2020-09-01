@@ -7,7 +7,7 @@ image: /images/section_icons/architecture/concepts.png
 headcontent: Benchmark YugabyteDB with large data sets.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: large-datasets-1-ycql
     parent: benchmark
     weight: 7

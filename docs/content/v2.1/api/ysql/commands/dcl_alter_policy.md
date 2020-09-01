@@ -5,7 +5,7 @@ linkTitle: ALTER POLICY
 description: Use the ALTER POLICY statement to change the definition of an existing row level security policy.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-alter-policy
     parent: api-ysql-commands
 isTocNested: true

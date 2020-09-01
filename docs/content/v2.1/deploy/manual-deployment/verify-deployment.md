@@ -5,7 +5,7 @@ linkTitle: 5. Verify deployment
 description: Verify deployment of your YugabyteDB cluster
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: deploy-manual-deployment-verify-deployment
     parent: deploy-manual-deployment
     weight: 615

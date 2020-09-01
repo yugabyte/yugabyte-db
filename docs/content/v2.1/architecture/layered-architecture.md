@@ -5,7 +5,7 @@ linkTitle: Layered architecture
 description: Learn about the layered architecture of YugabyteDB in the query layer and the storage layer.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: architecture-layered-architecture
     parent: architecture
     weight: 1109

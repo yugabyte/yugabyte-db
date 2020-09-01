@@ -6,7 +6,7 @@ description: Quick start to explore YCQL in YugabyteDB.
 image: /images/section_icons/quick_start/explore_ycql.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1101
 ---

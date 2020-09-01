@@ -5,7 +5,7 @@ linkTitle: currval()
 description: Returns the last value returned by the nextval() function for the specified sequence in the current session.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-exprs-currval
     parent: api-ysql-exprs
 isTocNested: true

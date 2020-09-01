@@ -5,7 +5,7 @@ linkTitle: Microsoft Azure
 description: Deploy on Microsoft Azure Kubernetes Service (AKS)
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: deploy-in-azure-2-aks
     parent: public-clouds
     weight: 650

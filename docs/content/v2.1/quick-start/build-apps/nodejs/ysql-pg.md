@@ -5,7 +5,7 @@ linkTitle: NodeJS
 description: Build a NodeJS application that uses the pg driver and YSQL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: build-apps
     name: NodeJS
     identifier: nodejs-1
