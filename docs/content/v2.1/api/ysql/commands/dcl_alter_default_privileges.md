@@ -5,7 +5,7 @@ linkTitle: ALTER DEFAULT PRIVILEGES
 description: Use the ALTER DEFAULT PRIVILEGES statement to define the default access privileges.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-alter-default-privileges
     parent: api-ysql-commands
 isTocNested: true

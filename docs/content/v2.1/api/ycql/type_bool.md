@@ -6,7 +6,7 @@ summary: Boolean values of false or true
 description: Use the `BOOLEAN` data type to specify values of either "true" or "false".
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1380
 isTocNested: true

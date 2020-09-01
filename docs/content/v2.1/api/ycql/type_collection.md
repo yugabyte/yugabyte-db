@@ -6,7 +6,7 @@ summary: MAP, SET and LIST types
 description: Use collection data types to specify columns for data objects that can contain more than one value.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1390
 isTocNested: true

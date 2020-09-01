@@ -6,7 +6,7 @@ description: Comparing and contrasting percent_rank(), cume_dist() and ntile() o
 image: /images/section_icons/api/ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: analyzing-a-normal-distribution
     parent: window-functions
     weight: 40

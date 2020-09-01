@@ -5,7 +5,7 @@ linkTitle: "- and #- (remove)"
 description: Remove key-value pairs from an object or remove a single value from an array.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: remove-operators
     parent: functions-operators
     weight: 13

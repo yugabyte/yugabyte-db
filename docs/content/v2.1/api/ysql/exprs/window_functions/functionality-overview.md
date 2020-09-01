@@ -5,7 +5,7 @@ headerTitle: Informal overview of function invocation using the OVER clause
 description: Informal introduction to window function and aggregate function invocation using the OVER clause.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: functionality-overview
     parent: window-functions
     weight: 10

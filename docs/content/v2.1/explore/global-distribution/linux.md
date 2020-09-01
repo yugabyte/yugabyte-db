@@ -5,7 +5,7 @@ linkTitle: Global distribution
 description: Simulate globally distributed SQL across regions using a local YugabyteDB cluster on Linux.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: global-distribution-2-linux
     parent: explore
     weight: 220

@@ -8,7 +8,7 @@ image: /images/section_icons/index/explore.png
 section: GET STARTED
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: explore
     weight: 600
 ---

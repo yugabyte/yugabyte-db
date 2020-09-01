@@ -6,7 +6,7 @@ description: Learn the results from Jepsen testing of YSQL.
 image: /images/section_icons/explore/high_performance.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: jepsen-testing-1-ysql
     parent: resilience
     weight: 13

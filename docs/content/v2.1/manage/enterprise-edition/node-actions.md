@@ -5,7 +5,7 @@ linkTitle: Node status and actions
 description: Use Yugabyte Platform to view Node status and perform actions.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: node-status-actions
     parent: enterprise-edition
     weight: 745

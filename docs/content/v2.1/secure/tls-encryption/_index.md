@@ -7,7 +7,7 @@ headcontent: Enable encryption in transit (using TLS) to protect network communi
 image: /images/section_icons/secure/tls-encryption.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: tls-encryption
     parent: secure
     weight: 721

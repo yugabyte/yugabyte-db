@@ -5,7 +5,7 @@ linkTitle: Global distribution
 description: Simulate globally distributed SQL across regions using a local YugabyteDB cluster on macOS.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: global-distribution-1-macos
     parent: explore
     weight: 220

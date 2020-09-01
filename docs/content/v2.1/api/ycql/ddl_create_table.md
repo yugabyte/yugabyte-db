@@ -6,7 +6,7 @@ summary: Create a new table in a keyspace
 description: Use the CREATE TABLE statement to create a new table in a keyspace.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1240
 isTocNested: true

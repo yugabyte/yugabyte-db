@@ -5,7 +5,7 @@ headerTitle: Create and populate table t3
 description: Creates and populate table t3 with data that allows the demonstration of the SQL window functions percent_rank(), cume_dist(), and ntile().
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: table-t3
     parent: data-sets
     weight: 40

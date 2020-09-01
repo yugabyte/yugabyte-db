@@ -8,7 +8,7 @@ headcontent: YugabyteDB architecture including the query, transactions, sharding
 section: CONCEPTS
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: architecture
     weight: 2720
 ---

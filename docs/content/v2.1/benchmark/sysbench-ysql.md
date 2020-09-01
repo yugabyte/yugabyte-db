@@ -6,7 +6,7 @@ description: Benchmark YSQL performance using sysbench.
 headcontent: Benchmark YSQL performance using sysbench.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: sysbench-ysql
     parent: benchmark
     weight: 5

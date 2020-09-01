@@ -5,7 +5,7 @@ linkTitle: Create a multi-zone universe
 description: Use Yugabyte Platform to create a YugabyteDB universe that spans multiple availability zones.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: create-multi-zone-universe
     parent: enterprise-edition
     weight: 720

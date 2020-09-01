@@ -5,7 +5,7 @@ linkTitle: Follower reads
 description: Learn how you can use follower reads to lower read latencies in local YugabyteDB clusters on macOS.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: follower-reads-1-macos
     parent: explore
     weight: 235

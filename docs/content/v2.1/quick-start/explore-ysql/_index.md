@@ -6,7 +6,7 @@ description: Explore Yugabyte SQL (YSQL), a PostgreSQL-compatible distributed SQ
 image: /images/section_icons/quick_start/explore_ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: quick-start
     weight: 130
 type: page

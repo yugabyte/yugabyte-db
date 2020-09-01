@@ -6,7 +6,7 @@ summary: Deletes rows from a table.
 description: Use the DELETE statement to remove rows from a specified table that meet a given condition. 
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1330
 isTocNested: true

@@ -6,7 +6,7 @@ description: Follow the steps to quickly get started using YEDIS (Redis-compatib
 image: /images/section_icons/quick_start/explore_yedis.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: yedis
     weight: 2800
 type: page

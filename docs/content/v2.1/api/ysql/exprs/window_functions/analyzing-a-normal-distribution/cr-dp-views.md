@@ -5,7 +5,7 @@ headerTitle: cr_dp_views.sql
 description: Create a function to compute some basic facts about table t4.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: cr-dp-views
     parent: analyzing-a-normal-distribution
     weight: 40

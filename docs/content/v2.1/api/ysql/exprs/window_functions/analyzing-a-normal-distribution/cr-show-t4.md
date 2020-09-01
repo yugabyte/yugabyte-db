@@ -5,7 +5,7 @@ headerTitle: cr_show_t4.sql
 description: Create a function to compute some basic facts about table t4.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: cr-show-t4
     parent: analyzing-a-normal-distribution
     weight: 30

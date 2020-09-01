@@ -7,7 +7,7 @@ image: /images/section_icons/architecture/concepts.png
 headcontent: Learn how synchronous and asynchronous replication work in DocDB.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: architecture-docdb-replication
     parent: architecture
     weight: 1135

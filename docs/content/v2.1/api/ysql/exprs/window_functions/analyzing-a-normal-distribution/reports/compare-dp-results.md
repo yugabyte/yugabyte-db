@@ -5,7 +5,7 @@ headerTitle: Output from running do_compare_dp_results.sql on dp_results
 description: compare-dp-results
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: compare-dp-results
     parent: normal-distribution-analysis-reports
     weight: 30

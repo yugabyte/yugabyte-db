@@ -5,7 +5,7 @@ headerTitle: Troubleshooting overview
 description: Troubleshooting overview
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: troubleshooting-overview
     parent: troubleshoot
     weight: 702

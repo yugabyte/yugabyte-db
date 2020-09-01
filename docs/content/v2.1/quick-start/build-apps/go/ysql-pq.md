@@ -5,7 +5,7 @@ linkTitle: Go
 description: Build a simple Go application that uses the Go PostgreSQL JDBC driver and performs basic database operations.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: build-apps
     name: Go
     identifier: go-1

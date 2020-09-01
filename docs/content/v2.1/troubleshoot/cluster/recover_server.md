@@ -4,7 +4,7 @@ linkTitle: Recover tserver/master
 description: Recover tserver/master
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: troubleshoot-cluster
     weight: 828
 isTocNested: true

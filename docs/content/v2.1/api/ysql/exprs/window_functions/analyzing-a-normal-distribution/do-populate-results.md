@@ -5,7 +5,7 @@ headerTitle: do_populate_results.sql
 description: Create the function that creates the histogram output.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: do-populate-results
     parent: analyzing-a-normal-distribution
     weight: 140

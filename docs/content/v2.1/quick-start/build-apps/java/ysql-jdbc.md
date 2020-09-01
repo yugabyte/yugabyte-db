@@ -5,7 +5,7 @@ linkTitle: Java
 description: Build a simple Java application that uses YSQL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: build-apps
     name: Java
     identifier: java-1

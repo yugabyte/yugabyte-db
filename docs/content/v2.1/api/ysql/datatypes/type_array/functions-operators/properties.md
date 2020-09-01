@@ -5,7 +5,7 @@ headerTitle: Functions for reporting the geometric properties of an array
 description: Functions for reporting the geometric properties of an array
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: array-properties
     parent: array-functions-operators
 isTocNested: true

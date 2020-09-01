@@ -9,7 +9,7 @@ type: page
 section: REFERENCE
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: admin
     weight: 1400
 ---

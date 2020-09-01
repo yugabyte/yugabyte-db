@@ -6,7 +6,7 @@ description: Combine multiple expressions using YCQL operators supported in Yuga
 summary: Compounding expression using operators.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1360
 isTocNested: true

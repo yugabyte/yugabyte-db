@@ -5,7 +5,7 @@ headerTitle: do_clean_start.sql
 description: Drops and re-creates the dp_results and int_results tables.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: do-clean-start
     parent: analyzing-a-normal-distribution
     weight: 20

@@ -6,7 +6,7 @@ description: A selection of data sets for the code examples that illustrate the 
 image: /images/section_icons/api/ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: data-sets
     parent: function-syntax-semantics
     weight: 50

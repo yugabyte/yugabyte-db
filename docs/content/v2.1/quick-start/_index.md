@@ -9,7 +9,7 @@ type: page
 section: GET STARTED
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: quick-start
     weight: 100
 ---

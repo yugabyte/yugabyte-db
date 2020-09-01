@@ -8,7 +8,7 @@ image: /images/section_icons/quick_start/install.png
 section: RELEASES
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: whats-new
     weight: 2589 
 ---

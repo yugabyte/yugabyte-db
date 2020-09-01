@@ -8,7 +8,7 @@ headcontent: See how YugabyteDB compares with other operational databases in the
 section: FAQ
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: comparisons
     weight: 2720
 ---

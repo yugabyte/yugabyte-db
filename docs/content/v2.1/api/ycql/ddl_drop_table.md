@@ -6,7 +6,7 @@ summary: Remove a table
 description: Use the DROP TABLE statement to remove a table and all of its data from the database.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1270
 isTocNested: true

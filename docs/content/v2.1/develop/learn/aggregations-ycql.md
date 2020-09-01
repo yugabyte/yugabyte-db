@@ -5,7 +5,7 @@ linkTitle: 5. Aggregations
 description: Learn how YugabyteDB YCQL supports standard aggregation functions.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: aggregations-1-ycql
     parent: learn
     weight: 567

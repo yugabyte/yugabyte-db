@@ -6,7 +6,7 @@ description: Use Kafka Connect YugabyteDB to stream YugabyteDB table updates to 
 section: REFERENCE
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: kafka-connect-yugabytedb
     parent: connectors
     weight: 2930

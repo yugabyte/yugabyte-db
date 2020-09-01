@@ -4,7 +4,7 @@ linkTitle: FLUSHALL
 description: FLUSHALL
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-yedis
     weight: 2064
 isTocNested: true

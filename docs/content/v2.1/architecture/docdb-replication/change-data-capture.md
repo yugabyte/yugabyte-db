@@ -6,7 +6,7 @@ description: Learn how YugabyteDB supports asynchronous replication of data chan
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: architecture-docdb-replication
     identifier: architecture-docdb-replication-cdc
     weight: 1160
