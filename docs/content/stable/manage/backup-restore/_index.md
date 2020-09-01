@@ -7,6 +7,7 @@ image: /images/section_icons/manage/enterprise.png
 headcontent: Create backups and restore your data.
 aliases:
   - /manage/backup-restore/
+block_indexing: true
 menu:
   stable:
     identifier: backup-restore

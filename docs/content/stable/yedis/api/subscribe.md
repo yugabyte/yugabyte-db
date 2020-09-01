@@ -2,6 +2,7 @@
 title: SUBSCRIBE
 linkTitle: SUBSCRIBE
 description: SUBSCRIBE
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

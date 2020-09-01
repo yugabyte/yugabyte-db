@@ -8,6 +8,7 @@ aliases:
   - /stable/develop/client-drivers/nodejs/
   - /stable/develop/build-apps/nodejs/  
   - /stable/quick-start/build-apps/nodejs/
+block_indexing: true
 menu:
   stable:
     parent: build-apps

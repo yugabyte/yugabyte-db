@@ -7,6 +7,7 @@ aliases:
   - /develop/tools/cqlsh/
   - /stable/develop/tools/cqlsh/
   - /stable/admin/cqlsh/
+block_indexing: true
 menu:
   stable:
     identifier: ycqlsh

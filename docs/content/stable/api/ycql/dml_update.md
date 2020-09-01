@@ -3,6 +3,7 @@ title: UPDATE statement [YCQL]
 headerTitle: UPDATE
 linkTitle: UPDATE
 description: Use the UPDATE statement to update one or more column values for a row in table.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

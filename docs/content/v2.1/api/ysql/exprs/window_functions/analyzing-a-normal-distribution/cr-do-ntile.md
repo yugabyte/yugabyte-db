@@ -3,8 +3,9 @@ title: cr_do_ntile.sql
 linkTitle: cr_do_ntile.sql
 headerTitle: cr_do_ntile.sql
 description: Create the function that creates the histogram output.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: cr-do-ntile
     parent: analyzing-a-normal-distribution
     weight: 110

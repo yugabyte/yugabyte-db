@@ -5,6 +5,7 @@ linkTitle: Restore data
 description: Restore data in YugabyteDB for YCQL
 aliases:
   - /manage/backup-restore/backing-up-data
+block_indexing: true
 menu:
   stable:
     identifier: restore-data-ycql

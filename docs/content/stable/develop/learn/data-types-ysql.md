@@ -6,6 +6,7 @@ description: Learn about the data types in YSQL.
 aliases:
   - /stable/explore/transactional/json-documents/
   - /stable/develop/learn/data-types/
+block_indexing: true
 menu:
   stable:
     identifier: data-types-2-ysql

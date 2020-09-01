@@ -3,6 +3,7 @@ title: SELECT statement [YCQL]
 headerTitle: SELECT
 linkTitle: SELECT
 description: Use the SELECT statement to retrieve (part of) rows of specified columns that meet a given condition from a table.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

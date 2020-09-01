@@ -5,6 +5,7 @@ linkTitle: Follower reads
 description: Learn how you can use follower reads to lower read latencies in local YugabyteDB clusters on Linux.
 aliases:
   - /stable/explore/follower-reads-linux/
+block_indexing: true
 menu:
   stable:
     identifier: follower-reads-2-linux

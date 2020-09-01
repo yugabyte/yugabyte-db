@@ -7,6 +7,7 @@ aliases:
   - /develop/learn/data-modeling/
   - /stable/explore/transactional/secondary-indexes/
   - /stable/develop/learn/data-modeling/
+block_indexing: true
 menu:
   stable:
     identifier: data-modeling-1-ycql

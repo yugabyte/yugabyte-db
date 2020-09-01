@@ -3,8 +3,9 @@ title: DROP RULE statement [YSQL]
 headerTitle: DROP RULE
 linkTitle: DROP RULE
 description: Use the DROP RULE statement to remove a rule.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-drop-rule
     parent: api-ysql-commands
 isTocNested: true

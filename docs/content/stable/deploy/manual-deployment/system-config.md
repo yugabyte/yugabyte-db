@@ -5,6 +5,7 @@ linkTitle: 1. System configuration
 description: Configure NTP and ulimits on your YugabyteDB cluster
 aliases:
   - /deploy/manual-deployment/system-config
+block_indexing: true
 menu:
   stable:
     identifier: deploy-manual-deployment-system-config

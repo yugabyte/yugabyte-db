@@ -3,6 +3,7 @@ title: RESET statement [YSQL]
 headerTitle: RESET
 linkTitle: RESET
 description: Use the RESET statement to restore the value of a run-time parameter to the default value.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-reset

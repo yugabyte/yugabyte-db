@@ -2,6 +2,7 @@
 title: HVALS
 linkTitle: HVALS
 description: HVALS
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

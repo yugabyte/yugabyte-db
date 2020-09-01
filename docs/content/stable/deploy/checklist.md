@@ -5,6 +5,7 @@ linkTitle: Deployment checklist
 description: Deployment checklist for multi-node YugabyteDB clusters used for production and performance testing
 aliases:
   - /deploy/checklist/
+block_indexing: true
 menu:
   stable:
     identifier: checklist

@@ -3,8 +3,9 @@ title: ALTER TABLE statement [YSQL]
 headerTitle: ALTER TABLE
 linkTitle: ALTER TABLE
 description: Use the `ALTER TABLE` statement to change the definition of an existing table.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-alter-table
     parent: api-ysql-commands
 isTocNested: true

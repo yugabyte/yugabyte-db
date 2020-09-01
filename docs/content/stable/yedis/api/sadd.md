@@ -2,6 +2,7 @@
 title: SADD
 linkTitle: SADD
 description: SADD
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

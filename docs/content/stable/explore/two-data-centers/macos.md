@@ -6,6 +6,7 @@ description: Simulate a geo-distributed two data center (2DC) deployment with tw
 aliases:
   - /stable/explore/two-data-centers/
   - /stable/explore/two-data-centers-macos/
+block_indexing: true
 menu:
   stable:
     identifier: two-data-centers-1-macos

@@ -3,6 +3,7 @@ title: Verify Migration
 headerTitle: Verify Migration
 linkTitle: Verify Migration
 description: Verify migration to YugabyteDB.
+block_indexing: true
 menu:
   stable:
     identifier: migrate-postgresql-verify

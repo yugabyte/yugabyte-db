@@ -4,8 +4,9 @@ headerTitle: BOOLEAN data type
 linkTitle: BOOLEAN
 summary: Boolean values of false or true
 description: Use the `BOOLEAN` data type to specify values of either "true" or "false".
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-cassandra
     weight: 1380
 isTocNested: true

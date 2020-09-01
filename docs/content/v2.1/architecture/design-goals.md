@@ -3,8 +3,9 @@ title: Design goals
 headerTitle: Design goals
 linkTitle: Design goals
 description: Learn the design goals that drive the building of YugabyteDB.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: architecture-design-goals
     parent: architecture
     weight: 1105

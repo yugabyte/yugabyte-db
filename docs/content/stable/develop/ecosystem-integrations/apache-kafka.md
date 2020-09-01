@@ -4,6 +4,7 @@ linkTitle: Apache Kafka
 description: Apache Kafka
 aliases:
   - /develop/ecosystem-integrations/apache-kafka/
+block_indexing: true
 menu:
   stable:
     identifier: apache-kafka

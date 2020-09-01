@@ -3,8 +3,9 @@ title: Start YB-TServer servers of YugabyteDB cluster
 headerTitle: Start YB-TServers
 linkTitle: 4. Start YB-TServers
 description: Start YB-TServer servers of your YugabyteDB cluster
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: deploy-manual-deployment-start-tservers
     parent: deploy-manual-deployment
     weight: 614

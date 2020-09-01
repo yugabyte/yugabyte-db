@@ -2,6 +2,7 @@
 title: EXPIRE
 linkTitle: EXPIRE
 description: EXPIRE
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

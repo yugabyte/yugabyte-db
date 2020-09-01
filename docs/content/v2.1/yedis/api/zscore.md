@@ -2,8 +2,9 @@
 title: ZSCORE
 linkTitle: ZSCORE
 description: ZSCORE
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2545
 isTocNested: true

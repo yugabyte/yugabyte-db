@@ -6,6 +6,7 @@ description: Migrate existing applications to YugabyteDB.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Migrate existing applications to YugabyteDB.
 section: YUGABYTEDB CORE
+block_indexing: true
 menu:
   stable:
     identifier: migrate

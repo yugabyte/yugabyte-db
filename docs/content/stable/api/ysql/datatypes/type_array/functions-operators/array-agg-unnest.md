@@ -3,6 +3,7 @@ title: array_agg(), unnest(), and generate_subscripts()
 linkTitle: array_agg(), unnest(), generate_subscripts()
 headerTitle: array_agg(), unnest(), and generate_subscripts()
 description: array_agg(), unnest(), and generate_subscripts()
+block_indexing: true
 menu:
   stable:
     identifier: array-agg-unnest

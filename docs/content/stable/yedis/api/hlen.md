@@ -2,6 +2,7 @@
 title: HLEN
 linkTitle: HLEN
 description: HLEN
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

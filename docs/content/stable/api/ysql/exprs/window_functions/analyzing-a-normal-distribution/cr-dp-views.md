@@ -3,6 +3,7 @@ title: cr_dp_views.sql
 linkTitle: cr_dp_views.sql
 headerTitle: cr_dp_views.sql
 description: cr_dp_views.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
+block_indexing: true
 menu:
   stable:
     identifier: cr-dp-views

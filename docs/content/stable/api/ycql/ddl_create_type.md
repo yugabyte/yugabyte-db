@@ -3,6 +3,7 @@ title: CREATE TYPE statement [YCQL]
 headerTitle: CREATE TYPE
 linkTitle: CREATE TYPE
 description: Use the CREATE TYPE statement to create a new user-defined data type in a keyspace.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

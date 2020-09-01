@@ -6,6 +6,7 @@ description: Download and install YugabyteDB on macOS in less than five minutes.
 aliases:
   - /quick-start/install/
   - /stable/quick-start/install/
+block_indexing: true
 menu:
   stable:
     parent: quick-start

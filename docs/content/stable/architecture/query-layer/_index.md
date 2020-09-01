@@ -8,6 +8,7 @@ headcontent:
 aliases:
   - /architecture/query-layer/
   - /stable/architecture/concepts/yql/
+block_indexing: true
 menu:
   stable:
     identifier: architecture-query-layer

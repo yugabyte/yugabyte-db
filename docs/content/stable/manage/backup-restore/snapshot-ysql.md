@@ -6,6 +6,7 @@ description: Snapshot and restore data in YugabyteDB for YSQL.
 image: /images/section_icons/manage/enterprise.png
 aliases:
   - manage/backup-restore/manage-snapshots
+block_indexing: true
 menu:
   stable:
     identifier: snapshots-1-ysql

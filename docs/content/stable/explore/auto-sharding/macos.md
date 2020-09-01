@@ -11,6 +11,7 @@ aliases:
   - /stable/explore/auto-rebalancing/
   - /stable/explore/planet-scale/auto-rebalancing/
   - /stable/explore/auto-sharding-macos/
+block_indexing: true
 menu:
   stable:
     identifier: auto-sharding-1-macos

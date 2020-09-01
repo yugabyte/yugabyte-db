@@ -3,6 +3,7 @@ title: first_value(), nth_value(), last_value()
 linkTitle: first_value(), nth_value(), last_value()
 headerTitle: first_value(), nth_value(), last_value()
 description: Describes the functionality of the YSQL window functions first_value(), nth_value(), and last_value().
+block_indexing: true
 menu:
   stable:
     identifier: first-value-nth-value-last-value

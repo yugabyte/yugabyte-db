@@ -3,6 +3,7 @@ title: App Migration
 headerTitle: App Migration
 linkTitle: App Migration
 description: How to migrate an application written for PostgreSQL to YugabyteDB.
+block_indexing: true
 menu:
   stable:
     identifier: migrate-postgresql-app

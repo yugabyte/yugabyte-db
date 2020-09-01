@@ -6,8 +6,9 @@ description: Explore the core features of YugabyteDB on macOS, Linux, Docker, an
 headcontent:
 image: /images/section_icons/index/explore.png
 section: GET STARTED
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: explore
     weight: 600
 ---

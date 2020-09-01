@@ -8,6 +8,7 @@ aliases:
   - /stable/explore/observability/
   - /stable/explore/observability-macos/
   - /stable/explore/cloud-native/binary/observability/
+block_indexing: true
 menu:
   stable:
     identifier: observability-1-macos

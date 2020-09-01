@@ -3,6 +3,7 @@ title: Simple expressions [YCQL]
 headerTitle: Simple expressions
 linkTitle: Simple expressions
 description: A simple expression can be a column, constant, or NULL.
+block_indexing: true
 menu:
   stable:
     parent: api-cassandra

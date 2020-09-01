@@ -5,8 +5,9 @@ description: Create databases
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: create-databases
     parent: yugabyte-cloud
     weight: 643

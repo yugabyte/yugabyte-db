@@ -2,6 +2,7 @@
 title: AUTH
 linkTitle: AUTH
 description: AUTH
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

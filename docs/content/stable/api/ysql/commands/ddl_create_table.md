@@ -3,6 +3,7 @@ title: CREATE TABLE [YSQL]
 headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a new table in a database.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-create-table

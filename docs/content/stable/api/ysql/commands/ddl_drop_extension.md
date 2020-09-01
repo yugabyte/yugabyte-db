@@ -4,6 +4,7 @@ headerTitle: DROP EXTENSION
 linkTitle: DROP EXTENSION
 summary: Remove an extension
 description: Use the DROP EXTENSION statement to remove an extension from the database
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-drop-extension

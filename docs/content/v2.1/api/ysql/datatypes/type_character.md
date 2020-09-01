@@ -3,8 +3,9 @@ title: Character data types [YSQL]
 headerTitle: Character data types
 linkTitle: Character
 description: Use character-based data types to specify data of a string of Unicode characters.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-datatypes-character
     parent: api-ysql-datatypes
 isTocNested: true

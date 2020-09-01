@@ -2,8 +2,9 @@
 title: Apache Kafka
 linkTitle: Apache Kafka
 description: Apache Kafka
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: apache-kafka
     parent: ecosystem-integrations
     weight: 571

@@ -5,6 +5,7 @@ linkTitle: Observability
 description: Learn about observability and monitoring with Prometheus in a local three-node YugabyteDB cluster on Linux.
 aliases:
   - /stable/explore/observability-linux/
+block_indexing: true
 menu:
   stable:
     identifier: observability-2-linux

@@ -7,6 +7,7 @@ headcontent: Here are some easy ways to deploy YugabyteDB in the various public 
 image: /images/section_icons/deploy/public-clouds.png
 aliases:
   - /deploy/public-clouds/
+block_indexing: true
 menu:
   stable:
     identifier: public-clouds

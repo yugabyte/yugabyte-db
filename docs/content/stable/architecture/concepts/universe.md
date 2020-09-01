@@ -6,6 +6,7 @@ description: Learn about the YugabyteDB universe (or cluster).
 aliases:
   - /stable/architecture/concepts/universe/
   - /stable/architecture/concepts/single-node/
+block_indexing: true
 menu:
   stable:
     identifier: architecture-concepts-universe

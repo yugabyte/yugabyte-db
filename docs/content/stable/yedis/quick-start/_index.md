@@ -10,6 +10,7 @@ aliases:
   - /stable/quick-start/test-yedis/
   - /stable/yedis/quick-start/test-redis/
   - /stable/api/yedis/quick-start/
+block_indexing: true
 menu:
   stable:
     parent: yedis

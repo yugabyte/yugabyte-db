@@ -3,8 +3,9 @@ title: Data types in YSQL
 headerTitle: Data types
 linkTitle: 3. Data types
 description: Learn about the data types in YSQL.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: data-types-2-ysql
     parent: learn
     weight: 565

@@ -3,8 +3,9 @@ title: Benchmark scaling YSQL queries
 headerTitle: Scaling YSQL queries
 linkTitle: Scaling queries
 description: Benchmark scaling YSQL queries in YugabyteDB
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: scaling-queries-1-ysql
     parent: scalability
     weight: 11

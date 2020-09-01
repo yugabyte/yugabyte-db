@@ -10,6 +10,7 @@ aliases:
   - /stable/api/yedis
 type: page
 section: MISC
+block_indexing: true
 menu:
   stable:
     identifier: yedis

@@ -4,6 +4,7 @@ linkTitle: Presto
 description: Presto
 aliases:
   - /develop/ecosystem-integrations/presto/
+block_indexing: true
 menu:
   stable:
     identifier: presto

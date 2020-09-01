@@ -8,6 +8,7 @@ headcontent: Test YugabyteDB performance with a key-value workload.
 aliases:
   - /stable/benchmark/performance/
   - /stable/benchmark/key-value-workload
+block_indexing: true
 menu:
   stable:
     identifier: key-value-workload-1-ycql

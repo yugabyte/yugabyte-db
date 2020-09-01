@@ -3,6 +3,7 @@ title: Create a local YugabyteDB cluster on Kubernetes (Minikube)
 headerTitle: 2. Create a local cluster
 linkTitle: 2. Create a local cluster
 description: Create a local YugabyteDB cluster on Kubernetes (Minikube) in less than five minutes.
+block_indexing: true
 menu:
   stable:
     parent: quick-start

@@ -3,8 +3,9 @@ title: do_compare_dp_results.sql
 linkTitle: do_compare_dp_results.sql
 headerTitle: do_compare_dp_results.sql
 description: Create the function that creates the histogram output.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: do-compare-dp-results
     parent: analyzing-a-normal-distribution
     weight: 160

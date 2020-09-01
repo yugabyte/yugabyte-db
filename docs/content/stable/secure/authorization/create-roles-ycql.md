@@ -5,6 +5,7 @@ linkTitle: Create roles
 description: Create YCQL roles in YugabyteDB
 headcontent: Creating roles
 image: /images/section_icons/secure/create-roles.png
+block_indexing: true
 menu:
   stable:
     identifier: create-roles-ycql

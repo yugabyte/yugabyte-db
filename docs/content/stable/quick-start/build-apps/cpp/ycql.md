@@ -3,6 +3,7 @@ title: Build a C++ application that uses YCQL
 headerTitle: Build a C++ application
 linkTitle: C++
 description: Build a sample C++ application that uses the YCQL API.
+block_indexing: true
 menu:
   stable:
     identifier: build-apps-cpp-2-ycql

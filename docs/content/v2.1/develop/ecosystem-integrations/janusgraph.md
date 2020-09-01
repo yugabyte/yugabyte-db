@@ -2,8 +2,9 @@
 title: JanusGraph
 linkTitle: JanusGraph
 description: JanusGraph
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: janusgraph
     parent: ecosystem-integrations
     weight: 573

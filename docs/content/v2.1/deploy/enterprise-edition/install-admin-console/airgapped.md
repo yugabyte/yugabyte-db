@@ -3,8 +3,9 @@ title: Install Yugabyte Platform
 headerTitle: Install Yugabyte Platform on Airgapped
 linkTitle: 2. Install Yugabyte Platform
 description: Install Yugabyte Platform (aka YugaWare).
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: install-yp-2-airgapped
     parent: deploy-enterprise-edition
     weight: 670

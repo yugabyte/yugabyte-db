@@ -3,6 +3,7 @@ title: yb-admin - command line tool for advanced YugabyteDB administration
 headerTitle: yb-admin
 linkTitle: yb-admin
 description: Use the yb-admin command line tool for advanced administration of YugabyteDB clusters.
+block_indexing: true
 menu:
   stable:
     identifier: yb-admin

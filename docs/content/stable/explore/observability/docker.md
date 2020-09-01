@@ -5,6 +5,7 @@ linkTitle: Observability
 description: Learn about observability and monitoring with Prometheus in a local three-node YugabyteDB cluster on Docker.
 aliases:
   - /stable/explore/observability-docker/
+block_indexing: true
 menu:
   stable:
     identifier: observability-3-docker

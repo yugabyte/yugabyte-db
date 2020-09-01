@@ -3,6 +3,7 @@ title: Open source Kubernetes using YugabyteDB operator
 headerTitle: Open source Kubernetes
 linkTitle: Open source Kubernetes
 description: Deploy a YugabyteDB cluster with a Kubernetes native customer resource.
+block_indexing: true
 menu:
   stable:
     parent: deploy-kubernetes-sz

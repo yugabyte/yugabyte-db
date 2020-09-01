@@ -8,6 +8,7 @@ headcontent: YugabyteDB API reference
 aliases:
   - /api/
 section: REFERENCE
+block_indexing: true
 menu:
   stable:
     identifier: api

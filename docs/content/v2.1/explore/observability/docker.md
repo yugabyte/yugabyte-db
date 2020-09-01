@@ -3,8 +3,9 @@ title: Explore observability with Prometheus on Docker
 headerTitle: Observability with Prometheus
 linkTitle: Observability 
 description: Learn about observability and monitoring with Prometheus in a local three-node YugabyteDB cluster on Docker.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: observability-3-docker
     parent: explore
     weight: 240

@@ -6,6 +6,7 @@ description: Use Yugabyte Platform to configure health checks and alerts for uni
 aliases:
   - /stable/manage/enterprise-edition/cluster-health/
   - /stable/manage/cluster-health/
+block_indexing: true
 menu:
   stable:
     identifier: cluster-health

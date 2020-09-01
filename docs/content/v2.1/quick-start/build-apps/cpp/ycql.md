@@ -3,8 +3,9 @@ title: Build a C++ application using YCQL
 headerTitle: Build a C++ application
 linkTitle: C++
 description: Build a C++ application that uses the YCQL API.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: build-apps-cpp-2-ycql
     parent: build-apps
     weight: 556

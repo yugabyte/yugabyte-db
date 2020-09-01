@@ -3,6 +3,7 @@ title: Prepare Cluster
 headerTitle: Prepare Cluster
 linkTitle: Prepare Cluster
 description: Prepare the cluster for importing data.
+block_indexing: true
 menu:
   stable:
     identifier: migrate-postgresql-prepare-cluster

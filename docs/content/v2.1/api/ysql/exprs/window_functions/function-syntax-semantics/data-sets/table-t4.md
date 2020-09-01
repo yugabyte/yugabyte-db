@@ -3,8 +3,9 @@ title: table t4
 linkTitle: table t4
 headerTitle: Create and populate table t4
 description: Creates and populate table t4 with data that allows the demonstration of the SQL window functions percent_rank(), cume_dist(), and ntile().
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: table-t4
     parent: data-sets
     weight: 50

@@ -7,6 +7,7 @@ aliases:
   - /stable/manage/enterprise-edition/backup-restore
   - /stable/manage/enterprise-edition/back-up-restore-data
   - /stable/yugabyte-platform/manage/backup-restore
+block_indexing: true
 menu:
   stable:
     identifier: back-up-restore-data

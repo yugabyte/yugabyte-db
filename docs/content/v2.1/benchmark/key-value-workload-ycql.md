@@ -5,8 +5,9 @@ linkTitle: Key-value workload
 description: Benchmark YCQL performance with key-value workloads.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Test YugabyteDB performance with a key-value workload.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: key-value-workload-1-ycql
     parent: benchmark
     weight: 6

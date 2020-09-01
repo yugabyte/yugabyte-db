@@ -3,6 +3,7 @@ title: DROP PROCEDURE statement [YSQL]
 headerTitle: DROP PROCEDURE
 linkTitle: DROP PROCEDURE
 description: Use the DROP PROCEDURE statement to remove a procedure from a database.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-drop-procedure

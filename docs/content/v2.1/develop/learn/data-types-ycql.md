@@ -3,8 +3,9 @@ title: Data types in YCQL
 headerTitle: Data types
 linkTitle: 3. Data types
 description: Learn about the data types in YCQL.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: data-types-1-ycql
     parent: learn
     weight: 565

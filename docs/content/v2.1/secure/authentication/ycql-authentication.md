@@ -5,8 +5,9 @@ linkTitle: YCQL authentication
 description: Identify that your YCQL users are who they say they are.
 headcontent: Identify that your YCQL users are who they say they are.
 image: /images/section_icons/secure/authentication.png
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     name: Authentication
     identifier: ycql-authentication
     parent: authentication

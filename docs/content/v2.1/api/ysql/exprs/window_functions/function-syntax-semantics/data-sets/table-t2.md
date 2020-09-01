@@ -3,8 +3,9 @@ title: table t2
 linkTitle: table t2
 headerTitle: Create and populate table t2
 description: Creates and populate table t2 with data that allows the demonstration of the SQL window functions rank(), dense_rank(), percent_rank(), cume_dist(), and ntile().
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: table-t2
     parent: data-sets
     weight: 30

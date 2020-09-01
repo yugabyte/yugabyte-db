@@ -3,8 +3,9 @@ title: Install Yugabyte Platform using Replicated
 headerTitle: Install Yugabyte Platform
 linkTitle: 2. Install Yugabyte Platform
 description: Use Replicated to install Yugabyte Platform (aka YugaWare).
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: install-yp-1-default
     parent: deploy-enterprise-edition
     weight: 670

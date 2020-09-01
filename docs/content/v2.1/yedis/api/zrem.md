@@ -2,8 +2,9 @@
 title: ZREM
 linkTitle: ZREM
 description: ZREM
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2530
 isTocNested: true

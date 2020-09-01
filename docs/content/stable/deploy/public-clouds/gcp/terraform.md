@@ -5,6 +5,7 @@ linkTitle: Google Cloud Platform
 description: Use Terraform to deploy a YugabyteDB cluster in Google Cloud Platform.
 aliases:
   - /stable/deploy/public-clouds/gcp/
+block_indexing: true
 menu:
   stable:
     identifier: deploy-in-gcp-3-terraform

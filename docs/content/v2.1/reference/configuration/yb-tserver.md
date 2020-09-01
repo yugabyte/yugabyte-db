@@ -3,8 +3,9 @@ title: yb-tserver configuration reference
 headerTitle: yb-tserver
 linkTitle: yb-tserver
 description: YugabyteDB Tablet Server (yb-tserver) binary and configuration flags to store and manage data for client applications.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: yb-tserver
     parent: configuration
     weight: 2440

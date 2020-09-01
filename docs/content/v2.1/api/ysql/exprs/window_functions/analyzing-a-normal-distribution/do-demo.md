@@ -3,8 +3,9 @@ title: do_demo.sql
 linkTitle: do_demo.sql
 headerTitle: do_demo.sql
 description: Master script to run the demo that supports the section Analyzing a normal distribution with percent_rank(), cume_dist() and ntile().
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: do-demo
     parent: analyzing-a-normal-distribution
     weight: 170

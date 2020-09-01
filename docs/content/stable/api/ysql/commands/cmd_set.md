@@ -3,6 +3,7 @@ title: SET statement [YSQL]
 headerTitle: SET
 linkTitle: SET 
 description: Use the SET statement to update a run-time control parameter.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-set

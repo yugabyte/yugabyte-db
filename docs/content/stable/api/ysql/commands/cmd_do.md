@@ -3,6 +3,7 @@ title: DO statement [YSQL]
 headerTitle: DO
 linkTitle: DO
 description: Use the DO statement to execute an anonymous code block or, in other words, a transient anonymous function in a procedural language.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-do

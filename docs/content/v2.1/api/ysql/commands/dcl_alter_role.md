@@ -3,8 +3,9 @@ title: ALTER ROLE statement [YSQL]
 headerTitle: ALTER ROLE
 linkTitle: ALTER ROLE
 description: Use the ALTER ROLE statement to change the attributes of a role (user or group).
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-alter-role
     parent: api-ysql-commands
 isTocNested: true

@@ -5,6 +5,7 @@ description: Yugabyte Platform
 headcontent: Build your own YugabyteDB-as-a-Service on any cloud or Kubernetes infrastructure.
 image: /images/section_icons/deploy/public-clouds.png
 section: YUGABYTE PLATFORM
+block_indexing: true
 menu:
   stable:
     identifier: yugabyte-platform

@@ -2,8 +2,9 @@
 title: Troubleshoot universes
 linkTitle: Troubleshoot universes
 description: Troubleshoot universes
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: troubleshoot-universes
     parent: troubleshoot-enterprise-edition
     weight: 853

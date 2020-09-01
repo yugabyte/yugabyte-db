@@ -3,8 +3,9 @@ title: Compare TiDB with YugabyteDB
 headerTitle: TiDB
 linkTitle: TiDB
 description: Compare TiDB with YugabyteDB.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: comparisons
     weight: 1076
 ---

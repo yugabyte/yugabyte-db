@@ -8,6 +8,7 @@ image: /images/section_icons/index/develop.png
 aliases:
   - /stable/quick-start/run-sample-apps/
   - /quick-start/run-sample-apps/
+block_indexing: true
 menu:
   stable:
     identifier: explore-sample-apps

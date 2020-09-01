@@ -7,6 +7,7 @@ aliases:
   - /develop/client-drivers/c/
   - /stable/develop/client-drivers/c/
   - /stable/quick-start/build-apps/c/
+block_indexing: true
 menu:
   stable:
     identifier: build-apps-c-1-ysql

@@ -9,6 +9,7 @@ aliases:
   - /stable/explore/follower-reads/
   - /stable/explore/high-performance/tunable-reads/
   - /stable/explore/follower-reads-macos/
+block_indexing: true
 menu:
   stable:
     identifier: follower-reads-1-macos

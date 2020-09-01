@@ -2,8 +2,9 @@
 title: SISMEMBER
 linkTitle: SISMEMBER
 description: SISMEMBER
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2290
 isTocNested: true

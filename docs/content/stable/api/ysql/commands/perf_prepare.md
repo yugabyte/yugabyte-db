@@ -3,6 +3,7 @@ title: PREPARE statement [YSQL]
 headerTitle: PREPARE
 linkTitle: PREPARE
 description: Use the PREPARE statement to create a handle to a prepared statement by parsing, analyzing, and rewriting (but not executing) the target statement.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-commands-prepare

@@ -5,6 +5,7 @@ linkTitle: Design goals
 description: Learn the design goals that drive the building of YugabyteDB.
 aliases:
   - /stable/architecture/design-goals/
+block_indexing: true
 menu:
   stable:
     identifier: architecture-design-goals

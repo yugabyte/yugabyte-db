@@ -2,8 +2,9 @@
 title: DEL
 linkTitle: DEL
 description: DEL
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     parent: api-yedis
     weight: 2040
 isTocNested: true

@@ -3,6 +3,7 @@ title: Window function syntax and semantics
 linkTitle: Invocation SQL syntax and semantics
 headerTitle: Window function invocation—SQL syntax and semantics
 description: This section specifies the syntax and semantics of the OVER clause and the WINDOW clause. You must use these to invoke window functions. You may use them to invoke aggregate functions as an alternative to invoking these in conjunction with the GROUP BY clause.
+block_indexing: true
 menu:
   stable:
     identifier: sql-syntax-semantics

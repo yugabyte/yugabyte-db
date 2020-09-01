@@ -3,8 +3,9 @@ title: COPY statement [YSQL]
 headerTitle: COPY
 linkTitle: COPY
 description: Transfer data between tables and files with the COPY, COPY TO, and COPY FROM statements.
+block_indexing: true
 menu:
-  v2.1:
+  stable:
     identifier: api-ysql-commands-copy
     parent: api-ysql-commands
 isTocNested: true

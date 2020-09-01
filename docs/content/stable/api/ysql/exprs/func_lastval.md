@@ -3,6 +3,7 @@ title: lastval() function [YSQL]
 headerTitle: lastval()
 linkTitle: lastval()
 description: Returns the value returned from the last call to nextval(), for any sequence, in the current session.
+block_indexing: true
 menu:
   stable:
     identifier: api-ysql-exprs-lastval
