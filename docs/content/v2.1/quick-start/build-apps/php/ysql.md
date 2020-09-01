@@ -5,7 +5,7 @@ linkTitle: PHP
 description: Build a PHP application that uses YSQL to perform basic database operations.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: build-apps-php-1-ysql
     parent: build-apps
     weight: 555

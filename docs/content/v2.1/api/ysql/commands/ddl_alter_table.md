@@ -5,7 +5,7 @@ linkTitle: ALTER TABLE
 description: Use the `ALTER TABLE` statement to change the definition of an existing table.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-alter-table
     parent: api-ysql-commands
 isTocNested: true

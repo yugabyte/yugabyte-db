@@ -5,7 +5,7 @@ linkTitle: ysqlsh
 description: Use the YSQL shell (ysqlsh) to interact with YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: ysqlsh
     parent: admin
     weight: 2459

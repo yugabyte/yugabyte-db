@@ -5,7 +5,7 @@ headerTitle: array_position() and array_positions()
 description: array_position() and array_positions()
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: array-position
     parent: array-functions-operators
 isTocNested: true

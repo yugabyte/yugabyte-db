@@ -5,7 +5,7 @@ linkTitle: Java
 description: Build a Java application that uses YCQL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: build-apps
     name: Java
     identifier: java-3

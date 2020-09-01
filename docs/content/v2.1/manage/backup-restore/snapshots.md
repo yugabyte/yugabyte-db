@@ -6,7 +6,7 @@ description: Snapshot and restore data in YugabyteDB for YCQL.
 image: /images/section_icons/manage/enterprise.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: snapshots-ycql
     parent: backup-restore
     weight: 705

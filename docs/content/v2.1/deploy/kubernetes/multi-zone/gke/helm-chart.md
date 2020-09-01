@@ -5,7 +5,7 @@ linkTitle: Google Kubernetes Engine (GKE)
 description: Deploy a multi-zonal or regional Google Kubernetes Engine (GKE) using Helm Chart.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: deploy-kubernetes-mz
     name: Google Kubernetes Engine
     identifier: k8s-mz-gke-1

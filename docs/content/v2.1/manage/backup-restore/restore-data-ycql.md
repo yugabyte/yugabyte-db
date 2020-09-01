@@ -5,7 +5,7 @@ linkTitle: Restore data
 description: Restore data in YugabyteDB for YCQL
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: restore-data-ycql
     parent: backup-restore
     weight: 703

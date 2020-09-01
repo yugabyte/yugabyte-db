@@ -5,7 +5,7 @@ linkTitle: CREATE FUNCTION
 description: Use the CREATE FUNCTION statement to define a new function in a database.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-create-function
     parent: api-ysql-commands
 isTocNested: true

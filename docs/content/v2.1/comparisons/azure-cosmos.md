@@ -5,7 +5,7 @@ linkTitle: Azure Cosmos DB
 description: Compare Azure Cosmos DB with YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: azure-cosmos
     parent: comparisons
     weight: 1110

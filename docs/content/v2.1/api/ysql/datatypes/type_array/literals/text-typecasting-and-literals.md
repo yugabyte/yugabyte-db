@@ -5,7 +5,7 @@ headerTitle: The text typecast of a value, the literal for that value, and how t
 description: The text typecast of a value, the literal for that value, and how they are related
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: text-typecasting-and-literals
     parent: array-literals
     weight: 5

@@ -5,7 +5,7 @@ linkTitle: Open source Kubernetes
 description: Deploy YugabyteDB on OSS Kubernetes clusters using the Rook YugabyteDB operator.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: deploy-kubernetes-sz
     name: Open Source
     identifier: k8s-oss-4

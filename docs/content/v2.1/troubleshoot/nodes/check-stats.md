@@ -5,7 +5,7 @@ headerTitle: Check system statistics
 description: How to check system statistics on your YugabyteDB cluster
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: troubleshoot-nodes
     weight: 846
 isTocNested: true

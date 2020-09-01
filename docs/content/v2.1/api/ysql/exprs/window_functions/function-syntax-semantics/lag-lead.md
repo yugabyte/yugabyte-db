@@ -5,7 +5,7 @@ headerTitle: lag(), lead()
 description: The SQL window functions lag(), lead()
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: lag-lead
     parent: function-syntax-semantics
     weight: 40

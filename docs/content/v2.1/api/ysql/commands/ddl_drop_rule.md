@@ -5,7 +5,7 @@ linkTitle: DROP RULE
 description: Use the DROP RULE statement to remove a rule.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-drop-rule
     parent: api-ysql-commands
 isTocNested: true

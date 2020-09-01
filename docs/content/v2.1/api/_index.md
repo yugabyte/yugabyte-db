@@ -8,7 +8,7 @@ headcontent: YugabyteDB API reference
 section: REFERENCE
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api
     weight: 1100
 ---

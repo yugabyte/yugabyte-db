@@ -6,7 +6,7 @@ summary: IP Address String
 description: Use the INET data type to specify columns for data of IP addresses.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1410
 isTocNested: true

@@ -9,7 +9,7 @@ type: page
 section: CONTRIBUTOR GUIDES
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: contribute
     weight: 2800
 ---

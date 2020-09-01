@@ -5,7 +5,7 @@ linkTitle: Docker
 description: Deploy a YugabyteDB cluster on Docker Swarm.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: deploy
     name: Docker
     identifier: docker-2-swarm

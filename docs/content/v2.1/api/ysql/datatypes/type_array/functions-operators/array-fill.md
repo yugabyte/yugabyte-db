@@ -5,7 +5,7 @@ headerTitle: array_fill()
 description: array_fill()
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: array-fill
     parent: array-functions-operators
 isTocNested: true

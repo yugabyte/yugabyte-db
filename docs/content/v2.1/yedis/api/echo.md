@@ -4,7 +4,7 @@ linkTitle: ECHO
 description: ECHO
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-yedis
     weight: 2050
 isTocNested: true

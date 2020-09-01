@@ -5,7 +5,7 @@ linkTitle: Edit a universe
 description: Use Yugabyte Platform to edit a universe.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: edit-universe
     parent: enterprise-edition
     weight: 730

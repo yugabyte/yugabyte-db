@@ -7,7 +7,7 @@ headcontent: Deploy YugabyteDB natively on multiple Kubernetes clusters.
 image: /images/section_icons/deploy/kubernetes.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: deploy-kubernetes-mc
     parent: deploy-kubernetes
     weight: 623

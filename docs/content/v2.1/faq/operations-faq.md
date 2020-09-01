@@ -5,7 +5,7 @@ linkTitle: Operations FAQ
 description: Answers to common questions about operating YugabyteDB clusters
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: faq-operations
     parent: faq
     weight: 2720

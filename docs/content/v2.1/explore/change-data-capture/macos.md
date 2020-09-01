@@ -6,7 +6,7 @@ description: Use a local YugabyteDB cluster (on macOS) to stream data changes to
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: change-data-capture-1-macos
     parent: explore
     weight: 249

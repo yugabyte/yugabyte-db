@@ -5,7 +5,7 @@ linkTitle: TiDB
 description: Compare TiDB with YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: comparisons
     weight: 1076
 ---

@@ -5,7 +5,7 @@ linkTitle: Back up and restore Yugabyte Platform
 description: Use a script file to back up and restore Yugabyte Platform.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: back-up-restore-yp
     parent: enterprise-edition
     weight: 747

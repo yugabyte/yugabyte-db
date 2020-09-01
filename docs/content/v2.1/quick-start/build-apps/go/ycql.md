@@ -5,7 +5,7 @@ linkTitle: Go
 description: Build a Go application that uses YCQL.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: build-apps
     name: Go
     identifier: go-3

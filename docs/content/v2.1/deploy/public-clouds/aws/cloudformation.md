@@ -5,7 +5,7 @@ linkTitle: Amazon Web Services
 description: Deploy a YugabyteDB cluster on Amazon Web Services using AWS CloudFormation
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: deploy-in-aws-1-cloudformation
     parent: public-clouds
     weight: 630

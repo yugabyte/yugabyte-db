@@ -6,7 +6,7 @@ description: Back up a specified YSQL database into plain-text, SQL script file.
 headcontent: Extract a YugabyteDB database into a SQL script file.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: ysql-dump
     parent: admin
     weight: 2467

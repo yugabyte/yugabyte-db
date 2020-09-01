@@ -5,7 +5,7 @@ linkTitle: xCluster replication
 description: Asynchronous replication between multiple YugabyteDB clusters.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: architecture-docdb-async-replication
     parent: architecture-docdb-replication
     weight: 1150

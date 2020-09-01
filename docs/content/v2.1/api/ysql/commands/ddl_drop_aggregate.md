@@ -5,7 +5,7 @@ linkTitle: DROP AGGREGATE
 description: Use the DROP AGGREGATE statement to remove an aggregate.
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-drop-aggregate
     parent: api-ysql-commands
 isTocNested: true

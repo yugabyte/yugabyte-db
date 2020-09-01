@@ -6,7 +6,7 @@ summary: Remove an extension
 description: Use the DROP EXTENSION statement to remove an extension from the database
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: api-ysql-commands-drop-extension
     parent: api-ysql-commands
 isTocNested: true

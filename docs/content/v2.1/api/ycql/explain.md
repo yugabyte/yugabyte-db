@@ -6,7 +6,7 @@ description: Use the EXPLAIN statement to show the execution plan for a YCQL sta
 summary: EXPLAIN
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     parent: api-cassandra
     weight: 1320
 isTocNested: true

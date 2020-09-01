@@ -6,7 +6,7 @@ description: Window functions operate on a row set that's defined, in general, a
 image: /images/section_icons/api/ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.1:
     identifier: function-syntax-semantics
     parent: window-functions
     weight: 30
