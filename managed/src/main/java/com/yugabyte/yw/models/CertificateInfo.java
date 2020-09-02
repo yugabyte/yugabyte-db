@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import io.ebean.*;
+import io.ebean.annotation.EnumValue;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +11,8 @@ import play.data.validation.Constraints;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.Enumerated;
+import javax.persistence.EnumType;
 import javax.persistence.Id;
 import java.util.Date;
 import java.util.List;
@@ -17,6 +20,15 @@ import java.util.UUID;
 
 @Entity
 public class CertificateInfo extends Model {
+
+    public enum Type {
+        @EnumValue("SelfSigned")
+        SelfSigned,
+
+        @EnumValue("CustomCertHostPath")
+        CustomCertHostPath
+
+    }
 
     @Constraints.Required
     @Id
@@ -40,17 +52,24 @@ public class CertificateInfo extends Model {
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
     public Date expiryDate;
 
-    @Constraints.Required
-    @Column(nullable = false)
+    @Column(nullable = true)
     public String privateKey;
 
     @Constraints.Required
     @Column(nullable = false)
     public String certificate;
 
+    @Constraints.Required
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    public CertificateInfo.Type certType;
+
     public static final Logger LOG = LoggerFactory.getLogger(CertificateInfo.class);
 
-    public static CertificateInfo create(UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate, String privateKey, String certificate) {
+    public static CertificateInfo create(
+        UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
+        String privateKey, String certificate, CertificateInfo.Type certType) {
+
         CertificateInfo cert = new CertificateInfo();
         cert.uuid = uuid;
         cert.customerUUID = customerUUID;
@@ -59,6 +78,7 @@ public class CertificateInfo extends Model {
         cert.expiryDate = expiryDate;
         cert.privateKey = privateKey;
         cert.certificate = certificate;
+        cert.certType = certType;
         cert.save();
         return cert;
     }
