@@ -179,7 +179,7 @@ For a tutorial on building a sample Python application that uses `psycopg2`, see
 To install the `psycopg2` binary package, run the following pip install` command:
 
 ```sh
-$ pip3 install psycopg2
+$ pip install psycopg2
 ```
 
 ### aiopg
