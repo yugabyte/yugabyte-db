@@ -41,6 +41,7 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/tablet_server.h"
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
@@ -50,6 +51,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+#include "yb/tools/yb-admin_client.h"
 
 using namespace std::literals;
 
@@ -462,6 +464,85 @@ TEST_F(MasterFailoverTest, TestFailoverAfterTsFailure) {
     return tserver_count == 3 && is_idle;
   }, MonoDelta::FromSeconds(30), "Wait for LB idle"));
 
+  cluster_->AssertNoCrashes();
+}
+
+class MasterFailoverTestWithPlacement : public MasterFailoverTest {
+ public:
+  virtual void SetUp() override {
+    opts_.extra_tserver_flags.push_back("--placement_cloud=c");
+    opts_.extra_tserver_flags.push_back("--placement_region=r");
+    opts_.extra_tserver_flags.push_back("--placement_zone=z${index}");
+    opts_.extra_tserver_flags.push_back("--placement_uuid=" + kLivePlacementUuid);
+    opts_.extra_master_flags.push_back("--enable_register_ts_from_raft=true");
+    MasterFailoverTest::SetUp();
+    yb_admin_client_ = std::make_unique<tools::enterprise::ClusterAdminClient>(
+        cluster_->GetMasterAddresses(), 30000 /* timeout_millis */);
+    ASSERT_OK(yb_admin_client_->Init());
+    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, kLivePlacementUuid));
+  }
+
+  virtual void TearDown() override {
+    yb_admin_client_.reset();
+    MasterFailoverTest::TearDown();
+  }
+
+  void AssertTserverHasPlacementUuid(
+      const string& ts_uuid, const string& placement_uuid,
+      const std::vector<std::unique_ptr<YBTabletServer>>& tablet_servers) {
+    auto it = std::find_if(tablet_servers.begin(), tablet_servers.end(), [&](const auto& ts) {
+        return ts->uuid() == ts_uuid;
+    });
+    ASSERT_TRUE(it != tablet_servers.end());
+    ASSERT_EQ((*it)->placement_uuid(), placement_uuid);
+  }
+
+ protected:
+  const string kReadReplicaPlacementUuid = "read_replica";
+  const string kLivePlacementUuid = "live";
+  std::unique_ptr<tools::enterprise::ClusterAdminClient> yb_admin_client_;
+};
+
+TEST_F_EX(MasterFailoverTest, TestFailoverWithReadReplicas, MasterFailoverTestWithPlacement) {
+  ASSERT_OK(yb_admin_client_->AddReadReplicaPlacementInfo(
+      "c.r.z0:1", 1, kReadReplicaPlacementUuid));
+
+  // Add a new read replica tserver to the cluster with a matching cloud info to a live placement,
+  // to test that we distinguish not just by cloud info but also by peer role.
+  std::vector<std::string> extra_opts;
+  extra_opts.push_back("--placement_cloud=c");
+  extra_opts.push_back("--placement_region=r");
+  extra_opts.push_back("--placement_zone=z0");
+  extra_opts.push_back("--placement_uuid=" + kReadReplicaPlacementUuid);
+  ASSERT_OK(cluster_->AddTabletServer(true, extra_opts));
+
+  YBTableName table_name(YQL_DATABASE_CQL, "test", "testFailoverWithReadReplicas");
+  ASSERT_OK(CreateTable(table_name, kWaitForCreate));
+
+  // Shutdown the live ts in c.r.z0
+  auto live_ts_uuid = cluster_->tablet_server(0)->instance_id().permanent_uuid();
+  cluster_->tablet_server(0)->Shutdown();
+
+  // Shutdown the rr ts in c.r.z0
+  auto rr_ts_uuid = cluster_->tablet_server(3)->instance_id().permanent_uuid();
+  cluster_->tablet_server(3)->Shutdown();
+
+  // Roll over to a new master.
+  ASSERT_OK(cluster_->ChangeConfig(cluster_->GetLeaderMaster(), consensus::REMOVE_SERVER));
+
+  // Count all servers equal to 4.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    int tserver_count;
+    RETURN_NOT_OK(client_->TabletServerCount(&tserver_count, false /* primary_only */));
+    return tserver_count == 4;
+  }, MonoDelta::FromSeconds(30), "Wait for tablet server count"));
+
+  std::vector<std::unique_ptr<YBTabletServer>> tablet_servers;
+  ASSERT_OK(client_->ListTabletServers(&tablet_servers));
+
+  ASSERT_NO_FATALS(AssertTserverHasPlacementUuid(live_ts_uuid, kLivePlacementUuid, tablet_servers));
+  ASSERT_NO_FATALS(AssertTserverHasPlacementUuid(
+      rr_ts_uuid, kReadReplicaPlacementUuid, tablet_servers));
   cluster_->AssertNoCrashes();
 }
 
