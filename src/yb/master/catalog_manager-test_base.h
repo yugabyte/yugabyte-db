@@ -30,6 +30,8 @@ namespace master {
 const string default_cloud = "aws";
 const string default_region = "us-west-1";
 const int kNumReplicas = 3;
+const string kLivePlacementUuid = "live";
+const string kReadReplicaPlacementUuidPrefix = "rr_$0";
 
 void CreateTable(const vector<string> split_keys, const int num_replicas, bool setup_placement,
                  TableInfo* table, vector<scoped_refptr<TabletInfo>>* tablets) {
@@ -62,6 +64,16 @@ void CreateTable(const vector<string> split_keys, const int num_replicas, bool s
   ASSERT_EQ(tablets->size(), split_keys.size() + 1);
 }
 
+void SetupRaftPeer(consensus::RaftPeerPB::MemberType member_type, std::string az,
+                   consensus::RaftPeerPB* raft_peer) {
+  raft_peer->Clear();
+  raft_peer->set_member_type(member_type);
+  auto* cloud_info = raft_peer->mutable_cloud_info();
+  cloud_info->set_placement_cloud(default_cloud);
+  cloud_info->set_placement_region(default_region);
+  cloud_info->set_placement_zone(az);
+}
+
 void SetupClusterConfig(vector<string> azs, ReplicationInfoPB* replication_info) {
 
   PlacementInfoPB* placement_info = replication_info->mutable_live_replicas();
@@ -72,6 +84,27 @@ void SetupClusterConfig(vector<string> azs, ReplicationInfoPB* replication_info)
     pb->mutable_cloud_info()->set_placement_region(default_region);
     pb->mutable_cloud_info()->set_placement_zone(az);
     pb->set_min_num_replicas(1);
+  }
+}
+
+void SetupClusterConfigWithReadReplicas(vector<string> live_azs,
+                                        vector<vector<string>> read_replica_azs,
+                                        ReplicationInfoPB* replication_info) {
+  replication_info->Clear();
+  SetupClusterConfig(live_azs, replication_info);
+  replication_info->mutable_live_replicas()->set_placement_uuid(kLivePlacementUuid);
+  int i = 0;
+  for (const auto& placement : read_replica_azs) {
+    auto* placement_info = replication_info->add_read_replicas();
+    placement_info->set_placement_uuid(Format(kReadReplicaPlacementUuidPrefix, i));
+    for (const auto& az : placement) {
+      auto pb = placement_info->add_placement_blocks();
+      pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+      pb->mutable_cloud_info()->set_placement_region(default_region);
+      pb->mutable_cloud_info()->set_placement_zone(az);
+      pb->set_min_num_replicas(1);
+    }
+    i++;
   }
 }
 

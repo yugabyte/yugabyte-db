@@ -1165,7 +1165,8 @@ Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tabl
     const ListTabletServersResponsePB_Entry& e = resp.servers(i);
     auto ts = std::make_unique<YBTabletServer>(
         e.instance_id().permanent_uuid(),
-        DesiredHostPort(e.registration().common(), data_->cloud_info_pb_).host());
+        DesiredHostPort(e.registration().common(), data_->cloud_info_pb_).host(),
+        e.registration().common().placement_uuid());
     tablet_servers->push_back(std::move(ts));
   }
   return Status::OK();

@@ -18,6 +18,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
+#include "yb/util/string_util.h"
 
 DEFINE_double(balancer_load_max_standard_deviation, 2.0,
               "The standard deviation among the tserver load, above which that distribution "
@@ -102,6 +103,42 @@ Status CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfo
   }
   return STATUS_SUBSTITUTE(InvalidArgument, "Placement info $0 does not contain cloud info $1",
                            placement_info.DebugString(), cloud_info_string);
+}
+
+Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
+    const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer) {
+  switch (peer.member_type()) {
+    case consensus::RaftPeerPB::PRE_VOTER:
+    case consensus::RaftPeerPB::VOTER: {
+      // This peer is a live replica.
+      return replication_info.live_replicas().placement_uuid();
+    }
+    case consensus::RaftPeerPB::PRE_OBSERVER:
+    case consensus::RaftPeerPB::OBSERVER: {
+      // This peer is a read replica.
+      std::vector<std::string> placement_uuid_matches;
+      for (const auto& placement_info : replication_info.read_replicas()) {
+        if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(
+            placement_info, peer.cloud_info()).ok()) {
+          placement_uuid_matches.push_back(placement_info.placement_uuid());
+        }
+      }
+
+      if (placement_uuid_matches.size() != 1) {
+        return STATUS(IllegalState, Format("Expect 1 placement match for peer $0, found $1: $2",
+                                           peer.ShortDebugString(), placement_uuid_matches.size(),
+                                           VectorToString(placement_uuid_matches)));
+      }
+
+      return placement_uuid_matches.front();
+    }
+    case consensus::RaftPeerPB::UNKNOWN_MEMBER_TYPE: {
+      return STATUS(IllegalState, Format("Member type unknown for peer $0",
+                                         peer.ShortDebugString()));
+    }
+    default:
+      return STATUS(IllegalState, "Unhandled raft state for peer $0", peer.ShortDebugString());
+  }
 }
 
 } // namespace master

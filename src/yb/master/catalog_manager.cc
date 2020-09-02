@@ -5777,6 +5777,16 @@ Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& pee
   *common->mutable_broadcast_addresses() = peer.last_known_broadcast_addr();
   *common->mutable_cloud_info() = peer.cloud_info();
 
+  // Todo(Rahul) : May need to be changed when we implement table level overrides.
+  SysClusterConfigEntryPB config;
+  RETURN_NOT_OK(GetClusterConfig(&config));
+  // If the config has no replication info, use empty string for the placement uuid, otherwise
+  // calculate it from the reported peer.
+  auto placement_uuid = config.has_replication_info() ?
+      VERIFY_RESULT(CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
+          config.replication_info(), peer)) : "";
+  common->set_placement_uuid(placement_uuid);
+
   return master_->ts_manager()->RegisterTS(instance_pb, registration_pb, master_->MakeCloudInfoPB(),
                                            &master_->proxy_cache(),
                                            RegisteredThroughHeartbeat::kFalse);

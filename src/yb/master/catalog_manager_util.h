@@ -47,6 +47,11 @@ class CatalogManagerUtil {
   static CHECKED_STATUS DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
                                                           const CloudInfoPB& cloud_info);
 
+  // Called when registering a ts from raft, deduce a tservers placement from the peer's role
+  // and cloud info.
+  static Result<std::string> GetPlacementUuidFromRaftPeer(
+      const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer);
+
  private:
   CatalogManagerUtil();
 
