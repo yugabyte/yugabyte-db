@@ -272,26 +272,36 @@ public class NodeManager extends DevopsBase {
         } else {
           extra_gflags.put("enable_ysql", "false");
         }
-        if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
+        if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
           if (cert == null) {
             throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
           }
-          if (taskParam.enableNodeToNodeEncrypt) extra_gflags.put("use_node_to_node_encryption", "true");
-          if (taskParam.enableClientToNodeEncrypt) extra_gflags.put("use_client_to_server_encryption", "true");
-          extra_gflags.put("allow_insecure_connections", taskParam.allowInsecure ? "true" : "false");
+          if (taskParam.enableNodeToNodeEncrypt) {
+            extra_gflags.put("use_node_to_node_encryption", "true");
+          }
+          if (taskParam.enableClientToNodeEncrypt) {
+            extra_gflags.put("use_client_to_server_encryption", "true");
+          }
+          extra_gflags.put(
+            "allow_insecure_connections",
+            taskParam.allowInsecure ? "true" : "false"
+          );
           String yb_home_dir = taskParam.getProvider().getYbHome();
           // TODO: This directory location should also be passed into subcommand: --certs_node_dir
           extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
-          subcommand.add("--rootCA_cert");
-          subcommand.add(cert.certificate);
-          subcommand.add("--rootCA_key");
-          subcommand.add(cert.privateKey);
-          if (taskParam.enableClientToNodeEncrypt) {
-            subcommand.add("--client_cert");
-            subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
-            subcommand.add("--client_key");
-            subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+
+          if (cert.certType == CertificateInfo.Type.SelfSigned) {
+            subcommand.add("--rootCA_cert");
+            subcommand.add(cert.certificate);
+            subcommand.add("--rootCA_key");
+            subcommand.add(cert.privateKey);
+            if (taskParam.enableClientToNodeEncrypt) {
+              subcommand.add("--client_cert");
+              subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
+              subcommand.add("--client_key");
+              subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+            }
           }
         }
         if (taskParam.callhomeLevel != null){

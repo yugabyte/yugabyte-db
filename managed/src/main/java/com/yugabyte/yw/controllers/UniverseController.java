@@ -51,6 +51,7 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HealthCheck;
@@ -488,10 +489,26 @@ public class UniverseController extends AuthenticatedController {
           }
           // If client encryption is enabled, generate the client cert file for each node.
           if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
+            CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
+            if (cert.certType == CertificateInfo.Type.SelfSigned) {
             CertificateHelper.createClientCertificate(taskParams.rootCA,
                 String.format(CertificateHelper.CERT_PATH, appConfig.getString("yb.storage.path"),
                               customerUUID.toString(), taskParams.rootCA.toString()),
                 CertificateHelper.DEFAULT_CLIENT, null, null);
+            } else {
+              if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(
+                  CloudType.onprem)) {
+                return ApiResponse.error(
+                  BAD_REQUEST,
+                  "Custom certificates are only supported for onprem providers."
+                );
+              }
+              LOG.info(
+                "Skipping client certificate creation for universe {} ({}) " +
+                "because cert {} (type {})is not a self-signed cert.",
+                universe.name, universe.universeUUID, taskParams.rootCA, cert.certType
+              );
+            }
           }
           // Set the flag to mark the universe as using TLS enabled and therefore not allowing
           // insecure connections.
