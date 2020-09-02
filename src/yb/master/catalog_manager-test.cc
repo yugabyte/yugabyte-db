@@ -261,6 +261,42 @@ TEST(TestCatalogManager, TestLeaderLoadBalanced) {
   ASSERT_OK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
 }
 
+TEST(TestCatalogManager, TestGetPlacementUuidFromRaftPeer) {
+  // Test a voter peer is assigned a live placement.
+  ReplicationInfoPB replication_info;
+  SetupClusterConfigWithReadReplicas({"a", "b", "c"}, {{"d"}}, &replication_info);
+  consensus::RaftPeerPB raft_peer;
+  SetupRaftPeer(consensus::RaftPeerPB::VOTER, "a", &raft_peer);
+  ASSERT_EQ(kLivePlacementUuid, ASSERT_RESULT(
+      CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer)));
+  SetupRaftPeer(consensus::RaftPeerPB::PRE_VOTER, "b", &raft_peer);
+  ASSERT_EQ(kLivePlacementUuid, ASSERT_RESULT(
+      CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer)));
+
+  // Test a observer peer is assigned to the rr placement.
+  SetupRaftPeer(consensus::RaftPeerPB::OBSERVER, "d", &raft_peer);
+  ASSERT_EQ(Format(kReadReplicaPlacementUuidPrefix, 0), ASSERT_RESULT(
+      CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer)));
+
+  // Now test multiple rr placements.
+  SetupClusterConfigWithReadReplicas({"a", "b", "c"}, {{"d"}, {"e"}}, &replication_info);
+  SetupRaftPeer(consensus::RaftPeerPB::PRE_OBSERVER, "d", &raft_peer);
+  ASSERT_EQ(Format(kReadReplicaPlacementUuidPrefix, 0), ASSERT_RESULT(
+      CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer)));
+  SetupRaftPeer(consensus::RaftPeerPB::OBSERVER, "e", &raft_peer);
+  ASSERT_EQ(Format(kReadReplicaPlacementUuidPrefix, 1), ASSERT_RESULT(
+      CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer)));
+
+  // Test peer with invalid cloud info throws error.
+  SetupRaftPeer(consensus::RaftPeerPB::PRE_OBSERVER, "c", &raft_peer);
+  ASSERT_NOK(CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer));
+
+  // Test cluster config with rr placements with same cloud info throws error.
+  SetupClusterConfigWithReadReplicas({"a", "b", "c"}, {{"d"}, {"d"}}, &replication_info);
+  SetupRaftPeer(consensus::RaftPeerPB::OBSERVER, "d", &raft_peer);
+  ASSERT_NOK(CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer));
+
+}
 
 } // namespace master
 } // namespace yb
