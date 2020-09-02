@@ -33,7 +33,7 @@
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_util.h"
 
-DEFINE_bool(master_ignore_deleted_on_load, true,
+DEFINE_bool(master_ignore_deleted_on_load, false,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
   "This reduces failover time at the expense of garbage data." );
 
