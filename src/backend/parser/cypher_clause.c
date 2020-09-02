@@ -158,6 +158,9 @@ make_transform_entity(cypher_parsestate *cpstate,
                       enum transform_entity_type type, Node *node, Expr *expr,
                       cypher_target_node *target_node);
 static transform_entity *find_variable(cypher_parsestate *cpstate, char *name);
+static Node *create_property_constraint_function(cypher_parsestate *cpstate,
+                                                 transform_entity *entity,
+                                                 Node *property_constraints);
 static TargetEntry *findTarget(List *targetList, char *resname);
 // create clause
 static Query *transform_cypher_create(cypher_parsestate *cpstate,
@@ -195,7 +198,6 @@ static bool variable_exists(cypher_parsestate *cpstate, char *name);
 static int get_target_entry_resno(List *target_list, char *name);
 static TargetEntry *placeholder_target_entry(cypher_parsestate *cpstate,
                                              char *name);
-static RangeTblEntry *find_prev_cypher_clause(cypher_parsestate *cpstate);
 static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
                                            cypher_clause *clause);
 
@@ -606,7 +608,7 @@ static void transform_match_pattern(cypher_parsestate *cpstate, Query *query,
     ListCell *lc;
     List *quals = NIL;
     Expr *q = NULL;
-    Node *expr = NULL;
+    Expr *expr = NULL;
 
     foreach (lc, pattern)
     {
@@ -619,11 +621,22 @@ static void transform_match_pattern(cypher_parsestate *cpstate, Query *query,
     if (quals != NIL)
     {
         q = makeBoolExpr(AND_EXPR, quals, -1);
-        expr = transformExpr(&cpstate->pstate, (Node *)q, EXPR_KIND_WHERE);
+        expr = (Expr *)transformExpr(&cpstate->pstate, (Node *)q, EXPR_KIND_WHERE);
     }
 
+    if (cpstate->property_constraint_quals != NIL)
+    {
+        Expr *prop_qual = makeBoolExpr(AND_EXPR, cpstate->property_constraint_quals, -1);
+
+        if (quals == NIL)
+            expr = prop_qual;
+        else
+            expr = makeBoolExpr(AND_EXPR, list_make2(expr, prop_qual), -1);
+    }
+
+
     query->rtable = cpstate->pstate.p_rtable;
-    query->jointree = makeFromExpr(cpstate->pstate.p_joinlist, expr);
+    query->jointree = makeFromExpr(cpstate->pstate.p_joinlist, (Node *)expr);
 }
 
 static char *get_next_default_alias(cypher_parsestate *cpstate)
@@ -937,8 +950,7 @@ static List *make_edge_quals(cypher_parsestate *cpstate,
     default:
         ereport(ERROR,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                 errmsg("edges with a property condition are not supported"),
-                 parser_errposition(pstate, edge->entity.rel->location)));
+                 errmsg("Unknown relationship direction")));
     }
     return NIL;
 }
@@ -1022,6 +1034,54 @@ static transform_entity *find_variable(cypher_parsestate *cpstate, char *name)
 }
 
 /*
+ * Create a function to handle property constraints on an edge/vertex.
+ * Since the property constraints might be a parameter, we cannot split
+ * the property map into indvidual quals, this will be slightly inefficient,
+ * but necessary to cover all possible situations.
+ */
+static Node *create_property_constraint_function(cypher_parsestate *cpstate,
+                                                 transform_entity *entity,
+                                                 Node *property_constraints)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    char *entity_name;
+    ColumnRef *cr;
+    FuncExpr *fexpr;
+    Oid func_oid;
+    Node *prop_expr, *const_expr;
+    RangeTblEntry *rte;
+
+    cr = makeNode(ColumnRef);
+
+    if (entity->type == ENT_EDGE)
+        entity_name = entity->entity.node->name;
+    else if (entity->type == ENT_VERTEX)
+        entity_name = entity->entity.rel->name;
+
+    cr->fields = list_make2(makeString(entity_name), makeString("properties"));
+
+    // use Postgres to get the properties' transform node
+    if ((rte = find_rte(cpstate, entity_name)))
+        prop_expr = scanRTEForColumn(pstate, rte, AG_VERTEX_COLNAME_PROPERTIES,
+                                     -1, 0, NULL);
+    else
+        prop_expr = transformExpr(pstate, (Node *)cr, EXPR_KIND_WHERE);
+
+    // use cypher to get the constraints' transform node
+    const_expr = transform_cypher_expr(cpstate, property_constraints,
+                                       EXPR_KIND_WHERE);
+
+    func_oid = get_ag_func_oid("_property_constraint_check", 2, AGTYPEOID,
+                               AGTYPEOID);
+
+    fexpr = makeFuncExpr(func_oid, BOOLOID, list_make2(prop_expr, const_expr),
+                         InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+
+    return (Node *)fexpr;
+}
+
+
+/*
  * For the given path, transform each entity within the path, create
  * the path variable if needed, and construct the quals to enforce the
  * correct join tree, and enforce edge uniqueness.
@@ -1091,6 +1151,12 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
             entity = make_transform_entity(cpstate, ENT_VERTEX, (Node *)node,
                                            expr, NULL);
 
+            if (node->props)
+            {
+                Node *n = create_property_constraint_function(cpstate, entity, node->props);
+                cpstate->property_constraint_quals = lappend(cpstate->property_constraint_quals, n);
+            }
+
             entities = lappend(entities, entity);
         }
         else
@@ -1101,6 +1167,12 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
 
             entity = make_transform_entity(cpstate, ENT_EDGE, (Node *)rel,
                                            expr, NULL);
+
+            if (rel->props)
+            {
+                Node *n = create_property_constraint_function(cpstate, entity, rel->props);
+                cpstate->property_constraint_quals = lappend(cpstate->property_constraint_quals, n);
+            }
 
             entities = lappend(entities, entity);
         }
@@ -1236,6 +1308,10 @@ static char *get_accessor_function_name(enum transform_entity_type type,
         // id
         if (!strcmp(AG_VERTEX_COLNAME_ID, name))
             return AG_VERTEX_ACCESS_FUNCTION_ID;
+        // props
+        else if(!strcmp(AG_VERTEX_COLNAME_PROPERTIES, name))
+            return AG_VERTEX_ACCESS_FUNCTION_PROPERTIES;
+
     }
     if (type == ENT_EDGE)
     {
@@ -1248,6 +1324,9 @@ static char *get_accessor_function_name(enum transform_entity_type type,
         // end id
         else if (!strcmp(AG_EDGE_COLNAME_END_ID, name))
             return AG_EDGE_ACCESS_FUNCTION_END_ID;
+        // props
+        else if(!strcmp(AG_VERTEX_COLNAME_PROPERTIES, name))
+            return AG_VERTEX_ACCESS_FUNCTION_PROPERTIES;
     }
 
     ereport(ERROR,
@@ -1382,14 +1461,6 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
                      parser_errposition(pstate, rel->location)));
     }
 
-    if (rel->props)
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                 errmsg("edges with a property condition are not supported"),
-                 parser_errposition(pstate, rel->location)));
-    }
-
     if (!rel->name)
         rel->name = get_next_default_alias(cpstate);
 
@@ -1499,15 +1570,6 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                      errmsg("variable `%s` does not exist", node->name),
                      parser_errposition(pstate, node->location)));
-    }
-
-    // NOTE: for now, nodes with a property condition are not supported
-    if (node->props)
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                 errmsg("nodes with a property condition are not supported"),
-                 parser_errposition(pstate, node->location)));
     }
 
     if (!node->name)
@@ -1931,7 +1993,7 @@ static bool variable_exists(cypher_parsestate *cpstate, char *name)
     if (name == NULL)
         return false;
 
-    rte = find_prev_cypher_clause(cpstate);
+    rte = find_rte(cpstate, PREV_CYPHER_CLAUSE_ALIAS);
     if (rte)
     {
         id = scanRTEForColumn(pstate, rte, name, -1, 0, NULL);
@@ -2021,7 +2083,7 @@ static cypher_target_node *transform_create_cypher_existing_node(
     cypher_target_node *rel = palloc(sizeof(cypher_target_node));
     char *alias;
     int resno;
-    RangeTblEntry *rte = find_prev_cypher_clause(cpstate);
+    RangeTblEntry *rte = find_rte(cpstate, PREV_CYPHER_CLAUSE_ALIAS);
     TargetEntry *te;
     Expr *result;
 
@@ -2215,6 +2277,16 @@ static Expr *cypher_create_properties(cypher_parsestate *cpstate,
 {
     Expr *properties;
 
+    if (props != NULL && is_ag_node(props, cypher_param))
+    {
+        ParseState *pstate = (ParseState *) cpstate;
+        cypher_param *param = (cypher_param *)props;
+
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("properties in a CREATE clause as a parameter is not supported"),
+                parser_errposition(pstate, param->location)));
+    }
+
     if (type != ENT_VERTEX && type != ENT_EDGE)
         ereport(ERROR, (errmsg_internal("unreconized entity type")));
 
@@ -2228,7 +2300,7 @@ static Expr *cypher_create_properties(cypher_parsestate *cpstate,
         properties = (Expr *)build_column_default(
             label_relation, Anum_ag_label_edge_table_properties);
 
-    // add a volatile wrapper call to prevent the optimizer from removing
+    // add a volatile wrapper call to prevent the optimizer from removing it
     return (Expr *)add_volatile_wrapper(properties);
 }
 
@@ -2247,25 +2319,6 @@ static Node *cypher_create_id_default(cypher_parsestate *cpstate,
         ereport(ERROR, (errmsg_internal("unreconized entity type")));
 
     return id;
-}
-
-static RangeTblEntry *find_prev_cypher_clause(cypher_parsestate *cpstate)
-{
-    ParseState *pstate = (ParseState *)cpstate;
-    ListCell *lc;
-
-    foreach (lc, pstate->p_rtable)
-    {
-        RangeTblEntry *rte = (RangeTblEntry *)lfirst(lc);
-        Alias *alias = rte->alias;
-        if (!alias)
-            continue;
-
-        if (!strcmp(alias->aliasname, PREV_CYPHER_CLAUSE_ALIAS))
-            return rte;
-    }
-
-    return NULL;
 }
 
 /*

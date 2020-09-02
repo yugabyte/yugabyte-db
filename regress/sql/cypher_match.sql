@@ -213,6 +213,54 @@ SELECT * FROM cypher('cypher_match', $$
 	RETURN a.i, b.id, c.id
 $$) AS (i agtype, b agtype, c agtype);
 
+--
+-- Property constraints
+--
+SELECT * FROM cypher('cypher_match',
+ $$CREATE ({string_key: "test", int_key: 1, float_key: 3.14, map_key: {key: "value"}, list_key: [1, 2, 3]}) $$)
+AS (p agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$CREATE ({lst: [1, NULL, 3.14, "string", {key: "value"}, []]}) $$)
+AS (p agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (n  {string_key: NULL}) RETURN n $$)
+AS (n agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (n  {string_key: "wrong value"}) RETURN n $$)
+AS (n agtype);
+
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (n {string_key: "test", int_key: 1, float_key: 3.14, map_key: {key: "value"}, list_key: [1, 2, 3]})
+    RETURN n $$)
+AS (p agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (n {string_key: "test"}) RETURN n $$)
+AS (p agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (n {lst: [1, NULL, 3.14, "string", {key: "value"}, []]})  RETURN n $$)
+AS (p agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (n {lst: [1, NULL, 3.14, "string", {key: "value"}, [], "extra value"]})  RETURN n $$)
+AS (p agtype);
+
+
+--
+-- Prepared Statement Property Constraint
+--
+PREPARE property_ps(agtype) AS SELECT * FROM cypher('cypher_match',
+ $$MATCH (n $props) RETURN n $$, $1)
+AS (p agtype);
+
+EXECUTE property_ps(agtype_build_map('props',
+                                     agtype_build_map('string_key', 'test')));
+
 -- need a following RETURN clause (should fail)
 SELECT * FROM cypher('cypher_match', $$MATCH (n:v)$$) AS (a agtype);
 
@@ -254,6 +302,20 @@ SELECT * FROM cypher('cypher_match',
 SELECT * FROM cypher('cypher_match',
  $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(v)) RETURN u, e, v $$)
 AS (u agtype, e agtype, v agtype);
+
+
+-- Property Constraint in EXISTS
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS((u)-[]->({id: "middle"})) RETURN u $$)
+AS (u agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS((u)-[]->({id: "not a valid id"})) RETURN u $$)
+AS (u agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS((u)-[]->({id: NULL})) RETURN u $$)
+AS (u agtype);
 
 -- Exists checks for a loop. There shouldn't be any.
 SELECT * FROM cypher('cypher_match',

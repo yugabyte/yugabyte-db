@@ -30,6 +30,7 @@ typedef struct cypher_parsestate
     Param *params;
     int default_alias_num;
     List *entities;
+    List *property_constraint_quals;
 } cypher_parsestate;
 
 typedef struct errpos_ecb_state
@@ -46,5 +47,6 @@ void free_cypher_parsestate(cypher_parsestate *cpstate);
 void setup_errpos_ecb(errpos_ecb_state *ecb_state, ParseState *pstate,
                       int query_loc);
 void cancel_errpos_ecb(errpos_ecb_state *ecb_state);
+RangeTblEntry *find_rte(cypher_parsestate *cpstate, char *varname);
 
 #endif

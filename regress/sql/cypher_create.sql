@@ -177,7 +177,7 @@ SELECT * FROM cypher_create.n_var;
 SELECT * FROM cypher_create.e_var;
 
 --Check every label has been created
-SELECT * FROM ag_label;
+SELECT name, kind FROM ag_label ORDER BY name;
 
 --Validate every vertex has the correct label
 SELECT * FROM cypher('cypher_create', $$MATCH (n) RETURN n$$) AS (n agtype);

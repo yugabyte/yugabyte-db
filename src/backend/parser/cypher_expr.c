@@ -25,6 +25,7 @@
 #include "nodes/value.h"
 #include "optimizer/tlist.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_expr.h"
 #include "parser/cypher_clause.h"
 #include "parser/parse_node.h"
 #include "parser/parse_oper.h"
@@ -34,6 +35,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "commands/label_commands.h"
 #include "nodes/cypher_nodes.h"
 #include "parser/cypher_expr.h"
 #include "parser/cypher_parse_node.h"
@@ -310,6 +312,19 @@ static Node *transform_ColumnRef(cypher_parsestate *cpstate, ColumnRef *cref)
     var = colNameToVar(pstate, colname, false, cref->location);
     if (!var)
     {
+        RangeTblEntry *rte;
+
+        /*
+         * If we find an rte with the column ref name, this expr might be
+         * referencing a property in a vertex or edge. In that case switch
+         * the columnRef to a ColumnRef of the rte.
+         */
+        if ((rte = find_rte(cpstate, (char *)colname)))
+        {
+            return scanRTEForColumn(pstate, rte, AG_VERTEX_COLNAME_PROPERTIES,
+                                    -1, 0, NULL);
+        }
+
         ereport(ERROR, (errcode(ERRCODE_UNDEFINED_COLUMN),
                         errmsg("variable `%s` does not exist", colname),
                         parser_errposition(pstate, cref->location)));

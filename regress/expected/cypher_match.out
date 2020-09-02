@@ -407,6 +407,82 @@ $$) AS (i agtype, b agtype, c agtype);
  1 | "initial" | "middle"
 (12 rows)
 
+--
+-- Property constraints
+--
+SELECT * FROM cypher('cypher_match',
+ $$CREATE ({string_key: "test", int_key: 1, float_key: 3.14, map_key: {key: "value"}, list_key: [1, 2, 3]}) $$)
+AS (p agtype);
+ p 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match',
+ $$CREATE ({lst: [1, NULL, 3.14, "string", {key: "value"}, []]}) $$)
+AS (p agtype);
+ p 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (n  {string_key: NULL}) RETURN n $$)
+AS (n agtype);
+ n 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (n  {string_key: "wrong value"}) RETURN n $$)
+AS (n agtype);
+ n 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (n {string_key: "test", int_key: 1, float_key: 3.14, map_key: {key: "value"}, list_key: [1, 2, 3]})
+    RETURN n $$)
+AS (p agtype);
+                                                                                    p                                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"int_key": 1, "map_key": {"key": "value"}, "list_key": [1, 2, 3], "float_key": 3.14, "string_key": "test"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (n {string_key: "test"}) RETURN n $$)
+AS (p agtype);
+                                                                                    p                                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"int_key": 1, "map_key": {"key": "value"}, "list_key": [1, 2, 3], "float_key": 3.14, "string_key": "test"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (n {lst: [1, NULL, 3.14, "string", {key: "value"}, []]})  RETURN n $$)
+AS (p agtype);
+                                                          p                                                           
+----------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710658, "label": "", "properties": {"lst": [1, null, 3.14, "string", {"key": "value"}, []]}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (n {lst: [1, NULL, 3.14, "string", {key: "value"}, [], "extra value"]})  RETURN n $$)
+AS (p agtype);
+ p 
+---
+(0 rows)
+
+--
+-- Prepared Statement Property Constraint
+--
+PREPARE property_ps(agtype) AS SELECT * FROM cypher('cypher_match',
+ $$MATCH (n $props) RETURN n $$, $1)
+AS (p agtype);
+EXECUTE property_ps(agtype_build_map('props',
+                                     agtype_build_map('string_key', 'test')));
+                                                                                    p                                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"int_key": 1, "map_key": {"key": "value"}, "list_key": [1, 2, 3], "float_key": 3.14, "string_key": "test"}}::vertex
+(1 row)
+
 -- need a following RETURN clause (should fail)
 SELECT * FROM cypher('cypher_match', $$MATCH (n:v)$$) AS (a agtype);
 ERROR:  syntax error at end of input
@@ -485,6 +561,31 @@ AS (u agtype, e agtype, v agtype);
  {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex  | {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge | {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
  {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex | {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge | {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
 (6 rows)
+
+-- Property Constraint in EXISTS
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS((u)-[]->({id: "middle"})) RETURN u $$)
+AS (u agtype);
+                                        u                                         
+----------------------------------------------------------------------------------
+ {"id": 2251799813685251, "label": "v3", "properties": {"id": "end"}}::vertex
+ {"id": 2251799813685249, "label": "v3", "properties": {"id": "initial"}}::vertex
+ {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS((u)-[]->({id: "not a valid id"})) RETURN u $$)
+AS (u agtype);
+ u 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) WHERE EXISTS((u)-[]->({id: NULL})) RETURN u $$)
+AS (u agtype);
+ u 
+---
+(0 rows)
 
 -- Exists checks for a loop. There shouldn't be any.
 SELECT * FROM cypher('cypher_match',
@@ -587,8 +688,10 @@ LINE 2:  $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(x)) RETURN u, e...
 --
 -- dump all vertices
 SELECT * FROM cypher('cypher_match', $$MATCH (u) RETURN u $$) AS (u agtype);
-                                         u                                          
-------------------------------------------------------------------------------------
+                                                                                    u                                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"int_key": 1, "map_key": {"key": "value"}, "list_key": [1, 2, 3], "float_key": 3.14, "string_key": "test"}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"lst": [1, null, 3.14, "string", {"key": "value"}, []]}}::vertex
  {"id": 844424930131969, "label": "v", "properties": {}}::vertex
  {"id": 844424930131970, "label": "v", "properties": {"i": 0}}::vertex
  {"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex
@@ -602,7 +705,7 @@ SELECT * FROM cypher('cypher_match', $$MATCH (u) RETURN u $$) AS (u agtype);
  {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
  {"id": 2251799813685251, "label": "v3", "properties": {"id": "end"}}::vertex
  {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
-(13 rows)
+(15 rows)
 
 -- select vertices with id as a property
 SELECT * FROM cypher('cypher_match',
@@ -626,12 +729,14 @@ AS (u agtype);
 SELECT * FROM cypher('cypher_match',
  $$MATCH (u) WHERE NOT EXISTS(u.id) RETURN u $$)
 AS (u agtype);
-                                   u                                   
------------------------------------------------------------------------
+                                                                                    u                                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"int_key": 1, "map_key": {"key": "value"}, "list_key": [1, 2, 3], "float_key": 3.14, "string_key": "test"}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"lst": [1, null, 3.14, "string", {"key": "value"}, []]}}::vertex
  {"id": 844424930131969, "label": "v", "properties": {}}::vertex
  {"id": 844424930131970, "label": "v", "properties": {"i": 0}}::vertex
  {"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex
-(3 rows)
+(5 rows)
 
 -- select vertices without id as a property but with a property i
 SELECT * FROM cypher('cypher_match',

@@ -910,6 +910,13 @@ STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION _property_constraint_check(agtype, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 --
 -- String functions
 --

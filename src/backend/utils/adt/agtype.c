@@ -3126,6 +3126,26 @@ static agtype_value *get_agtype_value_object_value(agtype_value *agtv_object,
     return NULL;
 }
 
+PG_FUNCTION_INFO_V1(_property_constraint_check);
+
+Datum _property_constraint_check(PG_FUNCTION_ARGS)
+{
+    agtype_iterator *constraint_it, *property_it;
+    agtype *properties, *constraints;
+
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+        PG_RETURN_BOOL(false);
+
+    properties = AG_GET_ARG_AGTYPE_P(0);
+    constraints = AG_GET_ARG_AGTYPE_P(1);
+
+    constraint_it = agtype_iterator_init(&constraints->root);
+    property_it = agtype_iterator_init(&properties->root);
+
+    PG_RETURN_BOOL(agtype_deep_contains(&property_it, &constraint_it));
+}
+
+
 PG_FUNCTION_INFO_V1(id);
 
 Datum id(PG_FUNCTION_ARGS)

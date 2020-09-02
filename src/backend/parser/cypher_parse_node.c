@@ -97,3 +97,22 @@ static void errpos_ecb(void *arg)
                                      ecb_state->query_loc);
     errposition(query_pos + geterrposition());
 }
+
+RangeTblEntry *find_rte(cypher_parsestate *cpstate, char *varname)
+{
+    ParseState *pstate = (ParseState *) cpstate;
+    ListCell *lc;
+
+    foreach (lc, pstate->p_rtable)
+    {
+        RangeTblEntry *rte = (RangeTblEntry *)lfirst(lc);
+        Alias *alias = rte->alias;
+        if (!alias)
+            continue;
+
+        if (!strcmp(alias->aliasname, varname))
+            return rte;
+    }
+
+    return NULL;
+}
