@@ -18,22 +18,27 @@ By default, password authentication is disabled, allowing users and clients to c
 
 The following password authentication methods are supported by YugabyteDB.
 
-### `md5`
+### MD5
 
-The MD5 method (`md5`) prevents password sniffing and avoids storing passwords on the server in plain text, but provides no protection if an attacker manages to steal the password hash from the server. This method is the default password encryption for YugabyteDB clusters.
+The MD5 method (`md5`) prevents password sniffing and avoids storing passwords on the server in plain text, but provides no protection if an attacker obtains password hashes from the server or from clients (by sniffing, man-in-the-middle, or by brute force).  This method is the default password encryption for YugabyteDB clusters.
 
 The MD5 hash algorithm is not considered secure against determined attacks. Some of the security risks include:
 
 - If someone has access to a valid username/password combination, or their MD5-styled hash, they can log into any cluster where that user exists with the same username and password.
 - The "shared secret" is effectively shared over the wire every time the MD5 authentication method is used.
 
-### `scram-sha-256`
+### SCRAM-SHA-256
 
-The SCRAM-SHA-256 method (`scram-sh-256`) performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](../../../reference/drivers/ysql-client-drivers).
+The SCRAM-SHA-256 method (`scram-sh-256`) performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. The SCRAM-SHA-256 method implemented here is explained in further detail in [SASL Authentication (PostgreSQL documentation)](https://www.postgresql.org/docs/11/sasl-authentication.html). This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](../../../reference/drivers/ysql-client-drivers).
 
-Allows for two parties to verify they both know a secret without exchanging the secret.
+- Allows for two parties to verify they both know a secret without exchanging the secret.
+- SCRAM-SHA-256 encryption uses the [SASL authentication mechanism flow](https://www.postgresql.org/docs/11/sasl-authentication.html) to limit security risks from brute force attacks and sniffing.  
 
-For additional security, the SCRAM-SHA-256 method can be used with [encryption in transit (TLS encryption)](../../../secure/tls-encryption).
+{{< note title="Note" >}}
+
+For additional security, SCRAM-SHA-256 password encryption can also be used with [encryption in transit (TLS encryption)](../../../secure/tls-encryption).
+
+{{< /note >}}
 
 ## YugabyteDB database passwords
 
