@@ -91,6 +91,7 @@ public class NodeManagerTest extends FakeDBApplication {
     public Region region;
     public AvailabilityZone zone;
     public NodeInstance node;
+    public String privateKey = "/path/to/private.key";
     public List<String> baseCommand = new ArrayList<>();
 
     public TestData(Provider p, Common.CloudType cloud, PublicCloudConstants.StorageType storageType, int idx) {
@@ -199,8 +200,12 @@ public class NodeManagerTest extends FakeDBApplication {
       params.nodePrefix,
       today,
       nextYear,
-      "/path/to/private.key",
-      "/path/to/cert.crt");
+      t.privateKey,
+      "/path/to/cert.crt",
+      (t.privateKey == null) ?
+        CertificateInfo.Type.SelfSigned :
+        CertificateInfo.Type.CustomCertHostPath
+    );
     Universe u = createUniverse();
     u.getUniverseDetails().rootCA = cert.uuid;
     buildValidParams(t, params, Universe.saveDetails(u.universeUUID,
@@ -360,19 +365,29 @@ public class NodeManagerTest extends FakeDBApplication {
             if (cert == null) {
               throw new RuntimeException("No valid rootCA found for " + configureParams.universeUUID);
             }
-            if (configureParams.enableNodeToNodeEncrypt) gflags.put("use_node_to_node_encryption", "true");
-            if (configureParams.enableClientToNodeEncrypt) gflags.put("use_client_to_server_encryption", "true");
-            gflags.put("allow_insecure_connections", configureParams.allowInsecure ? "true" : "false");
-            gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
-            expectedCommand.add("--rootCA_cert");
-            expectedCommand.add(cert.certificate);
-            expectedCommand.add("--rootCA_key");
-            expectedCommand.add(cert.privateKey);
+            if (configureParams.enableNodeToNodeEncrypt) {
+              gflags.put("use_node_to_node_encryption", "true");
+            }
             if (configureParams.enableClientToNodeEncrypt) {
-              expectedCommand.add("--client_cert");
-              expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
-              expectedCommand.add("--client_key");
-              expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+              gflags.put("use_client_to_server_encryption", "true");
+            }
+            gflags.put(
+              "allow_insecure_connections",
+              configureParams.allowInsecure ? "true" : "false"
+            );
+            gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+
+            if (cert.certType == CertificateInfo.Type.SelfSigned) {
+              expectedCommand.add("--rootCA_cert");
+              expectedCommand.add(cert.certificate);
+              expectedCommand.add("--rootCA_key");
+              expectedCommand.add(cert.privateKey);
+              if (configureParams.enableClientToNodeEncrypt) {
+                expectedCommand.add("--client_cert");
+                expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
+                expectedCommand.add("--client_key");
+                expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+              }
             }
           }
           expectedCommand.add("--extra_gflags");
@@ -1056,6 +1071,30 @@ public class NodeManagerTest extends FakeDBApplication {
   @Test
   public void testEnableNodeToNodeTLSNodeCommand() {
     for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      params.nodeName = t.node.getNodeName();
+      params.type = Everything;
+      params.ybSoftwareVersion = "0.0.1";
+      params.enableNodeToNodeEncrypt = true;
+      params.allowInsecure = false;
+      params.rootCA = createUniverseWithCert(t, params);
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand,
+        t.region.provider.getConfig());
+    }
+  }
+
+
+  @Test
+  public void testCustomCertNodeCommand() {
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.newProvider(customer, Common.CloudType.onprem);
+    for (TestData t : testData) {
+      if (t.cloudType == Common.CloudType.onprem) {
+        t.privateKey = null;
+      }
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       params.nodeName = t.node.getNodeName();
       params.type = Everything;
