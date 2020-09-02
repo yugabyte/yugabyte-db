@@ -43,17 +43,23 @@ public class CertificateController extends AuthenticatedController {
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
+
     Date certStart = new Date(formData.get().certStart);
     Date certExpiry = new Date(formData.get().certExpiry);
     String label = formData.get().label;
     String certContent = formData.get().certContent;
     String keyContent = formData.get().keyContent;
+    CertificateInfo.Type certType = formData.get().certType;
+    LOG.info("CertificateController: upload cert label {}, type {}", label, certType);
     try {
-      UUID certUUID = CertificateHelper.uploadRootCA(label, customerUUID, appConfig.getString("yb.storage.path"),
-          certContent, keyContent, certStart, certExpiry);
+      UUID certUUID = CertificateHelper.uploadRootCA(
+                        label, customerUUID, appConfig.getString("yb.storage.path"),
+                        certContent, keyContent, certStart, certExpiry, certType
+                      );
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(certUUID);
     } catch (Exception e) {
+      LOG.error("Could not upload certs for customer {}", customerUUID, e);
       return ApiResponse.error(BAD_REQUEST, "Couldn't upload certfiles");
     }
   }
@@ -75,6 +81,10 @@ public class CertificateController extends AuthenticatedController {
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(result);
     } catch (Exception e) {
+      LOG.error(
+        "Error generating client cert for customer {} rootCA {}",
+        customerUUID, rootCA, e
+      );
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't generate client cert.");
     }
   }
@@ -96,6 +106,7 @@ public class CertificateController extends AuthenticatedController {
       result.put(CertificateHelper.ROOT_CERT, certContents);
       return ApiResponse.success(result);
     } catch (Exception e) {
+      LOG.error("Could not get root cert {} for customer {}", rootCA, customerUUID, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't fetch root cert.");
     }
   }
