@@ -1,8 +1,8 @@
 ---
-title: Prepare Cluster
-headerTitle: Prepare Cluster
-linkTitle: Prepare Cluster
-description: Prepare the cluster for importing data.
+title: Prepare a cluster
+headerTitle: Prepare a cluster
+linkTitle: Prepare a cluster
+description: Prepare a YugabyteDB cluster for importing PostgreSQL data.
 menu:
   latest:
     identifier: migrate-postgresql-prepare-cluster
