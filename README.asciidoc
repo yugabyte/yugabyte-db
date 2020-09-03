@@ -612,6 +612,9 @@ postgres=# select * from
 Warning: Keyword's codes can be changed between PostgreSQL versions!
 o plvlex.tokens(str text, skip_spaces bool, qualified_names bool) - Returns table of lexical elements in str. 
 
+== DBMS_SQL
+In this time this package is in independent project https://github.com/okbob/dbms_sql . It introduces a procedures - that are supported by PostgreSQL 11. Orafce runs on PostgreSQL 9.5, so it is not possible to merge DBMS_SQL into Orafce now. If you have PostgreSQL 11 and higher, then you can use DBMS_SQL and Orafce together.
+
 == DBMS_ASSERT
 
 This package protects user input against SQL injection.
