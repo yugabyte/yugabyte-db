@@ -2391,7 +2391,8 @@ CopyFrom(CopyState cstate)
 	int			prev_leaf_part_index = -1;
 	bool		useNonTxnInsert;
 	bool		isBatchTxnCopy = cstate->batch_size > 0;
-	MemoryContext batch_txn_copy_context;
+	bool		shouldResetMemoryPerRow = IsYBRelation(cstate->rel) && cstate->filename != NULL;
+	MemoryContext row_context;
 
 #define MAX_BUFFERED_TUPLES 1000
 	HeapTuple  *bufferedTuples = NULL;	/* initialize to silence warning */
@@ -2710,13 +2711,18 @@ CopyFrom(CopyState cstate)
 				 errhint("Non-transactional COPY is not supported on relations with "
 						 "secondary indices or triggers.")));
 
-	if (isBatchTxnCopy)
+	/*
+	 * For YBRelations copied from stdin, require
+	 * all rows to be held in memory before being inserted into relation.
+	 * Thus, memory context will not be reset per row for stdin query types.
+	 */
+	if (shouldResetMemoryPerRow)
 	{
-		batch_txn_copy_context =
+		row_context =
 			AllocSetContextCreate(GetCurrentMemoryContext(),
-								  "BATCH TXN COPY FROM",
+								  "COPY FROM ROW CONTEXT",
 								  ALLOCSET_DEFAULT_SIZES);
-		oldcontext = MemoryContextSwitchTo(batch_txn_copy_context);
+		oldcontext = MemoryContextSwitchTo(row_context);
 	}
 
 	bool has_more_tuples = true;
@@ -2747,7 +2753,7 @@ CopyFrom(CopyState cstate)
 			}
 
 			/* Switch into its memory context */
-			if (!isBatchTxnCopy)
+			if (!shouldResetMemoryPerRow)
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 			has_more_tuples = NextCopyFrom(cstate, econtext, values, nulls, &loaded_oid);
@@ -2767,7 +2773,7 @@ CopyFrom(CopyState cstate)
 			tuple->t_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
 
 			/* Triggers and stuff need to be invoked in query context. */
-			if (!isBatchTxnCopy)
+			if (!shouldResetMemoryPerRow)
 				MemoryContextSwitchTo(oldcontext);
 
 			/* Place tuple in tuple slot --- but slot shouldn't free it */
@@ -3009,16 +3015,23 @@ CopyFrom(CopyState cstate)
 				resultRelInfo = saved_resultRelInfo;
 				estate->es_result_relation_info = resultRelInfo;
 			}
+
+			/*
+			 * Free context per row.
+			 */
+			if (shouldResetMemoryPerRow)
+			{
+				MemoryContextReset(row_context);
+			}
 		}
 		/*
-		 * Commit transaction and free context per batch.
+		 * Commit transaction per batch.
 		 * When CopyFrom method is called, we are already inside a transaction block
 		 * and relevant transaction state properties have been previously set.
 		 */
 		if (isBatchTxnCopy)
 		{
 			YBCCommitTransaction();
-			MemoryContextReset(batch_txn_copy_context);
 			YBInitializeTransaction();
 		}
 	}
@@ -3042,7 +3055,7 @@ CopyFrom(CopyState cstate)
 	 */
 	if (isBatchTxnCopy)
 	{
-		MemoryContextDelete(batch_txn_copy_context);
+		MemoryContextDelete(row_context);
 	}
 
 	/*
