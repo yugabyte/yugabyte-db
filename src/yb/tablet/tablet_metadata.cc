@@ -495,7 +495,7 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
       raft_group_id_(std::move(raft_group_id)),
       partition_(std::make_shared<Partition>(std::move(partition))),
       primary_table_id_(table_id),
-      kv_store_(KvStoreId(raft_group_id), rocksdb_dir),
+      kv_store_(KvStoreId(raft_group_id_), rocksdb_dir),
       fs_manager_(fs_manager),
       wal_dir_(wal_dir),
       tablet_data_state_(tablet_data_state),
@@ -523,7 +523,7 @@ RaftGroupMetadata::~RaftGroupMetadata() {
 RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id)
     : state_(kNotLoadedYet),
       raft_group_id_(std::move(raft_group_id)),
-      kv_store_(KvStoreId(raft_group_id)),
+      kv_store_(KvStoreId(raft_group_id_)),
       fs_manager_(fs_manager) {
 }
 
