@@ -152,9 +152,9 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>NO
    </td>
-   <td>YES
-   </td>
    <td>NO
+   </td>
+   <td>YES
    </td>
   </tr>
   <tr>
