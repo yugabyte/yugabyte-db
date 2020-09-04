@@ -95,7 +95,11 @@ public class Provider extends Model {
 
   @JsonIgnore
   public String getYbHome() {
-    return this.getConfig().getOrDefault("YB_HOME_DIR", DEFAULT_YB_HOME_DIR);
+    String ybHomeDir = this.getConfig().getOrDefault("YB_HOME_DIR", "");
+    if (ybHomeDir.isEmpty()) {
+      ybHomeDir = DEFAULT_YB_HOME_DIR;
+    }
+    return ybHomeDir;
   }
 
   /**
