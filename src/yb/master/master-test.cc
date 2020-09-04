@@ -67,6 +67,7 @@ DECLARE_bool(TEST_hang_on_namespace_transition);
 DECLARE_bool(TEST_simulate_crash_after_table_marked_deleting);
 DECLARE_int32(TEST_sys_catalog_write_rejection_percentage);
 DECLARE_bool(TEST_tablegroup_master_only);
+DECLARE_bool(TEST_simulate_port_conflict_error);
 
 namespace yb {
 namespace master {
@@ -1801,6 +1802,18 @@ TEST_F(MasterTest, TestFailedMasterRestart) {
                                     AllocateFreePort(), AllocateFreePort(), 0));
   ASSERT_NOK(mini_master_->Start(true));
   // Restart master should succeed.
+  ASSERT_OK(mini_master_->Start());
+}
+
+TEST_F(MasterTest, TestNetworkErrorOnFirstRun) {
+  TearDown();
+  mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master-test"),
+                                    AllocateFreePort(), AllocateFreePort(), 0));
+  FLAGS_TEST_simulate_port_conflict_error = true;
+  ASSERT_NOK(mini_master_->Start());
+  // Instance file should be properly initialized, but consensus metadata is not initialized.
+  FLAGS_TEST_simulate_port_conflict_error = false;
+  // Restarting master should succeed.
   ASSERT_OK(mini_master_->Start());
 }
 

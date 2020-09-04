@@ -561,7 +561,7 @@ CatalogManager::~CatalogManager() {
   Shutdown();
 }
 
-Status CatalogManager::Init(bool is_first_run) {
+Status CatalogManager::Init() {
   {
     std::lock_guard<simple_spinlock> l(state_lock_);
     CHECK_EQ(kConstructed, state_);
@@ -575,7 +575,7 @@ Status CatalogManager::Init(bool is_first_run) {
   metric_num_tablet_servers_dead_ =
     METRIC_num_tablet_servers_dead.Instantiate(master_->metric_entity_cluster(), 0);
 
-  RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(is_first_run),
+  RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_system_tablet_bootstrap_secs > 0)) {
@@ -1289,9 +1289,16 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
       master_->opts().master_addresses_flag);
 }
 
-Status CatalogManager::InitSysCatalogAsync(bool is_first_run) {
+Status CatalogManager::InitSysCatalogAsync() {
   std::lock_guard<LockType> l(lock_);
-  if (is_first_run) {
+
+  // Optimistically try to load data from disk.
+  Status s = sys_catalog_->Load(master_->fs_manager());
+
+  if (!s.ok() && s.IsNotFound()) {
+    // We are on our first run, need to create the metadata file.
+    LOG(INFO) << "Did not find previous SysCatalogTable data on disk";
+
     if (!master_->opts().AreMasterAddressesProvided()) {
       master_->SetShellMode(true);
       LOG(INFO) << "Starting master in shell mode.";
@@ -1300,10 +1307,11 @@ Status CatalogManager::InitSysCatalogAsync(bool is_first_run) {
 
     RETURN_NOT_OK(CheckLocalHostInMasterAddresses());
     RETURN_NOT_OK(sys_catalog_->CreateNew(master_->fs_manager()));
-  } else {
-    RETURN_NOT_OK(sys_catalog_->Load(master_->fs_manager()));
+
+    return Status::OK();
   }
-  return Status::OK();
+
+  return s;
 }
 
 bool CatalogManager::IsInitialized() const {

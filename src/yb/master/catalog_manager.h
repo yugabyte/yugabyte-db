@@ -170,7 +170,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   explicit CatalogManager(Master *master);
   virtual ~CatalogManager();
 
-  CHECKED_STATUS Init(bool is_first_run);
+  CHECKED_STATUS Init();
 
   void Shutdown();
   CHECKED_STATUS CheckOnline() const;
@@ -826,7 +826,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // sys_catalog_.
   //
   // This method is thread-safe.
-  CHECKED_STATUS InitSysCatalogAsync(bool is_first_run);
+  CHECKED_STATUS InitSysCatalogAsync();
 
   // Helper for creating the initial TableInfo state
   // Leaves the table "write locked" with the new info in the
