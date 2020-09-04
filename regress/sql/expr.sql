@@ -1438,6 +1438,35 @@ SELECT * FROM r_atan2();
 SELECT * FROM r_atan2(1);
 
 --
+-- pi
+--
+SELECT * FROM cypher('expr', $$
+    RETURN pi()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN sin(pi())
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN sin(pi()/4)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN cos(pi())
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN cos(pi()/2)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN sin(pi()/2)
+$$) AS (results agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN pi(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN pi(1)
+$$) AS (results agtype);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

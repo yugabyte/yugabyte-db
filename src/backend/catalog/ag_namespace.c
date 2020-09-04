@@ -24,3 +24,8 @@ Oid ag_catalog_namespace_id(void)
 {
     return get_namespace_oid("ag_catalog", false);
 }
+
+Oid pg_catalog_namespace_id(void)
+{
+    return get_namespace_oid("pg_catalog", false);
+}

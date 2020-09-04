@@ -21,5 +21,6 @@
 
 bool is_oid_ag_func(Oid func_oid, const char *func_name);
 Oid get_ag_func_oid(const char *func_name, const int nargs, ...);
+Oid get_pg_func_oid(const char *func_name, const int nargs, ...);
 
 #endif

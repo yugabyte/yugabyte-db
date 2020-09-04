@@ -1453,6 +1453,10 @@ static Node *make_immediate_no_arg_function_expr(char *funcname, int location)
 
         return (Node *)node;
     }
+    else if (pg_strcasecmp(funcname, "pi") == 0)
+    {
+        return make_function_expr(funcname, NIL, location);
+    }
     else
         ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
                 errmsg("unrecognized or unsupported function")));

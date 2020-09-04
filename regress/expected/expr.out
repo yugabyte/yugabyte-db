@@ -3401,6 +3401,70 @@ HINT:  No function matches the given name and argument types. You might need to 
 SELECT * FROM r_atan2(1);
 ERROR:  atan2() invalid number of arguments
 --
+-- pi
+--
+SELECT * FROM cypher('expr', $$
+    RETURN pi()
+$$) AS (results agtype);
+     results      
+------------------
+ 3.14159265358979
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN sin(pi())
+$$) AS (results agtype);
+       results        
+----------------------
+ 1.22464679914735e-16
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN sin(pi()/4)
+$$) AS (results agtype);
+      results      
+-------------------
+ 0.707106781186547
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN cos(pi())
+$$) AS (results agtype);
+ results 
+---------
+ -1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN cos(pi()/2)
+$$) AS (results agtype);
+       results        
+----------------------
+ 6.12323399573677e-17
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN sin(pi()/2)
+$$) AS (results agtype);
+ results 
+---------
+ 1.0
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN pi(null)
+$$) AS (results agtype);
+ERROR:  invalid number of input parameters for pi()
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN pi(1)
+$$) AS (results agtype);
+ERROR:  invalid number of input parameters for pi()
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

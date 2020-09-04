@@ -694,6 +694,33 @@ AS 'MODULE_PATHNAME';
 CREATE CAST (boolean AS agtype)
 WITH FUNCTION bool_to_agtype(boolean);
 
+-- float8 -> agtype (explicit)
+
+CREATE FUNCTION float8_to_agtype(float8)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE CAST (float8 AS agtype)
+WITH FUNCTION float8_to_agtype(float8);
+
+-- agtype -> float8 (implicit)
+
+CREATE FUNCTION agtype_to_float8(agtype)
+RETURNS float8
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE CAST (agtype AS float8)
+WITH FUNCTION agtype_to_float8(agtype)
+AS IMPLICIT;
+
 --
 -- agtype - access operators
 --

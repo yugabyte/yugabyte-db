@@ -20,5 +20,6 @@
 #include "postgres.h"
 
 Oid ag_catalog_namespace_id(void);
+Oid pg_catalog_namespace_id(void);
 
 #endif

@@ -2159,6 +2159,49 @@ Datum agtype_to_bool(PG_FUNCTION_ARGS)
     PG_RETURN_BOOL(agtv.val.boolean);
 }
 
+PG_FUNCTION_INFO_V1(agtype_to_float8);
+
+/*
+ * Cast agtype to float8.
+ */
+Datum agtype_to_float8(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
+    agtype_value agtv;
+    float8 result;
+
+    if (!agtype_extract_scalar(&agtype_in->root, &agtv) ||
+        (agtv.type != AGTV_FLOAT && agtv.type != AGTV_INTEGER))
+        cannot_cast_agtype_value(agtv.type, "float");
+
+    PG_FREE_IF_COPY(agtype_in, 0);
+
+    if (agtv.type == AGTV_FLOAT)
+        result = agtv.val.float_value;
+
+    if (agtv.type == AGTV_INTEGER)
+    {
+        /*
+         * Get the string representation of the integer because it could be
+         * too large to fit in a float. Let the float routine determine
+         * what to do with it.
+         */
+        char *string = DatumGetCString(DirectFunctionCall1(int8out,
+                           Int64GetDatum(agtv.val.int_value)));
+        bool is_valid = false;
+        /* turn it into a float */
+        result = float8in_internal_null(string, NULL, "double precision",
+                                     string, &is_valid);
+
+        /* return null if it was not a invalid float */
+        if (!is_valid)
+            ereport(ERROR, (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+                            errmsg("cannot cast to float8, integer value out of range")));
+    }
+
+    PG_RETURN_FLOAT8(result);
+}
+
 PG_FUNCTION_INFO_V1(bool_to_agtype);
 
 /*
@@ -2167,6 +2210,16 @@ PG_FUNCTION_INFO_V1(bool_to_agtype);
 Datum bool_to_agtype(PG_FUNCTION_ARGS)
 {
     return boolean_to_agtype(PG_GETARG_BOOL(0));
+}
+
+PG_FUNCTION_INFO_V1(float8_to_agtype);
+
+/*
+ * Cast float8 to agtype.
+ */
+Datum float8_to_agtype(PG_FUNCTION_ARGS)
+{
+    return float_to_agtype(PG_GETARG_FLOAT8(0));
 }
 
 /*

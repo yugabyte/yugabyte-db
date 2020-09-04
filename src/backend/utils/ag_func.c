@@ -78,7 +78,37 @@ Oid get_ag_func_oid(const char *func_name, const int nargs, ...)
                                ObjectIdGetDatum(ag_catalog_namespace_id()));
     if (!OidIsValid(func_oid))
     {
-        ereport(ERROR, (errmsg_internal("function does not exist"),
+        ereport(ERROR, (errmsg_internal("ag function does not exist"),
+                        errdetail_internal("%s(%d)", func_name, nargs)));
+    }
+
+    return func_oid;
+}
+
+Oid get_pg_func_oid(const char *func_name, const int nargs, ...)
+{
+    Oid oids[FUNC_MAX_ARGS];
+    va_list ap;
+    int i;
+    oidvector *arg_types;
+    Oid func_oid;
+
+    AssertArg(func_name);
+    AssertArg(nargs >= 0 && nargs <= FUNC_MAX_ARGS);
+
+    va_start(ap, nargs);
+    for (i = 0; i < nargs; i++)
+        oids[i] = va_arg(ap, Oid);
+    va_end(ap);
+
+    arg_types = buildoidvector(oids, nargs);
+
+    func_oid = GetSysCacheOid3(PROCNAMEARGSNSP, CStringGetDatum(func_name),
+                               PointerGetDatum(arg_types),
+                               ObjectIdGetDatum(pg_catalog_namespace_id()));
+    if (!OidIsValid(func_oid))
+    {
+        ereport(ERROR, (errmsg_internal("pg function does not exist"),
                         errdetail_internal("%s(%d)", func_name, nargs)));
     }
 

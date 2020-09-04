@@ -43,41 +43,42 @@
 #include "utils/agtype.h"
 
 /* supported function definitions */
-#define FUNC_ENDNODE    {"endNode",    "endnode",    AGTYPEOID, AGTYPEOID, 0, AGTYPEOID, 1, 2, true}
-#define FUNC_HEAD       {"head",       "head",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_ID         {"id",         "id",         AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_STARTID    {"start_id",   "start_id",   AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_ENDID      {"end_id",     "end_id",     AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_LAST       {"last",       "last",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_LENGTH     {"length",     "length",     AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_PROPERTIES {"properties", "properties", AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_SIZE       {"size",       "size",       ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_STARTNODE  {"startNode",  "startnode",  AGTYPEOID, AGTYPEOID, 0, AGTYPEOID, 1, 2, true}
-#define FUNC_TOBOOLEAN  {"toBoolean",  "toboolean",  ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_TOFLOAT    {"toFloat",    "tofloat",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_TOINTEGER  {"toInteger",  "tointeger",  ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_TYPE       {"type",       "type",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_EXISTS     {"exists",     "exists_property", AGTYPEOID, 0, 0, BOOLOID, 1, 1, false}
-#define FUNC_TOSTRING   {"toString",   "tostring",   ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_REVERSE    {"reverse",    "reverse",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_TOUPPER    {"toUpper",    "touppercase", ANYOID,   0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_TOLOWER    {"toLower",    "tolowercase", ANYOID,   0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_LTRIM      {"lTrim",      "l_trim",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_RTRIM      {"rTrim",      "r_trim",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_BTRIM      {"trim",       "b_trim",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_RSUBSTR    {"right",      "r_substr",   ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false}
-#define FUNC_LSUBSTR    {"left",       "l_substr",   ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false}
-#define FUNC_BSUBSTR    {"substring",  "b_substr",   ANYOID,    ANYOID, ANYOID, AGTYPEOID, -1, 1, false}
-#define FUNC_SPLIT      {"split",      "split",      ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false}
-#define FUNC_REPLACE    {"replace",    "replace",    ANYOID,    ANYOID, 0, AGTYPEOID, 3, 1, false}
-#define FUNC_RSIN       {"sin",        "r_sin",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_RCOS       {"cos",        "r_cos",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_RTAN       {"tan",        "r_tan",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_RCOT       {"cot",        "r_cot",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_RASIN      {"asin",        "r_asin",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_RACOS      {"acos",        "r_acos",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_RATAN      {"atan",        "r_atan",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
-#define FUNC_RATAN2     {"atan2",       "r_atan2",   ANYOID,    0, 0, AGTYPEOID, 2, 1, false}
+#define FUNC_ENDNODE    {"endNode",    "endnode",    AGTYPEOID, AGTYPEOID, 0, AGTYPEOID, 1, 2, true, false}
+#define FUNC_HEAD       {"head",       "head",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_ID         {"id",         "id",         AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_STARTID    {"start_id",   "start_id",   AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_ENDID      {"end_id",     "end_id",     AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_LAST       {"last",       "last",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_LENGTH     {"length",     "length",     AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_PROPERTIES {"properties", "properties", AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_SIZE       {"size",       "size",       ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_STARTNODE  {"startNode",  "startnode",  AGTYPEOID, AGTYPEOID, 0, AGTYPEOID, 1, 2, true, false}
+#define FUNC_TOBOOLEAN  {"toBoolean",  "toboolean",  ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_TOFLOAT    {"toFloat",    "tofloat",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_TOINTEGER  {"toInteger",  "tointeger",  ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_TYPE       {"type",       "type",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_EXISTS     {"exists",     "exists_property", AGTYPEOID, 0, 0, BOOLOID, 1, 1, false, false}
+#define FUNC_TOSTRING   {"toString",   "tostring",   ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_REVERSE    {"reverse",    "reverse",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_TOUPPER    {"toUpper",    "touppercase", ANYOID,   0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_TOLOWER    {"toLower",    "tolowercase", ANYOID,   0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_LTRIM      {"lTrim",      "l_trim",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_RTRIM      {"rTrim",      "r_trim",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_BTRIM      {"trim",       "b_trim",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_RSUBSTR    {"right",      "r_substr",   ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false, false}
+#define FUNC_LSUBSTR    {"left",       "l_substr",   ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false, false}
+#define FUNC_BSUBSTR    {"substring",  "b_substr",   ANYOID,    ANYOID, ANYOID, AGTYPEOID, -1, 1, false, false}
+#define FUNC_SPLIT      {"split",      "split",      ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false, false}
+#define FUNC_REPLACE    {"replace",    "replace",    ANYOID,    ANYOID, 0, AGTYPEOID, 3, 1, false, false}
+#define FUNC_RSIN       {"sin",        "r_sin",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_RCOS       {"cos",        "r_cos",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_RTAN       {"tan",        "r_tan",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_RCOT       {"cot",        "r_cot",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_RASIN      {"asin",       "r_asin",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_RACOS      {"acos",       "r_acos",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_RATAN      {"atan",       "r_atan",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_RATAN2     {"atan2",      "r_atan2",    ANYOID,    0, 0, AGTYPEOID, 2, 1, false, false}
+#define FUNC_PI         {"pi",         "pi",         0,         0, 0, FLOAT8OID, 0, 0, false, true}
 
 /* supported functions */
 #define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
@@ -90,7 +91,7 @@
                              FUNC_LSUBSTR, FUNC_BSUBSTR, FUNC_SPLIT, \
                              FUNC_REPLACE, FUNC_RSIN, FUNC_RCOS, FUNC_RTAN, \
                              FUNC_RCOT, FUNC_RASIN, FUNC_RACOS, FUNC_RATAN, \
-                             FUNC_RATAN2}
+                             FUNC_RATAN2, FUNC_PI}
 
 /* structure for supported function signatures */
 typedef struct function_signature
@@ -115,6 +116,8 @@ typedef struct function_signature
     int nargs;
     /* needs graph name passed */
     bool needs_graph_name;
+    /* is the function listed in pg_catalog */
+    bool in_pg_catalog;
 } function_signature;
 
 static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
@@ -804,9 +807,17 @@ static Node *transform_cypher_function(cypher_parsestate *cpstate,
         fs = &supported_functions[i];
         if (strcmp(funcname, fs->parsed_name) == 0)
         {
-            func_operator_oid = get_ag_func_oid(fs->actual_name, fs->nargs,
-                                                fs->input1_oid, fs->input2_oid,
-                                                fs->input3_oid);
+            /* is the function listed in pg_catalog */
+            if (fs->in_pg_catalog)
+                func_operator_oid = get_pg_func_oid(fs->actual_name, fs->nargs,
+                                                    fs->input1_oid,
+                                                    fs->input2_oid,
+                                                    fs->input3_oid);
+            else
+                func_operator_oid = get_ag_func_oid(fs->actual_name, fs->nargs,
+                                                    fs->input1_oid,
+                                                    fs->input2_oid,
+                                                    fs->input3_oid);
             break;
         }
     }
