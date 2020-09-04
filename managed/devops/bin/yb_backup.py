@@ -397,7 +397,8 @@ class S3BackupStorage(AbstractBackupStorage):
     def _command_list_prefix(self):
         # If 's3cmd get' fails it creates zero-length file, '--force' is needed to
         # override this empty file on the next retry-step.
-        return ['s3cmd', '--force', '--config=%s' % self.options.cloud_cfg_file_path]
+        return ['s3cmd', '--force', '--no-check-certificate', '--config=%s'
+                % self.options.cloud_cfg_file_path]
 
     def upload_file_cmd(self, src, dest):
         cmd_list = ["put", src, dest]
