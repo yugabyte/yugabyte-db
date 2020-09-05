@@ -6,9 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
@@ -120,7 +118,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     config.put("KUBECONFIG", "test");
     defaultProvider.setConfig(config);
     defaultProvider.save();
-    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
+    ShellResponse response = new ShellResponse();
     when(mockKubernetesManager.createNamespace(anyMap(), any())).thenReturn(response);
     when(mockKubernetesManager.helmInstall(anyMap(), any(), any(), any())).thenReturn(response);
     // Table RPCs.
@@ -234,7 +232,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   public void testCreateKubernetesUniverseSuccessMultiAZ() {
     setupUniverseMultiAZ(/* Create Masters */ false, /* YEDIS/REDIS enabled */ true);
     setupCommon();
-    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
+    ShellResponse response = new ShellResponse();
     response.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
             "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
@@ -288,7 +286,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   public void testCreateKubernetesUniverseSuccessSingleAZ() {
     setupUniverse(/* Create Masters */ false, /* YEDIS/REDIS enabled */ true);
     setupCommon();
-    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
+    ShellResponse response = new ShellResponse();
     response.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
             "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
@@ -347,7 +345,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testCreateKubernetesUniverseMultiAZWithoutYedis() {
     setupUniverseMultiAZ(/* Create Masters */ false, /* YEDIS/REDIS disabled */ false);
-    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
+    ShellResponse response = new ShellResponse();
     response.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
             "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
@@ -361,7 +359,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testCreateKubernetesUniverseSingleAZWithoutYedis() {
     setupUniverse(/* Create Masters */ false, /* YEDIS/REDIS disabled */ false);
-    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
+    ShellResponse response = new ShellResponse();
     response.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
             "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +

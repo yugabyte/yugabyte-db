@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
@@ -89,15 +90,15 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   Universe defaultUniverse;
   YBClient mockClient;
-  ShellProcessHandler.ShellResponse dummyShellResponse;
+  ShellResponse dummyShellResponse;
 
   String nodePrefix = "demo-universe";
 
   Map<String, String> config= new HashMap<String, String>();
 
   private void setup() {
-    ShellProcessHandler.ShellResponse responseEmpty = new ShellProcessHandler.ShellResponse();
-    ShellProcessHandler.ShellResponse responsePod = new ShellProcessHandler.ShellResponse();
+    ShellResponse responseEmpty = new ShellResponse();
+    ShellResponse responsePod = new ShellResponse();
     when(mockKubernetesManager.helmUpgrade(any(), any(), any())).thenReturn(responseEmpty);
     responsePod.message =
         "{\"status\": { \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}}";
@@ -295,7 +296,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     return null;
   }
 
-  public JsonNode parseShellResponseAsJson(ShellProcessHandler.ShellResponse response) {
+  public JsonNode parseShellResponseAsJson(ShellResponse response) {
     ObjectMapper mapper = new ObjectMapper();
     try {
       return mapper.readTree(response.message);
@@ -315,7 +316,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
 
     // After changing to 5 tservers.
-    ShellProcessHandler.ShellResponse responsePods = new ShellProcessHandler.ShellResponse();
+    ShellResponse responsePods = new ShellResponse();
     responsePods.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
             "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
@@ -370,7 +371,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
-    ShellProcessHandler.ShellResponse responsePods = new ShellProcessHandler.ShellResponse();
+    ShellResponse responsePods = new ShellResponse();
     responsePods.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
             "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
@@ -419,7 +420,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
-    ShellProcessHandler.ShellResponse responsePods = new ShellProcessHandler.ShellResponse();
+    ShellResponse responsePods = new ShellResponse();
     responsePods.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
             "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +

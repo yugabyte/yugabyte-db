@@ -155,6 +155,8 @@ public class CertificateHelper {
 
   public static JsonNode createClientCertificate(UUID rootCA, String storagePath, String username,
                                                  Date certStart, Date certExpiry) {
+    LOG.info("Creating client certificate signed by root CA {} and user {} at path {}",
+            rootCA, username, storagePath);
     try {
       // Add the security provider in case createRootCA was never called.
       Security.addProvider(new BouncyCastleProvider());
@@ -190,7 +192,8 @@ public class CertificateHelper {
         kf = KeyFactory.getInstance("RSA");
         pk = kf.generatePrivate(spec);
       } catch (InvalidKeySpecException e) {
-        LOG.error("Unable to create client CA for username {}: {}", username, e);
+        LOG.error("Unable to create client CA for username {} using root CA {}",
+                  username, rootCA, e);
         throw new RuntimeException("Could not create client cert.");
       }
 
@@ -250,13 +253,13 @@ public class CertificateHelper {
         bodyJson.put(CLIENT_CERT, certWriter.toString());
         bodyJson.put(CLIENT_KEY, keyWriter.toString());
       }
-      LOG.info("Created Client CA for username {}.", username);
+      LOG.info("Created Client CA for username {} signed by root CA {}.", username, rootCA);
       return bodyJson;
 
     } catch (NoSuchAlgorithmException | IOException | OperatorCreationException |
              CertificateException | InvalidKeyException | NoSuchProviderException |
              SignatureException e) {
-      LOG.error("Unable to create client CA for username {}: {}", username, e);
+      LOG.error("Unable to create client CA for username {} using root CA {}", username, rootCA, e);
       throw new RuntimeException("Could not create client cert.");
     }
   }

@@ -170,7 +170,7 @@ def init_logging(log_level):
     """
     logging.basicConfig(
         level=log_level,
-        format="%(asctime)s %(levelname)s: %(message)s")
+        format="%(asctime)s %(levelname)s %(funcName)s:%(filename)s:%(lineno)d: %(message)s")
 
 
 def is_devops_root_dir(devops_home):
@@ -647,7 +647,7 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SS
 
 def scp_to_tmp(filepath, host, user, port, private_key):
     dest_path = os.path.join("/tmp", os.path.basename(filepath))
-    logging.info("Copying local '{}' to remote '{}'".format(
+    logging.info("[app] Copying local '{}' to remote '{}'".format(
         filepath, dest_path))
     scp_cmd = [
         "scp", "-i", private_key, "-P", str(port), "-p",

@@ -625,6 +625,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             # NOTE: we should only do this if we have to download the package...
             # NOTE 2: itest should download package from s3 to improve speed for instances in AWS.
             # TODO: Add a variable to specify itest ssh_user depending on VM users.
+            start_time = time.time()
             if args.package and (args.tags is None or args.tags == "download-software"):
                 if args.itest_s3_package_path and args.type == self.YB_SERVER_TYPE:
                     itest_extra_vars = self.extra_vars.copy()
@@ -634,6 +635,10 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     itest_extra_vars["tags"] = "itest"
                     self.cloud.setup_ansible(args).run(
                         "configure-{}.yml".format(args.type), itest_extra_vars, host_info)
+                    logging.info(("[app] Running itest tasks including S3 " +
+                                  "package download {} to {} took {:.3f} sec").format(
+                                args.itest_s3_package_path,
+                                args.search_pattern, time.time() - start_time))
                 else:
                     scp_to_tmp(
                         args.package,
@@ -641,6 +646,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         self.extra_vars["ssh_user"],
                         self.extra_vars["ssh_port"],
                         args.private_key_file)
+                    logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
+                        args.package, args.search_pattern, time.time() - start_time))
 
         logging.info("Configuring Instance: {}".format(args.search_pattern))
         ssh_options = {

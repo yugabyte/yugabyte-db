@@ -47,7 +47,7 @@ public class ShellProcessHandlerTest {
     public void testRunWithValidCommandAndDevopsHome() {
         List<String> command = new ArrayList<String>();
         command.add("pwd");
-        ShellProcessHandler.ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
+        ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
         assertEquals(0, response.code);
         assertThat(response.message, allOf(notNullValue(), containsString(TMP_STORAGE_PATH)));
     }
@@ -57,7 +57,7 @@ public class ShellProcessHandlerTest {
         when(appConfig.getString("yb.devops.home")).thenReturn("/foo");
         List<String> command = new ArrayList<String>();
         command.add("pwd");
-        ShellProcessHandler.ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
+        ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
         assertEquals(-1, response.code);
         assertThat(response.message, allOf(notNullValue(),
                 equalTo("Cannot run program \"pwd\" (in directory \"/foo\"): " +
@@ -69,15 +69,15 @@ public class ShellProcessHandlerTest {
         String fileName = createTestShellScript();
         List<String> command = new ArrayList<String>();
         command.add(fileName);
-        ShellProcessHandler.ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
+        ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
         assertEquals(255, response.code);
-        assertThat(response.message, allOf(notNullValue(), equalTo("error")));
+        assertThat(response.message.trim(), allOf(notNullValue(), equalTo("error")));
     }
 
     private String createTestShellScript() throws IOException {
         String fileName = TMP_STORAGE_PATH + "/test.sh";
         FileWriter fw = new FileWriter(fileName);
-        fw.write(">&2 echo \"error\"\nexit -1");
+        fw.write(">&2 echo error; sleep 2; echo foobar; sleep 2; echo more; exit -1");
         fw.close();
         // Set the file as a executable
         File file = new File(fileName);

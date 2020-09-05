@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -646,7 +647,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testPodInfo() {
-    ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\"," +
             " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
@@ -690,7 +691,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   @Test
   public void testPodInfoMultiAZ() {
 
-    ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\"," +
             " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
@@ -750,7 +751,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallLegacy() throws IOException {
-    ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
+    ShellResponse shellResponse = new ShellResponse();
     shellResponse.message =
         "{\"items\": [{\"metadata\": {\"name\": \"test\"}, \"spec\": {\"clusterIP\": \"None\"," +
         "\"type\":\"clusterIP\"}}]}";

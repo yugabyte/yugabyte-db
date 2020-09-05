@@ -61,14 +61,14 @@ public class Customer extends Model {
     Set<UUID> universes = getUniverseUUIDs();
     universes.add(universeUUID);
     universeUUIDs = Joiner.on(",").join(universes);
-    LOG.debug("New universe list for customer [" + name + "] : " + universeUUIDs);
+    LOG.trace("New universe list for customer [" + name + "] : " + universeUUIDs);
   }
 
   public synchronized void removeUniverseUUID(UUID universeUUID) {
     Set<UUID> universes = getUniverseUUIDs();
     universes.remove(universeUUID);
     universeUUIDs = Joiner.on(",").join(universes);
-    LOG.debug("New universe list for customer [" + name + "] : " + universeUUIDs);
+    LOG.trace("New universe list for customer [" + name + "] : " + universeUUIDs);
   }
 
   public Set<UUID> getUniverseUUIDs() {

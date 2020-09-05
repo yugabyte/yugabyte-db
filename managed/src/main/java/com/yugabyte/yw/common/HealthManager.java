@@ -14,10 +14,15 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import play.libs.Json;
 
 @Singleton
 public class HealthManager extends DevopsBase {
+  public static final Logger LOG = LoggerFactory.getLogger(HealthManager.class);
+
   @Inject
   play.Configuration appConfig;
 
@@ -43,7 +48,7 @@ public class HealthManager extends DevopsBase {
     public int redisPort = 6379;
   }
 
-  public ShellProcessHandler.ShellResponse runCommand(
+  public ShellResponse runCommand(
     String customerTag,
     String destination,
     SmtpData smtpData,
@@ -64,7 +69,7 @@ public class HealthManager extends DevopsBase {
     );
   }
 
-  public ShellProcessHandler.ShellResponse runCommand(
+  public ShellResponse runCommand(
     Provider provider,
     List<ClusterInfo> clusters,
     String universeName,
@@ -90,7 +95,7 @@ public class HealthManager extends DevopsBase {
     );
   }
 
-  public ShellProcessHandler.ShellResponse runCommand(
+  public ShellResponse runCommand(
     Provider provider,
     List<ClusterInfo> clusters,
     String universeName,
@@ -107,14 +112,16 @@ public class HealthManager extends DevopsBase {
 
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(HEALTH_CHECK_SCRIPT);
-    if (clusters != null) {
-      commandArgs.add("--cluster_payload");
-      commandArgs.add(Json.stringify(Json.toJson(clusters)));
-    }
 
     if (universeName != null) {
       commandArgs.add("--universe_name");
       commandArgs.add(universeName);
+    }
+    String description = String.join(" ", commandArgs);
+
+    if (clusters != null) {
+      commandArgs.add("--cluster_payload");
+      commandArgs.add(Json.stringify(Json.toJson(clusters)));
     }
 
     commandArgs.add("--customer_tag");
@@ -178,8 +185,7 @@ public class HealthManager extends DevopsBase {
       commandArgs.add(Json.stringify(taskInfo));
     }
 
-    LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
-    return shellProcessHandler.run(commandArgs, extraEnvVars, false /*logCmdOutput*/);
+    return shellProcessHandler.run(commandArgs, extraEnvVars, false /*logCmdOutput*/, description);
   }
 
   @Override

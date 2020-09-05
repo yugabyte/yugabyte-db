@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -163,7 +164,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       config = Provider.get(taskParams().providerUUID).getConfig();
     }
     // TODO: add checks for the shell process handler return values.
-    ShellProcessHandler.ShellResponse response = null;
+    ShellResponse response = null;
     switch (taskParams().commandType) {
       case CREATE_NAMESPACE:
         response = kubernetesManager.createNamespace(config, taskParams().nodePrefix);
@@ -207,14 +208,14 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       if (response.code != 0 && flag) {
         response = getPodError(config);
       }
-      logShellResponse(response);
+      processShellResponse(response);
     }
   }
 
-  private ShellProcessHandler.ShellResponse getPodError(Map<String, String> config) {
-    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
+  private ShellResponse getPodError(Map<String, String> config) {
+    ShellResponse response = new ShellResponse();
     response.code = -1;
-    ShellProcessHandler.ShellResponse podResponse = kubernetesManager.getPodInfos(config, taskParams().nodePrefix);
+    ShellResponse podResponse = kubernetesManager.getPodInfos(config, taskParams().nodePrefix);
     JsonNode podInfos = parseShellResponseAsJson(podResponse);
     boolean flag = false;
     for (JsonNode podInfo: podInfos.path("items")) {
@@ -263,7 +264,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
       String namespace = taskParams().nodePrefix;
 
-      ShellProcessHandler.ShellResponse svcResponse =
+      ShellResponse svcResponse =
           kubernetesManager.getServices(config, namespace);
       JsonNode svcInfos = parseShellResponseAsJson(svcResponse);
 
@@ -297,7 +298,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       String namespace = isMultiAz ?
           String.format("%s-%s", taskParams().nodePrefix, azName) : taskParams().nodePrefix;
 
-      ShellProcessHandler.ShellResponse podResponse =
+      ShellResponse podResponse =
           kubernetesManager.getPodInfos(config, namespace);
       JsonNode podInfos = parseShellResponseAsJson(podResponse);
 

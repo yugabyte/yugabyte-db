@@ -152,7 +152,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
     Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
-    LOG.debug("Wrote user intent for universe {}.", taskParams().universeUUID);
+    LOG.trace("Wrote user intent for universe {}.", taskParams().universeUUID);
 
     updateOnPremNodeUuids(universe);
 
@@ -174,7 +174,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       }
     };
     Universe.saveDetails(taskParams().universeUUID, updater);
-    LOG.info("Delete cluster {} done.", clusterUUID);
+    LOG.info("Universe {} : Delete cluster {} done.", taskParams().universeUUID, clusterUUID);
   }
 
   // Helper data structure to save the new name and index of nodes for quick lookup using the
@@ -223,7 +223,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       }
       keys.add(match);
     }
-    LOG.debug("Found tags keys : " + keys);
+    LOG.trace("Found tags keys : " + keys);
 
     if (!tagValue.contains(TemplatedTags.INSTANCE_ID)) {
       throw new IllegalArgumentException("'"+ TemplatedTags.INSTANCE_ID + "' should be part of " +

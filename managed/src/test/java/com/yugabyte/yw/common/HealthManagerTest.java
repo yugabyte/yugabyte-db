@@ -19,6 +19,10 @@ import java.util.List;
 
 import play.libs.Json;
 
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
+
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,10 +47,14 @@ public class HealthManagerTest extends FakeDBApplication {
 
     expectedCommand.add(DevopsBase.PY_WRAPPER);
     expectedCommand.add(HealthManager.HEALTH_CHECK_SCRIPT);
+
+    if (universeName != null) {
+      expectedCommand.add("--universe_name");
+      expectedCommand.add(universeName);
+    }
+
     expectedCommand.add("--cluster_payload");
     expectedCommand.add(Json.stringify(Json.toJson(clusters)));
-    expectedCommand.add("--universe_name");
-    expectedCommand.add(universeName);
     expectedCommand.add("--customer_tag");
     expectedCommand.add(customerTag);
     if (destination != null) {
@@ -122,7 +130,11 @@ public class HealthManagerTest extends FakeDBApplication {
                 extraEnvVars.put("YB_ALERTS_EMAIL", envVal);
               }
               System.out.println("verifying");
-              verify(shellProcessHandler, times(1)).run(expectedCommand, extraEnvVars, false);
+              verify(shellProcessHandler, times(1)).run(
+                eq(expectedCommand),
+                eq(extraEnvVars),
+                eq(false),
+                anyString());
             }
           }
         }

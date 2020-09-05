@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.*;
@@ -712,7 +713,8 @@ public class UniverseController extends AuthenticatedController {
     UniverseDefinitionTaskParams taskParams;
     ObjectNode formData;
     try {
-      LOG.info("Update {} for {}.", customerUUID, universeUUID);
+      LOG.info("Update universe {} [ {} ] customer {}.",
+              universe.name, universeUUID, customerUUID);
       // Get the user submitted form data.
 
       formData = (ObjectNode) request().body().asJson();
@@ -972,7 +974,6 @@ public class UniverseController extends AuthenticatedController {
   }
 
   public Result destroy(UUID customerUUID, UUID universeUUID) {
-    LOG.info("Destroy universe, customer uuid: {}, universeUUID: {} ", customerUUID, universeUUID);
 
     Universe universe;
     try {
@@ -986,6 +987,8 @@ public class UniverseController extends AuthenticatedController {
     if (request().getQueryString("isForceDelete") != null) {
       isForceDelete = Boolean.valueOf(request().getQueryString("isForceDelete"));
     }
+    LOG.info("Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
+            customerUUID, universe.name, universeUUID);
 
     // Create the Commissioner task to destroy the universe.
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();

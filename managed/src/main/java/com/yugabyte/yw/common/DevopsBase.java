@@ -37,28 +37,30 @@ public abstract class DevopsBase {
   @Inject
   ShellProcessHandler shellProcessHandler;
 
-  protected JsonNode parseShellResponse(ShellProcessHandler.ShellResponse response, String command) {
+  protected JsonNode parseShellResponse(ShellResponse response, String command) {
     if (response.code == 0) {
       return Json.parse(response.message);
     } else {
-      LOG.error(response.message);
-      return ApiResponse.errorJSON("YBCloud command " + getCommandType() + " (" + command + ") failed to execute.");
+      String errorMsg = "YBCloud command " + getCommandType() +
+                        " (" + command + ") failed to execute.";
+      LOG.error((response.message != null) ? response.message : errorMsg);
+      return ApiResponse.errorJSON(errorMsg);
     }
   }
 
   protected JsonNode execAndParseCommandCloud(UUID providerUUID, String command, List<String> commandArgs) {
-    ShellProcessHandler.ShellResponse response = execCommand(null, providerUUID, null, command,
+    ShellResponse response = execCommand(null, providerUUID, null, command,
         commandArgs, Collections.emptyList());
     return parseShellResponse(response, command);
   }
 
   protected JsonNode execAndParseCommandRegion(UUID regionUUID, String command, List<String> commandArgs) {
-    ShellProcessHandler.ShellResponse response = execCommand(regionUUID, null, null, command,
+    ShellResponse response = execCommand(regionUUID, null, null, command,
         commandArgs, Collections.emptyList());
     return parseShellResponse(response, command);
   }
 
-  protected ShellProcessHandler.ShellResponse execCommand(UUID regionUUID,
+  protected ShellResponse execCommand(UUID regionUUID,
                                                           UUID providerUUID,
                                                           String command,
                                                           List<String> commandArgs,
@@ -66,7 +68,7 @@ public abstract class DevopsBase {
     return execCommand(regionUUID, providerUUID, null, command, commandArgs, cloudArgs);
   }
 
-  protected ShellProcessHandler.ShellResponse execCommand(UUID regionUUID,
+  protected ShellResponse execCommand(UUID regionUUID,
                                                           UUID providerUUID,
                                                           Common.CloudType cloudType,
                                                           String command,
@@ -97,12 +99,15 @@ public abstract class DevopsBase {
           "Invalid args provided for execCommand: region, provider or cloudType required!");
     }
 
+    String description = String.join(" ", commandList);
+    description += (" " + getCommandType().toLowerCase() + " " + command);
+    if (commandArgs.size() >= 1) {
+      description += (" " + commandArgs.get(commandArgs.size() - 1));
+    }
     commandList.addAll(cloudArgs);
     commandList.add(getCommandType().toLowerCase());
     commandList.add(command);
     commandList.addAll(commandArgs);
-
-    LOG.info("Command to run: [" + String.join(" ", commandList) + "]");
-    return shellProcessHandler.run(commandList, extraVars);
+    return shellProcessHandler.run(commandList, extraVars, description);
   }
 }

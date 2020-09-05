@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Customer;
@@ -63,9 +64,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   @Override
   public void run() {
     // Execute the ansible command.
-    ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
+    ShellResponse response = getNodeManager().nodeCommand(
         NodeManager.NodeCommandType.Configure, taskParams());
-    logShellResponse(response);
+    processShellResponse(response);
 
     if (taskParams().type == UpgradeUniverse.UpgradeTaskType.Everything &&
         !taskParams().updateMasterAddrsOnly) {

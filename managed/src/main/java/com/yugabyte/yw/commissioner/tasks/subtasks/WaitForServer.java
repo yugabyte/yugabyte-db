@@ -43,6 +43,7 @@ public class WaitForServer extends ServerSubTaskBase {
 
     boolean ret = false;
     YBClient client = null;
+    long startMs = System.currentTimeMillis();
     try {
       HostAndPort hp = getHostPort();
       client = getClient();
@@ -57,5 +58,10 @@ public class WaitForServer extends ServerSubTaskBase {
     if (!ret) {
       throw new RuntimeException(getName() + " did not respond to pings in the set time.");
     }
+    LOG.info(
+      "Server {} responded to RPC calls in {} ms",
+      (taskParams().nodeName != null) ? taskParams().nodeName : "unknown",
+      (System.currentTimeMillis() - startMs)
+    );
   }
 }

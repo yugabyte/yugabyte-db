@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.HealthManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -104,14 +105,11 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   /**
-   * Log the output of shellResponse to STDOUT or STDERR
    * @param response : ShellResponse object
    */
-  public void logShellResponse(ShellProcessHandler.ShellResponse response) {
-    if (response.code == 0) {
-      LOG.info("[" + getName() + "] STDOUT: '" + response.message + "'");
-    } else {
-      throw new RuntimeException(response.message);
+  public void processShellResponse(ShellResponse response) {
+    if (response.code != 0) {
+      throw new RuntimeException((response.message != null ) ? response.message : "error");
     }
   }
 
@@ -121,7 +119,7 @@ public abstract class AbstractTaskBase implements ITask {
    * @param response: ShellResponse object
    * @return JsonNode: Json formatted shell response message
    */
-  public JsonNode parseShellResponseAsJson(ShellProcessHandler.ShellResponse response) {
+  public JsonNode parseShellResponseAsJson(ShellResponse response) {
     return Util.convertStringToJson(response.message);
   }
 
@@ -134,7 +132,7 @@ public abstract class AbstractTaskBase implements ITask {
         if (node == null) {
           return;
         }
-        LOG.debug("Changing node {} state from {} to {} in universe {}.",
+        LOG.info("Changing node {} state from {} to {} in universe {}.",
                   nodeName, node.state, state, universeUUID);
         node.state = state;
         if (state == NodeDetails.NodeState.Decommissioned) {

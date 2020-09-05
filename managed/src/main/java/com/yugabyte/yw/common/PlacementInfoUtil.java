@@ -622,8 +622,8 @@ public class PlacementInfoUtil {
         }
       }
       if (totalNodesConfiguredInRegionList < userIntent.numNodes) {
-        LOG.error("Not enough nodes, required: {} nodes, configured: {} nodes", userIntent.numNodes, totalNodesConfiguredInRegionList);
-
+       LOG.error("Node prefix {} :  Not enough nodes, required: {} nodes, configured: {} nodes",
+                taskParams.nodePrefix, userIntent.numNodes, totalNodesConfiguredInRegionList);
         return false;
       }
     } else {
@@ -632,10 +632,11 @@ public class PlacementInfoUtil {
         UUID azUUID = entry.getKey();
         int numNodesToBeAdded = entry.getValue();
         if (numNodesToBeAdded > NodeInstance.listByZone(azUUID, instanceType).size()) {
-          LOG.error("Not enough nodes configured for given AZ/Instance type combo, " +
-                          "required {} found {} in AZ {} for Instance type {}", numNodesToBeAdded, NodeInstance.listByZone(azUUID, instanceType).size(),
-                  azUUID, instanceType);
-
+          LOG.error("Node prefix {} : Not enough nodes configured for given AZ/Instance " +
+                    "type combo, required {} found {} in AZ {} for Instance type {}",
+                    taskParams.nodePrefix, numNodesToBeAdded,
+                    NodeInstance.listByZone(azUUID, instanceType).size(),
+                    azUUID, instanceType);
           return false;
         }
       }
@@ -934,9 +935,7 @@ public class PlacementInfoUtil {
         cIdx++;
       }
     }
-
-    LOG.debug("Placement indexes {}.", placements);
-
+    LOG.trace("Placement indexes {}.", placements);
     return placements;
   }
 
@@ -1314,7 +1313,7 @@ public class PlacementInfoUtil {
         if (isEditUniverse) {
           if (currentNode.isActive()) {
             currentNode.state = NodeDetails.NodeState.ToBeRemoved;
-            LOG.debug("Removing node [{}].", currentNode);
+            LOG.trace("Removing node [{}].", currentNode);
             deleteCounter++;
           }
         } else {
@@ -1479,7 +1478,7 @@ public class PlacementInfoUtil {
       throw new IllegalStateException("Should find an active running tserver.");
     } else {
       nodeDetails.state = NodeDetails.NodeState.ToBeRemoved;
-      LOG.debug("Removing node [{}].", nodeDetails);
+      LOG.trace("Removing node [{}].", nodeDetails);
     }
   }
 
@@ -1519,7 +1518,7 @@ public class PlacementInfoUtil {
     nodeDetails.nodeIdx = nodeIdx;
     // We are ready to add this node.
     nodeDetails.state = NodeDetails.NodeState.ToBeAdded;
-    LOG.debug("Placed new node [{}] at cloud:{}, region:{}, az:{}. uuid {}.",
+    LOG.trace("Placed new node [{}] at cloud:{}, region:{}, az:{}. uuid {}.",
             nodeDetails, index.cloudIdx, index.regionIdx, index.azIdx, nodeDetails.azUuid);
 
     return nodeDetails;
@@ -1977,7 +1976,7 @@ public class PlacementInfoUtil {
     AvailabilityZone az = AvailabilityZone.get(zone);
     Region region = az.region;
     Provider cloud = region.provider;
-    LOG.debug("provider: {}", cloud.uuid);
+    LOG.trace("provider: {}", cloud.uuid);
     // Find the placement cloud if it already exists, or create a new one if one does not exist.
     PlacementCloud placementCloud = placementInfo.cloudList.stream()
       .filter(p -> p.uuid.equals(cloud.uuid))
@@ -2071,7 +2070,7 @@ public class PlacementInfoUtil {
             try {
               alive = alive || (1 == (int)Float.parseFloat(upData.asText()));
             } catch (NumberFormatException nfe) {
-              LOG.debug("Invalid number in node alive data: " + upData.asText());
+              LOG.trace("Invalid number in node alive data: " + upData.asText());
               // ignore this value
             }
           }
@@ -2092,9 +2091,7 @@ public class PlacementInfoUtil {
     }
 
     if (!masterAlive || !tserverAlive) {
-      LOG.debug(
-        String.format("Master or tserver considered not alive based on data: %s", nodeValues)
-      );
+      LOG.debug("Master or tserver considered not alive based on data: {}", nodeValues);
     }
 
     nodeDetails.state = (!masterAlive && !tserverAlive) ?

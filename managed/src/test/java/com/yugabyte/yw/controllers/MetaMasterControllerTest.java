@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -187,7 +188,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceFailure() {
     Universe universe = getKubernetesUniverse(false);
-    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    ShellResponse re = new ShellResponse();
     re.code = -1;
     re.message = "Unknown Error!";
     when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
@@ -210,7 +211,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodIP() {
     Universe universe = getKubernetesUniverse(false);
-    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    ShellResponse re = new ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15||";
     when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
@@ -229,7 +230,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodIPMultiCluster() {
     Universe universe = getKubernetesUniverse(true);
-    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    ShellResponse re = new ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15||";
     when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
@@ -248,7 +249,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIP() {
     Universe universe = getKubernetesUniverse(false);
-    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    ShellResponse re = new ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15|56.78.90.1|";
     when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
@@ -266,7 +267,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerHostname() {
     Universe universe = getKubernetesUniverse(false);
-    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    ShellResponse re = new ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15||loadbalancer.hostname";
     when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
@@ -284,7 +285,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIpAndHostname() {
     Universe universe = getKubernetesUniverse(false);
-    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    ShellResponse re = new ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15|56.78.90.1|loadbalancer.hostname";
     when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);

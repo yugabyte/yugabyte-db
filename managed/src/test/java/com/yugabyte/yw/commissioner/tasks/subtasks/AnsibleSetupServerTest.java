@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -39,7 +40,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
 
   @Test
   public void testOnPremProviderWithAirGapOption() {
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellProcessHandler.ShellResponse());
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0 ,""));
     AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.airGapInstall = true;
@@ -51,7 +52,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
 
   @Test
   public void testOnPremProviderWithPasswordlessOptionDisabled() {
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellProcessHandler.ShellResponse());
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0 ,""));
     AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.passwordlessSudoAccess = false;
@@ -63,7 +64,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
 
   @Test
   public void testOnPremProviderWithPasswordlessOptionEnabled() {
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellProcessHandler.ShellResponse());
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0 ,""));
     AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.passwordlessSudoAccess = true;
@@ -76,7 +77,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   @Test
   public void testOnPremProviderWithSkipProvision() {
     when(mockNodeManager.nodeCommand(any(), any()))
-        .thenReturn(new ShellProcessHandler.ShellResponse());
+        .thenReturn(ShellResponse.create(0 ,""));
     AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.skipProvisioning = true;
@@ -89,7 +90,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   @Test
   public void testOnPremProviderWithoutSkipProvision() {
     when(mockNodeManager.nodeCommand(any(), any()))
-        .thenReturn(new ShellProcessHandler.ShellResponse());
+        .thenReturn(ShellResponse.create(0 ,""));
     AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.skipProvisioning = false;
@@ -101,7 +102,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
 
   @Test
   public void testOnPremProviderWithMultipleAccessKeys() {
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellProcessHandler.ShellResponse());
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0 ,""));
     AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     AnsibleSetupServer.Params params = createUniverse(Common.CloudType.onprem, keyInfo);
@@ -113,7 +114,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
 
   @Test
   public void testAllProvidersWithAccessKey() {
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellProcessHandler.ShellResponse());
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0 ,""));
     for (Common.CloudType cloudType: Common.CloudType.values()) {
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();

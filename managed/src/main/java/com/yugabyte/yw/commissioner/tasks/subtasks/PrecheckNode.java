@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 
@@ -37,7 +38,7 @@ public class PrecheckNode extends NodeTaskBase {
     }
 
     LOG.info("Running preflight checks for universe.");
-    ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
+    ShellResponse response = getNodeManager().nodeCommand(
         NodeManager.NodeCommandType.Precheck, taskParams());
 
     if (response.code == 0) {
@@ -54,12 +55,12 @@ public class PrecheckNode extends NodeTaskBase {
 
       for (JsonNode node: responseJson) {
         if (!node.isBoolean() || !node.asBoolean()) {
-          // If a check failed, change the return code so logShellResponse errors.
+          // If a check failed, change the return code so processShellResponse errors.
           response.code = 1;
           break;
         }
       }
     }
-    logShellResponse(response);
+    processShellResponse(response);
   }
 }

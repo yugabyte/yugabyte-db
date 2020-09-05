@@ -563,7 +563,7 @@ public class AWSInitializer extends AbstractInitializer {
       if (enableVerboseLogging) {
         instanceType = InstanceType.get(provider.name(), instanceTypeCode);
         LOG.debug("Saving {} ({} cores, {}GB) with details {}", instanceType.idKey.toString(),
-            instanceType.numCores, instanceType.memSizeGB, Json.stringify(Json.toJson(details)));
+          instanceType.numCores, instanceType.memSizeGB, Json.stringify(Json.toJson(details)));
       }
     }
   }
