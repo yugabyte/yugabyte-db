@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import com.google.common.net.HostAndPort;
+import com.google.common.base.Joiner;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -97,6 +98,8 @@ public class Universe extends Model {
 
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> currConfig = this.getConfig();
+    String currConfigStr = Joiner.on(" ").withKeyValueSeparator("=").join(currConfig);
+    LOG.info("Setting config {} on universe {} [ {} ]", currConfigStr, name, universeUUID);
     for (String key : configMap.keySet()) {
       currConfig.put(key, configMap.get(key));
     }
@@ -245,8 +248,9 @@ public class Universe extends Model {
     // Create the default universe details. This should be updated after creation.
     universe.universeDetails = taskParams;
     universe.universeDetailsJson = Json.stringify(Json.toJson(universe.universeDetails));
-    LOG.debug("Created universe {} with details [{}] with name {}.",
-        universe.universeUUID, universe.universeDetailsJson, universe.name);
+    LOG.info("Created db entry for universe {} [{}]", universe.name, universe.universeUUID);
+    LOG.debug("Details for universe {} [{}] : [{}].",
+        universe.name, universe.universeUUID, universe.universeDetailsJson);
     // Save the object.
     universe.save();
     return universe;
@@ -648,7 +652,7 @@ public class Universe extends Model {
     update.setParameter("universeUUID", universeUUID);
     update.setParameter("curVersion", this.version);
     update.setParameter("newVersion", newVersion);
-    LOG.debug("Swapped universe {}:{} details to [{}] with new version = {}.",
+    LOG.trace("Swapped universe {}:{} details to [{}] with new version = {}.",
               universeUUID, this.name, universeDetailsJson, newVersion);
     int modifiedCount = Ebean.execute(update);
 

@@ -49,7 +49,7 @@ public class TableManager extends DevopsBase {
   @Inject
   ReleaseManager releaseManager;
 
-  public ShellProcessHandler.ShellResponse runCommand(CommandSubType subType,
+  public ShellResponse runCommand(CommandSubType subType,
                                                       TableManagerParams taskParams) {
     Universe universe = Universe.get(taskParams.universeUUID);
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
@@ -249,15 +249,15 @@ public class TableManager extends DevopsBase {
     return YB_CLOUD_COMMAND_TYPE;
   }
 
-  public ShellProcessHandler.ShellResponse bulkImport(BulkImportParams taskParams) {
+  public ShellResponse bulkImport(BulkImportParams taskParams) {
     return runCommand(BULK_IMPORT, taskParams);
   }
 
-  public ShellProcessHandler.ShellResponse createBackup(BackupTableParams taskParams) {
+  public ShellResponse createBackup(BackupTableParams taskParams) {
     return runCommand(BACKUP, taskParams);
   }
 
-  public ShellProcessHandler.ShellResponse deleteBackup(BackupTableParams taskParams) {
+  public ShellResponse deleteBackup(BackupTableParams taskParams) {
     return runCommand(DELETE, taskParams);
   }
 }

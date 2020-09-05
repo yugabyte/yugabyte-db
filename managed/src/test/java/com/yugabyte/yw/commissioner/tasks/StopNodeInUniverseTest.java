@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -42,7 +43,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     @InjectMocks
     Commissioner commissioner;
     Universe defaultUniverse;
-    ShellProcessHandler.ShellResponse dummyShellResponse;
+    ShellResponse dummyShellResponse;
     YBClient mockClient;
 
     @Before
@@ -63,7 +64,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
         mockClient = mock(YBClient.class);
         when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-        dummyShellResponse =  new ShellProcessHandler.ShellResponse();
+        dummyShellResponse =  new ShellResponse();
         dummyShellResponse.message = "true";
         when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     }

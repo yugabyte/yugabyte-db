@@ -144,6 +144,8 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         self.update_ansible_vars_with_args(args)
         servers = ["master", "tserver"]
         commands = ["stop", "clean", "clean-logs"]
+        logging.info(("[app] Running control script stop+clean+clean-logs " +
+                     "against master+tserver at {}").format(host_info['name']))
         for s in servers:
             for c in commands:
                 self.cloud.run_control_script(

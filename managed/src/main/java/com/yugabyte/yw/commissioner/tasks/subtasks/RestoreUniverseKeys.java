@@ -70,7 +70,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
                     "Skipping universe %s, No active keyRef found.",
                     taskParams().universeUUID.toString()
             );
-            LOG.debug(errMsg);
+            LOG.trace(errMsg);
             return null;
         }
 

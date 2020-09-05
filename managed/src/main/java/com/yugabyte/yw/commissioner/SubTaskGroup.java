@@ -113,7 +113,9 @@ public class SubTaskGroup implements Runnable {
   }
 
   public void addTask(AbstractTaskBase task) {
-    LOG.info("Adding task #" + taskMap.size() + ": " + task.toString());
+    LOG.info("Adding task #" + taskMap.size() + ": " + task.getName());
+    LOG.debug("Details for task #" + taskMap.size() + ": " + task.toString());
+
     // Set up corresponding TaskInfo.
     TaskType taskType = TaskType.valueOf(task.getClass().getSimpleName());
     TaskInfo taskInfo = new TaskInfo(taskType);
@@ -172,6 +174,8 @@ public class SubTaskGroup implements Runnable {
     boolean hasErrored = false;
     boolean alwaysRunAll = this.getSubTaskGroupType().getAlwaysRunAll();
     for (Future<?> future : futuresMap.keySet()) {
+      TaskInfo taskInfo = futuresMap.get(future);
+
       // Wait for each future to finish.
       String errorString = null;
       try {
@@ -179,17 +183,17 @@ public class SubTaskGroup implements Runnable {
           // Task succeeded.
           numTasksCompleted.incrementAndGet();
         } else {
-          errorString = "ERROR: task " + future.toString() + " get() returned null.";
+          errorString = "ERROR: while running task " + taskInfo.toString() +
+                        " " + taskInfo.getTaskUUID().toString();
           LOG.error(errorString);
         }
       } catch (Exception e) {
-        errorString = "Failed to execute task " + future.toString() + ", hit error " +
+        errorString = "Failed to execute task " + taskInfo.getTaskDetails() + ", hit error " +
             e.getMessage() + ".";
         LOG.error(errorString, e);
       } finally {
         if (errorString != null) {
           hasErrored = true;
-          TaskInfo taskInfo = futuresMap.get(future);
           ObjectNode details = taskInfo.getTaskDetails().deepCopy();
           details.put("errorString", errorString);
           taskInfo.setTaskDetails(details);

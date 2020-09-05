@@ -146,7 +146,7 @@ public class HealthChecker {
     return config.getString("yb.health.default_email");
   }
 
-  private void processResults(Universe u, String response) {
+  private void processResults(Universe u, String response, long durationMs) {
     boolean hasErrors = false;
     try {
       JsonNode healthJSON = Util.convertStringToJson(response);
@@ -170,8 +170,10 @@ public class HealthChecker {
         );
         prometheusVal.set(checkResult ? 1 : 0);
       }
-      LOG.info("Health check for universe " + u.name +
-               (hasErrors ? " reported errors." : " reported success."));
+      LOG.info(
+        "Health check for universe {} reported {}. [ {} ms ]",
+        u.name, (hasErrors ? "errors" : " success"), durationMs
+      );
      } catch (Exception e) {
       LOG.warn("Failed to convert health check response to prometheus metrics " + e.getMessage());
     }
@@ -180,11 +182,11 @@ public class HealthChecker {
   @VisibleForTesting
   void scheduleRunner() {
     if (running.get()) {
-      LOG.info("Previous run still underway");
+      LOG.info("Previous run of health checker is still underway");
       return;
     }
 
-    LOG.info("Running health checker");
+    LOG.info("Started running health checker");
     running.set(true);
     // TODO(bogdan): This will not be too DB friendly when we go multi-tenant.
     for (Customer c : Customer.getAll()) {
@@ -260,7 +262,9 @@ public class HealthChecker {
       LOG.warn("Skipping universe " + u.name + " due to task in progress...");
       return;
     }
+    long startMs = System.currentTimeMillis();
     LOG.info("Doing health check for universe: " + u.name);
+
     Map<UUID, HealthManager.ClusterInfo> clusterMetadata = new HashMap<>();
     boolean invalidUniverseData = false;
     String providerCode;
@@ -397,24 +401,25 @@ public class HealthChecker {
                                alertingData.reportOnlyErrors;
     boolean sendMailAlways = (shouldSendStatusUpdate || lastCheckHadErrors);
     // Call devops and process response.
-    ShellProcessHandler.ShellResponse response = healthManager.runCommand(
-      mainProvider,
-      new ArrayList<>(clusterMetadata.values()),
-      u.name,
-      customerTag,
-      (destinations.size() == 0 || silenceEmails) ? null : String.join(",", destinations),
-      potentialStartTime,
-      sendMailAlways,
-      reportOnlyErrors,
-      smtpData
+    ShellResponse response = healthManager.runCommand(
+        mainProvider,
+        new ArrayList(clusterMetadata.values()),
+        u.name,
+        customerTag,
+        (destinations.size() == 0 || silenceEmails) ? null : String.join(",", destinations),
+        potentialStartTime,
+        sendMailAlways,
+        reportOnlyErrors,
+        smtpData
     );
 
+    long durationMs = System.currentTimeMillis() - startMs;
     if (response.code == 0) {
-      processResults(u, response.message);
+      processResults(u, response.message, durationMs);
       HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
     } else {
-      LOG.error(String.format(
-          "Health check script got error: code (%s)\n%s", response.code, response.message));
+      LOG.error("Health check script got error: {} code ({}) [ {} ms ]",
+                response.message, response.code, durationMs);
     }
   }
 }
