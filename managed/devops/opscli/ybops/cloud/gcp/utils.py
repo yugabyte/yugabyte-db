@@ -748,7 +748,10 @@ class GoogleCloudAdmin():
         for i in xrange(num_volumes):
             body["disks"].append(disk_config)
 
+        logging.info("[app] About to create GCP VM {} in region {}.".format(
+            instance_name, region))
         self.waiter.wait(self.compute.instances().insert(
             project=self.project,
             zone=zone,
             body=body).execute(), zone=zone)
+        logging.info("[app] Created GCP VM {}".format(instance_name))

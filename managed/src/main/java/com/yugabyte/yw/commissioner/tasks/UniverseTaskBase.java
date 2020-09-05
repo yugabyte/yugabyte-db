@@ -97,7 +97,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // catch as we want to fail.
     Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
     universeLocked = true;
-    LOG.debug("Locked universe {} at version {}.", taskParams().universeUUID,
+    LOG.trace("Locked universe {} at version {}.", taskParams().universeUUID,
       expectedUniverseVersion);
     // Return the universe object that we have already updated.
     return universe;
@@ -160,7 +160,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
     Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
-    LOG.debug("Wrote user intent for universe {}.", taskParams().universeUUID);
+    LOG.trace("Wrote user intent for universe {}.", taskParams().universeUUID);
 
     return subTaskGroup;
   }
@@ -244,7 +244,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
     Universe.saveDetails(taskParams().universeUUID, updater);
-    LOG.debug("Unlocked universe {} for updates.", taskParams().universeUUID);
+    LOG.trace("Unlocked universe {} for updates.", taskParams().universeUUID);
   }
 
   /**
@@ -1026,9 +1026,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public boolean instanceExists(NodeTaskParams taskParams) {
     // Create the process to fetch information about the node from the cloud provider.
     NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
-    ShellProcessHandler.ShellResponse response = nodeManager.nodeCommand(
+    ShellResponse response = nodeManager.nodeCommand(
         NodeManager.NodeCommandType.List, taskParams);
-    logShellResponse(response);
+    processShellResponse(response);
     boolean exists = true;
     if (response != null && response.message != null && !StringUtils.isEmpty(response.message)) {
       JsonNode jsonNodeTmp = Json.parse(response.message);

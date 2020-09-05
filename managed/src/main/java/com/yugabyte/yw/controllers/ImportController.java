@@ -841,6 +841,6 @@ public class ImportController extends AuthenticatedController {
         new ThreadPoolExecutor(TASK_THREADS, TASK_THREADS, THREAD_ALIVE_TIME,
                                TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
                                namedThreadFactory);
-    LOG.debug("Started Import Thread Pool.");
+    LOG.trace("Started Import Thread Pool.");
   }
 }

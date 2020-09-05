@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.HealthManager;
 import com.yugabyte.yw.common.HealthManager.ClusterInfo;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -88,8 +89,8 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockActorSystem.scheduler()).thenReturn(mockScheduler);
 
     when(mockConfig.getString("yb.health.default_email")).thenReturn(YB_ALERT_TEST_EMAIL);
-    ShellProcessHandler.ShellResponse dummyShellResponse =
-      ShellProcessHandler.ShellResponse.create(
+    ShellResponse dummyShellResponse =
+      ShellResponse.create(
         0,
         ("{''error'': false, ''data'': [ {''node'':''" + dummyNode +
           "'', ''has_error'': true, ''message'':''" + dummyCheck +
@@ -502,8 +503,8 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Test
   public void testScriptFailure() {
-    ShellProcessHandler.ShellResponse dummyShellResponseFail =
-      ShellProcessHandler.ShellResponse.create(
+    ShellResponse dummyShellResponseFail =
+      ShellResponse.create(
         1,
         "Should error");
 

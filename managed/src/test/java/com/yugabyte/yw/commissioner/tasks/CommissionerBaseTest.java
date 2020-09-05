@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;

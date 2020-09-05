@@ -14,6 +14,7 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.RunInShellFormData;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
 import static org.hamcrest.CoreMatchers.allOf;

@@ -27,8 +27,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
@@ -44,7 +43,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   @InjectMocks
   Commissioner commissioner;
   Universe defaultUniverse;
-  ShellProcessHandler.ShellResponse dummyShellResponse;
+  ShellResponse dummyShellResponse;
 
   @Before
   public void setUp() {
@@ -66,7 +65,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     gflags.put("foo", "bar");
     defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags = gflags;
 
-    dummyShellResponse = new ShellProcessHandler.ShellResponse();
+    dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }

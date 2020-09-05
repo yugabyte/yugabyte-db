@@ -10,7 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.common.ShellProcessHandler.ShellResponse;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;

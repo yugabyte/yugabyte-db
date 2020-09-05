@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
@@ -47,7 +48,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   Universe defaultUniverse;
   YBClient mockClient;
   ModifyMasterClusterConfigBlacklist modifyBL;
-  ShellProcessHandler.ShellResponse dummyShellResponse;
+  ShellResponse dummyShellResponse;
 
   static final String DEFAULT_NODE_NAME = "host-n1";
 
@@ -91,9 +92,9 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockNodeManager.nodeCommand(any(), any()))
-        .thenReturn(new ShellProcessHandler.ShellResponse());
+        .thenReturn(new ShellResponse());
     modifyBL = mock(ModifyMasterClusterConfigBlacklist.class);
-    dummyShellResponse =  new ShellProcessHandler.ShellResponse();
+    dummyShellResponse =  new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }
