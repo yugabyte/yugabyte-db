@@ -36,6 +36,7 @@
 #include <string>
 
 #include "yb/common/clock.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/gutil/ref_counted.h"

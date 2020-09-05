@@ -340,7 +340,7 @@ RaftConsensus::RaftConsensus(
       term_metric_(metric_entity->FindOrCreateGauge(&METRIC_raft_term,
                                                     cmeta->current_term())),
       follower_last_update_time_ms_metric_(
-          metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms, clock_)),
+          metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms)),
       is_raft_leader_metric_(metric_entity->FindOrCreateGauge(&METRIC_is_raft_leader,
                                                               static_cast<int64_t>(0))),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
@@ -954,7 +954,7 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   // Set the timestamp to max uint64_t so that every time this metric is queried, the returned
   // lag is 0. We will need to restore the timestamp once this peer steps down.
   follower_last_update_time_ms_metric_->UpdateTimestampInMilliseconds(
-      std::numeric_limits<uint64_t>::max());
+      std::numeric_limits<int64_t>::max());
   is_raft_leader_metric_->set_value(1);
 
   return Status::OK();
