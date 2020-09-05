@@ -202,11 +202,6 @@ class HybridTime {
     return v >> kBitsForLogicalComponent;
   }
 
-  // Returns the physical value embedded in this HybridTime, in milliseconds.
-  inline MillisTime GetPhysicalValueMillis() const {
-    return GetPhysicalValueMicros() / 1000;
-  }
-
   inline int64_t PhysicalDiff(const HybridTime& other) const {
     return static_cast<int64_t>(GetPhysicalValueMicros() - other.GetPhysicalValueMicros());
   }
