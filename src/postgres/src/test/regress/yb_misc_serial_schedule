@@ -8,3 +8,4 @@ test: yb_compound_key
 test: yb_schema
 test: yb_select
 test: yb_guc
+test: yb_depend
