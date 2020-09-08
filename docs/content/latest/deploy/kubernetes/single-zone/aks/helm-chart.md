@@ -202,7 +202,7 @@ You can also view the details of the cluster in the Kubernetes Dashboard by runn
 First, run the following `kubectl` command:
 
 ```sh
-$ kubectl create clusterrolebinding kubernetes-dashboard --clusterrole=cluster-admin --serviceaccount=kube-system:kubernetes-dashboard --user=clusterUser
+$ kubectl create clusterrolebinding yb-kubernetes-dashboard --clusterrole=cluster-admin --serviceaccount=kube-system:kubernetes-dashboard --user=clusterUser
 ```
 
 And then run the following Azure CLI command:
