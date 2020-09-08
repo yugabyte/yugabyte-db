@@ -989,13 +989,6 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
     Status s = async_client_init_->client()->OpenTable(table_id, &table);
     RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::TABLE_NOT_FOUND, context);
 
-    // TODO: We will support YSQL tables once we can take backups for those tables.
-    RPC_CHECK_NE_AND_RETURN_ERROR(table->table_type(), client::YBTableType::PGSQL_TABLE_TYPE,
-        STATUS(InvalidArgument, "Bootstrapping and backup of YSQL tables is not supported yet"),
-        resp->mutable_error(),
-        CDCErrorPB::INVALID_REQUEST,
-        context);
-
     // Generate a bootstrap id by calling CreateCDCStream, and also setup the stream in the master.
     // If the consumer's master sends a CreateCDCStream with a bootstrap id, the producer's master
     // will verify that the stream id exists and return success if it does since everything else
