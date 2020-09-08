@@ -45,56 +45,57 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 
 ## YSQL
 
-- Fix failed backup if restored table was deleted before restoration. [#5274](https://github.com/yugabyte/yugabyte-db/issues/5274)
-- Newly elected YB-Master leader should pause before initiating load balancing. [#5221](https://github.com/yugabyte/yugabyte-db/issues/5221)
-- Fix backfilling to better handle large indexed table tablets. [#5031](https://github.com/yugabyte/yugabyte-db/issues/5031)
-- Fix `DROP DATABASE` statement should work with databases deleted on YB-Master. [#4710](https://github.com/yugabyte/yugabyte-db/issues/4710)
-- For non-prepared statements, optimize `pg_statistic` system table lookups. [#5051](https://github.com/yugabyte/yugabyte-db/issues/5051)
-- [CDC] Avoid periodic querying of the `cdc_state` table for xDC metrics if there are no replication streams enabled. [#5173](https://github.com/yugabyte/yugabyte-db/issues/5173)
+- Fix OOM on file-sourced YB relations in `COPY FROM` statement. Reset memory context regularly, per row, when memory is resettable and when rows are read from file (not `stdin`). [#5561](https://github.com/yugabyte/yugabyte-db/issues/5561)
+- Support transactional batch size for `COPY FROM` statement with OOM fix. Batch sizes can be passed in using `COPY OPTION` syntax. [#2855](https://github.com/yugabyte/yugabyte-db/issues/2855) [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
+
+----
+- `yb-admin create_database_snapshot` should not require `ysql.` prefix for database name. [#4991](https://github.com/yugabyte/yugabyte-db/issues/4991)
+- For non-prepared statements, optimize `pg_statistic` system table lookups and update debugging utilities. [#5051](https://github.com/yugabyte/yugabyte-db/issues/5051)
 
 ## YCQL
 
-- Implement DNS cache to significantly reduce CPU loads due to a large number of DNS resolution requests (especially for YCQL connections). Adds [`dns_cache_expiration_ms`](../../reference/configuration/yb-master/#dns-cache-expiration-ms) flag (default is 1 minute). [#5201](https://github.com/yugabyte/yugabyte-db/issues/5201)
-- Fixed incorrect names de-mangling in index creation from `CatalogManager::ImportSnapshot()`. [#5157](https://github.com/yugabyte/yugabyte-db/issues/5157)
-- Fixed crashes when inserting literals containing newline characters. [#5270](https://github.com/yugabyte/yugabyte-db/issues/5270)
-- Reuse CQL parser between processors to improve memory usage. Add new `cql_processors_limit` flag to control processor allocation. [#5057](https://github.com/yugabyte/yugabyte-db/issues/5057)
+- For `WHERE` clause in `CREATE INDEX` statement, return a `Not supported` error. [#5363](https://github.com/yugabyte/yugabyte-db/issues/5363)
+- Fix TSAN issue in partition-aware policy for C++ driver 2.9.0-yb-8 (yugabyte/cassandra-cpp-driver). [#1837](https://github.com/yugabyte/yugabyte-db/issues/1837)
+
+----
+- Fix `ycqlsh` should return a failure when known that the create (unique) index has failed. [#5161](https://github.com/yugabyte/yugabyte-db/issues/5161)
 
 ## Core database
 
-- Fix `yugabyted` fails to start UI due to class binding failure. [#5069](https://github.com/yugabyte/yugabyte-db/issues/5069)
-- Show hostnames in YB-Master and YB-TServer Admin UI when hostnames are specified in `--webserver_interface`, `rpc_bind_addresses`, and `server_broadcast_addresses` flags. [#5002](https://github.com/yugabyte/yugabyte-db/issues/5002)
-- Skip tablets without intents during commits, for example, the case of an update of a non-existing row. [#5321](https://github.com/yugabyte/yugabyte-db/issues/5321)
-- Fix log spew when applying unknown transaction and release a mutex as soon as possible when transaction is not found. [#5315](https://github.com/yugabyte/yugabyte-db/issues/5315)
-- Fix snapshots cleanup when snapshots removed before restart. [#5337](https://github.com/yugabyte/yugabyte-db/issues/5337)
-- Replace `SCHECK` with `LOG(DFATAL)` when checking for restart-safe timestamps in WAL entries. [#5314](https://github.com/yugabyte/yugabyte-db/issues/5314)
-- Replace all CHECK in the load balancer code with `SCHECK` or `RETURN_NOT_OK`. [#5182](https://github.com/yugabyte/yugabyte-db/issues/5182)
-- Implement DNS cache to significantly reduce CPU loads due to a large number of DNS resolution requests (especially for YCQL connections). Adds YB-Master [`dns_cache_expiration_ms`](../../reference/configuration/yb-master/#dns-cache-expiration-ms) flag (default is 1 minute). [#5201](https://github.com/yugabyte/yugabyte-db/issues/5201)
-- Avoid duplicate DNS requests when handling `system.partitions` table requests. [#5225](https://github.com/yugabyte/yugabyte-db/issues/5225)
-- Fix leader load balancing can cause `CHECK` failures if stepdown task is pending on next run. Sets global leader balance threshold while allowing progress to be made across tables. Adds new YB-Master [`load_balancer_max_concurrent_moves_per_table`](../../reference/configuration/yb-master/#load-balancer-max-concurrent-moves-per-table) flag to limit number of leader moves per table. [#5181](https://github.com/yugabyte/yugabyte-db/issues/5181) and [#5021](https://github.com/yugabyte/yugabyte-db/issues/5021)
-- Set the async `YBClient` initialization future in `TabletPeer` constructor to ensure tablet bootstrap logic can resolve transaction statuses. [#5215](https://github.com/yugabyte/yugabyte-db/issues/5215)
+- Fix core dump related to DNS resolution from cache for Kubernetes universes. [#5561](https://github.com/yugabyte/yugabyte-db/issues/5561)
+- Fix yb-master fails to restart after errors on first run. [#5276](https://github.com/yugabyte/yugabyte-db/issues/5276)
+- Show better error message when using `yugabyted` and yb-master fails to start. [#5304](https://github.com/yugabyte/yugabyte-db/issues/5304)
+- Disable ignoring deleted tablets on load by default. [#5122](https://github.com/yugabyte/yugabyte-db/issues/5122)
+- [CDC] Improve CDC idle throttling logic to reduce high CPU utilization in clusters without workloads running. [#5472](https://github.com/yugabyte/yugabyte-db/issues/5472)
+- Use templatized values for setting TLS flags in Helm Chart. [#5424](https://github.com/yugabyte/yugabyte-db/issues/5424)
+- For `server_broadcast_addresses` flag, provide default port if not specified. [#2540](https://github.com/yugabyte/yugabyte-db/issues/2540)
+- [CDC] Fix CDC TSAN destructor warning. [#4258](https://github.com/yugabyte/yugabyte-db/issues/4258)
+- Add API endpoint to download root certificate file. [#4957](https://github.com/yugabyte/yugabyte-db/issues/4957)
+
+----
+- When dropping tables, delete snapshot directories for deleted tables. [#4756](https://github.com/yugabyte/yugabyte-db/issues/4756)
+- Set up a global leader balance threshold while allowing progress across tables. Add `load_balancer_max_concurrent_moves_per_table` and `load_balancer+max_concurrent_moves` to improve performance of leader moves. And properly update state for leader stepdowns to prevent check failures. [#5021](https://github.com/yugabyte/yugabyte-db/issues/5021) [#5181](https://github.com/yugabyte/yugabyte-db/issues/5181)
+- Improve bootstrap logic for resolving transaction statuses. [#5215](https://github.com/yugabyte/yugabyte-db/issues/5215)
+- Avoid duplicate DNS lookup requests while handling `system.partitions` table requests. [#5225](https://github.com/yugabyte/yugabyte-db/issues/5225)
 - Handle write operation failures during tablet bootstrap. [#5224](https://github.com/yugabyte/yugabyte-db/issues/5224)
-- Drop index upon failed backfill. [#5144](https://github.com/yugabyte/yugabyte-db/issues/5144)  [#5161](https://github.com/yugabyte/yugabyte-db/issues/5161)
-- Fix WAL overwriting by new leader and replay of incorrect entries on tablet bootstrap. [#5003](https://github.com/yugabyte/yugabyte-db/issues/5003) [#3759](https://github.com/yugabyte/yugabyte-db/issues/3759) [#4983](https://github.com/yugabyte/yugabyte-db/issues/4983)
-- Avoid taking unique lock when starting lookup request. [#5059](https://github.com/yugabyte/yugabyte-db/issues/5059)
-- Set 2DC lag metrics to `0` if not the leader and if the replication is deleted. [#5113](https://github.com/yugabyte/yugabyte-db/issues/5113)
-- Set the table to ALTERING state when `fully_*` is populated. [#5139](https://github.com/yugabyte/yugabyte-db/issues/5139)
-- `Not the leader` errors should not cause a replica to be marked as failed. [#5072](https://github.com/yugabyte/yugabyte-db/issues/5072)
-- Use difference between follower's hybrid time and its safe time as a measure of staleness. [#4868](https://github.com/yugabyte/yugabyte-db/issues/4868)
+- Ensure `strict_capacity_limit` is set when SetCapacity is called to prevent ASAN failures. [#5222](https://github.com/yugabyte/yugabyte-db/issues/5222)
+- Drop index upon failed backfill. And, for YCQL, generate error to CREATE INDEX call if index/backfill fails before the call is completed. [#5144](https://github.com/yugabyte/yugabyte-db/issues/5144) [#5161](https://github.com/yugabyte/yugabyte-db/issues/5161)
+- Allow overflow of single-touch cache if multi-touch cache is not consuming space. [#4495](https://github.com/yugabyte/yugabyte-db/issues/4495)
+- Don't flush RocksDB before restoration. [#5184](https://github.com/yugabyte/yugabyte-db/issues/5184)
+- Fix `yugabyted` fails to start UI due to class binding failure. [#5069](https://github.com/yugabyte/yugabyte-db/issues/5069)
+- On YB-TServer restart, prioritize bootstrapping transaction status tablets. [#4926](https://github.com/yugabyte/yugabyte-db/issues/4926)
 
 ## Yugabyte Platform
 
-- Add **Master** section below **Tablet Server** section in **Metrics** page. [#5233](https://github.com/yugabyte/yugabyte-db/issues/5233)
-- Add `rpc_connections_alive` metrics for YSQL and YCQL APIs. [#5223](https://github.com/yugabyte/yugabyte-db/issues/5223)
-- Fix restore payload when renaming table to include keyspace. Disable keyspace field when restoring universe backup. [#5178](https://github.com/yugabyte/yugabyte-db/issues/5178)
-- Pass in `ssh_user` to air-gap provision script and add to on-premise template. [#5132](https://github.com/yugabyte/yugabyte-db/issues/5132)
-- Add the `--recursive` flag to AZCopy for multi-table restore. [#5163](https://github.com/yugabyte/yugabyte-db/issues/5163)
-- Fix transactional backup with specified tables list by including keyspace in payload. [#5149](https://github.com/yugabyte/yugabyte-db/issues/5149)
-- Fix undefine object property error when Prometheus is unavailable and navigating to the **Replication** tab. [#5146](https://github.com/yugabyte/yugabyte-db/issues/5146)
-- Backups should take provider-level environment variables, including home directory. [#5064](https://github.com/yugabyte/yugabyte-db/issues/5064)
-- Add hostname and display in the Nodes page along with node name and IP address. [#4760](https://github.com/yugabyte/yugabyte-db/issues/4760)
-- Support option of DNS names instead of IP addresses for nodes. Add option in Admin UI to choose between using hostnames or IP addresses for on-premises provider. [#4951](https://github.com/yugabyte/yugabyte-db/issues/4951) [#4950](https://github.com/yugabyte/yugabyte-db/issues/4950)
-- Disable glob before running cleanup of old log files using `zip_purge_yb_logs.sh`. Fixes issue on Red Hat. [#5169](https://github.com/yugabyte/yugabyte-db/issues/5169)
-- Fix Replication graph units and missing graph in Replication tab when metrics exist. [#5423](https://github.com/yugabyte/yugabyte-db/issues/3820)
+- For S3 backups, install `s3cmd` required for encrypted backup and restore flows. [#5593](https://github.com/yugabyte/yugabyte-db/issues/5593)
+- When creating on-premises provider, remove `YB_HOME_DIR` if not set. [#5592](https://github.com/yugabyte/yugabyte-db/issues/5592)
+- Update to use templatized values for setting TLS flags in Helm Charts. [#5424](https://github.com/yugabyte/yugabyte-db/issues/5424)
+- For YCQL client connectivity, allow downloading root certificate and key from **Certificates** menu. [#4957](https://github.com/yugabyte/yugabyte-db/issues/4957)
+
+----
+- Fix updating of Universes list after creating new universe. [#4784](https://github.com/yugabyte/yugabyte-db/issues/4784)
+- Fix restore payload when renaming table to include keyspace. And check for keyspace if tableName is defined and return invalid request code when keyspace is missing. [#5178](https://github.com/yugabyte/yugabyte-db/issues/5178)
+- Add `volume_type` parameter for Azure Cloud universe creation so that value gets passed. [#????]
 
 {{< note title="Note" >}}
 

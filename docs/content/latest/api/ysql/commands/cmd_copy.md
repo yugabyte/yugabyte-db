@@ -88,7 +88,6 @@ yugabyte=# SELECT * FROM users;
 
 Copy the entire table to a CSV file using an absolute path, with column names in the header.
 
-
 ```postgresql
 yugabyte=# COPY users TO '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
 ```
@@ -106,7 +105,6 @@ yugabyte=# COPY (SELECT name FROM users where name='Dorian Gray') TO '/home/yuga
 ### Import from CSV files
 
 In the following example, the data exported in the previous examples are imported in the `users` table.
-
 
 ```postgresql
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;

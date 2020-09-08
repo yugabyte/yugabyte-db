@@ -416,7 +416,7 @@ yb-admin -master_addresses <master-addresses> create_database_snapshot <database
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *database*: The name of the database or keyspace.
+- *database*: The name of the YSQL database.
 
 When this command runs, a `snapshot_id` is generated and printed.
 
@@ -424,6 +424,29 @@ When this command runs, a `snapshot_id` is generated and printed.
 
 ```sh
 $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_database_snapshot
+```
+
+To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list_snapshots) command.
+
+#### create_keyspace_snapshot
+
+Creates a snapshot of the specified YCQL database.
+
+**Syntax**
+
+```sh
+yb-admin -master_addresses <master-addresses> create_keyspace_snapshot <keyspace_name>
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *keyspace*: The name of the YCQL keyspace.
+
+When this command runs, a `snapshot_id` is generated and printed.
+
+**Example**
+
+```sh
+$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_keyspace_snapshot
 ```
 
 To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list_snapshots) command.
