@@ -106,12 +106,9 @@ export default class CustomerProfile extends Component {
               key="manage-users"
               mountOnEnter={true}
               unmountOnExit={true}
-              disabled={isDisabled(customer.data.features, "main.profile")}>
-              <UserList customer={this.props.customer}
-                customerProfile={customerProfile}
-                apiToken={apiToken}
-                handleProfileUpdate={this.handleProfileUpdate}
-                {...this.props} />
+              disabled={isDisabled(customer.data.features, "main.profile")}
+            >
+              <UserList {...this.props} />
             </Tab.Pane>
           ]}
         </YBTabsWithLinksPanel>
