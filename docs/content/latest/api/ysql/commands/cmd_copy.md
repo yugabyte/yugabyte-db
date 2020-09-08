@@ -76,7 +76,7 @@ The examples below assume a table like this:
 yugabyte=# CREATE TABLE users(id BIGSERIAL PRIMARY KEY, name TEXT);
 yugabyte=# INSERT INTO users(name) VALUES ('John Doe'), ('Jane Doe'), ('Dorian Gray');
 yugabyte=# SELECT * FROM users;
- id |    name     
+ id |    name
 ----+-------------
   3 | Dorian Gray
   2 | Jane Doe
@@ -111,6 +111,18 @@ In the following example, the data exported in the previous examples are importe
 ```postgresql
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
 ```
+
+
+### Import a large table using smaller transactions
+
+When importing a very large table, Yugabyte recommends using many smaller transactions (rather than one large transaction).
+This can be achieved natively by using the `ROWS_PER_TRANSACTION` option.
+
+```postgresql
+yugabyte=# COPY large_table FROM '/home/yuga/Desktop/large_table.csv'
+               WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 1000);
+```
+
 
 - If the table does not exist, errors are raised.
 - `COPY TO` can only be used with regular tables.

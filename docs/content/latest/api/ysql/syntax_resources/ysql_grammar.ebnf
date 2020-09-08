@@ -185,13 +185,13 @@ alter_table_constraint ::= [ 'CONSTRAINT' constraint_name ] (
                        'FOREIGN' 'KEY' '(' column_names ')' references_clause )
                        [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
 
-alter_column_constraint ::= [ 'CONSTRAINT' constraint_name ]                                               
-                      (  'NOT' 'NULL'                                                                
-                         | 'NULL'                                                                    
-                         | 'CHECK' '(' expression ')'                                                
-                         | 'DEFAULT' expression                                                      
-                         | 'UNIQUE' index_parameters                                                 
-                         | references_clause )                                                       
+alter_column_constraint ::= [ 'CONSTRAINT' constraint_name ]
+                      (  'NOT' 'NULL'
+                         | 'NULL'
+                         | 'CHECK' '(' expression ')'
+                         | 'DEFAULT' expression
+                         | 'UNIQUE' index_parameters
+                         | references_clause )
                       [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
 
 (* 'ALTER' 'USER' *)
@@ -275,7 +275,8 @@ copy_option ::=
     | 'FORCE_QUOTE' ( '(' column_names ')' | '*' )
     | 'FORCE_NOT_NULL' '(' column_names ')'
     | 'FORCE_NULL' '(' column_names ')'
-    | 'ENCODING' 'encoding_name' ) ;
+    | 'ENCODING' 'encoding_name'
+    | 'ROWS_PER_TRANSACTION' integer ) ;
 
 (* 'CREATE' 'AGGREGATE' *)
 
