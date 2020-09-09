@@ -56,6 +56,10 @@ Aside from bug fixes, no further development is planned for stable branches. New
 
 pgAudit versions relate to PostgreSQL major versions as follows:
 
+- **pgAudit v1.5.X** is intended to support PostgreSQL 13.
+
+- **pgAudit v1.4.X** is intended to support PostgreSQL 12.
+
 - **pgAudit v1.3.X** is intended to support PostgreSQL 11.
 
 - **pgAudit v1.2.X** is intended to support PostgreSQL 10.
@@ -96,7 +100,7 @@ Settings may be modified only by a superuser. Allowing normal users to change th
 
 Settings can be specified globally (in `postgresql.conf` or using `ALTER SYSTEM ... SET`), at the database level (using `ALTER DATABASE ... SET`), or at the role level (using `ALTER ROLE ... SET`). Note that settings are not inherited through normal role inheritance and `SET ROLE` will not alter a user's pgAudit settings. This is a limitation of the roles system and not inherent to pgAudit.
 
-The pgAudit extension must be loaded in [shared_preload_libraries](http://www.postgresql.org/docs/11/static/runtime-config-client.html#GUC-SHARED-PRELOAD-LIBRARIES). Otherwise, an error will be raised at load time and no audit logging will occur. In addition, `CREATE EXTENSION pgaudit` must be called before `pgaudit.log` is set. If the `pgaudit` extension is dropped and needs to be recreated then `pgaudit.log` must be unset first otherwise an error will be raised.
+The pgAudit extension must be loaded in [shared_preload_libraries](http://www.postgresql.org/docs/11/runtime-config-client.html#GUC-SHARED-PRELOAD-LIBRARIES). Otherwise, an error will be raised at load time and no audit logging will occur. In addition, `CREATE EXTENSION pgaudit` must be called before `pgaudit.log` is set. If the `pgaudit` extension is dropped and needs to be recreated then `pgaudit.log` must be unset first otherwise an error will be raised.
 
 ### pgaudit.log
 
@@ -136,7 +140,7 @@ The default is `off`.
 
 ### pgaudit.log_level
 
-Specifies the log level that will be used for log entries (see [Message Severity Levels](http://www.postgresql.org/docs/9.4/static/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) for valid levels) but note that `ERROR`, `FATAL`, and `PANIC` are not allowed). This setting is used for regression testing and may also be useful to end users for testing or other purposes.
+Specifies the log level that will be used for log entries (see [Message Severity Levels](http://www.postgresql.org/docs/11/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) for valid levels) but note that `ERROR`, `FATAL`, and `PANIC` are not allowed). This setting is used for regression testing and may also be useful to end users for testing or other purposes.
 
 Note that `pgaudit.log_level` is only enabled when `pgaudit.log_client` is `on`; otherwise the default will be used.
 
@@ -331,7 +335,7 @@ Audit entries are written to the standard logging facility and contain the follo
 
 - **PARAMETER** - If `pgaudit.log_parameter` is set then this field will contain the statement parameters as quoted CSV or `<none>` if there are no parameters. Otherwise, the field is `<not logged>`.
 
-Use [log_line_prefix](http://www.postgresql.org/docs/11/static/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) to add any other fields that are needed to satisfy your audit log requirements. A typical log line prefix might be `'%m %u %d [%p]: '` which would provide the date/time, user name, database name, and process id for each audit log.
+Use [log_line_prefix](http://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) to add any other fields that are needed to satisfy your audit log requirements. A typical log line prefix might be `'%m %u %d [%p]: '` which would provide the date/time, user name, database name, and process id for each audit log.
 
 ## Caveats
 
