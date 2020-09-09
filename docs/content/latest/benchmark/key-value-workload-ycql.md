@@ -68,7 +68,7 @@ We will use the [YugabyteDB Workload Generator](https://github.com/yugabyte/yb-s
 To get the tool (``yb-sample-apps.jar`), run the following command.
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.3.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 To run the workload generator tool, you must have:
@@ -102,7 +102,7 @@ $ java -jar ./yb-sample-apps.jar  \
 Name    | Observation
 --------|------
 Write Ops/sec | ~90k
-Read Latency | ~2.5-3.0 ms/op
+Write Latency | ~2.5-3.0 ms/op
 CPU (User + Sys) | 60%
 
 ## Run the read-heavy key-value workload

@@ -47,16 +47,16 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 
 - Fix OOM when running large `COPY TO` statements by creating new memory context for the loop over retrieved rows and resetting it after processing each row. [#5205](https://github.com/yugabyte/yugabyte-db/issues/5205)
 - Fix OOM on file-sourced YB relations in `COPY FROM` statement. Reset memory context regularly, per row, when memory is resettable and when rows are read from file (not `stdin`). [#5561](https://github.com/yugabyte/yugabyte-db/issues/5561)
-- Support transactional batch size for [`COPY FROM` command](../../api/ysql/commands/cmd_copy) with OOM fix. Batch sizes can be passed in with `ROWS_PER_TRANSACTION` in the `COPY OPTION` syntax. [#2855](https://github.com/yugabyte/yugabyte-db/issues/2855) [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
+- Support transactional batch size for [`COPY FROM` command](../../api/ysql/commands/cmd_copy) with OOM fix. Batch sizes can be passed in with `ROWS_PER_TRANSACTION` in the `COPY OPTION` syntax. For an example, see [Import a large table using smaller transactions](../../api/ysql/commands/cmd_copy/#import-a-large-table-using-smaller-transactions) [#2855](https://github.com/yugabyte/yugabyte-db/issues/2855) [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
 - For index backfill flags, use better default values. Set `index_backfill_rpc_timeout_ms` default from `60000` to `30000` and change `backfill_index_timeout_grace_margin_ms` default from `50` to `500`. [#5494](https://github.com/yugabyte/yugabyte-db/issues/5494)
 - Remove spurious error message "0A000: Alter table is not yet supported" from `CREATE OR REPLACE VIEW`. [#5071](https://github.com/yugabyte/yugabyte-db/issues/5071)
 - Prevent consistency violations when a partitioned table has foreign key constraints due to erroneous classification as a single-row transaction. [#5387](https://github.com/yugabyte/yugabyte-db/issues/5387)
 - Fix restore from a distributed backup fails for tables using `SPLIT INTO` without a primary key. [#4993](https://github.com/yugabyte/yugabyte-db/issues/4993)
-- Fix wrong result by avoiding pushdown of `UPDATE` statement with `RETURNING` clause. [#5366](https://github.com/yugabyte/yugabyte-db/issues/5366)
+- Fix wrong result by avoiding pushdown of `UPDATE` statement with the `RETURNING` clause. [#5366](https://github.com/yugabyte/yugabyte-db/issues/5366)
 - Improve error message when `UPDATE` changes partition so its clear what went wrong, fixed `yb_pg_foreign_key` `pg_regress` test for semantic merge conflict when updating primary keys and row-level partitioning. [#659](https://github.com/yugabyte/yugabyte-db/issues/659) [#5179](https://github.com/yugabyte/yugabyte-db/issues/5179) [#5310](https://github.com/yugabyte/yugabyte-db/issues/5310)
 - Allow UPDATE statement to change primary key columns. [#659](https://github.com/yugabyte/yugabyte-db/issues/659)
 - Support row-level partitioning. [#5179](https://github.com/yugabyte/yugabyte-db/issues/5179)
-- Block usage of `TABLEGROUP` with `SPLIT` clause. For `CREATE TABLE`, usage is blocked in the grammar. For `CREATE INDEX`, if `NO TABLEGROUP` was provided, then presplitting for the index is allowed; otherwise, an error is issued. [#5352](https://github.com/yugabyte/yugabyte-db/issues/5352)
+- Block usage of `TABLEGROUP` with the `SPLIT` clause. For `CREATE TABLE`, usage is blocked in the grammar. For `CREATE INDEX`, if `NO TABLEGROUP` was provided, then presplitting for the index is allowed; otherwise, an error is issued. [#5352](https://github.com/yugabyte/yugabyte-db/issues/5352)
 - Buffered operations may share single RPC with read operation. Reducing the number of RPC calls speeds up `CREATE TABLE` statement. For example, the total number of RPC calls is dropped from 66 to 58 for a simple table like `CREATE TABLE t(k INT PRIMARY KEY)`. [#5177](https://github.com/yugabyte/yugabyte-db/issues/5177)
 - Add new `ysqlsh` describe metacommands for tablegroups: `\dgr[+] [grpname]` to describe tablegroups, `\dgrt[+] [grpname]` lists all tables/indexes within the specified tablegroup (or within all tablegroups if `grpname` is not specified), and `\d <table_name>` is modified to include tablegroup information in the footer, if any. [#5088](https://github.com/yugabyte/yugabyte-db/issues/3118)
 - Add `ALTER TABLEGROUP` statements to support `ALTER TABLEGROUP tablegroup_name RENAME TO ...` and `ALTER TABLEGROUP tablegroup_name OWNER TO ...`. Also changes `pg_tablegroup` entry corresponding to `tablegroup_name` to properly reflect new `grpname` and `grpowner` (if the user has proper permissions or ownership to issue the `ALTER TABLEGROUP` statement. [#5249](https://github.com/yugabyte/yugabyte-db/issues/5249)
@@ -76,7 +76,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 
 ## YCQL
 
-- For `WHERE` clause in `CREATE INDEX` statement, return a `Not supported` error. [#5363](https://github.com/yugabyte/yugabyte-db/issues/5363)
+- For `WHERE` clause in the `CREATE INDEX` statement, return a `Not supported` error. [#5363](https://github.com/yugabyte/yugabyte-db/issues/5363)
 - Fix TSAN issue in partition-aware policy for C++ driver 2.9.0-yb-8 (yugabyte/cassandra-cpp-driver). [#1837](https://github.com/yugabyte/yugabyte-db/issues/1837)
 - Support YCQL backup for indexes based on JSON-attribute. [#5198](https://github.com/yugabyte/yugabyte-db/issues/5198)
 - Correctly set `release_version` for `system.peers` queries. [#5407](https://github.com/yugabyte/yugabyte-db/issues/5407)
@@ -92,19 +92,19 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Show better error message when using `yugabyted` and yb-master fails to start. [#5304](https://github.com/yugabyte/yugabyte-db/issues/5304)
 - Disable ignoring deleted tablets on load by default. [#5122](https://github.com/yugabyte/yugabyte-db/issues/5122)
 - [CDC] Improve CDC idle throttling logic to reduce high CPU utilization in clusters without workloads running. [#5472](https://github.com/yugabyte/yugabyte-db/issues/5472)
-- For `server_broadcast_addresses` flag, provide default port if not specified. [#2540](https://github.com/yugabyte/yugabyte-db/issues/2540)
+- For the `server_broadcast_addresses` flag, provide default port if not specified. [#2540](https://github.com/yugabyte/yugabyte-db/issues/2540)
 - [CDC] Fix CDC TSAN destructor warning. [#4258](https://github.com/yugabyte/yugabyte-db/issues/4258)
-- Add API endpoint to download root certificate file. [#4957](https://github.com/yugabyte/yugabyte-db/issues/4957)
+- Add an API endpoint to download root certificate file. [#4957](https://github.com/yugabyte/yugabyte-db/issues/4957)
 - Do not load deleted tables and tablets into memory on startup. [#5122](https://github.com/yugabyte/yugabyte-db/issues/5122)
 - Set the follower lag for leaders to `0` by resetting timestamp to the maximum value when a peer becomes a leader and when the peer loses leadership. [#5502](https://github.com/yugabyte/yugabyte-db/issues/5502)
 - Flow keyspace information from yb-master to yb-tserver. [#3020](https://github.com/yugabyte/yugabyte-db/issues/3020)
 - Implement meta cache lookups throttling to reduce unnecessary thrashing. [#5434](https://github.com/yugabyte/yugabyte-db/issues/5434)
 - Fix `rpcz/statements` links in `yb-tserver` Web UI when `pgsql_proxy_bind_address` and `cql_proxy_bind_address` are `0.0.0.0`. [#4963](https://github.com/yugabyte/yugabyte-db/issues/4963)
 - `DumpReplayStateToStrings` should handle too many WAL entries scenario. Also, log lines only display fields critical for debugging and do not show customer-sensitive information. [#5345](https://github.com/yugabyte/yugabyte-db/issues/5345)
-- Find difference between replica map and consensus state more quickly using map lookup. [#5435](https://github.com/yugabyte/yugabyte-db/issues/5435)
+- Find the difference between the replica map and consensus state more quickly using a map lookup. [#5435](https://github.com/yugabyte/yugabyte-db/issues/5435)
 - Improve failover to a new master leader in the case of a network partition or a dead tserver by registering tablet servers present in Raft quorums if they don't register themselves. Also, mark replicas that are in `BOOTSTRAPPING`/`NOT_STARTED` state with its true consensus information instead of marking it as a `NON_PARTICIPANT`. [#4691](https://github.com/yugabyte/yugabyte-db/issues/4691)
 - Add YB-Master UI changes to support tablegroups and colocation. [#5086](https://github.com/yugabyte/yugabyte-db/issues/5086)
-  - Adds a column to user and index tables to display the YSQL OID information about the colocation parent table (if any).
+  - Adds a column to the user and index tables to display the YSQL OID information about the colocation parent table (if any).
   - For tablegroups, it displays the OID of the table's tablegroup (same as the OID present in `pg_tablegroup` as well as the `reltablegroup` column of `pg_class` for that relation).
   - For colocated databases, it displays the OID of the database.
   - Also, creates a table to display information about the parent tables. Wrap the names and uuid of the parent tables. Display YSQL OIDs as explained above.
@@ -114,7 +114,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Add [`yb-admin list_snapshots`](../../admin/yb-admin/#list_snapshots) `SHOW_DELETED` flag to show deleted snapshots that are still retained in memory. [#5332](https://github.com/yugabyte/yugabyte-db/issues/5332)
 - Move read path functions to a separate file. [#4944](https://github.com/yugabyte/yugabyte-db/issues/4944)
 - Wait for `yb_client_admin_operation_timeout_sec` for table creation in `yb-admin import_snapshot` task. [#5295](https://github.com/yugabyte/yugabyte-db/issues/5295)
-- Create cache for system-wide queries. [#5043](https://github.com/yugabyte/yugabyte-db/issues/5043)
+- Create a cache for system-wide queries. [#5043](https://github.com/yugabyte/yugabyte-db/issues/5043)
 - Annotate access to `enable_collect_cdc_metrics` flag and prevent TSAN warnings. [#5303](https://github.com/yugabyte/yugabyte-db/issues/5303)
 - Raise yb-master and yb-tserver process ulimits to hard limits when appropriate. [#4943](https://github.com/yugabyte/yugabyte-db/issues/4943)
 - Add a pre-flush step, triggered by yb-master, to snapshot operations to minimize the amount of data being flushed in sync. [#4718](https://github.com/yugabyte/yugabyte-db/issues/4718)
@@ -140,7 +140,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Fix `SEGV` in Master UI when registering YB-TServer from Raft. [#5501](https://github.com/yugabyte/yugabyte-db/issues/5501)
 - Heartbeats process only new consensus information unless `master_ignore_stale_cstate` flag is disabled. [#5301](https://github.com/yugabyte/yugabyte-db/issues/5301)
 - Remove KernelStackWatchdog and use LongOperationTracker to waste less resources per thread. [#5226](https://github.com/yugabyte/yugabyte-db/issues/5226)
-- Change default value of `metric_node_name` flag from `DEFAULT_NODE_NAME` to `hostname:port`. [#4859](https://github.com/yugabyte/yugabyte-db/issues/4859)
+- Change the default value of `metric_node_name` flag from `DEFAULT_NODE_NAME` to `hostname:port`. [#4859](https://github.com/yugabyte/yugabyte-db/issues/4859)
 
 ## Yugabyte Platform
 
@@ -148,7 +148,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - When creating on-premises provider, remove `YB_HOME_DIR` if not set. [#5592](https://github.com/yugabyte/yugabyte-db/issues/5592)
 - Update to use templatized values for setting TLS flags in Helm Charts. [#5424](https://github.com/yugabyte/yugabyte-db/issues/5424)
 - For YCQL client connectivity, allow downloading root certificate and key from **Certificates** menu. [#4957](https://github.com/yugabyte/yugabyte-db/issues/4957)
-- Bypass CSRF check when registering and logging in due to bug with CSRF token not being set. [#5533](https://github.com/yugabyte/yugabyte-db/issues/5533)
+- Bypass CSRF checks when registering and logging in due to bug with CSRF token not being set. [#5533](https://github.com/yugabyte/yugabyte-db/issues/5533)
 - Set node certificate field to subject of CA instead of issuer of CA. [#5377](https://github.com/yugabyte/yugabyte-db/issues/5377)
 - Add option in universe creation form to control whether node_exporter is installed on provisioned nodes (including creating prometheus user + group). [#5421](https://github.com/yugabyte/yugabyte-db/issues/5421)
 - Add Microsoft Azure provider UI and related changes to **Create Universe** form. [#5378](https://github.com/yugabyte/yugabyte-db/issues/5378)
@@ -160,19 +160,19 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Add CSRF tokens to forms. [#5419](https://github.com/yugabyte/yugabyte-db/issues/5419)
 - Allow configuration of OIDC scope (for SSO use) as well as email attribute field. [#5465](https://github.com/yugabyte/yugabyte-db/issues/5465)
 - If **Username** and **Password** are left empty in the **Custom SMTP Configuration**, remove `smtpUsername` and `smtpPassword` from the payload. [#5439](https://github.com/yugabyte/yugabyte-db/issues/5439)
-- Add **UTC** label to indicate `cron` expression must be relative to UTC. Also, add help text indicating when next scheduled job will run. [#4709](https://github.com/yugabyte/yugabyte-db/issues/4709)
-- Move source of truth for communication ports to the universe level. [#5353](https://github.com/yugabyte/yugabyte-db/issues/5353)
+- Add the **UTC** label to indicate `cron` expression must be relative to UTC. Also, add help text indicating when next scheduled job will run. [#4709](https://github.com/yugabyte/yugabyte-db/issues/4709)
+- Move the source of truth for communication ports to the universe level. [#5353](https://github.com/yugabyte/yugabyte-db/issues/5353)
 - Use appropriate range for time period (over entire step window rather than last minute) when querying Prometheus for metrics. [#4203](https://github.com/yugabyte/yugabyte-db/issues/4203)
 - Support backing up encrypted at rest universes. [#3118](https://github.com/yugabyte/yugabyte-db/issues/3118)
 - Only display "Rolling Upgrade Delay" if upgrade type is "Rolling". [#5362](https://github.com/yugabyte/yugabyte-db/issues/5362)
 - Add guarding against never-ending loop when running `yb_backup` script and yb-server doesn't have any data directories. [#5358](https://github.com/yugabyte/yugabyte-db/issues/5358)
 - Fix metric panel displaying incorrect time interval when reloading after changing graph filter. [#5294](https://github.com/yugabyte/yugabyte-db/issues/5294)
 - Fix logging on health check script failure. [#5340](https://github.com/yugabyte/yugabyte-db/issues/5294)
-- Rename label for enabling server-side encryption in S3 backups to **Encrypt Backup** for both backups and scheduled backup modals. [#5273](https://github.com/yugabyte/yugabyte-db/issues/5273)
+- Rename the label for enabling server-side encryption in S3 backups to **Encrypt Backup** for both backups and scheduled backup modals. [#5273](https://github.com/yugabyte/yugabyte-db/issues/5273)
 - Add a VM backup script that includes Prometheus backups. [#5120](https://github.com/yugabyte/yugabyte-db/issues/5120)
 - Add `BackupAdmin` role to authorize users to create backup and restore tasks on universes, but not given other administration privileges. [#4694](https://github.com/yugabyte/yugabyte-db/issues/4694)
-- Modify `yb_backup` script to add "round-robin" behavior to thread allocations to better spread loads across nodes in parallel during snapshot upload or download. [#4987](https://github.com/yugabyte/yugabyte-db/issues/4987)
-- Fix invalid `yb_backup.py` script behavior if `--keyspace` flag is not specified. [#5199](https://github.com/yugabyte/yugabyte-db/issues/4987)
+- Modify the `yb_backup.py` script to add "round-robin" behavior to thread allocations to better spread loads across nodes in parallel during snapshot upload or download. [#4987](https://github.com/yugabyte/yugabyte-db/issues/4987)
+- Fix the invalid `yb_backup.py` script behavior if `--keyspace` flag is not specified. [#5199](https://github.com/yugabyte/yugabyte-db/issues/4987)
 - Add subtasks to check number of pods deployed during upgrades. [#5174](https://github.com/yugabyte/yugabyte-db/issues/5174)
 - Make use of parallelism argument for `yb_backup.py` script. Explicitly pass the number of threads to concurrently run backup script through UI. The form defaults to the backup script default value of 8 threads if no value is provided. [#5283](https://github.com/yugabyte/yugabyte-db/issues/5283)
 - The **Remove Node** action should be available if the **Add Node** action fails. [#5123](https://github.com/yugabyte/yugabyte-db/issues/5123)
@@ -186,7 +186,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Redirect from login back to index if session is already validated. Logout should redirect to login endpoint. [#5019](https://github.com/yugabyte/yugabyte-db/issues/5019)
 - Fix updating of **Universes** list after creating new universe. [#4784](https://github.com/yugabyte/yugabyte-db/issues/4784)
 - Fix restore payload when renaming table to include keyspace. And check for keyspace if tableName is defined and return invalid request code when keyspace is missing. [#5178](https://github.com/yugabyte/yugabyte-db/issues/5178)
-- Add ability to override communication port default values during universe creation. [#5354](https://github.com/yugabyte/yugabyte-db/issues/5354)
+- Add the ability to override communication port default values during universe creation. [#5354](https://github.com/yugabyte/yugabyte-db/issues/5354)
 
 {{< note title="Note" >}}
 
