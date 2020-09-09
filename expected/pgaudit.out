@@ -990,6 +990,42 @@ drop table public.t;
 drop role alice;
 NOTICE:  AUDIT: SESSION,55,1,ROLE,DROP ROLE,,,drop role alice;,<none>
 --
+-- Test for non-empty stack error
+CREATE OR REPLACE FUNCTION get_test_id(_ret REFCURSOR) RETURNS REFCURSOR
+LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    OPEN _ret FOR SELECT 200;
+    RETURN _ret;
+END $$;
+BEGIN;
+    SELECT get_test_id('_ret');
+ get_test_id 
+-------------
+ _ret
+(1 row)
+
+    SELECT get_test_id('_ret2');
+ get_test_id 
+-------------
+ _ret2
+(1 row)
+
+    FETCH ALL FROM _ret;
+ ?column? 
+----------
+      200
+(1 row)
+
+    FETCH ALL FROM _ret2;
+ ?column? 
+----------
+      200
+(1 row)
+
+    CLOSE _ret;
+    CLOSE _ret2;
+END;
+--
 -- Test that frees a memory context earlier than expected
 SET pgaudit.log = 'ALL';
 NOTICE:  AUDIT: SESSION,56,1,MISC,SET,,,SET pgaudit.log = 'ALL';,<none>

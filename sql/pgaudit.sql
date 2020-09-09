@@ -667,6 +667,24 @@ drop table public.t;
 drop role alice;
 
 --
+-- Test for non-empty stack error
+CREATE OR REPLACE FUNCTION get_test_id(_ret REFCURSOR) RETURNS REFCURSOR
+LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    OPEN _ret FOR SELECT 200;
+    RETURN _ret;
+END $$;
+
+BEGIN;
+    SELECT get_test_id('_ret');
+    SELECT get_test_id('_ret2');
+    FETCH ALL FROM _ret;
+    FETCH ALL FROM _ret2;
+    CLOSE _ret;
+    CLOSE _ret2;
+END;
+
+--
 -- Test that frees a memory context earlier than expected
 SET pgaudit.log = 'ALL';
 
