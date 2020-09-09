@@ -128,6 +128,31 @@ This needs to be done for all tablets of all tables in the database.
 cp -r ~/yugabyte-data/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004003/tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots snapshot/
 ```
 
+The file path structure is:
+
+```
+<yb_data_dir>/node-<node_number>/disk-<disk_number>/yb-data/tserver/data/rocksdb/table-<table_id>/[tablet-<tablet_id>.snapshots]/<snapshot_id>
+```
+
+- `<yb_data_dir>` is the directory where YugabyteDB data is stored. (default=`~/yugabyte-data`)
+- `<node_number>` is used when multiple nodes are running on the same server (for testing, QA, and development). The default value is `1`.
+- `<disk_number>` when running YugabyteDB on multiple disks with the `--fs_data_dirs` flag. The default value is `1`.
+- `<table_id>` is the UUID of the table. You can get it from the `http://<yb-master-ip>:7000/tables` url in the Admin
+ UI.
+- `<tablet_id>` in each table there is a list of tablets. Each tablet has a `<tablet_id>.snapshots` directory that you need to copy.
+- `<snapshot_id>` there is a directory for each snapshot since you can have multiple completed snapshots on each server.
+
+In practice, for each server, you will use the `--fs_data_dirs` flag, which is a comma-separated list of paths where to put the data (normally different paths should be on different disks).
+
+
+{{< note title="Tip" >}}
+
+To get a snapshot of a multi-node cluster, you need to go into each node and copy
+the folders of ONLY the leader tablets on that node. Because each tablet-replica has a copy of the same data, you do not need to keep a copy for each replica.
+
+{{< /note >}}
+
+
 Your snapshot of the YSQL database is complete.
 
 -----
