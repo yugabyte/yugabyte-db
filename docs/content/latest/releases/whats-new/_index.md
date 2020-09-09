@@ -51,8 +51,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Remove spurious error message "0A000: Alter table is not yet supported" from `CREATE OR REPLACE VIEW`. [#5071](https://github.com/yugabyte/yugabyte-db/issues/5071)
 - Prevent consistency violations when a partitioned table has foreign key constraints due to erroneous classification as a single-row transaction. [#5387](https://github.com/yugabyte/yugabyte-db/issues/5387)
 - Fix restore from a distributed backup fails for tables using `SPLIT INTO` without a primary key. [#4993](https://github.com/yugabyte/yugabyte-db/issues/4993)
-
-
+- Fix wrong result by avoiding pushdown of `UPDATE` statement with `RETURNING` clause. [#5366](https://github.com/yugabyte/yugabyte-db/issues/5366)
 
 -----
 
@@ -67,6 +66,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Support YCQL backup for indexes based on JSON-attribute. [#5198](https://github.com/yugabyte/yugabyte-db/issues/5198)
 - Correctly set `release_version` for `system.peers` queries. [#5407](https://github.com/yugabyte/yugabyte-db/issues/5407)
 - Reject `TRUNCATE` operations when [`ycql_require_drop_privs_for_truncate`](../../reference/configuration/yb-tserver/#ycql-require-drop-privs-for-truncate) flag is enabled. When enabled, `DROP TABLE` permission is required to truncate a table. Default is `false`. [#5443](https://github.com/yugabyte/yugabyte-db/issues/5443)
+- Fix missing return statement in error case of the `SetPagingState` method in `statement_params.cc`. [#5441](https://github.com/yugabyte/yugabyte-db/issues/5441)
 
 ----
 - Fix `ycqlsh` should return a failure when known that the create (unique) index has failed. [#5161](https://github.com/yugabyte/yugabyte-db/issues/5161)
@@ -83,7 +83,13 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Add API endpoint to download root certificate file. [#4957](https://github.com/yugabyte/yugabyte-db/issues/4957)
 - Do not load deleted tables and tablets into memory on startup. [#5122](https://github.com/yugabyte/yugabyte-db/issues/5122)
 - Set the follower lag for leaders to `0` by resetting timestamp to the maximum value when a peer becomes a leader and when the peer loses leadership. [#5502](https://github.com/yugabyte/yugabyte-db/issues/5502)
-- Create default network resources for multi-region deployments in Microsoft Azure if they don't exist and store for use during universe creation. [#5388](https://github.com/yugabyte/yugabyte-db/issues/5388)
+- Flow keyspace information from yb-master to yb-tserver. [#3020](https://github.com/yugabyte/yugabyte-db/issues/3020)
+- Implement meta cache lookups throttling to reduce unnecessary thrashing. [#5434](https://github.com/yugabyte/yugabyte-db/issues/5434)
+- Fix `rpcz/statements` links in `yb-tserver` Web UI when `pgsql_proxy_bind_address` and `cql_proxy_bind_address` are `0.0.0.0`. [#4963](https://github.com/yugabyte/yugabyte-db/issues/4963)
+- `DumpReplayStateToStrings` should handle too many WAL entries scenario. Also, log lines only display fields critical for debugging and do not show customer-sensitive information. [#5345](https://github.com/yugabyte/yugabyte-db/issues/5345)
+- Find difference between replica map and consensus state more quickly using map lookup. [#5435](https://github.com/yugabyte/yugabyte-db/issues/5435)
+- Improve failover to a new master leader in the case of a network partition or a dead tserver by registering tablet servers present in Raft quorums if they don't register themselves. Also, mark replicas that are in `BOOTSTRAPPING`/`NOT_STARTED` state with its true consensus information instead of marking it as a `NON_PARTICIPANT`. [#4691](https://github.com/yugabyte/yugabyte-db/issues/4691)
+
 
 ----
 
@@ -114,6 +120,8 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Set node certificate field to subject of CA instead of issuer of CA. [#5377](https://github.com/yugabyte/yugabyte-db/issues/5377)
 - Add option in universe creation form to control whether node_exporter is installed on provisioned nodes (includeing creating prometheus user + group). [#5421](https://github.com/yugabyte/yugabyte-db/issues/5421)
 - Add Microsoft Azure provider UI and related changes to **Create Universe** form. [#5378](https://github.com/yugabyte/yugabyte-db/issues/5378)
+- Create default network resources for multi-region deployments in Microsoft Azure if they don't exist and store for use during universe creation. [#5388](https://github.com/yugabyte/yugabyte-db/issues/5388)
+- For Microsoft Azure, use preexisting network resources. [#5389](https://github.com/yugabyte/yugabyte-db/issues/5389)
 - Set **Assign Public IP** correctly using the UI. [#5463](https://github.com/yugabyte/yugabyte-db/issues/5463)
 - Fix `AreLeadersOnPreferredOnly` times out when setting preferred zones in **Edit Universe**. [#5406](https://github.com/yugabyte/yugabyte-db/issues/5406)
 - Fix `yb_backup.py` script to remove `sudo` requirement and correctly change user. [#5440](https://github.com/yugabyte/yugabyte-db/issues/5440)
@@ -121,6 +129,10 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Add CSRF tokens to forms. [#5419](https://github.com/yugabyte/yugabyte-db/issues/5419)
 - Allow configuration of OIDC scope (for SSO use) as well as email attribute field. [#5465](https://github.com/yugabyte/yugabyte-db/issues/5465)
 - If **Username** and **Password** are left empty in the **Custom SMTP Configuration**, remove `smtpUsername` and `smtpPassword` from the payload. [#5439](https://github.com/yugabyte/yugabyte-db/issues/5439)
+- Add **UTC** label to indicate `cron` expression must be relative to UTC. Also, add help text indicating when next scheduled job will run. [#4709](https://github.com/yugabyte/yugabyte-db/issues/4709)
+- Move source of truth for communication ports to the universe level. [#5353](https://github.com/yugabyte/yugabyte-db/issues/5353)
+- Use appropriate range for time period (over entire step window rather than last minute) when querying Prometheus for metrics. [#4203](https://github.com/yugabyte/yugabyte-db/issues/4203)
+- Support backing up encrypted at rest universes. [#3118](https://github.com/yugabyte/yugabyte-db/issues/3118)
 
 ----
 
