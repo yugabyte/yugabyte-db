@@ -110,7 +110,7 @@ $ ./ysqlsh -U yugabyte -W
 When prompted for the password, enter the `yugabyte` password (default is `yugabyte`). You should be able to log in and see a response like this:
 
 ```
-ysqlsh (11.2-YB-2.2.2.0-b0)
+ysqlsh (11.2-YB-2.3.0.0-b0)
 Type "help" for help.
 
 yugabyte=#
