@@ -3465,6 +3465,111 @@ ERROR:  invalid number of input parameters for pi()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 --
+-- radians() & degrees()
+--
+SELECT * FROM cypher('expr', $$
+    RETURN radians(0)
+$$) AS (results agtype);
+ results 
+---------
+ 0.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN degrees(0)
+$$) AS (results agtype);
+ results 
+---------
+ 0.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN radians(360), 2*pi()
+$$) AS (results agtype, Two_PI agtype);
+     results      |      two_pi      
+------------------+------------------
+ 6.28318530717959 | 6.28318530717959
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN degrees(2*pi())
+$$) AS (results agtype);
+ results 
+---------
+ 360.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN radians(180), pi()
+$$) AS (results agtype, PI agtype);
+     results      |        pi        
+------------------+------------------
+ 3.14159265358979 | 3.14159265358979
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN degrees(pi())
+$$) AS (results agtype);
+ results 
+---------
+ 180.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN radians(90), pi()/2
+$$) AS (results agtype, Half_PI agtype);
+     results     |     half_pi     
+-----------------+-----------------
+ 1.5707963267949 | 1.5707963267949
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN degrees(pi()/2)
+$$) AS (results agtype);
+ results 
+---------
+ 90.0
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN radians(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN degrees(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN radians()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN degrees()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN radians("1")
+$$) AS (results agtype);
+ERROR:  radians() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN degrees("1")
+$$) AS (results agtype);
+ERROR:  degrees() unsuppoted argument agtype 1
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

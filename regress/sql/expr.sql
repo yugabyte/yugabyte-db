@@ -1467,6 +1467,54 @@ SELECT * FROM cypher('expr', $$
 $$) AS (results agtype);
 
 --
+-- radians() & degrees()
+--
+SELECT * FROM cypher('expr', $$
+    RETURN radians(0)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN degrees(0)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN radians(360), 2*pi()
+$$) AS (results agtype, Two_PI agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN degrees(2*pi())
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN radians(180), pi()
+$$) AS (results agtype, PI agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN degrees(pi())
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN radians(90), pi()/2
+$$) AS (results agtype, Half_PI agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN degrees(pi()/2)
+$$) AS (results agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN radians(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN degrees(null)
+$$) AS (results agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN radians()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN degrees()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN radians("1")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN degrees("1")
+$$) AS (results agtype);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

@@ -79,6 +79,8 @@
 #define FUNC_RATAN      {"atan",       "r_atan",     ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
 #define FUNC_RATAN2     {"atan2",      "r_atan2",    ANYOID,    0, 0, AGTYPEOID, 2, 1, false, false}
 #define FUNC_PI         {"pi",         "pi",         0,         0, 0, FLOAT8OID, 0, 0, false, true}
+#define FUNC_DEGREES    {"degrees",    "degrees_from_radians", ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_RADIANS    {"radians",    "radians_from_degrees", ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
 
 /* supported functions */
 #define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
@@ -91,7 +93,7 @@
                              FUNC_LSUBSTR, FUNC_BSUBSTR, FUNC_SPLIT, \
                              FUNC_REPLACE, FUNC_RSIN, FUNC_RCOS, FUNC_RTAN, \
                              FUNC_RCOT, FUNC_RASIN, FUNC_RACOS, FUNC_RATAN, \
-                             FUNC_RATAN2, FUNC_PI}
+                             FUNC_RATAN2, FUNC_PI, FUNC_DEGREES, FUNC_RADIANS}
 
 /* structure for supported function signatures */
 typedef struct function_signature
