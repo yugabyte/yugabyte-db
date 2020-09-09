@@ -765,7 +765,7 @@ CREATE TRIGGER bbb_insert_trg
 	AFTER INSERT ON bbb
 	FOR EACH ROW EXECUTE PROCEDURE bbb_insert();
 
-GRANT SELECT
+GRANT SELECT, UPDATE
    ON aaa
    TO auditor;
 

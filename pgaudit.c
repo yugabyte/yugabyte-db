@@ -965,11 +965,18 @@ log_select_dml(Oid auditOid, List *rangeTabls)
         /*
          * Don't log if the session user is not a member of the current
          * role.  This prevents contents of security definer functions
-         * from being logged and supresses foreign key queries unless the
-         * session user is the owner of the referenced table.
+         * from being logged.
          */
         if (!is_member_of_role(GetSessionUserId(), GetUserId()))
             return;
+
+        /*
+         * Don't log if this is not a true update UPDATE command, e.g. a
+         * SELECT FOR UPDATE used for foreign key lookups.
+         */
+        if (rte->requiredPerms & ACL_UPDATE &&
+            rte->rellockmode < RowExclusiveLock)
+            continue;
 
         /*
          * If we are not logging all-catalog queries (auditLogCatalog is
