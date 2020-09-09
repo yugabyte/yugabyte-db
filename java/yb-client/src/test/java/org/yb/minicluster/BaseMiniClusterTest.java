@@ -198,7 +198,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
     masterHostPorts = miniCluster.getMasterHostPorts();
 
     LOG.info("Started cluster with {} masters and {} tservers. " +
-             "Waiting for all tablet servers to hearbeat to masters...",
+             "Waiting for all tablet servers to heartbeat to masters...",
              numMasters, numTservers);
     if (!miniCluster.waitForTabletServers(numTservers)) {
       fail("Couldn't get " + numTservers + " tablet servers running, aborting.");
@@ -231,7 +231,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
     masterHostPorts = miniCluster.getMasterHostPorts();
 
     LOG.info("Started cluster with {} masters and {} tservers. " +
-             "Waiting for all tablet servers to hearbeat to masters...",
+             "Waiting for all tablet servers to heartbeat to masters...",
              numMasters, numTservers);
     if (!miniCluster.waitForTabletServers(numTservers)) {
       fail("Couldn't get " + numTservers + " tablet servers running, aborting.");
