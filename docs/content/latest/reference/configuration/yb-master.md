@@ -543,7 +543,7 @@ Default: `true`
 
 ##### --dump_certificate_entries
 
-Dump certificate entries.
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages.  Enabling this flag is useful for debugging certificate issues.
 
 Default: `false`
 
