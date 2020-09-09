@@ -94,8 +94,6 @@ Please set 'PGPASSWORD' in environment variables to use 'bin/ysqlsh'."
 DEFAULT_YCQL_USER = "cassandra"
 DEFAULT_YCQL_PASSWORD = "cassandra"
 DEFAULT_YCQL_KEYSPACE = None
-DEFAULT_YSQL_AUTH = False
-DEFAULT_YCQL_AUTH = False
 VERSION_METADATA_PATH = os.path.join(YUGABYTE_DIR, "version_metadata.json")
 YUGABYTE_API_CLIENT_PROGRAMS = {
     "ysql": "ysqlsh",
@@ -133,7 +131,7 @@ class ControlScript(object):
         self.stop_callhome = False
         self.alerts = []
         self.script = None
-        self.setup_env_init = SetupEnvBasedCredentials()
+        self.setup_env_init = EnvBasedCredentials()
 
     # Starts YugabyteDB node.
     def start(self):
@@ -248,8 +246,7 @@ class ControlScript(object):
             Output.log_error_and_exit(
                 "{} is not running. Cannot connect to YCQL.".format(SCRIPT_NAME))
         ycql_proxy = YcqlProxy(ip=self.advertise_ip(),
-                        port=self.configs.saved_data.get("ycql_port"),
-                        enforced_auth=self.configs.saved_data.get("ycql_auth"))
+                        port=self.configs.saved_data.get("ycql_port"))
         ycql_proxy.connect()
 
     # Creates demo database and starts an interactive shell into it. Destroys the sample database
@@ -295,18 +292,14 @@ class ControlScript(object):
             "Initializing {} demo database. This may take up to a minute...".format(demo_db))
         # Create demo database.
         Output.log("Creating database {}...".format(db_name))
-        _, err = ysql_proxy.create_db(db_name)
-        if err:
-            Output.log_error_and_exit("Failed to create {} database: {}".format(demo_db, err))
+        ysql_proxy.create_db(db_name)
 
         # Populate demo database.
         Output.log("Populating {} with sample data...".format(db_name))
         files = []
         for name in Configs.get_demo_info()[demo_db]["files"]:
             files.append(os.path.join(YUGABYTE_DIR, "share", name))
-        _, err = ysql_proxy.load_files(files, db=db_name)
-        if err:
-            Output.log_error_and_exit("Failed to populate data to {}: {}".format(demo_db, err))
+        ysql_proxy.load_files(files, db=db_name)
 
         msg = "Successfully loaded sample database!"
         Output.print_and_log(msg)
@@ -344,9 +337,7 @@ class ControlScript(object):
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
         if ysql_proxy.db_exists(db_name):
-            _, err = ysql_proxy.drop_db(db_name)
-            if err:
-                Output.log_error_and_exit("Failed to drop database {}: {}".format(demo_db, err))
+            ysql_proxy.drop_db(db_name)
         msg = "Deleted demo database {}.".format(demo_db)
         Output.print_and_log(msg)
 
@@ -474,14 +465,6 @@ class ControlScript(object):
                 "--start_redis_proxy=false",
             ]
 
-        # Add ysql_enable_auth flag to enforce authentication for YSQL
-        if self.configs.saved_data.get("ysql_auth"):
-            yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
-
-        # Add use_cassandra_authentication flag to enforce authentication for YCQL
-        if self.configs.saved_data.get("ycql_auth"):
-            yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
-
         if self.configs.saved_data.get("tserver_flags"):
             yb_tserver_cmd.extend(
                 ["--{}".format(flag) for flag in \
@@ -546,19 +529,14 @@ class ControlScript(object):
             # Add enforced authentication flags on first installation
             # Add ysql_enable_auth, if YSQL_PASSWORD env variable exists
             # Add use_cassandra_authentication, if YCQL_USER or YCQL_PASSWORD env variables exists
-            if is_first_install:
-                # Add ysql_enable_auth flag to enforce authentication for YSQL
-                if self.setup_env_init.is_exists('YSQL_PASSWORD'):
-                    yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
-                    self.configs.saved_data["ysql_auth"] = True
-                    self.configs.save_configs()
+            # Add ysql_enable_auth flag to enforce authentication for YSQL
+            if self.setup_env_init.is_exists('YSQL_PASSWORD'):
+                yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
 
-                # Add use_cassandra_authentication flag to enforce authentication for YCQL
-                if self.setup_env_init.is_exists('YCQL_USER') or \
-                        self.setup_env_init.is_exists('YCQL_PASSWORD'):
-                    yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
-                    self.configs.saved_data["ycql_auth"] = True
-                    self.configs.save_configs()
+            # Add use_cassandra_authentication flag to enforce authentication for YCQL
+            if self.setup_env_init.is_exists('YCQL_USER') or \
+                    self.setup_env_init.is_exists('YCQL_PASSWORD'):
+                yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
@@ -1037,8 +1015,8 @@ class ControlScript(object):
 
         ysql_flags = " {} {} -U {} -d {}".format(ysql_hostname_param, ysql_port_param,
                         ysql_username, ysql_db)
-        ycql_flags = " {} {} -u {} -p {}".format(cql_hostname_param, cql_port_param,
-                        ycql_username, ycql_password)
+        ycql_flags = " {} {} -u {}".format(cql_hostname_param, cql_port_param,
+                        ycql_username)
         if ycql_keyspace is not None:
             ycql_flags = ycql_flags + " -k {}".format(ycql_keyspace)
 
@@ -1365,8 +1343,7 @@ class ControlScript(object):
                 self.setup_env_init.is_exists('YCQL_KEYSPACE'):
             ycql_proxy = YcqlProxy(ip=self.advertise_ip(),
                             port=self.configs.saved_data.get("ycql_port"),
-                            get_default_credentials=True,
-                            enforced_auth=self.configs.saved_data.get("ycql_auth"))
+                            get_default_credentials=True)
             if retry_op(ycql_proxy.is_ycql_up):
                 Output.log("Setting up custom credentials for YCQL...")
                 self.setup_env_init.setup_ycql_credentials(ycql_proxy)
@@ -1393,8 +1370,6 @@ class Configs(object):
             "master_flags": "",
             "tserver_flags": "",
             "join": "",
-            "ysql_auth": DEFAULT_YSQL_AUTH,
-            "ycql_auth": DEFAULT_YCQL_AUTH,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -1846,7 +1821,7 @@ class YsqlProxy(object):
     def __init__(self, ip, port, path=os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ysql"]),
                     get_default_credentials=False):
         self.cmd = [path, "-h", str(ip), "-p", str(port)]
-        self.setup_env_init = SetupEnvBasedCredentials()
+        self.setup_env_init = EnvBasedCredentials()
         self.username, self.password, self.db = self.setup_env_init.get_ysql_credentials(
                                                     get_default_credentials)
         self.env = {"PGUSER": self.username, "PGPASSWORD": self.password, "PGDATABASE": self.db}
@@ -1864,20 +1839,17 @@ class YsqlProxy(object):
     def db_exists(self, db):
         cmd = self.cmd + ["-q", "-c", "\\t", "-c",
             "select datname from pg_catalog.pg_database where datname='{}'".format(db)]
-        out, err, _ = run_process(cmd=cmd, env_vars=self.env)
-        return out.strip() == db
+        return run_process_checked(cmd=cmd, env_vars=self.env).strip() == db
 
     # Creates specified db.
     def create_db(self, db):
         cmd = self.cmd + ["-c", "create database {}".format(db)]
-        out, err, _ = run_process(cmd=cmd, env_vars=self.env)
-        return out, err
+        run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Deletes specified db.
     def drop_db(self, db):
         cmd = self.cmd + ["-c", "drop database {}".format(db)]
-        out, err, _ = run_process(cmd=cmd, env_vars=self.env)
-        return out, err
+        run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Runs ysqlsh with specified files.
     def load_files(self, filepaths, db=None):
@@ -1887,23 +1859,20 @@ class YsqlProxy(object):
             env['PGDATABASE'] = db
         for path in filepaths:
             cmd.extend(["-f", path])
-        out, err, _ = run_process(cmd=cmd, env_vars=env)
-        return out, err
+        run_process(cmd=cmd, log_cmd=False, env_vars=env)
 
     # Check user exists
     # Note that this will return false if ysqlsh can't connect, even if user exists.
     def user_exists(self, ysql_username):
         cmd = self.cmd + ["-c", "select rolname from pg_catalog.pg_roles where rolname='{}'".
                 format(ysql_username)]
-        out, err, _ = run_process(cmd=cmd, env_vars=self.env)
-        return out.strip() == ysql_username
+        run_process_checked(cmd=cmd, env_vars=self.env).strip() == ysql_username
 
     # Create specified superuser
     def create_user(self, ysql_username, ysql_password):
         cmd = self.cmd + ["-c", "create role {} with LOGIN SUPERUSER password '{}';".
                 format(ysql_username, ysql_password)]
-        out, err, _ = run_process(cmd=cmd, env_vars=self.env)
-        return out, err
+        run_process_checked(cmd=cmd, log_cmd=False, env_vars=self.env)
 
     # Delete specified user
     def delete_user(self, username, password, user_to_delete=DEFAULT_YSQL_USER):
@@ -1911,25 +1880,22 @@ class YsqlProxy(object):
         env = self.env
         env['PGUSER'] = username
         env['PGPASSWORD'] = password
-        out, err, _ = run_process(cmd=cmd, env_vars=env)
-        return out, err 
+        run_process_checked(cmd=cmd, env_vars=env)
     
     # Update specified user's password
     def update_password(self, new_password, user_to_update=DEFAULT_YSQL_USER):
         cmd = self.cmd + ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
-        out, err, _ = run_process(cmd=cmd, env_vars=self.env)
-        return out, err
+        run_process_checked(cmd=cmd, log_cmd=False, env_vars=self.env)
 
     # Change specified DB's owner
     def db_owner(self, db, new_owner):
         cmd = self.cmd + ["-c", "alter database {} owner to {};".format(db, new_owner)]
-        out, err, _ = run_process(cmd=cmd, env_vars=self.env)
-        return out, err
+        run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Check YSQL is UP
     def is_ysql_up(self):
         cmd = self.cmd + ["-c", "\\conninfo"]
-        out, err, _ = run_process(cmd=cmd, env_vars=self.env)
+        out, err, _ = run_process(cmd=cmd, log_cmd=True, env_vars=self.env)
         if err:
             Output.log("Unable to connect using YSQL. Error: {}".format(err))
             raise RetryableError()
@@ -1940,17 +1906,17 @@ class YsqlProxy(object):
 # Proxy for ycqlsh commands.
 class YcqlProxy(object):
     def __init__(self, ip, port, path=os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"]),
-                    get_default_credentials=False, enforced_auth=False):
+                    get_default_credentials=False):
         self.cmd = [path, str(ip), str(port)]
-        self.setup_env_init = SetupEnvBasedCredentials()
-        self.enforced_auth = enforced_auth
+        self.setup_env_init = EnvBasedCredentials()
         self.username, self.password, self.keyspace = self.setup_env_init.get_ycql_credentials(
                                                         get_default_credentials)
 
     # Starts interactive YCQL shell.
     def connect(self):
         cmd = self.cmd
-        if self.enforced_auth:
+        if self.setup_env_init.is_exists('YCQL_USER') or \
+                    self.setup_env_init.is_exists('YCQL_PASSWORD'):
             cmd.extend(["-u", self.username])
         if self.keyspace is not None:
             cmd.extend(["-k", self.keyspace])
@@ -1962,30 +1928,26 @@ class YcqlProxy(object):
     def user_exists(self, ycql_username):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
             "SELECT role FROM system_auth.roles WHERE role='{}';".format(ycql_username)]
-        out, err, _ = run_process(cmd)
-        return out.strip() == ycql_username
+        return run_process_checked(cmd).strip() == ycql_username
 
     # Create specified superuser
     def create_user(self, ycql_username, ycql_password):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
                 "CREATE ROLE {} WITH PASSWORD = '{}' AND LOGIN = true AND SUPERUSER = true;".
                 format(ycql_username, ycql_password)]
-        out, err, _ = run_process(cmd)
-        return out, err
+        run_process_checked(cmd, log_cmd=False)
 
     # Delete specified user
     def delete_user(self, username, password, user_to_delete=DEFAULT_YCQL_USER):
         cmd = self.cmd + ["-u", username, "-p", password, "-e",
                 "DROP ROLE IF EXISTS {};".format(user_to_delete)]
-        out, err, _ = run_process(cmd)
-        return out, err 
+        run_process_checked(cmd)
     
     # Update specified user's password
     def update_password(self, new_password, user_to_update=DEFAULT_YCQL_USER):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
                 "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, new_password)]
-        out, err, _ = run_process(cmd)
-        return out, err
+        run_process_checked(cmd, log_cmd=False)
 
     # Check keyspace exists
     # Note that this will return false if ycqlsh can't connect, even if keyspace exists.
@@ -1993,20 +1955,18 @@ class YcqlProxy(object):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
             "SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name='{}';".
             format(keyspace)]
-        out, err, _ = run_process(cmd)
-        return out.strip() == keyspace
+        return run_process_checked(cmd).strip() == keyspace
 
     # Create specified keyspace
     def create_keyspace(self, keyspace):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
                 "CREATE KEYSPACE {};".format(keyspace)]
-        out, err, _ = run_process(cmd)
-        return out, err
+        run_process_checked(cmd)
 
     # Check YCQL is UP
     def is_ycql_up(self):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e", "SHOW HOST"]
-        out, err, _ = run_process(cmd)
+        out, err, _ = run_process(cmd, log_cmd=True)
         if err:
             Output.log("Unable to connect using YCQL. Error: {}".format(err))
             raise RetryableError()
@@ -2447,6 +2407,12 @@ def run_process(cmd, timeout=None, log_cmd=False, env_vars=None):
             retcode, ret_out, ret_err))
     return (ret_out, ret_err, retcode)
 
+def run_process_checked(cmd, timeout=None, log_cmd=True, env_vars=None):
+    out, err, retcode = run_process(cmd=cmd, timeout=timeout, log_cmd=log_cmd, env_vars=env_vars)
+    if retcode:
+        Output.log_error_and_exit("Error: {}".format(err))
+    return out
+
 def rmcontents(dirname, exclude_names=[]):
     for f in os.listdir(dirname):
         if f in exclude_names:
@@ -2482,7 +2448,7 @@ def retry_op(func, timeout=180):
         now - start_time))
 
 
-class SetupEnvBasedCredentials(object):
+class EnvBasedCredentials(object):
     def __init__(self):
         self.ysql_user = os.environ.get('YSQL_USER')
         self.ysql_password = os.environ.get('YSQL_PASSWORD')
@@ -2491,30 +2457,23 @@ class SetupEnvBasedCredentials(object):
         self.ycql_password = os.environ.get('YCQL_PASSWORD')
         self.ycql_keyspace = os.environ.get('YCQL_KEYSPACE')
 
-    def is_valid(self, var_name):
-        return True if var_name is not None and var_name else False
-
     def get_ysql_user(self):
-        return self.ysql_user if self.is_valid(self.ysql_user) else DEFAULT_YSQL_USER
+        return self.ysql_user or DEFAULT_YSQL_USER
 
     def get_ysql_password(self):
-        return self.ysql_password if self.is_valid(self.ysql_password) else (self.ysql_user if (
-                    self.is_valid(self.ysql_user)) else DEFAULT_YSQL_PASSWORD)
+        return self.ysql_password or (self.ysql_user or DEFAULT_YSQL_PASSWORD)
 
     def get_ysql_db(self):
-        return self.ysql_db if self.is_valid(self.ysql_db) else (self.ysql_user if (
-                    self.is_valid(self.ysql_user)) else DEFAULT_YSQL_DB)
+        return self.ysql_db or (self.ysql_user or DEFAULT_YSQL_DB)
 
     def get_ycql_user(self):
-        return self.ycql_user if self.is_valid(self.ycql_user) else DEFAULT_YCQL_USER
+        return self.ycql_user or DEFAULT_YCQL_USER
 
     def get_ycql_password(self):
-        return self.ycql_password if self.is_valid(self.ycql_password) else (self.ycql_user if (
-                    self.is_valid(self.ycql_user)) else DEFAULT_YCQL_PASSWORD)
+        return self.ycql_password or (self.ycql_user or DEFAULT_YCQL_PASSWORD)
 
     def get_ycql_keyspace(self):
-        return self.ycql_keyspace if self.is_valid(self.ycql_keyspace) else (self.ycql_user if (
-                    self.is_valid(self.ycql_user)) else DEFAULT_YCQL_KEYSPACE)
+        return self.ycql_keyspace or (self.ycql_user or DEFAULT_YCQL_KEYSPACE)
 
     def get_ysql_credentials(self, get_default_credentials=False):
         if get_default_credentials:
@@ -2529,91 +2488,44 @@ class SetupEnvBasedCredentials(object):
             return self.get_ycql_user(), self.get_ycql_password(), self.get_ycql_keyspace()
 
     def is_exists(self, var_to_check):
-        return self.is_valid(os.environ.get(var_to_check))
+        return True if var_to_check in os.environ and os.environ.get(var_to_check) else False
 
     def setup_ysql_credentials(self, proxy_class):
 
         # Create DB
         if self.get_ysql_db() != DEFAULT_YSQL_DB and not proxy_class.db_exists(self.get_ysql_db()):
-            Output.log("Creating {} database".format(self.get_ysql_db()))
-            _, err = proxy_class.create_db(self.get_ysql_db())
-            if err:
-                Output.log_error_and_exit("Failed to create {} database: \
-                    {}".format(self.get_ysql_db(), err))
-
-            Output.log("{} database created successfully".format(self.get_ysql_db()))
+            proxy_class.create_db(self.get_ysql_db())
 
         # Update password for default user
         if self.get_ysql_user() == DEFAULT_YSQL_USER:
-            _, err = proxy_class.update_password(self.get_ysql_password())
-            if err:
-                Output.log_error_and_exit("class: {} Failed to update password for default user {}".
-                    format(proxy_class, err))
-
-            Output.log("class: {} Password has updated for default user successfully".
-                format(proxy_class))
+            proxy_class.update_password(self.get_ysql_password())
 
         # Create User
         if self.get_ysql_user() != DEFAULT_YSQL_USER and not proxy_class.user_exists(self.get_ysql_user()):
-            Output.log("Creating {} user".format(self.get_ysql_user()))
-            _, err = proxy_class.create_user(self.get_ysql_user(), self.get_ysql_password())
-            if err:
-                Output.log_error_and_exit("Failed to create {} user: {}".
-                    format(self.get_ysql_user(), err))
+            proxy_class.create_user(self.get_ysql_user(), self.get_ysql_password())
 
             if self.get_ysql_db() != DEFAULT_YSQL_DB:
-                _, err = proxy_class.db_owner(self.get_ysql_db(), self.get_ysql_user())
-                if err:
-                    Output.log_error_and_exit("Failed to change owner on {} database: {}".
-                        format(self.get_ysql_db(), err))
+                proxy_class.db_owner(self.get_ysql_db(), self.get_ysql_user())
 
             # Note: Following lines will be commented till we can decide on default user deletion.
-            #_, err = proxy_class.delete_user(self.get_ysql_user(), self.get_ysql_password())
-            #if err:
-            #   Output.log_error_and_exit("Failed to delete default user: {}".format(err))
-
-            Output.log("{} user created successfully".format(self.get_ysql_user()))
-
-        Output.log("Custom credentials configured successfully for YSQL")
+            #proxy_class.delete_user(self.get_ysql_user(), self.get_ysql_password())
 
     def setup_ycql_credentials(self, proxy_class):
 
         # Create YCQL Keyspace
         if self.get_ycql_keyspace() and not proxy_class.keyspace_exists(self.get_ycql_keyspace()):
-            Output.log("Creating {} keyspace".format(self.get_ycql_keyspace()))
-            _, err = proxy_class.create_keyspace(self.get_ycql_keyspace())
-            if err:
-                Output.log_error_and_exit("Failed to create {} keyspace: {}".
-                    format(self.get_ycql_keyspace(), err))
-
-            Output.log("{} keyspace created successfully".format(self.get_ycql_keyspace()))
+            proxy_class.create_keyspace(self.get_ycql_keyspace())
 
         # Update password for default user
         if self.get_ycql_user() == DEFAULT_YCQL_USER:
-            _, err = proxy_class.update_password(self.get_ycql_password())
-            if err:
-                Output.log_error_and_exit("class: {} Failed to update password for default user {}".
-                    format(proxy_class, err))
-
-            Output.log("class: {} Password has updated for default user successfully".
-                format(proxy_class))
+            proxy_class.update_password(self.get_ycql_password())
 
         # Create user
         if self.get_ycql_user() != DEFAULT_YCQL_USER and not proxy_class.user_exists(self.get_ycql_user()):
-            Output.log("Creating {} user".format(self.get_ycql_user()))
-            _, err = proxy_class.create_user(self.get_ycql_user(), self.get_ycql_password())
-            if err:
-                Output.log_error_and_exit("Failed to create {} user: {}".
-                    format(self.get_ycql_user(), err))
+            proxy_class.create_user(self.get_ycql_user(), self.get_ycql_password())
 
             # Note: Following lines will be commented till we can decide on default user deletion.
-            #_, err = proxy_class.delete_user(self.get_ycql_user(), self.get_ycql_password())
-            #if err:
-            #   Output.log_error_and_exit("Failed to delete default user: {}".format(err))
-
-            Output.log("{} user created successfully".format(self.get_ycql_user()))
-
-        Output.log("Custom credentials configured successfully for YCQL")
+            #proxy_class.delete_user(self.get_ycql_user(), self.get_ycql_password())
 
 
 if __name__ == '__main__':
