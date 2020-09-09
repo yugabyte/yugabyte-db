@@ -46,7 +46,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 ## YSQL
 
 - Fix OOM on file-sourced YB relations in `COPY FROM` statement. Reset memory context regularly, per row, when memory is resettable and when rows are read from file (not `stdin`). [#5561](https://github.com/yugabyte/yugabyte-db/issues/5561)
-- Support transactional batch size for [`COPY FROM` command](../../api/ysql/#cmd_copy) with OOM fix. Batch sizes can be passed in with `ROWS_PER_TRANSACTION` in the `COPY OPTION` syntax. [#2855](https://github.com/yugabyte/yugabyte-db/issues/2855) [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
+- Support transactional batch size for [`COPY FROM` command](../../api/ysql/commands/cmd_copy) with OOM fix. Batch sizes can be passed in with `ROWS_PER_TRANSACTION` in the `COPY OPTION` syntax. [#2855](https://github.com/yugabyte/yugabyte-db/issues/2855) [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
 - For index backfill flags, use better default values. Set `index_backfill_rpc_timeout_ms` default from `60000` to `30000` and change `backfill_index_timeout_grace_margin_ms` default from `50` to `500`. [#5494](https://github.com/yugabyte/yugabyte-db/issues/5494)
 - Remove spurious error message "0A000: Alter table is not yet supported" from `CREATE OR REPLACE VIEW`. [#5071](https://github.com/yugabyte/yugabyte-db/issues/5071)
 - Prevent consistency violations when a partitioned table has foreign key constraints due to erroneous classification as a single-row transaction. [#5387](https://github.com/yugabyte/yugabyte-db/issues/5387)
@@ -56,7 +56,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 
 -----
 
-- `yb-admin create_database_snapshot` should not require `ysql.` prefix for database name. [#4991](https://github.com/yugabyte/yugabyte-db/issues/4991)
+- `yb-admin create_database_snapshot` command should not require `ysql.` prefix for database name. [#4991](https://github.com/yugabyte/yugabyte-db/issues/4991)
 - For non-prepared statements, optimize `pg_statistic` system table lookups and update debugging utilities. [#5051](https://github.com/yugabyte/yugabyte-db/issues/5051)
 - Correctly show beta feature warnings by default. [#5322](https://github.com/yugabyte/yugabyte-db/issues/5322)
 
@@ -65,8 +65,8 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - For `WHERE` clause in `CREATE INDEX` statement, return a `Not supported` error. [#5363](https://github.com/yugabyte/yugabyte-db/issues/5363)
 - Fix TSAN issue in partition-aware policy for C++ driver 2.9.0-yb-8 (yugabyte/cassandra-cpp-driver). [#1837](https://github.com/yugabyte/yugabyte-db/issues/1837)
 - Support YCQL backup for indexes based on JSON-attribute. [#5198](https://github.com/yugabyte/yugabyte-db/issues/5198)
-- Correctly set release_version for system.peers queries. [#5407](https://github.com/yugabyte/yugabyte-db/issues/5407)
-- Reject `TRUNCATE` operations when `ycql_require_drop_privs_for_truncate` flag is enabled. When enabled, `DROP TABLE` permission is required to truncate a table. Default is `false`. [#5443](https://github.com/yugabyte/yugabyte-db/issues/5443)
+- Correctly set `release_version` for `system.peers` queries. [#5407](https://github.com/yugabyte/yugabyte-db/issues/5407)
+- Reject `TRUNCATE` operations when [`ycql_require_drop_privs_for_truncate`](../../reference/configuration/yb-tserver/#ycql-require-drop-privs-for-truncate) flag is enabled. When enabled, `DROP TABLE` permission is required to truncate a table. Default is `false`. [#5443](https://github.com/yugabyte/yugabyte-db/issues/5443)
 
 ----
 - Fix `ycqlsh` should return a failure when known that the create (unique) index has failed. [#5161](https://github.com/yugabyte/yugabyte-db/issues/5161)
@@ -78,7 +78,6 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Show better error message when using `yugabyted` and yb-master fails to start. [#5304](https://github.com/yugabyte/yugabyte-db/issues/5304)
 - Disable ignoring deleted tablets on load by default. [#5122](https://github.com/yugabyte/yugabyte-db/issues/5122)
 - [CDC] Improve CDC idle throttling logic to reduce high CPU utilization in clusters without workloads running. [#5472](https://github.com/yugabyte/yugabyte-db/issues/5472)
-- Use templatized values for setting TLS flags in Helm Chart. [#5424](https://github.com/yugabyte/yugabyte-db/issues/5424)
 - For `server_broadcast_addresses` flag, provide default port if not specified. [#2540](https://github.com/yugabyte/yugabyte-db/issues/2540)
 - [CDC] Fix CDC TSAN destructor warning. [#4258](https://github.com/yugabyte/yugabyte-db/issues/4258)
 - Add API endpoint to download root certificate file. [#4957](https://github.com/yugabyte/yugabyte-db/issues/4957)
@@ -89,7 +88,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 ----
 
 - When dropping tables, delete snapshot directories for deleted tables. [#4756](https://github.com/yugabyte/yugabyte-db/issues/4756)
-- Set up a global leader balance threshold while allowing progress across tables. Add `load_balancer_max_concurrent_moves_per_table` and `load_balancer+max_concurrent_moves` to improve performance of leader moves. And properly update state for leader stepdowns to prevent check failures. [#5021](https://github.com/yugabyte/yugabyte-db/issues/5021) [#5181](https://github.com/yugabyte/yugabyte-db/issues/5181)
+- Set up a global leader balance threshold while allowing progress across tables. Add [`load_balancer_max_concurrent_moves_per_table`](../../reference/configuration/yb-master/#load-balancer-max-concurrent-moves-per-table) and [`load_balancer_max_concurrent_moves`](../../reference/configuration/yb-master/#load-balancer-max-concurrent-moves) to improve performance of leader moves. And properly update state for leader stepdowns to prevent check failures. [#5021](https://github.com/yugabyte/yugabyte-db/issues/5021) [#5181](https://github.com/yugabyte/yugabyte-db/issues/5181)
 - Improve bootstrap logic for resolving transaction statuses. [#5215](https://github.com/yugabyte/yugabyte-db/issues/5215)
 - Avoid duplicate DNS lookup requests while handling `system.partitions` table requests. [#5225](https://github.com/yugabyte/yugabyte-db/issues/5225)
 - Handle write operation failures during tablet bootstrap. [#5224](https://github.com/yugabyte/yugabyte-db/issues/5224)
@@ -104,8 +103,6 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Apply large transaction in a separate thread if the transaction will not fit into the limit of key-value pairs. The running transaction is removed from memory after all its intents are applied and removed. [#1923](https://github.com/yugabyte/yugabyte-db/issues/1923)
 - Fix `SEGV` in Master UI when registering YB-TServer from Raft. [#5501](https://github.com/yugabyte/yugabyte-db/issues/5501)
 
-
-
 ## Yugabyte Platform
 
 - For S3 backups, install `s3cmd` required for encrypted backup and restore flows. [#5593](https://github.com/yugabyte/yugabyte-db/issues/5593)
@@ -118,7 +115,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Add Microsoft Azure provider UI and related changes to **Create Universe** form. [#5378](https://github.com/yugabyte/yugabyte-db/issues/5378)
 - Set **Assign Public IP** correctly using the UI. [#5463](https://github.com/yugabyte/yugabyte-db/issues/5463)
 - Fix `AreLeadersOnPreferredOnly` times out when setting preferred zones in **Edit Universe**. [#5406](https://github.com/yugabyte/yugabyte-db/issues/5406)
-- Fix `yb_backup.py` script to remove `sudo` requirement and correctly chabge user in backup script. [#5440](https://github.com/yugabyte/yugabyte-db/issues/5440)
+- Fix `yb_backup.py` script to remove `sudo` requirement and correctly change user. [#5440](https://github.com/yugabyte/yugabyte-db/issues/5440)
 - Properly change user for backup script. [#????](https://github.com/yugabyte/yugabyte-db/issues/????)
 - Add CSRF tokens to forms. [#5419](https://github.com/yugabyte/yugabyte-db/issues/5419)
 - Allow configuration of OIDC scope (for SSO use) as well as email attribute field. [#5465](https://github.com/yugabyte/yugabyte-db/issues/5465)
@@ -126,11 +123,10 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 
 ----
 
-- Fix updating of Universes list after creating new universe. [#4784](https://github.com/yugabyte/yugabyte-db/issues/4784)
+- Fix updating of **Universes** list after creating new universe. [#4784](https://github.com/yugabyte/yugabyte-db/issues/4784)
 - Fix restore payload when renaming table to include keyspace. And check for keyspace if tableName is defined and return invalid request code when keyspace is missing. [#5178](https://github.com/yugabyte/yugabyte-db/issues/5178)
-- Add `volume_type` parameter for Azure Cloud universe creation so that value gets passed. [#????]
+- Add `volume_type` parameter for Azure Cloud universe creation so that value gets passed.
 - Add ability to override communication port default values during universe creation. [#5354](https://github.com/yugabyte/yugabyte-db/issues/5354)
-
 
 {{< note title="Note" >}}
 

@@ -543,7 +543,7 @@ Default: `true`
 
 ##### --ycql_require_drop_privs_for_truncate
 
-Set this flag to `true` to reject `TRUNCATE` statements unless allowed by permissions for `DROP TABLE` statement.
+Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table) privileges.
 
 Default: `false`
 
