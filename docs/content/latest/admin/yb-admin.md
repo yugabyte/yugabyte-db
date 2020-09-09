@@ -464,6 +464,7 @@ yb-admin -master_addresses <master-addresses> list_snapshots [ show_details ] [ 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - `show_details`: (Optional) Print snapshot details, including the keyspaces, tables, and indexes.
 - `not_show_restored`: (Optional) Do not show successful "restorations" (that is, `COMPLETE`). Useful to see a list of only uncompleted or failed restore operations.
+- `show_deleted`: (Optional) Show snapshots that are deleted, but still retained in memory.
 
 Possible `state` values for creating and restoring snapshots:
 
