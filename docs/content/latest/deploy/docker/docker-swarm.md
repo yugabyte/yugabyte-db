@@ -20,13 +20,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/latest/deploy/docker/docker-compose" class="nav-link">
+    <a href="{{< relref "./docker-compose.md" >}}" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker Compose
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/docker/docker-swarm" class="nav-link active">
+    <a href="{{< relref "./docker-swarm.md" >}}" class="nav-link active">
       <i class="fas fa-layer-group"></i>
       Docker Swarm
     </a>
@@ -230,7 +230,7 @@ $ docker service create \
 --name yb-tserver \
 --network yugabytedb \
 --mount type=volume,source=yb-tserver,target=/mnt/data0 \
---publish 9000:9000 \
+--publish 9000:9000 --publish 5433:5433 --publish 9042:9042 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-tserver \
 --fs_data_dirs=/mnt/data0 \
 --rpc_bind_addresses=0.0.0.0:9100 \

@@ -37,22 +37,6 @@ InetAddress::InetAddress(const InetAddress& other) {
   boost_addr_ = other.boost_addr_;
 }
 
-CHECKED_STATUS InetAddress::Resolve(const std::string& host, std::vector<InetAddress>* addresses) {
-  boost::container::small_vector<IpAddress, 5> ip_addresses;
-  RETURN_NOT_OK(HostToAddresses(host, &ip_addresses));
-
-  for (const auto& address : ip_addresses) {
-    addresses->emplace_back(address);
-  }
-
-  return Status::OK();
-}
-
-CHECKED_STATUS InetAddress::FromString(const std::string& strval) {
-  boost_addr_ = VERIFY_RESULT(HostToAddress(strval));
-  return Status::OK();
-}
-
 std::string InetAddress::ToString() const {
   std::string strval;
   CHECK_OK(ToString(&strval));

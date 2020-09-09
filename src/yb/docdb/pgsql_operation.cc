@@ -32,7 +32,6 @@
 
 DECLARE_bool(trace_docdb_calls);
 DECLARE_bool(ysql_disable_index_backfill);
-DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 
 DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
               "YSQL read scan timeout multipler of retryable_rpc_single_call_timeout_ms.");
@@ -277,14 +276,22 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 }
 
 Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
+  int num_deleted = 1;
   QLTableRow table_row;
   RETURN_NOT_OK(ReadColumns(data, &table_row));
-  // TODO(jason): only ignore empty when dealing with index backfill DELETE permissions, not for
-  // _all_ tables when the flag ysql_disable_index_backfill is set.
-  if (table_row.IsEmpty() && FLAGS_ysql_disable_index_backfill) {
+  if (table_row.IsEmpty()) {
     // Row not found.
     response_->set_skipped(true);
-    return Status::OK();
+    // Return early unless we still want to apply the delete for backfill purposes.  Deletes to
+    // nonexistent rows are expected to get written to the index when the index has the delete
+    // permission during an online schema migration.
+    // TODO(jason): apply deletes only when this is an index table going through a schema migration,
+    // not just when backfill is enabled.
+    if (FLAGS_ysql_disable_index_backfill) {
+      return Status::OK();
+    } else {
+      num_deleted = 0;
+    }
   }
 
   // TODO(neil) Add support for WHERE clause.
@@ -296,7 +303,7 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
 
   RETURN_NOT_OK(PopulateResultSet(table_row));
 
-  response_->set_rows_affected_count(1);
+  response_->set_rows_affected_count(num_deleted);
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
@@ -504,9 +511,6 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
 
   // Set scan start time.
   bool scan_time_exceeded = false;
-  const int64 scan_time_limit =
-    FLAGS_retryable_rpc_single_call_timeout_ms * FLAGS_ysql_scan_timeout_multiplier;
-  const MonoTime start_time = MonoTime::Now();
 
   // Fetching data.
   int match_count = 0;
@@ -552,8 +556,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
 
     // Check every row_count_limit matches whether we've exceeded our scan time.
     if (match_count % row_count_limit == 0) {
-      const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
-      scan_time_exceeded = elapsed_time.ToMilliseconds() > scan_time_limit;
+      scan_time_exceeded = CoarseMonoClock::now() >= deadline;
     }
   }
 

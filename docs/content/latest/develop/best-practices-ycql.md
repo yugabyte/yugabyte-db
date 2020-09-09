@@ -93,6 +93,13 @@ For consistent latency/performance, try keeping columns in the `2MB` range or le
 
 Big columns add up when selecting full rows or multiple of them. For consistent latency/performance, you suggest keeping the size of rows in the `32 MB` range or less.
 
+### Don't use big collections
+
+Collections are designed for storing small sets of values that are not expected to grow to arbitrary size (such as phone numbers or addresses for a user rather than posts or messages). 
+While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them. 
+In particular, some list operations (insert at an index and remove elements) require a read-before-write. 
+
+
 ## Miscellaneous
 
 ### Use `TRUNCATE` to empty tables instead of `DELETE`

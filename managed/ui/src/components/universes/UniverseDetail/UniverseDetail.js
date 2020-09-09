@@ -12,7 +12,7 @@ import { UniverseFormContainer, UniverseStatusContainer, NodeDetailsContainer,
          UniverseOverviewContainerNew, EncryptionKeyModalContainer } from '../../universes';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
-import { ListTablesContainer, ListBackupsContainer } from '../../tables';
+import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from '../../tables';
 import { isEmptyObject, isNonEmptyObject, isNonEmptyArray, isEmptyArray } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -277,6 +277,18 @@ class UniverseDetail extends Component {
             </div>
           </Tab.Pane>,
 
+        isNotHidden(currentCustomer.data.features, "universes.details.replication") &&
+          <Tab.Pane
+            eventKey={"replication"}
+            tabtitle="Replication"
+            key="replication-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, "universes.details.replication")}
+          >
+            <ReplicationContainer />
+          </Tab.Pane>,
+
         isNotHidden(currentCustomer.data.features, "universes.details.tasks") &&
           <Tab.Pane
             eventKey={"tasks"}
@@ -389,7 +401,6 @@ class UniverseDetail extends Component {
                     <YBLabelWithIcon icon="fa fa-copy fa-fw">
                       {this.hasReadReplica(universeInfo) ? "Edit" : "Add" } Read Replica
                     </YBLabelWithIcon>
-                    <span className="badge badge-pill badge-blue pull-right">Beta</span>
                   </YBMenuItem>
                 }
                 <UniverseAppsModal currentUniverse={currentUniverse.data} modal={modal} closeModal={closeModal} button={

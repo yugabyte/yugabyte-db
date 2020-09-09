@@ -81,7 +81,7 @@ using strings::Substitute;
 
 DEFINE_string(
     net_address_filter,
-    "ipv4_external,ipv4_all,ipv6_external,ipv6_non_link_local,all",
+    "ipv4_external,ipv4_all",
     "Order in which to select ip addresses returned by the resolver"
     "Can be set to something like \"ipv4_all,ipv6_all\" to prefer IPv4 over "
     "IPv6 addresses."
@@ -612,12 +612,27 @@ Result<IpAddress> HostToAddress(const std::string& host) {
   return addr;
 }
 
-boost::optional<IpAddress> TryFastResolve(const std::string& host) {
+bool IsWildcardAddress(const std::string& host_str) {
+  boost::system::error_code ec;
+  auto addr = IpAddress::from_string(host_str, ec);
+  return !ec && addr.is_unspecified();
+}
+
+Result<IpAddress> ParseIpAddress(const std::string& host) {
   boost::system::error_code ec;
   auto addr = IpAddress::from_string(host, ec);
-  if (!ec) {
-    VLOG(4) << "Resolving ip address to itself for input: " << host;
-    return addr;
+  if (ec) {
+    return STATUS_FORMAT(InvalidArgument, "Failed to parse $0: $1", host, ec.message());
+  }
+
+  VLOG(4) << "Resolving ip address to itself for input: " << host;
+  return addr;
+}
+
+boost::optional<IpAddress> TryFastResolve(const std::string& host) {
+  auto result = ParseIpAddress(host);
+  if (result.ok()) {
+    return *result;
   }
 
   // For testing purpose we resolve A.B.C.D.ip.yugabyte to A.B.C.D.

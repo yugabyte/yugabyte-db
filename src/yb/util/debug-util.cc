@@ -130,7 +130,7 @@ struct ThreadStackEntry : public MPSCQueueEntry<ThreadStackEntry> {
   StackTrace stack;
 };
 
-#if !defined(__APPLE__) && !THREAD_SANITIZER
+#if !defined(__APPLE__) && !defined(THREAD_SANITIZER) && !defined(ADDRESS_SANITIZER)
 #define USE_FUTEX 1
 #else
 #define USE_FUTEX 0
@@ -253,14 +253,14 @@ struct ThreadStackHelper {
 
   void RecordStackTrace(const StackTrace& stack_trace) {
     auto* entry = allocated.Pop();
-    if (!entry) { // Not enough allocated entries, don't write log since we are in signal handler.
-      return;
+    if (entry) {
+      // Not enough allocated entries, don't write log since we are in signal handler.
+      entry->tid = Thread::CurrentThreadIdForStack();
+      entry->stack = stack_trace;
+      collected.Push(entry);
     }
-    entry->tid = Thread::CurrentThreadIdForStack();
-    entry->stack = stack_trace;
-    collected.Push(entry);
 
-    if (left_to_collect.fetch_sub(1, std::memory_order_acq_rel) - 1 == 0) {
+    if (left_to_collect.fetch_sub(1, std::memory_order_acq_rel) - 1 <= 0) {
       completion_flag.Signal();
     }
   }
@@ -700,7 +700,7 @@ string GetLogFormatStackTraceHex() {
 }
 
 void StackTrace::Collect(int skip_frames) {
-#if THREAD_SANITIZER
+#if THREAD_SANITIZER || ADDRESS_SANITIZER
   num_frames_ = google::GetStackTrace(frames_, arraysize(frames_), skip_frames);
 #else
   int max_frames = skip_frames + arraysize(frames_);

@@ -240,6 +240,28 @@ yb-admin -master_addresses <master-addresses> list_tablets_for_tablet_server <ts
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *ts_uuid*: The UUID of the tablet server (YB-TServer).
 
+#### split_tablet
+
+Splits the specified hash-partitioned tablet and computes the split point as the middle of tablet's partition range.
+
+{{< note title="Note" >}}
+
+The `yb-admin split_tablet` command is not yet supported for use with range-partitioned tablets. To follow plans on this, see [GitHub #5166](https://github.com/yugabyte/yugabyte-db/issues/5166)
+
+{{< /note >}}
+
+```sh
+split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *tablet_id_to_split*: The identifier of the tablet to split.
+
+For more information on tablet splitting, see:
+
+- [Tablet splitting](../../architecture/docdb-sharding/tablet-splitting) — Architecture overview
+- [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) — Architecture design document in the GitHub repository.
+
 #### master_leader_stepdown
 
 Forces the master leader to step down. The specified YB-Master node will take its place as leader.
@@ -255,11 +277,35 @@ Forces the master leader to step down. The specified YB-Master node will take it
 **Syntax**
 
 ```sh
-yb-admin -master_addresses <master-addresses> master_leader_stepdown <new_leader_id>
+yb-admin -master_addresses <master-addresses> master_leader_stepdown [ <new_leader_id> ]
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *new_leader_id*: The identifier (ID) of the new YB-Master leader.
+- *new_leader_id*: (Optional) The identifier (ID) of the new YB-Master leader. If not specified, the new leader is automatically elected.
+
+#### ysql_catalog_version
+
+Prints the current YSQL schema catalog version.
+
+**Syntax**
+
+```sh
+yb-admin -master_addresses <master-addresses> ysql_catalog_version
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+
+**Example**
+
+```sh
+yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> ysql_catalog_version
+```
+
+The version output displays:
+
+```
+Version:1
+```
 
 ---
 
@@ -267,24 +313,33 @@ yb-admin -master_addresses <master-addresses> master_leader_stepdown <new_leader
 
 #### list_tables
 
-Prints a list of all tables.
+Prints a list of all tables. Optionally, include the database type, table ID, and the table type.
 
 **Syntax**
+
+```sh
+yb-admin -master_addresses <master-addresses> list_tables [ include_db_type ] [ include_table_id ] [ include_table_type ]
+```
 
 ```sh
 yb-admin -master_addresses <master-addresses> list_tables
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- `include_db_type`: (Optional) Add this flag to include the database type for each table.
+- `include_table_id`: (Optional) Add this flag to include the table ID for each table.
+- `include_table_type`: (Optional) Add this flag to include the table type for each table.
 
-Returns tables in the following format:
+Returns tables in the following format, depending on the flags used:
 
 ```
-<namespace>.<table_name>
+<db_type>.<namespace>.<table_name> table_id table_type
 ```
 
-- *namespace*: Name of the database or keyspace.
-- *table_name*: Name of the table.
+- *db_type*: The type of database. Valid values include `ysql`, `ycql`, `yedis`, and `unknown`.
+- *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
+- *table_name*: The name of the table.
+- *table_type*: The type of table. Valid values include `catalog`, `table`, `index`, and `other`.
 
 {{< note title="Tip" >}}
 
@@ -321,45 +376,6 @@ template1.pg_inherits
 ...
 ```
 
-#### list_tables_with_db_types
-
-Prints a list of all tables, prefixed by the database type (`ysql`, `ycql`, or `yedis`)
-
-**Syntax**
-
-```sh
-yb-admin -master_addresses <master-addresses> list_tables_with_db_types
-```
-
-- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-
-Returns tables in the following format:
-
-```
-<db_type>.<namespace>.<table_name>
-```
-
-**Example**
-
-```sh
-$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_tables_with_db_types
-```
-
-```
-ycql.system_schema.indexes
-ycql.system_schema.keyspaces
-ycql.system_schema.sys.catalog
-ycql.system_schema.tables
-ycql.system_schema.triggers
-ycql.system_schema.types
-ycql.system_schema.views
-ysql.postgres.sql_features
-ysql.postgres.sql_implementation_info
-ysql.postgres.sql_languages
-ysql.postgres.sql_packages
-...
-```
-
 #### compact_table
 
 Triggers manual compaction on a table.
@@ -389,6 +405,52 @@ Compaction complete: SUCCESS
 
 ### Backup and snapshot commands
 
+#### create_database_snapshot
+
+Creates a snapshot of the specified YSQL database.
+
+**Syntax**
+
+```sh
+yb-admin -master_addresses <master-addresses> create_database_snapshot <database_name>
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *database*: The name of the YSQL database.
+
+When this command runs, a `snapshot_id` is generated and printed.
+
+**Example**
+
+```sh
+$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_database_snapshot
+```
+
+To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list_snapshots) command.
+
+#### create_keyspace_snapshot
+
+Creates a snapshot of the specified YCQL database.
+
+**Syntax**
+
+```sh
+yb-admin -master_addresses <master-addresses> create_keyspace_snapshot <keyspace_name>
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *keyspace*: The name of the YCQL keyspace.
+
+When this command runs, a `snapshot_id` is generated and printed.
+
+**Example**
+
+```sh
+$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_keyspace_snapshot
+```
+
+To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list_snapshots) command.
+
 #### list_snapshots
 
 Prints a list of all snapshot IDs,  restoration IDs, and states. Optionally, prints details (including keyspaces, tables, and indexes) in JSON format.
@@ -396,11 +458,13 @@ Prints a list of all snapshot IDs,  restoration IDs, and states. Optionally, pri
 **Syntax**
 
 ```sh
-yb-admin -master_addresses <master-addresses> list_snapshots [ show_details ]
+yb-admin -master_addresses <master-addresses> list_snapshots [ show_details ] [ not_show_restored ]
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - `show_details`: (Optional) Print snapshot details, including the keyspaces, tables, and indexes.
+- `not_show_restored`: (Optional) Do not show successful "restorations" (that is, `COMPLETE`). Useful to see a list of only uncompleted or failed restore operations.
+- `show_deleted`: (Optional) Show snapshots that are deleted, but still retained in memory.
 
 Possible `state` values for creating and restoring snapshots:
 
@@ -462,7 +526,7 @@ f566b03b-b85e-41a0-b903-875cd305c1c5 	COMPLETE
 
 #### create_snapshot
 
-Creates a snapshot of the specified tables and their indexes. Prior to v.2.1.8, indexes were not automatically included. You can specify multiple tables, even from different keyspaces.
+Creates a snapshot of the specified YCQL tables and their indexes. Prior to v.2.1.8, indexes were not automatically included. You can specify multiple tables, even from different keyspaces.
 
 **Syntax**
 
@@ -471,7 +535,7 @@ yb-admin -master_addresses <master-addresses> create_snapshot <keyspace> <table_
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *keyspace*: The name of the database or keyspace.
+- *keyspace*: The name of the database or keyspace formatted as <ycql|ysql|yedis>.<keyspace>.
 - *table_name*: The name of the table name.
 - *table_id*: The identifier (ID) of the table.
 - *flush_timeout_in_seconds*: Specifies duration, in seconds, before flushing snapshot. Default value is `60`. To skip flushing, set the value to `0`.
@@ -534,7 +598,7 @@ Restoration UUID                 	State
 
 #### export_snapshot
 
-Generates a metadata file for the given snapshot, listing all the relevant internal UUIDs for various objects (table, tablet, etc.).
+Generates a metadata file for the specified snapshot, listing all the relevant internal UUIDs for various objects (table, tablet, etc.).
 
 **Syntax**
 
@@ -652,11 +716,10 @@ Sets the preferred availability zones (AZs) and regions.
 
 {{< note title="Note" >}}
 
-When nodes in the the "preferred" availability zones and regions are alive and healthy, 
-the tablet leaders are placed on nodes in those zones and regions. 
-By default, all nodes are eligible to have tablet leaders.
-Having all tablet leaders reside in 1 region will 
-reduce the number of network hops that the db must do to write transactions and thus increase performance and lowering latency.
+- When nodes in the the "preferred" availability zones and regions are alive and healthy, the tablet leaders are placed on nodes in those zones and regions.
+By default, all nodes are eligible to have tablet leaders. Having all tablet leaders reside in a single region will reduce the number of network hops for the database to write transactions and thus increase performance and lowering latency.
+
+- By default, the transaction tablet leaders will not respect these preferred zones and will be balanced across all nodes. In the transaction path, there is a roundtrip from the user to the transaction status tablet serving the transaction - if the leader closest to the user is used rather than forcing a roundtrip to the preferred zone, then there will be efficiency improvements.
 
 {{< /note >}}
 
@@ -669,7 +732,6 @@ yb-admin -master_addresses <master-addresses> set_preferred_zones <cloud.region.
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *cloud.region.zone*: Specifies the cloud, region, and zone. Default value is `cloud1.datacenter1.rack1`.
 
-
 Suppose you have a deployment with regions: `gcp.us-east4.us-east4-b`, `gcp.asia-northeast1.asia-northeast1-c`,
  `gcp.us-west1.us-west1-c`. Looking at the cluster config:
 
@@ -677,7 +739,7 @@ Suppose you have a deployment with regions: `gcp.us-east4.us-east4-b`, `gcp.asia
 $ curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-We have a sample config:
+Here is a sample configuration:
 
 ```
 replication_info {
@@ -790,6 +852,27 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 ```sh
 ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
 ```
+
+##### alter_universe_replication
+
+Changes the universe replication for the specified producer universe. Use this command to:
+
+- Add or remove tables in an existing replication UUID.
+- Modify the master addresses.
+
+**Syntax**
+
+```sh
+yb-admin master_addresses <master-addresses> alter_universe_replication <producer_universe_uuid> { set_master_addresses <producer_master_addresses> |  add_table <table_id>[, <table_id>...] | remove_table <table_id>[, <table_id>...] }
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *producer_universe_uuid*: The UUID of the producer universe.
+- set_master_addresses: Use this subcommand to modify master addresses.
+- *producer_master_addresses*: Comma-separated list of new producer master addresses.
+- add_table: Subcommand to add a table.
+- remove_table: Subcommand to remove a table.
+- *table_id*: The identifier (ID) of the table.
 
 ##### delete_universe_replication <producer_universe_uuid>
 
@@ -1063,6 +1146,10 @@ If specified, `des_ts_uuid` becomes the new leader. If the argument is empty (`"
 ---
 
 ### Rebalancing commands
+
+For information on YB-Master load balancing, see [Data placement and load balancing](../../architecture/concepts/yb-master/#data-placement-and-load-balancing)
+
+For YB-Master load balancing flags, see [Load balancing flags](../../reference/configuration/yb-master/#load-balancing-flags).
 
 #### set_load_balancer_enabled
 

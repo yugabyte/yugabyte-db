@@ -122,19 +122,23 @@ HybridTime OperationState::WriteHybridTime() const {
   return hybrid_time();
 }
 
-void ExclusiveSchemaOperationStateBase::AcquireSchemaLock(rw_semaphore* mutex) {
-  TRACE("Acquiring schema lock in exclusive mode");
-  schema_lock_ = std::unique_lock<rw_semaphore>(*mutex);
-  TRACE("Acquired schema lock");
-}
-
-void ExclusiveSchemaOperationStateBase::ReleaseSchemaLock() {
-  schema_lock_ = std::unique_lock<rw_semaphore>();
-  TRACE("Released schema lock");
-}
-
 std::string OperationState::ConsensusRoundAsString() const {
+  std::lock_guard<simple_spinlock> l(mutex_);
   return AsString(consensus_round());
+}
+
+void OperationState::LeaderInit(const OpId& op_id, const OpId& committed_op_id) {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  auto* replicate_msg = consensus_round_->replicate_msg().get();
+  op_id.ToPB(replicate_msg->mutable_id());
+  committed_op_id.ToPB(replicate_msg->mutable_committed_op_id());
+  replicate_msg->set_hybrid_time(hybrid_time_.ToUint64());
+  replicate_msg->set_monotonic_counter(*tablet()->monotonic_counter());
+}
+
+void ExclusiveSchemaOperationStateBase::ReleasePermitToken() {
+  permit_token_.Reset();
+  TRACE("Released permit token");
 }
 
 OperationCompletionCallback::OperationCompletionCallback()
