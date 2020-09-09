@@ -102,7 +102,7 @@ $ java -jar ./yb-sample-apps.jar  \
 Name    | Observation
 --------|------
 Write Ops/sec | ~90k
-Read Latency | ~2.5-3.0 ms/op
+Write Latency | ~2.5-3.0 ms/op
 CPU (User + Sys) | 60%
 
 ## Run the read-heavy key-value workload
