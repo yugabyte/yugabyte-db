@@ -88,13 +88,13 @@ showAsideToc: true
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.2.2.0-linux.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.3.0.0-linux.tar.gz
     ```
 
 2. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.2.2.0-linux.tar.gz && cd yugabyte-2.2.2.0/
+    $ tar xvfz yugabyte-2.3.0.0-linux.tar.gz && cd yugabyte-2.3.0.0/
     ```
 
 ## Configure YugabyteDB
