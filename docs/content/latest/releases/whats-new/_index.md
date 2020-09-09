@@ -89,15 +89,16 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 
 - When dropping tables, delete snapshot directories for deleted tables. [#4756](https://github.com/yugabyte/yugabyte-db/issues/4756)
 - Set up a global leader balance threshold while allowing progress across tables. Add [`load_balancer_max_concurrent_moves_per_table`](../../reference/configuration/yb-master/#load-balancer-max-concurrent-moves-per-table) and [`load_balancer_max_concurrent_moves`](../../reference/configuration/yb-master/#load-balancer-max-concurrent-moves) to improve performance of leader moves. And properly update state for leader stepdowns to prevent check failures. [#5021](https://github.com/yugabyte/yugabyte-db/issues/5021) [#5181](https://github.com/yugabyte/yugabyte-db/issues/5181)
+- Reduce default value of [`load_balancer_max_concurrent_moves`](../../reference/configuration/yb-master/#load-balancer-max-concurrent-moves) from `10` to `2`. [#5461](https://github.com/yugabyte/yugabyte-db/issues/5461)
 - Improve bootstrap logic for resolving transaction statuses. [#5215](https://github.com/yugabyte/yugabyte-db/issues/5215)
 - Avoid duplicate DNS lookup requests while handling `system.partitions` table requests. [#5225](https://github.com/yugabyte/yugabyte-db/issues/5225)
 - Handle write operation failures during tablet bootstrap. [#5224](https://github.com/yugabyte/yugabyte-db/issues/5224)
 - Ensure `strict_capacity_limit` is set when SetCapacity is called to prevent ASAN failures. [#5222](https://github.com/yugabyte/yugabyte-db/issues/5222)
-- Drop index upon failed backfill. And, for YCQL, generate error to CREATE INDEX call if index/backfill fails before the call is completed. [#5144](https://github.com/yugabyte/yugabyte-db/issues/5144) [#5161](https://github.com/yugabyte/yugabyte-db/issues/5161)
+- Drop index upon failed backfill. For YCQL, generate error to CREATE INDEX call if index backfill fails before the call is completed. [#5144](https://github.com/yugabyte/yugabyte-db/issues/5144) [#5161](https://github.com/yugabyte/yugabyte-db/issues/5161)
 - Allow overflow of single-touch cache if multi-touch cache is not consuming space. [#4495](https://github.com/yugabyte/yugabyte-db/issues/4495)
 - Don't flush RocksDB before restoration. [#5184](https://github.com/yugabyte/yugabyte-db/issues/5184)
 - Fix `yugabyted` fails to start UI due to class binding failure. [#5069](https://github.com/yugabyte/yugabyte-db/issues/5069)
-- On YB-TServer restart, prioritize bootstrapping transaction status tablets. [#4926](https://github.com/yugabyte/yugabyte-db/issues/4926)
+- On `yb-tserver` restart, prioritize bootstrapping transaction status tablets. [#4926](https://github.com/yugabyte/yugabyte-db/issues/4926)
 - For `yb-admin` commands, clarify syntax for namespace. [#5482](https://github.com/yugabyte/yugabyte-db/issues/5482)
 - Improve for-loops to avoid unnecessary copies and remove range-loop-analysis warnings. [#5458](https://github.com/yugabyte/yugabyte-db/issues/5458)
 - Apply large transaction in a separate thread if the transaction will not fit into the limit of key-value pairs. The running transaction is removed from memory after all its intents are applied and removed. [#1923](https://github.com/yugabyte/yugabyte-db/issues/1923)
@@ -119,7 +120,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Properly change user for backup script. [#????](https://github.com/yugabyte/yugabyte-db/issues/????)
 - Add CSRF tokens to forms. [#5419](https://github.com/yugabyte/yugabyte-db/issues/5419)
 - Allow configuration of OIDC scope (for SSO use) as well as email attribute field. [#5465](https://github.com/yugabyte/yugabyte-db/issues/5465)
-
+- If **Username** and **Password** are left empty in the **Custom SMTP Configuration**, remove `smtpUsername` and `smtpPassword` from the payload. [#5439](https://github.com/yugabyte/yugabyte-db/issues/5439)
 
 ----
 
