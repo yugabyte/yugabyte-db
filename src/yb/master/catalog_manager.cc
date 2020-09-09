@@ -7397,8 +7397,15 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   table->GetTabletsInRange(req, &tablets_in_range);
 
   bool require_tablets_runnings = req->require_tablets_running();
+
+  int expected_live_replicas = 0;
+  int expected_read_replicas = 0;
+  GetExpectedNumberOfReplicas(&expected_live_replicas, &expected_read_replicas);
   for (const scoped_refptr<TabletInfo>& tablet : tablets_in_range) {
-    auto status = BuildLocationsForTablet(tablet, resp->add_tablet_locations());
+    TabletLocationsPB* locs_pb = resp->add_tablet_locations();
+    locs_pb->set_expected_live_replicas(expected_live_replicas);
+    locs_pb->set_expected_read_replicas(expected_read_replicas);
+    auto status = BuildLocationsForTablet(tablet, locs_pb);
     if (!status.ok()) {
       // Not running.
       if (require_tablets_runnings) {
@@ -7779,6 +7786,15 @@ Status CatalogManager::GetReplicationFactorForTablet(const scoped_refptr<TabletI
     return Status::OK();
   }
   return GetReplicationFactor(num_replicas);
+}
+
+void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas) {
+  auto l = cluster_config_->LockForRead();
+  const ReplicationInfoPB& replication_info = l->data().pb.replication_info();
+  *num_live_replicas = GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
+  for (const auto read_replica_placement_info : replication_info.read_replicas()) {
+    *num_read_replicas = read_replica_placement_info.num_replicas();
+  }
 }
 
 string CatalogManager::placement_uuid() const {

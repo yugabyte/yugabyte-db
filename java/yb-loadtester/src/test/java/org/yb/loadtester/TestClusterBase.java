@@ -293,7 +293,7 @@ public class TestClusterBase extends BaseCQLTest {
 
       LOG.info("Added new master to config: " + masterRpcHostPort.toString());
 
-      // Wait for hearbeat interval to ensure tservers pick up the new masters.
+      // Wait for heartbeat interval to ensure tservers pick up the new masters.
       Thread.sleep(2 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
 
       LOG.info("Done waiting for new leader");
@@ -347,7 +347,7 @@ public class TestClusterBase extends BaseCQLTest {
 
     updateMiniClusterClient();
 
-    // Wait for hearbeat interval to ensure tservers pick up the new masters.
+    // Wait for heartbeat interval to ensure tservers pick up the new masters.
     Thread.sleep(4 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
   }
 
