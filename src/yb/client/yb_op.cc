@@ -508,7 +508,7 @@ Status GetRangeComponents(
     std::vector<docdb::PrimitiveValue>* range_components) {
   int i = 0;
   int num_range_key_columns = schema.num_range_key_columns();
-  for (const auto col_id : schema.column_ids()) {
+  for (const auto& col_id : schema.column_ids()) {
     if (!schema.is_range_column(col_id)) {
       continue;
     }
@@ -642,7 +642,8 @@ std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewTruncateColocated(
 }
 
 std::string YBPgsqlWriteOp::ToString() const {
-  return "PGSQL_WRITE " + write_request_->ShortDebugString();
+  return "PGSQL_WRITE " + write_request_->ShortDebugString() +
+         ", response: " + response().ShortDebugString();
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {

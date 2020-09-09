@@ -39,7 +39,7 @@ YugabyteDB can easily be deployed in a globally distributed manner to serve appl
 
 This tutorial will simulate AWS regions on a local machine. First, you will deploy YugabyteDB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`). We will start a key-value workload against this universe. Next, you will change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../../quick-start/install/) guide.
+This tutorial uses the [yb-ctl](../../../admin/yb-ctl) local cluster management utility.
 
 ## 1. Create a multi-zone universe in US West
 
@@ -68,7 +68,7 @@ You can view the tablet servers on the [tablet servers page](http://localhost:70
 Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command.
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.3.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 Run a `SqlInserts` workload in a separate shell.

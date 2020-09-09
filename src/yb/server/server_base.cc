@@ -67,6 +67,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
 #include "yb/util/user.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/rolling_log.h"
@@ -95,6 +96,11 @@ DEFINE_string(yb_test_name, "",
 
 DEFINE_bool(TEST_check_broadcast_address, true, "Break connectivity in test mini cluster to "
             "check broadcast address.");
+
+DEFINE_test_flag(string, public_hostname_suffix, ".ip.yugabyte", "Suffix for public hostnames.");
+
+DEFINE_test_flag(bool, simulate_port_conflict_error, false,
+                 "Simulate a port conflict error during initialization.");
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -129,9 +135,6 @@ struct CommonMemTrackers {
 
 std::unique_ptr<CommonMemTrackers> common_mem_trackers;
 
-static const string kWildCardHostAddressV6 = "::";
-static const string kWildCardHostAddressV4 = "0.0.0.0";
-
 } // anonymous namespace
 
 std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
@@ -158,7 +161,6 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(),
                                                       metric_namespace)),
-      is_first_run_(false),
       options_(options),
       initialized_(false),
       stop_metrics_logging_latch_(1) {
@@ -462,12 +464,15 @@ Status RpcAndWebServerBase::Init() {
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {
     LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
     LOG(INFO) << "Creating new FS layout";
-    is_first_run_ = true;
     RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(true),
                           "Could not create new FS layout");
     s = fs_manager_->Open();
   }
   RETURN_NOT_OK_PREPEND(s, "Failed to load FS layout");
+
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_port_conflict_error)) {
+    return STATUS(NetworkError, "Simulated port conflict error");
+  }
 
   RETURN_NOT_OK(RpcServerBase::Init());
 
@@ -491,10 +496,10 @@ void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
 
 Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly rpc_only) const {
   std::vector<HostPort> addrs = CHECK_NOTNULL(rpc_server())->GetRpcHostPort();
+  DCHECK_GE(addrs.size(), 1);
 
   // Fall back to hostname resolution if the rpc hostname is a wildcard.
-  if (addrs.size() > 1 || addrs[0].host() == kWildCardHostAddressV4 ||
-      addrs[0].host() == kWildCardHostAddressV6 || addrs[0].port() == 0) {
+  if (addrs.size() != 1 || IsWildcardAddress(addrs[0].host()) || addrs[0].port() == 0) {
     vector<Endpoint> endpoints =
         CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
     RETURN_NOT_OK_PREPEND(
@@ -513,15 +518,22 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
   HostPortsToPBs(options_.broadcast_addresses, reg->mutable_broadcast_addresses());
 
   if (!rpc_only) {
-    std::vector<Endpoint> web_addrs;
-    RETURN_NOT_OK_PREPEND(
-        CHECK_NOTNULL(web_server())->GetBoundAddresses(&web_addrs),
-        "Unable to get bound HTTP addresses");
-    RETURN_NOT_OK_PREPEND(AddHostPortPBs(
-        web_addrs, reg->mutable_http_addresses()),
-        "Failed to add HTTP addresses to registration");
-    for (const auto &addr : reg->http_addresses()) {
-      LOG(INFO) << "Using http addresses: ( " << addr.ShortDebugString() << " )";
+    HostPort web_input_hp;
+    RETURN_NOT_OK(CHECK_NOTNULL(web_server())->GetInputHostPort(&web_input_hp));
+    if (IsWildcardAddress(web_input_hp.host()) || web_input_hp.port() == 0) {
+      std::vector<Endpoint> web_addrs;
+      RETURN_NOT_OK_PREPEND(
+          CHECK_NOTNULL(web_server())->GetBoundAddresses(&web_addrs),
+          "Unable to get bound HTTP addresses");
+      RETURN_NOT_OK_PREPEND(AddHostPortPBs(
+          web_addrs, reg->mutable_http_addresses()),
+          "Failed to add HTTP addresses to registration");
+      for (const auto &addr : reg->http_addresses()) {
+        LOG(INFO) << "Using http addresses: ( " << addr.ShortDebugString() << " )";
+      }
+    } else {
+      HostPortsToPBs({ web_input_hp }, reg->mutable_http_addresses());
+      LOG(INFO) << "Using http address " << reg->http_addresses(0).host();
     }
   }
   reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud());
@@ -576,10 +588,10 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-list-ul", "Threads", "/threadz");
 }
 
-
-void RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
+Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
   // RPCs in Progress.
   DisplayIconTile(output, "fa-tasks", "Server RPCs", "/rpcz");
+  return Status::OK();
 }
 
 Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
@@ -593,7 +605,7 @@ Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
   *output << "</div> <!-- row -->\n";
   *output << "<h2> RPCs In Progress </h2>";
   *output << "<div class='row debug-tiles'>\n";
-  DisplayRpcIcons(output);
+  RETURN_NOT_OK(DisplayRpcIcons(output));
   *output << "</div> <!-- row -->\n";
   return Status::OK();
 }
@@ -622,7 +634,8 @@ void RpcAndWebServerBase::Shutdown() {
 }
 
 std::string TEST_RpcAddress(int index, Private priv) {
-  return Format("127.0.0.$0$1", index * 2 + (priv ? 0 : 1), priv ? "" : ".ip.yugabyte");
+  return Format("127.0.0.$0$1",
+                index * 2 + (priv ? 0 : 1), priv ? "" : FLAGS_TEST_public_hostname_suffix);
 }
 
 string TEST_RpcBindEndpoint(int index, uint16_t port) {

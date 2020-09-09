@@ -147,7 +147,8 @@ class TabletPeer : public consensus::ConsensusContext,
       const std::string& permanent_uuid,
       Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
       MetricRegistry* metric_registry,
-      TabletSplitter* tablet_splitter);
+      TabletSplitter* tablet_splitter,
+      const std::shared_future<client::YBClient*>& client_future);
 
   ~TabletPeer();
 
@@ -156,7 +157,6 @@ class TabletPeer : public consensus::ConsensusContext,
   // split_op_id is the ID of split tablet Raft operation requesting split of this tablet or unset.
   CHECKED_STATUS InitTabletPeer(
       const TabletPtr& tablet,
-      const std::shared_future<client::YBClient*>& client_future,
       const std::shared_ptr<MemTracker>& server_mem_tracker,
       rpc::Messenger* messenger,
       rpc::ProxyCache* proxy_cache,
@@ -325,7 +325,8 @@ class TabletPeer : public consensus::ConsensusContext,
     return clock_;
   }
 
-  bool Enqueue(rpc::ThreadPoolTask* task) override;
+  void Enqueue(rpc::ThreadPoolTask* task);
+  void StrandEnqueue(rpc::StrandTask* task) override;
 
   const std::shared_future<client::YBClient*>& client_future() const override {
     return client_future_;
@@ -469,6 +470,7 @@ class TabletPeer : public consensus::ConsensusContext,
   const std::string permanent_uuid_;
 
   std::atomic<rpc::ThreadPool*> service_thread_pool_{nullptr};
+  AtomicUniquePtr<rpc::Strand> strand_;
 
   OperationCounter preparing_operations_counter_;
 
@@ -493,9 +495,9 @@ class TabletPeer : public consensus::ConsensusContext,
     return LeaderTerm() != OpId::kUnknownTerm;
   }
 
-  std::shared_future<client::YBClient*> client_future_;
-
   TabletSplitter* tablet_splitter_;
+
+  std::shared_future<client::YBClient*> client_future_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };

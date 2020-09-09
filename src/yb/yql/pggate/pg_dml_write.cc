@@ -141,6 +141,12 @@ Status PgDmlWrite::Exec(bool force_non_bufferable) {
   return Status::OK();
 }
 
+Status PgDmlWrite::SetWriteTime(const HybridTime& write_time) {
+  SCHECK(doc_op_.get() != nullptr, RuntimeError, "expected doc_op_ to be initialized");
+  down_cast<PgDocWriteOp*>(doc_op_.get())->SetWriteTime(write_time);
+  return Status::OK();
+}
+
 void PgDmlWrite::AllocWriteRequest() {
   auto wop = AllocWriteOperation();
   DCHECK(wop);

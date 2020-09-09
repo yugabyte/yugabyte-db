@@ -16,16 +16,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page describes how to enable and disable encryption at rest in a YugabyteDB cluster with a
-user-generated key.
+This page describes how to enable and disable encryption at rest in a YugabyteDB cluster with a user-generated key.
 
 ## Enabling encryption
 
 ### Step 1. Create encryption key
 
-First, you will generate the universe key data. This data can have length 32, 40, or 48. Larger keys
-are slightly more secure with slightly worse performance. Run the following on your local
-filesystem.
+First, you will generate the universe key data. This data can have length 32, 40, or 48. Larger keys are slightly more secure with slightly worse performance. Run the following on your local filesystem.
 
 ```sh
 $ openssl rand -out universe_key [ 32 | 40 | 48 ]
@@ -60,8 +57,7 @@ $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
 ```
 
 {{< note title="Note" >}}
-Because data is encrypted in the background as part of flushes to disk and compactions, only new
-data will be encrypted. Therefore, the call should return quickly.
+Because data is encrypted in the background as part of flushes to disk and compactions, only new data will be encrypted. Therefore, the call should return quickly.
 {{< /note >}}
 
 ### Step 4. Verify encryption enabled

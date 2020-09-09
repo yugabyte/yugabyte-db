@@ -308,6 +308,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   // condition. When rest of this function is running in parallel to ProcessResponse.
   msgs_holder.ReleaseOps();
 
+  controller_.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
   proxy_->UpdateAsync(&request_, trigger_mode, &response_, &controller_,
                       std::bind(&Peer::ProcessResponse, retain_self));
 }
@@ -410,6 +411,7 @@ void Peer::ProcessResponse() {
 
 Status Peer::SendRemoteBootstrapRequest() {
   YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 30) << "Sending request to remotely bootstrap";
+  controller_.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolNormal);
   return raft_pool_token_->SubmitFunc([retain_self = shared_from_this()]() {
     retain_self->proxy_->StartRemoteBootstrap(
       &retain_self->rb_request_, &retain_self->rb_response_, &retain_self->controller_,

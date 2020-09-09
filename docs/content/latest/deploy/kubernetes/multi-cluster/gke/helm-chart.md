@@ -475,11 +475,11 @@ Default replica placement policy treats every yb-tserver as equal irrespective o
 Run the following command to make the replica placement region/cluster-aware so that one replica is placed on each region/cluster.
 
 ```sh
-kubectl exec -it -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1 yb-master-0 bash \
--- -c "/home/yugabyte/master/bin/yb-admin --master_addresses yb-master-0.yb-masters.yb-demo-us-west1-b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-central1-b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east1-b.svc.cluster.local:7100 modify_placement_info gke.us-west1.us-west1-b,gke.us-central1.us-central1-b,gke.us-east1.us-east1-b 3"
+kubectl exec -it -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1 yb-master-0 -- bash \
+-c "/home/yugabyte/master/bin/yb-admin --master_addresses yb-master-0.yb-masters.yb-demo-us-west1-b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-central1-b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east1-b.svc.cluster.local:7100 modify_placement_info gke.us-west1.us-west1-b,gke.us-central1.us-central1-b,gke.us-east1.us-east1-b 3"
 ```
 
-Go to `http://<external-ip>:7000/cluster-config` to see the new configuration.
+To see the new configuration, go to `http://<external-ip>:7000/cluster-config`.
 
 ![after-regionaware](/images/deploy/kubernetes/gke-multicluster-after-regionaware.png)
 
@@ -489,14 +489,14 @@ To connect and use the YSQL Shell (`ysqlsh`), run the following command.
 
 ```sh
 $ kubectl exec -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1 \
- -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yb-demo-us-west1-b
+ -it yb-tserver-0 -- ysqlsh -h yb-tserver-0.yb-tservers.yb-demo-us-west1-b
 ```
 
 To connect and use the YCQL Shell (`ycqlsh`), run the following command.
 
 ```sh
 $ kubectl exec -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1 \
--it yb-tserver-0 /home/yugabyte/bin/ycqlsh yb-tserver-0.yb-tservers.yb-demo-us-west1-b
+-it yb-tserver-0 -- ycqlsh yb-tserver-0.yb-tservers.yb-demo-us-west1-b
 ```
 
 You can follow the [Explore YSQL](../../../../../quick-start/explore-ysql) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.

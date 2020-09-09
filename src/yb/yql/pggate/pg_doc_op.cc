@@ -13,16 +13,22 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_doc_op.h"
-#include "yb/yql/pggate/pg_txn_manager.h"
+
+#include <algorithm>
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <boost/algorithm/string.hpp>
 
 #include "yb/client/table.h"
-
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
-#include "yb/util/yb_pg_errcodes.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/util/yb_pg_errcodes.h"
+#include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -120,7 +126,7 @@ PgDocOp::~PgDocOp() {
   // Wait for result in case request was sent.
   // Operation can be part of transaction it is necessary to complete it before transaction commit.
   if (response_.InProgress()) {
-    __attribute__((unused)) auto status = response_.GetStatus();
+    __attribute__((unused)) auto status = response_.GetStatus(*pg_session_);
   }
 }
 
@@ -156,7 +162,7 @@ Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
     }
 
     DCHECK(response_.InProgress());
-    auto rows = VERIFY_RESULT(ProcessResponse(response_.GetStatus()));
+    auto rows = VERIFY_RESULT(ProcessResponse(response_.GetStatus(*pg_session_)));
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
     DCHECK(!rows.empty() || end_of_data_);
@@ -295,6 +301,10 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
   return result;
 }
 
+void PgDocOp::SetReadTime() {
+  read_time_ = exec_params_.read_time;
+}
+
 //-------------------------------------------------------------------------------------------------
 
 PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
@@ -309,6 +319,7 @@ void PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   template_op_->mutable_request()->set_return_paging_state(true);
   SetRequestPrefetchLimit();
   SetRowMark();
+  SetReadTime();
 }
 
 Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {
@@ -342,6 +353,9 @@ Status PgDocReadOp::CreateRequests() {
 
   } else {
     // No optimization.
+    if (exec_params_.partition_key != nullptr) {
+      RETURN_NOT_OK(SetScanPartitionBoundary());
+    }
     pgsql_ops_.push_back(template_op_);
     template_op_->set_active(true);
     active_op_count_ = 1;
@@ -571,6 +585,32 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
   return Status::OK();
 }
 
+// When postgres requests to scan a specific partition, set the partition parameter accordingly.
+Status PgDocReadOp::SetScanPartitionBoundary() {
+  SCHECK(exec_params_.partition_key != nullptr, Uninitialized, "expected non-null partition_key");
+
+  const std::vector<std::string>& partition_keys = table_desc_->table()->GetPartitions();
+  const auto& partition_key = std::find(
+      partition_keys.begin(),
+      partition_keys.end(),
+      a2b_hex(exec_params_.partition_key));
+  DSCHECK(partition_key != partition_keys.end(), InvalidArgument, "invalid partition key given");
+
+  // Set paging state.
+  PgsqlReadRequestPB *req = template_op_->mutable_request();
+  req->mutable_paging_state()->set_next_partition_key(*partition_key);
+
+  // Set max_hash_code to end of tablet (next key - 1).
+  // TODO(jason): this assumes hash partitioning; handle range partitioning (see issue #4768).
+  const auto& next_partition_key = std::next(partition_key, 1);
+  if (next_partition_key != partition_keys.end()) {
+    req->set_max_hash_code(
+        PartitionSchema::DecodeMultiColumnHashValue(std::string(*next_partition_key)) - 1);
+  }
+
+  return Status::OK();
+}
+
 Status PgDocReadOp::ProcessResponsePagingState() {
   // For each read_op, set up its request for the next batch of data or make it in-active.
   bool has_more_data = false;
@@ -672,6 +712,13 @@ void PgDocReadOp::SetRowMark() {
   }
 }
 
+void PgDocReadOp::SetReadTime() {
+  PgDocOp::SetReadTime();
+  if (read_time_) {
+    template_op_->SetReadTime(ReadHybridTime::FromUint64(read_time_));
+  }
+}
+
 Status PgDocReadOp::ResetInactivePgsqlOps() {
   // Clear the existing ybctids.
   for (int op_index = active_op_count_; op_index < pgsql_ops_.size(); op_index++) {
@@ -744,6 +791,11 @@ Status PgDocWriteOp::CreateRequests() {
   VLOG_IF(1, response_.InProgress()) << __PRETTY_FUNCTION__ << ": Sending request for " << this;
   return Status::OK();
 }
+
+void PgDocWriteOp::SetWriteTime(const HybridTime& write_time) {
+  write_op_->SetWriteTime(write_time);
+}
+
 
 }  // namespace pggate
 }  // namespace yb

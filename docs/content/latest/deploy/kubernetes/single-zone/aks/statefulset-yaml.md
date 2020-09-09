@@ -93,7 +93,7 @@ aks-nodepool1-25019584-2   Ready     agent     4h        v1.7.9
 Create a YugabyteDB cluster by running the following.
 
 ```sh
-$ kubectl create -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
+$ curl -s "https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml" | sed "s/storageClassName: standard/storageClassName: default/g" | kubectl create -f -
 ```
 
 ```
@@ -152,10 +152,10 @@ yb-tservers   ClusterIP   None         <none>        9000/TCP,9100/TCP,9042/TCP,
 
 ## 4. Connect to the cluster
 
-You can connect to the YCQL API by running the following.
+To open the YCQL shell (`ycqlsh`), run the following command:
 
 ```sh
-$ kubectl exec -it yb-tserver-0 bin/ycqlsh
+$ kubectl exec -it yb-tserver-0 -- ycqlsh yb-tserver-0
 ```
 
 ```

@@ -101,7 +101,7 @@ ReplicaState::ReplicaState(
 ReplicaState::~ReplicaState() {
 }
 
-Status ReplicaState::StartUnlocked(const OpId& last_id_in_wal) {
+Status ReplicaState::StartUnlocked(const OpIdPB& last_id_in_wal) {
   DCHECK(IsLocked());
 
   // Our last persisted term can be higher than the last persisted operation
@@ -515,10 +515,8 @@ Status ReplicaState::CancelPendingOperations() {
     }
 
     LOG_WITH_PREFIX(INFO) << "Trying to abort " << pending_operations_.size()
-                          << " pending operations.";
+                          << " pending operations because of shutdown.";
     auto abort_status = STATUS(Aborted, "Operation aborted");
-    LOG_WITH_PREFIX(INFO) << "Aborting "  << pending_operations_.size()
-                          << " operations because of shutdown";
     int i = 0;
     for (const auto& round : pending_operations_) {
       // We cancel only operations whose applies have not yet been triggered.
@@ -747,9 +745,9 @@ scoped_refptr<ConsensusRound> ReplicaState::GetPendingOpByIndexOrNullUnlocked(in
   return *it;
 }
 
-Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_replicated,
-                                                      OpId* committed_op_id,
-                                                      bool* committed_op_id_changed) {
+Status ReplicaState::UpdateMajorityReplicatedUnlocked(
+    const OpIdPB& majority_replicated, OpIdPB* committed_op_id,
+    bool* committed_op_id_changed, OpId* last_applied_op_id) {
   DCHECK(IsLocked());
   DCHECK(majority_replicated.IsInitialized());
   if (PREDICT_FALSE(state_ == kShuttingDown || state_ == kShutDown)) {
@@ -765,6 +763,7 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_repli
     *committed_op_id_changed = VERIFY_RESULT(AdvanceCommittedOpIdUnlocked(
         yb::OpId::FromPB(majority_replicated), CouldStop::kFalse));
     last_committed_op_id_.ToPB(committed_op_id);
+    *last_applied_op_id = GetLastAppliedOpIdUnlocked();
     return Status::OK();
   }
 
@@ -776,6 +775,7 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_repli
     *committed_op_id_changed = VERIFY_RESULT(AdvanceCommittedOpIdUnlocked(
         yb::OpId::FromPB(majority_replicated), CouldStop::kFalse));
     last_committed_op_id_.ToPB(committed_op_id);
+    *last_applied_op_id = GetLastAppliedOpIdUnlocked();
     LOG_WITH_PREFIX(INFO)
         << "Advanced the committed_op_id across terms."
         << " Last committed operation was: " << previous
@@ -784,6 +784,7 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_repli
   }
 
   last_committed_op_id_.ToPB(committed_op_id);
+  *last_applied_op_id = GetLastAppliedOpIdUnlocked();
   YB_LOG_EVERY_N_SECS(WARNING, 1) << LogPrefix()
           << "Can't advance the committed index across term boundaries"
           << " until operations from the current term are replicated."
@@ -931,7 +932,7 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
   DCHECK(old_config.has_opid_index());
   DCHECK(!new_config.has_opid_index());
 
-  const OpId& current_id = round->id();
+  const OpIdPB& current_id = round->id();
 
   if (PREDICT_FALSE(FLAGS_inject_delay_commit_pre_voter_to_voter_secs)) {
     bool is_transit_to_voter =
@@ -1000,7 +1001,7 @@ bool ReplicaState::AreCommittedAndCurrentTermsSameUnlocked() const {
   return true;
 }
 
-void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpId& op_id) {
+void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpIdPB& op_id) {
   DCHECK(IsLocked());
   auto* trace = Trace::CurrentTrace();
   DCHECK(last_received_op_id_.term <= op_id.term() && last_received_op_id_.index <= op_id.index())
@@ -1024,19 +1025,18 @@ const yb::OpId& ReplicaState::GetLastReceivedOpIdCurLeaderUnlocked() const {
   return last_received_op_id_current_leader_;
 }
 
-OpId ReplicaState::GetLastPendingOperationOpIdUnlocked() const {
+OpIdPB ReplicaState::GetLastPendingOperationOpIdUnlocked() const {
   DCHECK(IsLocked());
   return pending_operations_.empty()
       ? MinimumOpId() : pending_operations_.back()->id();
 }
 
-void ReplicaState::NewIdUnlocked(OpId* id) {
+yb::OpId ReplicaState::NewIdUnlocked() {
   DCHECK(IsLocked());
-  id->set_term(GetCurrentTermUnlocked());
-  id->set_index(next_index_++);
+  return yb::OpId(GetCurrentTermUnlocked(), next_index_++);
 }
 
-void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
+void ReplicaState::CancelPendingOperation(const OpIdPB& id, bool should_exist) {
   yb::OpId previous(id.term(), id.index() - 1);
   DCHECK(IsLocked());
   CHECK_EQ(GetCurrentTermUnlocked(), id.term());

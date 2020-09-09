@@ -110,6 +110,11 @@
       linux_packages: "{{ linux_packages + redhat_packages }}"
     when: install_dev_packages and ansible_os_family == "RedHat"
 
+  - name: Set Azure packages to Install
+    set_fact:
+      linux_packages: "{{ linux_packages + azure_packages }}"
+    when: cloud_type == "azu"
+
   - block:
     - name: Find all yum repos
       find:

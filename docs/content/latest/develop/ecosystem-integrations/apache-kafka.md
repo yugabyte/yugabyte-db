@@ -43,8 +43,8 @@ Download from the [Apache Kafka downloads page](https://kafka.apache.org/downloa
 
 ```sh
 $ mkdir -p ~/yb-kafka && cd ~/yb-kafka
-$ wget http://apache.cs.utah.edu/kafka/2.0.0/kafka_2.11-2.0.0.tgz
-$ tar xvfz kafka_2.11-2.0.0.tgz && cd kafka_2.11-2.0.0
+$ wget http://apache.cs.utah.edu/kafka/2.0.0/kafka_2.12-2.5.0.tgz
+$ tar xvfz kafka_2.12-2.5.0.tgz && cd kafka_2.12-2.5.0
 ```
 
 ## 3. Install the Kafka Sink Connector for YugabyteDB
@@ -57,25 +57,25 @@ $ git clone https://github.com/yugabyte/yb-kafka-connector.git
 $ cd yb-kafka-connector/
 ```
 
-Build the repo to get the connector jar.
+Build the repository to get the connector JAR file.
 
 ```sh
 $ mvn clean install -DskipTests
 ```
 
-The connector jar `yb-kafka-connnector-1.0.0.jar` is now placed in the `./target` directory. Copy this jar to the libs directory in Kafka Home.
+The connector jar `yb-kafka-connnector-1.0.0.jar` is now placed in the `./target` directory. Copy this JAR file to the `libs` directory in Kafka Home.
 
 ```sh
-$ cp ./target/yb-kafka-connnector-1.0.0.jar ~/yb-kafka/kafka_2.11-2.0.0/libs/
+$ cp ./target/yb-kafka-connnector-1.0.0.jar ~/yb-kafka/kafka_2.12-2.5.0/libs/
 ```
 
-Go to the Kafka libs directory and get the additional jars that the connector depends on (including the driver for the YCQL API)
+Go to the Kafka `libs` directory and get the additional required JAR files that the connector depends on (including the driver for the YCQL API)
 
 ```sh
-$ cd ~/yb-kafka/kafka_2.11-2.0.0/libs/
-$ wget http://central.maven.org/maven2/io/netty/netty-all/4.1.25.Final/netty-all-4.1.25.Final.jar
-$ wget http://central.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.2.0-yb-18/cassandra-driver-core-3.2.0-yb-18.jar
-$ wget http://central.maven.org/maven2/com/codahale/metrics/metrics-core/3.0.1/metrics-core-3.0.1.jar
+$ cd ~/yb-kafka/kafka_2.12-2.5.0/libs/
+$ wget https://repo1.maven.org/maven2/io/netty/netty-all/4.1.51.Final/netty-all-4.1.51.Final.jar
+$ wget https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.8.0-yb-5/cassandra-driver-core-3.8.0-yb-5.jar
+$ wget https://repo1.maven.org/maven2/io/dropwizard/metrics/metrics-core/4.1.11/metrics-core-4.1.11.jar
 ```
 
 ## 4. Start ZooKeeper and Kafka
@@ -83,7 +83,7 @@ $ wget http://central.maven.org/maven2/com/codahale/metrics/metrics-core/3.0.1/m
 Now you can start ZooKeeper and Kafka as shown below.
 
 ```sh
-$ cd ~/yb-kafka/kafka_2.11-2.0.0
+$ cd ~/yb-kafka/kafka_2.12-2.5.0
 ```
 
 ```sh
@@ -133,7 +133,7 @@ yugabyte.cql.tablename=test_table
 We can now produce some events into Kafka using the `kafka-console-producer.sh` utility that ships with Kafka.
 
 ```sh
-$ ~/yb-kafka/kafka_2.11-2.0.0/bin/kafka-console-producer.sh
+$ ~/yb-kafka/kafka_2.12-2.5.0/bin/kafka-console-producer.sh
     --broker-list localhost:9092 \
     --topic test_topic
 ```

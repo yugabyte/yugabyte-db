@@ -61,6 +61,7 @@
 #include "yb/rocksdb/db/memtable.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/strand.h"
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/tablet.h"
@@ -132,7 +133,6 @@ using consensus::ConsensusOptions;
 using consensus::ConsensusRound;
 using consensus::StateChangeContext;
 using consensus::StateChangeReason;
-using consensus::OpId;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
 using consensus::RaftConsensus;
@@ -154,7 +154,8 @@ TabletPeer::TabletPeer(
     const std::string& permanent_uuid,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     MetricRegistry* metric_registry,
-    TabletSplitter* tablet_splitter)
+    TabletSplitter* tablet_splitter,
+    const std::shared_future<client::YBClient*>& client_future)
     : meta_(meta),
       tablet_id_(meta->raft_group_id()),
       local_peer_pb_(local_peer_pb),
@@ -167,7 +168,8 @@ TabletPeer::TabletPeer(
       permanent_uuid_(permanent_uuid),
       preparing_operations_counter_(operation_tracker_.LogPrefix()),
       metric_registry_(metric_registry),
-      tablet_splitter_(tablet_splitter) {}
+      tablet_splitter_(tablet_splitter),
+      client_future_(client_future) {}
 
 TabletPeer::~TabletPeer() {
   std::lock_guard<simple_spinlock> lock(lock_);
@@ -178,7 +180,6 @@ TabletPeer::~TabletPeer() {
 
 Status TabletPeer::InitTabletPeer(
     const TabletPtr& tablet,
-    const std::shared_future<client::YBClient*>& client_future,
     const std::shared_ptr<MemTracker>& server_mem_tracker,
     Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
@@ -203,12 +204,12 @@ Status TabletPeer::InitTabletPeer(
           IllegalState, "Invalid tablet state for init: $0", RaftGroupStatePB_Name(state));
     }
     tablet_ = tablet;
-    client_future_ = client_future;
     proxy_cache_ = proxy_cache;
     log_ = log;
     // "Publish" the log pointer so it can be retrieved using the log() accessor.
     log_atomic_ = log.get();
     service_thread_pool_ = &messenger->ThreadPool();
+    strand_.reset(new rpc::Strand(&messenger->ThreadPool()));
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto index = log->GetLatestEntryOpId().index;
@@ -658,6 +659,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   DCHECK(status_listener_.get() != nullptr);
   const auto disk_size_info = GetOnDiskSizeInfo();
   status_pb_out->set_tablet_id(status_listener_->tablet_id());
+  status_pb_out->set_namespace_name(status_listener_->namespace_name());
   status_pb_out->set_table_name(status_listener_->table_name());
   status_pb_out->set_table_id(status_listener_->table_id());
   status_pb_out->set_last_status(status_listener_->last_status());
@@ -1207,14 +1209,24 @@ Status TabletPeer::UpdateState(RaftGroupStatePB expected, RaftGroupStatePB new_s
   return Status::OK();
 }
 
-bool TabletPeer::Enqueue(rpc::ThreadPoolTask* task) {
+void TabletPeer::Enqueue(rpc::ThreadPoolTask* task) {
   rpc::ThreadPool* thread_pool = service_thread_pool_.load(std::memory_order_acquire);
   if (!thread_pool) {
     task->Done(STATUS(Aborted, "Thread pool not ready"));
-    return false;
+    return;
   }
 
-  return thread_pool->Enqueue(task);
+  thread_pool->Enqueue(task);
+}
+
+void TabletPeer::StrandEnqueue(rpc::StrandTask* task) {
+  rpc::Strand* strand = strand_.get();
+  if (!strand) {
+    task->Done(STATUS(Aborted, "Thread pool not ready"));
+    return;
+  }
+
+  strand->Enqueue(task);
 }
 
 }  // namespace tablet

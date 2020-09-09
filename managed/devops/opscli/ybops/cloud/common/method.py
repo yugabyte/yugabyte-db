@@ -126,6 +126,8 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--instance_tags",
                                  required=False,
                                  help="Tags for instances being created.")
+        self.parser.add_argument("--vpcId", required=False,
+                                 help="name of the virtual network associated with the subnet")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -352,6 +354,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--local_package_path",
                                  required=False,
                                  help="Path to local directory with the prometheus tarball.")
+        self.parser.add_argument("--node_exporter_port", type=int, default=9300,
+                                 help="The port for node_exporter to bind to")
+        self.parser.add_argument("--install_node_exporter", default=True)
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -372,6 +377,10 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"local_package_path": args.local_package_path})
         if args.air_gap:
             self.extra_vars.update({"air_gap": args.air_gap})
+        if args.node_exporter_port:
+            self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
+        if args.install_node_exporter:
+            self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
@@ -449,6 +458,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--gflags_to_remove', default=None)
         self.parser.add_argument('--master_addresses_for_tserver')
         self.parser.add_argument('--master_addresses_for_master')
+        self.parser.add_argument('--server_broadcast_addresses')
         self.parser.add_argument('--rootCA_cert')
         self.parser.add_argument('--rootCA_key')
         self.parser.add_argument('--client_key')
@@ -498,6 +508,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
             if args.master_addresses_for_master is not None:
                 self.extra_vars["master_addresses_for_master"] = args.master_addresses_for_master
+
+            if args.server_broadcast_addresses is not None:
+                self.extra_vars["server_broadcast_addresses"] = args.server_broadcast_addresses
 
             if args.yb_process_type:
                 self.extra_vars["yb_process_type"] = args.yb_process_type.lower()

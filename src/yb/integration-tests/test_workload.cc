@@ -357,6 +357,9 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
     if (inserting_one_row && inserted <= 0) {
       pathological_one_row_counter_ = 0;
     }
+    if (PREDICT_FALSE(options.write_interval_millis > 0)) {
+      SleepFor(MonoDelta::FromMilliseconds(options.write_interval_millis));
+    }
   }
 }
 

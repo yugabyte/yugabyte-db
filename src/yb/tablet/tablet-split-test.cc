@@ -19,6 +19,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb_debug.h"
 
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"

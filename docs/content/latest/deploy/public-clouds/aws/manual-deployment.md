@@ -55,7 +55,7 @@ Now that the six nodes have been prepared, the yb-master process will be run on 
 
 These install steps are written in a way that assumes that you will run the install steps from another node from which you can access the above six VMs over `ssh`.
 
-These are some handy environment variables you can set on the node from where you are planning to do the install of the software on the six nodes.
+These are some handy environment variables you can set on the node from which you are planning to do the install of the software on the six nodes.
 
 ```sh
 # Suppose these are the IP addresses of your 6 machines
@@ -65,7 +65,7 @@ export AZ2_NODES="<ip2> <ip2> ..."
 export AZ3_NODES="<ip1> <ip2> ..."
 
 # Version of YugabyteDB you plan to install.
-export YB_VERSION=2.1.8.2
+export YB_VERSION=2.3.0.0
 
 # Comma separated list of directories available for YB on each node
 # In this example, it is just 1. But if you have two then the RHS
@@ -143,7 +143,7 @@ Notice that the 370G partition is on `nvme1n1`, but its MOUNTPOINT column is emp
 
 #### Create file system
 
-Create xfs file system on those devices. The filesystem on the drives do not have to be XFS. It could be ext4 also, for instance. But you have primarily tested with xfs.
+Create xfs file system on those devices. The filesystem on the drives do not have to be XFS. It could be ext4 also, for instance. But we have primarily tested with xfs.
 
 You can run this command on each node OR use the sample loop below.
 

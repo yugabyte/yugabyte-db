@@ -94,9 +94,9 @@ class ClusterAdminClient {
   // Creates an admin client for host/port combination e.g.,
   // "localhost" or "127.0.0.1:7050" with the given timeout.
   // If certs_dir is non-empty, caller will init the yb_client_.
-  ClusterAdminClient(std::string addrs, int64_t timeout_millis);
+  ClusterAdminClient(std::string addrs, MonoDelta timeout);
 
-  ClusterAdminClient(const HostPort& init_master_addr, int64_t timeout_millis);
+  ClusterAdminClient(const HostPort& init_master_addr, MonoDelta timeout);
 
   virtual ~ClusterAdminClient();
 
@@ -177,17 +177,21 @@ class ClusterAdminClient {
 
   CHECKED_STATUS ListLeaderCounts(const client::YBTableName& table_name);
 
+  Result<unordered_map<string, int>> GetLeaderCounts(const client::YBTableName& table_name);
+
   CHECKED_STATUS SetupRedisTable();
 
   CHECKED_STATUS DropRedisTable();
 
-  CHECKED_STATUS FlushTable(const client::YBTableName& table_name,
-                            int timeout_secs,
-                            bool is_compaction);
+  CHECKED_STATUS FlushTables(const std::vector<client::YBTableName>& table_names,
+                             bool add_indexes,
+                             int timeout_secs,
+                             bool is_compaction);
 
-  CHECKED_STATUS FlushTableById(const TableId &table_id,
-                                int timeout_secs,
-                                bool is_compaction);
+  CHECKED_STATUS FlushTablesById(const std::vector<TableId>& table_id,
+                                 bool add_indexes,
+                                 int timeout_secs,
+                                 bool is_compaction);
 
   CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos,
                                      int replication_factor,
@@ -224,6 +228,8 @@ class ClusterAdminClient {
   Result<TableNameResolver> BuildTableNameResolver();
 
   Result<std::string> GetMasterLeaderUuid();
+
+  CHECKED_STATUS GetYsqlCatalogVersion();
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -318,7 +324,9 @@ static constexpr const char* kColumnSep = " \t";
 
 std::string RightPadToUuidWidth(const std::string &s);
 
-Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name);
+Result<TypedNamespaceName> ParseNamespaceName(
+    const std::string& full_namespace_name,
+    const YQLDatabase default_if_no_prefix = YQL_DATABASE_CQL);
 
 }  // namespace tools
 }  // namespace yb
