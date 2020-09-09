@@ -541,6 +541,12 @@ For details on how online index backfill works, see the [Online Index Backfill](
 
 Default: `true`
 
+##### --ycql_require_drop_privs_for_truncate
+
+Set this flag to `true` to reject `TRUNCATE` statements unless allowed by permissions for `DROP TABLE` statement.
+
+Default: `false`
+
 ---
 
 ### YEDIS flags

@@ -183,6 +183,16 @@ A message displays that the Yugabyte Platform release and the namespace is delet
 
 ```
 release "yw-test" uninstalled
-04:12 $ kubectl delete namespace yw-test
+```
+
+Run the following command to remove the namespace:
+
+```sh
+$ kubectl delete namespace yw-test
+```
+
+You should see the following message:
+
+```
 namespace "yw-test" deleted
 ```
