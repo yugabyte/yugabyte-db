@@ -3053,7 +3053,7 @@ CopyFrom(CopyState cstate)
 	 * Delete all context allocated in local context
 	 * including itself and its descendents.
 	 */
-	if (isBatchTxnCopy)
+	if (shouldResetMemoryPerRow)
 	{
 		MemoryContextDelete(row_context);
 	}
