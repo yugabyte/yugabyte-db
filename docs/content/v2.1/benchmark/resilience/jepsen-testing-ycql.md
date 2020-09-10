@@ -4,6 +4,7 @@ headerTitle: Jepsen testing
 linkTitle: Jepsen testing
 description: Learn the results from Jepsen testing on YCQL.
 image: /images/section_icons/explore/high_performance.png
+block_indexing: true
 menu:
   v2.1:
     identifier: jepsen-testing-2-ycql

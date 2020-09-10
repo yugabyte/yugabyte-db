@@ -3,6 +3,7 @@ title: dp-results
 linkTitle: dp-results
 headerTitle: Output from running do_ntile(), do_percent_rank(), and do_cume_dist() on t4.dp_score
 description: dp-results
+block_indexing: true
 menu:
   v2.1:
     identifier: dp-results

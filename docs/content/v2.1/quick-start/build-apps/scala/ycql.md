@@ -3,6 +3,7 @@ title: Build a Scala application that uses YCQL
 headerTitle: Build a Scala application
 linkTitle: Scala
 description: Build a Scala application that uses YCQL.
+block_indexing: true
 menu:
   v2.1:
     parent: build-apps

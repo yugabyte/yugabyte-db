@@ -3,6 +3,7 @@ title: ysqlsh - YSQL shell for YugabyteDB
 headerTitle: ysqlsh
 linkTitle: ysqlsh
 description: Use the YSQL shell (ysqlsh) to interact with YugabyteDB.
+block_indexing: true
 menu:
   v2.1:
     identifier: ysqlsh

@@ -36,7 +36,7 @@ class RemoveIntentsTask : public rpc::StrandTask {
   virtual ~RemoveIntentsTask() = default;
 
  private:
-  const std::string& LogPrefix() const;
+  std::string LogPrefix() const;
 
   TransactionIntentApplier& applier_;
   TransactionParticipantContext& participant_context_;

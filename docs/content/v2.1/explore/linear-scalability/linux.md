@@ -3,6 +3,7 @@ title: Explore linear scalability on Linux
 headerTitle: Linear scalability
 linkTitle: Linear scalability
 description: Learn how to scale a local three-node YugabyteDB cluster (on Linux) while a workload is running.
+block_indexing: true
 menu:
   v2.1:
     identifier: linear-scalability-2-linux

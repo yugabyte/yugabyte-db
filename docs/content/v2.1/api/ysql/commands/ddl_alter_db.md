@@ -3,6 +3,7 @@ title: ALTER DATABASE statement [YSQL]
 headerTitle: ALTER DATABASE
 linkTitle: ALTER DATABASE
 description: Use the ALTER DATABASE statement to redefine the attributes of a database.
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-alter-db

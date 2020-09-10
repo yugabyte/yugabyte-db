@@ -61,10 +61,10 @@ public class TestIndexBackfill extends BasePgSQLTest {
     CountDownLatch insertDone = new CountDownLatch(1);
     CountDownLatch backfillThreadStarted = new CountDownLatch(1);
     AtomicInteger numInserts = new AtomicInteger();
-    ConnectionBuilder cb = newConnectionBuilder();
+    ConnectionBuilder connBldr = getConnectionBuilder();
 
     futures.add(es.submit(() -> {
-      try (Connection conn = cb.connect();
+      try (Connection conn = connBldr.connect();
           Statement stmt = conn.createStatement()) {
         backfillThreadStarted.countDown();
         insertDone.await(AWAIT_TIMEOUT_SEC, TimeUnit.SECONDS);
@@ -77,7 +77,7 @@ public class TestIndexBackfill extends BasePgSQLTest {
     }));
 
     futures.add(es.submit(() -> {
-      try (Connection conn = cb.connect();
+      try (Connection conn = connBldr.connect();
           Statement stmt = conn.createStatement()) {
         backfillThreadStarted.await(AWAIT_TIMEOUT_SEC, TimeUnit.SECONDS);
         // Perform a chunk of N inserts until an index is fully constructed
@@ -131,8 +131,8 @@ public class TestIndexBackfill extends BasePgSQLTest {
 
     // Make sure that index contains everything
     String countSql = "SELECT COUNT(*) FROM " + tableName + " WHERE v >= 0";
-    assertTrue(doesUseIndex(countSql, indexName));
     try (Statement stmt = connection.createStatement()) {
+      assertTrue(isIndexOnlyScan(stmt, countSql, indexName));
       assertQuery(stmt, countSql, new Row(numInserts.get()));
     }
   }

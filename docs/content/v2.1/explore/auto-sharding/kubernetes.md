@@ -3,6 +3,7 @@ title: Explore auto sharding on Kubernetes
 headerTitle: Auto sharding
 linkTitle: Auto sharding
 description: Follow this tutorial (on Kubernetes) to learn how YugabyteDB automatically splits tables into shards (tablets).
+block_indexing: true
 menu:
   v2.1:
     identifier: auto-sharding-4-kubernetes

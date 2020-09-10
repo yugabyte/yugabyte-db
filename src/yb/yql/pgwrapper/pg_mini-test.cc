@@ -35,6 +35,8 @@ DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
@@ -70,6 +72,19 @@ class PgMiniTest : public PgMiniTestBase {
   void TestRowLockConflictMatrix();
 
   void TestForeignKey(IsolationLevel isolation);
+
+  void TestBigInsert(bool restart);
+
+  void FlushAndCompactTablets() {
+    FLAGS_timestamp_history_retention_interval_sec = 0;
+    FLAGS_history_cutoff_propagation_interval_ms = 1;
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+    const auto compaction_start = MonoTime::Now();
+    ASSERT_OK(cluster_->CompactTablets());
+    const auto compaction_finish = MonoTime::Now();
+    const double compaction_elapsed_time_sec = (compaction_finish - compaction_start).ToSeconds();
+    LOG(INFO) << "Compaction duration: " << compaction_elapsed_time_sec << " s";
+  }
 };
 
 class PgMiniSingleTServerTest : public PgMiniTest {
@@ -939,14 +954,7 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
     }
 
     if (compact) {
-      FLAGS_timestamp_history_retention_interval_sec = 0;
-      FLAGS_history_cutoff_propagation_interval_ms = 1;
-      ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
-      const auto compaction_start = MonoTime::Now();
-      ASSERT_OK(cluster_->CompactTablets());
-      const auto compaction_finish = MonoTime::Now();
-      const double compaction_elapsed_time_sec = (compaction_finish - compaction_start).ToSeconds();
-      LOG(INFO) << "Compaction duration: " << compaction_elapsed_time_sec << " s";
+      FlushAndCompactTablets();
     }
 
     LOG(INFO) << "Perform read";
@@ -1193,6 +1201,78 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CreateDatabase)) {
   const std::string kDatabaseName = "testdb";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   ASSERT_OK(cluster_->RestartSync());
+}
+
+void PgMiniTest::TestBigInsert(bool restart) {
+  constexpr int64_t kNumRows = RegularBuildVsSanitizers(100000, 10000);
+  FLAGS_txn_max_apply_batch_records = kNumRows / 10;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (0)"));
+
+  TestThreadHolder thread_holder;
+
+  std::atomic<int> post_insert_reads{0};
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &post_insert_reads] {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!stop.load(std::memory_order_acquire)) {
+      auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT SUM(a) FROM t"));
+
+      // We should see zero or full sum only.
+      if (res) {
+        ASSERT_EQ(res, kNumRows * (kNumRows + 1) / 2);
+        ++post_insert_reads;
+      }
+    }
+  });
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT generate_series(1, $0)", kNumRows));
+
+  if (restart) {
+    LOG(INFO) << "Restart cluster";
+    ASSERT_OK(cluster_->RestartSync());
+  }
+
+  ASSERT_OK(WaitFor([this] {
+    auto intents_count = CountIntents(cluster_.get());
+    LOG(INFO) << "Intents count: " << intents_count;
+
+    return intents_count == 0;
+  }, 60s * kTimeMultiplier, "Intents cleanup", 200ms));
+
+  thread_holder.Stop();
+
+  ASSERT_GT(post_insert_reads.load(std::memory_order_acquire), 0);
+
+  FlushAndCompactTablets();
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto& peer : peers) {
+    auto db = peer->tablet()->TEST_db();
+    if (!db) {
+      continue;
+    }
+    rocksdb::ReadOptions read_opts;
+    read_opts.query_id = rocksdb::kDefaultQueryId;
+    std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
+
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      Slice key = iter->key();
+      ASSERT_FALSE(key.TryConsumeByte(docdb::ValueTypeAsChar::kTransactionApplyState))
+          << "Key: " << iter->key().ToDebugString() << ", value: " << iter->value().ToDebugString();
+    }
+  }
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsert)) {
+  TestBigInsert(/* restart= */ false);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithRestart)) {
+  FLAGS_apply_intents_task_injected_delay_ms = 200;
+  TestBigInsert(/* restart= */ true);
 }
 
 } // namespace pgwrapper

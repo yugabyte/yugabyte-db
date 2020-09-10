@@ -6,6 +6,7 @@ image: /images/section_icons/quick_start/create_cluster.png
 headcontent: Diagnostics and solutions for typical YugabyteDB cluster issues.
 aliases:
   - /troubleshoot/cluster/
+block_indexing: true
 menu:
   stable:
     identifier: troubleshoot-cluster

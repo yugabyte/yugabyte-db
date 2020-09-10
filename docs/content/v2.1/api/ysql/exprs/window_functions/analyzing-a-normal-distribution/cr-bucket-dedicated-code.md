@@ -3,6 +3,7 @@ title: cr_bucket_dedicated_code.sql
 linkTitle: cr_bucket_dedicated_code.sql
 headerTitle: cr_bucket_dedicated_code.sql
 description: Create the bucket() function using dedicated original code.
+block_indexing: true
 menu:
   v2.1:
     identifier: cr-bucket-dedicated-code

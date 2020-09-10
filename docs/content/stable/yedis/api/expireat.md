@@ -2,6 +2,7 @@
 title: EXPIREAT
 linkTitle: EXPIREAT
 description: EXPIREAT
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

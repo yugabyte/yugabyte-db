@@ -3,6 +3,7 @@ title: ALTER POLICY statement [YSQL]
 headerTitle: ALTER POLICY
 linkTitle: ALTER POLICY
 description: Use the ALTER POLICY statement to change the definition of an existing row level security policy.
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-alter-policy

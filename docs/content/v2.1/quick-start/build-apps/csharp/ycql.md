@@ -3,6 +3,7 @@ title: Build a C# application that uses YCQL
 headerTitle: Build a C# application
 linkTitle: C#
 description: Build a C# application that uses YCQL.
+block_indexing: true
 menu:
   v2.1:
     identifier: build-apps-csharp-2-ycql

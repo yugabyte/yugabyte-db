@@ -46,27 +46,15 @@ showAsideToc: true
   </li>
 </ul>
 
-## Maven
-
-To build your Java application with the [PostgreSQL JDBC driver](https://jdbc.postgresql.org/), add the following Maven dependency to your application:
-
-```mvn
-<dependency>
-  <groupId>org.postgresql</groupId>
-  <artifactId>postgresql</artifactId>
-  <version>4.2.2.14</version>
-</dependency>
-```
-
-## Create the sample Java application
-
-### Prerequisites
+## Prerequisites
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in the [Quick Start guide](../../../../quick-start/).
+- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
+
+## Create the sample Java application
 
 ### Create the project's POM
 
@@ -141,50 +129,36 @@ Copy the following contents into the file `src/main/java/com/yugabyte/sample/app
 
 ```java
 package com.yugabyte.sample.apps;
-import java.net.InetSocketAddress;
-import java.util.List;
-import com.datastax.oss.driver.api.core.CqlSession;
-import com.datastax.oss.driver.api.core.cql.ResultSet;
-import com.datastax.oss.driver.api.core.cql.Row;
-public class YBCqlHelloWorld {
-    public static void main(String[] args) {
-        try {
-            // Create a Cassandra client.
-            CqlSession session = CqlSession
-                .builder()
-                .addContactPoint(new InetSocketAddress("127.0.0.1", 9042))
-                .withLocalDatacenter("datacenter1")
-                .build();
-            // Create keyspace 'ybdemo' if it does not exist.
-            String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS ybdemo;";
-            session.execute(createKeyspace);
-            System.out.println("Created keyspace ybdemo");
-            // Create table 'employee' if it does not exist.
-            String createTable = "CREATE TABLE IF NOT EXISTS ybdemo.employee (id int PRIMARY KEY, " + "name varchar, " +
-                "age int, " + "language varchar);";
-            session.execute(createTable);
-            System.out.println("Created table employee");
-            // Insert a row.
-            String insert = "INSERT INTO ybdemo.employee (id, name, age, language)" +
-                " VALUES (1, 'John', 35, 'Java');";
-            session.execute(insert);
-            System.out.println("Inserted data: " + insert);
-            // Query the row and print out the result.
-            String select = "SELECT name, age, language FROM ybdemo.employee WHERE id = 1;";
-            ResultSet selectResult = session.execute(select);
-            List < Row > rows = selectResult.all();
-            String name = rows.get(0).getString(0);
-            int age = rows.get(0).getInt(1);
-            String language = rows.get(0).getString(2);
-            System.out.println("Query returned " + rows.size() + " row: " + "name=" + name + ", age=" + age +
-                ", language: " + language);
-            // Close the client.
-            session.close();
-        } catch (Exception e) {
-            System.err.println("Error: " + e.getMessage());
-        }
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+public class YBSqlHelloWorld {
+
+  public static void main(String[] args) throws ClassNotFoundException, SQLException {
+    Class.forName("org.postgresql.Driver");
+    try (Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/postgres", "postgres", "");
+        Statement stmt = conn.createStatement();) {
+      System.out.println("Connected to the PostgreSQL server successfully.");
+
+      String createTableQuery = "CREATE TABLE IF NOT EXISTS emp(employid int primary key,first_name varchar, last_name varchar) ";
+      stmt.executeUpdate(createTableQuery);
+
+      String insertQuery = "INSERT INTO emp(employid ,first_name, last_name) values (1,'Siddharth','Jamadari') ";
+      stmt.executeUpdate(insertQuery);
+
+      ResultSet rs = stmt.executeQuery("select * from emp");
+      while (rs.next())
+        System.out.println(rs.getInt(1) + "  " + rs.getString(2) + "  " + rs.getString(3));
+    } catch (SQLException e) {
+      System.err.println(e.getMessage());
+
     }
+  }
 }
+
 ```
 
 ### Build the project

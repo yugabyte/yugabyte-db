@@ -397,7 +397,8 @@ class S3BackupStorage(AbstractBackupStorage):
     def _command_list_prefix(self):
         # If 's3cmd get' fails it creates zero-length file, '--force' is needed to
         # override this empty file on the next retry-step.
-        return ['s3cmd', '--force', '--config=%s' % self.options.cloud_cfg_file_path]
+        return ['s3cmd', '--force', '--no-check-certificate', '--config=%s'
+                % self.options.cloud_cfg_file_path]
 
     def upload_file_cmd(self, src, dest):
         cmd_list = ["put", src, dest]
@@ -755,7 +756,7 @@ class YBBackup:
     def is_ysql_keyspace(self):
         return self.args.keyspace and keyspace_type(self.args.keyspace[0]) == 'ysql'
 
-    def needs_change_user():
+    def needs_change_user(self):
         return self.args.ssh_user != self.args.remote_user
 
     def get_leader_master_ip(self):
@@ -1270,19 +1271,24 @@ class YBBackup:
         tserver_ips = sorted(tablets_by_leader_ip.keys())
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
 
-        parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
-        while len(tserver_ips) > 0:
-            for tserver_ip in list(tserver_ips):
-                data_dirs = data_dir_by_tserver[tserver_ip]
-                if len(data_dirs) > 0:
-                    data_dir = data_dirs[0]
-                    parallel_find_snapshots.add_args(data_dir, snapshot_id, tserver_ip)
-                    data_dirs.remove(data_dir)
+        for tserver_ip in tserver_ips:
+            data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
 
-                    if len(data_dirs) == 0:
-                        tserver_ips.remove(tserver_ip)
-                else:
-                    tserver_ips.remove(tserver_ip)
+        parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
+        tservers_processed = []
+        while len(tserver_ips) > len(tservers_processed):
+            for tserver_ip in list(tserver_ips):
+                if tserver_ip not in tservers_processed:
+                    data_dirs = data_dir_by_tserver[tserver_ip]
+                    if len(data_dirs) > 0:
+                        data_dir = data_dirs[0]
+                        parallel_find_snapshots.add_args(data_dir, snapshot_id, tserver_ip)
+                        data_dirs.remove(data_dir)
+
+                        if len(data_dirs) == 0:
+                            tservers_processed += [tserver_ip]
+                    else:
+                        tservers_processed += [tserver_ip]
 
         find_snapshot_dir_results = parallel_find_snapshots.run(pool)
 
@@ -1472,49 +1478,52 @@ class YBBackup:
         for tserver_ip in tserver_ip_to_tablet_id_to_snapshot_dirs:
             tserver_ip_to_tablet_ids_with_data_dirs.setdefault(tserver_ip, set())
 
-        while len(tserver_ip_to_tablet_id_to_snapshot_dirs) > 0:
+        tservers_processed = []
+        while len(tserver_ip_to_tablet_id_to_snapshot_dirs) > len(tservers_processed):
             for tserver_ip in list(tserver_ip_to_tablet_id_to_snapshot_dirs):
-                tablet_id_to_snapshot_dirs = tserver_ip_to_tablet_id_to_snapshot_dirs[tserver_ip]
-                tablet_ids_with_data_dirs = tserver_ip_to_tablet_ids_with_data_dirs[tserver_ip]
-                if len(tablet_id_to_snapshot_dirs) > 0:
-                    tablet_id = list(tablet_id_to_snapshot_dirs)[0]
-                    snapshot_dirs = tablet_id_to_snapshot_dirs[tablet_id]
+                if tserver_ip not in tservers_processed:
+                    tablet_id_to_snapshot_dirs =\
+                        tserver_ip_to_tablet_id_to_snapshot_dirs[tserver_ip]
+                    tablet_ids_with_data_dirs = tserver_ip_to_tablet_ids_with_data_dirs[tserver_ip]
+                    if len(tablet_id_to_snapshot_dirs) > 0:
+                        tablet_id = list(tablet_id_to_snapshot_dirs)[0]
+                        snapshot_dirs = tablet_id_to_snapshot_dirs[tablet_id]
 
-                    if len(snapshot_dirs) > 1:
-                        raise BackupException(
-                            ('Found multiple snapshot directories on tserver {} for snapshot id '
-                             '{}: {}').format(tserver_ip, snapshot_id, snapshot_dirs))
+                        if len(snapshot_dirs) > 1:
+                            raise BackupException(
+                                ('Found multiple snapshot directories on tserver {} for snapshot '
+                                 'id {}: {}').format(tserver_ip, snapshot_id, snapshot_dirs))
 
-                    assert len(snapshot_dirs) == 1
-                    snapshot_dir = list(snapshot_dirs)[0] + '/'
-                    parallel_commands.start_command()
+                        assert len(snapshot_dirs) == 1
+                        snapshot_dir = list(snapshot_dirs)[0] + '/'
+                        parallel_commands.start_command()
 
-                    if upload:
-                        self.prepare_upload_command(
-                            parallel_commands, snapshot_filepath, tablet_id, tserver_ip,
-                            snapshot_dir)
+                        if upload:
+                            self.prepare_upload_command(
+                                parallel_commands, snapshot_filepath, tablet_id, tserver_ip,
+                                snapshot_dir)
+                        else:
+                            self.prepare_download_command(
+                                parallel_commands, snapshot_filepath, tablet_id, tserver_ip,
+                                snapshot_dir, snapshot_metadata)
+
+                        tablet_ids_with_data_dirs.add(tablet_id)
+                        tablet_id_to_snapshot_dirs.pop(tablet_id)
+
+                        if len(tablet_id_to_snapshot_dirs) == 0:
+                            tservers_processed += [tserver_ip]
+
+                            if tablet_ids_with_data_dirs != tablets_by_tserver_ip[tserver_ip]:
+                                for possible_tablet_id in tablets_by_tserver_ip[tserver_ip]:
+                                    if possible_tablet_id not in tablet_ids_with_data_dirs:
+                                        logging.error(
+                                            ("No snapshot directory found for tablet id '{}' on "
+                                                "tablet server '{}'.").format(
+                                                    possible_tablet_id, tserver_ip))
+                                raise BackupException("Did not find snapshot directories for some "
+                                                      + "tablets on tablet server " + tserver_ip)
                     else:
-                        self.prepare_download_command(
-                            parallel_commands, snapshot_filepath, tablet_id, tserver_ip,
-                            snapshot_dir, snapshot_metadata)
-
-                    tablet_ids_with_data_dirs.add(tablet_id)
-                    tablet_id_to_snapshot_dirs.pop(tablet_id)
-
-                    if len(tablet_id_to_snapshot_dirs) == 0:
-                        tserver_ip_to_tablet_id_to_snapshot_dirs.pop(tserver_ip)
-
-                        if tablet_ids_with_data_dirs != tablets_by_tserver_ip[tserver_ip]:
-                            for possible_tablet_id in tablets_by_tserver_ip[tserver_ip]:
-                                if possible_tablet_id not in tablet_ids_with_data_dirs:
-                                    logging.error(
-                                        ("No snapshot directory found for tablet id '{}' on "
-                                            "tablet server '{}'.").format(
-                                                possible_tablet_id, tserver_ip))
-                            raise BackupException("Did not find snapshot directories for some "
-                                                  + "tablets on tablet server " + tserver_ip)
-                else:
-                    tserver_ip_to_tablet_id_to_snapshot_dirs.pop(tserver_ip)
+                        tservers_processed += [tserver_ip]
 
     def get_tmp_dir(self):
         if not self.tmp_dir_name:

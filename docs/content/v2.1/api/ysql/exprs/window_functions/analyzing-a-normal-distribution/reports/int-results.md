@@ -3,6 +3,7 @@ title: int-results
 linkTitle: int-results
 headerTitle: Output from running do_ntile(), do_percent_rank(), and do_cume_dist() on t4.int_score
 description: int-results
+block_indexing: true
 menu:
   v2.1:
     identifier: int-results

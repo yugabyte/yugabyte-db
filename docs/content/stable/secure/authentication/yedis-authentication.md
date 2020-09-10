@@ -5,6 +5,7 @@ linkTitle: YEDIS authentication
 description: Identify that your YEDIS users are who they say they are.
 headcontent: Identify that your YEDIS users are who they say they are.
 image: /images/section_icons/secure/authentication.png
+block_indexing: true
 menu:
   stable:
     name: Authentication

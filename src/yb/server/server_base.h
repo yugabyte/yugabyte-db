@@ -130,7 +130,6 @@ class RpcServerBase {
   gscoped_ptr<RpcServer> rpc_server_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
-  bool is_first_run_;
 
   scoped_refptr<Clock> clock_;
 

@@ -3,6 +3,7 @@ title: percent_rank(), cume_dist() and ntile()
 linkTitle: percent_rank(), cume_dist() and ntile()
 headerTitle: percent_rank(), cume_dist() and ntile()
 description: The SQL window functions percent_rank(), cume_dist() and ntile()
+block_indexing: true
 menu:
   v2.1:
     identifier: percent-rank-cume-dist-ntile

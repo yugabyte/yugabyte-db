@@ -3,6 +3,7 @@ title: Use pgAdmin with YugabyteDB YSQL
 headerTitle: pgAdmin
 linkTitle: pgAdmin
 description: Administer and manage YugabyteDB distributed SQL databases using pgAdmin.
+block_indexing: true
 menu:
   v2.1:
     identifier: pgadmin

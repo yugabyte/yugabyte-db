@@ -3,6 +3,7 @@ title: Histogram of the values in t4.dp_score
 linkTitle: Histogram report
 headerTitle: Output from running histogram() on t4.dp_score
 description: Output from running histogram() on t4.dp_score
+block_indexing: true
 menu:
   v2.1:
     identifier: histogram-report

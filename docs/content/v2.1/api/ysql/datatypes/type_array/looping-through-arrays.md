@@ -3,6 +3,7 @@ title: Looping through arrays in PL/pgSQL
 linkTitle: FOREACH loop (PL/pgSQL)
 headerTitle: Looping through arrays in PL/pgSQL
 description: Looping through arrays in PL/pgSQL
+block_indexing: true
 menu:
   v2.1:
     identifier: looping-through-arrays

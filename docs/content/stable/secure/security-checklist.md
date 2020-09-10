@@ -5,6 +5,7 @@ linkTitle: Security checklist
 description: Review security measures for your YugabyteDB installation.
 aliases:
   - /secure/security-checklist/
+block_indexing: true
 menu:
   stable:
     identifier: security-checklist

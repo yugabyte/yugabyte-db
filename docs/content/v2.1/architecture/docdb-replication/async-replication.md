@@ -3,6 +3,7 @@ title: xCluster replication
 headerTitle: xCluster replication
 linkTitle: xCluster replication
 description: Asynchronous replication between multiple YugabyteDB clusters.
+block_indexing: true
 menu:
   v2.1:
     identifier: architecture-docdb-async-replication

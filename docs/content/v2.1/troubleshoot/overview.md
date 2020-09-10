@@ -3,6 +3,7 @@ title: Troubleshooting
 linkTitle: Troubleshooting
 headerTitle: Troubleshooting overview
 description: Troubleshooting overview
+block_indexing: true
 menu:
   v2.1:
     identifier: troubleshooting-overview

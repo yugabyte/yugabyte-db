@@ -3,6 +3,7 @@ title: Configure Yugabyte Platform
 headerTitle: Configure Yugabyte Platform
 linkTitle: 3. Configure Yugabyte Platform
 description: Configure Yugabyte Platform.
+block_indexing: true
 menu:
   v2.1:
     identifier: configure-admin-console

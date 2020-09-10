@@ -3,6 +3,7 @@ title: Build a Java application that uses Spring Boot and YSQL
 headerTitle: Build a Java application
 linkTitle: Java
 description: Build a simple Java e-commerce application that uses Spring Boot and YSQL.
+block_indexing: true
 menu:
   v2.1:
     parent: build-apps

@@ -3,6 +3,7 @@ title: Back up and restore data using Yugabyte Platform
 headerTitle: Back up and restore data
 linkTitle: Back up and restore data
 description: Use Yugabyte Platform to back up and restore data in YCQL tables.
+block_indexing: true
 menu:
   v2.1:
     identifier: back-up-restore-data

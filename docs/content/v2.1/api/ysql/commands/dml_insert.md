@@ -3,6 +3,7 @@ title: INSERT statement [YSQL]
 headerTitle: INSERT
 linkTitle: INSERT
 description: Use the INSERT statement to add one or more rows to the specified table.
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-insert

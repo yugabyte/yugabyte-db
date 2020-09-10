@@ -3,6 +3,7 @@ title: ALTER DEFAULT PRIVILEGES statement [YSQL]
 headerTitle: ALTER DEFAULT PRIVILEGES
 linkTitle: ALTER DEFAULT PRIVILEGES
 description: Use the ALTER DEFAULT PRIVILEGES statement to define the default access privileges.
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-alter-default-privileges

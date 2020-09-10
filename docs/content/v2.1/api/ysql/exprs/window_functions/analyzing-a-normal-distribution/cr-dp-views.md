@@ -3,6 +3,7 @@ title: cr_dp_views.sql
 linkTitle: cr_dp_views.sql
 headerTitle: cr_dp_views.sql
 description: Create a function to compute some basic facts about table t4.
+block_indexing: true
 menu:
   v2.1:
     identifier: cr-dp-views

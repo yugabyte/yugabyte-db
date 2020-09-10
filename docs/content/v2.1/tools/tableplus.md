@@ -3,6 +3,7 @@ title: Use TablePlus with YugabyteDB YSQL and YCQL
 headerTitle: TablePlus
 linkTitle: TablePlus
 description: Learn how to connect TablePlus to YugabyteDB and query using YSQL, YCQL, and YEDIS.
+block_indexing: true
 menu:
   v2.1:
     identifier: tableplus

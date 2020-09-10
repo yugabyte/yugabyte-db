@@ -3,6 +3,7 @@ title: Security checklist
 headerTitle: Security checklist
 linkTitle: Security checklist
 description: Review security measures for your YugabyteDB installation.
+block_indexing: true
 menu:
   v2.1:
     identifier: security-checklist

@@ -3,6 +3,7 @@ title: Explore fault tolerance on Docker
 headerTitle: Fault tolerance
 linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on Docker.
+block_indexing: true
 menu:
   v2.1:
     identifier: fault-tolerance-3-docker

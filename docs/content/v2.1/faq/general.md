@@ -3,6 +3,7 @@ title: FAQs about YugabyteDB
 headerTitle: General FAQ
 linkTitle: General FAQ
 description: Answers to common questions about YugabyteDB.
+block_indexing: true
 menu:
   v2.1:
     identifier: faq-general

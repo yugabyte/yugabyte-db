@@ -132,12 +132,16 @@ static inline void AppendReplicateMessagesToQueue(
   }
 }
 
-OpIdPB MakeOpIdForIndex(int index) {
+OpIdPB MakeOpIdPbForIndex(int index) {
   return MakeOpId(index / kTermDivisor, index);
 }
 
+OpId MakeOpIdForIndex(int index) {
+  return OpId(index / kTermDivisor, index);
+}
+
 std::string OpIdStrForIndex(int index) {
-  return OpIdToString(MakeOpIdForIndex(index));
+  return OpIdToString(MakeOpIdPbForIndex(index));
 }
 
 // Builds a configuration of 'num' voters.
@@ -918,12 +922,20 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
     return majority_replicated_op_id_;
   }
 
+  void WaitForMajorityReplicatedIndex(int index, MonoDelta timeout = MonoDelta(30s)) {
+    ASSERT_OK(WaitFor(
+        [&]() { return IsMajorityReplicated(index); },
+        timeout, Format("waiting for index $0 to be replicated", index)));
+  }
+
  protected:
   void UpdateMajorityReplicated(
-      const MajorityReplicatedData& data, OpIdPB* committed_index) override {
+      const MajorityReplicatedData& data, OpIdPB* committed_index,
+      OpId* last_applied_op_id) override {
     std::lock_guard<simple_spinlock> lock(lock_);
     majority_replicated_op_id_ = data.op_id;
     committed_index->CopyFrom(data.op_id);
+    *last_applied_op_id = OpId::FromPB(data.op_id);
   }
   void NotifyTermChange(int64_t term) override {}
   void NotifyFailedFollower(const std::string& uuid,

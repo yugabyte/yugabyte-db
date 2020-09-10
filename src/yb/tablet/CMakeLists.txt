@@ -39,6 +39,7 @@ message("Added shared library dependency pq: ${PQ_SHARED_LIB}")
 
 set(TABLET_SRCS
   abstract_tablet.cc
+  apply_intents_task.cc
   cleanup_aborts_task.cc
   cleanup_intents_task.cc
   remove_intents_task.cc

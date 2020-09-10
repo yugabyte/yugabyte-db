@@ -3,6 +3,7 @@ title: Build a YugabyteDB application using Python and YEDIS
 headerTitle: Build an application using Python
 linkTitle: Python
 description: Use Python to build a YugabyteDB application that interacts with YEDIS
+block_indexing: true
 menu:
   v2.1:
     identifier: client-drivers-yedis-python

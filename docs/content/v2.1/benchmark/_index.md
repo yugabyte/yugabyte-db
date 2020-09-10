@@ -6,6 +6,7 @@ description: Benchmark YugabyteDB using TPC-C, sysbench, YCSB and more.
 image: /images/section_icons/explore/high_performance.png
 headcontent:
 section: USER GUIDES
+block_indexing: true
 menu:
   v2.1:
     identifier: benchmark

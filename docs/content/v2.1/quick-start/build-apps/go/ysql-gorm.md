@@ -3,6 +3,7 @@ title: Build a Go application that uses GORM and YSQL
 headerTitle: Build a Go application
 linkTitle: Go
 description: Build an Go application that uses GORM and YSQL.
+block_indexing: true
 menu:
   v2.1:
     parent: build-apps

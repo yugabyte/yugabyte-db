@@ -3,6 +3,7 @@ title: Create and edit instance tags using Yugabyte Platform
 headerTitle: Create and edit instance tags
 linkTitle: Create and edit instance tags
 description: Use Yugabyte Platform to create and edit instance tags.
+block_indexing: true
 menu:
   v2.1:
     identifier: create-edit-instance-tags

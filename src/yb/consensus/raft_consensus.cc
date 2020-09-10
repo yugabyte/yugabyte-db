@@ -340,7 +340,7 @@ RaftConsensus::RaftConsensus(
       term_metric_(metric_entity->FindOrCreateGauge(&METRIC_raft_term,
                                                     cmeta->current_term())),
       follower_last_update_time_ms_metric_(
-          metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms, clock_)),
+          metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms)),
       is_raft_leader_metric_(metric_entity->FindOrCreateGauge(&METRIC_is_raft_leader,
                                                               static_cast<int64_t>(0))),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
@@ -951,6 +951,10 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 
   peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
 
+  // Set the timestamp to max uint64_t so that every time this metric is queried, the returned
+  // lag is 0. We will need to restore the timestamp once this peer steps down.
+  follower_last_update_time_ms_metric_->UpdateTimestampInMilliseconds(
+      std::numeric_limits<int64_t>::max());
   is_raft_leader_metric_->set_value(1);
 
   return Status::OK();
@@ -984,6 +988,14 @@ Status RaftConsensus::BecomeReplicaUnlocked(
 
   peer_manager_->Close();
 
+  // TODO: https://github.com/yugabyte/yugabyte-db/issues/5522. Add unit tests for this metric.
+  // We update the follower lag metric timestamp here because it's possible that a leader
+  // that step downs could get partitioned before it receives any replicate message. If we
+  // don't update the timestamp here, and the above scenario happens, the metric will keep the
+  // uint64_t max value, which would make the metric return a 0 lag every time it is queried,
+  // even though that's not the case.
+  follower_last_update_time_ms_metric_->UpdateTimestampInMilliseconds(
+      clock_->Now().GetPhysicalValueMicros() / 1000);
   is_raft_leader_metric_->set_value(0);
 
   return Status::OK();
@@ -1098,7 +1110,8 @@ void RaftConsensus::MajorityReplicatedNumSSTFilesChanged(
 }
 
 void RaftConsensus::UpdateMajorityReplicated(
-    const MajorityReplicatedData& majority_replicated_data, OpIdPB* committed_op_id) {
+    const MajorityReplicatedData& majority_replicated_data, OpIdPB* committed_op_id,
+    OpId* last_applied_op_id) {
   TEST_PAUSE_IF_FLAG(TEST_pause_update_majority_replicated);
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
@@ -1130,7 +1143,8 @@ void RaftConsensus::UpdateMajorityReplicated(
   TRACE("Marking majority replicated up to $0", majority_replicated_data.op_id.ShortDebugString());
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
-      majority_replicated_data.op_id, committed_op_id, &committed_index_changed);
+      majority_replicated_data.op_id, committed_op_id, &committed_index_changed,
+      last_applied_op_id);
   auto leader_state = state_->GetLeaderStateUnlocked();
   if (leader_state.ok() && leader_state.status == LeaderStatus::LEADER_AND_READY) {
     state_->context()->MajorityReplicated();
@@ -1968,6 +1982,7 @@ void RaftConsensus::FillConsensusResponseOKUnlocked(ConsensusResponsePB* respons
   state_->GetLastReceivedOpIdCurLeaderUnlocked().ToPB(
       response->mutable_status()->mutable_last_received_current_leader());
   response->mutable_status()->set_last_committed_idx(state_->GetCommittedOpIdUnlocked().index);
+  state_->GetLastAppliedOpIdUnlocked().ToPB(response->mutable_status()->mutable_last_applied());
 }
 
 void RaftConsensus::FillConsensusResponseError(ConsensusResponsePB* response,
@@ -2677,6 +2692,7 @@ void RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
   peer_manager_->ClosePeersNotInConfig(active_config);
   queue_->SetLeaderMode(state_->GetCommittedOpIdUnlocked().ToPB<OpIdPB>(),
                         state_->GetCurrentTermUnlocked(),
+                        state_->GetLastAppliedOpIdUnlocked(),
                         active_config);
 
   ScopedDnsTracker dns_tracker(update_raft_config_dns_latency_.get());
@@ -2911,6 +2927,15 @@ yb::OpId RaftConsensus::GetLastReceivedOpId() {
 yb::OpId RaftConsensus::GetLastCommittedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetCommittedOpIdUnlocked();
+}
+
+yb::OpId RaftConsensus::GetLastAppliedOpId() {
+  auto lock = state_->LockForRead();
+  return state_->GetLastAppliedOpIdUnlocked();
+}
+
+yb::OpId RaftConsensus::TEST_GetAllAppliedOpId() {
+  return queue_->TEST_GetAllAppliedOpId();
 }
 
 yb::OpId RaftConsensus::GetSplitOpId() {

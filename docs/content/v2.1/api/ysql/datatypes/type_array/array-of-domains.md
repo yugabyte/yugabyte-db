@@ -3,6 +3,7 @@ title: Using an array of DOMAIN values
 linkTitle: array of DOMAINs
 headerTitle: Using an array of DOMAIN values
 description: Using an array of DOMAIN values
+block_indexing: true
 menu:
   v2.1:
     identifier: array-of-domains

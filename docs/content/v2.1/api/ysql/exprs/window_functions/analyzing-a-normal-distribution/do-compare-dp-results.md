@@ -3,6 +3,7 @@ title: do_compare_dp_results.sql
 linkTitle: do_compare_dp_results.sql
 headerTitle: do_compare_dp_results.sql
 description: Create the function that creates the histogram output.
+block_indexing: true
 menu:
   v2.1:
     identifier: do-compare-dp-results

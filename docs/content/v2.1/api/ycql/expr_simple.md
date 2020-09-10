@@ -4,6 +4,7 @@ headerTitle: Simple expressions
 linkTitle: Simple expressions
 summary: Columns, constants, and null.
 description: A simple expression can be a column, constant, or NULL.
+block_indexing: true
 menu:
   v2.1:
     parent: api-cassandra

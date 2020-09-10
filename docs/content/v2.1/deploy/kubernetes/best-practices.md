@@ -2,6 +2,7 @@
 title: Best practices
 linkTitle: Best practices
 description: Best practices
+block_indexing: true
 menu:
   v2.1:
     identifier: best-practices

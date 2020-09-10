@@ -273,7 +273,7 @@ Status Master::InitCatalogManager() {
   if (catalog_manager_->IsInitialized()) {
     return STATUS(IllegalState, "Catalog manager is already initialized");
   }
-  RETURN_NOT_OK_PREPEND(catalog_manager_->Init(is_first_run_),
+  RETURN_NOT_OK_PREPEND(catalog_manager_->Init(),
                         "Unable to initialize catalog manager");
   return Status::OK();
 }

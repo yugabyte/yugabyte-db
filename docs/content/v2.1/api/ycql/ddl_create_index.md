@@ -4,6 +4,7 @@ headerTitle: CREATE INDEX
 linkTitle: CREATE INDEX
 summary: Create a new index on a table
 description: Use the CREATE INDEX statement to create a new index on a table.
+block_indexing: true
 menu:
   v2.1:
     parent: api-cassandra

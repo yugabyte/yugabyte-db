@@ -3,6 +3,7 @@ title: compare-dp-results
 linkTitle: compare-dp-results
 headerTitle: Output from running do_compare_dp_results.sql on dp_results
 description: compare-dp-results
+block_indexing: true
 menu:
   v2.1:
     identifier: compare-dp-results

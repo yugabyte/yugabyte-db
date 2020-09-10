@@ -4,6 +4,7 @@ headerTitle: INSERT
 linkTitle: INSERT
 summary: Add a new row to a table
 description: Use the INSERT statement to add a row to a specified table.
+block_indexing: true
 menu:
   v2.1:
     parent: api-cassandra

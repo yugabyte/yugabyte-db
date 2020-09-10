@@ -4,6 +4,7 @@ headerTitle: YCSB
 linkTitle: YCSB
 description: Benchmark YSQL performance with YCSB using the new YSQL binding.
 headcontent: Benchmark YSQL performance using YCSB.
+block_indexing: true
 menu:
   v2.1:
     identifier: ycsb-2-ysql

@@ -6,6 +6,7 @@ description: Build YugabyteDB application that use ecosystem integrations and Gr
 headcontent: Get started building applications based on YugabyteDB.
 image: /images/section_icons/index/develop.png
 section: USER GUIDES
+block_indexing: true
 menu:
   v2.1:
     identifier: develop

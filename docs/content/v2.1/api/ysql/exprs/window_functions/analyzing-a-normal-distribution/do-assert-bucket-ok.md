@@ -3,6 +3,7 @@ title: do_assert_bucket_ok
 linkTitle: do_assert_bucket_ok
 headerTitle: do_assert_bucket_ok
 description: DO/assert block to test that bucket() gives the correct results
+block_indexing: true
 menu:
   v2.1:
     identifier: do-assert-bucket-ok

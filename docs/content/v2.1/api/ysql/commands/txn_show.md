@@ -4,6 +4,7 @@ headerTitle: SHOW TRANSACTION
 linkTitle: SHOW TRANSACTION
 description: Use the SHOW TRANSACTION statement to show the current transaction isolation level.
 summary: SHOW TRANSACTION
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-txn-show

@@ -6,6 +6,7 @@ description: Prepare your AWS environment for the Yugabyte Platform.
 aliases:
   - /stable/deploy/enterprise-edition/prepare-cloud-environment/
   - /stable/yugabyte-platform/deploy/prepare-cloud-environment/
+block_indexing: true
 menu:
   stable:
     identifier: prepare-cloud-1-aws

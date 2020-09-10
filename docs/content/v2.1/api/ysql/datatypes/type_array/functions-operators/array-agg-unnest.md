@@ -3,6 +3,7 @@ title: array_agg() and unnest()
 linkTitle: array_agg() / unnest()
 headerTitle: array_agg() and unnest()
 description: array_agg() and unnest()
+block_indexing: true
 menu:
   v2.1:
     identifier: array-agg-unnest

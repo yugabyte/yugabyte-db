@@ -914,6 +914,9 @@ TEST_F_EX(CDCServiceTest, TestListTablets, CDCServiceTestMultipleServers) {
 
   req.set_stream_id(stream_id);
 
+  auto cdc_proxy_bcast_addr = cluster_->mini_tablet_server(0)->options()->broadcast_addresses[0];
+  int cdc_proxy_count = 0;
+
   // Test a simple query for all tablets.
   {
     RpcController rpc;
@@ -924,6 +927,13 @@ TEST_F_EX(CDCServiceTest, TestListTablets, CDCServiceTestMultipleServers) {
 
     ASSERT_EQ(resp.tablets_size(), tablet_count());
     ASSERT_EQ(resp.tablets(0).tablet_id(), tablet_id);
+
+    for (auto& tablet : resp.tablets()) {
+      auto owner_tserver = HostPort::FromPB(tablet.tservers(0).broadcast_addresses(0));
+      if (owner_tserver == cdc_proxy_bcast_addr) {
+        ++cdc_proxy_count;
+      }
+    }
   }
 
   // Query for tablets only on the first server.  We should only get a subset.
@@ -934,8 +944,7 @@ TEST_F_EX(CDCServiceTest, TestListTablets, CDCServiceTestMultipleServers) {
     ASSERT_OK(cdc_proxy_->ListTablets(req, &resp, &rpc));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
-
-    ASSERT_EQ(resp.tablets_size(), tablet_count() / server_count());
+    ASSERT_EQ(resp.tablets_size(), cdc_proxy_count);
   }
 }
 

@@ -4,6 +4,7 @@ linkTitle: Tables for the code examples
 headerTitle: The data sets used by the code examples
 description: A selection of data sets for the code examples that illustrate the use of window functions.
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
   v2.1:
     identifier: data-sets

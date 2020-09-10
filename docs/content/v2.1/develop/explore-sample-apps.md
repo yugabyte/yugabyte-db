@@ -5,6 +5,7 @@ linkTitle: Explore sample apps
 description: Explore sample applications running on YugabyteDB.
 headcontent: 
 image: /images/section_icons/index/develop.png
+block_indexing: true
 menu:
   v2.1:
     identifier: explore-sample-apps

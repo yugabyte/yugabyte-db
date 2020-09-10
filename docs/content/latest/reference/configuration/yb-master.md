@@ -373,7 +373,7 @@ Default: `1`
 
 Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in a load balancer operation.
 
-Default: `10`
+Default: `2`
 
 ##### --load_balancer_max_concurrent_moves_per_table
 
@@ -543,7 +543,7 @@ Default: `true`
 
 ##### --dump_certificate_entries
 
-Dump certificate entries.
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages.  Enabling this flag is useful for debugging certificate issues.
 
 Default: `false`
 

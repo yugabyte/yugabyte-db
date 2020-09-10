@@ -3,6 +3,7 @@ title: CREATE FUNCTION statement [YSQL]
 headerTitle: CREATE FUNCTION
 linkTitle: CREATE FUNCTION
 description: Use the CREATE FUNCTION statement to define a new function in a database.
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-create-function

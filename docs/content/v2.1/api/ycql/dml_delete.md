@@ -4,6 +4,7 @@ headerTitle: DELETE
 linkTitle: DELETE
 summary: Deletes rows from a table.
 description: Use the DELETE statement to remove rows from a specified table that meet a given condition. 
+block_indexing: true
 menu:
   v2.1:
     parent: api-cassandra

@@ -5,6 +5,7 @@ headerTitle: Check YugabyteDB servers
 description: How to check if your YugabyteDB servers are running
 aliases:
   - /troubleshoot/nodes/check-processes/
+block_indexing: true
 menu:
   stable:
     parent: troubleshoot-nodes

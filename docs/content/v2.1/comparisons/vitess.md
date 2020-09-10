@@ -3,6 +3,7 @@ title: Compare Vitess with YugabyteDB
 headerTitle: Vitess
 linkTitle: Vitess
 description: Compare Vitess with YugabyteDB.
+block_indexing: true
 menu:
   v2.1:
     parent: comparisons

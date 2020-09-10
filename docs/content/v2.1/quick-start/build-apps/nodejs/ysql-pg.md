@@ -3,6 +3,7 @@ title: Build a NodeJS application that uses YSQL
 headerTitle: Build a NodeJS application
 linkTitle: NodeJS
 description: Build a NodeJS application that uses the pg driver and YSQL.
+block_indexing: true
 menu:
   v2.1:
     parent: build-apps

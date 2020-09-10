@@ -2,6 +2,7 @@
 title: TSLASTN
 linkTitle: TSLASTN
 description: TSLASTN
+block_indexing: true
 menu:
   v2.1:
     parent: api-yedis

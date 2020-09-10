@@ -2,6 +2,7 @@
 title: LISTDB
 linkTitle: LISTDB
 description: LISTDB
+block_indexing: true
 menu:
   v2.1:
     parent: api-yedis

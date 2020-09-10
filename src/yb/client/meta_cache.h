@@ -191,6 +191,44 @@ typedef std::unordered_map<std::string, std::unique_ptr<RemoteTabletServer>> Tab
 YB_STRONGLY_TYPED_BOOL(UpdateLocalTsState);
 YB_STRONGLY_TYPED_BOOL(IncludeFailedReplicas);
 
+struct ReplicasCount {
+  ReplicasCount(int expected_live_replicas, int expected_read_replicas) {
+    SetExpectedReplicas(expected_live_replicas, expected_read_replicas);
+  }
+  int expected_live_replicas = 0;
+
+  int expected_read_replicas = 0;
+
+  // Number of live replicas in replicas_.
+  int num_alive_live_replicas = 0;
+
+  // Number of read replicas in replicas_.
+  int num_alive_read_replicas = 0;
+
+  bool IsReplicasCountConsistent() {
+    return (expected_live_replicas + expected_read_replicas) ==
+    (num_alive_live_replicas + num_alive_read_replicas);
+  }
+
+  // Set expected_live_replicas and expected_read_replicas.
+  void SetExpectedReplicas(int live_replicas, int read_replicas) {
+    expected_live_replicas = live_replicas;
+    expected_read_replicas = read_replicas;
+  }
+
+  void SetAliveReplicas(int live_replicas, int read_replicas) {
+    num_alive_live_replicas = live_replicas;
+    num_alive_read_replicas = read_replicas;
+  }
+
+  std::string ToString() {
+    return Format(
+        " live replicas $0, read replicas $1, expected live replicas $2, expected read replicas $3",
+        num_alive_live_replicas, num_alive_read_replicas,
+        expected_live_replicas, expected_read_replicas);
+  }
+};
+
 // The client's view of a given tablet. This object manages lookups of
 // the tablet's locations, status, etc.
 //
@@ -237,6 +275,15 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   // Return the number of failed replicas for this tablet.
   int GetNumFailedReplicas() const;
+
+  bool IsReplicasCountConsistent() const;
+
+  string ReplicasCountToString() const;
+
+  // Set expected_live_replicas and expected_read_replicas.
+  void SetExpectedReplicas(int expected_live_replicas, int expected_read_replicas);
+
+  void SetAliveReplicas(int alive_live_replicas, int alive_read_replicas);
 
   // Return the tablet server which is acting as the current LEADER for
   // this tablet, provided it hasn't failed.
@@ -305,6 +352,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   bool stale_;
   bool is_split_ = false;
   std::vector<RemoteReplica> replicas_;
+
+  std::atomic<ReplicasCount> replicas_count_{{0, 0}};
 
   // Last time this object was refreshed. Initialized to MonoTime::Min() so we don't have to be
   // checking whether it has been initialized everytime we use this value.

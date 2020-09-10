@@ -3,6 +3,7 @@ title: Restore data for YCQL
 headerTitle: Restore data
 linkTitle: Restore data
 description: Restore data in YugabyteDB for YCQL
+block_indexing: true
 menu:
   v2.1:
     identifier: restore-data-ycql

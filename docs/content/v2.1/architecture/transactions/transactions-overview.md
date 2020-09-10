@@ -3,6 +3,7 @@ title: Transactions overview
 headerTitle: Transactions overview
 linkTitle: Transactions overview
 description: An overview of how transactions work in YugabyteDB.
+block_indexing: true
 menu:
   v2.1:
     identifier: architecture-transactions-overview

@@ -2,6 +2,7 @@
 title: PEXPIREAT
 linkTitle: PEXPIREAT
 description: PEXPIREAT
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

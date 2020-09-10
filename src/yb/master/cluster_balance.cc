@@ -443,7 +443,7 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
   // assigned any tablets yet).
   TSDescriptorVector ts_descs;
   GetAllReportedDescriptors(&ts_descs);
-  for (const auto ts_desc : ts_descs) {
+  for (const auto& ts_desc : ts_descs) {
     state_->UpdateTabletServer(ts_desc);
   }
 

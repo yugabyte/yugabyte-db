@@ -3,6 +3,7 @@ title: ALTER GROUP statement [YSQL]
 headerTitle: ALTER GROUP
 linkTitle: ALTER GROUP
 description: Use the `ALTER GROUP` statement to alter attributes for a group (role).
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-alter-group

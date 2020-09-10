@@ -3,6 +3,7 @@ title: Diagnostics reporting
 headerTitle: Diagnostics reporting
 linkTitle: Diagnostics reporting
 description: Enable diagnostics reporting and set collection levels on YB-Master and YB-TServer nodes.
+block_indexing: true
 menu:
   v2.1:
     identifier: diagnostics-reporting

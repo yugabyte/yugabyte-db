@@ -6,6 +6,7 @@ description: Deploy to any public cloud or private data center of your choice us
 headcontent: Deploy to any public cloud or private data center of your choice using either YugabyteDB or the Yugabyte Platform.
 image: /images/section_icons/index/deploy.png
 section: USER GUIDES
+block_indexing: true
 menu:
   v2.1:
     identifier: deploy

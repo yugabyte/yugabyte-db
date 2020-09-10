@@ -2,6 +2,7 @@
 title: FLUSHALL
 linkTitle: FLUSHALL
 description: FLUSHALL
+block_indexing: true
 menu:
   v2.1:
     parent: api-yedis

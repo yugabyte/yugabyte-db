@@ -2,6 +2,7 @@
 title: ZADD
 linkTitle: ZADD
 description: ZADD
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

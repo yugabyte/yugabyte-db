@@ -3,6 +3,7 @@ title: YugabyteDB service instances in Pivotal Cloud Foundry
 headerTitle: Pivotal Cloud Foundry
 linkTitle: Pivotal Cloud Foundry
 description: Create a YugabyteDB service instance in Pivotal Cloud Foundry
+block_indexing: true
 menu:
   v2.1:
     identifier: pivotal-cloud-foundry

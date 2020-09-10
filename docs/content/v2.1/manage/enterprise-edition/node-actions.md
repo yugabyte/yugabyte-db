@@ -3,6 +3,7 @@ title: Node status and actions in Yugabyte Platform
 headerTitle: Node status and actions
 linkTitle: Node status and actions
 description: Use Yugabyte Platform to view Node status and perform actions.
+block_indexing: true
 menu:
   v2.1:
     identifier: node-status-actions

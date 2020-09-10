@@ -3,6 +3,7 @@ title: JSON literals
 headerTitle: JSON literals
 linkTitle: JSON literals
 description: JSON literals.
+block_indexing: true
 menu:
   v2.1:
     identifier: json-literals

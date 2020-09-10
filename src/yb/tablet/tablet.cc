@@ -185,7 +185,7 @@ DEFINE_int32(backfill_index_rate_rows_per_sec, 0, "Rate of at which the "
 TAG_FLAG(backfill_index_rate_rows_per_sec, advanced);
 TAG_FLAG(backfill_index_rate_rows_per_sec, runtime);
 
-DEFINE_int32(backfill_index_timeout_grace_margin_ms, 50,
+DEFINE_int32(backfill_index_timeout_grace_margin_ms, 500,
              "The time we give the backfill process to wrap up the current set "
              "of writes and return successfully the RPC with the information about "
              "how far we have processed the rows.");
@@ -216,6 +216,7 @@ DEFINE_test_flag(bool, docdb_log_write_batches, false,
 
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
+DECLARE_int64(apply_intents_task_injected_delay_ms);
 
 using namespace std::placeholders;
 
@@ -729,7 +730,7 @@ Status Tablet::OpenKeyValueTablet() {
 
   ql_storage_.reset(new docdb::QLRocksDBStorage(doc_db()));
   if (transaction_participant_) {
-    transaction_participant_->SetDB(intents_db_.get(), &key_bounds_, &pending_op_counter_);
+    transaction_participant_->SetDB(doc_db(), &key_bounds_, &pending_op_counter_);
   }
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
@@ -1142,7 +1143,10 @@ void Tablet::WriteToRocksDB(
     case StorageDbType::kIntents: dest_db = intents_db_.get(); break;
   }
 
-  write_batch->SetFrontiers(frontiers);
+  // Frontiers can be null for deferred apply operations.
+  if (frontiers) {
+    write_batch->SetFrontiers(frontiers);
+  }
 
   // We are using Raft replication index for the RocksDB sequence number for
   // all members of this write batch.
@@ -1879,19 +1883,22 @@ void InitFrontiers(const Data& data, docdb::ConsensusFrontiers* frontiers) {
 // We apply intents by iterating over whole transaction reverse index.
 // Using value of reverse index record we find original intent record and apply it.
 // After that we delete both intent record and reverse index record.
-// TODO(dtxn) use multiple batches when applying really big transaction.
-Status Tablet::ApplyIntents(const TransactionApplyData& data) {
+Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApplyData& data) {
   rocksdb::WriteBatch regular_write_batch;
-  RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
-      data.transaction_id, data.commit_ht, &key_bounds_,
+  auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
+      data.transaction_id, data.commit_ht, &key_bounds_, data.apply_state,
       &regular_write_batch, intents_db_.get(), nullptr /* intents_write_batch */));
 
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
-  InitFrontiers(data, &frontiers);
-  WriteToRocksDB(&frontiers, &regular_write_batch, StorageDbType::kRegular);
-  return Status::OK();
+  docdb::ConsensusFrontiers* frontiers_ptr = nullptr;
+  if (data.op_id.IsInitialized()) {
+    InitFrontiers(data, &frontiers);
+    frontiers_ptr = &frontiers;
+  }
+  WriteToRocksDB(frontiers_ptr, &regular_write_batch, StorageDbType::kRegular);
+  return new_apply_state;
 }
 
 template <class Ids>
@@ -1901,9 +1908,24 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
 
   rocksdb::WriteBatch intents_write_batch;
   for (const auto& id : ids) {
-    RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
-        id, HybridTime() /* commit_ht */, &key_bounds_, nullptr /* regular_write_batch */,
-        intents_db_.get(), &intents_write_batch));
+    boost::optional<docdb::ApplyTransactionState> apply_state;
+    for (;;) {
+      auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
+          id, HybridTime() /* commit_ht */, &key_bounds_, apply_state.get_ptr(),
+          nullptr /* regular_write_batch */, intents_db_.get(), &intents_write_batch));
+      if (new_apply_state.key.empty()) {
+        break;
+      }
+
+      docdb::ConsensusFrontiers frontiers;
+      InitFrontiers(data, &frontiers);
+      WriteToRocksDB(&frontiers, &intents_write_batch, StorageDbType::kIntents);
+
+      apply_state = std::move(new_apply_state);
+      intents_write_batch.Clear();
+
+      AtomicFlagSleepMs(&FLAGS_apply_intents_task_injected_delay_ms);
+    }
   }
 
   docdb::ConsensusFrontiers frontiers;

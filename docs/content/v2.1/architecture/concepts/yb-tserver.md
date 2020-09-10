@@ -3,6 +3,7 @@ title: YB-TServer Service
 headerTitle: YB-TServer Service
 linkTitle: YB-TServer Service
 description: Learn how the YB-TServer service stores and serves application data using tablets (aka shards).
+block_indexing: true
 menu:
   v2.1:
     identifier: architecture-concepts-yb-tserver

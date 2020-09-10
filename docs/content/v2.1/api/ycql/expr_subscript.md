@@ -4,6 +4,7 @@ headerTitle: Subscripted expressions
 linkTitle: Subscripted expressions
 summary: Subscripted columns
 description: Use subscripted expressions to access elements in a multi-element value, such as a map collection by using the [] operator.
+block_indexing: true
 menu:
   v2.1:
     parent: api-cassandra

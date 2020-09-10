@@ -3,6 +3,7 @@ title: Build a Go application that uses YSQL
 headerTitle: Build a Go application
 linkTitle: Go
 description: Build a simple Go application that uses the Go PostgreSQL JDBC driver and performs basic database operations.
+block_indexing: true
 menu:
   v2.1:
     parent: build-apps

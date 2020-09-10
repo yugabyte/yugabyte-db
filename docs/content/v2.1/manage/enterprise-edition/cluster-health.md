@@ -3,6 +3,7 @@ title: Configure health checks and alerts using using Yugabyte Platform
 headerTitle: Configure health checks and alerts
 linkTitle: Configure health checks and alerts
 description: Use Yugabyte Platform to configure health checks and alerts for universes.
+block_indexing: true
 menu:
   v2.1:
     identifier: cluster-health

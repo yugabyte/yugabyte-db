@@ -3,6 +3,7 @@ title: Deploy local clusters using Docker Compose
 headerTitle: Docker
 linkTitle: Docker
 description: Use Docker Compose to create and manage local YugabyteDB clusters.
+block_indexing: true
 menu:
   v2.1:
     parent: deploy

@@ -3,6 +3,7 @@ title: Tablet splitting
 headerTitle: Tablet splitting
 linkTitle: Tablet splitting
 description: Learn how YugabyteDB splits tablets.
+block_indexing: true
 menu:
   v2.1:
     identifier: docdb-tablet-splitting

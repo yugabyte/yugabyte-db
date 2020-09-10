@@ -3,6 +3,7 @@ title: Explore global distribution on Linux
 headerTitle: Global distribution
 linkTitle: Global distribution
 description: Simulate globally distributed SQL across regions using a local YugabyteDB cluster on Linux.
+block_indexing: true
 menu:
   v2.1:
     identifier: global-distribution-2-linux

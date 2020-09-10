@@ -3,6 +3,7 @@ title: Third party software
 headerTitle: Third party software
 linkTitle: Third party software
 description: Learn about the third party software contained in YugabyteDB.
+block_indexing: true
 menu:
   v2.1:
     parent: legal

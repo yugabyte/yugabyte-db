@@ -3,6 +3,7 @@ title: do_report_results.sql
 linkTitle: do_report_results.sql
 headerTitle: do_report_results.sql
 description: Create the function that creates the histogram output.
+block_indexing: true
 menu:
   v2.1:
     identifier: do-report-results

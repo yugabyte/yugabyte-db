@@ -3,6 +3,7 @@ title: Colocated tables
 headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Learn about how colocated tables aggregate data into a single tablet.
+block_indexing: true
 menu:
   v2.1:
     identifier: docdb-colocated-tables

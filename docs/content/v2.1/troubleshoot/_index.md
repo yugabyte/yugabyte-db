@@ -6,6 +6,7 @@ description: Diagnose and solve YugabyteDB cluster and node issues.
 image: /images/section_icons/index/troubleshoot.png
 headcontent:
 section: USER GUIDES
+block_indexing: true
 menu:
   v2.1:
     identifier: troubleshoot

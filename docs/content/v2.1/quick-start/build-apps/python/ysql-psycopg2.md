@@ -3,6 +3,7 @@ title: Build a Python application that uses YSQL and Psycopg2
 headerTitle: Build a Python application
 linkTitle: Python
 description: Build a Python application that uses YSQL and Psycopg2
+block_indexing: true
 menu:
   v2.1:
     parent: build-apps

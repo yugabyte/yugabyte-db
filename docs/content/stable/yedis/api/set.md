@@ -2,6 +2,7 @@
 title: SET
 linkTitle: SET
 description: SET
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

@@ -2,6 +2,7 @@
 title: ECHO
 linkTitle: ECHO
 description: ECHO
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

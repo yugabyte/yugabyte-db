@@ -4,6 +4,7 @@ headerTitle: Snapshot and restore data
 linkTitle: Snapshot and restore data
 description: Snapshot and restore data in YugabyteDB for YCQL.
 image: /images/section_icons/manage/enterprise.png
+block_indexing: true
 menu:
   v2.1:
     identifier: snapshots-ycql

@@ -3,6 +3,7 @@ title: DROP ROLE statement [YSQL]
 headerTitle: DROP ROLE
 linkTitle: DROP ROLE
 description: Use the DROP ROLE statement to remove the specified roles.
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-drop-role

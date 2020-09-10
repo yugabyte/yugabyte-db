@@ -3,6 +3,7 @@ title: Explore two data center (2DC) deployment on macOS
 headerTitle: Two data center (2DC) deployment
 linkTitle: Two data center (2DC)
 description: Simulate a geo-distributed two data center (2DC) deployment with two local YugabyteDB clusters on macOS.
+block_indexing: true
 menu:
   v2.1:
     identifier: two-data-centers-1-macos

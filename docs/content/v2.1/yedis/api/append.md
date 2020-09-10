@@ -2,6 +2,7 @@
 title: APPEND
 linkTitle: APPEND
 description: APPEND
+block_indexing: true
 menu:
   v2.1:
     parent: api-yedis

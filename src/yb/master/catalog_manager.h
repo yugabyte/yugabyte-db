@@ -170,7 +170,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   explicit CatalogManager(Master *master);
   virtual ~CatalogManager();
 
-  CHECKED_STATUS Init(bool is_first_run);
+  CHECKED_STATUS Init();
 
   void Shutdown();
   CHECKED_STATUS CheckOnline() const;
@@ -588,6 +588,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS GetReplicationFactorForTablet(const scoped_refptr<TabletInfo>& tablet,
       int* num_replicas);
 
+  void GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas);
+
   // Get the percentage of tablets that have been moved off of the black-listed tablet servers.
   CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
 
@@ -826,7 +828,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // sys_catalog_.
   //
   // This method is thread-safe.
-  CHECKED_STATUS InitSysCatalogAsync(bool is_first_run);
+  CHECKED_STATUS InitSysCatalogAsync();
 
   // Helper for creating the initial TableInfo state
   // Leaves the table "write locked" with the new info in the

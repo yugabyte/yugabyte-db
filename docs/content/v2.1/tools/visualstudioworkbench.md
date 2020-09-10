@@ -3,6 +3,7 @@ title: Use Visual Studio Code with YugabyteDB YCQL
 headerTitle: Visual Studio Code
 linkTitle: Visual Studio Code
 description: Configure Visual Studio Code to work with YCQL.
+block_indexing: true
 menu:
   v2.1:
     identifier: visualstudioworkbench

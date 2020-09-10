@@ -3,6 +3,7 @@ title: Verify deployment
 headerTitle: Verify deployment
 linkTitle: 5. Verify deployment
 description: Verify deployment of your YugabyteDB cluster
+block_indexing: true
 menu:
   v2.1:
     identifier: deploy-manual-deployment-verify-deployment

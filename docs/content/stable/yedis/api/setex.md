@@ -2,6 +2,7 @@
 title: SETEX
 linkTitle: SETEX
 description: SETEX
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

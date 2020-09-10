@@ -2,6 +2,7 @@
 title: ZREM
 linkTitle: ZREM
 description: ZREM
+block_indexing: true
 menu:
   v2.1:
     parent: api-yedis

@@ -38,8 +38,7 @@ const mapStateToProps = (state, ownProps) => {
     sshPort: 54422,
     passwordlessSudoAccess: true,
     airGapInstall: false,
-    useHostnames: false,
-    homeDir: ""
+    useHostnames: false
   };
   const {cloud: {onPremJsonFormData}} = state;
   if (ownProps.isEditProvider && isNonEmptyObject(onPremJsonFormData)) {

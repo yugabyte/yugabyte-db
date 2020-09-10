@@ -212,6 +212,7 @@ DEFINE_bool(master_tombstone_evicted_tablet_replicas, true,
             "Whether the Master should tombstone (delete) tablet replicas that "
             "are no longer part of the latest reported raft config.");
 TAG_FLAG(master_tombstone_evicted_tablet_replicas, hidden);
+DECLARE_bool(master_ignore_deleted_on_load);
 
 // Temporary.  Can be removed after long-run testing.
 DEFINE_bool(master_ignore_stale_cstate, true,
@@ -560,7 +561,7 @@ CatalogManager::~CatalogManager() {
   Shutdown();
 }
 
-Status CatalogManager::Init(bool is_first_run) {
+Status CatalogManager::Init() {
   {
     std::lock_guard<simple_spinlock> l(state_lock_);
     CHECK_EQ(kConstructed, state_);
@@ -574,7 +575,7 @@ Status CatalogManager::Init(bool is_first_run) {
   metric_num_tablet_servers_dead_ =
     METRIC_num_tablet_servers_dead.Instantiate(master_->metric_entity_cluster(), 0);
 
-  RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(is_first_run),
+  RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_system_tablet_bootstrap_secs > 0)) {
@@ -1288,9 +1289,16 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
       master_->opts().master_addresses_flag);
 }
 
-Status CatalogManager::InitSysCatalogAsync(bool is_first_run) {
+Status CatalogManager::InitSysCatalogAsync() {
   std::lock_guard<LockType> l(lock_);
-  if (is_first_run) {
+
+  // Optimistically try to load data from disk.
+  Status s = sys_catalog_->Load(master_->fs_manager());
+
+  if (!s.ok() && s.IsNotFound()) {
+    // We are on our first run, need to create the metadata file.
+    LOG(INFO) << "Did not find previous SysCatalogTable data on disk";
+
     if (!master_->opts().AreMasterAddressesProvided()) {
       master_->SetShellMode(true);
       LOG(INFO) << "Starting master in shell mode.";
@@ -1299,10 +1307,11 @@ Status CatalogManager::InitSysCatalogAsync(bool is_first_run) {
 
     RETURN_NOT_OK(CheckLocalHostInMasterAddresses());
     RETURN_NOT_OK(sys_catalog_->CreateNew(master_->fs_manager()));
-  } else {
-    RETURN_NOT_OK(sys_catalog_->Load(master_->fs_manager()));
+
+    return Status::OK();
   }
-  return Status::OK();
+
+  return s;
 }
 
 bool CatalogManager::IsInitialized() const {
@@ -4420,7 +4429,12 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         // truly unknown in the event of a serious misconfiguration, such as a
         // tserver heartbeating to the wrong cluster. Therefore, it should be
         // reasonable to ignore it and wait for an operator fix the situation.
-        LOG(WARNING) << "Ignoring report from unknown tablet " << tablet_id;
+        if (FLAGS_master_ignore_deleted_on_load &&
+            report.tablet_data_state() == TABLET_DATA_DELETED) {
+          VLOG(1) << "Ignoring report from unknown tablet " << tablet_id;
+        } else {
+          LOG(WARNING) << "Ignoring report from unknown tablet " << tablet_id;
+        }
         continue;
       }
       if (!tablet->table() || FindOrNull(*table_ids_map_, tablet->table()->id()) == nullptr) {
@@ -7383,8 +7397,15 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   table->GetTabletsInRange(req, &tablets_in_range);
 
   bool require_tablets_runnings = req->require_tablets_running();
+
+  int expected_live_replicas = 0;
+  int expected_read_replicas = 0;
+  GetExpectedNumberOfReplicas(&expected_live_replicas, &expected_read_replicas);
   for (const scoped_refptr<TabletInfo>& tablet : tablets_in_range) {
-    auto status = BuildLocationsForTablet(tablet, resp->add_tablet_locations());
+    TabletLocationsPB* locs_pb = resp->add_tablet_locations();
+    locs_pb->set_expected_live_replicas(expected_live_replicas);
+    locs_pb->set_expected_read_replicas(expected_read_replicas);
+    auto status = BuildLocationsForTablet(tablet, locs_pb);
     if (!status.ok()) {
       // Not running.
       if (require_tablets_runnings) {
@@ -7765,6 +7786,15 @@ Status CatalogManager::GetReplicationFactorForTablet(const scoped_refptr<TabletI
     return Status::OK();
   }
   return GetReplicationFactor(num_replicas);
+}
+
+void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas) {
+  auto l = cluster_config_->LockForRead();
+  const ReplicationInfoPB& replication_info = l->data().pb.replication_info();
+  *num_live_replicas = GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
+  for (const auto read_replica_placement_info : replication_info.read_replicas()) {
+    *num_read_replicas = read_replica_placement_info.num_replicas();
+  }
 }
 
 string CatalogManager::placement_uuid() const {

@@ -2,6 +2,7 @@
 title: DEL
 linkTitle: DEL
 description: DEL
+block_indexing: true
 menu:
   v2.1:
     parent: api-yedis

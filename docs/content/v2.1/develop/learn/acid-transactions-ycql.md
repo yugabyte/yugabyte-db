@@ -3,6 +3,7 @@ title: ACID transactions in YCQL
 headerTitle: ACID transactions
 linkTitle: 4. ACID transactions
 description: Learn how ACID transactions work in YCQL on YugabyteDB.
+block_indexing: true
 menu:
   v2.1:
     identifier: acid-transactions-1-ycql

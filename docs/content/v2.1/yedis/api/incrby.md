@@ -2,6 +2,7 @@
 title: INCRBY
 linkTitle: INCRBY
 description: INCRBY
+block_indexing: true
 menu:
   v2.1:
     parent: api-yedis

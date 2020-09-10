@@ -6,6 +6,7 @@ description: YugabyteDB API reference for YSQL (PostgreSQL-compatible SQL) and Y
 image: /images/section_icons/index/api.png
 headcontent: YugabyteDB API reference
 section: REFERENCE
+block_indexing: true
 menu:
   v2.1:
     identifier: api

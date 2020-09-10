@@ -3,6 +3,7 @@ title: "- and #- (remove operators) [JSON]"
 headerTitle: "- and #- (remove operators)"
 linkTitle: "- and #- (remove)"
 description: Remove key-value pairs from an object or remove a single value from an array.
+block_indexing: true
 menu:
   v2.1:
     identifier: remove-operators

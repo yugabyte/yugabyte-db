@@ -3,6 +3,7 @@ title: jsonb_object_agg()
 headerTitle: jsonb_object_agg()
 linkTitle: jsonb_object_agg()
 description: Aggregate a SETOF values into a JSON object.
+block_indexing: true
 menu:
   v2.1:
     identifier: jsonb-object-agg

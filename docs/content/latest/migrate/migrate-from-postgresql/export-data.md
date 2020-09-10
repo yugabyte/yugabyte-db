@@ -1,8 +1,8 @@
 ---
-title: Export Data
-headerTitle: Export Data
-linkTitle: Export Data
-description: How to export data from PostgreSQL.
+title: Export PostgreSQL data
+headerTitle: Export PostgreSQL data
+linkTitle: Export PostgreSQL data
+description: Steps for exporting PostgreSQL data for importing into YugabyteDB.
 menu:
   latest:
     identifier: migrate-postgresql-export

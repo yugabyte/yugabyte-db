@@ -67,6 +67,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
 #include "yb/util/user.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/rolling_log.h"
@@ -97,6 +98,9 @@ DEFINE_bool(TEST_check_broadcast_address, true, "Break connectivity in test mini
             "check broadcast address.");
 
 DEFINE_test_flag(string, public_hostname_suffix, ".ip.yugabyte", "Suffix for public hostnames.");
+
+DEFINE_test_flag(bool, simulate_port_conflict_error, false,
+                 "Simulate a port conflict error during initialization.");
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -157,7 +161,6 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(),
                                                       metric_namespace)),
-      is_first_run_(false),
       options_(options),
       initialized_(false),
       stop_metrics_logging_latch_(1) {
@@ -461,21 +464,17 @@ Status RpcAndWebServerBase::Init() {
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {
     LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
     LOG(INFO) << "Creating new FS layout";
-    is_first_run_ = true;
     RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(true),
                           "Could not create new FS layout");
     s = fs_manager_->Open();
   }
   RETURN_NOT_OK_PREPEND(s, "Failed to load FS layout");
 
-  s = RpcServerBase::Init();
-  if (!s.ok() && is_first_run_) {
-    // TODO (julien) : Remove this once #5276 is fixed.
-    LOG(ERROR) << "Encountered an error, deleting FS files in order to reset run state: " << s;
-    RETURN_NOT_OK_PREPEND(fs_manager_->DeleteFileSystemLayout(),
-                          "Failed deleting FS layout after RPCServerBase init failed.");
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_port_conflict_error)) {
+    return STATUS(NetworkError, "Simulated port conflict error");
   }
-  RETURN_NOT_OK_PREPEND(s, "Failed to initialize FS layout");
+
+  RETURN_NOT_OK(RpcServerBase::Init());
 
   return Status::OK();
 }

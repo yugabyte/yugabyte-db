@@ -3,6 +3,7 @@ title: FAQs about YugabyteDB API compatibility
 headerTitle: API compatibility FAQ
 linkTitle: API compatibility FAQ
 description: Answers to common questions about YugabyteDB API compatibility.
+block_indexing: true
 menu:
   v2.1:
     identifier: faq-api-compatibility

@@ -3,6 +3,7 @@ title: Bulk export for YCQL
 headerTitle: Bulk export
 linkTitle: Bulk export
 description: Bulk export for YCQL using cassandra-loader and cassandra-unloader.
+block_indexing: true
 menu:
   v2.1:
     identifier: manage-bulk-export

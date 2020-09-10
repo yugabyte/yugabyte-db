@@ -3,6 +3,7 @@ title: Compare Amazon DynamoDB with YugabyteDB
 headerTitle: Amazon DynamoDB
 linkTitle: Amazon DynamoDB
 description: Compare Amazon DynamoDB with YugabyteDB.
+block_indexing: true
 menu:
   v2.1:
     parent: comparisons

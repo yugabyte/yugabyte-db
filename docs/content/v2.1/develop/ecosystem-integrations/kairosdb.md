@@ -2,6 +2,7 @@
 title: KairosDB
 linkTitle: KairosDB
 description: KairosDB
+block_indexing: true
 menu:
   v2.1:
     identifier: kairosdb

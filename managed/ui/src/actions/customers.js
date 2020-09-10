@@ -104,6 +104,8 @@ export const CREATE_USER_RESPONSE = 'CREATE_USER_RESPONSE';
 export const DELETE_USER = 'DELETE_USER';
 export const DELETE_USER_RESPONSE  = 'DELETE_USER_RESPONSE';
 
+export const CHANGE_USER_ROLE = 'CHANGE_USER_ROLE';
+
 export function validateToken() {
   let cUUID = Cookies.get("customerId");
   if (cUUID) {
@@ -643,6 +645,15 @@ export function createUserResponse(response) {
   return {
     type: CREATE_USER_RESPONSE,
     payload: response
+  };
+}
+
+export function changeUserRole(userUUID, newRole) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/users/${userUUID}?role=${newRole}`);
+  return {
+    type: CHANGE_USER_ROLE,
+    payload: request
   };
 }
 

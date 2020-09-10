@@ -2,6 +2,7 @@
 title: TSCARD
 linkTitle: TSCARD
 description: TSCARD
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

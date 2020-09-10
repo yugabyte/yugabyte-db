@@ -3,6 +3,7 @@ title: Northwind sample database
 headerTitle: Northwind sample database
 linkTitle: Northwind
 description: Use the Northwind sample database to explore and learn YugabyteDB.
+block_indexing: true
 menu:
   v2.1:
     identifier: northwind

@@ -3,6 +3,7 @@ title: DocDB performance enhancements to RocksDB
 headerTitle: Performance
 linkTitle: Performance
 description: Learn how DocDB enhances RocksDB for scale and performance.
+block_indexing: true
 menu:
   v2.1:
     identifier: docdb-performance

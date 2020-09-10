@@ -3,6 +3,7 @@ title: Deploy on Azure Kubernetes Service (AKS) using Helm Chart
 headerTitle: Azure Kubernetes Service (AKS)
 linkTitle: Azure Kubernetes Service (AKS)
 description: Use Helm Chart to deploy a single-zone YugabyteDB cluster on Azure Kubernetes Service (AKS).
+block_indexing: true
 menu:
   v2.1:
     parent: deploy-kubernetes-sz

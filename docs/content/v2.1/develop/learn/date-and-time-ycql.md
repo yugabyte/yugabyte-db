@@ -3,6 +3,7 @@ title: Date and time in YCQL
 headerTitle: Date and time
 linkTitle: 7. Date and time
 description: Learn how to work with date and time in YCQL.
+block_indexing: true
 menu:
   v2.1:
     parent: learn

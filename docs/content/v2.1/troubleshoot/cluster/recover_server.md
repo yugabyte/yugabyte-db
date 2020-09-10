@@ -2,6 +2,7 @@
 title: Recover failed tserver/master
 linkTitle: Recover tserver/master
 description: Recover tserver/master
+block_indexing: true
 menu:
   v2.1:
     parent: troubleshoot-cluster

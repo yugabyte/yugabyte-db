@@ -3,6 +3,7 @@ title: Build a C++ application that uses YSQL
 headerTitle: Build a C++ application
 linkTitle: C++
 description: Build a C++ application that uses the YSQL API.
+block_indexing: true
 menu:
   v2.1:
     identifier: build-apps-cpp-1-ysql

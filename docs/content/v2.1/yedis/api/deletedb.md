@@ -2,6 +2,7 @@
 title: DELETEDB
 linkTitle: DELETEDB
 description: DELETEDB
+block_indexing: true
 menu:
   v2.1:
     parent: api-yedis

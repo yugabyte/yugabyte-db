@@ -3,6 +3,7 @@ title: System statistics
 linkTitle: System statistics
 headerTitle: Check system statistics
 description: How to check system statistics on your YugabyteDB cluster
+block_indexing: true
 menu:
   v2.1:
     parent: troubleshoot-nodes

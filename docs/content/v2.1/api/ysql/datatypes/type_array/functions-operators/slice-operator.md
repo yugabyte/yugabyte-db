@@ -3,6 +3,7 @@ title: The array slice operator
 linkTitle: Array slice operator 
 headerTitle: The array slice operator
 description: The array slice operator
+block_indexing: true
 menu:
   v2.1:
     identifier: array-slice-operator

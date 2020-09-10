@@ -3,6 +3,7 @@ title: DROP TYPE statement [YSQL]
 headerTitle: DROP TYPE
 linkTitle: DROP TYPE
 description: Use the DROP TYPE statement to remove a user-defined type from the database.
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-drop-type

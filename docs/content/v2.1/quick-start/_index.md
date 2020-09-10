@@ -7,6 +7,7 @@ image: /images/section_icons/index/quick_start.png
 headcontent: The easiest way to test YugabyteDB's basic features and APIs is to create a local cluster on a single host.
 type: page
 section: GET STARTED
+block_indexing: true
 menu:
   v2.1:
     identifier: quick-start

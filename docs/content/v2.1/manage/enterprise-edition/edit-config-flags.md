@@ -3,6 +3,7 @@ title: Edit configuration flags using Yugabyte Platform
 headerTitle: Edit configuration flags
 linkTitle: Edit configuration flags
 description: Use Yugabyte Platform to manage configuration flags.
+block_indexing: true
 menu:
   v2.1:
     identifier: edit-config-flags

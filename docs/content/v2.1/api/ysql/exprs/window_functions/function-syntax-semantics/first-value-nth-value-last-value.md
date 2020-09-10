@@ -3,6 +3,7 @@ title: first_value(), nth_value(), last_value()
 linkTitle: first_value(), nth_value(), last_value()
 headerTitle: first_value(), nth_value(), last_value()
 description: The SQL window functions first_value(), nth_value(), last_value()
+block_indexing: true
 menu:
   v2.1:
     identifier: first-value-nth-value-last-value

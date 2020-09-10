@@ -2,6 +2,7 @@
 title: HDEL
 linkTitle: HDEL
 description: HDEL
+block_indexing: true
 menu:
   v2.1:
     parent: api-yedis

@@ -3,6 +3,7 @@ title: Create a local YugabyteDB cluster on Linux
 headerTitle: 2. Create a local YugabyteDB cluster
 linkTitle: 2. Create a local cluster
 description: Create a local YugabyteDB cluster on Linux in less than five minutes.
+block_indexing: true
 menu:
   v2.1:
     parent: quick-start

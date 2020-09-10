@@ -4,6 +4,7 @@ linkTitle: Primitive and compound data types
 summary: Primitive and compound data types
 headerTitle: Primitive and compound JSON data types
 description: Learn how JSON can represent (sub)values of four primitive data types and of two compound data types.
+block_indexing: true
 menu:
   v2.1:
     identifier: primitive-and-compound-data-types

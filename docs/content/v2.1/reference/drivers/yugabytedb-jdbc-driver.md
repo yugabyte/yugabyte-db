@@ -5,6 +5,7 @@ linkTitle: YugabyteDB JDBC Driver
 description: Add cluster awareness and load balancing to YugabyteDB distributed SQL databases 
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
+block_indexing: true
 menu:
   v2.1:
     identifier: yugabytedb-jdbc-driver

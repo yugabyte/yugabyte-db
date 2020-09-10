@@ -3,6 +3,7 @@ title: text typecast of a value, literal for that value, and how they are relate
 linkTitle: Text typecasting and literals
 headerTitle: The text typecast of a value, the literal for that value, and how they are related
 description: The text typecast of a value, the literal for that value, and how they are related
+block_indexing: true
 menu:
   v2.1:
     identifier: text-typecasting-and-literals

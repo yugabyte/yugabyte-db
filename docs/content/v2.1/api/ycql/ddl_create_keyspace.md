@@ -4,6 +4,7 @@ headerTitle: CREATE KEYSPACE
 linkTitle: CREATE KEYSPACE
 summary: Create a new database
 description: Use the CREATE KEYSPACE statement to create a keyspace that functions as a grouping mechanism for database objects, such as tables or types.
+block_indexing: true
 menu:
   v2.1:
     parent: api-cassandra

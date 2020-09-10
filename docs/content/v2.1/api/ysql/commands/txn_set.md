@@ -4,6 +4,7 @@ headerTitle: SET TRANSACTION
 linkTitle: SET TRANSACTION
 description: Use the `SET TRANSACTION` statement to set the current transaction isolation level.
 summary: SET TRANSACTION
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-txn-set

@@ -541,6 +541,12 @@ For details on how online index backfill works, see the [Online Index Backfill](
 
 Default: `true`
 
+##### --ycql_require_drop_privs_for_truncate
+
+Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table) privileges.
+
+Default: `false`
+
 ---
 
 ### YEDIS flags
@@ -631,7 +637,8 @@ Default: `""` (Use the same directory as for server-to-server communications.)
 
 ##### --dump_certificate_entries
 
-Dump certificate entries.
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages.  Enabling this flag is useful for debugging certificate issues.
+
 
 Default: `false`
 

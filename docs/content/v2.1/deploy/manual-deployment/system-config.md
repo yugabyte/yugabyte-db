@@ -3,6 +3,7 @@ title: System configuration
 headerTitle: System configuration
 linkTitle: 1. System configuration
 description: Configure NTP and ulimits on your YugabyteDB cluster
+block_indexing: true
 menu:
   v2.1:
     identifier: deploy-manual-deployment-system-config

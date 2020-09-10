@@ -3,6 +3,7 @@ title: Overview
 headerTitle: Overview of Yugabyte Query Layer (YQL)
 linkTitle: Overview
 description: The Yugabyte Query Layer (YQL) is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers.
+block_indexing: true
 menu:
   v2.1:
     identifier: architecture-query-layer-yql

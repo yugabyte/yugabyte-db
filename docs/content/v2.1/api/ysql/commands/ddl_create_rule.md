@@ -3,6 +3,7 @@ title: CREATE RULE statement [YSQL]
 headerTitle: CREATE RULE
 linkTitle: CREATE RULE
 description: Use the CREATE RULE statement to create a new rule.
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-create-rule

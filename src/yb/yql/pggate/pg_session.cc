@@ -221,6 +221,30 @@ void InitKeyColumnPrimitiveValues(
   }
 }
 
+bool IsTableUsedByRequest(const PgsqlReadRequestPB& request, const string& table_id) {
+  return request.table_id() == table_id ||
+      (request.has_index_request() && IsTableUsedByRequest(request.index_request(), table_id));
+}
+
+bool IsTableUsedByRequest(const PgsqlWriteRequestPB& request, const string& table_id) {
+  return request.table_id() == table_id;
+}
+
+bool IsTableUsedByOperation(const client::YBPgsqlOp& op, const string& table_id) {
+  switch(op.type()) {
+    case YBOperation::Type::PGSQL_READ:
+      return IsTableUsedByRequest(
+          down_cast<const client::YBPgsqlReadOp&>(op).request(), table_id);
+    case YBOperation::Type::PGSQL_WRITE:
+      return IsTableUsedByRequest(
+          down_cast<const client::YBPgsqlWriteOp&>(op).request(), table_id);
+    default:
+      break;
+  }
+  DCHECK(false) << "Unexpected operation type " << op.type();
+  return false;
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -308,7 +332,7 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
     bool full_flush_required = (transactional_ && read_time && *read_time);
     // Check for buffered operation that affected same table as current operation.
     for (auto i = buffered_keys.begin(); !full_flush_required && i != buffered_keys.end(); ++i) {
-      full_flush_required = i->table_id() == op->table()->id();
+      full_flush_required = IsTableUsedByOperation(*op, i->table_id());
     }
     if (full_flush_required) {
       RETURN_NOT_OK(pg_session_.FlushBufferedOperations());
@@ -376,7 +400,7 @@ Result<PgSessionAsyncRunResult> PgSession::RunHelper::Flush() {
 //--------------------------------------------------------------------------------------------------
 
 RowIdentifier::RowIdentifier(const client::YBPgsqlWriteOp& op) :
-  table_id_(&op.table()->id()) {
+  table_id_(&op.request().table_id()) {
   auto& request = op.request();
   if (request.has_ybctid_column_value()) {
     ybctid_ = &request.ybctid_column_value().value().binary_value();

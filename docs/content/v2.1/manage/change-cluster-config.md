@@ -3,6 +3,7 @@ title: Change cluster configuration
 headerTitle: Change cluster configuration
 linkTitle: Change cluster configuration
 description: Migrate a YugabyteDB cluster to a new set of nodes.
+block_indexing: true
 menu:
   v2.1:
     identifier: manage-change-cluster-config

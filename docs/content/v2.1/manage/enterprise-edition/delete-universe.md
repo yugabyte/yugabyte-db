@@ -3,6 +3,7 @@ title: Delete a universe using Yugabyte Platform
 headerTitle: Delete a universe
 linkTitle: Delete a universe
 description: Use Yugabyte Platform to delete a universe.
+block_indexing: true
 menu:
   v2.1:
     identifier: delete-universe

@@ -95,23 +95,23 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
       stmt.execute("CREATE INDEX " + indexName + " ON " + tableName + " (i)");
 
       stmt.execute("INSERT INTO " + tableName + " VALUES (1, 1), (2, 2), (3, 3)");
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql,
           asSet(new Row(1, 1), new Row(2, 2), new Row(3, 3)));
 
       stmt.execute("UPDATE " + tableName + " SET id = i * 10");
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql,
           asSet(new Row(10, 1), new Row(20, 2), new Row(30, 3)));
 
       runInvalidQuery(stmt, "UPDATE " + tableName + " SET id = 50 - id",
           "duplicate key value");
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql,
           asSet(new Row(10, 1), new Row(20, 2), new Row(30, 3)));
 
       stmt.execute("UPDATE " + tableName + " SET id = id + 1, i = i * 10 + 1");
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql,
           asSet(new Row(11, 11), new Row(21, 21), new Row(31, 31)));
     }
@@ -128,23 +128,23 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
       stmt.execute("CREATE UNIQUE INDEX " + indexName + " ON " + tableName + " (i)");
 
       stmt.execute("INSERT INTO " + tableName + " VALUES (1, 1), (2, 2), (3, 3)");
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql,
           asSet(new Row(1, 1), new Row(2, 2), new Row(3, 3)));
 
       stmt.execute("UPDATE " + tableName + " SET id = i * 10");
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql,
           asSet(new Row(10, 1), new Row(20, 2), new Row(30, 3)));
 
       runInvalidQuery(stmt, "UPDATE " + tableName + " SET id = 50 - id",
           "duplicate key value");
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql,
           asSet(new Row(10, 1), new Row(20, 2), new Row(30, 3)));
 
       stmt.execute("UPDATE " + tableName + " SET id = id + 1, i = i * 10 + 1");
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql,
           asSet(new Row(11, 11), new Row(21, 21), new Row(31, 31)));
 
@@ -152,7 +152,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
       runInvalidQuery(stmt, "UPDATE " + tableName + " SET i = 21 WHERE i = 31",
           "duplicate key value");
       stmt.execute("UPDATE " + tableName + " SET i = 3 WHERE id = 11");
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql,
           asSet(new Row(11, 3), new Row(21, 21), new Row(31, 31)));
     }
@@ -345,7 +345,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
       stmt.execute("INSERT INTO " + tableName + " VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3)");
       Set<Row> expected = asSet(new Row(1, 1, 1), new Row(2, 2, 2), new Row(3, 3, 3));
       assertRowSet(stmt, selectSql, expected);
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql, expected);
       assertTriggers(stmt,
           3, 3, 0, 0, 0, 0,
@@ -356,7 +356,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
       stmt.execute("UPDATE " + tableName + " SET r1 = i * 10 WHERE i IN (1, 2)");
       expected = asSet(new Row(10, 1, 1), new Row(20, 2, 2), new Row(3, 3, 3));
       assertRowSet(stmt, selectSql, expected);
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql, expected);
       assertTriggers(stmt,
           0, 0, 2, 2, 0, 0,
@@ -369,7 +369,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
       stmt.execute("UPDATE " + tableName + " SET r2 = i * 10 WHERE i IN (1, 2)");
       expected = asSet(new Row(10, 10, 1), new Row(20, 20, 2), new Row(3, 3, 3));
       assertRowSet(stmt, selectSql, expected);
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql, expected);
       assertTriggers(stmt,
           0, 0, 2, 2, 0, 0,
@@ -383,7 +383,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
           + " WHERE i IN (1, 2)");
       expected = asSet(new Row(11, 11, 11), new Row(21, 21, 21), new Row(3, 3, 3));
       assertRowSet(stmt, selectSql, expected);
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql, expected);
       assertTriggers(stmt,
           0, 0, 2, 2, 0, 0,
@@ -399,7 +399,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
           + " ON CONFLICT (r1, r2) DO UPDATE SET r1 = EXCLUDED.i, r2 = EXCLUDED.i");
       expected = asSet(new Row(11, 11, 11), new Row(21, 21, 21), new Row(31, 31, 3));
       assertRowSet(stmt, selectSql, expected);
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql, expected);
       assertTriggers(stmt,
           1, 0, 1, 1, 0, 0,
@@ -424,7 +424,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
       stmt.execute("INSERT INTO " + tableName + " VALUES (1, 1, 1, 1), (2, 2, 2, 2), (3, 3, 3, 3)");
       Set<Row> expected = asSet(new Row(1, 1, 1, 1), new Row(2, 2, 2, 2), new Row(3, 3, 3, 3));
       assertRowSet(stmt, selectSql, expected);
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql, expected);
       assertTriggers(stmt,
           3, 3, 0, 0, 0, 0,
@@ -435,7 +435,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
       stmt.execute("UPDATE " + tableName + " SET h2 = i * 10 WHERE i IN (1, 2)");
       expected = asSet(new Row(1, 10, 1, 1), new Row(2, 20, 2, 2), new Row(3, 3, 3, 3));
       assertRowSet(stmt, selectSql, expected);
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql, expected);
       assertTriggers(stmt,
           0, 0, 2, 2, 0, 0,
@@ -448,7 +448,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
       stmt.execute("UPDATE " + tableName + " SET r = i * 10 WHERE i IN (1, 2)");
       expected = asSet(new Row(1, 10, 10, 1), new Row(2, 20, 20, 2), new Row(3, 3, 3, 3));
       assertRowSet(stmt, selectSql, expected);
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql, expected);
       assertTriggers(stmt,
           0, 0, 2, 2, 0, 0,
@@ -463,7 +463,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
           + " WHERE i IN (1, 2)");
       expected = asSet(new Row(11, 11, 11, 11), new Row(21, 21, 21, 21), new Row(3, 3, 3, 3));
       assertRowSet(stmt, selectSql, expected);
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql, expected);
       assertTriggers(stmt,
           0, 0, 2, 2, 0, 0,
@@ -480,7 +480,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
           + " SET h1 = EXCLUDED.i, h2 = EXCLUDED.i, r = EXCLUDED.i");
       expected = asSet(new Row(11, 11, 11, 11), new Row(21, 21, 21, 21), new Row(31, 31, 31, 3));
       assertRowSet(stmt, selectSql, expected);
-      assertTrue(doesUseIndex(selectIndexSql, indexName));
+      assertTrue(isIndexScan(stmt, selectIndexSql, indexName));
       assertRowSet(stmt, selectIndexSql, expected);
       assertTriggers(stmt,
           1, 0, 1, 1, 0, 0,

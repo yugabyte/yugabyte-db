@@ -3,6 +3,7 @@ title: DROP OWNED statement [YSQL]
 headerTitle: DROP OWNED
 linkTitle: DROP OWNED
 description: Use the DROP OWNED statement to drop all database objects within the current database that are owned by one of the specified roles.
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-drop-owned

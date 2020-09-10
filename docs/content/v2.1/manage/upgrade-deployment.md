@@ -3,6 +3,7 @@ title: Upgrade a deployment
 headerTitle: Upgrade a deployment
 linkTitle: Upgrade a deployment
 description: Upgrade a deployment
+block_indexing: true
 menu:
   v2.1:
     identifier: manage-upgrade-deployment

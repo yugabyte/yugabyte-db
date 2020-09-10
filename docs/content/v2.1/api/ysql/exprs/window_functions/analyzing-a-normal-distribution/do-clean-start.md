@@ -3,6 +3,7 @@ title: do_clean_start.sql
 linkTitle: do_clean_start.sql
 headerTitle: do_clean_start.sql
 description: Drops and re-creates the dp_results and int_results tables.
+block_indexing: true
 menu:
   v2.1:
     identifier: do-clean-start

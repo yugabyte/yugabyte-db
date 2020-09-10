@@ -5,6 +5,7 @@ linkTitle: Yugabyte Platform
 description: Use Yugabyte Platform to manage YugabyteDB universes.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Use Yugabyte Platform's orchestration and monitoring to manage YugabyteDB universes.
+block_indexing: true
 menu:
   v2.1:
     identifier: enterprise-edition

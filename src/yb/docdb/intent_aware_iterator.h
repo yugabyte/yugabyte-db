@@ -292,6 +292,8 @@ class IntentAwareIterator {
   void UpdatePlannedIntentSeekForward(
       const Slice& key, const Slice& suffix, bool use_suffix_for_prefix = true);
 
+  bool NextRegular(Direction direction);
+
   const ReadHybridTime read_time_;
   const string encoded_read_time_local_limit_;
   const string encoded_read_time_global_limit_;

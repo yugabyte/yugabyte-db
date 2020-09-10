@@ -3,6 +3,7 @@ title: Install YugabyteDB software
 headerTitle: Install software
 linkTitle: 2. Install software
 description: Download and install YugabyteDB software to each node
+block_indexing: true
 menu:
   v2.1:
     identifier: deploy-manual-deployment-install-software

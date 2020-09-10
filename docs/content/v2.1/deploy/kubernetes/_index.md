@@ -5,6 +5,7 @@ linkTitle: Kubernetes
 description: Deploy YugabyteDB clusters natively on Kubernetes with various providers
 headcontent: This section describes how to deploy YugabyteDB natively on Kubernetes.
 image: /images/section_icons/deploy/kubernetes.png
+block_indexing: true
 menu:
   v2.1:
     identifier: deploy-kubernetes

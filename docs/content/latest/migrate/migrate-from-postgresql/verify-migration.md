@@ -1,8 +1,8 @@
 ---
-title: Verify Migration
-headerTitle: Verify Migration
+title: Verify a migration from PostgreSQL
+headerTitle: Verify a migration
 linkTitle: Verify Migration
-description: Verify migration to YugabyteDB.
+description: Steps for verifying that a migration from PostgreSQL to YugabyteDB was successful.
 menu:
   latest:
     identifier: migrate-postgresql-verify

@@ -2,6 +2,7 @@
 title: TSADD
 linkTitle: TSADD
 description: TSADD
+block_indexing: true
 menu:
   stable:
     parent: api-yedis

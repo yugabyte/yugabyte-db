@@ -4,6 +4,7 @@ headerTitle: PostgreSQL JDBC Driver
 linkTitle: PostgreSQL JDBC Driver
 description: Use the PostgreSQL JDBC Driver with PostgreSQL-compatible YSQL.
 section: REFERENCE
+block_indexing: true
 menu:
   v2.1:
     identifier: postgresql-jdbc-driver

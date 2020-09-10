@@ -5,6 +5,7 @@ linkTitle: Upgrade a universe
 description: Use Yugabyte Platform to upgrade a universe.
 aliases:
   - /stable/manage/enterprise-edition/upgrade-universe/
+block_indexing: true
 menu:
   stable:
     identifier: upgrade-universes

@@ -8,6 +8,7 @@ headcontent:
 aliases:
   - /troubleshoot/
 section: YUGABYTEDB CORE
+block_indexing: true
 menu:
   stable:
     identifier: troubleshoot

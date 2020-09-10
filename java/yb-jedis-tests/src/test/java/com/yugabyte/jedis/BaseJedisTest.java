@@ -263,6 +263,23 @@ public abstract class BaseJedisTest extends BaseMiniClusterTest {
     return numRetries;
   }
 
+  protected void setWithRetries(JedisCommands client, String key, String value) throws Exception {
+    int retries =
+        doWithRetries(MAX_RETRIES, MIN_BACKOFF_TIME_MS, MAX_BACKOFF_TIME_MS,
+            new Callable<Void>() {
+              public Void call() throws Exception {
+                assertEquals("OK", client.set(key, "v"));
+                return null;
+              }
+            });
+    if (retries > MAX_RETRIES) {
+      fail("Exceeded maximum number of retries");
+    }
+    if (retries > 1 && retries <= MAX_RETRIES) {
+      LOG.info("Set Operation on key {} took {} retries", key, retries);
+    }
+  }
+
   protected void readAndWriteFromDBs(Collection<String> dbs, int numKeys) throws Exception {
     RandomStringGenerator generator = new RandomStringGenerator.Builder()
         .withinRange('a', 'z').build();
@@ -276,20 +293,7 @@ public abstract class BaseJedisTest extends BaseMiniClusterTest {
       JedisCommands client = getClientForDB(db);
       LOG.info("Writing to db " + db);
       for (String key : keys) {
-        int retries =
-            doWithRetries(MAX_RETRIES, MIN_BACKOFF_TIME_MS, MAX_BACKOFF_TIME_MS,
-                          new Callable<Void>() {
-                            public Void call() throws Exception {
-                              assertEquals("OK", client.set(key, "v"));
-                              return null;
-                            }
-                          });
-        if (retries > MAX_RETRIES) {
-          fail("Exceeded maximum number of retries");
-        }
-        if (retries > 1 && retries <= MAX_RETRIES) {
-          LOG.info("Set Operation on key {} took {} retries", key, retries);
-        }
+        setWithRetries(client, key, "v");
       }
     }
     for (String db : dbs) {

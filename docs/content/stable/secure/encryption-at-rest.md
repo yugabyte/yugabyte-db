@@ -7,6 +7,7 @@ headcontent: Enable encryption at rest with a user-generated key
 image: /images/section_icons/secure/prepare-nodes.png
 aliases:
   - /secure/encryption-at-rest
+block_indexing: true
 menu:
   stable:
     identifier: encryption-at-rest

@@ -6,6 +6,7 @@ description: Connect to clusters in Yugabyte Cloud using locally installed Yugab
 beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /stable/deploy/yugabyte-cloud/connect-to-clusters/
+block_indexing: true
 menu:
   stable:
     identifier: connect-to-clusters

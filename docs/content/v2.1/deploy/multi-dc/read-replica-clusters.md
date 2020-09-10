@@ -3,6 +3,7 @@ title: Deploy read replica clusters
 headerTitle: Read replica clusters
 linkTitle: Read replica clusters
 description: Deploy read replica clusters to asynchronously replicate data from the primary cluster and guarantee timeline consistency.
+block_indexing: true
 menu:
   v2.1:
     parent: multi-dc

@@ -3,6 +3,7 @@ title: Build a Java application that uses YCQL
 headerTitle: Build a Java application
 linkTitle: Java
 description: Build a Java application that uses YCQL.
+block_indexing: true
 menu:
   v2.1:
     parent: build-apps

@@ -5,6 +5,7 @@ linkTitle: TPC-C
 description: Benchmark YSQL performance using TPC-C
 headcontent: Benchmark YugabyteDB using TPC-C
 image: /images/section_icons/quick_start/explore_ysql.png
+block_indexing: true
 menu:
   v2.1:
     identifier: tpcc-ysql

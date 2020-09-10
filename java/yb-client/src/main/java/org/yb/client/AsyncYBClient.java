@@ -1808,6 +1808,7 @@ public class AsyncYBClient implements AutoCloseable {
    */
   @Override
   public void close() throws Exception {
+    if (closed) return;
     shutdown().join(defaultAdminOperationTimeoutMs);
   }
 

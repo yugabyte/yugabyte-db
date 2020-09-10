@@ -3,6 +3,7 @@ title: CREATE VIEW statement [YSQL]
 headerTitle: CREATE VIEW
 linkTitle: CREATE VIEW
 description: Use the CREATE VIEW statement to create a new view in a database. 
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-create-view

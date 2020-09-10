@@ -3,6 +3,7 @@ title: Compare PostgreSQL with YugabyteDB
 headerTitle: PostgreSQL
 linkTitle: PostgreSQL
 description: Compare PostgreSQL with YugabyteDB.
+block_indexing: true
 menu:
   v2.1:
     parent: comparisons

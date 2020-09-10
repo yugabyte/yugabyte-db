@@ -2063,12 +2063,6 @@ class CppCassandraDriverLowSoftLimitTest : public CppCassandraDriverTest {
     return {"--memory_limit_soft_percentage=0"s,
             "--throttle_cql_calls_on_soft_memory_limit=false"s};
   }
-
-  bool UsePartitionAwareRouting() override {
-    // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
-    // Should be reenabled when issue is fixed.
-    return false;
-  }
 };
 
 TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,

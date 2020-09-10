@@ -3,6 +3,7 @@ title: array_replace()
 linkTitle: array_replace() / set value
 headerTitle: array_replace() and setting an array value explicitly
 description: array_replace() and setting an array value explicitly
+block_indexing: true
 menu:
   v2.1:
     identifier: array-replace-a-value

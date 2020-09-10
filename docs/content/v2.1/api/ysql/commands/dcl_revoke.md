@@ -3,6 +3,7 @@ title: REVOKE statement [YSQL]
 headerTitle: REVOKE
 linkTitle: REVOKE
 description: Use the REVOKE statement to remove access privileges from one or more roles.
+block_indexing: true
 menu:
   v2.1:
     identifier: api-ysql-commands-revoke

@@ -3,6 +3,7 @@ title: Build a YugabyteDB application using Java and YEDIS
 headerTitle: Build an application using Java
 linkTitle: Java
 description: Use Java to build a YugabyteDB application that interacts with YEDIS
+block_indexing: true
 menu:
   v2.1:
     identifier: client-drivers-yedis-java

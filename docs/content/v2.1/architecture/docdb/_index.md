@@ -5,6 +5,7 @@ linkTitle: DocDB storage layer
 description: Learn about the persistent storage layer of DocDB.
 image: /images/section_icons/architecture/concepts.png
 headcontent: DocDB is YugabyteDB's distributed document store responsible for transactions, sharding, replication, and persistence.
+block_indexing: true
 menu:
   v2.1:
     identifier: docdb

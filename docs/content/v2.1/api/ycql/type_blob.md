@@ -4,6 +4,7 @@ headerTitle: BLOB data type
 linkTitle: BLOB
 summary: Binary strings of variable length
 description: Use the BLOB data type to represent arbitrary binary data of variable length.
+block_indexing: true
 menu:
   v2.1:
     parent: api-cassandra

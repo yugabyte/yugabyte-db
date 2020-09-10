@@ -3,6 +3,7 @@ title: Install Yugabyte Platform on Kubernetes
 headerTitle: Install Yugabyte Platform
 linkTitle: 2. Install Yugabyte Platform
 description: Install Yugabyte Platform (aka YugaWare) on Kubernetes
+block_indexing: true
 menu:
   v2.1:
     identifier: install-yp-3-kubernetes

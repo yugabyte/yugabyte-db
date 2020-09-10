@@ -3,6 +3,7 @@ title: cr_int_views.sql
 linkTitle: cr_int_views.sql
 headerTitle: cr_int_views.sql
 description: Create a function to compute some basic facts about table t4.
+block_indexing: true
 menu:
   v2.1:
     identifier: cr-int-views

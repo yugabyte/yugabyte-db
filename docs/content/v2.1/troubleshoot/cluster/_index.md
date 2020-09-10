@@ -4,6 +4,7 @@ linkTitle: Cluster level issues
 description: Cluster level issues
 image: /images/section_icons/quick_start/create_cluster.png
 headcontent: Diagnostics and solutions for typical YugabyteDB cluster issues.
+block_indexing: true
 menu:
   v2.1:
     identifier: troubleshoot-cluster

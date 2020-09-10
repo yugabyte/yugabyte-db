@@ -4,6 +4,7 @@ linkTitle: Per function signature and purpose
 headerTitle: Signature and purpose of each window function
 description: Window functions operate on a row set that's defined, in general, as an ordered window within a containing restriction defined by a subquery. They calculate a value for each row in the window by consulting values from other rows in the window.
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
   v2.1:
     identifier: function-syntax-semantics

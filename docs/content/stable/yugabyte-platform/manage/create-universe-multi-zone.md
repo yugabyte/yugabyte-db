@@ -6,6 +6,7 @@ description: Use Yugabyte Platform to create a YugabyteDB universe that spans mu
 aliases:
   - /manage/enterprise-edition/create-universe/
   - /stable/manage/enterprise-edition/create-universe-multi-zone
+block_indexing: true
 menu:
   stable:
     identifier: create-multi-zone-universe

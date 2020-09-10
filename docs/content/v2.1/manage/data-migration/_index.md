@@ -5,6 +5,7 @@ linkTitle: Migrate data
 description: Import and export data in YugabyteDB.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Bulk import/export data to/from YugabyteDB.
+block_indexing: true
 menu:
   v2.1:
     identifier: manage-bulk-import-export
