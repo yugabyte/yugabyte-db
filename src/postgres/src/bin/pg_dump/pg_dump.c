@@ -331,6 +331,7 @@ main(int argc, char **argv)
 	ArchiveMode archiveMode;
 
 	static DumpOptions dopt;
+	static int no_serializable_deferrable = 0;
 
 	static struct option long_options[] = {
 		{"data-only", no_argument, NULL, 'a'},
@@ -384,6 +385,7 @@ main(int argc, char **argv)
 		{"role", required_argument, NULL, 3},
 		{"section", required_argument, NULL, 5},
 		{"serializable-deferrable", no_argument, &dopt.serializable_deferrable, 1},
+		{"no-serializable-deferrable", no_argument, &no_serializable_deferrable, 1},
 		{"snapshot", required_argument, NULL, 6},
 		{"strict-names", no_argument, &strict_names, 1},
 		{"use-set-session-authorization", no_argument, &dopt.use_setsessauth, 1},
@@ -588,6 +590,9 @@ main(int argc, char **argv)
 				exit_nicely(1);
 		}
 	}
+
+	/* Enable by default serializable-deferrable mode if it's not explicitly disabled. */
+	dopt.serializable_deferrable = no_serializable_deferrable ? 0 : 1;
 
 	/*
 	 * Non-option argument specifies database name as long as it wasn't
@@ -1036,6 +1041,8 @@ help(const char *progname)
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
 	printf(_("  --section=SECTION            dump named section (pre-data, data, or post-data)\n"));
 	printf(_("  --serializable-deferrable    wait until the dump can run without anomalies\n"));
+	printf(_("  --no-serializable-deferrable disable serializable-deferrable mode\n"
+			 "                               which is enabled by default\n"));
 	printf(_("  --snapshot=SNAPSHOT          use given snapshot for the dump\n"));
 	printf(_("  --strict-names               require table and/or schema include patterns to\n"
 			 "                               match at least one entity each\n"));

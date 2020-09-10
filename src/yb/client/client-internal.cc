@@ -292,6 +292,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateTablegroup);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTablegroup);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListTablegroups);
 // These are not actually exposed outside, but it's nice to auto-add using directive.
 YB_CLIENT_SPECIALIZE_SIMPLE(AlterTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(FlushTables);
@@ -942,25 +943,12 @@ Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
               alter_name, table_id, _1, _2));
 }
 
-Status YBClient::Data::FlushTable(YBClient* client,
-                                  const YBTableName& table_name,
-                                  const std::string& table_id,
-                                  const CoarseTimePoint deadline,
-                                  const bool is_compaction) {
-  FlushTablesRequestPB req;
-  FlushTablesResponsePB resp;
+CHECKED_STATUS YBClient::Data::FlushTablesHelper(YBClient* client,
+                                                const CoarseTimePoint deadline,
+                                                const FlushTablesRequestPB req) {
   int attempts = 0;
+  FlushTablesResponsePB resp;
 
-  if (table_name.has_table()) {
-    table_name.SetIntoTableIdentifierPB(req.add_tables());
-  }
-  if (!table_id.empty()) {
-    req.add_tables()->set_table_id(table_id);
-  }
-
-  // TODO: flush related indexes
-
-  req.set_is_compaction(is_compaction);
   RETURN_NOT_OK((SyncLeaderMasterRpc<FlushTablesRequestPB, FlushTablesResponsePB>(
       deadline, req, &resp, &attempts, "FlushTables", &MasterServiceProxy::FlushTables)));
   if (resp.has_error()) {
@@ -972,10 +960,41 @@ Status YBClient::Data::FlushTable(YBClient* client,
     RETURN_NOT_OK(WaitForFlushTableToFinish(client, resp.flush_request_id(), deadline));
   }
 
-  LOG(INFO) << (is_compaction ? "Compacted" : "Flushed")
+  LOG(INFO) << (req.is_compaction() ? "Compacted" : "Flushed")
             << " table "
-            << req.tables(0).ShortDebugString();
+            << req.tables(0).ShortDebugString()
+            << (req.add_indexes() ? " and indexes" : "");
   return Status::OK();
+}
+
+CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
+                                           const vector<YBTableName>& table_names,
+                                           bool add_indexes,
+                                           const CoarseTimePoint deadline,
+                                           const bool is_compaction) {
+  FlushTablesRequestPB req;
+  req.set_add_indexes(add_indexes);
+  req.set_is_compaction(is_compaction);
+  for (const auto& table : table_names) {
+    table.SetIntoTableIdentifierPB(req.add_tables());
+  }
+
+  return FlushTablesHelper(client, deadline, req);
+}
+
+CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
+                                           const vector<TableId>& table_ids,
+                                           bool add_indexes,
+                                           const CoarseTimePoint deadline,
+                                           const bool is_compaction) {
+  FlushTablesRequestPB req;
+  req.set_add_indexes(add_indexes);
+  req.set_is_compaction(is_compaction);
+  for (const auto& table : table_ids) {
+    req.add_tables()->set_table_id(table);
+  }
+
+  return FlushTablesHelper(client, deadline, req);
 }
 
 Status YBClient::Data::IsFlushTableInProgress(YBClient* client,

@@ -285,7 +285,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // additional short time interval (e.g. 100 ms) in case we've just acquired the lease and the
   // waiting thread missed the notification. However, as of 08/14/2017 this is only used in a
   // context where this does not matter, such as catalog manager initialization.
-  CHECKED_STATUS WaitForLeaderLeaseImprecise(MonoTime deadline) override;
+  CHECKED_STATUS WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) override;
 
   CHECKED_STATUS CheckIsActiveLeaderAndHasLease() const override;
 

@@ -144,6 +144,7 @@ class UniverseForm extends Component {
         accessKeyCode: formValues[clusterType].accessKeyCode,
         instanceTags: formValues[clusterType].instanceTags,
         useTimeSync: formValues[clusterType].useTimeSync,
+        assignPublicIP: formValues[clusterType].assignPublicIP,
         enableYSQL: formValues[clusterType].enableYSQL,
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
@@ -382,6 +383,22 @@ class UniverseForm extends Component {
         }
       ];
     }
+
+    // TODO: (Daniel) - Pipe this in to UI for universe create #5354
+    // Default communication ports
+    submitPayload.communicationPorts = {
+      "masterHttpPort": 7000,
+      "masterRpcPort": 7100,
+      "tserverHttpPort": 9000,
+      "tserverRpcPort": 9100,
+      "redisServerHttpPort": 11000,
+      "redisServerRpcPort": 6379,
+      "yqlServerHttpPort": 12000,
+      "yqlServerRpcPort": 9042,
+      "ysqlServerHttpPort": 13000,
+      "ysqlServerRpcPort": 5433,
+      "nodeExporterPort": 9300
+    };
 
     submitPayload.clusters = submitPayload.clusters.filter((c)=>(c.userIntent !== null));
     // filter clusters array if configuring(adding only) Read Replica due to server side validation

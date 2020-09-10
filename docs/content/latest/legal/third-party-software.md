@@ -68,6 +68,7 @@ Yugabyte products incorporate third party software, which includes the copyright
 |  gpatch | 2.7.5 | GPL-3.0 |
 |  help2man | 1.47.5 | GPL-3.0 |
 |  isl | 0.18 | MIT |
+|  libedit | 20191231-3.1 | BSD-3-Clause |
 |  libmpc | 1.0.3.1 | LGPL-3.0 |
 |  libtool | 2.4.6.2 | GPL-2.0 |
 |  libuuid | 1.0.3 | BSD-3-Clause |
@@ -79,7 +80,6 @@ Yugabyte products incorporate third party software, which includes the copyright
 |  openssl | 1.0.2n | OpenSSL |
 |  patchelf | 0.9.1 | GPL-3.0 |
 |  pkg-config | 0.29.2_1 | GPL-2.0 |
-|  readline | 7.0.3_1 | GPL-3.0 |
 |  sqlite | 3.21.0 | CC0-1.0 |
 |  unzip | 6.0.3 | Info-ZIP |
 |  zlib | 1.2.11 | Zlib |

@@ -289,6 +289,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // See TabletLocationsPB::split_depth.
   uint64 split_depth() const { return split_depth_; }
 
+  int64_t lookups_without_new_replicas() const { return lookups_without_new_replicas_; }
+
  private:
   // Same as ReplicasAsString(), except that the caller must hold mutex_.
   std::string ReplicasAsStringUnlocked() const;
@@ -307,6 +309,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // Last time this object was refreshed. Initialized to MonoTime::Min() so we don't have to be
   // checking whether it has been initialized everytime we use this value.
   std::atomic<MonoTime> refresh_time_{MonoTime::Min()};
+
+  int64_t lookups_without_new_replicas_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTablet);
 };

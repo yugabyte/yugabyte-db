@@ -22,9 +22,11 @@ function mapStateToProps(state, ownProps) {
     restoreToTableName: '',
     restoreToKeyspace: '',
     storageConfigUUID: '',
-    storageLocation: ''
+    storageLocation: '',
+    parallelism: 8,
+    kmsConfigUUID: ''
   };
-  const { customer: { configs }, universe: { currentUniverse, universeList} } = state;
+  const { customer: { configs }, universe: { currentUniverse, universeList}, cloud } = state;
   const storageConfigs = configs.data.filter( (config) => config.type === "STORAGE");
 
   if (isNonEmptyObject(ownProps.backupInfo)) {
@@ -60,7 +62,8 @@ function mapStateToProps(state, ownProps) {
     storageConfigs: storageConfigs,
     currentUniverse: currentUniverse,
     universeList: universeList,
-    initialValues: initialFormValues
+    initialValues: initialFormValues,
+    cloud: cloud
   };
 }
 

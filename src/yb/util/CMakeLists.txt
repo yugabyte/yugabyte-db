@@ -248,7 +248,7 @@ set(UTIL_SRCS
   timestamp.cc
   trace.cc
   trilean.cc
-  ulimit_info.cc
+  ulimit_util.cc
   universe_key_manager.cc
   url-coding.cc
   user.cc
@@ -449,10 +449,7 @@ target_link_libraries(jsonwriter_test_proto
 #######################################
 
 ADD_YB_TEST(jsonwriter-test)
-if(NOT "${NO_TESTS}")
-  target_link_libraries(jsonwriter-test
-    jsonwriter_test_proto)
-endif()
+YB_TEST_TARGET_LINK_LIBRARIES(jsonwriter-test jsonwriter_test_proto)
 
 #######################################
 # proto_container_test_proto
@@ -482,13 +479,10 @@ target_link_libraries(proto_container_test_proto
 #######################################
 
 ADD_YB_TEST(pb_util-test)
-if(NOT "${NO_TESTS}")
-  target_link_libraries(pb_util-test
-    proto_container_test_proto)
-endif()
+YB_TEST_TARGET_LINK_LIBRARIES(pb_util-test proto_container_test_proto)
 
 ADD_YB_TEST(encrypted_env-test)
-target_link_libraries(encrypted_env-test encryption_test_util)
+YB_TEST_TARGET_LINK_LIBRARIES(encrypted_env-test encryption_test_util)
 
 ADD_YB_TEST(ctr_cipher_stream-test)
-target_link_libraries(ctr_cipher_stream-test encryption_test_util)
+YB_TEST_TARGET_LINK_LIBRARIES(ctr_cipher_stream-test encryption_test_util)

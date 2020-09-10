@@ -164,7 +164,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateTablegroup(tablegroupoid, stmt->tablegroupname);
+		YBCCreateTablegroup(tablegroupoid);
 	}
 
 	/* We keep the lock on pg_tablegroup until commit */
@@ -298,7 +298,7 @@ DropTableGroup(DropTableGroupStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCDropTablegroup(tablegroupoid, stmt->tablegroupname);
+		YBCDropTablegroup(tablegroupoid);
 	}
 
 	/* We keep the lock on pg_tablegroup until commit */
@@ -550,4 +550,179 @@ RemoveTableGroupById(Oid grp_oid)
 
 	/* We keep the lock on pg_tablegroup until commit */
 	heap_close(pg_tblgrp_rel, NoLock);
+}
+
+/*
+ * Rename tablegroup
+ */
+ObjectAddress
+RenameTablegroup(const char *oldname, const char *newname)
+{
+	Oid				tablegroupoid;
+	HeapTuple		newtup;
+	Relation		rel;
+	ObjectAddress	address;
+	HeapTuple		tuple;
+	HeapScanDesc	scandesc;
+	ScanKeyData		entry[1];
+
+	if (!TablegroupCatalogExists) {
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Tablegroup system catalog does not exist.")));
+	}
+
+	/*
+	 * Look up the target tablegroup's OID, and get exclusive lock on it. We
+	 * need this for the same reasons as DROP TABLEGROUP.
+	 */
+	rel = heap_open(TableGroupRelationId, RowExclusiveLock);
+	ScanKeyInit(&entry[0],
+				Anum_pg_tablegroup_grpname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(oldname));
+	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
+	heap_endscan(scandesc);
+
+	if (!HeapTupleIsValid(tuple))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("tablegroup \"%s\" does not exist",
+				 oldname)));
+	}
+
+	tablegroupoid = HeapTupleGetOid(tuple);
+
+	/* must be owner or superuser */
+	if (!superuser() && !pg_tablegroup_ownercheck(tablegroupoid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TABLEGROUP, oldname);
+
+	/*
+	 * Make sure the new name doesn't exist.
+	 */
+	if (OidIsValid(get_tablegroup_oid(newname, true)))
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("tablegroup \"%s\" already exists", newname)));
+
+	/* rename */
+	newtup = SearchSysCacheCopy1(TABLEGROUPOID, ObjectIdGetDatum(tablegroupoid));
+	if (!HeapTupleIsValid(newtup))
+		elog(ERROR, "cache lookup failed for tablegroup %u", tablegroupoid);
+
+	namestrcpy(&(((Form_pg_tablegroup) GETSTRUCT(newtup))->grpname), newname);
+	CatalogTupleUpdate(rel, &newtup->t_self, newtup);
+
+	InvokeObjectPostAlterHook(TableGroupRelationId, tablegroupoid, 0);
+
+	ObjectAddressSet(address, TableGroupRelationId, tablegroupoid);
+
+	heap_freetuple(newtup);
+
+	/*
+	 * Close pg_tablegroup, but keep lock till commit.
+	 */
+	heap_close(rel, NoLock);
+
+	return address;
+}
+
+/*
+ * ALTER TABLEGROUP name OWNER TO newowner
+ */
+ObjectAddress
+AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
+{
+	Oid					tablegroupoid;
+	HeapTuple			tuple;
+	Relation			rel;
+	ScanKeyData			entry[1];
+	HeapScanDesc		scandesc;
+	Form_pg_tablegroup	datForm;
+	ObjectAddress		address;
+
+	if (!TablegroupCatalogExists) {
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Tablegroup system catalog does not exist.")));
+	}
+
+	rel = heap_open(TableGroupRelationId, RowExclusiveLock);
+	ScanKeyInit(&entry[0],
+				Anum_pg_tablegroup_grpname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(grpname));
+	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("tablegroup \"%s\" does not exist", grpname)));
+
+	tablegroupoid = HeapTupleGetOid(tuple);
+	datForm = (Form_pg_tablegroup) GETSTRUCT(tuple);
+
+	/*
+	 * If the new owner is the same as the existing owner, consider the
+	 * command to have succeeded.  This is to be consistent with other
+	 * objects.
+	 */
+	if (datForm->grpowner != newOwnerId)
+	{
+		Datum		repl_val[Natts_pg_tablegroup];
+		bool		repl_null[Natts_pg_tablegroup];
+		bool		repl_repl[Natts_pg_tablegroup];
+		Acl		   *newAcl;
+		Datum		aclDatum;
+		bool		isNull;
+		HeapTuple	newtuple;
+
+		/* Otherwise, must be owner of the existing object or a superuser */
+		if (!superuser() && !pg_tablegroup_ownercheck(HeapTupleGetOid(tuple), GetUserId()))
+			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TABLEGROUP, grpname);
+
+		/* Must be able to become new owner */
+		check_is_member_of_role(GetUserId(), newOwnerId);
+
+		memset(repl_null, false, sizeof(repl_null));
+		memset(repl_repl, false, sizeof(repl_repl));
+
+		repl_repl[Anum_pg_tablegroup_grpowner - 1] = true;
+		repl_val[Anum_pg_tablegroup_grpowner - 1] = ObjectIdGetDatum(newOwnerId);
+
+		/*
+		 * Determine the modified ACL for the new owner.  This is only
+		 * necessary when the ACL is non-null.
+		 */
+		aclDatum = heap_getattr(tuple,
+								Anum_pg_tablegroup_grpacl,
+								RelationGetDescr(rel),
+								&isNull);
+		if (!isNull)
+		{
+			newAcl = aclnewowner(DatumGetAclP(aclDatum),
+								 datForm->grpowner, newOwnerId);
+			repl_repl[Anum_pg_tablegroup_grpacl - 1] = true;
+			repl_val[Anum_pg_tablegroup_grpacl - 1] = PointerGetDatum(newAcl);
+		}
+
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
+		CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+		heap_freetuple(newtuple);
+
+	}
+
+	InvokeObjectPostAlterHook(TableGroupRelationId, tablegroupoid, 0);
+
+	ObjectAddressSet(address, TableGroupRelationId, tablegroupoid);
+
+	heap_endscan(scandesc);
+
+	/* Close pg_tablegroup, but keep lock till commit */
+	heap_close(rel, NoLock);
+
+	return address;
 }

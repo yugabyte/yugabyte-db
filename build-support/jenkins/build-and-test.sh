@@ -95,6 +95,7 @@ build_cpp_code() {
   set_yb_src_root "$1"
 
   heading "Building C++ code in $YB_SRC_ROOT."
+
   remote_opt=""
   if [[ ${YB_REMOTE_COMPILATION:-} == "1" ]]; then
     # This helps with our background script resizing the build cluster, because it looks at all

@@ -66,7 +66,7 @@ the [RHS](https://en.wikipedia.org/wiki/Sides_of_an_equation) is an array of tha
 | Operator | 1-d only? | Description |
 | ---- | ---- | ---- |
 | [`ANY`](./any-all/) | | Returns `TRUE` if _at least one_ of the specified inequality tests between the LHS element and each of the RHS array's elements evaluates to `TRUE`. |
-| [`ALL`](./any-all/) | | Returns `TRUE` if every one_ of the specified inequality tests between the LHS element and each of the RHS array's elements evaluates to `TRUE`. |
+| [`ALL`](./any-all/) | | Returns `TRUE` if _every one_ of the specified inequality tests between the LHS element and each of the RHS array's elements evaluates to `TRUE`. |
 
 ## Operators for comparing two arrays
 

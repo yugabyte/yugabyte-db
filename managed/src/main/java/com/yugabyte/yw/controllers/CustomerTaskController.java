@@ -9,7 +9,7 @@ import java.util.UUID;
 import java.util.Map;
 import java.util.HashMap;
 
-import com.avaje.ebean.Query;
+import io.ebean.Query;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -37,7 +37,7 @@ public class CustomerTaskController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
 
   private List<SubTaskFormData> fetchFailedSubTasks(UUID parentUUID) {
-    Query<TaskInfo> subTaskQuery = TaskInfo.find.where()
+    Query<TaskInfo> subTaskQuery = TaskInfo.find.query().where()
         .eq("parent_uuid", parentUUID)
         .eq("task_state", TaskInfo.State.Failure.name())
         .orderBy("position desc");
@@ -57,7 +57,7 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
-    Query<CustomerTask> customerTaskQuery = CustomerTask.find.where()
+    Query<CustomerTask> customerTaskQuery = CustomerTask.find.query().where()
       .eq("customer_uuid", customerUUID)
       .orderBy("create_time desc");
 
@@ -136,10 +136,10 @@ public class CustomerTaskController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
-    CustomerTask customerTask = CustomerTask.find.where()
+    CustomerTask customerTask = CustomerTask.find.query().where()
       .eq("customer_uuid", customer.uuid)
       .eq("task_uuid", taskUUID)
-      .findUnique();
+      .findOne();
 
     if (customerTask == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
@@ -159,10 +159,10 @@ public class CustomerTaskController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
-    CustomerTask customerTask = CustomerTask.find.where()
+    CustomerTask customerTask = CustomerTask.find.query().where()
         .eq("customer_uuid", customer.uuid)
         .eq("task_uuid", taskUUID)
-        .findUnique();
+        .findOne();
     if (customerTask == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
     }

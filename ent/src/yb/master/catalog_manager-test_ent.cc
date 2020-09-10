@@ -358,6 +358,7 @@ TEST(TestLoadBalancerEnterprise, TestLoadBalancerAlgorithm) {
 
 
 TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedAffinitizedLeaders) {
+  // Note that this is essentially using transaction_tables_use_preferred_zones = true
   ReplicationInfoPB replication_info;
   SetupClusterConfigEnt({"a", "b", "c"} /* az list */, {} /* read only */,
                         {"a"} /* affinitized leaders */, &replication_info);
@@ -392,6 +393,7 @@ TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedAffinitizedLeaders) {
 }
 
 TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedReadOnly) {
+  // Note that this is essentially using transaction_tables_use_preferred_zones = true
   ReplicationInfoPB replication_info;
   SetupClusterConfigEnt({"a", "b", "c"} /* az list */, {"d"} /* read only */,
                         {} /* affinitized leaders */, &replication_info);

@@ -48,6 +48,7 @@ $ ./bin/yb-master --help
 - [Raft](#raft-flags)
   - [Write ahead log (WAL)](#write-ahead-log-wal-flags)
 - [Sharding](#sharding-flags)
+- [Load balancing](#load-balancing-flags)
 - [Geo-distribution](#geo-distribution-flags)
 - [Security](#security-flags)
 - [Change data capture (CDC)](#change-data-capture-cdc-flags)
@@ -111,6 +112,18 @@ In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, 
 Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
 Default: `""`
+
+##### --dns_cache_expiration_ms
+
+Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided, thereby reducing latency, improving load times, and reducing bandwidth and CPU consumption.
+
+Default: `60000` (1 minute)
+
+{{< note title="Note" >}}
+
+If this value is changed from the default, make sure to add the same value to all YB-Master and YB-TSever configurations.
+
+{{< /note >}}
 
 ##### --use_private_ip
 
@@ -323,6 +336,86 @@ Default: `2`
 The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reaches the specified size, then a log rollover occurs and a new WAL segment file is created.
 
 Default: `64`
+
+---
+
+### Load balancing flags
+
+For information on YB-Master load balancing, see [Data placement and load balancing](../../../architecture/concepts/yb-master/#data-placement-and-load-balancing)
+
+For load balancing commands in `yb-admin`, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
+
+##### --enable_load_balancing
+
+Enables or disables the load balancing algorithm, to move tablets around.
+
+Default: `true`
+
+##### --leader_balance_threshold
+
+Specifies the number of leaders per tablet server to balance below. If this is configured to `0` (the default), the leaders will be balanced optimally at extra cost.
+
+Default: `0`
+
+##### --leader_balance_unresponsive_timeout_ms
+
+Specifies the period of time, in milliseconds, that a YB-Master can go without receiving a heartbeat from a YB-TServer before considering it unresponsive. Unresponsive servers are excluded from leader balancing.
+
+Default: `3000` (3 seconds)
+
+##### --load_balancer_max_concurrent_adds
+
+Specifies the maximum number of tablet peer replicas to add in a load balancer operations.
+
+Default: `1`
+
+##### --load_balancer_max_concurrent_moves
+
+Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in a load balancer operation.
+
+Default: `10`
+
+##### --load_balancer_max_concurrent_moves_per_table
+
+Specifies the maximum number of tablet leaders per table to move in any one run of the load balancer. The maximum number of tablet leader moves across the cluster is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables.
+
+Default: `1`
+
+##### --load_balancer_max_concurrent_removals
+
+Specifies the maximum number of over-replicated tablet peer removals to do in a load balancer operation.
+
+Default: `1`
+
+##### --load_balancer_max_concurrent_tablet_remote_bootstraps
+
+Specifies the maximum number of tablets being remote bootstrapped across the cluster.
+
+Default: `10`
+
+##### --load_balancer_max_concurrent_tablet_remote_bootstraps_per_table
+
+ Maximum number of tablets being remote bootstrapped for any table. The maximum number of remote bootstraps across the cluster is still limited by the flag `load_balancer_max_concurrent_tablet_remote_bootstraps`. This flag is meant to prevent a single table use all the available remote bootstrap sessions and starving other tables.
+
+Default: `2`
+
+##### --load_balancer_max_over_replicated_tablets
+
+Specifies the maximum number of running tablet replicas that are allowed to be over the configured replication factor.
+
+Default: `1`
+
+##### --load_balancer_num_idle_runs
+
+Specifies the number of idle runs of load balancer to deem it idle.
+
+Default: `5`
+
+##### --load_balancer_skip_leader_as_remove_victim
+
+Should the LB skip a leader as a possible remove candidate. 
+
+Default: `false`
 
 ---
 
