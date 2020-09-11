@@ -273,6 +273,8 @@ class TSDescriptor {
 
   std::size_t NumTasks() const;
 
+  bool IsLive() const;
+
  protected:
   virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration,
