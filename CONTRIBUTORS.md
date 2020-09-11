@@ -98,5 +98,6 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [baba230896](https://github.com/baba230896)
 * [mirageyjd](https://github.com/mirageyjd)
 * [Abdallah](https://github.com/AbdallahKhaled93)
+* [ngov17](https://github.com/ngov17)
 * [Adm28](https://github.com/Adm28)
 * [vikramrajsitpal](https://github.com/vikramrajsitpal)
