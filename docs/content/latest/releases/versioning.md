@@ -12,7 +12,7 @@ menu:
 
 {{< note title="Important" >}}
 
-For production deployments, always upgrade to the latest stable version.
+For production deployments, always upgrade to the latest *stable* version.
 
 {{< /note >}}
 
@@ -20,13 +20,10 @@ Starting with v2.2, YugabyteDB versioning has the form `X.Y.Z` where `X.Y`
 refers to either a *stable* release series or the *latest* release series and `Z`
 refers to the revision/patch number.
 
+For example, in YugabyteDB version `2.2.2.1`, ``2.2`` refers to a stable
+release series and `.2.1` refers to the revision.
 
-
-
-For example, in YugabyteDB version ``4.0.12``, ``4.0`` refers to the
-release series and ``.12`` refers to the revision.
-
-## Latest release series
+## Latest release series (`/latest`)
 
 If ``Y`` is odd, ``X.Y`` refers to a development series; for example,
   ``4.1`` development series and ``4.3`` development series.
