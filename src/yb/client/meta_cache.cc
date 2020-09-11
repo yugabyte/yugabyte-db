@@ -325,6 +325,38 @@ int RemoteTablet::GetNumFailedReplicas() const {
   return failed;
 }
 
+bool RemoteTablet::IsReplicasCountConsistent() const {
+  return replicas_count_.load(std::memory_order_acquire).IsReplicasCountConsistent();
+}
+
+string RemoteTablet::ReplicasCountToString() const {
+  return replicas_count_.load(std::memory_order_acquire).ToString();
+}
+
+void RemoteTablet::SetExpectedReplicas(int expected_live_replicas, int expected_read_replicas) {
+  ReplicasCount old_replicas_count = replicas_count_.load(std::memory_order_acquire);
+  for (;;) {
+    ReplicasCount new_replicas_count = old_replicas_count;
+    new_replicas_count.SetExpectedReplicas(expected_live_replicas, expected_read_replicas);
+    if (replicas_count_.compare_exchange_weak(
+        old_replicas_count, new_replicas_count, std::memory_order_acq_rel)) {
+      break;
+    }
+  }
+}
+
+void RemoteTablet::SetAliveReplicas(int alive_live_replicas, int alive_read_replicas) {
+  ReplicasCount old_replicas_count = replicas_count_.load(std::memory_order_acquire);
+  for (;;) {
+    ReplicasCount new_replicas_count = old_replicas_count;
+    new_replicas_count.SetAliveReplicas(alive_live_replicas, alive_read_replicas);
+    if (replicas_count_.compare_exchange_weak(
+        old_replicas_count, new_replicas_count, std::memory_order_acq_rel)) {
+      break;
+    }
+  }
+}
+
 RemoteTabletServer* RemoteTablet::LeaderTServer() const {
   SharedLock<rw_spinlock> lock(mutex_);
   for (const RemoteReplica& replica : replicas_) {
@@ -350,6 +382,8 @@ void RemoteTablet::GetRemoteTabletServers(
   std::vector<ReplicaUpdate> replica_updates;
   {
     SharedLock<rw_spinlock> lock(mutex_);
+    int num_alive_live_replicas = 0;
+    int num_alive_read_replicas = 0;
     for (RemoteReplica& replica : replicas_) {
       if (replica.Failed()) {
         if (include_failed_replicas) {
@@ -416,9 +450,16 @@ void RemoteTablet::GetRemoteTabletServers(
         replica_update.clear_failed = true;
         // Cannot update replica here directly because holding only shared lock on mutex.
         replica_updates.push_back(replica_update);
+      } else {
+        if (replica.role == RaftPeerPB::READ_REPLICA) {
+          num_alive_read_replicas++;
+        } else if (replica.role == RaftPeerPB::FOLLOWER || replica.role == RaftPeerPB::LEADER) {
+          num_alive_live_replicas++;
+        }
       }
       servers->push_back(replica.ts);
     }
+    SetAliveReplicas(num_alive_live_replicas, num_alive_read_replicas);
   }
   if (!replica_updates.empty()) {
     std::lock_guard<rw_spinlock> lock(mutex_);
@@ -833,7 +874,7 @@ Status MetaCache::ProcessTabletLocations(
           MaybeUpdateClientRequests(table_data, *remote);
         }
         remote->Refresh(ts_cache_, loc.replicas());
-
+        remote->SetExpectedReplicas(loc.expected_live_replicas(), loc.expected_read_replicas());
         if (partition_group_start) {
           processed_table.emplace(loc.partition().partition_key_start(), remote);
         }

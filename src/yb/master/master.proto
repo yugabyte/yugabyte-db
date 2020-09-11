@@ -794,6 +794,12 @@ message TabletLocationsPB {
 
   // See SysTabletsEntryPB for field with the same name.
   optional uint64 split_depth = 9;
+
+  // Number of expected live replicas.
+  optional int32 expected_live_replicas = 10;
+
+  // Number of expected read replicas.
+  optional int32 expected_read_replicas = 11;
 }
 
 // Info about a single tablet server, returned to the client as part
