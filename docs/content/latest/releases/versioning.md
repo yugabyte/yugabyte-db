@@ -39,17 +39,3 @@ Documentation for the latest releases
 - If ``Y`` is even, ``X.Y`` refers to a stable release series; for example,
   ``4.0`` release series and ``4.2`` release series. Release series are
   **stable** and suitable for production.
-
-
-Patch Releases
---------------
-
-Changes to the revision number (e.g. ``4.0.11`` to ``4.0.12``)
-generally mark the release of bug fixes and backwards-compatible
-changes.
-
-Driver Versions
----------------
-
-The version numbering system for YugabyteDB differs from the system
-used for the YugabyteDB drivers.
