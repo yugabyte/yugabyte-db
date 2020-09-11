@@ -3570,6 +3570,269 @@ SELECT * FROM cypher('expr', $$
 $$) AS (results agtype);
 ERROR:  degrees() unsuppoted argument agtype 1
 --
+-- abs(), ceil(), floor(), & round()
+--
+SELECT * FROM cypher('expr', $$
+    RETURN abs(0)
+$$) AS (results agtype);
+ results 
+---------
+ 0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN abs(10)
+$$) AS (results agtype);
+ results 
+---------
+ 10
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN abs(-10)
+$$) AS (results agtype);
+ results 
+---------
+ 10
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(0)
+$$) AS (results agtype);
+ results 
+---------
+ 0.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(1)
+$$) AS (results agtype);
+ results 
+---------
+ 1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(-1)
+$$) AS (results agtype);
+ results 
+---------
+ -1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(1.01)
+$$) AS (results agtype);
+ results 
+---------
+ 2.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(-1.01)
+$$) AS (results agtype);
+ results 
+---------
+ -1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN floor(0)
+$$) AS (results agtype);
+ results 
+---------
+ 0.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN floor(1)
+$$) AS (results agtype);
+ results 
+---------
+ 1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN floor(-1)
+$$) AS (results agtype);
+ results 
+---------
+ -1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN floor(1.01)
+$$) AS (results agtype);
+ results 
+---------
+ 1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN floor(-1.01)
+$$) AS (results agtype);
+ results 
+---------
+ -2.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN round(0)
+$$) AS (results agtype);
+ results 
+---------
+ 0.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN round(4.49999999)
+$$) AS (results agtype);
+ results 
+---------
+ 4.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN round(4.5)
+$$) AS (results agtype);
+ results 
+---------
+ 5.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN round(-4.49999999)
+$$) AS (results agtype);
+ results 
+---------
+ -4.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN round(-4.5)
+$$) AS (results agtype);
+ results 
+---------
+ -5.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN sign(10)
+$$) AS (results agtype);
+ results 
+---------
+ 1
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN sign(-10)
+$$) AS (results agtype);
+ results 
+---------
+ -1
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN sign(0)
+$$) AS (results agtype);
+ results 
+---------
+ 0
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN abs(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN floor(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN round(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN sign(null)
+$$) AS (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN abs()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN ceil()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN floor()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN round()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN sign()
+$$) AS (results agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+SELECT * FROM cypher('expr', $$
+    RETURN abs("1")
+$$) AS (results agtype);
+ERROR:  abs() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN ceil("1")
+$$) AS (results agtype);
+ERROR:  ceil() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN floor("1")
+$$) AS (results agtype);
+ERROR:  floor() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN round("1")
+$$) AS (results agtype);
+ERROR:  round() unsuppoted argument agtype 1
+SELECT * FROM cypher('expr', $$
+    RETURN sign("1")
+$$) AS (results agtype);
+ERROR:  sign() unsuppoted argument agtype 1
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

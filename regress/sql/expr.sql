@@ -1515,6 +1515,120 @@ SELECT * FROM cypher('expr', $$
 $$) AS (results agtype);
 
 --
+-- abs(), ceil(), floor(), & round()
+--
+SELECT * FROM cypher('expr', $$
+    RETURN abs(0)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN abs(10)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN abs(-10)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(0)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(-1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(1.01)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(-1.01)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN floor(0)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN floor(1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN floor(-1)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN floor(1.01)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN floor(-1.01)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN round(0)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN round(4.49999999)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN round(4.5)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN round(-4.49999999)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN round(-4.5)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN sign(10)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN sign(-10)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN sign(0)
+$$) AS (results agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN abs(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN ceil(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN floor(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN round(null)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN sign(null)
+$$) AS (results agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN abs()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN ceil()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN floor()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN round()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN sign()
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN abs("1")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN ceil("1")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN floor("1")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN round("1")
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN sign("1")
+$$) AS (results agtype);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
