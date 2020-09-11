@@ -124,7 +124,8 @@ class MasterPathHandlers {
   void TServerDisplay(const std::string& current_uuid,
                       std::vector<std::shared_ptr<TSDescriptor>>* descs,
                       TabletCountMap* tmap,
-                      std::stringstream* output);
+                      std::stringstream* output,
+                      const int hide_dead_node_threshold_override);
 
   // Outputs a ZoneTabletCounts::CloudTree as an html table with a heading.
   static void DisplayTabletZonesTable(

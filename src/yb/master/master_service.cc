@@ -574,7 +574,7 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
     *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
     *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
     entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());
-    entry->set_alive(TSManager::IsTSLive(desc));
+    entry->set_alive(desc->IsLive());
     desc->GetMetrics(entry->mutable_metrics());
   }
   rpc.RespondSuccess();
