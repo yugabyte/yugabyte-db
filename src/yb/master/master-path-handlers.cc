@@ -60,6 +60,12 @@
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
+DEFINE_int32(
+    hide_dead_node_threshold_mins, 60 * 24,
+    "After this many minutes of no heartbeat from a node, hide it from the UI "
+    "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
+    "never hidden from the UI");
+
 namespace yb {
 
 namespace {
@@ -249,6 +255,23 @@ string UptimeString(uint64_t seconds) {
   return uptime_string_stream.str();
 }
 
+bool ShouldHideTserverNodeFromDisplay(
+    const TSDescriptor* ts, int hide_dead_node_threshold_mins) {
+  return hide_dead_node_threshold_mins > 0
+      && !ts->IsLive()
+      && ts->TimeSinceHeartbeat().ToMinutes() > hide_dead_node_threshold_mins;
+}
+
+int GetTserverCountForDisplay(const TSManager* ts_manager) {
+  int count = 0;
+  for (const auto& tserver : ts_manager->GetAllDescriptors()) {
+    if (!ShouldHideTserverNodeFromDisplay(tserver.get(), FLAGS_hide_dead_node_threshold_mins)) {
+      count++;
+    }
+  }
+  return count;
+}
+
 } // anonymous namespace
 
 string MasterPathHandlers::GetHttpHostPortFromServerRegistration(
@@ -262,9 +285,13 @@ string MasterPathHandlers::GetHttpHostPortFromServerRegistration(
 void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         std::vector<std::shared_ptr<TSDescriptor>>* descs,
                                         TabletCountMap* tablet_map,
-                                        std::stringstream* output) {
+                                        std::stringstream* output,
+                                        const int hide_dead_node_threshold_mins) {
   for (auto desc : *descs) {
     if (desc->placement_uuid() == current_uuid) {
+      if (ShouldHideTserverNodeFromDisplay(desc.get(), hide_dead_node_threshold_mins)) {
+        continue;
+      }
       const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
       TSRegistrationPB reg = desc->GetRegistration();
       string host_port = GetHttpHostPortFromServerRegistration(reg.common());
@@ -272,7 +299,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       *output << "  <td>" << RegistrationToHtml(reg.common(), host_port) << "</br>";
       *output << "  " << desc->permanent_uuid() << "</td>";
       *output << "<td>" << time_since_hb << "</td>";
-      if (master_->ts_manager()->IsTSLive(desc)) {
+      if (desc->IsLive()) {
         *output << "    <td style=\"color:Green\">" << kTserverAlive << ":" <<
                 UptimeString(desc->uptime_seconds()) << "</td>";
       } else {
@@ -425,6 +452,12 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
+  auto threshold_arg = req.parsed_args.find("live_threshold_mins");
+  int hide_dead_node_threshold_override = FLAGS_hide_dead_node_threshold_mins;
+  if (threshold_arg != req.parsed_args.end()) {
+    hide_dead_node_threshold_override = atoi(threshold_arg->second.c_str());
+  }
+
   SysClusterConfigEntryPB config;
   Status s = master_->catalog_manager()->GetClusterConfig(&config);
   if (!s.ok()) {
@@ -458,13 +491,14 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   }
 
   TServerTable(output);
-  TServerDisplay(live_id, &descs, &tablet_map, output);
+  TServerDisplay(live_id, &descs, &tablet_map, output, hide_dead_node_threshold_override);
 
   for (const auto& read_replica_uuid : read_replica_uuids) {
     *output << "<h3 style=\"color:" << kYBDarkBlue << "\">Read Replica UUID: "
             << (read_replica_uuid.empty() ? kNoPlacementUUID : read_replica_uuid) << "</h3>\n";
     TServerTable(output);
-    TServerDisplay(read_replica_uuid, &descs, &tablet_map, output);
+    TServerDisplay(
+        read_replica_uuid, &descs, &tablet_map, output, hide_dead_node_threshold_override);
   }
 
   ZoneTabletCounts::CloudTree counts_tree = CalculateTabletCountsTree(descs, tablet_map);
@@ -520,7 +554,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.String("time_since_hb_sec");
         jw.Double(desc->TimeSinceHeartbeat().ToSeconds());
 
-        if (master_->ts_manager()->IsTSLive(desc)) {
+        if (desc->IsLive()) {
           jw.String("status");
           jw.String(kTserverAlive);
 
@@ -634,7 +668,7 @@ void MasterPathHandlers::HandleHealthCheck(
     // Iterate TabletServers, looking for health anomalies.
     for (const auto & desc : descs) {
       if (desc->placement_uuid() == live_placement_uuid) {
-        if (!master_->ts_manager()->IsTSLive(desc)) {
+        if (!desc->IsLive()) {
           // 1. Are any of the TS marked dead in the master?
           dead_nodes.push_back(desc);
         } else {
@@ -1086,7 +1120,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                           "<i class='fa fa-server yb-dashboard-icon' aria-hidden='true'></i>",
                           "Num Nodes (TServers) ");
   (*output) << Substitute(" <td>$0 <a href='$1' class='btn btn-default pull-right'>$2</a></td>",
-                          master_->ts_manager()->GetCount(),
+                          GetTserverCountForDisplay(master_->ts_manager()),
                           "/tablet-servers",
                           "See all nodes &raquo;");
   (*output) << "  </tr>\n";
