@@ -32,7 +32,8 @@ If ``Y`` is odd, ``X.Y`` refers to a development series; for example,
 Changes in the release series (e.g. ``4.0`` to ``4.2``) generally mark
 the introduction of new features that may break backwards compatibility.
 
-Documentation for the latest releases 
+The goal for documentation for the latest releases is to include documentation that has reached "BETA" status.
+
 
 ## Stable release series
 
