@@ -776,6 +776,12 @@ message TabletLocationsPB {
 
   // For tablets which are results of splitting we set this to split parent split_depth + 1.
   optional uint64 split_depth = 9;
+
+  // Number of expected live replicas.
+  optional int32 expected_live_replicas = 10;
+
+  // Number of expected read replicas.
+  optional int32 expected_read_replicas = 11;
 }
 
 // Info about a single tablet server, returned to the client as part

@@ -241,9 +241,17 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     }
   }
 
+  // For now all the tables in the cluster share the same replication information.
+  int expected_live_replicas = 0;
+  int expected_read_replicas = 0;
+  server_->catalog_manager()->GetExpectedNumberOfReplicas(
+      &expected_live_replicas, &expected_read_replicas);
+
   for (const TabletId& tablet_id : req->tablet_ids()) {
     // TODO: once we have catalog data. ACL checks would also go here, probably.
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
+    locs_pb->set_expected_live_replicas(expected_live_replicas);
+    locs_pb->set_expected_read_replicas(expected_read_replicas);
     Status s = server_->catalog_manager()->GetTabletLocations(tablet_id, locs_pb);
     if (!s.ok()) {
       resp->mutable_tablet_locations()->RemoveLast();

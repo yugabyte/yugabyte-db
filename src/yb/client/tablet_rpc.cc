@@ -31,6 +31,15 @@ DEFINE_int32(force_lookup_cache_refresh_secs, 0, "When non-zero, specifies how o
              "GetTabletLocations request to the master leader to update the tablet replicas cache. "
              "This request is only sent if we are processing a ConsistentPrefix read.");
 
+DEFINE_int32(lookup_cache_refresh_secs, 60, "When non-zero, specifies how often we send a "
+             "GetTabletLocations request to the master leader to update the tablet replicas cache. "
+             "This request is only sent if we are processing a ConsistentPrefix read and the RPC "
+             "layer has determined that its view of the replicas is inconsistent with what the "
+             "master has reported");
+DEFINE_test_flag(int32, assert_failed_replicas_less_than, 0,
+                 "If greater than 0, this process will crash if the number of failed replicas for "
+                 "a RemoteTabletServer is greater than the specified number.");
+
 using namespace std::placeholders;
 
 namespace yb {
@@ -59,6 +68,11 @@ TabletInvoker::~TabletInvoker() {}
 
 void TabletInvoker::SelectTabletServerWithConsistentPrefix() {
   TRACE_TO(trace_, "SelectTabletServerWithConsistentPrefix()");
+  if (FLAGS_assert_failed_replicas_less_than) {
+    if (tablet_->GetNumFailedReplicas() >= FLAGS_assert_failed_replicas_less_than) {
+      LOG(FATAL) << "Invalid number of failed replicas: " << tablet_->ReplicasAsString();
+    }
+  }
 
   std::vector<RemoteTabletServer*> candidates;
   current_ts_ = client_->data_->SelectTServer(tablet_.get(),
@@ -145,6 +159,41 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
     return;
   }
 
+  if (consistent_prefix_ && !leader_only) {
+    bool refresh_cache = false;
+    if (PREDICT_FALSE(FLAGS_force_lookup_cache_refresh_secs > 0) &&
+        MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds() >
+        FLAGS_force_lookup_cache_refresh_secs) {
+
+      refresh_cache = true;
+
+      VLOG(1) << "Updating tablet " << tablet_->tablet_id() << " replicas cache "
+              << "force_lookup_cache_refresh_secs: " << FLAGS_force_lookup_cache_refresh_secs
+              << ". " << MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds()
+              << " seconds since the last update. Replicas in current cache: "
+              << tablet_->ReplicasAsString();
+    } else if (FLAGS_lookup_cache_refresh_secs > 0 &&
+               MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds() >
+               FLAGS_lookup_cache_refresh_secs &&
+               !tablet_->IsReplicasCountConsistent()) {
+      refresh_cache = true;
+      VLOG(1) << "Updating tablet " << tablet_->tablet_id() << " replicas cache "
+              << "force_lookup_cache_refresh_secs: " << FLAGS_force_lookup_cache_refresh_secs
+              << ". " << MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds()
+              << " seconds since the last update. Replicas in current cache: "
+              << tablet_->ReplicasAsString();
+    }
+
+
+    if (refresh_cache) {
+      client_->LookupTabletById(tablet_id_,
+                                retrier_->deadline(),
+                                std::bind(&TabletInvoker::LookupTabletCb, this, _1),
+                                UseCache::kFalse);
+      return;
+    }
+  }
+
   // Sets current_ts_.
   if (local_tserver_only_) {
     SelectLocalTabletServer();
@@ -170,21 +219,6 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
                               retrier_->deadline(),
                               std::bind(&TabletInvoker::LookupTabletCb, this, _1),
                               UseCache::kTrue);
-    return;
-  } else if (consistent_prefix_ &&
-             FLAGS_force_lookup_cache_refresh_secs > 0 &&
-             MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds() >
-                 FLAGS_force_lookup_cache_refresh_secs) {
-
-    VLOG(1) << "Updating tablet " << tablet_->tablet_id() << " replicas cache for tablet "
-            << " after " << MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds()
-            << " seconds since the last update. Replicas: "
-            << tablet_->ReplicasAsString();
-
-    client_->LookupTabletById(tablet_id_,
-                              retrier_->deadline(),
-                              std::bind(&TabletInvoker::LookupTabletCb, this, _1),
-                              UseCache::kFalse);
     return;
   }
 
