@@ -169,6 +169,22 @@ class ListTableGrid extends Component {
       }
     };
 
+    const formatBytes = function(item, row) {
+      if (Number.isInteger(item)) {
+        var bytes = item;
+        var sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
+        var k = 1024;
+        if (bytes <= 0) {
+          return bytes + " " + sizes[0];
+        }
+
+        var sizeIndex = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, sizeIndex)).toFixed(2)) + " " + sizes[sizeIndex];
+      } else {
+        return "-";
+      }
+    };
+
     let listItems = [];
     if (isNonEmptyArray(self.props.tables.universeTablesList)) {
       listItems = self.props.tables.universeTablesList.map(function (item, idx) {
@@ -180,7 +196,8 @@ class ListTableGrid extends Component {
           "status": "success",
           "read": tablePlacementDummyData.read,
           "write": tablePlacementDummyData.write,
-          "isIndexTable": item.isIndexTable
+          "isIndexTable": item.isIndexTable,
+          "sizeBytes": item.sizeBytes,
         };
       });
     }
@@ -210,18 +227,20 @@ class ListTableGrid extends Component {
       <BootstrapTable data={sortedListItems} >
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
         <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName}
-                          columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"}>
+                          columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"} dataSort>
           Table Name</TableHeaderColumn>
         <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon }
-                          columnClassName={"table-type-image-header yb-table-cell"} className={"yb-table-cell"}>
+                          columnClassName={"table-type-image-header yb-table-cell"} className={"yb-table-cell"} dataSort>
           Table Type</TableHeaderColumn>
         <TableHeaderColumn dataField={"keySpace"}
-                          columnClassName={"yb-table-cell"} dataFormat={formatKeySpace}>
+                          columnClassName={"yb-table-cell"} dataFormat={formatKeySpace} dataSort>
           Keyspace</TableHeaderColumn>
-
         <TableHeaderColumn dataField={"status"}
                           columnClassName={"yb-table-cell"} dataFormat={formatTableStatus}>
           Status</TableHeaderColumn>
+          <TableHeaderColumn dataField={"sizeBytes"}
+                          columnClassName={"yb-table-cell"} dataFormat={formatBytes} dataSort>
+          Size</TableHeaderColumn>
         <TableHeaderColumn dataField={"read"}
                           columnClassName={"yb-table-cell"} >
           Read</TableHeaderColumn>
