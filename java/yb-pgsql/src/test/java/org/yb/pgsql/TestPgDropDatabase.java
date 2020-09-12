@@ -155,7 +155,7 @@ public class TestPgDropDatabase extends BasePgSQLTest {
 
   @Test
   public void testCreateDatabaseWithFailures() throws Exception {
-    String dbname = "basic_db";
+    String dbname = "basic_db_with_failures";
 
     // Toggle a GFLAG on the Master at runtime to cause periodic low-level IO failures.
     try (AsyncYBClient client = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses).build();
@@ -204,7 +204,7 @@ public class TestPgDropDatabase extends BasePgSQLTest {
 
   @Test
   public void testDropDatabaseNotFoundOnMaster() throws Exception {
-    String dbname = "basic_db";
+    String dbname = "basic_db_missing_on_master";
 
     // Create database.
     try (Connection connection0 = getConnectionBuilder().withTServer(0).connect();
