@@ -14,6 +14,12 @@ menu:
     weight: 2589 
 ---
 
+{{< note title="Important" >}}
+
+The latest release (v2.3.0.0) follows the new versioning approach for YugabyteDB. This release is not considered ready for production use and is available for testing new features added to the `v2.3` latest release series. For details, see [Versioning (stable and latest releases)](../versioning).
+
+{{< /note >}}
+
 **Released:** September 8, 2020 (2.3.0.0-b176).
 
 **New to YugabyteDB?** To get up and running in less than five minutes, follow [Quick start](../../quick-start/).

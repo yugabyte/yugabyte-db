@@ -34,7 +34,6 @@ the introduction of new features that may break backwards compatibility.
 
 The goal for documentation for the latest releases is to include documentation that has reached "BETA" status.
 
-
 ## Stable release series
 
 - If ``Y`` is even, ``X.Y`` refers to a stable release series; for example,
