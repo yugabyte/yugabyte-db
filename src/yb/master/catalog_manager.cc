@@ -1786,6 +1786,7 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
   // Create table info in memory.
   scoped_refptr<TableInfo> table;
   vector<TabletInfo*> tablets;
+  scoped_refptr<TabletInfo> sys_catalog_tablet;
   {
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
@@ -1805,12 +1806,18 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
         *req, schema, partition_schema, false /* create_tablets */, namespace_id, namespace_name,
         partitions, nullptr /* index_info */, nullptr /* tablets */, resp, &table));
 
-    scoped_refptr<TabletInfo> tablet = tablet_map_->find(kSysCatalogTabletId)->second;
-    auto tablet_lock = tablet->LockForWrite();
+    sys_catalog_tablet = tablet_map_->find(kSysCatalogTabletId)->second;
+  }
+  {
+    auto tablet_lock = sys_catalog_tablet->LockForWrite();
     tablet_lock->mutable_data()->pb.add_table_ids(table->id());
-    table->AddTablet(tablet.get());
 
-    RETURN_NOT_OK(sys_catalog_->UpdateItem(tablet.get(), leader_ready_term()));
+    Status s = sys_catalog_->UpdateItem(sys_catalog_tablet.get(), leader_ready_term());
+    if (PREDICT_FALSE(!s.ok())) {
+      return AbortTableCreation(table.get(), tablets, s.CloneAndPrepend(
+        "An error occurred while inserting to sys-tablets: "), resp);
+    }
+    table->AddTablet(sys_catalog_tablet.get());
     tablet_lock->Commit();
   }
   TRACE("Inserted new table info into CatalogManager maps");
@@ -1819,12 +1826,8 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
   table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
   Status s = sys_catalog_->AddItem(table.get(), leader_ready_term());
   if (PREDICT_FALSE(!s.ok())) {
-    // TODO(NIC): tablets is empty here.  Probably want 'tablet' in the previous scope?
-    return AbortTableCreation(table.get(), tablets,
-                              s.CloneAndPrepend(
-                                  Substitute("An error occurred while inserting to sys-tablets: $0",
-                                             s.ToString())),
-                              resp);
+    return AbortTableCreation(table.get(), tablets, s.CloneAndPrepend(
+      "An error occurred while inserting to sys-tablets: "), resp);
   }
   TRACE("Wrote table to system table");
 
