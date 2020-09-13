@@ -1,16 +1,17 @@
 ---
 title: Releases
-headerTitle: Migrate applications to YugabyteDB
-linkTitle: Migrate
-description: Migrate existing PostgreSQL and other RDBMS applications to YugabyteDB.
-image: /images/section_icons/explore/high_performance.png
-headcontent: Migrate your PostgreSQL and other existing applications to YugabyteDB.
+headerTitle: Releases
+linkTitle: Releases
+description: 
+image: /images/section_icons/quick_start/sample_apps.png
+headcontent:
+aliases:
+  - /latest/manage/
 section: YUGABYTEDB CORE
 menu:
   latest:
-    identifier: migrate
-    weight: 625
-
+    identifier: manage
+    weight: 900
 ---
 
 <div class="row">
