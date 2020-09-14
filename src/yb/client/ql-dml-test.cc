@@ -44,6 +44,7 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_int32(max_stale_read_bound_time_ms);
 
 using namespace std::literals;
 
@@ -1243,7 +1244,14 @@ TEST_F(QLDmlTest, ReadFollower) {
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     cluster_->mini_tablet_server(i)->Shutdown();
   }
+
   ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  // Since this will be the only alive tserver, there won't be any
+  // UpdateConsensus requests to update the safe time. So staleness
+  // will keep increasing. Disable staleness for the verification
+  // step.
+  FLAGS_max_stale_read_bound_time_ms = 0;
+
 
   // Check that after restart we don't miss any rows.
   std::vector<size_t> missing_rows;
