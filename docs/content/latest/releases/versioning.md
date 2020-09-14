@@ -10,7 +10,9 @@ menu:
     weight: 2588 
 ---
 
-Starting with version 2.2.0.0, YugabyteDB release versions use semantic versioning, but even and odd minor releases denote stable and development releases as described below.
+**Note:** Starting with version 2.2.0.0, Yugabyte uses even/odd minor release numbering for stable and development releases. 
+
+Yugabyte uses the semantic versioning (semver) convention for specifying release versions, modified slightly to use even and odd minor releases denote stable and development releases as described below.
 
 YugabyteDB release versions follow the semantic versioning format of `MAJOR.MINOR.PATCH`, where:
 
@@ -18,19 +20,18 @@ YugabyteDB release versions follow the semantic versioning format of `MAJOR.MINO
 - `MINOR`
   - `EVEN`: stable release
   - `ODD`: development release
-- `PATCH`: revision
+- `PATCH`: bug fixes and revisions
 - `HOTFIX`(?)
 
-For example, in YugabyteDB version `2.2.2.1`, `2.2` refers to a stable
-release series and `.2.1` refers to the revision.
+For example, YugabyteDB version `2.3.0.0` denotes the current development release.
 
-## Development releases
+Changes in the release series (e.g. `4.0` to `4.2`) generally mark the introduction of new features that may break backwards compatibility.
 
-Development releases for YugabyteDB are based on the last stable release, but introduce new features that may break backwards compatibility.
+## Development releases (MAJOR.ODD)
 
-The If `MINOR` is an odd integer, `MAJOR.MINOR-ODD` denotes a development release series.
+Development releases of YugabyteDB are based on the last stable release, but introduce new features that may break backwards compatibility.
 
-For example, `2.3` is the current development release series; the next development release series will be `2.5`.
+The YugabyteDB development release series is represented by and odd integer for `MINOR`. Thus, `MAJOR.ODD` denotes a development release series. YugabyteDB version `2.3` is the current development release series; the next development release series will be `2.5`.
 
 {{< note title="Note" >}}
 
@@ -38,28 +39,23 @@ Development releases should only be used for testing and development, and are no
 
 {{< /note >}}
 
-Changes in the release series (e.g. `4.0` to `4.2`) generally mark the introduction of new features that may break backwards compatibility.
-
 ### Documentation for development releases
 
-Documentation for the latest development release series are a work-in-progress. The goal is to provide documentation for new features as soon as possible, to help you develop and test using the new features.
+Documentation in the "latest" section (default) covers the latest development release series and is a work-in-progress. Our goal is to provide documentation for new features when they are introduced, to help you develop and test the new features.
 
-## Stable releases
+## Stable releases (MAJOR.EVEN)
+
+Stable releases of YugabyteDB are fully tested and ready for prduction deploments. Stable releases introduce new features and changes from the last development release and may break backwards compatibility.
+
+The YugabyteDB stable release series is represented by an even integer for `MINOR`. Thus, `MAJOR.EVEN` denotes a development release series. The current stable release series for YugabyteDB is version `2.2`; the next stable release series will be `2.4`.
+
+`MAJOR.MINOR` refers to a stable release series when `MINOR` is an odd integer. For example, `2.2` is the current stable release series and the next stable release series will be `2.4`.
 
 {{< note title="Important" >}}
 
-For production deployments, upgrade to the latest *stable* version.
+Production deployments should only use stable releases and upgrade only to the next stable release.
 
 {{< /note >}}
-
-- If `Y` is an even integer, `X.Y` refers to a stable release series; for example,
-  `4.0` release series and `4.2` release series. Release series are
-  **stable** and suitable for production.
-
-### Documentation for stable releases
-
-asdfa
-
 
 ## Major releases
 
