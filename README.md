@@ -325,43 +325,48 @@ To view the statistics, there are multiple views available.
 
 
 ```
-postgres=# \d pg_stat_monitor
+postgres=# \d pg_stat_monitor;
                           View "public.pg_stat_monitor"
-       Column        |           Type           | Default 
----------------------+--------------------------+-----------
- bucket              | int                      |           
- bucket_start_time   | timestamp with time zone |           
- userid              | oid                      |           
- dbid                | oid                      |           
- queryid             | text                     |           
- query               | text                     |           
- calls               | bigint                   |           
- total_time          | double precision         |           
- min_time            | double precision         |           
- max_time            | double precision         |           
- mean_time           | double precision         |           
- stddev_time         | double precision         |           
- rows                | bigint                   |           
- shared_blks_hit     | bigint                   |           
- shared_blks_read    | bigint                   |           
- shared_blks_dirtied | bigint                   |           
- shared_blks_written | bigint                   |           
- local_blks_hit      | bigint                   |           
- local_blks_read     | bigint                   |           
- local_blks_dirtied  | bigint                   |           
- local_blks_written  | bigint                   |           
- temp_blks_read      | bigint                   |           
- temp_blks_written   | bigint                   |           
- blk_read_time       | double precision         |           
- blk_write_time      | double precision         |           
- host                | bigint                   |           
- client_ip           | inet                     |           
- resp_calls          | text[]                   |           
- cpu_user_time       | double precision         |           
- cpu_sys_time        | double precision         |           
- tables_names        | text[]                   |           
- wait_event          | text                     |           
- wait_event_type     | text                     |           
+       Column        |           Type           | Collation | Nullable | Default 
+---------------------+--------------------------+-----------+----------+---------
+ bucket              | integer                  |           |          | 
+ bucket_start_time   | timestamp with time zone |           |          | 
+ userid              | oid                      |           |          | 
+ dbid                | oid                      |           |          | 
+ client_ip           | inet                     |           |          | 
+ queryid             | text                     |           |          | 
+ query               | text                     |           |          | 
+ plan_calls          | bigint                   |           |          | 
+ plan_total_time     | double precision         |           |          | 
+ plan_min_timei      | double precision         |           |          | 
+ plan_max_time       | double precision         |           |          | 
+ plan_mean_time      | double precision         |           |          | 
+ plan_stddev_time    | double precision         |           |          | 
+ plan_rows           | bigint                   |           |          | 
+ total_calls         | bigint                   |           |          | 
+ total_time          | double precision         |           |          | 
+ min_time            | double precision         |           |          | 
+ max_time            | double precision         |           |          | 
+ mean_time           | double precision         |           |          | 
+ stddev_time         | double precision         |           |          | 
+ effected_rows       | bigint                   |           |          | 
+ shared_blks_hit     | bigint                   |           |          | 
+ shared_blks_read    | bigint                   |           |          | 
+ shared_blks_dirtied | bigint                   |           |          | 
+ shared_blks_written | bigint                   |           |          | 
+ local_blks_hit      | bigint                   |           |          | 
+ local_blks_read     | bigint                   |           |          | 
+ local_blks_dirtied  | bigint                   |           |          | 
+ local_blks_written  | bigint                   |           |          | 
+ temp_blks_read      | bigint                   |           |          | 
+ temp_blks_written   | bigint                   |           |          | 
+ blk_read_time       | double precision         |           |          | 
+ blk_write_time      | double precision         |           |          | 
+ resp_calls          | text[]                   |           |          | 
+ cpu_user_time       | double precision         |           |          | 
+ cpu_sys_time        | double precision         |           |          | 
+ tables_names        | text[]                   |           |          | 
+
 ```
 
 
@@ -469,77 +474,6 @@ postgres=# select wait_event_type, query from pg_stat_monitor;
                  | select client_ip, query from pg_stat_monitor
  ClientRead      | select wait_event_type, query from pg_stat_monitor
                  | select * from pg_stat_monitor_reset()
-```
-
-**`pg_stat_agg_database`**: Shows the aggregated value per database. 
-
-```
-postgres=# \d pg_stat_agg_database;
-                View "public.pg_stat_agg_database"
-    Column     |       Type       | Collation | Nullable | Default 
----------------+------------------+-----------+----------+---------
- bucket        | oid              |           |          | 
- queryid       | text             |           |          | 
- dbid          | bigint           |           |          | 
- userid        | oid              |           |          | 
- client_ip     | inet             |           |          | 
- total_calls   | integer          |           |          | 
- min_time      | double precision |           |          | 
- max_time      | double precision |           |          | 
- mean_time     | double precision |           |          | 
- resp_calls    | text[]           |           |          | 
- cpu_user_time | double precision |           |          | 
- cpu_sys_time  | double precision |           |          | 
- query         | text             |           |          | 
- tables_names  | text[]           |           |          | 
-```
-
-**`pg_stat_agg_user`**: Shows the aggregated value per user. 
-
-```
-postgres=# \d pg_stat_agg_user;
-                  View "public.pg_stat_agg_user"
-    Column     |       Type       | Collation | Nullable | Default 
----------------+------------------+-----------+----------+---------
- bucket        | oid              |           |          | 
- queryid       | text             |           |          | 
- dbid          | bigint           |           |          | 
- userid        | oid              |           |          | 
- client_ip     | inet             |           |          | 
- total_calls   | integer          |           |          | 
- min_time      | double precision |           |          | 
- max_time      | double precision |           |          | 
- mean_time     | double precision |           |          | 
- resp_calls    | text[]           |           |          | 
- cpu_user_time | double precision |           |          | 
- cpu_sys_time  | double precision |           |          | 
- query         | text             |           |          | 
- tables_names  | text[]           |           |          | 
-```
-
-
-**`pg_stat_agg_ip`**: Shows the aggregated value per IP / host.
-
-```
-postgres=# \d pg_stat_agg_ip;
-                   View "public.pg_stat_agg_ip"
-    Column     |       Type       | Collation | Nullable | Default 
----------------+------------------+-----------+----------+---------
- bucket        | oid              |           |          | 
- queryid       | text             |           |          | 
- dbid          | bigint           |           |          | 
- userid        | oid              |           |          | 
- client_ip     | inet             |           |          | 
- host          | bigint           |           |          | 
- total_calls   | integer          |           |          | 
- min_time      | double precision |           |          | 
- max_time      | double precision |           |          | 
- mean_time     | double precision |           |          | 
- resp_calls    | text[]           |           |          | 
- cpu_user_time | double precision |           |          | 
- cpu_sys_time  | double precision |           |          | 
- query         | text             |           |          | 
- tables_names  | text[]           |           |          | 
 ```
 
 ## License
