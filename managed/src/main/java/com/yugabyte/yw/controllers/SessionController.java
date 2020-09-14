@@ -251,8 +251,8 @@ public class SessionController extends Controller {
     ObjectNode apiTokenJson = Json.newObject();
     apiTokenJson.put(API_TOKEN, apiToken);
     response().setCookie(Http.Cookie.builder(API_TOKEN, apiToken)
-                                    .withSecure(ctx().request().secure())
-                                    .withMaxAge(FOREVER).build());
+              .withSecure(ctx().request().secure())
+              .withMaxAge(FOREVER).build());
     return ok(apiTokenJson);
   }
 
