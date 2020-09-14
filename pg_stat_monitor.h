@@ -36,8 +36,6 @@
 #include "utils/lsyscache.h"
 #include "utils/guc.h"
 
-#define IsHashInitialize()	(pgss || pgss_hash || pgss_object_hash || pgss_agghash || pgss_buckethash || pgss_waiteventshash)
-
 #define MAX_BACKEND_PROCESES (MaxBackends + NUM_AUXILIARY_PROCS + max_prepared_xacts)
 
 /* Time difference in miliseconds */
@@ -131,42 +129,21 @@ typedef struct pgssObjectEntry
 	slock_t				mutex;						/* protects the counters only */
 } pgssObjectEntry;
 
-/* Aggregate shared memory storage */
-typedef struct pgssAggHashKey
-{
-	uint64		id;				/* dbid, userid or ip depend upon the type */
-	uint64		type;			/* type of id dbid, userid or ip */
-	uint64		queryid;		/* query identifier, foreign key to the query */
-	uint64		bucket_id;		/* bucket_id is the foreign key to pgssBucketHashKey */
-} pgssAggHashKey;
-
-typedef struct pgssAggCounters
-{
-	uint64		total_calls;		/* number of quries per database/user/ip */
-} pgssAggCounters;
-
-typedef struct pgssAggEntry
-{
-	pgssAggHashKey	key;			/* hash key of entry - MUST BE FIRST */
-	pgssAggCounters	counters;		/* the statistics aggregates */
-	slock_t			mutex;			/* protects the counters only */
-} pgssAggEntry;
-
-
 typedef struct pgssWaitEventKey
 {
+	uint64      queryid;
 	uint64		processid;
 } pgssWaitEventKey;
 
 #define MAX_QUERY_LEN 1024
 typedef struct pgssWaitEventEntry
 {
-	pgssAggHashKey	key;			/* hash key of entry - MUST BE FIRST */
-	uint64			queryid;
-	uint64			pid;
-	uint32 			wait_event_info;
-	char			query[MAX_QUERY_LEN];
-	slock_t			mutex;			/* protects the counters only */
+	pgssWaitEventKey key;			/* hash key of entry - MUST BE FIRST */
+	uint64			 queryid;
+	uint64			 pid;
+	uint32 			 wait_event_info;
+	char			 query[MAX_QUERY_LEN];
+	slock_t			 mutex;			/* protects the counters only */
 } pgssWaitEventEntry;
 
 
@@ -177,6 +154,7 @@ typedef struct pgssHashKey
 	uint64		queryid;		/* query identifier */
 	Oid			userid;			/* user OID */
 	Oid			dbid;			/* database OID */
+	uint32		ip;				/* client ip address */
 } pgssHashKey;
 
 typedef struct QueryInfo
@@ -273,6 +251,7 @@ typedef struct pgssSharedState
 	uint64			bucket_overflow[MAX_BUCKETS];
 	uint64			bucket_entry[MAX_BUCKETS];
 	QueryFifo		query_fifo[MAX_BUCKETS];
+	int				query_buf_size_bucket;
 } pgssSharedState;
 
 #define ResetSharedState(x) \
@@ -325,8 +304,30 @@ typedef struct pgssJumbleState
 	int			highest_extern_param_id;
 } pgssJumbleState;
 
+/* Links to shared memory state */
+
 /* guc.c */
 void init_guc(void);
+
+/* hash_create.c */
+void add_object_entry(uint64 queryid, char *objects);
+void remove_object_entry(uint64 queryid, char *objects);
+bool IsHashInitialize(void);
+void pgss_shmem_startup(void);
+void pgss_shmem_shutdown(int code, Datum arg);
+shmem_startup_hook_type prev_shmem_startup_hook;
+int pgsm_get_bucket_size(void);
+pgssSharedState* pgsm_get_ss(void);
+pgssBucketEntry** pgsm_get_bucket_entries(void);
+HTAB* pgsm_get_wait_event_hash(void);
+pgssBucketEntry** pgsm_get_bucket(void);
+HTAB* pgsm_get_hash(void);
+pgssWaitEventEntry** pgsm_get_wait_event_entry(void);
+void hash_entry_reset(void);
+void hash_entry_dealloc(int bucket);
+pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
+Size hash_memsize(void);
+pgssEntry* pgsm_create_query_entry(unsigned int queryid, unsigned int userid, unsigned int dbid, unsigned int bucket_id, unsigned int ip);
 
 /*---- GUC variables ----*/
 #define PGSM_MAX conf[0].guc_variable
@@ -336,10 +337,10 @@ void init_guc(void);
 #define PGSM_NORMALIZED_QUERY conf[4].guc_variable
 #define PGSM_MAX_BUCKETS conf[5].guc_variable
 #define PGSM_BUCKET_TIME conf[6].guc_variable
-#define PGSM_QUERY_BUF_SIZE conf[7].guc_variable
-#define PGSM_OBJECT_CACHE conf[8].guc_variable
-#define PGSM_RESPOSE_TIME_LOWER_BOUND conf[9].guc_variable
-#define PGSM_RESPOSE_TIME_STEP conf[10].guc_variable
+#define PGSM_OBJECT_CACHE conf[7].guc_variable
+#define PGSM_RESPOSE_TIME_LOWER_BOUND conf[8].guc_variable
+#define PGSM_RESPOSE_TIME_STEP conf[9].guc_variable
+#define PGSM_QUERY_BUF_SIZE conf[10].guc_variable
 #define PGSM_TRACK_PLANNING conf[11].guc_variable
 
 GucVariable conf[12];

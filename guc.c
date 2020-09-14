@@ -81,9 +81,9 @@ init_guc(void)
 	conf[i++] = (GucVariable) { 
 		.guc_name = "pg_stat_monitor.pgsm_object_cache",
 		.guc_desc = "Sets the maximum number of object cache",
-		.guc_default = 5,
-		.guc_min = 5,
-		.guc_max = 10,
+		.guc_default = 50,
+		.guc_min = 50,
+		.guc_max = INT_MAX,
 		.guc_restart = true
 	};
 	
@@ -214,9 +214,9 @@ init_guc(void)
 							"Sets the maximum number of object cache",
 							NULL,
 							&PGSM_OBJECT_CACHE,
-							5,
-							5,
-							10,
+							50,
+							50,
+							INT_MAX,
 							PGC_POSTMASTER,
 							0,
 							NULL,
