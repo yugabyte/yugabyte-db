@@ -78,18 +78,19 @@ Here is a list of some of the key features being worked on for the upcoming rele
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
-| Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.3           |                 |               |
+| Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.5           |                 |               |
 | [Online schema migration](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md)  | PROGRESS  | v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) | YCQL already supports online schema changes |
-| [Support for most `ALTER TABLE` variants](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |
-| Database runtime activity monitoring | PLANNING  | v2.3  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1331) | Activity monitoring, audit logging, inactivity monitoring |
-| Identity and access management in YSQL | PLANNING  | v2.3  | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) | LDAP and Active Directory support |
-| YSQL cluster administration features | PLANNING  | v2.3  | [Track](https://github.com/yugabyte/yugabyte-db/issues/4194) | See currently active queries, find which queries are slow, slow query logging, etc. |
-| Improving day 2 operations of Yugabyte Platform | PROGRESS  |  v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4420) |  |
-| [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) | PROGRESS  |  v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1958) | This feature will be done in two phases: supporting PostgreSQL partitions followed by geo-placement support for partitions |
-| Improve TPC-C benchmarking | PROGRESS  | v2.3  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3226) |  |
-| Improvements to [automatic tablet splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PLANNING  | v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |
+| [Support for most `ALTER TABLE` variants](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |
+| Database runtime activity monitoring | PLANNING  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1331) | Activity monitoring, audit logging, inactivity monitoring |
+| Identity and access management in YSQL | PLANNING  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) | LDAP and Active Directory support |
+| YSQL cluster administration features | PLANNING  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/4194) | See currently active queries, find which queries are slow, slow query logging, etc. |
+| Follower reads in YSQL | PROGRESS | v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5232) | Ability to perform follower reads for YSQL and transactional tables in YCQL. Note that this is currently supported for scenarios without distributed transactions.  |
+| Improving day 2 operations of Yugabyte Platform | PROGRESS  |  v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4420) |  |
+| [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) | PROGRESS  |  v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1958) | This feature will be done in two phases: supporting PostgreSQL partitions followed by geo-placement support for partitions |
+| Improve TPC-C benchmarking | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3226) |  |
+| Improvements to [automatic tablet splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PLANNING  | v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |
 | Support transactions with large batches of operations during data loads | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/5241)
-| Transparently restart transactions | PLANNING  |   |  | This should decrease the incidence of transaction restart errors seen in various scenarios |
+| Transparently restart transactions | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/5683) | This should decrease the incidence of transaction restart errors seen in various scenarios |
 
 
 ## Planned additions to roadmap
@@ -102,7 +103,6 @@ The following items are being planned as additions to the roadmap
 | Make [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) default for YSQL | PLANNING  |  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5239)  |  |
 | Point in time restores | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/1820) |  |
 | Support Kafka as source and sink | PLANNING |  |  | Support source and sink for both YSQL and YSQL |
-| Follower reads in YSQL | PLANNING |  |  | Ability to perform follower reads for YSQL and transactional tables in YCQL. Note that this is currently supported for scenarios without distributed transactions.  |
 | Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1808) | Apply transactions atomically on consumer cluster. |
 
 ## Recently released features
