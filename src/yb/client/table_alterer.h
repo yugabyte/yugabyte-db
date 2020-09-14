@@ -114,9 +114,7 @@ class YBTableAlterer {
 
   boost::optional<uint32_t> wal_retention_secs_;
 
-  master::ReplicationInfoPB replication_info_;
-
-  bool has_replication_info_ = false;
+  boost::optional<master::ReplicationInfoPB> replication_info_;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableAlterer);
 };

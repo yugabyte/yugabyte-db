@@ -603,6 +603,17 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
    kTableName.namespace_name(), "extra-table", "c.r.z0,c.r.z1,c.r.z2", 3, ""),
    &output));
 
+  // Verify that changing the placement _uuid for a table fails if the
+  // placement_uuid does not match the cluster live placement_uuid.
+  const string& random_placement_uuid = "19dfa091-2b53-434f-b8dc-97280a5f8831";
+  ASSERT_NOK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+   "-master_addresses", master_address, "modify_table_placement_info",
+   kTableName.namespace_name(), "extra-table", "c.r.z0,c.r.z1,c.r.z2", 3, random_placement_uuid),
+   &output));
+
+  ASSERT_OK(client->OpenTable(extra_table, &table));
+  ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
+
   // Fetch the placement policy for the table and verify that it matches
   // the custom info set previously.
   ASSERT_OK(client->OpenTable(extra_table, &table));
@@ -633,6 +644,16 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
    "-master_addresses", master_address, "modify_table_placement_info",
    Format("tableid.$0", id), "c.r.z1", 1, ""),
    &output));
+
+  // Verify that changing the placement _uuid for a table fails if the
+  // placement_uuid does not match the cluster live placement_uuid.
+  ASSERT_NOK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+   "-master_addresses", master_address, "modify_table_placement_info",
+   Format("tableid.$0", id), "c.r.z1", 1, random_placement_uuid),
+   &output));
+
+  ASSERT_OK(client->OpenTable(extra_table, &table));
+  ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
 
   // Fetch the placement policy for the table and verify that it matches
   // the custom info set previously.
