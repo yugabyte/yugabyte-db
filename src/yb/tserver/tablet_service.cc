@@ -137,7 +137,7 @@ DEFINE_int32(num_concurrent_backfills_allowed, 8,
 
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
 
-DEFINE_int32(max_stale_read_bound_time_ms, 0, "If we are allowed to read from followers, "
+DEFINE_int32(max_stale_read_bound_time_ms, 60000, "If we are allowed to read from followers, "
              "specify the maximum time a follower can be behind by using the last message received "
              "from the leader. If set to zero, a read can be served by a follower regardless of "
              "when was the last time it received a message from the leader or how far behind this"
@@ -1528,6 +1528,8 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
         auto now_micros = server_->Clock()->Now().GetPhysicalValueMicros();
         auto follower_staleness_ms = (now_micros - safe_time_micros) / 1000;
         if (follower_staleness_ms > FLAGS_max_stale_read_bound_time_ms) {
+          VLOG(1) << "Rejecting stale read with staleness "
+                     << follower_staleness_ms << " ms";
           SetupErrorAndRespond(resp->mutable_error(), STATUS(IllegalState, "Stale follower"),
                                TabletServerErrorPB::STALE_FOLLOWER, context);
           return false;
