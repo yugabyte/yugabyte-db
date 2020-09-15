@@ -1,6 +1,6 @@
 ---
-title: YugabyteDB release versioning
-headerTitle: YugabyteDB release versioning
+title: Release versioning
+headerTitle: Release versioning
 linkTitle: Release versioning
 description: Explains the new release versioning approach for latest and stable releases.
 section: RELEASES
