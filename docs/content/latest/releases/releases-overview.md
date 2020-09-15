@@ -29,10 +29,10 @@ releases and are supported for existing production deployments.
 
 | Version | Released   | Maintenance support ends | EOL     |
 | :------ | ---------- | ------------------------ | ----------------------------- |
-| [2.2](../earlier-releases/v2.2.0)     | 2020/07/15 | 2021/07/15               | 2022/01/15                    |
-| [2.1](../earlier-releases/v2.1.0)     | 2020/02/25 | 2021/02/25               | 2021/08/25                    |
-| [2.0](../earlier-releases/v2.0.0)     | 2019/09/17 | 2020/09/17               | 2021/03/17                    |
-| [1.3](../earlier-releases/v1.3.0)     | 2019/07/15 | 2020/07/15               | 2021/01/15
+| [2.2](../earlier-releases/v2.2.0)     | 2020/07/15 | 2021/07/15               | 2022/01/15 |
+| [2.1](../earlier-releases/v2.1.0)     | 2020/02/25 | 2021/02/25               | 2021/08/25 |
+| [2.0](../earlier-releases/v2.0.0)     | 2019/09/17 | 2020/09/17               | 2021/03/17 |
+| [1.3](../earlier-releases/v1.3.0)     | 2019/07/15 | 2020/07/15               | 2021/01/15 |
 
 ## Latest releases
 
