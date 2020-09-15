@@ -11,7 +11,9 @@ section: RELEASES
 menu:
   latest:
     identifier: whats-new
-    weight: 2587 
+    weight: 2587
+isTocNested: true
+showAsideToc: true
 ---
 
 **Released:** September 8, 2020 (2.3.0.0-b176).

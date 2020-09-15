@@ -8,6 +8,8 @@ menu:
   latest:
     identifier: releases-overview
     weight: 2588 
+isTocNested: true
+showAsideToc: true
 ---
 
 {{< note title="Important" >}}
