@@ -1,8 +1,8 @@
 ---
-title: Supported and future releases
-headerTitle: Supported and future releases
-linkTitle: Supported and future releases
-description: An overview of the latest and current stable releases, and future releases.
+title: Supported and planned releases
+headerTitle: Supported and planned releases
+linkTitle: Supported and planned releases
+description: An overview of the latest and current stable releases, and planned releases.
 section: RELEASES
 menu:
   latest:
@@ -19,8 +19,8 @@ As of version `2.2`, Yugabyte ...  For details, see [Release versioning](../vers
 ## Supported stable releases
 
 The following stable release series are supported for production deployments. Starting with
-version `2.2`, Yugabyte is following a new [release versioning](../versioning). Based on the
-new release versioning, the next stable release is expected to be available in November 2020.
+version `2.2`, Yugabyte is following a new [release versioning](../versioning) convention. 
+The next stable release series is expected to be available in November 2020.
 
 | Version  | Released   |
 | :------- | ---------- |
@@ -32,9 +32,10 @@ new release versioning, the next stable release is expected to be available in N
 
 ## Latest releases
 
-The latest release series is a work-in-progress with 
-the currently available  supported for exploring development and testing. Starting with
-version `2.2`, Yugabyte is following a new [release versioning](../versioning).
+The latest release series specified below is a work-in-progress and introduces
+new features and changes that may break backward compatibility. Use the latest releases
+for development and testing. Starting with version `2.2`, Yugabyte is following a new 
+[release versioning](../versioning) convention.
 
 | Version  | Released   |
 | :------- | ---------- |
