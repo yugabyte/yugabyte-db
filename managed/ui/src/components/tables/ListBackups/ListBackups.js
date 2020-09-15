@@ -33,7 +33,7 @@ export default class ListBackups extends Component {
     this.props.resetUniverseBackups();
   }
 
-   isMultiTableBackup = (row) => {
+  isMultiTableBackup = (row) => {
     if (row.tableUUIDList && row.tableUUIDList.length > 1) {
       return true;
     } else if (row.backupList && Array.isArray(row.backupList)) {
@@ -84,6 +84,7 @@ export default class ListBackups extends Component {
         backupInfo.backupUUID = b.backupUUID;
         backupInfo.status = b.state;
         backupInfo.createTime = b.createTime;
+        backupInfo.expiry = b.expiry;
         if (backupInfo.tableUUIDList && backupInfo.tableUUIDList.length > 1) {
           backupInfo.tableName = backupInfo.tableNameList.join(', ');
           backupInfo.tableType = [
@@ -106,6 +107,7 @@ export default class ListBackups extends Component {
         return (
           <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
             <TableAction currentRow={row} actionType="restore-backup" />
+            <TableAction currentRow={row} actionType="delete-backup" />
           </DropdownButton>
         );
       }
@@ -155,6 +157,11 @@ export default class ListBackups extends Component {
                                 columnClassName="no-border " className="no-border"
                                 dataAlign="left">
                 Created At
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="expiry" dataFormat={timeFormatter} dataSort
+                                columnClassName="no-border " className="no-border"
+                                dataAlign="left">
+                Expiry Time
               </TableHeaderColumn>
               <TableHeaderColumn dataField="status" dataSort
                                 columnClassName="no-border name-column" className="no-border"
