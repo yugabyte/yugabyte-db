@@ -14,6 +14,15 @@ menu:
 Download earlier YugabyteDB releases from the listing below. Information on the latest release is available
 in [What's new in 2.3](../whats-new/).
 
+{{< note title="Important" >}}
+
+Starting with v2.2.0, Yugabyte release versions are numbered based on an even/odd release versioning. For more details, see the following:
+
+- [Release versioning](../../versioning) – Includes details on stable and latest versioning.
+- [Supported and planned releases](../../releases-overview) – Information on supported and latest releases.
+
+{{< /note >}} 
+
 Release | Date | Binary | Docker Image Tag
 --------|------|-------------------------------|-----------------
 [v2.2.2](./v2.2.2) |August 19, 2020 | <a href="https://downloads.yugabyte.com/yugabyte-2.2.2.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.2.2.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.2.2.0-b15
