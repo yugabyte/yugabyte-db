@@ -12,19 +12,21 @@ menu:
 
 {{< note title="Important" >}}
 
-As of version `2.2`, Yugabyte ...  For details, see [Release versioning](../versioning).
+As of version `2.2`, Yugabyte is following a new release versioning convention for YugabyteDB releases.  For details, see [Release versioning](../versioning).
 
 {{< /note >}}
 
 ## Supported stable releases
 
 The following stable release series are supported for production deployments. Starting with
-version `2.2`, Yugabyte is following a new [release versioning](../versioning) convention. 
+version `2.2`, Yugabyte is following a new [release versioning](../versioning) convention.
 The next stable release series is expected to be available in November 2020.
+
+**Note:** Versions `2.1`, `2.0`, and `1.3` that were released before `2.2` are also supported.
 
 | Version  | Released   |
 | :------- | ---------- |
-| 2.4                                  | 2020/11 (expected)
+| 2.4                                    | 2020/11 (expected) |
 | [2.2](../earlier-releases/v2.2.0)      | 2020/07/15 |
 | [2.1](../earlier-releases/v2.1.0)      | 2020/02/25 |
 | [2.0](../earlier-releases/v2.0.0)      | 2019/09/17 |
