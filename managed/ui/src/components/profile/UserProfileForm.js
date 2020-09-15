@@ -6,8 +6,7 @@ import { isEqual } from 'lodash';
 import { Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBButton } from '../common/forms/fields';
 import { Formik, Form, Field } from 'formik';
-import { browserHistory} from 'react-router';
-import { isNonAvailable, showOrRedirect, isDisabled } from '../../utils/LayoutUtils';
+import { showOrRedirect, isDisabled } from '../../utils/LayoutUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox';
 import { YBCopyButton } from '../common/descriptors';
 import * as Yup from 'yup';
@@ -20,12 +19,6 @@ export default class UserProfileForm extends Component {
     this.state = {
       statusUpdated: false
     };
-  }
-
-  componentDidMount() {
-    const { customer } = this.props;
-    this.props.getCustomerUsers();
-    if (isNonAvailable(customer.features, "main.profile")) browserHistory.push('/');
   }
 
   handleRefreshApiToken = (e) => {
@@ -50,7 +43,7 @@ export default class UserProfileForm extends Component {
     const {
       customer = {},
       users = [],
-      apiToken,      
+      apiToken,
       updateCustomerDetails,
       changeUserPassword
     } = this.props;
@@ -120,13 +113,13 @@ export default class UserProfileForm extends Component {
                 hasProfileInfoChanged = true;
               }
             });
-            
+
             if (hasPasswordChanged) {
               changeUserPassword(getCurrentUser[0], values);
             }
             if (hasProfileInfoChanged) {
               updateCustomerDetails(values);
-            }           
+            }
             setSubmitting(false);
             this.setState({statusUpdated: true});
           }}
@@ -182,7 +175,7 @@ export default class UserProfileForm extends Component {
                         loading={getPromiseState(apiToken).isLoading()}
                         onClick={this.handleRefreshApiToken}
                         btnClass="btn btn-orange pull-right btn-api-token"
-                        disabled={isDisabled(customer.data.features, "universes.actions")}
+                        disabled={isDisabled(customer.data.features, "universe.create")}
                       />
                     </FlexShrink>
                   </FlexContainer>
@@ -192,7 +185,7 @@ export default class UserProfileForm extends Component {
                 <Col sm={12}>
                   <YBButton btnText="Save"
                     btnType="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isDisabled(customer.data.features, "universe.create")}
                     btnClass="btn btn-orange pull-right"
                   />
                 </Col>

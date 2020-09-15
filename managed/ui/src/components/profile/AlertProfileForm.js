@@ -4,8 +4,7 @@ import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBButton, YBToggle, YBControlledSelectWithLabel } from '../common/forms/fields';
 import { Formik, Form, Field } from 'formik';
-import { browserHistory } from 'react-router';
-import { isNonAvailable, showOrRedirect } from '../../utils/LayoutUtils';
+import { isDisabled, showOrRedirect } from '../../utils/LayoutUtils';
 import * as Yup from 'yup';
 import _ from 'lodash';
 import { isNonEmptyObject, isNonEmptyArray } from '../../utils/ObjectUtils';
@@ -53,12 +52,6 @@ export default class AlertProfileForm extends Component {
     this.state = {
       statusUpdated: false
     };
-  }
-
-  componentDidMount() {
-    const { customer } = this.props;
-    this.props.getCustomerUsers();
-    if (isNonAvailable(customer.features, 'main.profile')) browserHistory.push('/');
   }
 
   componentDidUpdate() {
@@ -295,7 +288,7 @@ export default class AlertProfileForm extends Component {
                   <YBButton
                     btnText="Save"
                     btnType="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isDisabled(customer.data.features, "universe.create")}
                     btnClass="btn btn-orange pull-right"
                   />
                 </Col>
