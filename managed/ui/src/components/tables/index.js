@@ -18,3 +18,5 @@ export { default as CreateBackup } from './CreateBackup/CreateBackup';
 export { default as CreateBackupContainer } from './CreateBackup/CreateBackupContainer';
 export { default as RestoreBackup } from './RestoreBackup/RestoreBackup';
 export { default as RestoreBackupContainer } from './RestoreBackup/RestoreBackupContainer';
+export { default as DeleteBackup } from './DeleteBackup/DeleteBackup';
+export { default as DeleteBackupContainer } from './DeleteBackup/DeleteBackupContainer';
