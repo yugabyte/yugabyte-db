@@ -11,7 +11,7 @@ section: RELEASES
 menu:
   latest:
     identifier: whats-new
-    weight: 2589 
+    weight: 2587 
 ---
 
 **Released:** September 8, 2020 (2.3.0.0-b176).

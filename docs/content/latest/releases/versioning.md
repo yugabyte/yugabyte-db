@@ -1,13 +1,13 @@
 ---
-title: Versioning (stable and latest releases)
-headerTitle: YugabyteDB Versioning (stable and latest releases)
-linkTitle: Versioning (stable and latest)
+title: YugabyteDB release versioning
+headerTitle: YugabyteDB release versioning
+linkTitle: Release versioning
 description: Explains the new release versioning approach for latest and stable releases.
 section: RELEASES
 menu:
   latest:
-    identifier: whats-new
-    weight: 2588 
+    identifier: versioning
+    weight: 2589
 ---
 
 **Note:** Starting with version 2.2.0.0, Yugabyte uses even/odd minor release numbering for stable and development releases. 
@@ -21,13 +21,12 @@ YugabyteDB release versions follow the semantic versioning format of `MAJOR.MINO
   - `EVEN`: stable release
   - `ODD`: development release
 - `PATCH`: bug fixes and revisions
-- `HOTFIX`(?)
 
 For example, YugabyteDB version `2.3.0.0` denotes the current development release.
 
 Changes in the release series (e.g. `4.0` to `4.2`) generally mark the introduction of new features that may break backwards compatibility.
 
-## Development releases (MAJOR.ODD)
+## Latest release (MAJOR.ODD)
 
 Development releases of YugabyteDB are based on the last stable release, but introduce new features that may break backwards compatibility.
 
