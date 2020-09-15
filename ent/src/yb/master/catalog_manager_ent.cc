@@ -877,17 +877,21 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
   ns_data.second = db_type;
 
   TRACE("Looking up namespace");
+  // First of all try to find the namespace by ID. It will work if we are restoring the backup
+  // on the original cluster where the backup was created.
   scoped_refptr<NamespaceInfo> ns;
   {
     SharedLock<LockType> l(lock_);
     ns = FindPtrOrNull(namespace_ids_map_, entry.id());
   }
 
-  if (ns != nullptr && ns->name() == meta.name()) {
+  if (ns != nullptr && ns->name() == meta.name() && ns->state() == SysNamespaceEntryPB::RUNNING) {
     ns_data.first = entry.id();
     return Status::OK();
   }
 
+  // If the namespace was not found by ID, it's ok on a new cluster OR if the namespace was
+  // deleted and created again. In both cases the namespace can be found by NAME.
   if (db_type == YQL_DATABASE_PGSQL) {
     // YSQL database must be created via external call. Find it by name.
     {
@@ -897,6 +901,10 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
 
     if (ns == nullptr) {
       return STATUS(InvalidArgument, "YSQL database must exist", meta.name(),
+                    MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
+    }
+    if (ns->state() != SysNamespaceEntryPB::RUNNING) {
+      return STATUS(InvalidArgument, "Found YSQL database must be running", meta.name(),
                     MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
 
