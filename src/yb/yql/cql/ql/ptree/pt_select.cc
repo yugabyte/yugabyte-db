@@ -768,8 +768,9 @@ CHECKED_STATUS PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context) {
     if (!order_by_map.empty()) {
       return sem_context->Error(
           order_by_clause_,
-          ("Order by is should only contain clustering columns, got " + order_by_map.begin()->first)
-              .c_str(), ErrorCode::INVALID_ARGUMENTS);
+          ("Order by clause should only contain clustering columns, got "
+           + order_by_map.begin()->first).c_str(),
+          ErrorCode::INVALID_ARGUMENTS);
     }
     is_forward_scan_ = is_column_forward[0];
     for (auto&& b : is_column_forward) {
@@ -852,12 +853,27 @@ Status PTOrderBy::ValidateExpr(SemContext *sem_context) {
 
 Status PTOrderBy::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(order_expr_->Analyze(sem_context));
-  if (order_expr_->expr_op() != ExprOperator::kRef && !order_expr_->index_desc()) {
+
+  if (order_expr_->expr_op() == ExprOperator::kRef) {
+    // This check is for clause ORDER BY <column> that is not part of the index (NULL desc).
+    // Example
+    //   Statement: CREATE INDEX ON table ( x ) INCLUDE ( y );
+    //   Columns "x" and "y" would be part of the index.
+    auto colref = dynamic_cast<PTRef*>(order_expr_.get());
+    if (!colref || !colref->desc()) {
+      return sem_context->Error(
+          this, "Order by clause contains invalid columns", ErrorCode::INVALID_ARGUMENTS);
+    }
+
+  } else if (!order_expr_->index_desc()) {
+    // This check is for clause ORDER BY <expression> that is not part of the index (NULL desc).
+    // Example
+    //   Statement: CREATE INDEX ON table ( <expr> );
+    //   Column "<expr>" would be part of the index.
     return sem_context->Error(
-        this,
-        "Order By clause contains invalid expression",
-        ErrorCode::INVALID_ARGUMENTS);
+        this, "Order by clause contains invalid expression", ErrorCode::INVALID_ARGUMENTS);
   }
+
   return Status::OK();
 }
 
