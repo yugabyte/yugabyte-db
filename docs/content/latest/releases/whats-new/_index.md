@@ -1,7 +1,7 @@
 ---
-title: What's new in 2.3
-headerTitle: What's new in 2.3
-linkTitle: What's new in 2.3
+title: What's new in 2.3.1
+headerTitle: What's new in 2.3.1
+linkTitle: What's new in 2.3.1
 description: Enhancements, changes, and resolved issues in the latest YugabyteDB release.
 headcontent: Features, enhancements, and resolved issues in the latest release.
 image: /images/section_icons/quick_start/install.png
@@ -14,7 +14,7 @@ menu:
     weight: 2589 
 ---
 
-**Released:** September 8, 2020 (2.3.0.0-b176).
+**Released:** September 8, 2020 (2.3.1.0-b15).
 
 **New to YugabyteDB?** To get up and running in less than five minutes, follow [Quick start](../../quick-start/).
 
@@ -24,13 +24,13 @@ menu:
 
 ### Binaries
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.0.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.1.0-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.0.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.1.0-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -40,7 +40,7 @@ menu:
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.3.0.0-b176
+docker pull yugabytedb/yugabyte:2.3.1.0-b15
 ```
 
 ## YSQL
