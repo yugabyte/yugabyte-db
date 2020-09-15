@@ -236,11 +236,14 @@ class LogEntryBatch {
   }
 
   // The highest OpId of a REPLICATE message in this batch.
-  OpIdPB MaxReplicateOpId() const {
+  OpId MaxReplicateOpId() const {
     DCHECK_EQ(REPLICATE, type_);
     int idx = entry_batch_pb_.entry_size() - 1;
+    if (idx < 0) {
+      return OpId::Invalid();
+    }
     DCHECK(entry_batch_pb_.entry(idx).replicate().IsInitialized());
-    return entry_batch_pb_.entry(idx).replicate().id();
+    return OpId::FromPB(entry_batch_pb_.entry(idx).replicate().id());
   }
 
   void SetReplicates(const ReplicateMsgs& replicates) {
@@ -663,14 +666,13 @@ Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callba
   entry_batch->MarkReady();
 
   if (entry_batch->HasReplicateEntries()) {
-    last_submitted_op_id_ = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
+    last_submitted_op_id_ = entry_batch->MaxReplicateOpId();
   }
 
   auto submit_status = appender_->Submit(entry_batch);
   if (PREDICT_FALSE(!submit_status.ok())) {
     LOG_WITH_PREFIX(WARNING)
-        << "Failed to submit batch " << entry_batch->MaxReplicateOpId().ShortDebugString() << ": "
-        << submit_status;
+        << "Failed to submit batch " << entry_batch->MaxReplicateOpId() << ": " << submit_status;
     delete entry_batch;
     return kLogShutdownStatus;
   }
@@ -817,7 +819,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
   // We keep track of the last-written OpId here. This is needed to initialize Consensus on
   // startup.
   if (entry_batch->HasReplicateEntries()) {
-    last_appended_entry_op_id_ = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
+    last_appended_entry_op_id_ = entry_batch->MaxReplicateOpId();
   }
 
   CHECK_OK(UpdateIndexForBatch(*entry_batch));
