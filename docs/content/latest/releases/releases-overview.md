@@ -38,9 +38,8 @@ releases and are supported for existing production deployments.
 ## Latest releases
 
 The latest release series specified below is a work-in-progress and introduces
-new features and changes that may break backward compatibility. Use the latest releases
-for development and testing. Starting with version `2.2`, Yugabyte is following a new 
-[release versioning](../versioning) convention.
+new features and changes. Use the latest releases for development and testing. 
+Starting with version `2.2`, Yugabyte is following a new [release versioning](../versioning) convention.
 
 | Version  | Released |
 | :------  | -------- |
