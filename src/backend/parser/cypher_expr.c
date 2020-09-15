@@ -86,6 +86,7 @@
 #define FUNC_FLOOR      {"floor",      "ag_floor",   ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
 #define FUNC_ABS        {"abs",        "ag_abs",     ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
 #define FUNC_SIGN       {"sign",       "ag_sign",    ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_RAND       {"rand",       "random",     0,      0, 0, FLOAT8OID, 0, 0, false, true}
 
 /* supported functions */
 #define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
@@ -100,7 +101,7 @@
                              FUNC_RCOT, FUNC_RASIN, FUNC_RACOS, FUNC_RATAN, \
                              FUNC_RATAN2, FUNC_PI, FUNC_DEGREES, FUNC_RADIANS, \
                              FUNC_ROUND, FUNC_CEIL, FUNC_FLOOR, FUNC_ABS, \
-                             FUNC_SIGN}
+                             FUNC_SIGN, FUNC_RAND}
 
 /* structure for supported function signatures */
 typedef struct function_signature

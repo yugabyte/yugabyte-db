@@ -1311,7 +1311,7 @@ $$) AS (id agtype);
 SELECT * FROM cypher('expr', $$
     RETURN id()
 $$) AS (id agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for id()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- start_id()
@@ -1341,7 +1341,7 @@ ERROR:  start_id() argument must be an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN start_id()
 $$) AS (start_id agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for start_id()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- end_id()
@@ -1371,7 +1371,7 @@ ERROR:  end_id() argument must be an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN end_id()
 $$) AS (end_id agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for end_id()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- startNode()
@@ -1401,7 +1401,7 @@ ERROR:  startNode() argument must be an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN startNode()
 $$) AS (startNode agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for startNode()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- endNode()
@@ -1431,7 +1431,7 @@ ERROR:  endNode() argument must be an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN endNode()
 $$) AS (endNode agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for endNode()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- type()
@@ -1461,7 +1461,7 @@ ERROR:  type() argument must be an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN type()
 $$) AS (type agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for type()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- timestamp() can't be done as it will always have a different value
@@ -1516,7 +1516,7 @@ ERROR:  size() unsupported argument
 SELECT * FROM cypher('expr', $$
     RETURN size()
 $$) AS (size agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for size()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- head() of an array
@@ -1561,7 +1561,7 @@ ERROR:  head() argument must resolve to a list or null
 SELECT * FROM cypher('expr', $$
     RETURN head()
 $$) AS (head agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for head()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- last()
@@ -1606,7 +1606,7 @@ ERROR:  last() argument must resolve to a list or null
 SELECT * FROM cypher('expr', $$
     RETURN last()
 $$) AS (last agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for last()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- properties()
@@ -1649,7 +1649,7 @@ ERROR:  properties() argument must be a vertex, an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN properties()
 $$) AS (properties agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for properties()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- coalesce
@@ -1775,7 +1775,7 @@ ERROR:  toBoolean() unsuppoted argument agtype 3
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean()
 $$) AS (toBoolean agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for toBoolean()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- toFloat()
@@ -1844,7 +1844,7 @@ ERROR:  toFloat() unsuppoted argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toFloat()
 $$) AS (toFloat agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for toFloat()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- toInteger()
@@ -1913,7 +1913,7 @@ ERROR:  toInteger() unsuppoted argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toInteger()
 $$) AS (toInteger agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for toInteger()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 -- length() of a path
@@ -1950,7 +1950,7 @@ ERROR:  length() argument must resolve to a path or null
 SELECT * FROM cypher('expr', $$
     RETURN length()
 $$) AS (length agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for length()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 --
@@ -2080,7 +2080,7 @@ LINE 1: SELECT * FROM toString();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for toString()
 LINE 1: SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (re...
                                       ^
 --
@@ -2143,7 +2143,7 @@ ERROR:  reverse() unsuppoted argument type 1700
 SELECT * FROM cypher('expr', $$
     RETURN reverse()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for reverse()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM reverse();
@@ -2231,7 +2231,7 @@ ERROR:  touppercase() unsuppoted argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toUpper()
 $$) AS (toUpper agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for toUpper()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
@@ -2241,7 +2241,7 @@ ERROR:  tolowercase() unsuppoted argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toLower()
 $$) AS (toLower agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for toLower()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM touppercase();
@@ -2358,19 +2358,19 @@ ERROR:  trim() unsuppoted argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN lTrim()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for lTrim()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN rTrim()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for rTrim()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN trim()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for trim()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM l_trim();
@@ -2456,7 +2456,7 @@ ERROR:  left() negative values are not supported for length
 SELECT * FROM cypher('expr', $$
     RETURN left()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for left()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM l_substr('123456789', null);
@@ -2534,7 +2534,7 @@ ERROR:  right() negative values are not supported for length
 SELECT * FROM cypher('expr', $$
     RETURN right()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for right()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM r_substr('123456789', null);
@@ -2774,7 +2774,7 @@ LINE 1: SELECT * FROM cypher('expr', $$
 SELECT * FROM cypher('expr', $$
     RETURN split()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for split()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM split(123456789, ',');
@@ -2920,7 +2920,7 @@ SELECT * FROM replace('', 'Hello', 'Mellow');
 SELECT * FROM cypher('expr', $$
     RETURN replace()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for replace()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
@@ -3092,25 +3092,25 @@ ERROR:  cot() unsuppoted argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN sin()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for sin()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN cos()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for cos()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN tan()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for tan()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN cot()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for cot()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM r_sin('0');
@@ -3341,25 +3341,25 @@ ERROR:  atan2() unsuppoted argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN asin()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for asin()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN acos()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for acos()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN atan()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for atan()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN atan2()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for atan2()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
@@ -3552,13 +3552,13 @@ $$) AS (results agtype);
 SELECT * FROM cypher('expr', $$
     RETURN radians()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for radians()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN degrees()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for degrees()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
@@ -3785,31 +3785,31 @@ $$) AS (results agtype);
 SELECT * FROM cypher('expr', $$
     RETURN abs()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for abs()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN ceil()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for ceil()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN floor()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for floor()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN round()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for round()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
     RETURN sign()
 $$) AS (results agtype);
-ERROR:  unrecognized or unsupported function
+ERROR:  invalid number of input parameters for sign()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
 SELECT * FROM cypher('expr', $$
@@ -3832,6 +3832,30 @@ SELECT * FROM cypher('expr', $$
     RETURN sign("1")
 $$) AS (results agtype);
 ERROR:  sign() unsuppoted argument agtype 1
+--
+-- rand()
+--
+-- should select 0 rows as rand() is in [0,1)
+SELECT * FROM cypher('expr', $$
+    RETURN rand()
+$$) AS (result agtype)
+WHERE result >= 1 or result < 0;
+ result 
+--------
+(0 rows)
+
+-- should select 0 rows as rand() should not return the same value
+SELECT * FROM cypher('expr', $$
+    RETURN rand()
+$$) AS cypher_1(result agtype),
+    cypher('expr', $$
+    RETURN rand()
+$$) AS cypher_2(result agtype)
+WHERE cypher_1.result = cypher_2.result;
+ result | result 
+--------+--------
+(0 rows)
+
 --
 -- Cleanup
 --

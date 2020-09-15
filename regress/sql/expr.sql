@@ -1629,6 +1629,23 @@ SELECT * FROM cypher('expr', $$
 $$) AS (results agtype);
 
 --
+-- rand()
+--
+-- should select 0 rows as rand() is in [0,1)
+SELECT * FROM cypher('expr', $$
+    RETURN rand()
+$$) AS (result agtype)
+WHERE result >= 1 or result < 0;
+-- should select 0 rows as rand() should not return the same value
+SELECT * FROM cypher('expr', $$
+    RETURN rand()
+$$) AS cypher_1(result agtype),
+    cypher('expr', $$
+    RETURN rand()
+$$) AS cypher_2(result agtype)
+WHERE cypher_1.result = cypher_2.result;
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
