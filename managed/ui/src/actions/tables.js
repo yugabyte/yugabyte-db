@@ -23,6 +23,8 @@ export const CREATE_BACKUP_TABLE = 'CREATE_BACKUP_TABLE';
 export const CREATE_BACKUP_TABLE_RESPONSE = 'CREATE_BACKUP_TABLE_RESPONSE';
 export const RESTORE_TABLE_BACKUP = 'RESTORE_TABLE_BACKUP';
 export const RESTORE_TABLE_BACKUP_RESPONSE = 'RESTORE_TABLE_BACKUP_RESPONSE';
+export const DELETE_BACKUP = 'DELETE_BACKUP';
+export const DELETE_BACKUP_RESPONSE = 'DELETE_BACKUP_RESPONSE';
 
 
 export function fetchUniverseTables(universeUUID) {
@@ -177,6 +179,23 @@ export function restoreTableBackup(universeUUID, formValues) {
 export function restoreTableBackupResponse(response) {
   return {
     type: RESTORE_TABLE_BACKUP_RESPONSE,
+    payload: response
+  };
+}
+
+export function deleteBackup(backupUUID) {
+  const baseUrl = getCustomerEndpoint();
+  const request = axios.delete(
+    `${baseUrl}/backups/${backupUUID}`);
+  return {
+    type: DELETE_BACKUP,
+    payload: request
+  };
+}
+
+export function deleteBackupResponse(response) {
+  return {
+    type: DELETE_BACKUP_RESPONSE,
     payload: response
   };
 }
