@@ -27,13 +27,12 @@ The next stable release series is expected to be available in November 2020.
 **Note:** Versions `2.1`, `2.0`, and `1.3` that were released before `2.2` are also considered stable
 releases and are supported for existing production deployments.
 
-| Version | Released |
-| :------ | -------- |
-| 2.4                                    | 2020/11 (expected) |
-| [2.2](../earlier-releases/v2.2.0)      | 2020/07/15 |
-| [2.1](../earlier-releases/v2.1.0)      | 2020/02/25 |
-| [2.0](../earlier-releases/v2.0.0)      | 2019/09/17 |
-| [1.3](../earlier-releases/v1.3.0)      | 2019/07/19 |
+| Version | Released   | Maintenance support ends | EOL     |
+| :------ | ---------- | ------------------------ | ----------------------------- |
+| [2.2](../earlier-releases/v2.2.0)     | 2020/07/15 | 2021/07/15               | 2022/01/15                    |
+| [2.1](../earlier-releases/v2.1.0)     | 2020/02/25 | 2021/02/25               | 2021/08/25                    |
+| [2.0](../earlier-releases/v2.0.0)     | 2019/09/17 | 2020/09/17               | 2021/03/17                    |
+| [1.3](../earlier-releases/v1.3.0)     | 2019/07/15 | 2020/07/15               | 2021/01/15
 
 ## Latest releases
 
