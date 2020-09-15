@@ -100,6 +100,7 @@ class CDCPoller {
   std::atomic<bool> is_polling_{true};
   int poll_failures_ GUARDED_BY(data_mutex_){0};
   int apply_failures_ GUARDED_BY(data_mutex_){0};
+  int idle_polls_ GUARDED_BY(data_mutex_){0};
 };
 
 } // namespace enterprise
