@@ -49,13 +49,11 @@ docker pull yugabytedb/yugabyte:2.3.1.0-b15
 - Enable 2DC replication bootstrap for YSQL tables. This allows the producer to know where to start replicating from. [#5601](https://github.com/yugabyte/yugabyte-db/issues/5601)
 - Fix CREATE TABLE is 4-5x slower using Docker on Mac than not using Docker. Speeds up table creation by buffering writes to postgres system tables, caching pinned objects, and significantly reducing write RPC calls. [#3503](https://github.com/yugabyte/yugabyte-db/issues/3503)
 
-- Fixes OOM on `COPY FROM` large files when reading from a file (not using `stdin`). [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
-
 ## YCQL
 
 ## Core database
 
-- Quickly evict known unresponsive tablet servers from the tablet location cache. Applies only to follower reads (aka consistent prefix reads). For example, when tablet servers are not replying to RPC calls or dead — not sending heartbeats to the master for 5 minutes. This could also happen after decommissioning nodes. [#1052](https://github.com/yugabyte/yugabyte-db/issues/1052)
+- Quickly evict known unresponsive tablet servers from the tablet location cache. Applies only to follower reads. For example, when tablet servers are not replying to RPC calls or dead — not sending heartbeats to the master for 5 minutes. This could also happen after decommissioning nodes. [#1052](https://github.com/yugabyte/yugabyte-db/issues/1052)
 
 ## Yugabyte Platform
 
