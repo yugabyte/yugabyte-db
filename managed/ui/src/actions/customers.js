@@ -123,11 +123,12 @@ export function validateToken() {
     axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
   }
 
-  axios.defaults.headers.common['Csrf-Token'] = Cookies.get("csrfCookie");
-
   // in dev mode UI and API usually run on different hosts, so need to include cookies for cross-domain requests
   if (IN_DEVELOPMENT_MODE) {
     axios.defaults.withCredentials = true;
+  }
+  if (!IN_DEVELOPMENT_MODE || !process.env.REACT_APP_YUGAWARE_API_URL) {
+    axios.defaults.headers.common['Csrf-Token'] = Cookies.get("csrfCookie");
   }
 
   const request = axios(`${ROOT_URL}/customers/${cUUID}`);
