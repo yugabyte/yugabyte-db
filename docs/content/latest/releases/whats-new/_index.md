@@ -16,6 +16,13 @@ menu:
 
 This page includes all of the what's new/release notes for releases in the *latest* `2.3` release series. You can now compare updates within the same `MAJOR.MINOR` release series without changing pages.
 
+## 2.3.x release series
+
+The `2.3` latest release series includes the following releases:
+
+- [v2.3.1.0 (Released Sep 15, 2020)](#v2-3-1-0-2020-09-15)
+- [v2.3.0.0 (Released Sep 08, 2020)](#v2-3-0-0-2020-09-08)
+
 ## v2.3.1.0 [2020-09-15]
 
 **Released:** September 15, 2020 (2.3.1.0-b15).
@@ -68,7 +75,7 @@ Prior to version 2.0, YSQL was still in beta. As a result, the 2.0 release inclu
 
 {{< /note >}}
 
-## v2.3.0 [2020-09-08]
+## v2.3.0.0 [2020-09-08]
 
 **Released:** September 8, 2020 (2.3.0.0-b176).
 
