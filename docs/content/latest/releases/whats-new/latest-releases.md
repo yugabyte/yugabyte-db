@@ -1,7 +1,7 @@
 ---
-title: What's new in 2.3
-headerTitle: What's new in 2.3
-linkTitle: What's new in 2.3
+title: What's new in 2.3 (latest)
+headerTitle: What's new in the 2.3 latest release series
+linkTitle: 2.3 (latest)
 description: Enhancements, changes, and resolved issues in the latest release series.
 headcontent: Features, enhancements, and resolved issues in the latest release series.
 image: /images/section_icons/quick_start/install.png
@@ -12,53 +12,41 @@ menu:
   latest:
     parent: whats-new
     identifier: latest-release
-    weight: 2585 
+    weight: 2585
+isTocNested: true
+showAsideToc: true 
 ---
 
-Included here are the release notes for all releases in the `2.3` latest release series. The `2.3` latest release series include the following releases:
+Included here are the release notes for all releases in the `2.3` latest release series.
 
-- [v2.3.1.0 (Released Sep 15, 2020)](#v2-3-1-0-2020-09-15)
-- [v2.3.0.0 (Released Sep 08, 2020)](#v2-3-0-0-2020-09-08)
+{{< note title="New release versioning" >}}
 
-{{< note title="Important" >}}
+Starting with v2.2.0, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Patch releases, denoted by `MAJOR.ODD.PATCH` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
 
-Starting with v2.2.0, Yugabyte release versions are numbered based on an a new release versioning convention. For more details, see the following:
+{{< /note >}}
 
-- [Release versioning](../../versioning) – Includes details on stable and latest versioning.
-- [Supported and planned releases](../../releases-overview) – Information on supported and latest releases.
+{{< note title="Upgrading from 1.3" >}}
 
-{{< /note >}}  
+Prior to version 2.0, YSQL was still in beta. Upon release of 2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to version 2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
 
-## v2.3.1.0 [September 15, 2020]
+{{< /note >}}
 
-### **Build:** 2.3.1.0-b15
 
-### Downloads
+## Release notes
 
-#### Binaries
+### v2.3.1 – September 15, 2020
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.1.0-darwin.tar.gz">
-  <button>
-    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
-  </button>
-</a>
-&nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.1.0-linux.tar.gz">
-  <button>
-    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
-  </button>
-</a>
-<br />
+**Build:** `2.3.1.0-b15`
 
-#### Docker
+#### Downloads (binaries)
 
-```sh
-docker pull yugabytedb/yugabyte:2.3.1.0-b15
-```
+- [macOS](https://downloads.yugabyte.com/yugabyte-2.3.1.0-darwin.tar.gz)
+- [Linux](https://downloads.yugabyte.com/yugabyte-2.3.1.0-linux.tar.gz)
+- Docker: `docker pull yugabytedb/yugabyte:2.3.1.0-b15`
 
-### Features and changes
+#### Features and changes
 
-#### YSQL
+##### YSQL
 
 - Fixes OOM when using `COPY <table> FROM <file>` to load data from a large file to a table. [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
 - Enable 2DC replication bootstrap for YSQL tables. This allows the producer to know where to start replicating from. [#5601](https://github.com/yugabyte/yugabyte-db/issues/5601)
@@ -75,40 +63,17 @@ docker pull yugabytedb/yugabyte:2.3.1.0-b15
 - Add the ability to change the user role (`Admin`, `ReadOnly`, or `BackupAdmin`) from the UI by an admin. Also, fix stale users list after creation or deletion of a user and disable **Save** buttons at Customer Profile tabs for `ReadOnly` users. [#5311](https://github.com/yugabyte/yugabyte-db/issues/5311)
 - Before deleting a universe, stop the master/tserver processes and release the instance so that if started again, the processes are not still running. [#4953](https://github.com/yugabyte/yugabyte-db/issues/4953)
 
-{{< note title="Note" >}}
+### v2.3.0 – September 8, 2020
 
-Prior to version 2.0, YSQL was still in beta. As a result, the 2.0 release included a backward-incompatible file format change for YSQL. If you have an existing cluster running releases earlier than 2.0 with YSQL enabled, then you will not be able to upgrade to version 2.0+. Export from your existing cluster and then import into a new cluster (v2.0 or later) to use existing data.
+**Build:** `2.3.0.0-b176`
 
-{{< /note >}}
+#### Downloads (binaries)
 
-## v2.3.0.0 [September 8, 2020]
+- [macOS](https://downloads.yugabyte.com/yugabyte-2.3.0.0-darwin.tar.gz)
+- [Linux](https://downloads.yugabyte.com/yugabyte-2.3.0.0-linux.tar.gz)
+- Docker: `docker pull yugabytedb/yugabyte:2.3.0.0-b176`
 
-### **Build:** 2.3.0.0-b176
-
-### Downloads
-
-#### Binaries
-
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.0.0-darwin.tar.gz">
-  <button>
-    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
-  </button>
-</a>
-&nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.0.0-linux.tar.gz">
-  <button>
-    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
-  </button>
-</a>
-<br />
-
-#### Docker
-
-```sh
-docker pull yugabytedb/yugabyte:2.3.0.0-b176
-```
-
-### Features and changes
+#### Features and changes
 
 #### YSQL
 
@@ -254,8 +219,3 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Fix restore payload when renaming table to include keyspace. And check for keyspace if tableName is defined and return invalid request code when keyspace is missing. [#5178](https://github.com/yugabyte/yugabyte-db/issues/5178)
 - Add the ability to override communication port default values during universe creation. [#5354](https://github.com/yugabyte/yugabyte-db/issues/5354)
 
-{{< note title="Note" >}}
-
-Prior to version 2.0, YSQL was still in beta. As a result, the 2.0 release included a backward-incompatible file format change for YSQL. If you have an existing cluster running releases earlier than 2.0 with YSQL enabled, then you will not be able to upgrade to version 2.0+. Export from your existing cluster and then import into a new cluster (v2.0 or later) to use existing data.
-
-{{< /note >}}
