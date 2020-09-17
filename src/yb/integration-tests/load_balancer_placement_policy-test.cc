@@ -307,7 +307,8 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
 
   // Change its placement policy such that it now has additional replicas spanning additional
   // tservers.
-  ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(placement_table, "c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
+      placement_table, "c.r.z0,c.r.z1,c.r.z2", 3, ""));
   WaitForLoadBalancer();
 
   // Verify that the placement policy is honored.

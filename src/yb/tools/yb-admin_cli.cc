@@ -363,19 +363,19 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
             client, args.begin() + 2, args.end(),
             [&placement_info, &rf, &placement_uuid](
-	      auto i, const auto& end) -> Status {
-	      // Get placement info.
-	      placement_info = *i;
-	      i = std::next(i);
-	      // Get replication factor.
-	      rf = VERIFY_RESULT(CheckedStoi(*i));
-	      i = std::next(i);
-	      // Get optional placement uuid.
-	      if (i != end) {
-	        placement_uuid = *i;
-	      }
-              return Status::OK();
-            }
+        auto i, const auto& end) -> Status {
+          // Get placement info.
+          placement_info = *i;
+          i = std::next(i);
+          // Get replication factor.
+          rf = VERIFY_RESULT(CheckedStoi(*i));
+          i = std::next(i);
+          // Get optional placement uuid.
+          if (i != end) {
+            placement_uuid = *i;
+          }
+          return Status::OK();
+        }
         ));
         RETURN_NOT_OK_PREPEND(
             client->ModifyTablePlacementInfo(table_name, placement_info, rf, placement_uuid),

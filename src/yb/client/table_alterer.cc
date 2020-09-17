@@ -102,7 +102,8 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
     return status_;
   }
 
-  if (!rename_to_ && steps_.empty() && !table_properties_ && !wal_retention_secs_ && !replication_info_) {
+  if (!rename_to_ && steps_.empty() && !table_properties_ && !wal_retention_secs_ &&
+      !replication_info_) {
     return STATUS(InvalidArgument, "No alter steps provided");
   }
 
