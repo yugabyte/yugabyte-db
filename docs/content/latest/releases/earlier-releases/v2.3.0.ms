@@ -1,87 +1,25 @@
 ---
-title: What's new in 2.3
-headerTitle: What's new in 2.3
-linkTitle: What's new in 2.3
-description: Enhancements, changes, and resolved issues in the latest YugabyteDB release.
-headcontent: Features, enhancements, and resolved issues in the latest release.
-image: /images/section_icons/quick_start/install.png
-aliases:
-  - /latest/releases/
+title: v2.3.0 release notes
+headerTitle: v2.3.0 release notes
+linkTitle: v2.3.0
+description: v2.3.0 release notes
 section: RELEASES
 menu:
   latest:
-    identifier: whats-new
-    weight: 2589 
+    identifier: v2.3.0
+    parent: earlier-releases
+    weight: 2550
 ---
-
-This page includes all of the what's new/release notes for releases in the *latest* `2.3` release series. You can now compare updates within the same `MAJOR.MINOR` release series without changing pages.
-
-## 2.3.x release series
-
-The `2.3` latest release series includes the following releases:
-
-- [v2.3.1.0 (Released Sep 15, 2020)](#v2-3-1-0-2020-09-15)
-- [v2.3.0.0 (Released Sep 08, 2020)](#v2-3-0-0-2020-09-08)
-
-## v2.3.1.0 [2020-09-15]
-
-**Released:** September 15, 2020 (2.3.1.0-b15).
-
-### Downloads
-
-#### Binaries
-
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.1.0-darwin.tar.gz">
-  <button>
-    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
-  </button>
-</a>
-&nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.1.0-linux.tar.gz">
-  <button>
-    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
-  </button>
-</a>
-<br />
-
-#### Docker
-
-```sh
-docker pull yugabytedb/yugabyte:2.3.1.0-b15
-```
-
-### Features and changes
-
-#### YSQL
-
-- Fixes OOM when using COPY <table> FROM <file> to load data from a large file to a table. [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
-- Enable 2DC replication bootstrap for YSQL tables. This allows the producer to know where to start replicating from. [#5601](https://github.com/yugabyte/yugabyte-db/issues/5601)
-- Fix CREATE TABLE is 4-5x slower using Docker on Mac than not using Docker. Speeds up table creation by buffering writes to postgres system tables, caching pinned objects, and significantly reducing write RPC calls. [#3503](https://github.com/yugabyte/yugabyte-db/issues/3503)
-- Roll back the catalog version made in commit `46f3701` so that 2.3 upgrades can proceed. [#5408](ttps://github.com/yugabyte/yugabyte-db/issues/5408)
-
-#### Core database
-
-- Quickly evict known unresponsive tablet servers from the tablet location cache. Applies only to follower reads. For example, when tablet servers are not replying to RPC calls or dead — not sending heartbeats to the master for 5 minutes. This could also happen after decommissioning nodes. [#1052](https://github.com/yugabyte/yugabyte-db/issues/1052)
-
-#### Yugabyte Platform
-
-- Add search input and data sorting to the on-premises instances table list. Click arrows next to column titles to sort. Use the Search form to search multiple columns. [#4757](https://github.com/yugabyte/yugabyte-db/issues/4757)
-- Add the ability to change the user role (`Admin`, `ReadOnly`, or `BackupAdmin`) from the UI by an admin. Also, fix stale users list after creation or deletion of a user and disable **Save** buttons at Customer Profile tabs for `ReadOnly` users. [#5311](https://github.com/yugabyte/yugabyte-db/issues/5311)
-- Before deleting a universe, stop the master/tserver processes and release the instance so that if started again, the processes are not still running. [#4953](https://github.com/yugabyte/yugabyte-db/issues/4953)
-
-{{< note title="Note" >}}
-
-Prior to version 2.0, YSQL was still in beta. As a result, the 2.0 release included a backward-incompatible file format change for YSQL. If you have an existing cluster running releases earlier than 2.0 with YSQL enabled, then you will not be able to upgrade to version 2.0+. Export from your existing cluster and then import into a new cluster (v2.0 or later) to use existing data.
-
-{{< /note >}}
-
-## v2.3.0.0 [2020-09-08]
 
 **Released:** September 8, 2020 (2.3.0.0-b176).
 
-### Downloads
+**New to YugabyteDB?** To get up and running in less than five minutes, follow [Quick start](../../quick-start/).
 
-#### Binaries
+**Looking for earlier releases?** History of earlier releases is available in [Earlier releases](../earlier-releases/) section.  
+
+## Downloads
+
+### Binaries
 
 <a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.0.0-darwin.tar.gz">
   <button>
@@ -96,15 +34,13 @@ Prior to version 2.0, YSQL was still in beta. As a result, the 2.0 release inclu
 </a>
 <br />
 
-#### Docker
+### Docker
 
 ```sh
 docker pull yugabytedb/yugabyte:2.3.0.0-b176
 ```
 
-### Features and changes
-
-#### YSQL
+## YSQL
 
 - Fix OOM when running large `COPY TO` statements by creating new memory context for the loop over retrieved rows and resetting it after processing each row. [#5205](https://github.com/yugabyte/yugabyte-db/issues/5205)
 - Support transactional batch size for [`COPY FROM` command](../../api/ysql/commands/cmd_copy) with OOM fix. Batch sizes can be passed in with `ROWS_PER_TRANSACTION` in the `COPY OPTION` syntax. For an example, see [Import a large table using smaller transactions](../../api/ysql/commands/cmd_copy/#import-a-large-table-using-smaller-transactions) [#2855](https://github.com/yugabyte/yugabyte-db/issues/2855) [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
@@ -114,7 +50,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Fix restore from a distributed backup fails for tables using `SPLIT INTO` without a primary key. [#4993](https://github.com/yugabyte/yugabyte-db/issues/4993)
 - Fix wrong result by avoiding pushdown of `UPDATE` statement with the `RETURNING` clause. [#5366](https://github.com/yugabyte/yugabyte-db/issues/5366)
 - Improve error message when `UPDATE` changes partition so its clear what went wrong, fixed `yb_pg_foreign_key` `pg_regress` test for semantic merge conflict when updating primary keys and row-level partitioning. [#659](https://github.com/yugabyte/yugabyte-db/issues/659) [#5179](https://github.com/yugabyte/yugabyte-db/issues/5179) [#5310](https://github.com/yugabyte/yugabyte-db/issues/5310)
-- Allow `UPDATE` statement to change primary key columns. [#659](https://github.com/yugabyte/yugabyte-db/issues/659)
+- Allow UPDATE statement to change primary key columns. [#659](https://github.com/yugabyte/yugabyte-db/issues/659)
 - Support row-level partitioning. [#5179](https://github.com/yugabyte/yugabyte-db/issues/5179)
 - Block usage of `TABLEGROUP` with the `SPLIT` clause. For `CREATE TABLE`, usage is blocked in the grammar. For `CREATE INDEX`, if `NO TABLEGROUP` was provided, then presplitting for the index is allowed; otherwise, an error is issued. [#5352](https://github.com/yugabyte/yugabyte-db/issues/5352)
 - Buffered operations may share single RPC with read operation. Reducing the number of RPC calls speeds up `CREATE TABLE` statement. For example, the total number of RPC calls is dropped from 66 to 58 for a simple table like `CREATE TABLE t(k INT PRIMARY KEY)`. [#5177](https://github.com/yugabyte/yugabyte-db/issues/5177)
@@ -134,7 +70,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - For non-prepared statements, optimize `pg_statistic` system table lookups and update debugging utilities. [#5051](https://github.com/yugabyte/yugabyte-db/issues/5051)
 - Correctly show beta feature warnings by default. [#5322](https://github.com/yugabyte/yugabyte-db/issues/5322)
 
-#### YCQL
+## YCQL
 
 - For `WHERE` clause in the `CREATE INDEX` statement, return a `Not supported` error. [#5363](https://github.com/yugabyte/yugabyte-db/issues/5363)
 - Fix TSAN issue in partition-aware policy for C++ driver 2.9.0-yb-8 (yugabyte/cassandra-cpp-driver). [#1837](https://github.com/yugabyte/yugabyte-db/issues/1837)
@@ -145,7 +81,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Enable backfilling of transactional tables by default. [#4708](https://github.com/yugabyte/yugabyte-db/issues/4708)
 - Fix `ycqlsh` should return a failure when known that the create (unique) index has failed. [#5161](https://github.com/yugabyte/yugabyte-db/issues/5161)
 
-#### Core database
+## Core database
 
 - Fix core dump related to DNS resolution from cache for Kubernetes universes. [#5561](https://github.com/yugabyte/yugabyte-db/issues/5561)
 - Fix yb-master fails to restart after errors on first run. [#5276](https://github.com/yugabyte/yugabyte-db/issues/5276)
@@ -202,7 +138,7 @@ docker pull yugabytedb/yugabyte:2.3.0.0-b176
 - Remove KernelStackWatchdog and use LongOperationTracker to waste less resources per thread. [#5226](https://github.com/yugabyte/yugabyte-db/issues/5226)
 - Change the default value of `metric_node_name` flag from `DEFAULT_NODE_NAME` to `hostname:port`. [#4859](https://github.com/yugabyte/yugabyte-db/issues/4859)
 
-#### Yugabyte Platform
+## Yugabyte Platform
 
 - For S3 backups, install `s3cmd` required for encrypted backup and restore flows. [#5593](https://github.com/yugabyte/yugabyte-db/issues/5593)
 - When creating on-premises provider, remove `YB_HOME_DIR` if not set. [#5592](https://github.com/yugabyte/yugabyte-db/issues/5592)
