@@ -10,7 +10,8 @@ aliases:
 section: RELEASES
 menu:
   latest:
-    identifier: whats-new
+    parent: whats-new
+    identifier: latest-release
     weight: 2585 
 ---
 
@@ -28,9 +29,9 @@ Starting with v2.2.0, Yugabyte release versions are numbered based on an a new r
 
 {{< /note >}}  
 
-## v2.3.1.0 [2020-09-15]
+## v2.3.1.0 [September 15, 2020]
 
-**Released:** September 15, 2020 (2.3.1.0-b15).
+### **Build:** 2.3.1.0-b15
 
 ### Downloads
 
@@ -80,9 +81,9 @@ Prior to version 2.0, YSQL was still in beta. As a result, the 2.0 release inclu
 
 {{< /note >}}
 
-## v2.3.0.0 [2020-09-08]
+## v2.3.0.0 [September 8, 2020]
 
-**Released:** September 8, 2020 (2.3.0.0-b176).
+### **Build:** 2.3.0.0-b176
 
 ### Downloads
 
