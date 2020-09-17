@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Dropdown, MenuItem, FormControl} from 'react-bootstrap';
+import { Dropdown, MenuItem, FormControl } from 'react-bootstrap';
 import { DateTimePicker } from 'react-widgets';
 import momentLocalizer from "react-widgets-moment";
 import { withRouter, browserHistory } from 'react-router';
@@ -9,7 +9,7 @@ import moment from 'moment';
 
 import _ from 'lodash';
 
-import { YBButton } from '../../common/forms/fields';
+import { YBButtonLink } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -263,7 +263,7 @@ class GraphPanelHeader extends Component {
             value={this.state.endMoment.toDate()}
             onChange={this.handleEndDateChange}
             max={new Date()} min={this.state.startMoment.toDate()} />
-          <YBButton btnIcon={"fa fa-caret-right"} onClick={this.applyCustomFilter} />
+          <YBButtonLink btnClass={"btn btn-default custom-filter-btn"} btnIcon={"fa fa-caret-right"} onClick={this.applyCustomFilter} />
         </span>
       );
     }
@@ -303,7 +303,7 @@ class GraphPanelHeader extends Component {
                   <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}
                               selectedUniverse={this.state.currentSelectedUniverse}
                               selectedNode={this.state.currentSelectedNode}/>
-                  <YBButton btnIcon="fa fa-refresh" btnClass="btn btn-default refresh-btn" onClick={this.refreshGraphQuery}/>
+                  <YBButtonLink btnIcon="fa fa-refresh" btnClass="btn btn-default refresh-btn" onClick={this.refreshGraphQuery}/>
                 </div>
               </FlexGrow>
               <FlexGrow>

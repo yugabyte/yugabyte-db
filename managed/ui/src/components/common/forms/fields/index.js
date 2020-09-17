@@ -2,6 +2,7 @@
 
 export { default as YBModal } from './YBModal';
 export { default as YBButton } from './YBButton';
+export { default as YBButtonLink } from './YBButtonLink';
 export { default as YBAddRowButton } from './YBAddRowButton';
 export { default as YBRemoveRowButton } from './YBRemoveRowButton';
 export { default as YBCheckBox } from './YBCheckBox';
