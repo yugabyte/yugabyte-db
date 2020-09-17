@@ -1646,6 +1646,42 @@ $$) AS cypher_2(result agtype)
 WHERE cypher_1.result = cypher_2.result;
 
 --
+-- log (ln) and log10
+--
+SELECT * from cypher('expr', $$
+    RETURN log(2.718281828459045)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN log10(10)
+$$) as (result agtype);
+-- should return null
+SELECT * from cypher('expr', $$
+    RETURN log(null)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN log10(null)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN log(0)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN log10(0)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN log(-1)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN log10(-1)
+$$) as (result agtype);
+-- should fail
+SELECT * from cypher('expr', $$
+    RETURN log()
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN log10()
+$$) as (result agtype);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

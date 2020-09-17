@@ -87,6 +87,8 @@
 #define FUNC_ABS        {"abs",        "ag_abs",     ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
 #define FUNC_SIGN       {"sign",       "ag_sign",    ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
 #define FUNC_RAND       {"rand",       "random",     0,      0, 0, FLOAT8OID, 0, 0, false, true}
+#define FUNC_LOG        {"log",        "ag_log",     ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
+#define FUNC_LOG10      {"log10",      "ag_log10",   ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
 
 /* supported functions */
 #define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
@@ -101,7 +103,7 @@
                              FUNC_RCOT, FUNC_RASIN, FUNC_RACOS, FUNC_RATAN, \
                              FUNC_RATAN2, FUNC_PI, FUNC_DEGREES, FUNC_RADIANS, \
                              FUNC_ROUND, FUNC_CEIL, FUNC_FLOOR, FUNC_ABS, \
-                             FUNC_SIGN, FUNC_RAND}
+                             FUNC_SIGN, FUNC_RAND, FUNC_LOG, FUNC_LOG10}
 
 /* structure for supported function signatures */
 typedef struct function_signature
