@@ -222,11 +222,11 @@
   }
 }
 
-.refresh-btn {
-  padding-left: 10px;
+.refresh-btn, .custom-filter-btn {
+  padding: 10px 12px 9px;
   margin-left: 10px;
-}
 
-.refresh-btn .fa {
-  margin: 0px 10px;
+  .fa {
+    margin: 0px 10px;
+  }
 }
