@@ -5,7 +5,7 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
-import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+import {isDefinedNotNull, isNonEmptyString} from '../../../utils/ObjectUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
@@ -64,6 +64,7 @@ export default class NodeDetailsTable extends Component {
         </div>
       );
       let nodeName = cell;
+      let onPremNodeName = "";
       if (row.cloudInfo.cloud === "aws") {
         const awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
         nodeName = (<a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>);
@@ -71,15 +72,35 @@ export default class NodeDetailsTable extends Component {
         const gcpURI = `https://console.cloud.google.com/compute/instancesDetail/zones/${row.azItem}/instances/${cell}`;
         nodeName = (<a href={gcpURI} target="_blank" rel="noopener noreferrer">{cell}</a>);
       }
-      return (<Fragment>
-        {nodeName}
-        {ip}
-      </Fragment>);
+
+      if (row.cloudInfo.cloud === "onprem") {
+        if (isNonEmptyString(row.instanceName)) {
+          onPremNodeName = row.instanceName;
+        }
+      }
+
+      if (isNonEmptyString(onPremNodeName)) {
+        const instanceId = (
+          <div className={"text-lightgray"}>
+            {onPremNodeName}
+          </div>
+        );
+        return (<Fragment>
+          {nodeName}
+          {ip}
+          {instanceId}
+        </Fragment>)
+      } else {
+        return (<Fragment>
+          {nodeName}
+          {ip}
+        </Fragment>);
+      }
     };
 
     const getStatusUptime = (cell, row) => {
       let uptime = "_";
-      if(isDefinedNotNull(row.uptime_seconds)) {
+      if (isDefinedNotNull(row.uptime_seconds)) {
         // get the difference between the moments
         const difference = parseFloat(row.uptime_seconds) * 1000;
 
@@ -101,7 +122,7 @@ export default class NodeDetailsTable extends Component {
             ${pluralize(diffArray[idx - 1][1], diffArray[idx - 1][0])}
             ${diffArray[idx - 2][0]}
             ${pluralize(diffArray[idx - 2][1], diffArray[idx - 2][0])}`;
-      };
+      }
       return (<Fragment>
         <div className={cell === "Live" ? 'text-green' : 'text-red'}>{cell}</div>
         {uptime}

@@ -78,6 +78,9 @@ export const SET_ON_PREM_CONFIG_DATA = 'SET_ON_PREM_CONFIG_DATA';
 export const GET_NODE_INSTANCE_LIST = 'GET_NODE_INSTANCE';
 export const GET_NODE_INSTANCE_LIST_RESPONSE = 'GET_NODE_INSTANCE_RESPONSE';
 
+export const GET_NODE_INSTANCE_LIST_READ_REPLICA = 'GET_NODE_INSTANCE_READ_REPLICA';
+export const GET_NODE_INSTANCE_LIST_RESPONSE_READ_REPLICA = 'GET_NODE_INSTANCE_RESPONSE_READ_REPLICA';
+
 export const RESET_ON_PREM_CONFIG_DATA = 'RESET_ON_PREM_CONFIG_DATA';
 
 export const BOOTSTRAP_PROVIDER = 'BOOTSTRAP_PROVIDER';
@@ -534,6 +537,22 @@ export function getNodeInstancesForProvider(pUUID) {
 export function getNodesInstancesForProviderResponse(response) {
   return {
     type: GET_NODE_INSTANCE_LIST_RESPONSE,
+    payload: response
+  };
+}
+
+export function getNodeInstancesForReadReplicaProvider(pUUID) {
+  const cUUID = localStorage.getItem("customerId");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/nodes/list`);
+  return {
+    type: GET_NODE_INSTANCE_LIST_READ_REPLICA,
+    payload: request
+  };
+}
+
+export function getNodesInstancesForReadReplicaProviderResponse(response) {
+  return {
+    type: GET_NODE_INSTANCE_LIST_RESPONSE_READ_REPLICA,
     payload: response
   };
 }

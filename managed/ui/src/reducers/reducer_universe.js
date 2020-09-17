@@ -29,6 +29,11 @@ import {
   setSuccessState
 } from '../utils/PromiseUtils.js';
 import { isNonEmptyArray, isNonEmptyObject } from '../utils/ObjectUtils.js';
+import {
+  GET_NODE_INSTANCE_LIST,
+  GET_NODE_INSTANCE_LIST_READ_REPLICA,
+  GET_NODE_INSTANCE_LIST_RESPONSE, GET_NODE_INSTANCE_LIST_RESPONSE_READ_REPLICA
+} from "../actions/cloud";
 
 const INITIAL_STATE = {
   currentUniverse: getInitialState({}),
@@ -121,6 +126,14 @@ export default function(state = INITIAL_STATE, action) {
       return setPromiseResponse(state, "universeMasterLeader", action);
     case RESET_MASTER_LEADER:
       return { ...state, universeMasterLeader: getInitialState({})};
+    case GET_NODE_INSTANCE_LIST:
+      return setLoadingState(state, "nodeInstanceList", []);
+    case GET_NODE_INSTANCE_LIST_RESPONSE:
+      return setPromiseResponse(state, "nodeInstanceList", action);
+    case GET_NODE_INSTANCE_LIST_READ_REPLICA:
+      return setLoadingState(state, "replicaNodeInstanceList", []);
+    case GET_NODE_INSTANCE_LIST_RESPONSE_READ_REPLICA:
+      return setPromiseResponse(state, "replicaNodeInstanceList", action);
 
     // Universe Tasks Operations
     case FETCH_UNIVERSE_TASKS:

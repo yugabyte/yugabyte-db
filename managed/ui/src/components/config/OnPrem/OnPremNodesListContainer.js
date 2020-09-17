@@ -114,25 +114,8 @@ const validate = values => {
       if (isNonEmptyArray(instanceRowArray)) {
         instanceRowArray.forEach(function(instanceRowItem, instanceRowIdx){
           errors.instances[instanceRowKey][instanceRowIdx] = {};
-          if (isNonEmptyString(instanceRowItem.instanceTypeIPs)) {
-            const instanceTypeIPs = instanceRowItem.instanceTypeIPs.split(",");
-            instanceTypeIPs.forEach(function (ipItem) {
-              // Limit length for the case where hostnames are being inputted to protect against
-              // UNIX socket limit (a valid IP address will never hit this length limit anyways)
-              if (!isNonEmptyString(ipItem) || ipItem.length > 75) {
-                errors.instances[instanceRowKey][instanceRowIdx] = {instanceTypeIPs: "Invalid Instance Address"};
-              }
-            });
-
-            if (!_.get(instanceRowItem, "instanceNames", false) || isEmptyString(instanceRowItem.instanceNames) || instanceRowItem.instanceNames.split(",").length !== instanceTypeIPs.length) {
-              errors.instances[instanceRowKey][instanceRowIdx] = {instanceNames: "Invalid Number of Names"};
-            } else if (isNonEmptyString(instanceRowItem.instanceNames) && instanceRowItem.instanceNames.split(",").length === instanceTypeIPs.length) {
-              instanceRowItem.instanceNames.split(",").forEach(function (instanceName) {
-                if (!isNonEmptyString(instanceName)) {
-                  errors.instances[instanceRowKey][instanceRowIdx] = {instanceNames: "Invalid Number of Names"};
-                }
-              });
-            }
+          if (isNonEmptyString(instanceRowItem.instanceTypeIP) && instanceRowItem.instanceTypeIP.length > 75) {
+            errors.instances[instanceRowKey][instanceRowIdx] = {instanceTypeIP: "Address Too Long"};
           }
         });
       }
