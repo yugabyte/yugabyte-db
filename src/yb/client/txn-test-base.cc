@@ -21,6 +21,8 @@
 #include "yb/common/ql_value.h"
 #include "yb/consensus/consensus.h"
 
+#include "yb/integration-tests/mini_cluster_utils.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -261,61 +263,11 @@ bool TransactionTestBase::HasTransactions() {
 }
 
 size_t TransactionTestBase::CountRunningTransactions() {
-  size_t result = 0;
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
-  for (const auto &peer : peers) {
-    auto participant = peer->tablet()->transaction_participant();
-    result += participant ? participant->TEST_GetNumRunningTransactions() : 0;
-  }
-  return result;
+  return yb::CountRunningTransactions(cluster_.get());
 }
 
-void TransactionTestBase::CheckNoRunningTransactions() {
-  MonoTime deadline = MonoTime::Now() + 7s * kTimeMultiplier;
-  bool has_bad = false;
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    auto server = cluster_->mini_tablet_server(i)->server();
-    std::vector<std::shared_ptr<tablet::TabletPeer>> tablets;
-    auto status = Wait([server, &tablets] {
-      tablets.clear();
-      server->tablet_manager()->GetTabletPeers(&tablets);
-      for (const auto& peer : tablets) {
-        if (peer->tablet() == nullptr) {
-          return false;
-        }
-      }
-      return true;
-    }, deadline, "Wait until all peers have tablets");
-    if (!status.ok()) {
-      has_bad = true;
-      for (const auto& peer : tablets) {
-        if (peer->tablet() == nullptr) {
-          LOG(ERROR) << Format(
-              "T $1 P $0: Tablet object is not created",
-              server->permanent_uuid(), peer->tablet_id());
-        }
-      }
-      continue;
-    }
-    for (const auto& peer : tablets) {
-      auto participant = peer->tablet()->transaction_participant();
-      if (participant) {
-        auto status = Wait([participant] {
-              return participant->TEST_GetNumRunningTransactions() == 0;
-            },
-            deadline,
-            "Wait until no transactions are running");
-        if (!status.ok()) {
-          LOG(ERROR) << Format(
-              "T $1 P $0: Transactions: $2",
-              server->permanent_uuid(), peer->tablet_id(),
-              participant->TEST_GetNumRunningTransactions());
-          has_bad = true;
-        }
-      }
-    }
-  }
-  ASSERT_EQ(false, has_bad);
+void TransactionTestBase::AssertNoRunningTransactions() {
+  yb::AssertNoRunningTransactions(cluster_.get());
 }
 
 bool TransactionTestBase::CheckAllTabletsRunning() {

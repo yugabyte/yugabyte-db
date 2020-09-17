@@ -123,7 +123,7 @@ TEST_F(SealTxnTest, Simple) {
   LOG(INFO) << "Committed: " << txn->id();
   ASSERT_NO_FATALS(VerifyData());
   ASSERT_OK(cluster_->RestartSync());
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
 }
 
 TEST_F(SealTxnTest, Update) {
@@ -141,7 +141,7 @@ TEST_F(SealTxnTest, Update) {
   LOG(INFO) << "Committed: " << txn->id();
   ASSERT_NO_FATALS(VerifyData(1, WriteOpType::UPDATE));
   ASSERT_OK(cluster_->RestartSync());
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
 }
 
 } // namespace client
