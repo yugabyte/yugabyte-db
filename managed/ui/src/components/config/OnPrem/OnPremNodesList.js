@@ -72,24 +72,20 @@ class OnPremNodesList extends Component {
         return instances[region].reduce(function (acc, val) {
           if (isNonEmptyObject(val) && isNonEmptyString(val.zone)) {
             const currentZone = val.zone.trim();
+            const instanceName = isNonEmptyString(val.instanceName) ? val.instanceName.trim() : "";
             const currentZoneUUID = zoneList[region][currentZone];
-            const instanceNames = val.instanceNames.split(",");
             acc[currentZoneUUID] = acc[currentZoneUUID] || [];
-            if (val.instanceTypeIPs) {
-              val.instanceTypeIPs.split(",").forEach((ip, index) => {
-                acc[currentZoneUUID].push({
-                  zone: currentZone,
-                  region: region,
-                  ip: ip.trim(),
-                  instanceType: val.machineType,
-                  sshUser: isNonEmptyObject(currentCloudAccessKey) ?
-                    currentCloudAccessKey.keyInfo.sshUser : "",
-                  sshPort: isNonEmptyObject(currentCloudAccessKey) ?
-                    currentCloudAccessKey.keyInfo.sshPort : null,
-                  instanceName: instanceNames[index]
-                });
-              });
-            }
+            acc[currentZoneUUID].push({
+              zone: currentZone,
+              region: region,
+              ip: val.instanceTypeIP.trim(),
+              instanceType: val.machineType,
+              sshUser: isNonEmptyObject(currentCloudAccessKey) ?
+                currentCloudAccessKey.keyInfo.sshUser : "",
+              sshPort: isNonEmptyObject(currentCloudAccessKey) ?
+                currentCloudAccessKey.keyInfo.sshPort : null,
+              instanceName: instanceName
+            });
           }
           return acc;
         }, {});
