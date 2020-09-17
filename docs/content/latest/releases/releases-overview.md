@@ -18,7 +18,7 @@ As of version `2.2`, Yugabyte is following a new release versioning convention f
 
 {{< /note >}}
 
-## Stable and latest release series
+## Supported stable and latest releases
 
 The following release series include:
 
@@ -29,13 +29,13 @@ The following release series include:
 
 [Planned releases](#planned-releases), in a section below, includes timelines for upcoming stable and latest release series.
 
-| Release series                           | Released    | Maintenance support ends | EOL              | Status                              |
-| :-------------------------------- | :----------- | :------------------------ | :---------------- | :----------------------------------- |
-| [2.3](../whats-new)               | Sep 08, 2020 | ---                      | ---             | Latest (development and testing)
-| [2.2](../earlier-releases/v2.2.0) | Jul 15, 2020 | Jul 15, 2021             | Jan 15, 2022    | Stable (recommended for production)
-| [2.1](../earlier-releases/v2.1.0) | Feb 25, 2020 | Feb 25, 2021             | Aug 08, 2021    | Stable
-| [2.0](../earlier-releases/v2.0.0) | Sep 17, 2019 | Sep 17, 2020             | Mar 03, 2021    | Stable
-| [1.3](../earlier-releases/v1.3.0) | Jul 15, 2019 | Jul 15, 2020             | Jan 15, 2021    | Stable
+| Release series                    | Released     | Maintenance support ends | EOL          | Status                              |
+| :-------------------------------- | :----------- | :----------------------- | :----------- | :----------------------------------- |
+| [2.3](../whats-new)               | Sep 08, 2020 | ---                      | ---          | Latest (development and testing)
+| [2.2](../earlier-releases/v2.2.0) | Jul 15, 2020 | Jul 15, 2021             | Jan 15, 2022 | Stable (recommended for production)
+| [2.1](../earlier-releases/v2.1.0) | Feb 25, 2020 | Feb 25, 2021             | Aug 08, 2021 | Stable
+| [2.0](../earlier-releases/v2.0.0) | Sep 17, 2019 | Sep 17, 2020             | Mar 03, 2021 | Stable
+| [1.3](../earlier-releases/v1.3.0) | Jul 15, 2019 | Jul 15, 2020             | Jan 15, 2021 | Stable
 
 **Note:** The stable release series include `2.1`, `2.0`, and `1.3`, released prior to the new [release versioning](../) convention.
 
