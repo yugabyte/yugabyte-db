@@ -2,7 +2,7 @@
 title: Release versioning
 headerTitle: Release versioning
 linkTitle: Release versioning
-description: Explains the new release versioning approach for latest and stable releases.
+description: Explains the new release versioning convention for latest and stable releases.
 section: RELEASES
 menu:
   latest:
@@ -28,7 +28,7 @@ Examples follow in the relevant sections below.
 
 ## Stable releases
 
-Stable release series, denoted by `MAJOR.EVEN` numbers, introduce fully tested new features and changes added since the last stable release. The current stable `2.2` release series will be followed by the next stable `2.4` release series.
+Stable release series, denoted by `MAJOR.EVEN` numbers, introduce fully tested new features and changes added since the last stable release. The current `2.2` stable release series will be followed by the next `2.4` stable release series.
 
 {{< note title="Important" >}}
 
@@ -38,4 +38,4 @@ Yugabyte supports *production deployments* based on stable releases and can only
 
 ## Latest releases
 
-The latest release series, denoted by a `MAJOR.ODD` number, is the current work-in-progress release series that incrementally introduces new features and changes. The latest `2.3` release series will become the next stable `2.4` release series. And the next latest release series will be `2.5`. These `MAJOR.ODD` releases are not supported for production deployments.
+The latest release series, denoted by a `MAJOR.ODD` number, is the current work-in-progress release series that incrementally introduces new features and changes. The `2.3` latest release series will become the basis for the next `2.4` stable release series. And the next latest release series available will then be `2.5`. These `MAJOR.ODD` releases are not supported for production deployments.

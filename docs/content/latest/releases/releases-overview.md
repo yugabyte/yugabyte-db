@@ -41,11 +41,11 @@ The following release series include:
 
 ## Planned releases
 
-Listed below are tentative release dates for upcoming planned releases, subject to change. For information on what's being worked on, see [Current roadmap](https://github.com/yugabyte/yugabyte-db#current-roadmap).
+Listed below are tentative release dates for upcoming planned release series, subject to change. For get insights into the new features planned for these upcoming releases, visit the [Current roadmap](https://github.com/yugabyte/yugabyte-db#current-roadmap).
 
-| Version | Planned release |
-| :------ | --------------- |
-| 2.4     | Jan 2021        |
-| 2.5     | Nov 2020        |
-| 2.6     | Apr 2021        |
-| 2.7     | Feb 2021        |
+| Release series | Planned release |
+| :------------- | --------------- |
+| 2.4            | Jan 2021        |
+| 2.5            | Nov 2020        |
+| 2.6            | Apr 2021        |
+| 2.7            | Feb 2021        |
