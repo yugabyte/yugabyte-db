@@ -2,11 +2,18 @@
 
 import React, { Component, Fragment } from 'react';
 import { NodeDetailsTable } from '../../universes';
-import { isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import {
+  isNonEmptyArray,
+  isDefinedNotNull,
+  insertSpacesFromCamelCase,
+  isNonEmptyObject,
+  isNonEmptyString
+} from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { getPrimaryCluster, getReadOnlyCluster, nodeComparisonFunction } from '../../../utils/UniverseUtils';
 import { hasLiveNodes } from '../../../utils/UniverseUtils';
 import { YBLoading } from '../../common/indicators';
+import _ from 'lodash';
 
 export default class NodeDetails extends Component {
 
@@ -19,6 +26,19 @@ export default class NodeDetails extends Component {
       if (hasLiveNodes(currentUniverse.data)) {
         this.props.getUniversePerNodeMetrics(uuid);
       }
+
+      const universeDetails = currentUniverse.data.universeDetails;
+      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
+      if (isDefinedNotNull(primaryCluster)) {
+        const primaryClusterProvider = primaryCluster.userIntent.provider;
+        this.props.fetchNodeListByProvider(primaryClusterProvider);
+      }
+
+      const readOnlyCluster = getReadOnlyCluster(universeDetails.clusters);
+      if (isDefinedNotNull(readOnlyCluster)) {
+        const readOnlyClusterProvider = readOnlyCluster.userIntent.provider;
+        this.props.fetchNodeListByReplicaProvider(readOnlyClusterProvider);
+      }
     }
   }
 
@@ -27,7 +47,7 @@ export default class NodeDetails extends Component {
   }
 
   render() {
-    const { universe: { currentUniverse, universePerNodeStatus, universePerNodeMetrics, universeMasterLeader }, customer} = this.props;
+    const { universe: { currentUniverse, nodeInstanceList, replicaNodeInstanceList, universePerNodeStatus, universePerNodeMetrics, universeMasterLeader }, customer} = this.props;
     const universeDetails = currentUniverse.data.universeDetails;
     const nodeDetails = universeDetails.nodeDetailsSet;
     if (!isNonEmptyArray(nodeDetails)) {
@@ -54,6 +74,19 @@ export default class NodeDetails extends Component {
         isLoading = false;
       }
 
+      let instanceName = "";
+      const nodeName = nodeDetail.nodeName;
+
+      if (isDefinedNotNull(nodeInstanceList)) {
+        const matchingInstance = nodeInstanceList.data.filter((instance) => instance.nodeName === nodeName);
+        instanceName = _.get(matchingInstance, "[0]details.instanceName", "");
+      }
+
+      if (!isNonEmptyString(instanceName) && isDefinedNotNull(replicaNodeInstanceList)) {
+        const matchingInstance = replicaNodeInstanceList.data.filter((instance) => instance.nodeName === nodeName);
+        instanceName = _.get(matchingInstance, "[0]details.instanceName", "");
+      }
+
       const isMasterLeader = nodeDetail.isMaster && isDefinedNotNull(universeMasterLeader) &&
                              getPromiseState(universeMasterLeader).isSuccess() &&
                              universeMasterLeader.data.privateIP === nodeDetail.cloudInfo.private_ip;
@@ -76,7 +109,8 @@ export default class NodeDetails extends Component {
         };
       return {
         nodeIdx: nodeDetail.nodeIdx,
-        name: nodeDetail.nodeName,
+        name: nodeName,
+        instanceName: instanceName,
         cloudItem: `${nodeDetail.cloudInfo.cloud}`,
         regionItem: `${nodeDetail.cloudInfo.region}`,
         azItem: `${nodeDetail.cloudInfo.az}`,
