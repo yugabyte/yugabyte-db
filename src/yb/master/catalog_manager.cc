@@ -320,8 +320,8 @@ DEFINE_test_flag(bool, tablegroup_master_only, false,
                  "This is only for MasterTest to be able to test tablegroups without the"
                  " transaction status table being created.");
 
-DEFINE_bool(enable_register_ts_from_raft, false, "Whether to register a tserver from the consensus "
-                                                 "information of a reported tablet.");
+DEFINE_bool(enable_register_ts_from_raft, true, "Whether to register a tserver from the consensus "
+                                                "information of a reported tablet.");
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
