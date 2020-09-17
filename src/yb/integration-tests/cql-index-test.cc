@@ -13,6 +13,10 @@
 
 #include "yb/integration-tests/cql_test_base.h"
 
+#include "yb/consensus/raft_consensus.h"
+
+#include "yb/integration-tests/mini_cluster_utils.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/test_util.h"
 
@@ -31,11 +35,15 @@ class CqlIndexTest : public CqlTestBase {
   virtual ~CqlIndexTest() = default;
 };
 
-CHECKED_STATUS CreateIndexedTable(CassandraSession* session) {
+YB_STRONGLY_TYPED_BOOL(UniqueIndex);
+
+CHECKED_STATUS CreateIndexedTable(
+    CassandraSession* session, UniqueIndex unique_index = UniqueIndex::kFalse) {
   RETURN_NOT_OK(
       session->ExecuteQuery("CREATE TABLE IF NOT EXISTS t (key INT PRIMARY KEY, value INT) WITH "
                             "transactions = { 'enabled' : true }"));
-  return session->ExecuteQuery("CREATE INDEX IF NOT EXISTS idx ON T (value)");
+  return session->ExecuteQuery(
+      Format("CREATE $0 INDEX IF NOT EXISTS idx ON T (value)", unique_index ? "UNIQUE" : ""));
 }
 
 TEST_F(CqlIndexTest, Simple) {
@@ -146,6 +154,43 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
   thread_holder.Stop();
 
   SetAtomicFlag(0, &FLAGS_TEST_inject_txn_get_status_delay_ms);
+}
+
+YB_STRONGLY_TYPED_BOOL(CheckReady);
+
+void CleanFutures(std::deque<CassandraFuture>* futures, CheckReady check_ready) {
+  while (!futures->empty() && (!check_ready || futures->front().Ready())) {
+    auto status = futures->front().Wait();
+    if (!status.ok() && !status.IsTimedOut()) {
+      auto msg = status.message().ToBuffer();
+      if (msg.find("Duplicate value disallowed by unique index") == std::string::npos) {
+        ASSERT_OK(status);
+      }
+    }
+    futures->pop_front();
+  }
+}
+
+TEST_F(CqlIndexTest, TxnCleanup) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(CreateIndexedTable(&session, UniqueIndex::kTrue));
+  std::deque<CassandraFuture> futures;
+
+  auto prepared = ASSERT_RESULT(session.Prepare("INSERT INTO t (key, value) VALUES (?, ?)"));
+
+  for (int i = 0; i != 100; ++i) {
+    CleanFutures(&futures, CheckReady::kTrue);
+
+    auto stmt = prepared.Bind();
+    stmt.Bind(0, i);
+    stmt.Bind(1, RandomUniformInt<cass_int32_t>(1, 10));
+    futures.push_back(session.ExecuteGetFuture(stmt));
+  }
+
+  CleanFutures(&futures, CheckReady::kFalse);
+
+  AssertNoRunningTransactions(cluster_.get());
 }
 
 } // namespace yb

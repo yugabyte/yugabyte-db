@@ -95,7 +95,7 @@ class TransactionTestBase : public KeyValueTableTest {
 
   size_t CountRunningTransactions();
 
-  void CheckNoRunningTransactions();
+  void AssertNoRunningTransactions();
 
   bool CheckAllTabletsRunning();
 
