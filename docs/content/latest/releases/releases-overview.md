@@ -22,8 +22,8 @@ As of version `2.2`, Yugabyte is following a new release versioning convention f
 
 The following release series include:
 
-- [Stable](../versioning/#stable-releases): Supported for production deployments
-- [Latest](../versioning/#latest-releases): Supported for development and testing
+- [Stable](../versioning/#stable-releases): Supported for production deployments.
+- [Latest](../versioning/#latest-releases): Supported for development and testing only.
 
 [Release versioning](../versioning) gives details on the stable and latest release series numbering convention that started with `2.2`.
 
