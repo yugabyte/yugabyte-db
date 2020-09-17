@@ -32,7 +32,7 @@ Stable release series, denoted by `MAJOR.EVEN` numbers, introduce fully tested n
 
 {{< note title="Important" >}}
 
-Yugabyte supports *production deployments* based on stable releases and can only be upgraded to the newer stable releases. For a list of supported stable releases, see [Supported stable releases](../releases-overview/#supported-stable-releases).
+Yugabyte supports *production deployments* based on stable releases and can only be upgraded to the newer stable releases. For a list of supported stable releases, see [Supported and planned releases](../releases-overview/#supported-stable-releases).
 
 {{< /note >}}
 

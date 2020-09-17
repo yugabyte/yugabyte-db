@@ -11,7 +11,7 @@ section: RELEASES
 menu:
   latest:
     identifier: whats-new
-    weight: 2589 
+    weight: 2585 
 ---
 
 This page includes the what's new and release notes for all releases in the `2.3` latest release series. You can now compare updates within the same `2.3` release series without changing pages.
