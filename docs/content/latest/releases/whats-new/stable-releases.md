@@ -1,7 +1,7 @@
 ---
-title: What's new in 2.2
-headerTitle: What's new in 2.2
-linkTitle: What's new in 2.2
+title: What's new in 2.2 (stable)
+headerTitle: What's new in 2.2 (stable)
+linkTitle: What's new in 2.2 (stable)
 description: Enhancements, changes, and resolved issues in the recommended stable release series.
 headcontent: Features, enhancements, and resolved issues in the recommended stable release series.
 image: /images/section_icons/quick_start/install.png
@@ -12,13 +12,13 @@ menu:
   latest:
     parent: whats-new
     identifier: stable-releases
-    weight: 2585 
+    weight: 2586 
 ---
 
 Included here are the release notes for all releases in the `2.3` latest release series. The `2.3` latest release series include the following releases:
 
-- [v2.2.2.0 (Released Sep 15, 2020)](#v2-3-1-0-2020-09-15)
-- [v2.2.0.0 (Released Sep 08, 2020)](#v2-3-0-0-2020-09-08)
+- [v2.2.2 (August 19, 2020)](#v2-2-2-august-19-2020)
+- [v2.2.0 (July 15, 2020)](#v2-2-0-july-15-2020)
 
 {{< note title="Important" >}}
 
