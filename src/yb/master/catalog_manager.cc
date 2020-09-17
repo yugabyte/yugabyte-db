@@ -1296,8 +1296,8 @@ Status CatalogManager::InitSysCatalogAsync() {
   Status s = sys_catalog_->Load(master_->fs_manager());
 
   if (!s.ok() && s.IsNotFound()) {
-    // We are on our first run, need to create the metadata file.
-    LOG(INFO) << "Did not find previous SysCatalogTable data on disk";
+    // We have yet to intialize the syscatalog metadata, need to create the metadata file.
+    LOG(INFO) << "Did not find previous SysCatalogTable data on disk. " << s;
 
     if (!master_->opts().AreMasterAddressesProvided()) {
       master_->SetShellMode(true);
@@ -1306,7 +1306,9 @@ Status CatalogManager::InitSysCatalogAsync() {
     }
 
     RETURN_NOT_OK(CheckLocalHostInMasterAddresses());
-    RETURN_NOT_OK(sys_catalog_->CreateNew(master_->fs_manager()));
+    RETURN_NOT_OK_PREPEND(sys_catalog_->CreateNew(master_->fs_manager()),
+        Substitute("Encountered errors during system catalog initialization:"
+                   "\n\tError on Load: $0\n\tError on CreateNew: ", s.ToString()));
 
     return Status::OK();
   }
