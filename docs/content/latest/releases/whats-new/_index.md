@@ -21,6 +21,15 @@ The `2.3` latest release series include the following releases:
 - [v2.3.1.0 (Released Sep 15, 2020)](#v2-3-1-0-2020-09-15)
 - [v2.3.0.0 (Released Sep 08, 2020)](#v2-3-0-0-2020-09-08)
 
+{{< note title="Important" >}}
+
+Starting with v2.2.0, Yugabyte release versions are numbered based on an even/odd release versioning. For more details, see the following:
+
+- [Release versioning](../../versioning) – Includes details on stable and latest versioning.
+- [Supported and planned releases](../../releases-overview) – Information on supported and latest releases.
+
+{{< /note >}}  
+
 ## v2.3.1.0 [2020-09-15]
 
 **Released:** September 15, 2020 (2.3.1.0-b15).
