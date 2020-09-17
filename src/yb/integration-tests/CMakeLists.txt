@@ -38,6 +38,7 @@ set(INTEGRATION_TESTS_SRCS
   external_mini_cluster.cc
   external_mini_cluster_fs_inspector.cc
   mini_cluster.cc
+  mini_cluster_utils.cc
   test_workload.cc
   load_generator.cc
   yb_table_test_base.cc

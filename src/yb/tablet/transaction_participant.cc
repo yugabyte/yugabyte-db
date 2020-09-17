@@ -55,6 +55,7 @@
 #include "yb/util/delayer.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
+#include "yb/util/lru_cache.h"
 #include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random_util.h"
@@ -88,6 +89,8 @@ DECLARE_bool(TEST_fail_on_replicated_batch_idx_set_in_txn_record);
 DEFINE_uint64(max_transactions_in_status_request, 128,
               "Request status for at most specified number of transactions at once. "
                   "0 disables load time transaction status resolution.");
+
+DEFINE_uint64(transactions_cleanup_cache_size, 64, "Transactions cleanup cache size.");
 
 METRIC_DEFINE_simple_counter(
     tablet, transaction_load_attempts,
@@ -215,6 +218,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       auto it = transactions_.find(metadata->transaction_id);
       if (it == transactions_.end()) {
         if (WasTransactionRecentlyRemoved(metadata->transaction_id)) {
+          return false;
+        }
+        if (cleanup_cache_.Erase(metadata->transaction_id) != 0) {
           return false;
         }
         VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata->transaction_id;
@@ -582,6 +588,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = transactions_.find(data.transaction_id);
     if (it == transactions_.end()) {
+      cleanup_cache_.Insert(data.transaction_id);
+
       return Status::OK();
     }
 
@@ -787,7 +795,11 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   size_t TEST_GetNumRunningTransactions() {
     std::lock_guard<std::mutex> lock(mutex_);
-    VLOG_WITH_PREFIX(4) << "Transactions: " << yb::ToString(transactions_);
+    auto txn_to_id = [](const RunningTransactionPtr& txn) {
+      return txn->id();
+    };
+    VLOG_WITH_PREFIX(4) << "Transactions: " << AsString(transactions_, txn_to_id)
+                        << ", requests: " << AsString(running_requests_);
     return transactions_.size();
   }
 
@@ -1516,6 +1528,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   mutable std::atomic<client::YBClient*> client_cache_{nullptr};
 
   ApplyStatesMap pending_applies_;
+
+  LRUCache<TransactionId> cleanup_cache_{FLAGS_transactions_cleanup_cache_size};
 };
 
 TransactionParticipant::TransactionParticipant(

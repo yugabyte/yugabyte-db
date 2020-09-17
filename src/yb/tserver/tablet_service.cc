@@ -404,7 +404,7 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
     }
 
     if (!status_.ok()) {
-      LOG(INFO) << "Write failed: " << status_;
+      LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status_;
       SetupErrorAndRespond(get_error(), status_, code_, context_.get());
       return;
     }

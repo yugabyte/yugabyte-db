@@ -109,7 +109,7 @@ TEST_F(QLTransactionTest, Simple) {
   ASSERT_NO_FATALS(WriteData());
   ASSERT_NO_FATALS(VerifyData());
   ASSERT_OK(cluster_->RestartSync());
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
 }
 
 TEST_F(QLTransactionTest, LookupTabletFailure) {
@@ -130,7 +130,7 @@ TEST_F(QLTransactionTest, ReadWithTimeInFuture) {
     VerifyRows(session);
   }
   ASSERT_OK(cluster_->RestartSync());
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
 }
 
 TEST_F(QLTransactionTest, WriteSameKey) {
@@ -200,7 +200,7 @@ void QLTransactionTest::TestReadRestart(bool commit) {
 
 TEST_F(QLTransactionTest, ReadRestart) {
   TestReadRestart();
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
 }
 
 TEST_F(QLTransactionTest, ReadRestartWithIntents) {
@@ -289,7 +289,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
   VerifyData(1, WriteOpType::UPDATE, kExtraColumn);
 
   ASSERT_OK(cluster_->RestartSync());
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
 }
 
 // Check that we could write to transaction that were restarted.
@@ -348,7 +348,7 @@ TEST_F(QLTransactionTest, Child) {
 
   ASSERT_NO_FATALS(VerifyData());
   ASSERT_OK(cluster_->RestartSync());
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
 }
 
 TEST_F(QLTransactionTest, ChildReadRestart) {
@@ -395,7 +395,7 @@ TEST_F(QLTransactionTest, ChildReadRestart) {
   ASSERT_NO_FATALS(VerifyData());
 
   ASSERT_OK(cluster_->RestartSync());
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
 }
 
 TEST_F(QLTransactionTest, InsertUpdate) {
@@ -414,7 +414,7 @@ TEST_F(QLTransactionTest, Cleanup) {
   ASSERT_OK(WaitTransactionsCleaned());
   VerifyData();
   ASSERT_OK(cluster_->RestartSync());
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
 }
 
 TEST_F(QLTransactionTest, Heartbeat) {
@@ -424,7 +424,7 @@ TEST_F(QLTransactionTest, Heartbeat) {
   std::this_thread::sleep_for(GetTransactionTimeout() * 2);
   ASSERT_OK(txn->CommitFuture().get());
   VerifyData();
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
 }
 
 TEST_F(QLTransactionTest, Expire) {
@@ -465,7 +465,7 @@ TEST_F(QLTransactionTest, PreserveLogs) {
   }
   latch.Wait();
   VerifyData(kTransactions);
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   uint64_t max_active_segment_sequence_number = 0;
   for (const auto& peer : peers) {
@@ -494,7 +494,7 @@ TEST_F(QLTransactionTest, ResendApplying) {
   ASSERT_OK(WaitTransactionsCleaned());
   VerifyData();
   ASSERT_OK(cluster_->RestartSync());
-  CheckNoRunningTransactions();
+  AssertNoRunningTransactions();
 }
 
 TEST_F(QLTransactionTest, ConflictResolution) {
