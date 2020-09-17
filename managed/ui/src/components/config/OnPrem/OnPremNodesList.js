@@ -129,7 +129,7 @@ class OnPremNodesList extends Component {
         );
       }
     }
-    return data;
+    return 'NOT USED';
   }
 
   UNSAFE_componentWillMount() {
@@ -252,7 +252,7 @@ class OnPremNodesList extends Component {
               <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} dataSort/>
               <TableHeaderColumn dataField="instanceName" dataSort>Identifier</TableHeaderColumn>
               <TableHeaderColumn dataField="ip" dataSort>Address</TableHeaderColumn>
-              <TableHeaderColumn dataField="inUse" dataFormat={this.handleCheckNodesUsage} dataSort>In Use</TableHeaderColumn>
+              <TableHeaderColumn dataField="inUse" dataFormat={this.handleCheckNodesUsage} dataSort>Universe Name</TableHeaderColumn>
               <TableHeaderColumn dataField="region" dataSort>Region</TableHeaderColumn>
               <TableHeaderColumn dataField="zone" dataSort>Zone</TableHeaderColumn>
               <TableHeaderColumn dataField="instanceType" dataSort>Instance Type</TableHeaderColumn>
