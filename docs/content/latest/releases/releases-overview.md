@@ -18,41 +18,37 @@ As of version `2.2`, Yugabyte is following a new release versioning convention f
 
 {{< /note >}}
 
-## Supported stable releases
+## Stable and latest release series
 
-The following stable release series are supported for production deployments. Starting with
-version `2.2`, Yugabyte is following a new [release versioning](../versioning) convention.
-The next stable release series is expected to be available in November 2020.
+The following release series include:
 
-**Note:** Versions `2.1`, `2.0`, and `1.3` that were released before `2.2` are also considered stable
-releases and are supported for existing production deployments.
+- Stable: Supported for production deployments
+- Latest: Supported for development and testing
 
-| Version | Released   | Maintenance support ends | EOL     |
-| :------ | ---------- | ------------------------ | ----------------------------- |
-| [2.2](../earlier-releases/v2.2.0)     | 2020/07/15 | 2021/07/15               | 2022/01/15 |
-| [2.1](../earlier-releases/v2.1.0)     | 2020/02/25 | 2021/02/25               | 2021/08/25 |
-| [2.0](../earlier-releases/v2.0.0)     | 2019/09/17 | 2020/09/17               | 2021/03/17 |
-| [1.3](../earlier-releases/v1.3.0)     | 2019/07/15 | 2020/07/15               | 2021/01/15 |
+[Release versioning](../versioning) gives details on the stable and latest release series numbering convention that started with `2.2`.
 
-## Latest releases
+[Planned releases](#planned-releases), in a section below, includes timelines for upcoming stable and latest release series.
 
-The latest release series specified below is a work-in-progress and introduces
-new features and changes. Use the latest releases for development and testing. 
-Starting with version `2.2`, Yugabyte is following a new [release versioning](../versioning) convention.
+| Release series                           | Released    | Maintenance support ends | EOL              | Status                              |
+| :-------------------------------- | ----------- | ------------------------ | ---------------- | ----------------------------------- |
+| [2.3](../whats-new)               | Sep 08, 2020 | ---                      | ---             | Latest (development and testing)
+| [2.2](../earlier-releases/v2.2.0) | Jul 15, 2020 | Jul 15, 2021             | Jan 15, 2022    | Stable (recommended for production)
+| [2.1](../earlier-releases/v2.1.0) | Feb 25, 2020 | Feb 25, 2021             | Aug 08, 2021    | Stable
+| [2.0](../earlier-releases/v2.0.0) | Sep 17, 2019 | Sep 17, 2020             | Mar 03, 2021    | Stable
+| [1.3](../earlier-releases/v1.3.0) | Jul 15, 2019 | Jul 15, 2020             | Jan 15, 2021    | Stable
 
-| Version  | Released |
-| :------  | -------- |
-| [2.3](../whats-new)      | 2020/09/08 |
+- Latest: Work-in-progress; use for development and testing
+- Stable: Fully tested; supported for production deployment
+
+**Note:** The stable release series include `2.1`, `2.0`, and `1.3`, released prior to [even/odd release versioning](../).
 
 ## Planned releases
 
-Included below are tentative release dates for upcoming planned releases, subject to change.
-For updates on what's being worked on, see [Current roadmap](https://github.com/yugabyte/yugabyte-db#current-roadmap)
-in the YugabyteDB GitHub repository README page.
+Listed below are tentative release dates for upcoming planned releases, subject to change. For information on what's being worked on, see [Current roadmap](https://github.com/yugabyte/yugabyte-db#current-roadmap).
 
 | Version | Planned release |
 | :------ | --------------- |
-| 2.4     | 2020/11         |
-| 2.5     | 2021/01         |
-| 2.6     | 2021/02         |
-| 2.7     | 2021/04         |
+| 2.4     | Jan 2021        |
+| 2.5     | Nov 2020        |
+| 2.6     | Apr 2021        |
+| 2.7     | Feb 2021        |
