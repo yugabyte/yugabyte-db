@@ -14,7 +14,7 @@ menu:
     weight: 2589 
 ---
 
-Included on this page are all of the what's new and release notes for releases in the `2.3` latest release series. This should make it much easier for you to compare updates in the versions released in this series. Instead of having to review multiple pages, you can scroll through all of the new features and changes made in this release series.
+This page includes all of the what's new/release notes for releases in the *latest* `2.3` release series. You can now compare updates within the same `MAJOR.MINOR` release series without changing pages.
 
 ## v2.3.1.0 [2020-09-15]
 
