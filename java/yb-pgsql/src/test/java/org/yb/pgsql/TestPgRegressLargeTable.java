@@ -43,8 +43,7 @@ public class TestPgRegressLargeTable extends BasePgSQLTest {
   @Test
   public void testPgRegressLargeTable() throws Exception {
     // Run schedule, check time for release build.
-    runPgRegressTest("yb_large_table_serial_schedule",
-                     getPerfMaxRuntime(60000, 0, 0, 0, 0) /* maxRuntimeMillis */);
+    runPgRegressTest("yb_large_table_serial_schedule");
 
     // Number of executions for each statement.
     // Performance number is the average run time for each execution.
