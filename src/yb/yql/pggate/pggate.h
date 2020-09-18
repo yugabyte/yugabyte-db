@@ -84,7 +84,7 @@ class PgApiImpl {
   // Reset YB Memctx.
   static CHECKED_STATUS ResetMemctx(PgMemctx *memctx);
   // Cache statements in YB Memctx. When Memctx is destroyed, the statement is destructed.
-  CHECKED_STATUS AddToCurrentPgMemctx(const PgStatement::ScopedRefPtr &stmt,
+  CHECKED_STATUS AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
                                       PgStatement **handle);
   // Cache table descriptor in YB Memctx. When Memctx is destroyed, the descriptor is destructed.
   CHECKED_STATUS AddToCurrentPgMemctx(size_t table_desc_id,
@@ -134,6 +134,8 @@ class PgApiImpl {
                                    bool *is_called);
 
   CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
+
+  void DeleteStatement(PgStatement *handle);
 
   // Remove all values and expressions that were bound to the given statement.
   CHECKED_STATUS ClearBinds(PgStatement *handle);
