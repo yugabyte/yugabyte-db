@@ -52,9 +52,13 @@ using yb::operator"" _MB;
 // systems, RLIM_INFINITY is defined as -1, and setting these flags to that value will result in an
 // attempt to set these resource limits to infinity. All other negative values are ignored.
 DEFINE_int64(rlimit_data, RLIM_INFINITY, "Data file size limit: bytes.");
+#if defined(__APPLE__)
 // Note that we've chosen 10240 as the default value here since this is the default system limit
 // for this resource on *macOS* as defined by OPEN_MAX in <sys/syslimits.h>
 DEFINE_int64(rlimit_nofile, 10240, "Open files limit.");
+#else
+DEFINE_int64(rlimit_nofile, 1048576, "Open files limit.");
+#endif
 DEFINE_int64(rlimit_fsize, RLIM_INFINITY, "File size limit: blocks.");
 DEFINE_int64(rlimit_memlock, 64_KB, "Locked memory limit: bytes.");
 DEFINE_int64(rlimit_as, RLIM_INFINITY, "Memory size limit: bytes.");
@@ -183,7 +187,7 @@ string UlimitUtil::GetUlimitInfo() {
   return ss.str();
 }
 
-int64_t GetMinUlimValue(const int64_t x, const int64_t y) {
+int64_t GetMinRlimValue(const int64_t x, const int64_t y) {
   // Handle the fact that some systems may not define RLIM_INFINITY as max(int64_t).
   if (x == RLIM_INFINITY)
     return y;
@@ -193,30 +197,54 @@ int64_t GetMinUlimValue(const int64_t x, const int64_t y) {
     return std::min(x, y);
 }
 
+bool IsRlimNegative(int64_t rlimit_value) {
+  return rlimit_value != RLIM_INFINITY && rlimit_value < 0;
+}
+
+bool IsSysSoftLimitSufficient(int64_t min_soft_limit, int64_t sys_soft_limit) {
+  if (min_soft_limit == RLIM_INFINITY) return sys_soft_limit == RLIM_INFINITY;
+  if (sys_soft_limit == RLIM_INFINITY) return true;
+  return sys_soft_limit >= min_soft_limit;
+}
+
+std::string StringifyRlim(int64_t rlim_value) {
+  if (rlim_value == RLIM_INFINITY) return "unlimited";
+  return std::to_string(rlim_value);
+}
+
 void UlimitUtil::InitUlimits() {
   for (const auto& kv : kRlimitsToInit) {
     int resource_id;
-    int64_t ideal_soft_limit;
-    std::tie(resource_id, ideal_soft_limit) = kv;
+    int64_t min_soft_limit;
+    std::tie(resource_id, min_soft_limit) = kv;
     const string resource_name = getCommandLineDescription(resource_id);
 
-    if (ideal_soft_limit != RLIM_INFINITY && ideal_soft_limit < 0) {
+    if (IsRlimNegative(min_soft_limit)) {
       LOG(INFO)
           << "Skipping setrlimit for " << resource_name
-          << " with negative configured value " << ideal_soft_limit;
+          << " with negative specified min value " << StringifyRlim(min_soft_limit);
       continue;
     }
 
+    int64_t sys_soft_limit;
     int64_t sys_hard_limit;
     Status get_ulim_status = Env::Default()->GetUlimit(
-        resource_id, /* soft_limit */ nullptr, &sys_hard_limit);
+        resource_id, &sys_soft_limit, &sys_hard_limit);
     if (!get_ulim_status.ok()) {
       LOG(ERROR) << "Unable to fetch hard limit for resource " << resource_name
                  << " Skipping initialization.";
       continue;
     }
 
-    const int64_t new_soft_limit = GetMinUlimValue(sys_hard_limit, ideal_soft_limit);
+    if (IsSysSoftLimitSufficient(min_soft_limit, sys_soft_limit)) {
+      LOG(INFO)
+          << "Configured soft limit for " << resource_name
+          << " is already larger than specified min value (" << StringifyRlim(sys_soft_limit)
+          << " vs. " << StringifyRlim(min_soft_limit) << "). Skipping.";
+      continue;
+    }
+
+    const int64_t new_soft_limit = GetMinRlimValue(sys_hard_limit, min_soft_limit);
 
     Status set_ulim_status = Env::Default()->SetUlimit(resource_id, new_soft_limit, resource_name);
     if (!set_ulim_status.ok()) {
