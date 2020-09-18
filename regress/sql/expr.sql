@@ -1682,6 +1682,16 @@ SELECT * from cypher('expr', $$
 $$) as (result agtype);
 
 --
+-- e()
+--
+SELECT * from cypher('expr', $$
+    RETURN e()
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN log(e())
+$$) as (result agtype);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

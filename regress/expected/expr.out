@@ -3938,6 +3938,25 @@ ERROR:  invalid number of input parameters for log10()
 LINE 1: SELECT * from cypher('expr', $$
                                       ^
 --
+-- e()
+--
+SELECT * from cypher('expr', $$
+    RETURN e()
+$$) as (result agtype);
+      result      
+------------------
+ 2.71828182845905
+(1 row)
+
+SELECT * from cypher('expr', $$
+    RETURN log(e())
+$$) as (result agtype);
+ result 
+--------
+ 1.0
+(1 row)
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
