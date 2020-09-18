@@ -1424,6 +1424,8 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
       queue_state_.committed_op_id.CopyFrom(new_committed_index);
     }
     queue_state_.last_applied_op_id.MakeAtLeast(last_applied_op_id);
+    local_peer_->last_applied = queue_state_.last_applied_op_id;
+    UpdateAllAppliedOpId(&queue_state_.all_applied_op_id);
   }
 }
 
