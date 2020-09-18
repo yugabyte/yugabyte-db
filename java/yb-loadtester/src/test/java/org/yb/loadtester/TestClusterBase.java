@@ -26,6 +26,7 @@ import org.yb.client.*;
 import org.yb.cql.BaseCQLTest;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 
 import java.util.*;
@@ -88,6 +89,12 @@ public class TestClusterBase extends BaseCQLTest {
   public int getTestMethodTimeoutSec() {
     // No need to adjust for TSAN vs. non-TSAN here, it will be done automatically.
     return TEST_TIMEOUT_SEC;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    builder.tserverHeartbeatTimeoutMs(5000);
   }
 
   void updateMiniClusterClient() throws Exception {
@@ -487,7 +494,7 @@ public class TestClusterBase extends BaseCQLTest {
     }
 
     // Wait for heartbeats to expire.
-    Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_TIMEOUT_MS * 2);
+    Thread.sleep(miniCluster.getClusterParameters().getTServerHeartbeatTimeoutMs() * 2);
 
     // Verify live tservers.
     verifyExpectedLiveTServers(NUM_TABLET_SERVERS);
@@ -683,7 +690,7 @@ public class TestClusterBase extends BaseCQLTest {
     verifyMetrics(NUM_OPS_INCREMENT / numTabletServers);
 
     // Wait for heartbeats to expire.
-    Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_TIMEOUT_MS * 2);
+    Thread.sleep(miniCluster.getClusterParameters().getTServerHeartbeatTimeoutMs() * 2);
 
     // Verify live tservers.
     verifyExpectedLiveTServers(numTabletServers);

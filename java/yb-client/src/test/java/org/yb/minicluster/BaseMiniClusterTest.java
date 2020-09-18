@@ -71,7 +71,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   protected static Map<String, String> tserverEnvVars = new TreeMap<>();
 
-  protected boolean useIpWithCertificate = MiniYBCluster.DEFAULT_USE_IP_WITH_CERTIFICATE;
+  protected boolean useIpWithCertificate = MiniYBClusterParameters.DEFAULT_USE_IP_WITH_CERTIFICATE;
 
   protected String certFile = null;
 
@@ -93,7 +93,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   // Subclasses can override this to set the number of shards per tablet server.
   protected int overridableNumShardsPerTServer() {
-    return MiniYBCluster.DEFAULT_NUM_SHARDS_PER_TSERVER;
+    return MiniYBClusterParameters.DEFAULT_NUM_SHARDS_PER_TSERVER;
   }
 
   /** This allows subclasses to optionally skip the usage of a mini-cluster in a test. */
@@ -148,9 +148,10 @@ public class BaseMiniClusterTest extends BaseYBTest {
     final int replicationFactor = getReplicationFactor();
     createMiniCluster(
         TestUtils.getFirstPositiveNumber(
-            getInitialNumMasters(), replicationFactor, MiniYBCluster.DEFAULT_NUM_MASTERS),
+            getInitialNumMasters(), replicationFactor, MiniYBClusterParameters.DEFAULT_NUM_MASTERS),
         TestUtils.getFirstPositiveNumber(
-            getInitialNumTServers(), replicationFactor, MiniYBCluster.DEFAULT_NUM_TSERVERS)
+            getInitialNumTServers(), replicationFactor,
+            MiniYBClusterParameters.DEFAULT_NUM_TSERVERS)
     );
   }
 
