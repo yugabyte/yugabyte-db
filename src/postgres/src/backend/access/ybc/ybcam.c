@@ -1684,6 +1684,6 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	}
 	pfree(values);
 	pfree(nulls);
-
+	YBCPgDeleteStatement(ybc_stmt);
 	return tuple;
 }
