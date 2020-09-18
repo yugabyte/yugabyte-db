@@ -129,7 +129,37 @@ const panelTypes = {
       "response_sizes",
       "cql_yb_transaction",
       "cql_yb_rpc_connections"
-    ]}
+    ]},
+
+  tserver_table: {
+    title: "Tablet Server",
+    metrics: ["tserver_log_latency",
+      "tserver_log_bytes_written",
+      "tserver_log_bytes_read",
+      "tserver_log_ops_second",
+      "tserver_log_stats",
+      "tserver_cache_reader_num_ops",
+      "tserver_glog_info_messages"]
+  },
+
+  lsmdb_table: {
+    title: "DocDB",
+    metrics: ["lsm_rocksdb_num_seek_or_next",
+      "lsm_rocksdb_num_seeks_per_node",
+      "lsm_rocksdb_total_sst_per_node",
+      "lsm_rocksdb_avg_num_sst_per_node",
+      "lsm_rocksdb_latencies_get",
+      "lsm_rocksdb_latencies_write",
+      "lsm_rocksdb_latencies_seek",
+      "lsm_rocksdb_block_cache_hit_miss",
+      "lsm_rocksdb_blooms_checked_and_useful",
+      "lsm_rocksdb_stalls",
+      "lsm_rocksdb_flush_size",
+      "lsm_rocksdb_compaction",
+      "lsm_rocksdb_compaction_time",
+      "lsm_rocksdb_compaction_numfiles",
+      "docdb_transaction"]
+  }
 };
 
 class GraphPanel extends Component {
