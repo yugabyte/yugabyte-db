@@ -162,7 +162,7 @@ class PgDml : public PgStatement {
   // - In most cases, the Postgres layer processes the subquery "SELECT ybctid from INDEX".
   // - Under certain conditions, to optimize the performance, the PgGate layer might operate on
   //   the INDEX subquery itself.
-  scoped_refptr<PgSelectIndex> secondary_index_query_;
+  std::unique_ptr<PgSelectIndex> secondary_index_query_;
 
   // -----------------------------------------------------------------------------------------------
   // Data members for generated protobuf.

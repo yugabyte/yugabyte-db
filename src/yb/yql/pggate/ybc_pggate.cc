@@ -115,6 +115,10 @@ YBCStatus YBCPgResetMemctx(YBCPgMemctx memctx) {
   return ToYBCStatus(pgapi->ResetMemctx(memctx));
 }
 
+void YBCPgDeleteStatement(YBCPgStatement handle) {
+  pgapi->DeleteStatement(handle);
+}
+
 YBCStatus YBCPgInvalidateCache() {
   return ToYBCStatus(pgapi->InvalidateCache());
 }
