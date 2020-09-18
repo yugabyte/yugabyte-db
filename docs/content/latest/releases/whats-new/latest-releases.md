@@ -31,6 +31,87 @@ Prior to version 2.0, YSQL was still in beta. Upon release of 2.0, a backward-in
 
 {{< /note >}}
 
+## Notable features and changes
+
+Content will be added as new notable features and changes are added during the latest release series. 
+
+### YSQL
+
+#### Support for large transaction batches and better batch loading [#5241](https://github.com/yugabyte/yugabyte-db/issues/5241)
+
+- Load data from a large file to a table using the improved `COPY <table> FROM <file>` statement. For details, see [`COPY`](../../../api/ysql/#). Improved memory management should prevent out-of-memory (OOM) issues.
+
+- Optionally, you can specify smaller transaction sizes using the `COPY OPTION` `ROWS_PER_TRANSACTION`. For an example, see [Import a large table using smaller transactions](../../../api/ysql/commands/cmd_copy/#import-a-large-table-using-smaller-transactions)
+
+#### Backfilling of secondary indexes [#448](https://github.com/yugabyte/yugabyte-db/issues/448)
+
+- When a secondary index is created on a preexisting table with some data, support the backfilling the index for the existing data in the table.
+- Supported for backfilling non-unique indexes, including expression and partial indexes. [#2301](https://github.com/yugabyte/yugabyte-db/issues/2301)
+- Ability to view background index backfill tasks. [#3668](https://github.com/yugabyte/yugabyte-db/issues/3668)
+- Expose backfill metrics (writes/sec being performed on index table, rows/sec being processed from primary table, size of index table, etc.)
+- Ability to throttle the rate of backfill.
+- Design document: [Online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)
+
+#### Geo-partitioned tables [#1958](https://github.com/yugabyte/yugabyte-db/issues/1958)
+
+##### Phase 1 - Table partitions (completed) [#3619](https://github.com/yugabyte/yugabyte-db/pull/3619)
+
+Design doc: [YSQL Table Partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md)
+
+[x] Support creating LIST partitions and basic operations (INSERT, UPDATE, SELECT, DELETE)
+
+[x] Support `RANGE` and `HASH` partitions (note these are different from range and hash shards)
+
+[x] Other operations and options on partitions (attach and detach partitions, sub-partitions)
+
+##### Phase 2 - Geo-partitioning support
+
+[ ] Ability to override placement policy at per-partition (per-table) level in DocDB.
+
+[ ] YSQL syntax to query and specify placement information for a table.
+
+[ ] Support colocation of geo-partitioned tables.
+
+#### LDAP integration [#2393](https://github.com/yugabyte/yugabyte-db/issues/2393)
+
+- Goal: Support LDAP authorization and authentication.
+- Not tested, but should be enabled already. [#2393#issuecomment-535057031](https://github.com/yugabyte/yugabyte-db/issues/2393#issuecomment-535057031)
+
+#### Support for json_path_query [#5408](https://github.com/yugabyte/yugabyte-db/issues/5408)
+
+Goal: Simplify complex JSON queries.
+
+#### Enable pg_stat_statements by default [#5478](https://github.com/yugabyte/yugabyte-db/issues/5478)
+
+- Execution statistics of all SQL statements executed by a server can be tracked. Statistics gathered by the module are made available in a system view, named `pg_stat_statements`. This view contains one row for each distinct database ID, user ID, and query ID (up to the maximum number of distinct statements that the module can track).
+
+
+### YCQL
+
+#### Backfilling of secondary indexes [#448](https://github.com/yugabyte/yugabyte-db/issues/448)
+
+- When a secondary index is created on a preexisting table with some data, support the backfilling the index for the existing data in the table.
+- Supported for both unique and non-unique indexes.
+- Ability to view background index backfill tasks. [#3668](https://github.com/yugabyte/yugabyte-db/issues/3668)
+- Expose backfill metrics (writes/sec being performed on index table, rows/sec being processed from primary table, size of index table, etc.)
+- Ability to throttle the rate of backfill.
+- Design document: [Online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)
+
+### Core database
+
+### Yugabyte Platform
+
+#### Add Microsoft Azure integration [#5281](https://github.com/yugabyte/yugabyte-db/issues/5281)
+
+Goal: Fully support Microsoft Azure as a first class cloud provider in Yugabyte Platform.
+
+- Use existing network resources [#5389]
+- Create default network resources [#5388]
+- Add UI for Azure provider [#5378]
+
+#### LDAP integration [#4421](https://github.com/yugabyte/yugabyte-db/issues/4421)
+
+
 
 ## Release notes
 
@@ -55,7 +136,7 @@ Prior to version 2.0, YSQL was still in beta. Upon release of 2.0, a backward-in
 
 #### Core database
 
-- Quickly evict known unresponsive tablet servers from the tablet location cache. Applies only to follower reads. For example, when tablet servers are not replying to RPC calls or dead — not sending heartbeats to the master for 5 minutes. This could also happen after decommissioning nodes. [#1052](https://github.com/yugabyte/yugabyte-db/issues/1052)
+- Quickly evict known unresponsive tablet servers from the tablet location cache. Applies only to follower reads. For example, when tablet servers are nonresponsive or dead — not sending heartbeats to the master for 5 minutes. This could also happen after decommissioning nodes. [#1052](https://github.com/yugabyte/yugabyte-db/issues/1052)
 
 #### Yugabyte Platform
 
@@ -69,9 +150,16 @@ Prior to version 2.0, YSQL was still in beta. Upon release of 2.0, a backward-in
 
 #### Downloads (binaries)
 
+##### Precompiled 64-bit binaries
+
 - [macOS](https://downloads.yugabyte.com/yugabyte-2.3.0.0-darwin.tar.gz)
 - [Linux](https://downloads.yugabyte.com/yugabyte-2.3.0.0-linux.tar.gz)
 - Docker: `docker pull yugabytedb/yugabyte:2.3.0.0-b176`
+
+##### Source code
+
+- [Source code (zip)](https://github.com/yugabyte/yugabyte-db/archive/v2.3.1.0.zip)
+- [Source code (tar.gz)](https://github.com/yugabyte/yugabyte-db/archive/v2.3.1.0.tar.gz)
 
 #### Features and changes
 
@@ -218,4 +306,3 @@ Prior to version 2.0, YSQL was still in beta. Upon release of 2.0, a backward-in
 - Fix updating of **Universes** list after creating new universe. [#4784](https://github.com/yugabyte/yugabyte-db/issues/4784)
 - Fix restore payload when renaming table to include keyspace. And check for keyspace if tableName is defined and return invalid request code when keyspace is missing. [#5178](https://github.com/yugabyte/yugabyte-db/issues/5178)
 - Add the ability to override communication port default values during universe creation. [#5354](https://github.com/yugabyte/yugabyte-db/issues/5354)
-
