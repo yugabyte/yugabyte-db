@@ -385,6 +385,9 @@ YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 
+// Retrieve value of ysql_enable_update_batching gflag.
+bool YBCGetEnableUpdateBatching();
+
 // DELETE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgOid database_oid,
                          YBCPgOid table_oid,

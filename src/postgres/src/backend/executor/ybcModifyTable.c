@@ -664,7 +664,13 @@ bool YBCExecuteUpdate(Relation rel,
 
 	/* Execute the statement. */
 	int rows_affected_count = 0;
-	YBCExecWriteStmt(update_stmt, rel, isSingleRow ? &rows_affected_count : NULL);
+
+	/* Currently only allows batching of single row updates for PGSQL procedures. */
+	bool can_batch_update = !isSingleRow ||
+							(YBCGetEnableUpdateBatching() && estate->yb_can_batch_updates);
+
+	/* If update batching is allowed, then ignore rows_affected_count. */
+	YBCExecWriteStmt(update_stmt, rel, can_batch_update ? NULL : &rows_affected_count);
 
 	/* Cleanup. */
 	update_stmt = NULL;
