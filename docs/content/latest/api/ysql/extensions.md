@@ -280,7 +280,18 @@ the extension.
 ```sh
 $ cp -v "$(pg_config --pkglibdir)"/*postgis*.so "$(yb_pg_config --pkglibdir)" && 
   cp -v "$(pg_config --sharedir)"/extension/*postgis*.sql "$(yb_pg_config --sharedir)"/extension && 
-  cp -v "$(pg_config --sharedir)"/extension/*postgis*.control "$(yb_pg_config --sharedir)"/extension &&
+  cp -v "$(pg_config --sharedir)"/extension/*postgis*.control "$(yb_pg_config --sharedir)"/extension
+```
+
+On Linux systems, PostGIS libraries have dependencies which must also be installed. Use the
+extensions option to the post-install tool (available on 2.3.2+ releases).
+
+```sh
+  # On Linux systems:
+  ./bin/post_install.sh -e
+```
+
+```sh
   ./bin/ysqlsh -c "CREATE EXTENSION postgis";
 ```
 
