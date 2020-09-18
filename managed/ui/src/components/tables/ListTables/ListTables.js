@@ -226,28 +226,28 @@ class ListTableGrid extends Component {
     const tableListDisplay = (
       <BootstrapTable data={sortedListItems} >
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
-        <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName}
+        <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName} width="20%"
                           columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"} dataSort>
           Table Name</TableHeaderColumn>
-        <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon }
+        <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon } width="10%"
                           columnClassName={"table-type-image-header yb-table-cell"} className={"yb-table-cell"} dataSort>
           Table Type</TableHeaderColumn>
-        <TableHeaderColumn dataField={"keySpace"}
+        <TableHeaderColumn dataField={"keySpace"} width="15%"
                           columnClassName={"yb-table-cell"} dataFormat={formatKeySpace} dataSort>
           Keyspace</TableHeaderColumn>
-        <TableHeaderColumn dataField={"status"}
+        <TableHeaderColumn dataField={"status"} width="10%"
                           columnClassName={"yb-table-cell"} dataFormat={formatTableStatus}>
           Status</TableHeaderColumn>
-          <TableHeaderColumn dataField={"sizeBytes"}
+          <TableHeaderColumn dataField={"sizeBytes"} width="15%"
                           columnClassName={"yb-table-cell"} dataFormat={formatBytes} dataSort>
           Size</TableHeaderColumn>
-        <TableHeaderColumn dataField={"read"}
+        <TableHeaderColumn dataField={"read"} width="10%"
                           columnClassName={"yb-table-cell"} >
           Read</TableHeaderColumn>
-        <TableHeaderColumn dataField={"write"}
+        <TableHeaderColumn dataField={"write"} width="10%"
                           columnClassName={"yb-table-cell"} >
           Write</TableHeaderColumn>
-        <TableHeaderColumn dataField={"actions"} columnClassName={"yb-actions-cell"}
+        <TableHeaderColumn dataField={"actions"} columnClassName={"yb-actions-cell"} width="10%"
                            dataFormat={formatActionButtons}>
           Actions
         </TableHeaderColumn>
