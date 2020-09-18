@@ -492,8 +492,8 @@ public class TestSelect extends BaseCQLTest {
     session.execute("DROP TABLE test_offset");
     session.execute("CREATE TABLE test_offset (h1 int, r1 int, c1 int, PRIMARY KEY(h1, r1))");
 
-    int totalShards = MiniYBCluster.DEFAULT_NUM_SHARDS_PER_TSERVER * MiniYBCluster
-        .DEFAULT_NUM_TSERVERS;
+    int totalShards = miniCluster.getClusterParameters().numShardsPerTServer *
+        miniCluster.getClusterParameters().numTservers;
     for (int i = 0; i < totalShards; i++) {
       // 1 row per tablet (roughly).
       session.execute(String.format("INSERT INTO test_offset (h1, r1, c1) VALUES (%d, %d, %d)",
