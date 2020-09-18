@@ -14,4 +14,4 @@ test: yb_pg_json
 test: yb_pg_jsonb
 test: yb_pg_jsonpath
 test: yb_pg_jsonb_jsonpath
-
+test: yb_pg_jsonpath_encoding
