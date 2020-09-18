@@ -1167,6 +1167,7 @@ class ControlScript(object):
 
             self.configs.temp_data["daemon"] = args.daemon
             self.configs.temp_data["ui"] = args.ui
+            self.configs.temp_data["initial_scripts_dir"] = args.initial_scripts_dir
 
         if has_errors:
             sys.exit(1)
@@ -1287,6 +1288,8 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--ui", choices=BOOL_CHOICES, default="false", metavar="BOOL",
                 help="Toggle enabling or disabling webserver UI. Default false.")
+            cur_parser.add_argument(
+                "--initial_scripts_dir", help="Directory from where yugabyted reads initialization scripts")
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -1359,6 +1362,34 @@ class ControlScript(object):
                 Output.log("Setting up custom credentials for YCQL...")
                 self.setup_env_init.setup_ycql_credentials(ycql_proxy)
 
+        if self.configs.temp_data.get("initial_scripts_dir"):
+            init_scripts = os.path.abspath(self.configs.temp_data.get("initial_scripts_dir"))
+
+            if os.path.exists(init_scripts):
+                Output.log("Initialization scripts from the {} directory".format(init_scripts))
+
+                sql_files = sorted([sql_file for sql_file in os.listdir(init_scripts) if (
+                                sql_file.endswith('.sql'))])
+                cql_files = sorted([cql_file for cql_file in os.listdir(init_scripts) if (
+                                cql_file.endswith('.cql'))])
+
+                ysql_proxy = YsqlProxy(ip=self.advertise_ip(),
+                                port=self.configs.saved_data.get("ysql_port"))
+                if sql_files and retry_op(ysql_proxy.is_ysql_up):
+                    self.load_init_scripts(ysql_proxy, init_scripts, sql_files)
+
+                ycql_proxy = YcqlProxy(ip=self.advertise_ip(),
+                                port=self.configs.saved_data.get("ycql_port"))
+                if cql_files and retry_op(ycql_proxy.is_ycql_up):
+                    self.load_init_scripts(ycql_proxy, init_scripts, cql_files)
+
+    def load_init_scripts(self, proxy_class, init_scripts_dir, files):
+        files_path = []
+        for name in files:
+            files_path.append(os.path.join(init_scripts_dir, name))
+
+        proxy_class.load_files(files_path)
+
 class Configs(object):
     def __init__(self, config_file, base_dir):
         self.saved_data = {
@@ -1387,6 +1418,7 @@ class Configs(object):
             "demo_db": DEFAULT_DEMO_DATABASE,
             "daemon": True,
             "ui": False,
+            "initial_scripts_dir": "",
         }
         self.config_file = config_file
 
@@ -1868,9 +1900,11 @@ class YsqlProxy(object):
         env = self.env
         if db:
             env['PGDATABASE'] = db
+        else:
+            env['PGDATABASE'] = self.db
         for path in filepaths:
             cmd.extend(["-f", path])
-        run_process(cmd=cmd, log_cmd=False, env_vars=env)
+        run_process_checked(cmd=cmd, log_cmd=False, env_vars=env)
 
     # Check user exists
     # Note that this will return false if ysqlsh can't connect, even if user exists.
@@ -1973,6 +2007,16 @@ class YcqlProxy(object):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
                 "CREATE KEYSPACE {};".format(keyspace)]
         run_process_checked(cmd)
+
+    # Runs ycqlsh with specified files.
+    def load_files(self, filepaths):
+        cmd = self.cmd
+        if self.setup_env_init.is_exists('YCQL_USER') or \
+                    self.setup_env_init.is_exists('YCQL_PASSWORD'):
+            cmd.extend(["-u", self.username, "-p", self.password])
+        for path in filepaths:
+            cmd.extend(["-f", path])
+        run_process_checked(cmd=cmd, log_cmd=False)
 
     # Check YCQL is UP
     def is_ycql_up(self):
