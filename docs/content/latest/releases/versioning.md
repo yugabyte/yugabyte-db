@@ -2,12 +2,12 @@
 title: Release versioning
 headerTitle: Release versioning
 linkTitle: Release versioning
-description: Explains the new release versioning approach for latest and stable releases.
+description: Explains the new release versioning convention for latest and stable releases.
 section: RELEASES
 menu:
   latest:
     identifier: versioning
-    weight: 2589
+    weight: 2586
 isTocNested: true
 showAsideToc: true
 ---
@@ -22,13 +22,15 @@ Yugabyte follows the [semantic versioning (semver)](https://semver.org) conventi
 - `MINOR` — Incremented when new features and changes are introduced.
   - `EVEN` — Stable minor release, intended for production deployments.
   - `ODD` — Latest minor release, intended for development and testing.
-- `PATCH` — bug fixes and revisions that do not break backwards compatibility.
+- `PATCH` — Patches in a stable release (`MAJOR.EVEN.PATCH) include bug fixes and revisions that do not break backward compatibility. For patches in the latest release series (`MAJOR.ODD.PATCH`), new features and changes are introduced that might break backward compatibility.
 
 Examples follow in the relevant sections below.
 
 ## Stable releases
 
-Stable release series, denoted by `MAJOR.EVEN` numbers, introduce fully tested new features and changes added since the last stable release. The current stable `2.2` release series will be followed by the next stable `2.4` release series.
+Releases within stable release series, denoted by `MAJOR.EVEN` versioning, introduce fully tested new features and changes added since the last stable release. The `2.2` stable release series will be followed by the next `2.4` stable release series.
+
+Patch releases in a stable release series (`MAJOR.EVEN.PATCH`) include bug fixes and revisions that do not break backward compatibility.
 
 {{< note title="Important" >}}
 
@@ -38,4 +40,6 @@ Yugabyte supports *production deployments* based on stable releases and can only
 
 ## Latest releases
 
-The latest release series, denoted by a `MAJOR.ODD` number, is the current work-in-progress release series that incrementally introduces new features and changes. The latest `2.3` release series will become the next stable `2.4` release series. And the next latest release series will be `2.5`. These `MAJOR.ODD` releases are not supported for production deployments.
+Releases within the latest release series, denoted by `MAJOR.ODD` versioning, incrementally introduces new features and changes and are intended for development and testing. The latest releases are not supported for production deployments. The `2.3` latest release series will become the basis for the next `2.4` stable release series. And the next latest release series available will then be `2.5`.
+
+Patches released in the latest release series (`MAJOR.ODD.PATCH`) can introduce new features and changes that might break backward compatibility. 
