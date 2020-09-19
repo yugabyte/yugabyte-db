@@ -8,7 +8,7 @@ section: RELEASES
 menu:
   latest:
     identifier: earlier-releases
-    weight: 2586 
+    weight: 2589
 ---
 
 Download earlier YugabyteDB releases from the listing below. Information on the latest release is available
