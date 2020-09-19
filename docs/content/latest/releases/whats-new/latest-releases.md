@@ -21,7 +21,7 @@ Included here are the release notes for all releases in the `2.3` latest release
 
 {{< note title="New release versioning" >}}
 
-Starting with v2.2.0, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Patch releases, denoted by `MAJOR.ODD.PATCH` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
+Starting with v2.2.0, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Revision releases, denoted by `MAJOR.ODD.REVISION` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
 
 {{< /note >}}
 
