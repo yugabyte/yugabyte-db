@@ -37,7 +37,7 @@ The following release series include:
 | [2.0](../earlier-releases/v2.0.0)   | Sep 17, 2019 | Sep 17, 2020             | Mar 03, 2021 | Stable
 | [1.3](../earlier-releases/v1.3.0)   | Jul 15, 2019 | Jul 15, 2020             | Jan 15, 2021 | Stable
 
-**Note:** The stable release series includes `2.1`, `2.0`, and `1.3`, released prior to the new [release versioning](../release-versioning) convention.
+**Note:** The stable release series includes `2.1`, `2.0`, and `1.3`, released prior to the new [release versioning](../versioning) convention.
 
 ## Planned releases
 
