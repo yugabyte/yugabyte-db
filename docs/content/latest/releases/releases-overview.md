@@ -7,7 +7,7 @@ section: RELEASES
 menu:
   latest:
     identifier: releases-overview
-    weight: 2588 
+    weight: 2585
 isTocNested: true
 showAsideToc: true
 ---
@@ -29,23 +29,25 @@ The following release series include:
 
 [Planned releases](#planned-releases), in a section below, includes timelines for upcoming stable and latest release series.
 
-| Release series                    | Released     | Maintenance support ends | EOL          | Status                              |
-| :-------------------------------- | :----------- | :----------------------- | :----------- | :----------------------------------- |
-| [2.3](../whats-new)               | Sep 08, 2020 | ---                      | ---          | Latest (development and testing)
-| [2.2](../earlier-releases/v2.2.0) | Jul 15, 2020 | Jul 15, 2021             | Jan 15, 2022 | Stable (recommended for production)
-| [2.1](../earlier-releases/v2.1.0) | Feb 25, 2020 | Feb 25, 2021             | Aug 08, 2021 | Stable
-| [2.0](../earlier-releases/v2.0.0) | Sep 17, 2019 | Sep 17, 2020             | Mar 03, 2021 | Stable
-| [1.3](../earlier-releases/v1.3.0) | Jul 15, 2019 | Jul 15, 2020             | Jan 15, 2021 | Stable
+| Release series                      | Released     | Maintenance support ends | EOL          | Status                              |
+| :---------------------------------- | :----------- | :----------------------- | :----------- | :----------------------------------- |
+| [2.3](../whats-new/latest-releases) | Sep 08, 2020 | ---                      | ---          | Latest (development and testing)
+| [2.2](../whats-new/stable-releases) | Jul 15, 2020 | Jul 15, 2021             | Jan 15, 2022 | Stable (recommended for production)
+| [2.1](../earlier-releases/v2.1.0)   | Feb 25, 2020 | Feb 25, 2021             | Aug 08, 2021 | Stable
+| [2.0](../earlier-releases/v2.0.0)   | Sep 17, 2019 | Sep 17, 2020             | Mar 03, 2021 | Stable
+| [1.3](../earlier-releases/v1.3.0)   | Jul 15, 2019 | Jul 15, 2020             | Jan 15, 2021 | Stable
 
-**Note:** The stable release series include `2.1`, `2.0`, and `1.3`, released prior to the new [release versioning](../) convention.
+**Note:** The stable release series includes `2.1`, `2.0`, and `1.3`, released prior to the new [release versioning](../release-versioning) convention.
 
 ## Planned releases
 
-Listed below are tentative release dates for upcoming planned releases, subject to change. For information on what's being worked on, see [Current roadmap](https://github.com/yugabyte/yugabyte-db#current-roadmap).
+Listed below are tentative release dates for upcoming planned release series, subject to change. 
 
-| Version | Planned release |
-| :------ | --------------- |
-| 2.4     | Jan 2021        |
-| 2.5     | Nov 2020        |
-| 2.6     | Apr 2021        |
-| 2.7     | Feb 2021        |
+To help you plan, visit [Current roadmap](https://github.com/yugabyte/yugabyte-db#current-roadmap) for insights into key features planned for the upcoming releases.
+
+| Release series | Planned release |
+| :------------- | --------------- |
+| 2.4            | Jan 2021        |
+| 2.5            | Nov 2020        |
+| 2.6            | Apr 2021        |
+| 2.7            | Feb 2021        |
