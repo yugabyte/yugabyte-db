@@ -1019,16 +1019,21 @@ set_role = 'SET' [ 'SESSION' | 'LOCAL' ] 'ROLE' ( role_name | 'NONE' ) ;
 set_session_authorization = 'SET' [ 'SESSION' | 'LOCAL' ] 'SESSION' 'AUTHORIZATION' ( role_name | 'DEFAULT' ) ;
 
 (* 'SET' 'TRANSACTION' *)
-set_transaction = 'SET' 'TRANSACTION' transaction_mode { transaction_mode } ;
+set_transaction ::= SET TRANSACTION transaction_mode [ ... ]
 
-transaction_mode = read_write_mode | isolation_level ;
+transaction_mode ::= isolation_level
+                     | read_write_mode
+                     | deferrable_mode
 
-read_write_mode = 'READ' 'ONLY' | 'READ' 'WRITE' ;
+read_write_mode ::= READ ONLY | READ WRITE
 
-isolation_level = 'ISOLATION' 'LEVEL' ( 'READ' 'UNCOMMITTED'
-                                       | 'READ' 'COMMITTED'
-                                       | 'REPEATABLE' 'READ'
-                                       | 'SERIALIZABLE' );
+isolation_level ::= ISOLATION LEVEL { READ UNCOMMITTED
+                                      | READ COMMITTED
+                                      | REPEATABLE READ
+                                      | SERIALIZABLE }
+
+deferrable_mode ::= [ NOT ] DEFERRABLE
+
 
 (* 'SHOW' variable *)
 show_stmt ::= 'SHOW' ( name | 'ALL' ) ;
