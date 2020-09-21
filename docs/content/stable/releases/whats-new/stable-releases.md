@@ -12,7 +12,7 @@ menu:
   latest:
     parent: whats-new
     identifier: stable-releases
-    weight: 2586 
+    weight: 2586  
 isTocNested: true
 showAsideToc: true
 ---
