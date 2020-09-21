@@ -832,6 +832,12 @@ PopActiveSnapshot(void)
 	SnapshotResetXmin();
 }
 
+void
+PopAllActiveSnapshots() {
+	while (ActiveSnapshot)
+		PopActiveSnapshot();
+}
+
 /*
  * GetActiveSnapshot
  *		Return the topmost snapshot in the Active stack.

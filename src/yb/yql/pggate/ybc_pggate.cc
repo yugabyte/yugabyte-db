@@ -766,6 +766,10 @@ YBCStatus YBCPgBeginTransaction() {
   return ToYBCStatus(pgapi->BeginTransaction());
 }
 
+YBCStatus YBCPgRecreateTransaction() {
+  return ToYBCStatus(pgapi->RecreateTransaction());
+}
+
 YBCStatus YBCPgRestartTransaction() {
   return ToYBCStatus(pgapi->RestartTransaction());
 }
@@ -861,6 +865,14 @@ YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
 
 int32_t YBCGetMaxReadRestartAttempts() {
   return FLAGS_ysql_max_read_restart_attempts;
+}
+
+int32_t YBCGetMaxWriteRestartAttempts() {
+  return FLAGS_ysql_max_write_restart_attempts;
+}
+
+bool YBCShouldSleepBeforeRetryOnTxnConflict() {
+  return FLAGS_ysql_sleep_before_retry_on_txn_conflict;
 }
 
 int32_t YBCGetOutputBufferSize() {

@@ -1098,6 +1098,11 @@ Status PgApiImpl::BeginTransaction() {
   return pg_txn_manager_->BeginTransaction();
 }
 
+Status PgApiImpl::RecreateTransaction() {
+  pg_session_->InvalidateForeignKeyReferenceCache();
+  return pg_txn_manager_->RecreateTransaction();
+}
+
 Status PgApiImpl::RestartTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   return pg_txn_manager_->RestartTransaction();

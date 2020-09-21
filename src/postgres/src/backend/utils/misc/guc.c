@@ -206,6 +206,10 @@ extern void YBCAssignTransactionPriorityLowerBound(double newval, void* extra);
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
 
+static bool check_max_backoff(int *max_backoff_msecs, void **extra, GucSource source);
+static bool check_min_backoff(int *min_backoff_msecs, void **extra, GucSource source);
+static bool check_backoff_multiplier(double *multiplier, void **extra, GucSource source);
+
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
 						  bool applySettings, int elevel);
@@ -2326,6 +2330,29 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, YBCSetTimeout, NULL
 	},
 
+
+	{
+		{"retry_min_backoff", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the minimum backoff in milliseconds between retries."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&RetryMinBackoffMsecs,
+		100, 0, INT_MAX,
+		check_min_backoff, NULL, NULL
+	},
+
+	{
+		{"retry_max_backoff", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the maximum backoff in milliseconds between retries."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&RetryMaxBackoffMsecs,
+		1000, 0, INT_MAX,
+		check_max_backoff, NULL, NULL
+	},
+
 	{
 		{"lock_timeout", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the maximum allowed duration of any wait for a lock."),
@@ -3338,6 +3365,17 @@ static struct config_real ConfigureNamesReal[] =
 		&yb_transaction_priority_upper_bound,
 		1.0, 0.0, 1.0,
 		check_transaction_priority_upper_bound, YBCAssignTransactionPriorityUpperBound, NULL
+	},
+
+	{
+		{"retry_backoff_multiplier", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the multiplier used to calculate the retry backoff."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&RetryBackoffMultiplier,
+		2.0, 1.0, 1e10,
+		check_backoff_multiplier, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -10912,5 +10950,39 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 	return true;
 }
 
+static bool
+check_max_backoff(int *max_backoff_msecs, void **extra, GucSource source)
+{
+	if (*max_backoff_msecs < 0)
+	{
+		GUC_check_errdetail("must be greater than or equal to 0");
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+check_min_backoff(int *min_backoff_msecs, void **extra, GucSource source)
+{
+	if (*min_backoff_msecs < 0)
+	{
+		GUC_check_errdetail("must be greater than or equal to 0");
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+check_backoff_multiplier(double *multiplier, void **extra, GucSource source)
+{
+	if (*multiplier < 1)
+	{
+		GUC_check_errdetail("must be greater than or equal to 1");
+		return false;
+	}
+	return true;
+}
 
 #include "guc-file.c"
