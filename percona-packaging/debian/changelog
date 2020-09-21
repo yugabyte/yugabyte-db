@@ -1,4 +1,4 @@
-percona-pg-stat-monitor (1.0.0-1) unstable; urgency=medium
+percona-pg-stat-monitor (0.0.1-1) unstable; urgency=medium
 
   * Initial build.
 
