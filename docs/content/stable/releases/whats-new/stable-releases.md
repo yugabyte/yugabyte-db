@@ -5,7 +5,6 @@ linkTitle: 2.2 (stable)
 description: Enhancements, changes, and resolved issues in the recommended stable release series.
 headcontent: Features, enhancements, and resolved issues in the recommended stable release series.
 image: /images/section_icons/quick_start/install.png
-section: RELEASES
 menu:
   latest:
     parent: whats-new
