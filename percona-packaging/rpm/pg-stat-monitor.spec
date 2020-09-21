@@ -2,16 +2,13 @@
 %global pgrel @@PG_REL@@
 %global rpm_release @@RPM_RELEASE@@
 %global pginstdir /usr/pgsql-@@PG_REL@@/
-%global pgstatmonmajver 1
-%global pgstatmonmidver 0
-%global pgstatmonminver 0
 
 Summary:        Statistics collector for PostgreSQL
 Name:           %{sname}%{pgrel}
-Version:        %{pgstatmonmajver}.%{pgstatmonmidver}.%{pgstatmonminver}
+Version:        @@VERSION@@
 Release:        %{rpm_release}%{?dist}
 License:        Apache 2.0
-Source0:        %{sname}%{pgrel}-%{pgstatmonmajver}.%{pgstatmonmidver}.%{pgstatmonminver}.tar.gz
+Source0:        %{sname}%{pgrel}-%{version}.tar.gz
 URL:            https://github.com/Percona-Lab/pg_stat_monitor
 BuildRequires:  percona-postgresql%{pgrel}-devel
 Requires:       postgresql-server
@@ -27,7 +24,7 @@ It provides all the features of pg_stat_statment plus its own feature set.
 
 
 %prep
-%setup -q -n %{sname}%{pgrel}-%{pgstatmonmajver}.%{pgstatmonmidver}.%{pgstatmonminver}
+%setup -q -n %{sname}%{pgrel}-%{version}
 
 
 %build

@@ -21,6 +21,7 @@ Usage: $0 [OPTIONS]
         --rpm_release       RPM version( default = 1)
         --deb_release       DEB version( default = 1)
         --pg_release        PPG version build on( default = 11)
+        --version           product version
         --help) usage ;;
 Example $0 --builddir=/tmp/test --get_sources=1 --build_src_rpm=1 --build_rpm=1
 EOF
@@ -56,6 +57,7 @@ append_arg_to_args () {
             --rpm_release=*) RPM_RELEASE="$val" ;;
             --deb_release=*) DEB_RELEASE="$val" ;;
             --pg_release=*) PG_RELEASE="$val" ;;
+            --version=*) VERSION="$val" ;;
             --help) usage ;;
             *)
               if test -n "$pick_args"
@@ -136,6 +138,7 @@ get_sources(){
     done
 
     sed -i "s:@@RPM_RELEASE@@:${RPM_RELEASE}:g" rpm/pg-stat-monitor.spec
+    sed -i "s:@@VERSION@@:${VERSION}:g" rpm/pg-stat-monitor.spec
 
     cd ${WORKDIR}
     #
