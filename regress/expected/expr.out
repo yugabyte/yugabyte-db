@@ -3957,6 +3957,45 @@ $$) as (result agtype);
 (1 row)
 
 --
+-- exp() aka e^x
+--
+SELECT * from cypher('expr', $$
+    RETURN exp(1)
+$$) as (result agtype);
+      result      
+------------------
+ 2.71828182845905
+(1 row)
+
+SELECT * from cypher('expr', $$
+    RETURN exp(0)
+$$) as (result agtype);
+ result 
+--------
+ 1.0
+(1 row)
+
+-- should return null
+SELECT * from cypher('expr', $$
+    RETURN exp(null)
+$$) as (result agtype);
+ result 
+--------
+ 
+(1 row)
+
+-- should fail
+SELECT * from cypher('expr', $$
+    RETURN exp()
+$$) as (result agtype);
+ERROR:  invalid number of input parameters for exp()
+LINE 1: SELECT * from cypher('expr', $$
+                                      ^
+SELECT * from cypher('expr', $$
+    RETURN exp("1")
+$$) as (result agtype);
+ERROR:  exp() unsuppoted argument agtype 1
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

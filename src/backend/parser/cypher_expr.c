@@ -90,6 +90,7 @@
 #define FUNC_LOG        {"log",        "ag_log",     ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
 #define FUNC_LOG10      {"log10",      "ag_log10",   ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
 #define FUNC_E          {"e",          "ag_e",       0,      0, 0, AGTYPEOID, 0, 0, false, false}
+#define FUNC_EXP        {"exp",        "ag_exp",     ANYOID, 0, 0, AGTYPEOID, 1, 1, false, false}
 
 /* supported functions */
 #define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
@@ -105,7 +106,7 @@
                              FUNC_RATAN2, FUNC_PI, FUNC_DEGREES, FUNC_RADIANS, \
                              FUNC_ROUND, FUNC_CEIL, FUNC_FLOOR, FUNC_ABS, \
                              FUNC_SIGN, FUNC_RAND, FUNC_LOG, FUNC_LOG10, \
-                             FUNC_E}
+                             FUNC_E, FUNC_EXP}
 
 /* structure for supported function signatures */
 typedef struct function_signature

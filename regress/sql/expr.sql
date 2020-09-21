@@ -1692,6 +1692,27 @@ SELECT * from cypher('expr', $$
 $$) as (result agtype);
 
 --
+-- exp() aka e^x
+--
+SELECT * from cypher('expr', $$
+    RETURN exp(1)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN exp(0)
+$$) as (result agtype);
+-- should return null
+SELECT * from cypher('expr', $$
+    RETURN exp(null)
+$$) as (result agtype);
+-- should fail
+SELECT * from cypher('expr', $$
+    RETURN exp()
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN exp("1")
+$$) as (result agtype);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

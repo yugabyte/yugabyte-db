@@ -6788,3 +6788,52 @@ Datum ag_e(PG_FUNCTION_ARGS)
 
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
+
+PG_FUNCTION_INFO_V1(ag_exp);
+
+Datum ag_exp(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    Numeric arg;
+    Numeric numeric_result;
+    float8 float_result;
+    bool is_null = true;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs != 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("exp() invalid number of arguments")));
+
+    /* check for a null input */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /*
+     * exp() supports integer, float, and numeric or the agtype integer,
+     * float, and numeric for the input expression.
+     */
+    arg = get_numeric_compatible_arg(args[0], types[0], "exp", &is_null, NULL);
+
+    /* check for a agtype null input */
+    if (is_null)
+        PG_RETURN_NULL();
+
+    /* We need the input as a numeric so that we can pass it off to PG */
+    numeric_result = DatumGetNumeric(DirectFunctionCall1(numeric_exp,
+                                                         NumericGetDatum(arg)));
+
+    float_result = DatumGetFloat8(DirectFunctionCall1(numeric_float8_no_overflow,
+                                                      NumericGetDatum(numeric_result)));
+    /* build the result */
+    agtv_result.type = AGTV_FLOAT;
+    agtv_result.val.float_value = float_result;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
