@@ -183,6 +183,12 @@ extern void YBInitPostgresBackend(const char *program_name,
 extern void YBOnPostgresBackendShutdown();
 
 /*
+ * Signals PgTxnManager to recreate the transaction. This is used when we need
+ * to restart a transaction that failed due to a transaction conflict error.
+ */
+extern void YBCRecreateTransaction();
+
+/*
  * Signals PgTxnManager to restart current transaction - pick a new read point, etc.
  * This relies on transaction/session read time already being marked for restart by YB layer.
  */
@@ -292,6 +298,11 @@ Oid YBCGetDatabaseOid(Relation rel);
  */
 void YBRaiseNotSupported(const char *msg, int issue_no);
 void YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level);
+
+/*
+ * Return the value of (base ^ exponent) bounded by the upper limit.
+ */
+extern double PowerWithUpperLimit(double base, int exponent, double upper_limit);
 
 //------------------------------------------------------------------------------
 // YB Debug utils.

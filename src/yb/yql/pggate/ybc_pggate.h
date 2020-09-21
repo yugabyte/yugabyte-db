@@ -417,6 +417,7 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec
 
 // Transaction control -----------------------------------------------------------------------------
 YBCStatus YBCPgBeginTransaction();
+YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgCommitTransaction();
 YBCStatus YBCPgAbortTransaction();
@@ -474,6 +475,12 @@ void YBCInitFlags();
 
 // Retrieves value of ysql_max_read_restart_attempts gflag
 int32_t YBCGetMaxReadRestartAttempts();
+
+// Retrieves the value of ysql_max_write_restart_attempts gflag.
+int32_t YBCGetMaxWriteRestartAttempts();
+
+// Retrieves the value of ysql_sleep_before_retry_on_txn_conflict gflag.
+bool YBCShouldSleepBeforeRetryOnTxnConflict();
 
 // Retrieves value of ysql_output_buffer_size gflag
 int32_t YBCGetOutputBufferSize();

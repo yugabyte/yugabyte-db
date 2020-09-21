@@ -424,6 +424,7 @@ class PgApiImpl {
   PgTxnManager* GetPgTxnManager() { return pg_txn_manager_.get(); }
 
   CHECKED_STATUS BeginTransaction();
+  CHECKED_STATUS RecreateTransaction();
   CHECKED_STATUS RestartTransaction();
   CHECKED_STATUS CommitTransaction();
   CHECKED_STATUS AbortTransaction();

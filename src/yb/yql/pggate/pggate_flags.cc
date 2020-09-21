@@ -105,3 +105,9 @@ DEFINE_bool(ysql_serializable_isolation_for_ddl_txn, false,
 DEFINE_int32(ysql_select_parallelism, -1,
             "Number of read requests to issue in parallel to tablets of a table "
             "for SELECT.");
+
+DEFINE_int32(ysql_max_write_restart_attempts, 20,
+             "Max number of restart attempts made for writes on transaction conflicts.");
+
+DEFINE_bool(ysql_sleep_before_retry_on_txn_conflict, true,
+            "Whether to sleep before retrying the write on transaction conflicts.");

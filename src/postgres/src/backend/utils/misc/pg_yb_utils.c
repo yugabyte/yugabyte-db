@@ -24,6 +24,7 @@
  *-------------------------------------------------------------------------
  */
 
+#include <assert.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -424,6 +425,14 @@ YBOnPostgresBackendShutdown()
 }
 
 void
+YBCRecreateTransaction()
+{
+	if (!IsYugaByteEnabled())
+		return;
+	HandleYBStatus(YBCPgRecreateTransaction());
+}
+
+void
 YBCRestartTransaction()
 {
 	if (!IsYugaByteEnabled())
@@ -735,6 +744,26 @@ YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level)
 				 errhint("Please report the issue on "
 						 "https://github.com/YugaByte/yugabyte-db/issues")));
 	}
+}
+
+double
+PowerWithUpperLimit(double base, int exp, double upper_limit)
+{
+	assert(base >= 1);
+	assert(exp >= 0);
+
+	double res = 1.0;
+	while (exp)
+	{
+		if (exp & 1)
+			res *= base;
+		if (res >= upper_limit)
+			return upper_limit;
+
+		exp = exp >> 1;
+		base *= base;
+	}
+	return res;
 }
 
 //------------------------------------------------------------------------------
