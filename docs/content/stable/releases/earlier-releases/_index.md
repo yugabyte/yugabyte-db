@@ -9,7 +9,7 @@ block_indexing: true
 menu:
   stable:
     identifier: earlier-releases
-    weight: 2590 
+    weight: 2589 
 ---
 
 Download earlier YugabyteDB releases from the listing below. Details on the stable and latest releases are available
