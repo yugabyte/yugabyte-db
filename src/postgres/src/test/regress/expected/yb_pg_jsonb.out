@@ -2728,6 +2728,114 @@ SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
     42
 (1 row)
 
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+ count
+-------
+    15
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+ count
+-------
+  1012
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
+ count
+-------
+   194
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
+ count
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) || exists($.disabled)';
+ count
+-------
+   337
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled)';
+ count
+-------
+    42
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+ count
+-------
+    15
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+ count
+-------
+  1012
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+ count
+-------
+   194
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
+ count
+-------
+     0
+(1 row)
+
 -- TODO(jason) uncomment when issue #1337 is closed or closing.
 -- CREATE INDEX jidx ON testjsonb USING gin (j);
 SET enable_seqscan = off;
@@ -2802,6 +2910,192 @@ SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
  count
 -------
     42
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+                      QUERY PLAN
+-------------------------------------------------------
+ Aggregate
+   ->  Seq Scan on testjsonb
+         Filter: (j @@ '($."wait" == null)'::jsonpath)
+(3 rows)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.wait == null))';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.wait ? (@ == null))';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+ count
+-------
+    15
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+ count
+-------
+  1012
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
+ count
+-------
+   194
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
+ count
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) || exists($.disabled)';
+ count
+-------
+   337
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled)';
+ count
+-------
+    42
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+                       QUERY PLAN
+---------------------------------------------------------
+ Aggregate
+   ->  Seq Scan on testjsonb
+         Filter: (j @? '$."wait"?(@ == null)'::jsonpath)
+(3 rows)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+ count
+-------
+    15
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.array[*] == "bar")';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.array ? (@[*] == "bar")';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+ count
+-------
+  1012
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+ count
+-------
+   194
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
+ count
+-------
+     0
 (1 row)
 
 -- array exists - array elements should behave as keys (for GIN index scans too)
@@ -2955,6 +3249,159 @@ SELECT count(*) FROM testjsonb WHERE j @> '{}';
  count
 -------
   1012
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.wait == null))';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.wait ? (@ == null))';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+ count
+-------
+    15
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+ count
+-------
+  1012
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+                       QUERY PLAN
+---------------------------------------------------------
+ Aggregate
+   ->  Seq Scan on testjsonb
+         Filter: (j @? '$."wait"?(@ == null)'::jsonpath)
+(3 rows)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+ count
+-------
+    15
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.array[*] == "bar")';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.array ? (@[*] == "bar")';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
+ count
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+ count
+-------
+  1012
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+ count
+-------
+   194
+(1 row)
+
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
+ count
+-------
+     0
 (1 row)
 
 RESET enable_seqscan;
