@@ -242,6 +242,10 @@ YBCStatus YBCInitGFlags(const char* argv0) {
   return ToYBCStatus(yb::InitGFlags(argv0));
 }
 
+bool YBCIsTxnConflicError(uint16_t txn_errcode) {
+  return txn_errcode == static_cast<uint16_t>(TransactionErrorCode::kConflict);
+}
+
 YBCStatus YBCInit(const char* argv0,
                   YBCPAllocFn palloc_fn,
                   YBCCStringToTextWithLenFn cstring_to_text_with_len_fn) {

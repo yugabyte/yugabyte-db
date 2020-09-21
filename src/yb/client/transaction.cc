@@ -129,6 +129,10 @@ class YBTransaction::Impl final {
     metadata_.priority = priority;
   }
 
+  uint64_t GetPriority() const {
+    return metadata_.priority;
+  }
+
   YBTransactionPtr CreateSimilarTransaction() {
     return std::make_shared<YBTransaction>(manager_);
   }
@@ -1038,6 +1042,10 @@ YBTransaction::~YBTransaction() {
 
 void YBTransaction::SetPriority(uint64_t priority) {
   impl_->SetPriority(priority);
+}
+
+uint64_t YBTransaction::GetPriority() const {
+  return impl_->GetPriority();
 }
 
 Status YBTransaction::Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
