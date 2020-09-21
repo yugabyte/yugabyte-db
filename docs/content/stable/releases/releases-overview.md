@@ -2,7 +2,7 @@
 title: Supported and planned releases
 headerTitle: Supported and planned releases
 linkTitle: Supported and planned releases
-description: An overview of the latest and current stable releases, and planned releases.
+description: An overview of supported and planned releases.
 section: RELEASES
 menu:
   latest:

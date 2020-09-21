@@ -5,8 +5,6 @@ linkTitle: 2.3 (latest)
 description: Enhancements, changes, and resolved issues in the latest release series.
 headcontent: Features, enhancements, and resolved issues in the latest release series.
 image: /images/section_icons/quick_start/install.png
-aliases:
-  - /latest/releases/
 section: RELEASES
 menu:
   latest:
