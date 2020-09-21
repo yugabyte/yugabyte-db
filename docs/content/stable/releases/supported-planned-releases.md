@@ -2,12 +2,12 @@
 title: Supported and planned releases
 headerTitle: Supported and planned releases
 linkTitle: Supported and planned releases
-description: An overview of the latest and current stable releases, and planned releases.
+description: An overview of supported and planned releases.
 section: RELEASES
 menu:
   latest:
     parent: releases
-    identifier: releases-overview
+    identifier: supported-planned-releases
     weight: 2585
 isTocNested: true
 showAsideToc: true
