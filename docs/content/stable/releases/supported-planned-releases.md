@@ -7,7 +7,7 @@ section: RELEASES
 menu:
   latest:
     parent: releases
-    identifier: supported-planned-releases
+    identifier: supported-planned-releases-2.2
     weight: 2585
 isTocNested: true
 showAsideToc: true

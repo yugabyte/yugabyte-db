@@ -9,7 +9,7 @@ section: RELEASES
 menu:
   latest:
     parent: releases
-    identifier: whats-new
+    identifier: whats-new-2.2
     weight: 2588 
 ---
 

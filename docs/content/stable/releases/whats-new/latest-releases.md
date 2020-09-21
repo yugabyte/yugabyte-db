@@ -11,7 +11,7 @@ aliases:
 menu:
   latest:
     parent: whats-new
-    identifier: latest-releases
+    identifier: latest-releases-2.2
     weight: 2585
 isTocNested: true
 showAsideToc: true 
