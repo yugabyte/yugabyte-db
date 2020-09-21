@@ -103,6 +103,23 @@ Status PgTxnManager::BeginTransaction() {
   if (txn_in_progress_) {
     return STATUS(IllegalState, "Transaction is already in progress");
   }
+  return RecreateTransaction(SavePriority::kFalse /* save_priority */);
+}
+
+Status PgTxnManager::RecreateTransaction() {
+  VLOG(2) << "RecreateTransaction: txn_in_progress_=" << txn_in_progress_;
+  if (!txn_) {
+    return Status::OK();
+  }
+  return RecreateTransaction(SavePriority::kTrue /* save_priority */);
+}
+
+Status PgTxnManager::RecreateTransaction(const SavePriority save_priority) {
+  use_saved_priority_ = save_priority;
+  if (save_priority) {
+    saved_priority_ = txn_->GetPriority();
+  }
+
   ResetTxnAndSession();
   txn_in_progress_ = true;
   StartNewSession();
@@ -128,6 +145,20 @@ void PgTxnManager::StartNewSession() {
   session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
   session_->SetReadPoint(client::Restart::kFalse);
   session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+}
+
+uint64_t PgTxnManager::GetPriority(const NeedsPessimisticLocking needs_pessimistic_locking) {
+  if (use_saved_priority_) {
+    return saved_priority_;
+  }
+
+  // Use high priority for transactions that need pessimistic locking.
+  if (needs_pessimistic_locking) {
+    return RandomUniformInt(txn_priority_highpri_lower_bound,
+                            txn_priority_highpri_upper_bound);
+  }
+  return RandomUniformInt(txn_priority_regular_lower_bound,
+                          txn_priority_regular_upper_bound);
 }
 
 Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
@@ -176,16 +207,7 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
       txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
     }
 
-    // Using high priority for transactions that need pessimistic locking.
-    uint64_t priority;
-    if (needs_pessimistic_locking) {
-      priority = RandomUniformInt(txn_priority_highpri_lower_bound,
-                                  txn_priority_highpri_upper_bound);
-    } else {
-      priority = RandomUniformInt(txn_priority_regular_lower_bound,
-                                  txn_priority_regular_upper_bound);
-    }
-    txn_->SetPriority(priority);
+    txn_->SetPriority(GetPriority(NeedsPessimisticLocking(needs_pessimistic_locking)));
 
     if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
       txn_->InitWithReadPoint(isolation, std::move(*session_->read_point()));

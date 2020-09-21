@@ -216,7 +216,6 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	switch (queryDesc->operation)
 	{
 		case CMD_SELECT:
-
 			/*
 			 * SELECT FOR [KEY] UPDATE/SHARE and modifying CTEs need to mark
 			 * tuples
