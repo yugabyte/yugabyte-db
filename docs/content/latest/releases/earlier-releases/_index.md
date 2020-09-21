@@ -11,8 +11,8 @@ menu:
     weight: 2589
 ---
 
-Download earlier YugabyteDB releases from the listing below. Information on the latest release is available
-in [What's new in 2.3](../whats-new/).
+Download earlier releases from the listing below. Details on the stable and latest releases are available
+in [What's new](../whats-new/).
 
 Release | Date | Binary | Docker Image Tag
 --------|------|-------------------------------|-----------------

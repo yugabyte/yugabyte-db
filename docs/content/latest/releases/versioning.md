@@ -43,4 +43,3 @@ Yugabyte supports *production deployments* based on stable releases and can only
 Releases within the latest release series, denoted by `MAJOR.ODD` versioning, incrementally introduces new features and changes and are intended for development and testing. The latest releases are not supported for production deployments. The `2.3` latest release series will become the basis for the next `2.4` stable release series. And the next latest release series available will then be `2.5`.
 
 Patches released in the latest release series (`MAJOR.ODD.REVISION`) can introduce new features and changes that might break backward compatibility.
-
