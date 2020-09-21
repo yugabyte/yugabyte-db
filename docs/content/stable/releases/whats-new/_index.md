@@ -6,10 +6,9 @@ description: Enhancements, changes, and resolved issues in the latest and stable
 headcontent: Features, enhancements, and resolved issues in the latest and stable release series.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
-aliases:
- - /stable/releases/
 menu:
   latest:
+    parent: releases
     identifier: whats-new
     weight: 2588 
 ---
@@ -17,7 +16,7 @@ menu:
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="latest-releases/">
+      <a class="section-link icon-offset" href="latest-releases">
           <div class="head">
               <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
               <div class="title">What's new in 2.3 (latest)</div>
@@ -29,7 +28,7 @@ menu:
   </div>
   
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="stable-releases/">
+      <a class="section-link icon-offset" href="stable-releases">
           <div class="head">
               <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
               <div class="title">What's new in 2.2 (stable)</div>

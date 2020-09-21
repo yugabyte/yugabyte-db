@@ -8,6 +8,7 @@ section: RELEASES
 block_indexing: true
 menu:
   stable:
+    parent: releases
     identifier: earlier-releases
     weight: 2589 
 ---

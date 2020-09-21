@@ -9,7 +9,7 @@ section: RELEASES
 menu:
   latest:
     parent: whats-new
-    identifier: latest-release
+    identifier: latest-releases
     weight: 2585
 isTocNested: true
 showAsideToc: true 

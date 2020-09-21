@@ -6,6 +6,7 @@ description: An overview of supported and planned releases.
 section: RELEASES
 menu:
   latest:
+    parent: releases
     identifier: releases-overview
     weight: 2585
 isTocNested: true
