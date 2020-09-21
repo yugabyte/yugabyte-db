@@ -6,7 +6,7 @@ description: Secure your deployment of YugabyteDB.
 headcontent: Secure your deployment of YugabyteDB.
 image: /images/section_icons/index/secure.png
 aliases:
-  - /secure/
+  - /stable/secure/
 section: YUGABYTEDB CORE
 block_indexing: true
 menu:
