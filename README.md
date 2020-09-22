@@ -26,9 +26,7 @@ The ``pg_stat_monitor`` should work on the latest version of PostgreSQL but is o
 2. [Configuration](#configuration)
 3. [Setup](#setup) 
 4. [User Guide](#user-guide)
-5. [Contribution](#contribution)
-6. [Limitation](#limitation)
-7. [License](#license)
+5. [License](#license)
 
 **Copyright notice**
 
@@ -63,7 +61,7 @@ make USE_PGXS=1 install
 
 **Installing from rpm/deb packages**
 
-TBD
+``pg_stat_monitor`` is supplied as part of Percona Distribution for PostgreSQL. The rpm/deb packages are available from Percona repositories. Refer to [Percona Documentation](https://www.percona.com/doc/postgresql/LATEST/installing.html) for installation instructions.
 
 
 ## Configuration
