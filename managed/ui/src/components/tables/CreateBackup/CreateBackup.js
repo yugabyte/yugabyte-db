@@ -8,7 +8,7 @@ import cronParser from 'cron-parser';
 import moment from 'moment';
 import { YBFormSelect, YBFormToggle, YBFormInput } from '../../common/forms/fields';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
-import { Row, Col } from 'react-bootstrap';
+import { Row, Col, Tabs, Tab } from 'react-bootstrap';
 import {
   isNonEmptyObject,
   isDefinedNotNull,
@@ -20,35 +20,17 @@ import { Field } from 'formik';
 import { YBModalForm } from '../../common/forms';
 import _ from 'lodash';
 import * as cron from 'cron-validator';
-import * as Yup from "yup";
 
 import '../common.scss';
 
 const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
-const schemaValidation =  Yup.object().shape({
-  backupTableUUID: Yup.mixed().when('tableKeyspace', {
-    is: (tableKeyspace) => !tableKeyspace || tableKeyspace.value === 'allkeyspaces',
-    then: Yup.string().required('Backup keyspace and table are required').notOneOf([[]])
-  }),
-  tableKeyspace: Yup.object().required('Backup keyspace and table are required').notOneOf([[]]),
-  storageConfigUUID: Yup.string().required('Storage Config is Required'),
-  enableSSE: Yup.bool(),
-  parallelism: Yup.number('Parallelism must be a number')
-    .min(1)
-    .max(100)
-    .integer('Value must be a whole number')
-    .required('Number of threads is required'),
-  transactionalBackup: Yup.bool(),
-  schedulingFrequency: Yup.number('Frequency must be a number'),
-  timeBeforeDelete: Yup.number('Time before deletion needs to be a number'),
-  cronExpression: Yup.string().test({
-    name: "isValidCron",
-    test: (value) => (value && cron.isValidCron(value)) || !value,
-    message: 'Does not looks like a valid cron expression'
-  })
-});
+const YCQL_TABLE_TYPE = 'YQL_TABLE_TYPE';
 
 export default class CreateBackup extends Component {
+  state = {
+    backupType: 'ysql'
+  }
+
   static propTypes = {
     tableInfo: PropTypes.object
   };
@@ -63,9 +45,11 @@ export default class CreateBackup extends Component {
     } = this.props;
 
     if (isDefinedNotNull(values.storageConfigUUID)) {
+      const backupType = this.state.backupType === 'ysql' ? YSQL_TABLE_TYPE : YCQL_TABLE_TYPE;
       const payload = {
         "storageConfigUUID": values.storageConfigUUID,
         "sse": values.enableSSE,
+        "backupType": backupType,
         "transactionalBackup": values.transactionalBackup,
         "schedulingFrequency": isEmptyString(values.schedulingFrequency) ? null : values.schedulingFrequency,
         "cronExpression": isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
@@ -75,6 +59,9 @@ export default class CreateBackup extends Component {
       };
       if (isDefinedNotNull(values.tableKeyspace) && values.tableKeyspace.value === "allkeyspaces") {
         // Backup all tables in all keyspaces
+        createUniverseBackup(universeUUID, payload);
+      } else if (backupType === YSQL_TABLE_TYPE && isDefinedNotNull(values.tableKeyspace)) {
+        payload.keyspace = values.tableKeyspace.value;
         createUniverseBackup(universeUUID, payload);
       } else if (isDefinedNotNull(values.backupTableUUID)) {
         values.backupTableUUID = Array.isArray(values.backupTableUUID) ?
@@ -98,6 +85,44 @@ export default class CreateBackup extends Component {
       browserHistory.push('/universes/' + universeUUID + "/backups");
     }
   };
+
+  validateForm = (values) => {
+    const errors = {};
+
+    if (values.schedulingFrequency && !_.isNumber(values.schedulingFrequency)) {
+      errors.schedulingFrequency = 'Frequency must be a number';
+    }
+    if (values.cronExpression && !cron.isValidCron(values.cronExpression)) {
+      errors.cronExpression = 'Does not looks like a valid cron expression';
+    }
+    if (!values.storageConfigUUID || !'value' in values.storageConfigUUID) {
+      errors.storageConfigUUID = 'Storage Config is Required';
+    }
+    if ((values.schedulingFrequency || values.cronExpression) &&
+        (values.timeBeforeDelete != null && values.timeBeforeDelete !== "") &&
+      (!_.isNumber(values.timeBeforeDelete) || values.timeBeforeDelete < 0)) {
+      errors.timeBeforeDelete = 'Time before deletion needs to be in number of days';
+    }
+    if (typeof values.parallelism !== 'number') {
+      errors.parallelism = 'Parallelism must be a number';
+    } else if (!Number.isInteger(values.parallelism)) {
+      errors.parallelism = 'Value must be a whole number';
+    } else if (values.parallelism < 1 || values.parallelism > 100) {
+      errors.parallelism = 'Value must be between 1 and 100 inclusive';
+    } else if (!values.parallelism) {
+      errors.parallelism = 'Number of threads is required';
+    }
+
+    if (!values.tableKeyspace || _.isEmpty(values.tableKeyspace)) {
+      errors.tableKeyspace = this.state.backupType === 'ycql' ? 'Backup keyspace is required' : 'Backup namespace is required';
+    }
+    if (this.state.backupType === 'ycql') {
+      if (!values.backupTableUUID || (Array.isArray(values.backupTableUUID) && !values.backupTableUUID.length)) {
+        errors.backupTableUUID = 'Backup table is required';
+      }
+    }
+    return errors;
+  }
 
   backupKeyspaceChanged = (props, option) => {
     if (isNonEmptyObject(option) && !_.isEqual(option, props.field.value)) {
@@ -125,6 +150,7 @@ export default class CreateBackup extends Component {
 
   render() {
     const { visible, isScheduled, onHide, tableInfo, storageConfigs, universeTables } = this.props;
+    const { backupType } = this.state;
     const storageOptions = storageConfigs.map((config) => {
       return {value: config.configUUID, label: config.name + " Storage"};
     });
@@ -190,26 +216,25 @@ export default class CreateBackup extends Component {
           cancelLabel={"Cancel"}
           onFormSubmit={(values) => {
             const payload = {
-              ...values,
+              ...values,              
               storageConfigUUID: values.storageConfigUUID.value,
             };
             this.createBackup(payload);
           }}
           initialValues={initialValues}
-          validationSchema={schemaValidation}
+          validate={this.validateForm}
           render={({
-            values: { cronExpression, schedulingFrequency, backupTableUUID, storageConfigUUID, tableKeyspace, parallelism, timeBeforeDelete },
-            values,
-            errors
+            values: { cronExpression, schedulingFrequency, storageConfigUUID, tableKeyspace, backupTableUUID },
+            errors,
+            setErrors,
+            setFieldValue,
+            setFieldTouched
           }) => {
-            const isKeyspaceSelected = tableKeyspace && tableKeyspace.value;
+            const isKeyspaceSelected = tableKeyspace && tableKeyspace.value; // Optional chaining not available
             const universeBackupSelected = isKeyspaceSelected && tableKeyspace.value === 'allkeyspaces';
-            const isYSQLKeyspace = isKeyspaceSelected && !universeBackupSelected &&
-              universeTables.find(x => x.keySpace === values.tableKeyspace.value).tableType === YSQL_TABLE_TYPE;
             const isSchedulingFrequencyReadOnly = cronExpression !== "";
             const isCronExpressionReadOnly = schedulingFrequency !== "";
             const isTableSelected = backupTableUUID && backupTableUUID.length;
-
             const s3StorageSelected = storageConfigUUID && storageConfigUUID.label === 'S3 Storage';
 
             const hasScheduleFreq = isSchedulingFrequencyReadOnly || isCronExpressionReadOnly;
@@ -224,7 +249,7 @@ export default class CreateBackup extends Component {
               }
             ];
 
-            if (!universeBackupSelected && !isYSQLKeyspace) {
+            if (!universeBackupSelected) {
               displayedTables.push({
                 label: "Tables",
                 value: 'tables',
@@ -234,14 +259,20 @@ export default class CreateBackup extends Component {
               });
             }
             keyspaceOptions = [{
-              label: <b>All Keyspaces</b>,
+              label: <b>{backupType === 'ysql' ? 'All Namespaces' : 'All Keyspaces'}</b>,
               value: "allkeyspaces",
               icon: <span className={"fa fa-globe"} />
             },
             {
-              label: "Keyspaces",
+              label: backupType === 'ysql' ? "Namespaces" : "Keyspaces",
               value: 'keyspaces',
-              options: [...keyspaces].map(key => ({ value: key, label: key }))
+              options: [...keyspaces].filter(keyspace => {
+                if (backupType === 'ysql') {
+                  return universeTables.find(x => x.keySpace === keyspace).tableType === YSQL_TABLE_TYPE;
+                } else if (backupType === 'ycql') {
+                  return universeTables.find(x => x.keySpace === keyspace).tableType === YCQL_TABLE_TYPE;
+                }
+              }).map(key => ({ value: key, label: key }))
             }];
 
             let nextCronExec = null;
@@ -255,11 +286,9 @@ export default class CreateBackup extends Component {
               }
             }
 
-            // params for backupTableUUID <Field>
-            // NOTE: No entire keyspace selection implemented
-            return (<Fragment>
-              {isScheduled &&
-                <div className="backup-frequency-control">
+            return (<Fragment>              
+                {isScheduled &&
+                  <div className="backup-frequency-control">
                   <Row>
                     <Col xs={6}>
                       <Field
@@ -304,76 +333,130 @@ export default class CreateBackup extends Component {
                   }
                 </div>
               }
-              <Field
-                name="storageConfigUUID"
-                component={YBFormSelect}
-                label={"Storage"}
-                options={storageOptions}
-              />
-              {!!keyspaceOptions.length &&
-                <Field
-                  name="tableKeyspace"
-                  component={YBFormSelect}
-                  components={{
-                    Option: customOption,
-                    SingleValue: customSingleValue
-                  }}
-                  label="Keyspace"
-                  options={keyspaceOptions}
-                  onChange={this.backupKeyspaceChanged}
-                  isDisabled={isNonEmptyObject(tableInfo)}
-                />
-              }
-              {isKeyspaceSelected &&
-                <Row>
-                  <Col xs={6}>
+              <Tabs id="backup-api-tabs"
+                activeKey={backupType}
+                className="gflag-display-container"
+                onSelect={(k) => {
+                  if (k !== backupType) {
+                    setFieldValue('tableKeyspace', null, false);
+                    setFieldValue('backupTableUUID', null, false);
+                    setFieldTouched('tableKeyspace', false);
+                    setFieldTouched('backupTableUUID', false);
+                    const newErrors = {...errors};
+                    delete newErrors.tableKeyspace;
+                    delete newErrors.backupTableUUID;
+                    setErrors(newErrors);
+                    this.setState({backupType: k})
+                  }
+                }}
+              >
+                <Tab eventKey={"ysql"} title="YSQL" className="gflag-class-1" bsClass="gflag-class-2">                  
+                  <Field 
+                    name="storageConfigUUID"
+                    component={YBFormSelect}
+                    label={"Storage"}
+                    options={storageOptions}
+                  />
+                  {!!keyspaceOptions.length &&
                     <Field
-                      name="backupTableUUID"
+                      name="tableKeyspace"
                       component={YBFormSelect}
                       components={{
                         Option: customOption,
                         SingleValue: customSingleValue
                       }}
-                      label={`Tables to backup`}
-                      options={displayedTables}
-                      isMulti={true}
-                      onChange={this.backupTableChanged}
+                      label="Namespace"
+                      options={keyspaceOptions}
+                      onChange={this.backupKeyspaceChanged}
                       isDisabled={isNonEmptyObject(tableInfo)}
-                    />
-                  </Col>
-                  {isYSQLKeyspace &&
+                    />                    
+                  }
+                  <Row>
                     <Col lg={1} className="config-zone-tooltip">
                       <YBInfoTip title="Backups in YSQL"
-                        content={<div>Table-level backups are unavailable for YSQL.<br />Please use keyspace-level backups instead.</div>} />
+                        content={<div>Table-level backups are unavailable for YSQL.</div>} />
                     </Col>
+                  </Row>
+                  {s3StorageSelected && <Field
+                    name="enableSSE"
+                    component={YBFormToggle}
+                    label={"Encrypt Backup"}
+                  />
                   }
-                </Row>
-              }
-              {showTransactionalToggle &&
-                <Field
-                  name="transactionalBackup"
-                  component={YBFormToggle}
-                  label={"Create a transactional backup across tables"}
-                />
-              }
-              {s3StorageSelected && <Field
-                name="enableSSE"
-                component={YBFormToggle}
-                label={"Enable Server-Side Encryption"}
-              />
-              }
-              {<Field
-                name="parallelism"
-                component={YBFormInput}
-                label={"Parallel Threads"}
-              />
-              }
-              {hasScheduleFreq && <Field
-                name="timeBeforeDelete"
-                component={YBFormInput}
-                label={"Number of Days to Retain Backup"}
-              />
-              }
+                  {hasScheduleFreq && <Field
+                    name="timeBeforeDelete"
+                    type={"number"}
+                    component={YBFormInput}
+                    label={"Number of Days to Retain Backup"}
+                  />
+                  }
+                </Tab>
+                <Tab eventKey={"ycql"} title="YCQL">
+                  <Field
+                    name="storageConfigUUID"
+                    component={YBFormSelect}
+                    label={"Storage"}
+                    options={storageOptions}
+                  />
+                  {!!keyspaceOptions.length &&
+                    <Field
+                      name="tableKeyspace"
+                      component={YBFormSelect}
+                      components={{
+                        Option: customOption,
+                        SingleValue: customSingleValue
+                      }}
+                      label="Keyspace"
+                      options={keyspaceOptions}
+                      onChange={this.backupKeyspaceChanged}
+                      isDisabled={isNonEmptyObject(tableInfo)}
+                    />
+                  }
+                  {isKeyspaceSelected &&
+                    <Row>
+                      <Col xs={6}>
+                        <Field
+                          name="backupTableUUID"
+                          component={YBFormSelect}
+                          components={{
+                            Option: customOption,
+                            SingleValue: customSingleValue
+                          }}
+                          label={`Tables to backup`}
+                          options={displayedTables}
+                          isMulti={true}
+                          onChange={this.backupTableChanged}
+                          isDisabled={isNonEmptyObject(tableInfo)}
+                        />
+                      </Col>
+                    </Row>
+                  }
+                  {showTransactionalToggle &&
+                    <Field
+                      name="transactionalBackup"
+                      component={YBFormToggle}
+                      label={"Create a transactional backup across tables"}
+                    />
+                  }
+                  {s3StorageSelected && <Field
+                    name="enableSSE"
+                    component={YBFormToggle}
+                    label={"Encrypt Backup"}
+                  />}
+                  <Field
+                    name="parallelism"
+                    component={YBFormInput}
+                    label={"Parallel Threads"}
+                  />
+                  {hasScheduleFreq && <Field
+                    name="timeBeforeDelete"
+                    type={"number"}
+                    component={YBFormInput}
+                    label={"Number of Days to Retain Backup"}
+                  />
+                  }
+                </Tab>
+              </Tabs>
             </Fragment>);
           }}
         />

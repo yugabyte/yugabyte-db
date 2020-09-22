@@ -17,6 +17,7 @@ import java.util.UUID;
 
 import com.yugabyte.yw.common.PlacementInfoUtil;
 
+import org.yb.Common.TableType;
 import play.libs.Json;
 
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
@@ -102,7 +103,11 @@ public class TableManager extends DevopsBase {
               commandArgs.add(taskParams.tableName);
             }
             commandArgs.add("--keyspace");
-            commandArgs.add(taskParams.keyspace);
+            if (backupTableParams.backupType == TableType.PGSQL_TABLE_TYPE) {
+              commandArgs.add("ysql." + taskParams.keyspace);
+            } else {
+              commandArgs.add(taskParams.keyspace);
+            }
           }
         } else if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
           if (backupTableParams.tableUUIDList != null && !backupTableParams.tableUUIDList.isEmpty()) {

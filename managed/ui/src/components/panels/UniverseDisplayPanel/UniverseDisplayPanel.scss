@@ -4,8 +4,8 @@
 @import "../../../_style/mixins.scss";
 
 
-.universe-display-item-container, .schedule-display-item-container {
-  height: 178px;
+.universe-display-item-container, .schedule-display-item-container {  
+  max-height: 200px;
   margin-bottom: 24px;
   padding: 12px 14px;
   color: $YB_TEXT_COLOR;

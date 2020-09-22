@@ -26,7 +26,6 @@ export default class DeleteBackup extends Component {
       return <span />;
     }
     const { visible, onHide, tableInfo: { backupUUID } } = this.props;
-    console.log(this.props.tableInfo)
 
     return (
       <div className="universe-apps-modal">
