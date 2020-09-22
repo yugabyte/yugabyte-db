@@ -92,8 +92,7 @@ const panelTypes = {
     metrics: [
       "cql_server_rpc_per_second",
       "cql_sql_latency",
-      "cql_server_rpc_p99",
-      "tserver_async_replication_lag_micros"
+      "cql_server_rpc_p99"
     ]},
   yedis_ops: {title: "YEDIS Ops and Latency",
     metrics: [
@@ -250,7 +249,7 @@ class GraphPanel extends Component {
             <MetricsPanel metricKey={metricKey} key={idx}
                           metric={metrics[type][metricKey]}
                           className={"metrics-panel-container"}
-                          width={width} />
+                          containerWidth={width} />
             : null;
         }).filter(Boolean);
       }

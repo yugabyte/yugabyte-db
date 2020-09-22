@@ -6,30 +6,30 @@ import { queryMetrics, queryMetricsSuccess, queryMetricsFailure, resetMetrics } 
 import { getMasterLeader, getMasterLeaderResponse, resetMasterLeader } from '../../../actions/universe';
   
 const mapDispatchToProps = (dispatch) => {
-    return {
-      queryMetrics: (queryParams, panelType) => {
-        dispatch(queryMetrics(queryParams))
+  return {
+    queryMetrics: (queryParams, panelType) => {
+      dispatch(queryMetrics(queryParams))
         .then((response) => {
           if (!response.error) {
             dispatch(queryMetricsSuccess(response.payload, panelType));
           } else {
             dispatch(queryMetricsFailure(response.payload, panelType));
           }
-        });
-      },
-      resetMetrics: () => {
-        dispatch(resetMetrics());
-      },
-      getMasterLeader: (uuid) => {
-        dispatch(getMasterLeader(uuid)).then((response) => {
-          dispatch(getMasterLeaderResponse(response.payload));
-        });
-      },
-  
-      resetMasterLeader: () => {
-        dispatch(resetMasterLeader());
-      },
-    }
+      });
+  },
+    resetMetrics: () => {
+      dispatch(resetMetrics());
+    },
+    getMasterLeader: (uuid) => {
+      dispatch(getMasterLeader(uuid)).then((response) => {
+        dispatch(getMasterLeaderResponse(response.payload));
+      });
+    },
+
+    resetMasterLeader: () => {
+      dispatch(resetMasterLeader());
+    },
+  }
 }
 
 function mapStateToProps(state, ownProps) {
