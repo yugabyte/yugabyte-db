@@ -1397,14 +1397,14 @@ about_to_start_running_test() {
 # - yb-client org.yb.client.TestYBClient#testAllMasterChangeConfig
 #
 # <maven_module_name> could also be the module directory relative to $YB_SRC_ROOT, e.g.
-# java/yb-cql or ent/java/<enterprise_module_name>.
+# java/yb-cql.
 run_java_test() {
   expect_num_args 2 "$@"
   local module_name_or_rel_module_dir=$1
   local test_class_and_maybe_method=${2%.java}
   test_class_and_maybe_method=${test_class_and_maybe_method%.scala}
   if [[ $module_name_or_rel_module_dir == */* ]]; then
-    # E.g. java/yb-cql or ent/java/<enterprise_module_name>.
+    # E.g. java/yb-cql.
     local module_dir=$YB_SRC_ROOT/$module_name_or_rel_module_dir
     module_name=${module_name_or_rel_module_dir##*/}
   else
@@ -1440,7 +1440,7 @@ run_java_test() {
   local timestamp=$( get_timestamp_for_filenames )
   local surefire_rel_tmp_dir=surefire${timestamp}_${RANDOM}_${RANDOM}_${RANDOM}_$$
 
-  # This should change the directory to either "java" or "ent/java".
+  # This should change the directory to "java".
   cd "$module_dir"/..
 
   # We specify tempDir to use a separate temporary directory for each test.
