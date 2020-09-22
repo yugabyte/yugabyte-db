@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import org.yb.Common.TableType;
 import play.data.validation.Constraints;
 
 import java.util.List;
@@ -26,6 +27,8 @@ public class BackupTableParams extends TableManagerParams {
 
   @Constraints.Required
   public ActionType actionType;
+
+  public TableType backupType;
 
   public List<String> tableNameList;
 

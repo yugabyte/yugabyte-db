@@ -29,7 +29,13 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   const tableTypes = {};
   state.tables.universeTablesList.forEach((t) => {
-    tableTypes[t.tableUUID] = t.tableType;
+    if (t.tableType === 'YQL_TABLE_TYPE') {
+      tableTypes[t.tableUUID] = 'YCQL';
+    } else if (t.tableType === 'PGSQL_TABLE_TYPE') {
+      tableTypes[t.tableUUID] = 'YSQL';
+    } else {
+      tableTypes[t.tableUUID] = 'YEDIS';
+    }
   });
   return {
     universeBackupList: state.universe.universeBackupList,
