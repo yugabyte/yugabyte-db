@@ -1345,7 +1345,7 @@ class MillisLag : public Metric {
 
 class AtomicMillisLag : public MillisLag {
  public:
-  explicit AtomicMillisLag(const MillisLagPrototype* proto) : MillisLag(proto) {}
+  explicit AtomicMillisLag(const MillisLagPrototype* proto);
 
   int64_t lag_ms() const override {
     return std::max(static_cast<int64_t>(0),
