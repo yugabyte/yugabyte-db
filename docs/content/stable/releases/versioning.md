@@ -5,14 +5,14 @@ linkTitle: Release versioning
 description: Explains the new release versioning convention for latest and stable releases.
 section: RELEASES
 menu:
-  latest:
-    identifier: versioning
+  stable:
+    identifier: versioning-22
     weight: 2586
 isTocNested: true
 showAsideToc: true
 ---
 
-Starting with version `2.2`, Yugabyte uses even a new release versioning convention for stable and development releases. The following sections covers the new release versioning convention and descriptions of stable releases and the latest release.
+Starting with v2.2, Yugabyte uses even a new release versioning convention for stable and development releases. The following sections covers the new release versioning convention and descriptions of stable releases and the latest release.
 
 ## Release versioning convention
 
@@ -34,7 +34,7 @@ Patch releases in a stable release series (`MAJOR.EVEN.PATCH`) include bug fixes
 
 {{< note title="Important" >}}
 
-Yugabyte supports *production deployments* based on stable releases and can only be upgraded to the newer stable releases. For a list of supported stable releases, see [Supported and upcoming releases](../releases-overview/#supported-stable-releases).
+Yugabyte supports *production deployments* based on stable releases and can only be upgraded to the newer stable releases. For a list of supported stable releases, see [Supported and planned releases](../releases-overview/#supported-stable-releases).
 
 {{< /note >}}
 
