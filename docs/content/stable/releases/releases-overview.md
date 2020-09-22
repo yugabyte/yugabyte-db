@@ -5,7 +5,7 @@ linkTitle: Supported and upcoming releases
 description: An overview of the latest and current stable releases, and upcoming releases.
 section: RELEASES
 menu:
-  latest:
+  stable:
     identifier: releases-overview
     weight: 2585
 isTocNested: true
