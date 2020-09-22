@@ -54,8 +54,8 @@ export default class MetricsPanel extends Component {
       });
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
-      metric.layout.width = this.getGraphWidth(this.props.width || 1200);
-      metric.layout.height = 360;
+      metric.layout.width = this.props.width || this.getGraphWidth(this.props.containerWidth || 1200);
+      metric.layout.height = this.props.height || 360;
       metric.layout.showlegend = true;
       metric.layout.margin = {
         l: 45,
@@ -102,8 +102,8 @@ export default class MetricsPanel extends Component {
   }
 
   componentDidUpdate(prevProps) {
-    if (this.props.width !== prevProps.width) {
-      Plotly.relayout(prevProps.metricKey, {width: this.getGraphWidth(this.props.width)});
+    if (this.props.containerWidth !== prevProps.containerWidth || this.props.width !== prevProps.width) {
+      Plotly.relayout(prevProps.metricKey, {width: this.props.width || this.getGraphWidth(this.props.containerWidth)});
     }
   }
 

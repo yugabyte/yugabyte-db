@@ -106,7 +106,7 @@ export default class RestoreBackup extends Component {
 
     return (
       <div className="universe-apps-modal" onClick={(e) => e.stopPropagation()}>
-        <YBModalForm title={"Restore backup To"}
+        <YBModalForm title={"Restore data to"}
                 visible={visible}
                 onHide={onHide}
                 showCancelButton={true}
