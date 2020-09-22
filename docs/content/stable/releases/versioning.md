@@ -5,14 +5,14 @@ linkTitle: Release versioning
 description: Explains the new release versioning convention for latest and stable releases.
 section: RELEASES
 menu:
-  latest:
-    identifier: versioning-2.2
+  stable:
+    identifier: versioning-22
     weight: 2586
 isTocNested: true
 showAsideToc: true
 ---
 
-Starting with version `2.2`, Yugabyte uses even a new release versioning convention for stable and development releases. The following sections covers the new release versioning convention and descriptions of stable releases and the latest release.
+Starting with v2.2, Yugabyte uses even a new release versioning convention for stable and development releases. The following sections covers the new release versioning convention and descriptions of stable releases and the latest release.
 
 ## Release versioning convention
 
@@ -22,7 +22,7 @@ Yugabyte follows the [semantic versioning (semver)](https://semver.org) conventi
 - `MINOR` — Incremented when new features and changes are introduced.
   - `EVEN` — Stable minor release, intended for production deployments.
   - `ODD` — Latest minor release, intended for development and testing.
-- `PATCH` — Patches in a stable release (`MAJOR.EVEN.PATCH`) include bug fixes and revisions that do not break backward compatibility. For patches in the latest release series (`MAJOR.ODD.REVISION`), new features and changes are introduced that might break backward compatibility.
+- `PATCH/REVISION` — Patches in a stable release (`MAJOR.EVEN.PATCH`) include bug fixes and revisions that do not break backward compatibility. For patches in the latest release series (`MAJOR.ODD.PATCH`), new features and changes are introduced that might break backward compatibility.
 
 Examples follow in the relevant sections below.
 
@@ -42,4 +42,5 @@ Yugabyte supports *production deployments* based on stable releases and can only
 
 Releases within the latest release series, denoted by `MAJOR.ODD` versioning, incrementally introduces new features and changes and are intended for development and testing. The latest releases are not supported for production deployments. The `2.3` latest release series will become the basis for the next `2.4` stable release series. And the next latest release series available will then be `2.5`.
 
-Patches released in the latest release series (`MAJOR.ODD.REVISION`) can introduce new features and changes that might break backward compatibility.
+Revisions released in the latest release series (`MAJOR.ODD.REVISION`) can introduce new features and changes that might break backward compatibility.
+

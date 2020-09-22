@@ -1,25 +1,26 @@
 ---
-title: What's new in 2.2 (stable)
-headerTitle: What's new in the 2.2 stable release series
+title: What's new in the recommended v2.2 stable release series
+headerTitle: What's new in the recommended v2.2 stable release series
 linkTitle: 2.2 (stable)
 description: Enhancements, changes, and resolved issues in the recommended stable release series.
 headcontent: Features, enhancements, and resolved issues in the recommended stable release series.
 image: /images/section_icons/quick_start/install.png
+section: RELEASES
 menu:
-  latest:
+  stable:
     parent: whats-new
-    identifier: stable-releases-2.2
-    weight: 2586  
+    identifier: stable-releases
+    weight: 2586 
 isTocNested: true
 showAsideToc: true
 ---
 
-Included here are the notable new features and enhancements and the release notes for all releases in the `2.3` latest release series.
+Included here are the notable new features and enhancements and the release notes for all releases in the `2.2` latest release series.
 
 {{< note title="New release versioning" >}}
 
-Starting with v2.2.0, Yugabyte release versions follow a [new release versioning convention](../../versioning). Stable release series are denoted by `MAJOR.EVEN`, introduce new features and changes added since the previous stable release series and are supported for production deployments. Patch releases, denoted by `MAJOR.EVEN.PATCH`, include bug fixes and revisions that do not break backwards compatibility.
-For more information, see [Supported and planned releases](../../releases-overview).
+Starting with v2.2.0, Yugabyte release versions follow a [new release versioning convention](../versioning). Stable release series are denoted by `MAJOR.EVEN`, introduce new features and changes added since the previous stable release series and are supported for production deployments. Patch releases, denoted by `MAJOR.EVEN.PATCH`, include bug fixes and revisions that do not break backwards compatibility.
+For more information, see [Supported and planned releases](../releases-overview).
 
 {{< /note >}}
 
