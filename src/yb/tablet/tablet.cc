@@ -2308,12 +2308,10 @@ Status Tablet::UpdateIndexInBatches(
   QLExprExecutor expr_executor;
 
   for (const IndexInfo& index : indexes) {
-    bool ignored_key_changed;
-    index_requests->emplace_back(&index, QLWriteRequestPB());
-    QLWriteRequestPB* index_request = &index_requests->back().second;
-    index_request->set_type(QLWriteRequestPB::QL_STMT_INSERT);
-    RETURN_NOT_OK(docdb::PrepareIndexWriteAndCheckIfIndexKeyChanged(
-        &expr_executor, kEmptyRow, row, &index, index_request, &ignored_key_changed));
+    QLWriteRequestPB* const index_request = VERIFY_RESULT(
+        docdb::CreateAndSetupIndexInsertRequest(
+            &expr_executor, /* index_has_write_permission */ true,
+            kEmptyRow, row, &index, index_requests));
     index_request->set_is_backfill(true);
   }
 
