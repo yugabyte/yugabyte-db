@@ -329,7 +329,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void updateOnPremNodeUuids(Universe universe) {
-    LOG.debug("Update on prem nodes in universe {}.", taskParams().universeUUID);
+    LOG.info(
+      "Selecting prem nodes for universe {} ({}).",
+      universe.name,
+      taskParams().universeUUID
+    );
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 

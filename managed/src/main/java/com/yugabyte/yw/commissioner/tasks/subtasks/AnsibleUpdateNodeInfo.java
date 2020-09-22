@@ -69,7 +69,7 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
           }
           Field field;
           try {
-            LOG.info("Node {}: setting field {} to value {}.",
+            LOG.info("Node {}: setting univ node details field {} to value {}.",
                      taskParams.nodeName, entry.getKey(), entry.getValue());
             // Error out if the host was not found.
             if (entry.getKey().equals("host_found") && entry.getValue().asText().equals("false")) {

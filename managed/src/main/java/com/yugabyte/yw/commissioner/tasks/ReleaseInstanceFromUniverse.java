@@ -22,8 +22,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.NodeInstance;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 
 import org.slf4j.Logger;
@@ -94,12 +96,6 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       // Update Node State to Decommissioned.
       createSetNodeStateTask(currentNode, NodeState.Decommissioned)
           .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-
-      // Delete and reset node metadata for onprem universes.
-      if (userIntent.providerType.equals(CloudType.onprem)) {
-        deleteNodeFromUniverseTask(taskParams().nodeName)
-          .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-      }
 
       // Update the DNS entry for this universe.
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent.providerType,
