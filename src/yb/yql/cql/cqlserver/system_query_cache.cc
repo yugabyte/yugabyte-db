@@ -99,6 +99,9 @@ const char* SYSTEM_QUERIES[] = {
   "SELECT * FROM system.peers",
   "SELECT peer, rpc_address, schema_version FROM system.peers",
   "SELECT peer, data_center, rack, release_version, rpc_address FROM system.peers",
+  "SELECT peer, data_center, rack, release_version, rpc_address, tokens FROM system.peers",
+  "SELECT data_center, rack, release_version FROM system.local WHERE key='local'",
+  "SELECT data_center, rack, release_version, partitioner, tokens FROM system.local WHERE key='local'",
   "SELECT keyspace_name, table_name, start_key, end_key, replica_addresses FROM system.partitions",
 
   "SELECT * FROM system.local WHERE key='local'",
