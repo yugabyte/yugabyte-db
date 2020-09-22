@@ -3,7 +3,7 @@ title: Explore change data capture (CDC) on macOS
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Use a local YugabyteDB cluster (on macOS) to stream data changes to stdout using the CDC API.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /stable/deploy/cdc/cdc-to-stdout/
   - /stable/explore/change-data-capture/
