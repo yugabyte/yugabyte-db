@@ -333,6 +333,7 @@ class RaftConsensusTest : public YBTest {
     round->SetConsensusReplicatedCallback(
         std::bind(&RaftConsensusSpy::NonTxRoundReplicationFinished,
              consensus_.get(), round.get(), &DoNothingStatusCB, std::placeholders::_1));
+    round->BindToTerm(consensus_->TEST_LeaderTerm());
 
     CHECK_OK(consensus_->TEST_Replicate(round));
     LOG(INFO) << "Appended NO_OP round with opid " << round->id();

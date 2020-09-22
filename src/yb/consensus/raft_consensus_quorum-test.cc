@@ -267,6 +267,7 @@ class RaftConsensusQuorumTest : public YBTest {
         [sync = sync.get()](const Status& status, int64_t, OpIds*) {
       sync->StatusCB(status);
     });
+    (**round).BindToTerm(peer->LeaderTerm());
     InsertOrDie(&syncs_, round->get(), sync.release());
     RETURN_NOT_OK_PREPEND(peer->TEST_Replicate(round->get()),
                           Substitute("Unable to replicate to peer $0", peer_idx));
