@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -17,14 +18,20 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,11 +80,25 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Adding)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
+      Cluster cluster = taskParams().getClusterByUuid(currentNode.placementUuid);
       Collection<NodeDetails> node = new HashSet<NodeDetails>(Arrays.asList(currentNode));
 
       // First spawn an instance for Decommissioned node.
       boolean wasDecommissioned = currentNode.state == NodeState.Decommissioned;
       if (wasDecommissioned) {
+        if (cluster.userIntent.providerType.equals(CloudType.onprem)) {
+          // For onprem universes, allocate an available node
+          // from the provider's node_instance table.
+          Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
+          List<String> nodeNameList = new ArrayList<>();
+          nodeNameList.add(currentNode.nodeName);
+          onpremAzToNodes.put(currentNode.azUuid, nodeNameList);
+          String instanceType = currentNode.cloudInfo.instance_type;
+
+          Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
+          currentNode.nodeUuid = nodeMap.get(currentNode.nodeName).nodeUuid;
+        }
+
         createSetupServerTasks(node)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
@@ -93,6 +114,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Bring up any masters, as needed.
       boolean masterAdded = false;
       if (areMastersUnderReplicated(currentNode, universe)) {
+        LOG.info(
+          "Bringing up master for under replicated universe {} ({})",
+          universe.universeUUID, universe.name
+        );
         // Set gflags for master.
         createGFlagsOverrideTasks(node, ServerType.MASTER);
 
@@ -114,8 +139,6 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
         masterAdded = true;
       }
-
-      Cluster cluster = taskParams().getClusterByUuid(currentNode.placementUuid);
 
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
