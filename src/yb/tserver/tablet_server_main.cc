@@ -121,11 +121,16 @@ namespace {
 
 void SetProxyAddress(std::string* flag, const std::string& name, uint16_t port) {
   if (flag->empty()) {
-    HostPort host_port;
-    CHECK_OK(host_port.ParseString(FLAGS_rpc_bind_addresses, 0));
-    host_port.set_port(port);
-    *flag = host_port.ToString();
-    LOG(INFO) << "Reset " << name << " bind address to " << *flag;
+    std::vector<HostPort> bind_addresses;
+    Status status = HostPort::ParseStrings(FLAGS_rpc_bind_addresses, 0, &bind_addresses);
+    LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << FLAGS_rpc_bind_addresses << ": " << status;
+    if (!bind_addresses.empty()) {
+      for (auto& addr : bind_addresses) {
+        addr.set_port(port);
+      }
+      *flag = HostPort::ToCommaSeparatedString(bind_addresses);
+      LOG(INFO) << "Reset " << name << " bind address to " << *flag;
+    }
   }
 }
 
