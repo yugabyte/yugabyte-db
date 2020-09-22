@@ -1,24 +1,27 @@
 ---
-title: What's new in 2.3 (latest)
-headerTitle: What's new in the 2.3 latest release series
+title: What's new in the v2.3 latest release series
+headerTitle: What's new in the v2.3 latest release series
 linkTitle: 2.3 (latest)
 description: Enhancements, changes, and resolved issues in the latest release series.
 headcontent: Features, enhancements, and resolved issues in the latest release series.
 image: /images/section_icons/quick_start/install.png
+aliases:
+  - /latest/releases/
+section: RELEASES
 menu:
   latest:
     parent: whats-new
-    identifier: latest-releases
+    identifier: latest-release
     weight: 2585
 isTocNested: true
 showAsideToc: true 
 ---
 
-Included here are the release notes for all releases in the `2.3` latest release series.
+Included here are the release notes for all releases in the v2.3 latest release series.
 
 {{< note title="New release versioning" >}}
 
-Starting with v2.2.0, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Patch releases, denoted by `MAJOR.ODD.PATCH` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
+Starting with v2.2.0, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Revision releases, denoted by `MAJOR.ODD.REVISION` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
 
 {{< /note >}}
 

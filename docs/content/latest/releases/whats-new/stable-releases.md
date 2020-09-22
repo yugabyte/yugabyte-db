@@ -1,10 +1,13 @@
 ---
-title: What's new in 2.2 (stable)
-headerTitle: What's new in the 2.2 stable release series
+title: What's new in the recommended v2.2 stable release series
+headerTitle: What's new in the recommended v2.2 stable release series
 linkTitle: 2.2 (stable)
 description: Enhancements, changes, and resolved issues in the recommended stable release series.
 headcontent: Features, enhancements, and resolved issues in the recommended stable release series.
 image: /images/section_icons/quick_start/install.png
+aliases:
+  - /latest/releases/
+section: RELEASES
 menu:
   latest:
     parent: whats-new
@@ -14,7 +17,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Included here are the notable new features and enhancements and the release notes for all releases in the `2.3` latest release series.
+Included here are the notable new features and enhancements and the release notes for all releases in the recommended v2.2 stable release series.
 
 {{< note title="New release versioning" >}}
 

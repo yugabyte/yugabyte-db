@@ -22,7 +22,7 @@ Yugabyte follows the [semantic versioning (semver)](https://semver.org) conventi
 - `MINOR` — Incremented when new features and changes are introduced.
   - `EVEN` — Stable minor release, intended for production deployments.
   - `ODD` — Latest minor release, intended for development and testing.
-- `PATCH` — Patches in a stable release (`MAJOR.EVEN.PATCH`) include bug fixes and revisions that do not break backward compatibility. For patches in the latest release series (`MAJOR.ODD.REVISION`), new features and changes are introduced that might break backward compatibility.
+- `PATCH/REVISION` — Patches in a stable release (`MAJOR.EVEN.PATCH`) include bug fixes and revisions that do not break backward compatibility. For patches in the latest release series (`MAJOR.ODD.PATCH`), new features and changes are introduced that might break backward compatibility.
 
 Examples follow in the relevant sections below.
 
@@ -42,4 +42,5 @@ Yugabyte supports *production deployments* based on stable releases and can only
 
 Releases within the latest release series, denoted by `MAJOR.ODD` versioning, incrementally introduces new features and changes and are intended for development and testing. The latest releases are not supported for production deployments. The `2.3` latest release series will become the basis for the next `2.4` stable release series. And the next latest release series available will then be `2.5`.
 
-Patches released in the latest release series (`MAJOR.ODD.REVISION`) can introduce new features and changes that might break backward compatibility.
+Revisions released in the latest release series (`MAJOR.ODD.REVISION`) can introduce new features and changes that might break backward compatibility.
+
