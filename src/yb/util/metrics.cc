@@ -780,7 +780,10 @@ scoped_refptr<MillisLag> MillisLagPrototype::Instantiate(
   return entity->FindOrCreateMillisLag(this);
 }
 
-MillisLag::MillisLag(const MillisLagPrototype* proto) : Metric(proto) {
+MillisLag::MillisLag(const MillisLagPrototype* proto)
+  : Metric(proto),
+    timestamp_ms_(static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count())) {
 }
 
 Status MillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions& opts) const {
@@ -807,6 +810,12 @@ Status MillisLag::WriteForPrometheus(
   }
 
   return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms());
+}
+
+AtomicMillisLag::AtomicMillisLag(const MillisLagPrototype* proto)
+  : MillisLag(proto),
+    atomic_timestamp_ms_(static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count())) {
 }
 
 Status AtomicMillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions& opts) const {
