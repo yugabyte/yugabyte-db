@@ -78,6 +78,7 @@ DECLARE_uint64(sst_files_soft_limit);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(TEST_preparer_batch_inject_latency_ms);
 
 namespace yb {
 namespace client {
@@ -1325,6 +1326,29 @@ TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
   for (const auto& last_applied_op_id : last_applied_op_ids) {
     ASSERT_EQ(last_applied_op_id, max_applied_op_id);
   }
+}
+
+TEST_F(QLTabletTest, SlowPrepare) {
+  FLAGS_TEST_preparer_batch_inject_latency_ms = 100;
+
+  const int kNumTablets = 1;
+
+  auto session = client_->NewSession();
+  session->SetTimeout(60s);
+
+  TestWorkload workload(cluster_.get());
+  workload.set_table_name(kTable1Name);
+  workload.set_write_timeout_millis(30000 * kTimeMultiplier);
+  workload.set_num_tablets(kNumTablets);
+  workload.set_num_write_threads(2);
+  workload.set_write_batch_size(1);
+  workload.Setup();
+  workload.Start();
+
+  std::this_thread::sleep_for(2s);
+  StepDownAllTablets(cluster_.get());
+
+  workload.StopAndJoin();
 }
 
 } // namespace client
