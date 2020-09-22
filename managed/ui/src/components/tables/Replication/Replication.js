@@ -15,13 +15,19 @@ import './Replication.scss';
 
 const GRAPH_TYPE = 'replication';
 const METRIC_NAME = 'tserver_async_replication_lag_micros';
-const MICROS_IN_MIN = 60000000.00;
-const MICROS_IN_SEC = 1000000.00;
-const MICROS_IN_MS = 1000.00;
+const MILLI_IN_MIN = 60000.00;
+const MILLI_IN_SEC = 1000.00;
 
 export default class ListBackups extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      graphWidth: 840
+    }
+  }
+
   static defaultProps = {
-    title : "Replication"
+    title : "Replication",
   }
 
   static propTypes  = {
@@ -60,14 +66,44 @@ export default class ListBackups extends Component {
     let latestStat = null;
     let latestTimestamp = null;
     let showMetrics = false;
+    let aggregatedMetrics = {};
     if (_.get(metrics, `${GRAPH_TYPE}.${METRIC_NAME}.layout.yaxis.alias`, null)) {
-      // Get alias 
+      // Get alias
       const metricAliases = metrics[GRAPH_TYPE][METRIC_NAME].layout.yaxis.alias;
-      const displayName = metricAliases['async_replication_committed_lag_micros']
-      const replicationMetric = metrics[GRAPH_TYPE][METRIC_NAME].data.find(x => x.name === displayName);
-      if (replicationMetric) {
-        latestStat = replicationMetric.y[replicationMetric.y.length - 1];
-        latestTimestamp = replicationMetric.x[replicationMetric.x.length - 1];
+      const committedLagName = metricAliases['async_replication_committed_lag_micros']
+      aggregatedMetrics = {...metrics[GRAPH_TYPE][METRIC_NAME]};
+      const replicationNodeMetrics = metrics[GRAPH_TYPE][METRIC_NAME].data.filter(x => x.name === committedLagName);
+      if (replicationNodeMetrics.length) {
+        // Get max-value and avg-value metric array
+        let avgArr = null, maxArr = null;
+        replicationNodeMetrics.forEach(metric => {
+          if (!avgArr && !maxArr) {
+            avgArr = metric.y.map(v => parseFloat(v) / replicationNodeMetrics.length);
+            maxArr = [...metric.y];
+          } else {
+            metric.y.forEach((y, idx) => {
+              avgArr[idx] = parseFloat(avgArr[idx]) + parseFloat(y)/replicationNodeMetrics.length;
+              if (parseFloat(y) > parseFloat(maxArr[idx])) {
+                maxArr[idx] = parseFloat(y)
+              }
+            });
+          }
+        });
+        const firstMetricData = replicationNodeMetrics[0];        
+        aggregatedMetrics.data = [
+          {
+            ...firstMetricData,
+            name: `Max ${committedLagName}`,
+            y: maxArr
+          },
+          {
+            ...firstMetricData,
+            name: `Avg ${committedLagName}`,
+            y: avgArr
+          }
+        ];
+        latestStat = avgArr[avgArr.length - 1];
+        latestTimestamp = firstMetricData.x[firstMetricData.x.length - 1];
         showMetrics = true;
       }
     }
@@ -83,13 +119,11 @@ export default class ListBackups extends Component {
           </div>
         </div>;
       }
-      let resourceNumber = <YBResourceCount size={latestStat} kind="μs" inline={true} />;
-      if (latestStat > MICROS_IN_MIN) {
-        resourceNumber = <YBResourceCount size={(latestStat / MICROS_IN_MIN).toFixed(4)} kind="min" inline={true} />;
-      } else if (latestStat > MICROS_IN_SEC) {
-        resourceNumber = <YBResourceCount size={(latestStat / MICROS_IN_SEC).toFixed(4)} kind="s" inline={true} />;
-      } else if (latestStat > MICROS_IN_MS) {
-        resourceNumber = <YBResourceCount size={(latestStat / MICROS_IN_MS).toFixed(4)} kind="ms" inline={true} />;
+      let resourceNumber = <YBResourceCount size={latestStat} kind="ms" inline={true} />;
+      if (latestStat > MILLI_IN_MIN) {
+        resourceNumber = <YBResourceCount size={(latestStat / MILLI_IN_MIN).toFixed(4)} kind="min" inline={true} />;
+      } else if (latestStat > MILLI_IN_SEC) {
+        resourceNumber = <YBResourceCount size={(latestStat / MILLI_IN_SEC).toFixed(4)} kind="s" inline={true} />;
       }
       recentStatBlock = <div className="metric-block">
         <h3>Current Replication Lag</h3>
@@ -98,6 +132,7 @@ export default class ListBackups extends Component {
       </div>;
     }
 
+    // TODO: Make graph resizeable
     return (
       <div>
         <YBPanelItem
@@ -108,7 +143,7 @@ export default class ListBackups extends Component {
               </div>              
             </div>
           }
-          body={
+          body={          
            <div className="replication-content">
              {infoBlock}
               <div className="replication-content-stats">                
@@ -118,14 +153,16 @@ export default class ListBackups extends Component {
                 <div className="no-data">No data to display.</div>
               }
               {showMetrics && metrics[GRAPH_TYPE] && 
-                <div className="graph-container">
+                
+                  <div className="graph-container">
                   <MetricsPanel 
                     metricKey={METRIC_NAME}
-                    metric={metrics[GRAPH_TYPE][METRIC_NAME]}
+                    metric={aggregatedMetrics}
                     className={"metrics-panel-container"}
-                    width={1410}
-                  />
-                </div>
+                    width={this.state.graphWidth}
+                    height={540}
+                  />                
+                  </div>
               }
             </div>
           }
@@ -133,5 +170,4 @@ export default class ListBackups extends Component {
       </div>
     );
   }
-
 }

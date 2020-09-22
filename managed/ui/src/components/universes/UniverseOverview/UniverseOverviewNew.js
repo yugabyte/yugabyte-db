@@ -627,7 +627,6 @@ export default class UniverseOverviewNew extends Component {
               universeUuid={universeInfo.universeUUID}
               type={"overview"}
               origin={"universe"}
-              width={width}
               nodePrefixes={nodePrefixes}
               isKubernetesUniverse={isItKubernetesUniverse}
             />

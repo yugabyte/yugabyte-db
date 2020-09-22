@@ -201,7 +201,6 @@ class OverviewMetrics extends Component {
                     metricKey={metricKey}
                     metric={metrics[type][metricKey]}
                     className={"metrics-panel-container"}
-                    width={width}
                   />
                 }
               />
@@ -221,7 +220,6 @@ class OverviewMetrics extends Component {
                   }
                 }}
                 className={"metrics-panel-container"}
-                width={width}
               />
             }
           />);

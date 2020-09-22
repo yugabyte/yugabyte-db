@@ -54,8 +54,8 @@ export default class MetricsPanel extends Component {
       });
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
-      metric.layout.width = this.getGraphWidth(this.props.width || 1200);
-      metric.layout.height = 360;
+      metric.layout.width = this.props.width || this.getGraphWidth(this.props.containerWidth || 1200);
+      metric.layout.height = this.props.height || 360;
       metric.layout.showlegend = true;
       metric.layout.margin = {
         l: 45,
@@ -105,9 +105,9 @@ export default class MetricsPanel extends Component {
     this.plotGraph();
   }
 
-  componentDidUpdate(prevProps) {    
-    if (this.props.width !== prevProps.width) {
-      Plotly.relayout(prevProps.metricKey, {width: this.getGraphWidth(this.props.width)});
+  componentDidUpdate(prevProps) {
+    if (this.props.containerWidth !== prevProps.containerWidth || this.props.width !== prevProps.width) {
+      Plotly.relayout(prevProps.metricKey, {width: this.props.width || this.getGraphWidth(this.props.containerWidth)});
     } else {
       // All graph lines have the same x-axis, so get the first
       // and compare unix time interval
