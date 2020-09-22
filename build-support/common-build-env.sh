@@ -43,7 +43,7 @@ set_yb_src_root() {
   fi
   YB_COMPILER_WRAPPER_CC=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/cc
   YB_COMPILER_WRAPPER_CXX=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/c++
-  yb_java_project_dirs=( "$YB_SRC_ROOT/java" "$YB_SRC_ROOT/ent/java" )
+  yb_java_project_dirs=( "$YB_SRC_ROOT/java" )
 }
 
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
