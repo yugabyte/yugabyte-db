@@ -1750,8 +1750,7 @@ executeNumericItemMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 										"be applied to a numeric value",
 										jspOperationName(jsp->type)))));
 
-	datum = NumericGetDatum(jb->val.numeric);
-	datum = DirectFunctionCall1(func, datum);
+	datum = DirectFunctionCall1(func, NumericGetDatum(jb->val.numeric));
 
 	if (!jspGetNext(jsp, &next) && !found)
 		return jperOk;
@@ -2117,8 +2116,8 @@ static int
 compareNumeric(Numeric a, Numeric b)
 {
 	return DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-											 PointerGetDatum(a),
-											 PointerGetDatum(b)));
+											 NumericGetDatum(a),
+											 NumericGetDatum(b)));
 }
 
 static JsonbValue *
