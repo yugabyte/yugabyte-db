@@ -1,0 +1,33 @@
+# This workflow will triage pull requests and apply a label based on the
+# paths that are modified in the pull request.
+#
+# To use this workflow, you will need to set up a .github/labeler.yml
+# file with configuration.  For more information, see:
+# https://github.com/actions/labeler
+
+name: Label Community Request
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check for team membership
+      id: is_team_member
+      uses: jamessingleton/is-organization-member@v1
+      with:
+        organization: yugabyte
+        username: ${{ github.event.issue.user.login }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+    - uses: actions/checkout@v2
+      if: |
+        steps.is_organiztion_member.outputs.result == false
+    - name: Label issue
+      if: |
+        steps.is_organiztion_member.outputs.result == false
+      uses: actions-ecosystem/action-add-labels@v1
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        label: community/request
