@@ -48,21 +48,16 @@ public class TestYbBackup extends BaseCQLTest {
     return flagMap;
   }
 
-  public enum TableProperty {
-    TRANSACTIONAL,
-    NON_TRANSACTIONAL;
-  }
-
   public void setupTablesBeforeBackup(TableProperty tp) throws Exception {
-    final String tableProp = (tp == TableProperty.TRANSACTIONAL ?
+    final String tableProp = (tp.isTransactional() ?
         "with transactions = { 'enabled' : true };" : ";");
     session.execute("create table test_tbl " +
         "(h int, r1 int, r2 int, c int, primary key ((h), r1, r2)) " + tableProp);
 
     final String indexTrans =
         " transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'};";
-    final String withIndexProp = (tp == TableProperty.TRANSACTIONAL ? ";" : " with" + indexTrans);
-    final String andIndexProp = (tp == TableProperty.TRANSACTIONAL ? ";" : " and" + indexTrans);
+    final String withIndexProp = (tp.isTransactional() ? ";" : " with" + indexTrans);
+    final String andIndexProp = (tp.isTransactional() ? ";" : " and" + indexTrans);
     session.execute("create index i1 on test_tbl (h, r2, r1) include (c)" + withIndexProp);
     // Special case - reordering PK columns.
     session.execute("create index i2 on test_tbl (r2, r1, h)" + withIndexProp);
@@ -121,40 +116,6 @@ public class TestYbBackup extends BaseCQLTest {
 
     session.execute("insert into test_json_tbl (h, j) " +
                     "values (1, '{\"a\":{\"b\":\"b4\"},\"c\":4}');");
-
-    // Update manually only user_enforced indexes.
-    if (tp == TableProperty.NON_TRANSACTIONAL) {
-      session.execute("insert into i1 (\"C$_h\", \"C$_r2\", \"C$_r1\", \"C$_c\") " +
-                      "values (1, 3, 2, 4);");
-      session.execute("insert into i2 (\"C$_r2\", \"C$_r1\", \"C$_h\") " +
-                      "values (3, 2, 1);");
-      session.execute("insert into i3 (\"C$_r1\", \"C$_r2\", \"C$_c\", \"C$_h\") " +
-                      "values (2, 3, 4, 1);");
-
-      session.execute("insert into c2i (\"C$_c2\", \"C$_c1\") values (2, 1);");
-      session.execute("insert into c3i (\"C$_c3\", \"C$_c1\") values (3, 1);");
-      session.execute("insert into c4i (\"C$_c4\", \"C$_c1\") values (4, 1);");
-      session.execute("insert into c5i (\"C$_c5\", \"C$_c1\") values (5.5, 1);");
-      session.execute("insert into c6i (\"C$_c6\", \"C$_c1\") values (6.6, 1);");
-      session.execute("insert into c7i (\"C$_c7\", \"C$_c1\") values ('7', 1);");
-      session.execute("insert into c8i (\"C$_c8\", \"C$_c1\") values ('8', 1);");
-      session.execute("insert into c9i (\"C$_c9\", \"C$_c1\") values (true, 1);");
-      session.execute("insert into c10i (\"C$_c10\", \"C$_c1\") values ('2020-7-29', 1);");
-      session.execute("insert into c11i (\"C$_c11\", \"C$_c1\") values ('1:2:3.123456789', 1);");
-      session.execute("insert into c12i (\"C$_c12\", \"C$_c1\") values " +
-                      "('2020-7-29 13:24:56.987+01:00', 1);");
-      session.execute("insert into c13i (\"C$_c13\", \"C$_c1\") values ('127.0.0.1', 1);");
-      session.execute("insert into c14i (\"C$_c14\", \"C$_c1\") values " +
-                      "(11111111-2222-3333-4444-555555555555, 1);");
-      session.execute("insert into c15i (\"C$_c15\", \"C$_c1\") values " +
-                      "(f58ba3dc-3422-11e7-a919-92ebcb67fe33, 1);");
-      session.execute("insert into fmi (\"C$_fm\", \"C$_c1\") values ({1:'a',2:'b'}, 1);");
-      session.execute("insert into fsi (\"C$_fs\", \"C$_c1\") values ({'1.2.3.4','5.6.7.8'}, 1);");
-      session.execute("insert into fli (\"C$_fl\", \"C$_c1\") values ([1.1, 2.2], 1);");
-
-      session.execute("insert into json_idx (\"C$_j->\'J$_a\'->>\'J$_b\'\", \"C$_h\") " +
-                      "values ('b4', 1);");
-    }
   }
 
   public void updateValuesInTables(String keyspace, TableProperty tp) throws Exception {
@@ -169,41 +130,6 @@ public class TestYbBackup extends BaseCQLTest {
 
     session.execute("insert into " + keyspace + ".test_json_tbl (h, j) " +
                     "values (1, '{\"a\":{\"b\":\"b99\"},\"c\":99}');");
-
-    // Update manually only user_enforced indexes.
-    if (tp == TableProperty.NON_TRANSACTIONAL) {
-      session.execute("insert into " + keyspace + ".i1 (\"C$_h\", \"C$_r2\", \"C$_r1\", \"C$_c\")" +
-                      " values (1, 3, 2, 99);");
-      session.execute("insert into " + keyspace + ".i2 (\"C$_r2\", \"C$_r1\", \"C$_h\")" +
-                      " values (3, 2, 1);");
-      session.execute("insert into " + keyspace + ".i3 (\"C$_r1\", \"C$_r2\", \"C$_c\", \"C$_h\")" +
-                      " values (2, 3, 99, 1);");
-
-      session.execute("insert into c2i (\"C$_c2\", \"C$_c1\") values (12, 1);");
-      session.execute("insert into c3i (\"C$_c3\", \"C$_c1\") values (13, 1);");
-      session.execute("insert into c4i (\"C$_c4\", \"C$_c1\") values (14, 1);");
-      session.execute("insert into c5i (\"C$_c5\", \"C$_c1\") values (15.5, 1);");
-      session.execute("insert into c6i (\"C$_c6\", \"C$_c1\") values (16.6, 1);");
-      session.execute("insert into c7i (\"C$_c7\", \"C$_c1\") values ('17', 1);");
-      session.execute("insert into c8i (\"C$_c8\", \"C$_c1\") values ('18', 1);");
-      session.execute("insert into c9i (\"C$_c9\", \"C$_c1\") values (false, 1);");
-      session.execute("insert into c10i (\"C$_c10\", \"C$_c1\") values ('2021-7-29', 1);");
-      session.execute("insert into c11i (\"C$_c11\", \"C$_c1\") values ('11:2:3.123456789', 1);");
-      session.execute("insert into c12i (\"C$_c12\", \"C$_c1\") values " +
-                      "('2021-7-29 13:24:56.987+01:00', 1);");
-      session.execute("insert into c13i (\"C$_c13\", \"C$_c1\") values ('127.1.0.1', 1);");
-      session.execute("insert into c14i (\"C$_c14\", \"C$_c1\") values " +
-                      "(11111111-2222-3333-4444-999999999999, 1);");
-      session.execute("insert into c15i (\"C$_c15\", \"C$_c1\") values " +
-                      "(f58ba3dc-3422-11e7-a919-92ebcb67fe99, 1);");
-      session.execute("insert into fmi (\"C$_fm\", \"C$_c1\") values ({11:'a',12:'b'}, 1);");
-      session.execute("insert into fsi (\"C$_fs\", \"C$_c1\") values " +
-                      "({'11.2.3.4','15.6.7.8'}, 1);");
-      session.execute("insert into fli (\"C$_fl\", \"C$_c1\") values ([11.1, 12.2], 1);");
-
-      session.execute("insert into " + keyspace + ".json_idx " +
-                      "(\"C$_j->\'J$_a\'->>\'J$_b\'\", \"C$_h\") values ('b99', 1);");
-    }
   }
 
   public enum ValuesUpdateState {
@@ -243,13 +169,13 @@ public class TestYbBackup extends BaseCQLTest {
     assertQuery(select_stmt, "Row[1, 2, 3, " + value_c + "]");
 
     // Check unique index.
-    if (tp == TableProperty.NON_TRANSACTIONAL) {
-      runInvalidStmt("insert into " + keyspace + ".i3 (\"C$_r1\", \"C$_r2\", \"C$_c\", \"C$_h\")" +
-                     " values (2, 3, " + value_c + ", 9);",
-                     "Duplicate value disallowed by unique index");
-    } else {
+    if (tp.isTransactional()) {
       runInvalidStmt("insert into " + keyspace + ".test_tbl (h, r1, r2, c) " +
                      "values (9, 2, 3, " + value_c + ");",
+                     "Duplicate value disallowed by unique index");
+    } else {
+      runInvalidStmt("insert into " + keyspace + ".i3 (\"C$_r1\", \"C$_r2\", \"C$_c\", \"C$_h\")" +
+                     " values (2, 3, " + value_c + ", 9);",
                      "Duplicate value disallowed by unique index");
     }
 
@@ -346,21 +272,21 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLKeyspaceBackup() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(TableProperty.NON_TRANSACTIONAL, "ks2",
+    testYCQLRestoreIntoKeyspace(new TableProperty(TP_NON_TRANSACTIONAL), "ks2",
         "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
 
   @Test
   public void testYCQLKeyspaceBackup_Transactional() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(TableProperty.TRANSACTIONAL, "ks3",
+    testYCQLRestoreIntoKeyspace(new TableProperty(TP_TRANSACTIONAL), "ks3",
         "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
 
   @Test
   public void testYCQLTablesWithIndexesBackup() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLRestoreIntoKeyspace(TableProperty.NON_TRANSACTIONAL, "ks4",
+    testYCQLRestoreIntoKeyspace(new TableProperty(TP_NON_TRANSACTIONAL), "ks4",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_json_tbl");
@@ -369,7 +295,7 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLTablesWithIndexesBackup_Transactional() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-   testYCQLRestoreIntoKeyspace(TableProperty.TRANSACTIONAL, "ks5",
+   testYCQLRestoreIntoKeyspace(new TableProperty(TP_TRANSACTIONAL), "ks5",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_json_tbl");
@@ -378,21 +304,21 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLBackupRestoringIntoOriginalKeyspace() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(TableProperty.NON_TRANSACTIONAL, DEFAULT_TEST_KEYSPACE,
+    testYCQLRestoreIntoKeyspace(new TableProperty(TP_NON_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
 
   @Test
   public void testYCQLBackupRestoringIntoOriginalKeyspace_Transactional() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(TableProperty.TRANSACTIONAL, DEFAULT_TEST_KEYSPACE,
+    testYCQLRestoreIntoKeyspace(new TableProperty(TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
 
   @Test
   public void testYCQLBackupRestoringIntoOriginalTables() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLRestoreIntoKeyspace(TableProperty.NON_TRANSACTIONAL, DEFAULT_TEST_KEYSPACE,
+    testYCQLRestoreIntoKeyspace(new TableProperty(TP_NON_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_json_tbl");
@@ -401,7 +327,7 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLBackupRestoringIntoOriginalTables_Transactional() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLRestoreIntoKeyspace(TableProperty.TRANSACTIONAL, DEFAULT_TEST_KEYSPACE,
+    testYCQLRestoreIntoKeyspace(new TableProperty(TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_json_tbl");
