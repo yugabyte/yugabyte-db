@@ -3996,6 +3996,61 @@ SELECT * from cypher('expr', $$
 $$) as (result agtype);
 ERROR:  exp() unsuppoted argument agtype 1
 --
+-- sqrt()
+--
+SELECT * from cypher('expr', $$
+    RETURN sqrt(25)
+$$) as (result agtype);
+ result 
+--------
+ 5.0
+(1 row)
+
+SELECT * from cypher('expr', $$
+    RETURN sqrt(1)
+$$) as (result agtype);
+ result 
+--------
+ 1.0
+(1 row)
+
+SELECT * from cypher('expr', $$
+    RETURN sqrt(0)
+$$) as (result agtype);
+ result 
+--------
+ 0.0
+(1 row)
+
+-- should return null
+SELECT * from cypher('expr', $$
+    RETURN sqrt(-1)
+$$) as (result agtype);
+ result 
+--------
+ 
+(1 row)
+
+SELECT * from cypher('expr', $$
+    RETURN sqrt(null)
+$$) as (result agtype);
+ result 
+--------
+ 
+(1 row)
+
+-- should fail
+SELECT * from cypher('expr', $$
+    RETURN sqrt()
+$$) as (result agtype);
+ERROR:  invalid number of input parameters for sqrt()
+LINE 1: SELECT * from cypher('expr', $$
+                                      ^
+SELECT * from cypher('expr', $$
+    RETURN sqrt("1")
+$$) as (result agtype);
+ERROR:  sqrt() unsuppoted argument agtype 1
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

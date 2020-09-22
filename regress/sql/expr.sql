@@ -1713,6 +1713,33 @@ SELECT * from cypher('expr', $$
 $$) as (result agtype);
 
 --
+-- sqrt()
+--
+SELECT * from cypher('expr', $$
+    RETURN sqrt(25)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN sqrt(1)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN sqrt(0)
+$$) as (result agtype);
+-- should return null
+SELECT * from cypher('expr', $$
+    RETURN sqrt(-1)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN sqrt(null)
+$$) as (result agtype);
+-- should fail
+SELECT * from cypher('expr', $$
+    RETURN sqrt()
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN sqrt("1")
+$$) as (result agtype);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
