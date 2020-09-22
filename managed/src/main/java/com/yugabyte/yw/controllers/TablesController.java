@@ -262,7 +262,7 @@ public class TablesController extends AuthenticatedController {
           String tableUUID = table.getId().toStringUtf8();
           node.put("tableUUID", String.valueOf(getUUIDRepresentation(tableUUID)));
           node.put("isIndexTable", table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
-          Double tableSize = tableSizes.get(table.getName());
+          Double tableSize = tableSizes.get(tableUUID);
           if (tableSize != null) {
             node.put("sizeBytes", tableSize);
           }
@@ -556,17 +556,17 @@ public class TablesController extends AuthenticatedController {
   private HashMap<String, Double> queryTableSizes(String nodePrefix) {
     // Execute query and check for errors.
     ArrayList<MetricQueryResponse.Entry> values = metricQueryHelper.queryDirect(
-      "rocksdb_total_sst_file_size"
+      "sum by (table_id) (rocksdb_total_sst_file_size{node_prefix=\"" + nodePrefix + "\"})"
     );
 
    HashMap<String, Double> result = new HashMap<String, Double>();
    for (final MetricQueryResponse.Entry entry : values) {
-      String tableName = entry.labels.get("table_name");
-      if (tableName == null || tableName.isEmpty() ||
+      String tableID = entry.labels.get("table_id");
+      if (tableID == null || tableID.isEmpty() ||
           entry.values == null || entry.values.size() == 0) {
         continue;
       }
-      result.put(tableName, entry.values.get(0).getRight());
+      result.put(tableID, entry.values.get(0).getRight());
     }
     return result;
 
