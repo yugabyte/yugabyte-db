@@ -21,19 +21,19 @@ Included here are the release notes for all releases in the v2.3 latest release 
 
 {{< note title="New release versioning" >}}
 
-Starting with v2.2.0, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Revision releases, denoted by `MAJOR.ODD.REVISION` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
+Starting with v2.2, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Revision releases, denoted by `MAJOR.ODD.REVISION` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
 
 {{< /note >}}
 
 {{< note title="Upgrading from 1.3" >}}
 
-Prior to version 2.0, YSQL was still in beta. Upon release of 2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to version 2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
+Prior to v2.0, YSQL was still in beta. Upon release of v2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to v2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
 
 {{< /note >}}
 
 ## Notable features and changes
 
-Note: Content will be added as new notable features and changes are available in the patch releases of the latest release series.
+Note: Content will be added as new notable features and changes are available in the patch releases of the v2.3 latest release series.
 
 ### YSQL
 
