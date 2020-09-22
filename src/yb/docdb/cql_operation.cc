@@ -50,10 +50,20 @@ DEFINE_bool(ycql_consistent_transactional_paging, false,
             "be stale. The latter is preferable for long scans. The data returned for the first "
             "page of results is never stale regardless of this flag.");
 
+DEFINE_bool(ycql_disable_index_updating_optimization, false,
+            "If true all secondary indexes must be updated even if the update does not change "
+            "the index data.");
+TAG_FLAG(ycql_disable_index_updating_optimization, advanced);
+
 DECLARE_bool(trace_docdb_calls);
 
 namespace yb {
 namespace docdb {
+
+using std::pair;
+using std::unordered_map;
+using std::unordered_set;
+using std::vector;
 
 namespace {
 
@@ -1093,16 +1103,17 @@ QLExpressionPB* NewKeyColumn(QLWriteRequestPB* request, const IndexInfo& index, 
           : request->add_range_column_values());
 }
 
-} // namespace
-
-QLWriteRequestPB* QLWriteOperation::NewIndexRequest(const IndexInfo* index,
-                                                    const QLWriteRequestPB::QLStmtType type,
-                                                    const QLTableRow& new_row) {
-  index_requests_.emplace_back(index, QLWriteRequestPB());
-  QLWriteRequestPB* request = &index_requests_.back().second;
+QLWriteRequestPB* NewIndexRequest(
+    const IndexInfo& index,
+    QLWriteRequestPB::QLStmtType type,
+    vector<pair<const IndexInfo*, QLWriteRequestPB>>* index_requests) {
+  index_requests->emplace_back(&index, QLWriteRequestPB());
+  QLWriteRequestPB* const request = &index_requests->back().second;
   request->set_type(type);
   return request;
 }
+
+} // namespace
 
 Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLTableRow& new_row) {
   // Prepare the write requests to update the indexes. There should be at most 2 requests for each
@@ -1116,19 +1127,15 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
     if (IsRowDeleted(existing_row, new_row)) {
       index_key_changed = true;
     } else {
-      QLWriteRequestPB* index_request =
-          (index->HasWritePermission() ? NewIndexRequest(index,
-                                                         QLWriteRequestPB::QL_STMT_INSERT,
-                                                         new_row)
-                                       : nullptr);
-      RETURN_NOT_OK(PrepareIndexWriteAndCheckIfIndexKeyChanged(
-          this, existing_row, new_row, index, index_request, &index_key_changed));
+      VERIFY_RESULT(CreateAndSetupIndexInsertRequest(
+          this, index->HasWritePermission(), existing_row, new_row, index,
+          &index_requests_, &index_key_changed));
     }
 
     // If the index key is changed, delete the current key.
     if (index_key_changed && index->HasDeletePermission()) {
-      QLWriteRequestPB* index_request =
-          NewIndexRequest(index, QLWriteRequestPB::QL_STMT_DELETE, new_row);
+      QLWriteRequestPB* const index_request =
+          NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_DELETE, &index_requests_);
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
         const IndexInfo::IndexColumn& index_column = index->column(idx);
         QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
@@ -1153,15 +1160,22 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   return Status::OK();
 }
 
-Status PrepareIndexWriteAndCheckIfIndexKeyChanged(
-    QLExprExecutor* expr_executor, const QLTableRow& existing_row, const QLTableRow& new_row,
-    const IndexInfo* index, QLWriteRequestPB* index_request, bool* has_index_key_changed) {
+Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
+    QLExprExecutor* expr_executor,
+    bool index_has_write_permission,
+    const QLTableRow& existing_row,
+    const QLTableRow& new_row,
+    const IndexInfo* index,
+    vector<pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    bool* has_index_key_changed) {
   bool index_key_changed = false;
+  bool update_this_index = false;
+  unordered_map<size_t, QLValuePB> values;
+
   // Prepare the new index key.
   for (size_t idx = 0; idx < index->key_column_count(); idx++) {
     const IndexInfo::IndexColumn& index_column = index->column(idx);
-    QLExpressionPB *key_column =
-        (index_request ? NewKeyColumn(index_request, *index, idx) : nullptr);
+    bool column_changed = true;
 
     // Column_id should be used without executing "colexpr" for the following cases (we want
     // to avoid executing colexpr as it is less efficient).
@@ -1174,15 +1188,17 @@ Status PrepareIndexWriteAndCheckIfIndexKeyChanged(
         // For each column in the index key, if there is a new value, see if the value is
         // changed from the current value. Else, use the current value.
         if (result) {
-          if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
+          if (new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
+            column_changed = false;
+          } else {
             index_key_changed = true;
           }
         } else {
           result = existing_row.GetValue(index_column.indexed_column_id);
         }
       }
-      if (result && key_column) {
-        key_column->mutable_value()->CopyFrom(*result);
+      if (result) {
+        values[idx] = std::move(*result);
       }
     } else {
       QLExprResult result;
@@ -1198,7 +1214,9 @@ Status PrepareIndexWriteAndCheckIfIndexKeyChanged(
           QLExprResult existing_result;
           RETURN_NOT_OK(expr_executor->EvalExpr(
               index_column.colexpr, existing_row, existing_result.Writer()));
-          if (result.Value() != existing_result.Value()) {
+          if (result.Value() == existing_result.Value()) {
+            column_changed = false;
+          } else {
             index_key_changed = true;
           }
         } else {
@@ -1206,9 +1224,12 @@ Status PrepareIndexWriteAndCheckIfIndexKeyChanged(
               index_column.colexpr, existing_row, result.Writer()));
         }
       }
-      if (key_column) {
-        result.MoveTo(key_column->mutable_value());
-      }
+
+      result.MoveTo(&values[idx]);
+    }
+
+    if (column_changed) {
+      update_this_index = true;
     }
   }
 
@@ -1216,22 +1237,60 @@ Status PrepareIndexWriteAndCheckIfIndexKeyChanged(
   for (size_t idx = index->key_column_count(); idx < index->columns().size(); idx++) {
     const IndexInfo::IndexColumn& index_column = index->column(idx);
     auto result = new_row.GetValue(index_column.indexed_column_id);
+    bool column_changed = true;
+
     // If the index value is changed and there is no new covering column value set, use the
     // current value.
-    if (index_key_changed && !result) {
-      result = existing_row.GetValue(index_column.indexed_column_id);
+    if (index_key_changed) {
+      if (!result) {
+        result = existing_row.GetValue(index_column.indexed_column_id);
+      }
+    } else if (!FLAGS_ycql_disable_index_updating_optimization &&
+        result && new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
+      column_changed = false;
     }
-    if (result && index_request) {
-      QLColumnValuePB* covering_column = index_request->add_column_values();
-      covering_column->set_column_id(index_column.column_id);
-      covering_column->mutable_expr()->mutable_value()->CopyFrom(*result);
+    if (result) {
+      values[idx] = std::move(*result);
+    }
+
+    if (column_changed) {
+      update_this_index = true;
     }
   }
 
   if (has_index_key_changed) {
     *has_index_key_changed = index_key_changed;
   }
-  return Status::OK();
+
+  if (index_has_write_permission &&
+      (update_this_index || FLAGS_ycql_disable_index_updating_optimization)) {
+    QLWriteRequestPB* const index_request =
+        NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_INSERT, index_requests);
+
+    // Setup the key columns.
+    for (size_t idx = 0; idx < index->key_column_count(); idx++) {
+      QLExpressionPB* const key_column = NewKeyColumn(index_request, *index, idx);
+      auto it = values.find(idx);
+      if (it != values.end()) {
+        *key_column->mutable_value() = std::move(it->second);
+      }
+    }
+
+    // Setup the covering columns.
+    for (size_t idx = index->key_column_count(); idx < index->columns().size(); idx++) {
+      auto it = values.find(idx);
+      if (it != values.end()) {
+        const IndexInfo::IndexColumn& index_column = index->column(idx);
+        QLColumnValuePB* const covering_column = index_request->add_column_values();
+        covering_column->set_column_id(index_column.column_id);
+        *covering_column->mutable_expr()->mutable_value() = std::move(it->second);
+      }
+    }
+
+    return index_request;
+  }
+
+  return nullptr; // The index updating was skipped.
 }
 
 Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
