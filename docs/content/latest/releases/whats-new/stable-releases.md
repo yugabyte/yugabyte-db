@@ -1,9 +1,9 @@
 ---
-title: What's new in the recommended v2.2 stable release series
-headerTitle: What's new in the recommended v2.2 stable release series
+title: What's new in the current v2.2 stable release series
+headerTitle: What's new in the current v2.2 stable release series
 linkTitle: 2.2 (stable)
-description: Enhancements, changes, and resolved issues in the recommended stable release series.
-headcontent: Features, enhancements, and resolved issues in the recommended stable release series.
+description: Enhancements, changes, and resolved issues in the current stable release series, recommended for production deployments.
+headcontent: Features, enhancements, and resolved issues in the current stable release series, recommended for production deployments.
 image: /images/section_icons/quick_start/install.png
 aliases:
   - /latest/releases/
@@ -17,7 +17,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Included here are the notable new features and enhancements and the release notes for all releases in the recommended v2.2 stable release series.
+Included here are the notable new features and enhancements and the release notes for all releases in the current v2.2 stable release series.
 
 {{< note title="New release versioning" >}}
 
@@ -28,14 +28,14 @@ For more information, see [Supported and planned releases](../../releases-overvi
 
 {{< note title="Upgrading from 1.3" >}}
 
-Prior to version 2.0, YSQL was still in beta. Upon release of 2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to version 2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
+Prior to v2.0, YSQL was still in beta. Upon release of v2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to v2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
 
 {{< /note >}}
 
 ---
 ## Notable features and enhancements
 
-Here is an overview of all notable features and enhancements added to the `2.2` stable release series. For features added in specific releases, see [Release notes](#release-notes) below.
+Here is an overview of all notable features and enhancements added to the current v2.2 stable release series, recommended for production deployments. For features added in specific releases, see [Release notes](#release-notes) below.
 
 ### YSQL
 
