@@ -75,6 +75,10 @@ class ScheduleDisplayItem extends Component {
       tableDetails = (schedule.taskParams && schedule.taskParams.tableName) || 'N/A';
     }
 
+    const retentionTime = !schedule.taskParams.timeBeforeDelete || schedule.taskParams.timeBeforeDelete === 0 ?
+      'Unlimited' :
+      moment.duration(schedule.taskParams.timeBeforeDelete).humanize();
+
     return (
       <Col xs={12} sm={6} md={6} lg={4}>
         <div className="schedule-display-item-container">
@@ -115,6 +119,9 @@ class ScheduleDisplayItem extends Component {
             </DescriptionItem>
             <DescriptionItem title={"Table"}>
               <span>{tableDetails}</span>
+            </DescriptionItem>
+            <DescriptionItem title={"Retention Policy"}>
+              <span>{retentionTime}</span>
             </DescriptionItem>
           </div>
         </div>

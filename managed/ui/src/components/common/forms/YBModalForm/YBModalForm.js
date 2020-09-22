@@ -22,6 +22,7 @@ export default class YBModalForm extends Component {
         <Formik
           initialValues={this.props.initialValues}
           validationSchema={this.props.validationSchema}
+          validate={this.props.validate}
           onSubmit={(values, actions) => {
             this.props.onFormSubmit(values, actions);
           }}
