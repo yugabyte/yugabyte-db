@@ -227,8 +227,10 @@ class RetryableRequests::Impl {
 
     if (data.request_id() < client_retryable_requests.min_running_request_id) {
       round->NotifyReplicationFinished(
-          STATUS_FORMAT(
-              Expired, "Request id $0 is less than min running $1", data.request_id(),
+          STATUS_EC_FORMAT(
+              Expired,
+              MinRunningRequestIdStatusData(client_retryable_requests.min_running_request_id),
+              "Request id $0 is less than min running $1", data.request_id(),
               client_retryable_requests.min_running_request_id),
           round->bound_term(), nullptr /* applied_op_ids */);
       return false;
@@ -381,6 +383,14 @@ class RetryableRequests::Impl {
       LOG_WITH_PREFIX(INFO) << "Replicated: " << yb::ToString(p.second.replicated);
     }
     return result;
+  }
+
+  Result<RetryableRequestId> MinRunningRequestId(const ClientId& client_id) const {
+    const auto it = clients_.find(client_id);
+    if (it == clients_.end()) {
+      return STATUS_FORMAT(NotFound, "Client requests data not found for client $0", client_id);
+    }
+    return it->second.min_running_request_id;
   }
 
  private:
@@ -576,9 +586,19 @@ RetryableRequestsCounts RetryableRequests::TEST_Counts() {
   return impl_->TEST_Counts();
 }
 
+Result<RetryableRequestId> RetryableRequests::MinRunningRequestId(
+    const ClientId& client_id) const {
+  return impl_->MinRunningRequestId(client_id);
+}
+
 void RetryableRequests::SetMetricEntity(const scoped_refptr<MetricEntity>& metric_entity) {
   impl_->SetMetricEntity(metric_entity);
 }
+
+const std::string kMinRunningRequestIdCategoryName = "min running request ID";
+
+StatusCategoryRegisterer min_running_request_id_category_registerer(
+    StatusCategoryDescription::Make<MinRunningRequestIdTag>(&kMinRunningRequestIdCategoryName));
 
 } // namespace consensus
 } // namespace yb

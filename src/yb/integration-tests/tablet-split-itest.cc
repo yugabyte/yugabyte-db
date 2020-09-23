@@ -24,6 +24,7 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_util.h"
 
+#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/catalog_manager.h"
@@ -47,6 +48,7 @@
 
 using namespace std::literals;  // NOLINT
 
+DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_bool(TEST_do_not_start_election_test_only);
@@ -106,6 +108,10 @@ class TabletSplitITest : public client::TransactionTestBase {
 
   // Make sure table contains only keys 1...num_keys without gaps.
   void CheckTableKeysInRange(const size_t num_keys);
+
+  // Tests appropriate client requests structure update at YBClient side.
+  // split_depth specifies how deep should we split original tablet until trying to write again.
+  void SplitClientRequestsIds(int split_depth);
 
  protected:
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
@@ -170,7 +176,7 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> TabletSplitITest::WriteR
   auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
   auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
 
-  LOG(INFO) << "Writing data...";
+  LOG(INFO) << "Writing " << num_rows << " rows...";
 
   auto txn = CreateTransaction();
   auto session = CreateSession();
@@ -187,7 +193,7 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> TabletSplitITest::WriteR
     LOG(INFO) << "Committed: " << txn->id();
   }
 
-  LOG(INFO) << "Data has been written";
+  LOG(INFO) << num_rows << " rows has been written";
   LOG(INFO) << "min_hash_code = " << min_hash_code;
   LOG(INFO) << "max_hash_code = " << max_hash_code;
   return std::make_pair(min_hash_code, max_hash_code);
@@ -534,6 +540,22 @@ void DumpWorkloadStats(const TestWorkload& workload) {
   LOG(INFO) << "Rows read try again: " << workload.rows_read_try_again();
 }
 
+CHECKED_STATUS SplitTablet(master::CatalogManager* catalog_mgr, const tablet::Tablet& tablet) {
+  const auto& tablet_id = tablet.tablet_id();
+  LOG(INFO) << "Tablet: " << tablet_id;
+  LOG(INFO) << "Number of SST files: " << tablet.TEST_db()->GetCurrentVersionNumSSTFiles();
+  std::string properties;
+  tablet.TEST_db()->GetProperty(rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
+  LOG(INFO) << "DB properties: " << properties;
+
+  const auto encoded_split_key = VERIFY_RESULT(tablet.GetEncodedMiddleSplitKey());
+  const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(encoded_split_key)).value();
+  LOG(INFO) << "Middle hash key: " << doc_key_hash;
+  const auto partition_split_key = PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash);
+
+  return catalog_mgr->SplitTablet(tablet_id, encoded_split_key, partition_split_key);
+}
+
 } // namespace
 
 TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
@@ -554,9 +576,11 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
   workload.set_read_only_written_keys(true);
   workload.Setup();
 
+  const auto test_table_id = ASSERT_RESULT(client_->GetYBTableInfo(client::kTableName)).table_id;
+
   std::vector<tablet::TabletPeerPtr> peers;
-  AssertLoggedWaitFor([this, &peers] {
-    peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  AssertLoggedWaitFor([&] {
+    peers = ListTableTabletLeadersPeers(cluster_.get(), test_table_id);
     return peers.size() == kNumTablets;
   }, 60s, "Waiting for leaders ...");
 
@@ -574,26 +598,16 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
   DumpWorkloadStats(workload);
 
   auto& leader_master = *ASSERT_NOTNULL(cluster_->leader_mini_master()->master());
-  auto& catalog_mgr = *ASSERT_NOTNULL(leader_master.catalog_manager());
+  auto* catalog_mgr = ASSERT_NOTNULL(leader_master.catalog_manager());
 
   for (const auto& peer : peers) {
     const auto& source_tablet = *ASSERT_NOTNULL(peer->tablet());
-    const auto& source_tablet_id = source_tablet.tablet_id();
-
-    LOG(INFO) << "Tablet: " << source_tablet_id;
-    LOG(INFO) << "Number of SST files: " << source_tablet.TEST_db()->GetCurrentVersionNumSSTFiles();
-
-    const auto encoded_split_key = ASSERT_RESULT(source_tablet.GetEncodedMiddleSplitKey());
-    const auto doc_key_hash = ASSERT_RESULT(docdb::DecodeDocKeyHash(encoded_split_key)).value();
-    LOG(INFO) << "Middle hash key: " << doc_key_hash;
-    const auto partition_split_key = PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash);
-
-    ASSERT_OK(catalog_mgr.SplitTablet(source_tablet_id, encoded_split_key, partition_split_key));
+    ASSERT_OK(SplitTablet(catalog_mgr, source_tablet));
   }
 
   ASSERT_NO_FATALS(WaitForTabletSplitCompletion(kNumTablets, kNumTablets));
 
-  DumpTableLocations(&catalog_mgr, client::kTableName);
+  DumpTableLocations(catalog_mgr, client::kTableName);
 
   // Generate some more read/write traffic after tablets are split and after that we check data
   // for consistency and that failures rates are acceptable.
@@ -621,6 +635,55 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
   // TODO(tsplit): Add more splits during writes, so we have tablets with split_depth > 1.
 
   ASSERT_OK(cluster_->RestartSync());
+}
+
+void TabletSplitITest::SplitClientRequestsIds(int split_depth) {
+  // Set data block size low enough, so we have enough data blocks for middle key
+  // detection to work correctly.
+  FLAGS_db_block_size_bytes = 1_KB;
+  const auto kNumRows = 50 * (1 << split_depth);
+
+  SetNumTablets(1);
+  CreateTable();
+
+  ASSERT_OK(WriteRows(kNumRows));
+
+  auto rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table_));
+  ASSERT_EQ(rows_count, kNumRows);
+
+  auto& leader_master = *ASSERT_NOTNULL(cluster_->leader_mini_master()->master());
+  auto* catalog_mgr = leader_master.catalog_manager();
+
+  for (int i = 0; i < split_depth; ++i) {
+    auto peers = ListTableTabletLeadersPeers(cluster_.get(), table_->id());
+    ASSERT_EQ(peers.size(), 1 << i);
+    for (const auto& peer : peers) {
+      ASSERT_OK(peer->tablet()->Flush(tablet::FlushMode::kSync));
+      peer->tablet()->ForceRocksDBCompactInTest();
+      ASSERT_OK(SplitTablet(catalog_mgr, *peer->tablet()));
+    }
+
+    ASSERT_NO_FATALS(WaitForTabletSplitCompletion());
+  }
+
+  Status s;
+  ASSERT_OK(WaitFor([&] {
+    s = ResultToStatus(WriteRows(1));
+    return !s.IsTryAgain();
+  }, 60s, "Waiting for successful write"));
+  ASSERT_OK(s);
+}
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/5415.
+// Client knows about split parent for final tablets.
+TEST_F(TabletSplitITest, SplitClientRequestsIdsDepth1) {
+  SplitClientRequestsIds(1);
+}
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/5415.
+// Client doesn't know about split parent for final tablets.
+TEST_F(TabletSplitITest, SplitClientRequestsIdsDepth2) {
+  SplitClientRequestsIds(2);
 }
 
 namespace {

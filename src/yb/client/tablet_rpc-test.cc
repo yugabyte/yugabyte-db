@@ -72,7 +72,7 @@ TEST_F(TabletRpcTest, TabletInvokerSelectTabletServerRace) {
   Partition partition;
   Partition::FromPB(tablet_locations.partition(), &partition);
   internal::RemoteTabletPtr remote_tablet = new internal::RemoteTablet(
-      tablet_locations.tablet_id(), partition, 0 /* split_depth */);
+      tablet_locations.tablet_id(), partition, 0 /* split_depth */, "" /* split_parent_id */);
 
   std::atomic<bool> stop_requested{false};
   std::thread replicas_refresher(

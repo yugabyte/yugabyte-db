@@ -699,6 +699,9 @@ class YBClient {
       const TabletId& tablet_id);
   void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
 
+  void MaybeUpdateMinRunningRequestId(
+      const TabletId& tablet_id, RetryableRequestId min_running_request_id);
+
   void Shutdown();
 
  private:
