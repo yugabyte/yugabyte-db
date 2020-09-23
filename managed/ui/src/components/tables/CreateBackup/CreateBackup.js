@@ -70,7 +70,7 @@ export default class CreateBackup extends Component {
         "schedulingFrequency": isEmptyString(values.schedulingFrequency) ? null : values.schedulingFrequency,
         "cronExpression": isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
         "parallelism": values.parallelism,
-        "timeBeforeDelete": values.timeBeforeDelete * 60 * 1000,
+        "timeBeforeDelete": values.timeBeforeDelete * 24 * 60 * 60 * 1000,
         "actionType": "CREATE"
       };
       if (isDefinedNotNull(values.tableKeyspace) && values.tableKeyspace.value === "allkeyspaces") {
