@@ -354,6 +354,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
   public static void tearDownAfterClass() throws Exception {
     LOG.info("BaseMiniClusterTest.tearDownAfterClass is running");
     destroyMiniCluster();
+    LOG.info("BaseMiniClusterTest.tearDownAfterClass completed");
   }
 
 }
