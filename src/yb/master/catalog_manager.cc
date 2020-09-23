@@ -1468,17 +1468,65 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   return CheckIfNoLongerLeaderAndSetupError(s, resp);
 }
 
-Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) {
-  // TODO(bogdan): add the actual subset rules, instead of just erroring out as not supported.
+Result<ReplicationInfoPB> CatalogManager::ResolveReplicationInfo(
+  const ReplicationInfoPB& table_replication_info) {
+
+  if (IsReplicationInfoSet(table_replication_info)) {
+      // The table has custom replication info set for it, return it if valid.
+      RETURN_NOT_OK(ValidateTableReplicationInfo(table_replication_info));
+      return table_replication_info;
+  }
+
+  // Table level replication info not set. Return cluster level
+  // replication info.
+  auto l = cluster_config_->LockForRead();
+  return l->data().pb.replication_info();
+}
+
+bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
   const auto& live_placement_info = replication_info.live_replicas();
   if (!(live_placement_info.placement_blocks().empty() &&
         live_placement_info.num_replicas() <= 0 &&
         live_placement_info.placement_uuid().empty()) ||
       !replication_info.read_replicas().empty() ||
       !replication_info.affinitized_leaders().empty()) {
-    return STATUS(
-        InvalidArgument,
-        "Unsupported: cannot set table level replication info yet.");
+
+      return true;
+  }
+  return false;
+}
+
+Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) {
+  if (!IsReplicationInfoSet(replication_info)) {
+    return STATUS(InvalidArgument, "No replication info set.");
+  }
+  // We don't support setting any other fields other than live replica placements for now.
+  if (!replication_info.read_replicas().empty() ||
+      !replication_info.affinitized_leaders().empty()) {
+
+      return STATUS(InvalidArgument, "Only live placement info can be set for table "
+          "level replication info.");
+  }
+  // Today we support setting table level replication info only in clusters where read replica
+  // placements is not set. Return error if the cluster has read replica placements set.
+  auto l = cluster_config_->LockForRead();
+  const ReplicationInfoPB& cluster_replication_info = l->data().pb.replication_info();
+  if (!cluster_replication_info.read_replicas().empty() ||
+      !cluster_replication_info.affinitized_leaders().empty()) {
+
+      return STATUS(InvalidArgument, "Setting table level replication info is not supported "
+          "for clusters with read replica placements");
+  }
+  // If the replication info has placement_uuid set, verify that it matches the cluster
+  // placement_uuid.
+  if (replication_info.live_replicas().placement_uuid().empty()) {
+    return Status::OK();
+  }
+  if (replication_info.live_replicas().placement_uuid() !=
+      cluster_replication_info.live_replicas().placement_uuid()) {
+
+      return STATUS(InvalidArgument, "Placement uuid for table level replication info "
+          "must match that of the cluster's live placement info.");
   }
   return Status::OK();
 }
@@ -2130,12 +2178,17 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  // Get cluster level placement info.
-  ReplicationInfoPB replication_info;
-  {
-    auto l = cluster_config_->LockForRead();
-    replication_info = l->data().pb.replication_info();
+  // Verify that custom placement policy has not been specified for colocated table.
+  if (colocated && IsReplicationInfoSet(req.replication_info())) {
+    Status s = STATUS(InvalidArgument, "Custom placement policy should not be set for "
+      "colocated tables");
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
+
+  // Get placement info.
+  const ReplicationInfoPB& replication_info = VERIFY_RESULT(
+  ResolveReplicationInfo(req.replication_info()));
+
   // Calculate number of tablets to be used.
   int num_tablets = req.schema().table_properties().num_tablets();
   if (num_tablets <= 0) {
@@ -2194,12 +2247,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     } else {
       DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid partition method"));
     }
-  }
-
-  // Validate the table placement rules are a subset of the cluster ones.
-  s = ValidateTableReplicationInfo(req.replication_info());
-  if (PREDICT_FALSE(!s.ok())) {
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
   }
 
   // For index table, populate the index info.
@@ -2919,7 +2966,9 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   metadata->set_namespace_name(namespace_name);
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
-  // TODO(bogdan): add back in replication_info once we allow overrides!
+  if (req.has_replication_info()) {
+    metadata->mutable_replication_info()->CopyFrom(req.replication_info());
+  }
   // Use the Schema object passed in, since it has the column IDs already assigned,
   // whereas the user request PB does not.
   SchemaToPB(schema, metadata->mutable_schema());
@@ -3827,6 +3876,22 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     has_changes = true;
   }
 
+  // Check if there has been any changes to the placement policies for this table.
+  if (req->has_replication_info()) {
+    // If this is a colocated table, it does not make sense to set placement
+    // policy for this table, as the tablet associated with it is shared by
+    // multiple tables.
+    if (table->colocated()) {
+      const Status s = STATUS(InvalidArgument,
+          "Placement policy cannot be altered for a colocated table");
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+    }
+    // Validate table replication info.
+    RETURN_NOT_OK(ValidateTableReplicationInfo(req->replication_info()));
+    table_pb.mutable_replication_info()->CopyFrom(req->replication_info());
+    has_changes = true;
+  }
+
   // TODO(hector): Simplify the AlterSchema workflow to avoid doing the same checks on every layer
   // this request goes through: https://github.com/YugaByte/yugabyte-db/issues/1882.
   if (req->has_wal_retention_secs()) {
@@ -4045,7 +4110,9 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     VLOG(1) << " Returning pb.schema() ";
   }
   resp->mutable_partition_schema()->CopyFrom(l->data().pb.partition_schema());
-  // TODO(bogdan): add back in replication_info once we allow overrides!
+  if (IsReplicationInfoSet(l->data().pb.replication_info())) {
+    resp->mutable_replication_info()->CopyFrom(l->data().pb.replication_info());
+  }
   resp->set_create_table_done(!table->IsCreateInProgress());
   resp->set_table_type(table->metadata().state().pb.table_type());
   resp->mutable_identifier()->set_table_name(l->data().pb.name());
@@ -7002,15 +7069,8 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
         tablet->tablet_id());
   }
 
-  // Validate that we do not have placement blocks in both cluster and table data.
-  RETURN_NOT_OK(ValidateTableReplicationInfo(table_guard->data().pb.replication_info()));
-
-  // Default to the cluster placement object.
-  ReplicationInfoPB replication_info;
-  {
-    auto l = cluster_config_->LockForRead();
-    replication_info = l->data().pb.replication_info();
-  }
+  const ReplicationInfoPB& replication_info = VERIFY_RESULT(ResolveReplicationInfo(
+    table_guard->data().pb.replication_info()));
 
   // Select the set of replicas for the tablet.
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
@@ -7019,9 +7079,6 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   cstate->set_current_term(kMinimumTerm);
   consensus::RaftConfigPB *config = cstate->mutable_config();
   config->set_opid_index(consensus::kInvalidOpIdIndex);
-
-  // TODO: we do this defaulting to cluster if no table data in two places, should refactor and
-  // have a centralized getter, that will ultimately do the subsetting as well.
 
   Status s = HandlePlacementUsingReplicationInfo(replication_info, ts_descs, config);
   if (!s.ok()) {
