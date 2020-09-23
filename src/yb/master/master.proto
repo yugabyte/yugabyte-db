@@ -130,6 +130,9 @@ message MasterErrorPB {
     LOAD_BALANCER_RECENTLY_ACTIVE = 33;
 
     INTERNAL_ERROR = 34;
+
+    // Client set some fields in the table replication info incorrectly.
+    INVALID_TABLE_REPLICATION_INFO = 35;
   }
 
   // The error code.
@@ -1066,6 +1069,9 @@ message AlterTableRequestPB {
   // request.
   // This is useful to trigger index permissions update.
   optional bool force_send_alter_request = 7 [default = false];
+
+  // Replication information for this table.
+  optional ReplicationInfoPB replication_info = 8;
 }
 
 message AlterTableResponsePB {
