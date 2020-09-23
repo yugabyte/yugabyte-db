@@ -44,6 +44,7 @@
 #include "utils/resowner.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 /*  YB includes. */
 #include "pg_yb_utils.h"
@@ -1816,6 +1817,33 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	{
 		seqform->seqcache = 1;
 	}
+
+	Datum cacheOptionOrLastCache = Int64GetDatumFast(seqform->seqcache);
+	Datum cacheFlag = Int64GetDatumFast(YBCGetSequenceCacheMinval());
+	Datum computedCacheValue = (cacheOptionOrLastCache > cacheFlag) ? cacheOptionOrLastCache : cacheFlag;
+	Datum totalElements = labs((seqform->seqmax-seqform->seqmin) / seqform->seqincrement);
+
+	if (cache_value != NULL && cacheOptionOrLastCache < cacheFlag)
+		ereport(INFO,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Overriding cache option with cache flag or previous cache value."),
+				 errhint("Cache option cannot be set lower than "
+						 "cache flag or previous cache value.")));
+
+	if (totalElements < computedCacheValue)
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Overriding cache size to be less than total sequence elements."),
+				 errhint("Cache size cannot be set equal or larger than "
+				 		 "total sequence elements.")));
+
+	/*
+	 * Today, nextval() query aborts once cached value is reached
+	 * in cyclic sequence where cache size >= total elements in the sequence (#5869).
+	 * Until long term solution is found, computed cache value will only be used
+	 * when its value is less than the total sequence elements available.
+	 */
+	seqform->seqcache = (totalElements >= computedCacheValue) ? computedCacheValue : totalElements;
 }
 
 /*

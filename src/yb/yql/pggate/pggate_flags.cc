@@ -79,6 +79,9 @@ DEFINE_bool(ysql_enable_update_batching, true,
 DEFINE_bool(ysql_suppress_unsupported_error, false,
             "Suppress ERROR on use of unsupported SQL statement and use WARNING instead");
 
+DEFINE_int32(ysql_sequence_cache_minval, 100,
+             "Set how many sequence numbers to be preallocated in cache.");
+
 // Top-level flag to enable all YSQL beta features.
 DEFINE_bool(ysql_beta_features, false,
             "Whether to enable all ysql beta features");

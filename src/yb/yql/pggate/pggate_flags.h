@@ -33,6 +33,7 @@ DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
 DECLARE_int32(ysql_output_buffer_size);
 DECLARE_int32(ysql_select_parallelism);
 DECLARE_bool(ysql_enable_update_batching);
+DECLARE_int32(ysql_sequence_cache_minval);
 
 DECLARE_bool(ysql_suppress_unsupported_error);
 
