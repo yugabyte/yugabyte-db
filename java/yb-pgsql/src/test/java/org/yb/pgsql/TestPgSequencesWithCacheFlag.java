@@ -26,22 +26,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgSequences extends BasePgSQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(TestPgSequences.class);
+public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestPgSequencesWithCacheFlag.class);
 
-  private static final int TURN_OFF_SEQUENCE_CACHE_FLAG = 0;
-
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_sequence_cache_minval", Integer.toString(TURN_OFF_SEQUENCE_CACHE_FLAG));
-    return flagMap;
-  }
+  private static final int DEFAULT_SEQUENCE_CACHE_FLAG_VALUE = 100;
 
   @After
   public void deleteSequences() throws Exception {
@@ -70,7 +62,7 @@ public class TestPgSequences extends BasePgSQLTest {
         Statement statement = connection2.createStatement()) {
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
-      assertEquals(2, rs.getInt("nextval"));
+      assertEquals(DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 1, rs.getInt("nextval"));
     }
   }
 
@@ -116,7 +108,7 @@ public class TestPgSequences extends BasePgSQLTest {
   }
 
   @Test
-  public void testSequencesWithCacheAndIncrement() throws Exception {
+  public void testSequencesWithLowerThanDefaultCacheAndIncrement() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CACHE 50 INCREMENT 3");
       for (int i = 1; i <= 21; i+=3) {
@@ -130,9 +122,31 @@ public class TestPgSequences extends BasePgSQLTest {
         Statement statement = connection2.createStatement()) {
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
-      // The previous session should have allocated 50 values: 1, 4, 7, 10 ... 145, 148. So the next
-      // value should be 151.
-      assertEquals(151, rs.getInt("nextval"));
+      // The previous session should have allocated 100 values: 1, 4, 7, 10 ... 295, 298.
+      // So the next value should be 301.
+      assertEquals(301, rs.getInt("nextval"));
+    }
+  }
+
+  @Test
+  public void testSequencesWithHigherThanDefaultCacheAndIncrement() throws Exception {
+    try (Statement statement = connection.createStatement();
+        Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+        Statement statement2 = connection2.createStatement()) {
+
+      statement.execute("CREATE SEQUENCE s1 CACHE 150 INCREMENT 3");
+
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getInt("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", 448);
+
+      // The previous session should have allocated 150 values: 1, 4, 7, 10 ... 445, 448.
+      // So the next value should be 451.
+      rs = statement2.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(451, rs.getInt("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", 898);
     }
   }
 
@@ -478,7 +492,7 @@ public class TestPgSequences extends BasePgSQLTest {
       statement.execute("SELECT nextval('s1')");
       ResultSet rs = statement.executeQuery("SELECT currval('s1')");
       assertTrue(rs.next());
-      assertEquals(2, rs.getLong("currval"));
+      assertEquals(DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 1, rs.getLong("currval"));
     }
   }
 
@@ -766,7 +780,7 @@ public class TestPgSequences extends BasePgSQLTest {
   @Test
   public void testNextValAsDefaultValueInTable() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 CACHE 20");
+      statement.execute("CREATE SEQUENCE s1 CACHE 120");
       statement.execute("CREATE TABLE t(k int NOT NULL DEFAULT nextval('s1'), v int)");
       for (int k = 1; k <= 10; k++) {
         statement.execute("INSERT INTO t(v) VALUES (10)");
@@ -777,8 +791,7 @@ public class TestPgSequences extends BasePgSQLTest {
 
     try (Connection connection2 = getConnectionBuilder().connect();
         Statement statement = connection2.createStatement()) {
-      // Because of our current implementation, the first value is 22 for now instead of 21.
-      for (int k = 21; k <= 30; k++) {
+      for (int k = 121; k <= 130; k++) {
         statement.execute("INSERT INTO t(v) VALUES (10)");
         ResultSet rs = statement.executeQuery("SELECT * FROM t WHERE k = " + k);
         assertTrue(rs.next());
@@ -879,37 +892,59 @@ public class TestPgSequences extends BasePgSQLTest {
       // -------------------------------------------------------------------------------------------
       // Test INCREMENT option.
       // -------------------------------------------------------------------------------------------
-      statement.execute("ALTER SEQUENCE s1 INCREMENT 100");
+      statement.execute("ALTER SEQUENCE s1 INCREMENT 10");
 
       rs = ExecuteQueryWithRetry(statement2, "SELECT nextval('s1')");
       assertTrue(rs.next());
-      assertEquals(101, rs.getLong("nextval"));
+      int nextConnection2ExpectedValue = DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 10;
+      assertEquals(nextConnection2ExpectedValue, rs.getLong("nextval"));
+      nextConnection2ExpectedValue += 10;
 
       // -------------------------------------------------------------------------------------------
       // Test CACHE option.
       // -------------------------------------------------------------------------------------------
-      statement.execute("ALTER SEQUENCE s1 CACHE 5");
-      rs = ExecuteQueryWithRetry(statement, "SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(201, rs.getLong("nextval"));
+      statement.execute("ALTER SEQUENCE s1 CACHE " + (DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 20));
+      // CACHE is 120 elements. This request should have cached: 1110, 1120,.., 2290, 2300.
+      int twoConnectionsExpectedValue =
+          // inital cache size consumed by line 888
+          DEFAULT_SEQUENCE_CACHE_FLAG_VALUE +
+          // cache size x increment by consumed by line 897
+          (DEFAULT_SEQUENCE_CACHE_FLAG_VALUE * 10) +
+          // increment by
+          10;
+      for (int j = 1; j <= 120; j++) {
+        rs = ExecuteQueryWithRetry(statement, "SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(twoConnectionsExpectedValue, rs.getLong("nextval"));
+        twoConnectionsExpectedValue += 10;
+      }
 
+      // Consume the rest of the numbers in the cache: 120, 130, 140,.., 1090, 1100.
+      for (int i = 0; i < 99; i++) {
+        rs = statement2.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(nextConnection2ExpectedValue, rs.getLong("nextval"));
+        nextConnection2ExpectedValue += 10;
+      }
 
-      // CACHE is 5 elements. The previous request should have cached 201, 301, 401, 501, and 601.
+      // CACHE is 120 elements. Since previous request cached up to 2300, next value should be 2310.
       WaitUntilTServerGetsNewYSqlCatalogVersion();
       rs = ExecuteQueryWithRetry(statement2, "SELECT nextval('s1')");
       assertTrue(rs.next());
-      assertEquals(701, rs.getLong("nextval"));
+      assertEquals(twoConnectionsExpectedValue, rs.getLong("nextval"));
+      twoConnectionsExpectedValue += 10;
 
       // -------------------------------------------------------------------------------------------
       // Test RESTART option.
       // -------------------------------------------------------------------------------------------
       ExecuteWithRetry(statement, "ALTER SEQUENCE s1 RESTART CACHE 1");
 
-      // Consume the rest of the numbers in the cache: 801, 901, 1001, 1101.
-      for (int i = 0; i < 4; i++) {
+      // Consume the rest of the numbers in the cache: 2320, 2330,.., 3490, 3500.
+      for (int j = 1; j < 120; j++) {
         rs = statement2.executeQuery("SELECT nextval('s1')");
         assertTrue(rs.next());
-        assertEquals(801 + i * 100, rs.getLong("nextval"));
+        assertEquals(twoConnectionsExpectedValue, rs.getLong("nextval"));
+        twoConnectionsExpectedValue += 10;
       }
 
       // After all the elements in the cache have been used, the next value should be 1 again
@@ -924,8 +959,15 @@ public class TestPgSequences extends BasePgSQLTest {
       // -------------------------------------------------------------------------------------------
       statement.execute("ALTER SEQUENCE s1 RESTART WITH 9");
 
+      // CACHE is 100 elements. The previous request should have cached: 1, 11, 21,..., 981, 991.
+      for (int i = 0; i < 99; i++) {
+        rs = ExecuteQueryWithRetry(statement2,"SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(11 + (i * 10), rs.getLong("nextval"));
+      }
+
       WaitUntilTServerGetsNewYSqlCatalogVersion();
-      rs = ExecuteQueryWithRetry(statement2,"SELECT nextval('s1')");
+      rs = ExecuteQueryWithRetry(statement2, "SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(9, rs.getLong("nextval"));
 
@@ -947,14 +989,14 @@ public class TestPgSequences extends BasePgSQLTest {
       // Test CYCLE option.
       // -------------------------------------------------------------------------------------------
       ExecuteWithRetry(statement, "ALTER SEQUENCE s1 RESTART WITH 1 INCREMENT -1 CACHE 1");
-      rs = ExecuteQueryWithRetry(statement2,"SELECT nextval('s1')");
+      rs = ExecuteQueryWithRetry(statement,"SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(1, rs.getLong("nextval"));
 
       WaitUntilTServerGetsNewYSqlCatalogVersion();
       // Verify that getting next value without CYCLE fails.
       try {
-        rs = ExecuteQueryWithRetry(statement2,"SELECT nextval('s1')");
+        rs = ExecuteQueryWithRetry(statement,"SELECT nextval('s1')");
         fail("Expected exception but got none");
       } catch (Exception e) {
         assertTrue(e.getMessage().contains("reached minimum value of sequence \"s1\" (1)"));
@@ -968,5 +1010,262 @@ public class TestPgSequences extends BasePgSQLTest {
       assertTrue(rs.next());
       assertEquals(Long.MAX_VALUE, rs.getLong("nextval"));
     }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Cache with alter tests.
+  //------------------------------------------------------------------------------------------------
+  @Test
+  public void testAlterSequenceCache() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // -------------------------------------------------------------------------------------------
+      // Test increase in cache option.
+      // -------------------------------------------------------------------------------------------
+      statement.execute("CREATE SEQUENCE s1");
+
+      // Cache size is initialized to 100 by selecting maximum of
+      // cache option (default 1) and cache flag (default 100).
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE);
+
+      statement.execute("ALTER SEQUENCE s1 CACHE 150");
+
+      rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 1, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 150);
+
+      // -------------------------------------------------------------------------------------------
+      // Test decrease in cache option.
+      // -------------------------------------------------------------------------------------------
+      statement.execute("CREATE SEQUENCE s2");
+
+      // Cache size is initialized to 100.
+      rs = statement.executeQuery("SELECT nextval('s2')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s2", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE);
+
+      statement.execute("ALTER SEQUENCE s2 CACHE 10");
+
+      rs = statement.executeQuery("SELECT nextval('s2')");
+      assertTrue(rs.next());
+      assertEquals(DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 1, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s2", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE * 2);
+    }
+  }
+
+  @Test
+  public void testAlterSequenceMaxvalue() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // -------------------------------------------------------------------------------------------
+      // Test decrease in maxvalue.
+      // -------------------------------------------------------------------------------------------
+      statement.execute("CREATE SEQUENCE s1");
+
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE);
+
+      runInvalidQuery(statement, "ALTER SEQUENCE s1 MAXVALUE 50",
+          "cannot be greater than MAXVALUE");
+
+      statement.execute("ALTER SEQUENCE s1 RESTART MAXVALUE 50");
+
+      // Total elements is less than maximum cache size (100)
+      // and defaults to last cache size (100) which is the previously persisted value.
+      rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", 49);
+
+      // -------------------------------------------------------------------------------------------
+      // Test increase in maxvalue.
+      // -------------------------------------------------------------------------------------------
+      statement.execute("CREATE SEQUENCE s2 MAXVALUE 10");
+
+      // Cache size is intialized to cache option (default 1)
+      // since total elements (10) is less than maximum cache size (100).
+      rs = statement.executeQuery("SELECT nextval('s2')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s2", 9);
+
+      statement.execute("ALTER SEQUENCE s2 MAXVALUE 1000");
+
+      // Resetting maxvalue triggers recalculation of cache size
+      // by taking max of cache option (1) and cache flag (100).
+      rs = statement.executeQuery("SELECT nextval('s2')");
+      assertTrue(rs.next());
+      assertEquals(10, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s2", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 9);
+    }
+  }
+
+  @Test
+  public void testAlterSequenceMinvalue() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // -------------------------------------------------------------------------------------------
+      // Test decrease in minvalue.
+      // -------------------------------------------------------------------------------------------
+      statement.execute("CREATE SEQUENCE s1 MINVALUE 950 MAXVALUE 1000");
+
+      // Cache size is set to less than total elements
+      // since total elements (1000-950=50) is less than maximum cache size (100).
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(950, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", 999);
+
+      statement.execute("ALTER SEQUENCE s1 MINVALUE 0 INCREMENT BY -1");
+
+      // Caches between 949 to 850.
+      // Cache size resets to maximum cache size (100)
+      // since total elements (1000) increased greater than maximum cache size (100).
+      rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(998, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", 999 - DEFAULT_SEQUENCE_CACHE_FLAG_VALUE);
+
+      // -------------------------------------------------------------------------------------------
+      // Test increase in minvalue.
+      // -------------------------------------------------------------------------------------------
+      statement.execute("CREATE SEQUENCE s2 MAXVALUE 1000");
+
+      // Cache size is intialized to maximum cache size (100)
+      // since total elements (1000) is greater than maximum cache size (100).
+      rs = statement.executeQuery("SELECT nextval('s2')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s2", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE);
+
+      runInvalidQuery(statement, "ALTER SEQUENCE s2 MINVALUE 950",
+          "cannot be less than MINVALUE");
+    }
+  }
+
+  @Test
+  public void testAlterSequenceIncrby() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // -------------------------------------------------------------------------------------------
+      // Test decrease in increment by.
+      // -------------------------------------------------------------------------------------------
+      statement.execute("CREATE SEQUENCE s1 MAXVALUE 1000 INCREMENT BY 50");
+
+      // Cache size is intialized to less than total elements
+      // since total elements (1000/50=20) is less than maximum cache size (100).
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", 901);
+
+      statement.execute("ALTER SEQUENCE s1 INCREMENT BY 1");
+
+      // Cache size is reset to maximum cache size (100)
+      // since total elements (1000) is greater than maximum cache size (100).
+      rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(902, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", 1000);
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // TServer GFlag tests.
+  //------------------------------------------------------------------------------------------------
+  @Test
+  public void testDefaultCacheOption() throws Exception {
+
+    int tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=0");
+
+    try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
+         Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1");
+      statement.execute("SELECT nextval('s1')");
+      assertOneRow(statement, "SELECT last_value from s1", 1);
+    }
+  }
+
+  @Test
+  public void testLowerThanDefaultCacheFlagValue() throws Exception {
+
+    int tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=5");
+
+    try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
+         Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1");
+      statement.execute("SELECT nextval('s1')");
+      assertOneRow(statement, "SELECT last_value from s1", 5);
+    }
+  }
+
+  @Test
+  public void testCacheFlagValueLessThanCacheOption() throws Exception {
+
+    int tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=5");
+
+    try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
+         Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1 CACHE 10");
+      statement.execute("SELECT nextval('s1')");
+      assertOneRow(statement, "SELECT last_value from s1", 10);
+    }
+  }
+
+  @Test
+  public void testCacheFlagValueHigherThanCacheOption() throws Exception {
+
+    int tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=150");
+
+    try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
+         Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1 CACHE 120");
+      statement.execute("SELECT nextval('s1')");
+      assertOneRow(statement, "SELECT last_value from s1", 150);
+    }
+  }
+
+  @Test
+  public void testChangeOfCacheFlagValue() throws Exception {
+
+    int tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=5");
+
+    try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
+         Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1");
+      statement.execute("SELECT nextval('s1')");
+      assertOneRow(statement, "SELECT last_value from s1", 5);
+    }
+
+    tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=3");
+
+    try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
+        Statement statement = connection.createStatement()) {
+        // After cache flag value changes, previously created
+        // sequence will continue to use cache size of 5.
+        for (int i = 0; i < 5; i++) {
+          assertOneRow(statement, "SELECT nextval('s1')", 6 + i);
+          assertOneRow(statement, "SELECT last_value from s1", 10);
+        }
+        assertOneRow(statement, "SELECT nextval('s1')", 11);
+        assertOneRow(statement, "SELECT last_value from s1", 15);
+
+        // Sequences created after the flag reset
+        // will use the new cache size of 3.
+        statement.execute("CREATE SEQUENCE s2");
+        statement.execute("SELECT nextval('s2')");
+        assertOneRow(statement, "SELECT last_value from s2", 3);
+      }
+  }
+
+  private static int spawnTServerWithFlags(String... flags) throws Exception {
+    List<String> tserverArgs = new ArrayList<>(BasePgSQLTest.tserverArgs);
+    tserverArgs.addAll(Arrays.asList(flags));
+    int tserver = miniCluster.getNumTServers();
+    miniCluster.startTServer(tserverArgs);
+    return tserver;
   }
 }
