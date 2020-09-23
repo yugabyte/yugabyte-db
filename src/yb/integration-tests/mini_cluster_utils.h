@@ -22,6 +22,7 @@ class MiniCluster;
 
 size_t CountRunningTransactions(MiniCluster* cluster);
 void AssertNoRunningTransactions(MiniCluster* cluster);
+void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster, size_t limit_per_tablet);
 
 } // namespace yb
 

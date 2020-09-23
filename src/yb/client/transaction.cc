@@ -712,10 +712,6 @@ class YBTransaction::Impl final {
     }
     VLOG_WITH_PREFIX(4) << "Commit done: " << actual_status;
     commit_callback_(actual_status);
-
-    if (actual_status.IsExpired()) {
-      DoAbortCleanup(transaction);
-    }
   }
 
   void AbortDone(const Status& status,

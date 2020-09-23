@@ -190,7 +190,7 @@ TEST_F(CqlIndexTest, TxnCleanup) {
 
   CleanFutures(&futures, CheckReady::kFalse);
 
-  AssertNoRunningTransactions(cluster_.get());
+  AssertRunningTransactionsCountLessOrEqualTo(cluster_.get(), 5);
 }
 
 } // namespace yb
