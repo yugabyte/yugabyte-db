@@ -37,7 +37,7 @@ size_t CountRunningTransactions(MiniCluster* cluster) {
   return result;
 }
 
-void AssertNoRunningTransactions(MiniCluster* cluster) {
+void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster, size_t limit_per_tablet) {
   MonoTime deadline = MonoTime::Now() + 7s * kTimeMultiplier;
   bool has_bad = false;
   for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
@@ -67,8 +67,8 @@ void AssertNoRunningTransactions(MiniCluster* cluster) {
     for (const auto& peer : tablets) {
       auto participant = peer->tablet()->transaction_participant();
       if (participant) {
-        auto status = Wait([participant] {
-              return participant->TEST_GetNumRunningTransactions() == 0;
+        auto status = Wait([participant, limit_per_tablet] {
+              return participant->TEST_GetNumRunningTransactions() <= limit_per_tablet;
             },
             deadline,
             "Wait until no transactions are running");
@@ -83,6 +83,10 @@ void AssertNoRunningTransactions(MiniCluster* cluster) {
     }
   }
   ASSERT_FALSE(has_bad);
+}
+
+void AssertNoRunningTransactions(MiniCluster* cluster) {
+  AssertRunningTransactionsCountLessOrEqualTo(cluster, 0);
 }
 
 } // namespace yb
