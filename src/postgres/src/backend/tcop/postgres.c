@@ -4303,7 +4303,6 @@ yb_exec_simple_query(const char* query_string, MemoryContext exec_context)
 	    .command_tag  = yb_parse_command_tag(query_string)
 	};
 	for (int attempt = 0;; ++attempt) {
-		fprintf(stderr, "Query %s --> %d\n", query_string, attempt);
 		PG_TRY();
 		{
 			YBSaveOutputBufferPosition(
