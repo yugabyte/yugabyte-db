@@ -1101,6 +1101,7 @@ did_test_succeed() {
   local -i -r exit_code=$1
   local -r log_path=$2
   if [[ $exit_code -ne 0 ]]; then
+    log "Test failure reason: exit code: $exit_code"
     return 1  # "false" value in bash, meaning the test failed
   fi
 
