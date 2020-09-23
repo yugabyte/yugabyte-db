@@ -13,6 +13,13 @@
 
 #include "yb/docdb/cql_operation.h"
 
+#include <limits>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "yb/common/index.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/partition.h"
@@ -458,7 +465,6 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
                                            const bool should_apply,
                                            const QLTableRow& table_row,
                                            std::unique_ptr<QLRowBlock>* rowblock) {
-
   std::vector<ColumnSchema> columns;
   columns.emplace_back(ColumnSchema("[applied]", BOOL));
   columns.emplace_back(ColumnSchema("[message]", STRING));
@@ -484,12 +490,12 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
 
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
-  VLOG(3) << "Looking for collisions in \n"
+  VLOG(3) << "Looking for collisions in\n"
           << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
-  // We only need to check backwards for backfilled entries.
+  // We need to check backwards only for backfilled entries.
   bool ret =
       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
-      (request_.is_backfilling() &&
+      (request_.is_backfill() &&
        VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kBackward)));
   if (!ret) {
     VLOG(3) << "No collisions found";
@@ -507,17 +513,21 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
   }
 
   auto iter = CreateIntentAwareIterator(
-      data.doc_write_batch->doc_db(), BloomFilterMode::USE_BLOOM_FILTER,
-      pk_doc_key_->Encode().AsSlice(), request_.query_id(), txn_op_context_,
-      data.deadline, ReadHybridTime::Max());
+      data.doc_write_batch->doc_db(),
+      BloomFilterMode::USE_BLOOM_FILTER,
+      pk_doc_key_->Encode().AsSlice(),
+      request_.query_id(),
+      txn_op_context_,
+      data.deadline,
+      ReadHybridTime::Max());
 
   HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
       iter.get(), SubDocKey(*pk_doc_key_), requested_read_time.read));
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
-          SubDocKey(*pk_doc_key_, PrimitiveValue::SystemColumnId(
-                                      SystemColumnIds::kLivenessColumn)),
+          SubDocKey(*pk_doc_key_,
+                    PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
           requested_read_time.read));
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
   if (!oldest_past_min_ht.is_valid()) {
@@ -532,12 +542,16 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
   // Set up the iterator to read the current primary key associated with the index key.
   DocQLScanSpec spec(*unique_index_key_schema_, *pk_doc_key_, request_.query_id(), true);
   DocRowwiseIterator iterator(
-      *unique_index_key_schema_, *schema_, txn_op_context_, data.doc_write_batch->doc_db(),
-      data.deadline, read_time);
+      *unique_index_key_schema_,
+      *schema_,
+      txn_op_context_,
+      data.doc_write_batch->doc_db(),
+      data.deadline,
+      read_time);
   RETURN_NOT_OK(iterator.Init(spec));
 
-  // It is a duplicate value if the index key exist already and the associated indexed primary key
-  // is not the same.
+  // It is a duplicate value if the index key exists already and the index value (corresponding to
+  // the indexed table's primary key) is not the same.
   if (!VERIFY_RESULT(iterator.HasNext())) {
     VLOG(2) << "No collision found while checking at " << yb::ToString(read_time);
     return false;
@@ -552,10 +566,10 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
       auto value = table_row.GetValue(column_id);
       if (value && *value != column_value.expr().value()) {
         VLOG(2) << "Found collision while checking at " << yb::ToString(read_time)
-                << " Existing :" << yb::ToString(*value)
-                << " vs New :" << yb::ToString(column_value.expr().value()) << " used read time as "
-                << yb::ToString(data.read_time);
-        DVLOG(3) << "DocDB is now :\n"
+                << "\nExisting: " << yb::ToString(*value)
+                << " vs New: " << yb::ToString(column_value.expr().value())
+                << "\nUsed read time as " << yb::ToString(data.read_time);
+        DVLOG(3) << "DocDB is now:\n"
                  << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
         return true;
       }
@@ -566,11 +580,12 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
   return false;
 }
 
-Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(IntentAwareIterator* iter,
-                                                  const SubDocKey& sub_doc_key,
-                                                  HybridTime min_read_time) {
+Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
+    IntentAwareIterator* iter,
+    const SubDocKey& sub_doc_key,
+    HybridTime min_read_time) {
   HybridTime result;
-  VLOG(3) << "Doing iter->Seek " << *pk_doc_key_ << ".";
+  VLOG(3) << "Doing iter->Seek " << *pk_doc_key_;
   iter->Seek(*pk_doc_key_);
   if (iter->valid()) {
     const KeyBytes bytes = sub_doc_key.EncodeWithoutHt();
@@ -958,8 +973,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         RETURN_NOT_OK(iterator.Init(spec));
 
         // Iterate through rows and delete those that match the condition.
-        // TODO We do not lock here, so other write transactions coming in might appear partially
-        // applied if they happen in the middle of a ranged delete.
+        // TODO(mihnea): We do not lock here, so other write transactions coming in might appear
+        // partially applied if they happen in the middle of a ranged delete.
         while (VERIFY_RESULT(iterator.HasNext())) {
           existing_row.Clear();
           RETURN_NOT_OK(iterator.NextRow(&existing_row));
@@ -1289,7 +1304,6 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
       static_row.Clear();
       RETURN_NOT_OK(iter->NextRow(static_projection, &static_row));
     } else { // Reading a regular row that contains non-static columns.
-
       // Read this regular row.
       // TODO(omer): this is quite inefficient if read_distinct_column. A better way to do this
       // would be to only read the first non-static column for each hash key, and skip the rest
@@ -1317,7 +1331,6 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
       }
     } else {
       if (last_read_static) {
-
         // If the next row to be read is not static, deal with it later, as we do not know whether
         // the non-static row corresponds to this static row; if the non-static row doesn't
         // correspond to this static row, we will have to add it later, so set static_dealt_with to

@@ -2258,7 +2258,7 @@ Status Tablet::UpdateIndexInBatches(
     index_request->set_type(QLWriteRequestPB::QL_STMT_INSERT);
     RETURN_NOT_OK(docdb::PrepareIndexWriteAndCheckIfIndexKeyChanged(
         &expr_executor, kEmptyRow, row, &index, index_request, &ignored_key_changed));
-    index_request->set_is_backfilling(true);
+    index_request->set_is_backfill(true);
   }
 
   // Update the index write op.
