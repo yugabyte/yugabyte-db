@@ -310,8 +310,10 @@ message SysTabletsEntryPB {
   // Replaced by the map below.
   optional bytes DEPRECATED_backfilled_until = 10;
 
-  // For tablets which are results of splitting we set this to split parent split_depth + 1.
+  // For tablets that are results of splitting we set this to split parent split_depth + 1.
   optional uint64 split_depth = 11;
+
+  optional bytes split_parent_tablet_id = 13;
 
   // If the tablet is in the backfilling state, this is used to keep track
   // of how far along backfill has completed.
@@ -805,8 +807,9 @@ message TabletLocationsPB {
   // Table ids for all the tables on this tablet.
   repeated bytes table_ids = 8;
 
-  // See SysTabletsEntryPB for field with the same name.
+  // See SysTabletsEntryPB for fields with the same name.
   optional uint64 split_depth = 9;
+  optional bytes split_parent_tablet_id = 12;
 
   // Number of expected live replicas.
   optional int32 expected_live_replicas = 10;

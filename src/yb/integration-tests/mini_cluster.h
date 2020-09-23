@@ -269,6 +269,9 @@ std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster,
     const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter);
 
+std::vector<tablet::TabletPeerPtr> ListTableTabletLeadersPeers(
+    MiniCluster* cluster, const TableId& table_id);
+
 CHECKED_STATUS WaitUntilTabletHasLeader(
     MiniCluster* cluster, const string& tablet_id, MonoTime deadline);
 

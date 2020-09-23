@@ -47,6 +47,9 @@ class TabletRpc {
 
   // attempt_num starts with 1.
   virtual void SendRpcToTserver(int attempt_num) = 0;
+
+  virtual bool ShouldRetryExpiredRequest() { return false; }
+
  protected:
   ~TabletRpc() {}
 };
