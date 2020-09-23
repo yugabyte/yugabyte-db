@@ -579,6 +579,10 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
   SwapRequestsAndResponses(false);
 }
 
+bool WriteRpc::ShouldRetryExpiredRequest() {
+  return req_.min_running_request_id() == kInitializeFromMinRunning;
+}
+
 ReadRpc::ReadRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
     : AsyncRpcBase(data, yb_consistency_level) {
 

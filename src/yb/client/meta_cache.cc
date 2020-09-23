@@ -877,7 +877,8 @@ Status MetaCache::ProcessTabletLocations(
 
           Partition partition;
           Partition::FromPB(loc.partition(), &partition);
-          remote = new RemoteTablet(tablet_id, partition, loc.split_depth());
+          remote = new RemoteTablet(
+              tablet_id, partition, loc.split_depth(), loc.split_parent_tablet_id());
 
           CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
           auto emplace_result = tablets_by_key.emplace(partition.partition_key_start(), remote);
@@ -885,10 +886,6 @@ Status MetaCache::ProcessTabletLocations(
             const auto& old_tablet = emplace_result.first->second;
             if (old_tablet->split_depth() < remote->split_depth()) {
               // Only replace with tablet of higher split_depth.
-              // TODO(tsplit): add cleanup for table_data.split_tablets, we don't need to keep
-              // pre-split tablet info after it has been fully covered by post-split tablets
-              // in meta cache.
-              table_data.split_tablets[partition.partition_key_start()].push_back(old_tablet);
               emplace_result.first->second = remote;
             } else {
               // If split_depth is the same - it should be the same tablet.
@@ -960,105 +957,36 @@ Status MetaCache::ProcessTabletLocations(
   return Status::OK();
 }
 
-RemoteTabletPtr MetaCache::GetNearestSplitAncestorUnlocked(
-    const TableData& table_data, const RemoteTablet& tablet) {
-  VLOG_WITH_FUNC(3) << Format("tablet: $0", tablet);
-  if (tablet.split_depth() == 0) {
-    // Tablet is not a result of another tablet split, it couldn't have split ancestor.
-    return nullptr;
-  }
-
-  const auto& partition = tablet.partition();
-  const auto& partition_key_start = partition.partition_key_start();
-
-  VLOG_WITH_FUNC(4) << "table_data.tablets_by_partition: "
-                    << AsString(table_data.tablets_by_partition);
-  VLOG_WITH_FUNC(4) << "table_data.split_tablets: " << AsString(table_data.split_tablets);
-
-  RemoteTabletPtr nearest_split_ancestor;
-
-  {
-    // Try to find the deepest tablet X in table_data.tablets_by_partition whose partition strictly
-    // contains tablet's (T) partition.
-    //
-    // If such tablet X exists it will have the maximum possible X.partition_key_start <=
-    // T.partition_key_start.
-    //
-    // Proof: Lets assume there is another tablet Y != X in the map that strictly contains
-    // T.partition, but it has Y.partition_key_start < X.partition_key_start.
-    // That means:
-    // Y.partition_key_end >= T.partition_key_end > T.partition_key_start >= X.partition_key_start
-    //  => Y.partition_key_end > X.partition_key_start
-    // So, Y.partition overlaps with X.partition and Y.partition_key_start < X.partition_key_start.
-    // Due to the nature of tablet splitting, there could be no partial overlap of tablet partition
-    // key ranges. Then Y should strictly contains X and that means Y is not the
-    // deepest tablet available strictly containing T.partition.
-    const auto it = GetLastLessOrEqual(table_data.tablets_by_partition, partition_key_start);
-    if (it != table_data.tablets_by_partition.end()) {
-      VLOG_WITH_FUNC(3) << Format(
-          "Nearest_split_ancestor candidate: $0",
-          it != table_data.tablets_by_partition.end() ? AsString(it->second) : "None");
-      if (it->second->partition().ContainsPartitionStrict(partition)) {
-        nearest_split_ancestor = it->second;
-        VLOG_WITH_FUNC(3) << Format(
-            "Found nearest split ancestor tablet: $0", nearest_split_ancestor);
-      }
-    }
-  }
-
-  if (!nearest_split_ancestor) {
-    // Nearest split ancestor could be already replaced and moved to table_data.split_tablets,
-    // so try to find it there starting with largest depth.
-    const auto it = GetLastLessOrEqual(table_data.split_tablets, partition_key_start);
-    if (it != table_data.split_tablets.end()) {
-      for (auto tablet_it = it->second.rbegin(); tablet_it != it->second.rend(); ++tablet_it) {
-        VLOG_WITH_FUNC(3) << Format(
-            "Nearest_split_ancestor candidate: $0", tablet_it->get());
-        if (tablet_it->get()->partition().ContainsPartition(partition)) {
-          nearest_split_ancestor = tablet_it->get();
-          VLOG_WITH_FUNC(3) << Format(
-              "Found nearest split ancestor tablet: $0", nearest_split_ancestor);
-          break;
-        }
-      }
-    }
-  }
-
-  if (!nearest_split_ancestor) {
-    VLOG_WITH_FUNC(3) << Format("No nearest split ancestor tablet for: $0", tablet);
-    return nullptr;
-  }
-
-  if (nearest_split_ancestor->split_depth() >= tablet.split_depth()) {
-    LOG(DFATAL) << Format(
-        "Nearest split ancestor $0 (split_depth: $1, partition: $2) should have smaller"
-        " split depth than $3 (split_depth: $4, partition: $5)",
-        nearest_split_ancestor->tablet_id(), nearest_split_ancestor->split_depth(),
-        nearest_split_ancestor->partition(), tablet.tablet_id(), tablet.split_depth(),
-        tablet.partition());
-    return nullptr;
-  }
-
-  return nearest_split_ancestor;
-}
-
 void MetaCache::MaybeUpdateClientRequests(const TableData& table_data, const RemoteTablet& tablet) {
-  const auto nearest_split_ancestor = GetNearestSplitAncestorUnlocked(table_data, tablet);
-
-  if (!nearest_split_ancestor) {
+  VLOG_WITH_FUNC(2) << "Tablet: " << tablet.tablet_id()
+                    << " split parent: " << tablet.split_parent_tablet_id();
+  if (tablet.split_parent_tablet_id().empty()) {
+    VLOG(2) << "Tablet " << tablet.tablet_id() << " is not a result of split";
     return;
   }
-
   // TODO: MetaCache is a friend of Client and tablet_requests_mutex_ with tablet_requests_ are
   // public members of YBClient::Data. Consider refactoring that.
   std::lock_guard<simple_spinlock> request_lock(client_->data_->tablet_requests_mutex_);
   auto& tablet_requests = client_->data_->tablet_requests_;
-  const auto requests_it = tablet_requests.find(nearest_split_ancestor->tablet_id());
+  const auto requests_it = tablet_requests.find(tablet.split_parent_tablet_id());
   if (requests_it == tablet_requests.end()) {
-    LOG(DFATAL) << "Not found tablet requests structure for tablet "
-                << nearest_split_ancestor->tablet_id();
+    VLOG(2) << "Can't find request_id_seq for tablet " << tablet.split_parent_tablet_id();
+    // This can happen if client wasn't active (for example node was partitioned away) during
+    // sequence of splits that resulted in `tablet` creation, so we don't have info about `tablet`
+    // split parent.
+    // In this case we set request_id_seq to special value and will reset it on getting
+    // "request id is less than min" error. We will use min request ID plus 2^24 (there wouldn't be
+    // 2^24 client requests in progress from the same client to the same tablet, so it is safe to do
+    // this).
+    tablet_requests.emplace(
+        tablet.tablet_id(),
+        YBClient::Data::TabletRequests {
+            .request_id_seq = kInitializeFromMinRunning
+        });
     return;
   }
+  VLOG(2) << "Setting request_id_seq for tablet " << tablet.tablet_id() << " from tablet "
+          << tablet.split_parent_tablet_id() << " to " << requests_it->second.request_id_seq;
   tablet_requests[tablet.tablet_id()].request_id_seq = requests_it->second.request_id_seq;
 }
 

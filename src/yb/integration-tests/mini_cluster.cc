@@ -637,6 +637,17 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
   return result;
 }
 
+std::vector<tablet::TabletPeerPtr> ListTableTabletLeadersPeers(
+    MiniCluster* cluster, const TableId& table_id) {
+  return ListTabletPeers(cluster, [&table_id](const auto& peer) {
+    return peer->tablet_metadata() &&
+           peer->tablet_metadata()->table_id() == table_id &&
+           peer->tablet_metadata()->tablet_data_state() !=
+               tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED &&
+           peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+  });
+}
+
 Status WaitUntilTabletHasLeader(
     MiniCluster* cluster, const string& tablet_id, MonoTime deadline) {
   return Wait([cluster, &tablet_id] {
