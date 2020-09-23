@@ -692,7 +692,7 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
   req.set_dest_uuid(permanent_uuid());
   req.set_tablet_id(tablet_->tablet_id());
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
-  req.set_is_backfilling(false);
+  req.set_mark_backfill_done(true);
   schema_version_ = l->data().pb.version();
   l->Unlock();
 

@@ -13,6 +13,10 @@
 
 #include "yb/docdb/pgsql_operation.h"
 
+#include <limits>
+#include <string>
+#include <vector>
+
 #include <boost/optional/optional_io.hpp>
 
 #include "yb/common/partition.h"
@@ -286,7 +290,7 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
     // nonexistent rows are expected to get written to the index when the index has the delete
     // permission during an online schema migration.
     // TODO(jason): apply deletes only when this is an index table going through a schema migration,
-    // not just when backfill is enabled.
+    // not just when backfill is enabled (issue #5686).
     if (FLAGS_ysql_disable_index_backfill) {
       return Status::OK();
     } else {
@@ -517,7 +521,6 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
   QLTableRow row;
   while (fetched_rows < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
          !scan_time_exceeded) {
-
     row.Clear();
 
     // If there is an index request, fetch ybbasectid from the index and use it as ybctid
