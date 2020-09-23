@@ -16,6 +16,7 @@
 #include "yb/client/tablet_rpc.h"
 
 #include "yb/consensus/consensus_error.h"
+#include "yb/consensus/retryable_requests.h"
 
 #include "yb/common/wire_protocol.h"
 
@@ -398,6 +399,11 @@ bool TabletInvoker::Done(Status* status) {
       if (tablet_ != nullptr && current_ts_ != nullptr) {
         tablet_->MarkReplicaFailed(current_ts_, *status);
       }
+    }
+    if (status->IsExpired() && rpc_->ShouldRetryExpiredRequest()) {
+      client_->MaybeUpdateMinRunningRequestId(
+          tablet_->tablet_id(), consensus::MinRunningRequestIdStatusData(*status).value());
+      *status = STATUS(TryAgain, status->message());
     }
     std::string current_ts_string;
     if (current_ts_) {

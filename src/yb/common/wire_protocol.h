@@ -298,6 +298,10 @@ static inline uint8_t Load8(const void* p) {
 YB_STRONGLY_TYPED_UUID(ClientId);
 typedef int64_t RetryableRequestId;
 
+// Special value which is used to initialize starting RetryableRequestId for the client and tablet
+// based on min running at server side.
+constexpr RetryableRequestId kInitializeFromMinRunning = -1;
+
 template <class Resp>
 CHECKED_STATUS StatusFromResponse(const Resp& resp) {
   return resp.has_error() ? StatusFromPB(resp.error().status()) : Status::OK();

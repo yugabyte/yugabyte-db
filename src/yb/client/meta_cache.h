@@ -237,11 +237,13 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
  public:
   RemoteTablet(std::string tablet_id,
                Partition partition,
-               uint64 split_depth)
+               uint64 split_depth,
+               const TabletId& split_parent_tablet_id)
       : tablet_id_(std::move(tablet_id)),
         log_prefix_(Format("T $0: ", tablet_id_)),
         partition_(std::move(partition)),
         split_depth_(split_depth),
+        split_parent_tablet_id_(split_parent_tablet_id),
         stale_(false) {
   }
 
@@ -336,6 +338,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // See TabletLocationsPB::split_depth.
   uint64 split_depth() const { return split_depth_; }
 
+  const TabletId& split_parent_tablet_id() const { return split_parent_tablet_id_; }
+
   int64_t lookups_without_new_replicas() const { return lookups_without_new_replicas_; }
 
  private:
@@ -346,6 +350,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   const std::string log_prefix_;
   const Partition partition_;
   const uint64 split_depth_;
+  const TabletId split_parent_tablet_id_;
 
   // All non-const members are protected by 'mutex_'.
   mutable rw_spinlock mutex_;
@@ -492,10 +497,6 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   struct TableData {
     std::map<PartitionKey, RemoteTabletPtr> tablets_by_partition;
     std::unordered_map<PartitionGroupKey, LookupDataGroup> tablet_lookups_by_group;
-    // When replacing tablet which has been split with post-split tablet in tablets_by_partition
-    // it is moved into split_tablets and added to the end of the chain corresponding to its
-    // partition start key.
-    std::map<PartitionKey, std::vector<RemoteTabletPtr>> split_tablets;
     bool stale = false;
   };
 
@@ -548,14 +549,6 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // on tserver side related structure for tracking duplicate requests is also copied from
   // pre-split tablet to post-split tablets.
   void MaybeUpdateClientRequests(const TableData& table_data, const RemoteTablet& tablet);
-
-  // Returns the nearest (known to MetaCache) split ancestor for the tablet, i.e. its partition
-  // strictly contains tablet's partition. Nearest mean it has maximum split_dept possible.
-  //
-  // Uses TableData::split_tablets where we store pre-split tablets which have been replaced by
-  // post-split tablets in addition to TableData::tablets_by_partition.
-  RemoteTabletPtr GetNearestSplitAncestorUnlocked(
-      const TableData& table_data, const RemoteTablet& tablet);
 
   template <class Lock>
   bool DoLookupTabletByKey(

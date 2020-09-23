@@ -1615,9 +1615,19 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
 
 namespace {
 
-std::array<PartitionPB, 2> CreateNewTabletsPartition(
+Result<std::array<PartitionPB, 2>> CreateNewTabletsPartition(
     const TabletInfo& tablet_info, const std::string& split_partition_key) {
   const auto& source_partition = tablet_info.LockForRead()->data().pb.partition();
+
+  if (source_partition.partition_key_start() == split_partition_key ||
+      source_partition.partition_key_end() == split_partition_key) {
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Can't split tablet $0 (partition_key_start: $1 partition_key_end: $2) by partition "
+        "boundary (split_key: $3)",
+        tablet_info.tablet_id(), source_partition.partition_key_start(),
+        source_partition.partition_key_end(), split_partition_key);
+  }
 
   std::array<PartitionPB, 2> new_tablets_partition;
 
@@ -1648,8 +1658,8 @@ Status CatalogManager::DoSplitTablet(
 
   constexpr auto kNumSplitParts = 2;
 
-  std::array<PartitionPB, kNumSplitParts> new_tablets_partition = CreateNewTabletsPartition(
-      *source_tablet_info, split_partition_key);
+  std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
+      CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
 
   std::array<TabletId, kNumSplitParts> new_tablet_ids;
   for (int i = 0; i < kNumSplitParts; ++i) {
@@ -3946,6 +3956,7 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
   new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
       source_tablet_meta.committed_consensus_state());
   new_tablet_meta.set_split_depth(source_tablet_meta.split_depth() + 1);
+  new_tablet_meta.set_split_parent_tablet_id(source_tablet_info.tablet_id());
   // TODO(tsplit): consider and handle failure scenarios, for example:
   // - Crash or leader failover before sending out the split tasks.
   // - Long enough partition while trying to send out the splits so that they timeout and
@@ -7305,9 +7316,8 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 
     const auto& metadata = tablet->metadata().state().pb;
     locs_pb->mutable_partition()->CopyFrom(metadata.partition());
-    if (metadata.has_split_depth()) {
-      locs_pb->set_split_depth(metadata.split_depth());
-    }
+    locs_pb->set_split_depth(metadata.split_depth());
+    locs_pb->set_split_parent_tablet_id(metadata.split_parent_tablet_id());
   }
 
   locs_pb->set_tablet_id(tablet->tablet_id());
