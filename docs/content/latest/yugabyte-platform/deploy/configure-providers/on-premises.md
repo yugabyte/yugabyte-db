@@ -58,8 +58,8 @@ showAsideToc: true
 
 </ul>
 
-![Configure On-Premises Datacenter Provider](/images/ee/install-yugabyte-platform/configure-install-yugabyte-platform-1.png)
+![Configure On-Premises Datacenter Provider](/images/ee/install-yugabyte-platform/configure-onprem-1.png)
 
-![On-Premises Data center Provider Configuration in Progress](/images/ee/install-yugabyte-platform/configure-install-yugabyte-platform-2.png)
+![On-Premises Data center Provider Configuration in Progress](/images/ee/install-yugabyte-platform/configure-install-onprem-2.png)
 
-![On-Premises Datacenter Provider Configured Successfully](/images/ee/install-yugabyte-platform/configure-install-yugabyte-platform-3.png)
+![On-Premises Datacenter Provider Configured Successfully](/images/ee/install-yugabyte-platform/configure-onprem-3.png)
