@@ -86,6 +86,8 @@ class ClusterLoadBalancer {
 
   bool IsLoadBalancerEnabled() const;
 
+  bool CanBalanceGlobalLoad() const;
+
   CHECKED_STATUS IsIdle() const;
 
   //
@@ -343,6 +345,12 @@ class ClusterLoadBalancer {
   // Summary of circular buffer of load balancer activity.
   int num_idle_runs_ = 0;
   std::atomic<bool> is_idle_ {true};
+
+  // Check if we are able to balance global load. With the current algorithm, we only allow for
+  // global load balancing once all tables are themselves balanced.
+  // This value is only set to true once is_idle_ becomes true, and this value is only set to false
+  // once we perform a non-global move.
+  bool can_balance_global_load_ = false;
 
   // Record load balancer activity for tables and tservers.
   void RecordActivity(uint32_t master_errors) REQUIRES_SHARED(catalog_manager_->lock_);

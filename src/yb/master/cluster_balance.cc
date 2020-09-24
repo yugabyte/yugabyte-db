@@ -38,6 +38,11 @@ DEFINE_bool(transaction_tables_use_preferred_zones,
             false,
             "Choose whether transaction tablet leaders respect preferred zones.");
 
+DEFINE_bool(enable_global_load_balancing,
+            true,
+            "Choose whether to allow the load balancer to make moves that strictly only balance "
+            "global load. Note that global balancing only occurs after all tables are balanced.");
+
 DEFINE_int32(leader_balance_threshold,
              0,
              "Number of leaders per each tablet server to balance below. If this is configured to "
@@ -297,6 +302,9 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     }
     state_ = it->second.get();
 
+    // We may have modified global loads, so we need to reset this state's load.
+    state_->SortLoad();
+
     is_txn_table = table.second->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
     state_->use_preferred_zones_ = !is_txn_table ||
                                    FLAGS_transaction_tables_use_preferred_zones;
@@ -392,6 +400,14 @@ void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
 
   // Update state.
   is_idle_.store(num_idle_runs_ == cbuf_activities_.size(), std::memory_order_release);
+
+  // Two interesting cases when updating can_balance_global_load_ state:
+  // If we previously couldn't balance global load, but now the LB is idle, enable global balancing.
+  // If we previously could balance global load, but now the LB is busy, then it is busy balancing
+  // global load or doing other operations (remove, etc.). In this case, we keep global balancing
+  // enabled up until we perform a non-global balancing move (see GetLoadToMove()).
+  // TODO(julien) some small improvements can be made here, such as ignoring leader stepdown tasks.
+  can_balance_global_load_ = can_balance_global_load_ || ai.IsIdle();
 }
 
 Status ClusterLoadBalancer::IsIdle() const {
@@ -403,6 +419,10 @@ Status ClusterLoadBalancer::IsIdle() const {
   }
 
   return Status::OK();
+}
+
+bool ClusterLoadBalancer::CanBalanceGlobalLoad() const {
+  return FLAGS_enable_global_load_balancing && can_balance_global_load_;
 }
 
 void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
@@ -636,11 +656,11 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
 void ClusterLoadBalancer::DumpSortedLoad() const {
   int last_pos = state_->sorted_load_.size() - 1;
   std::ostringstream out;
-  out << "Table load: ";
+  out << "Table load (global load): ";
   for (int left = 0; left <= last_pos; ++left) {
     const TabletServerId& uuid = state_->sorted_load_[left];
     int load = state_->GetLoad(uuid);
-    out << uuid << ":" << load << " ";
+    out << uuid << ":" << load << " (" << global_state_->GetGlobalLoad(uuid) << ") ";
   }
   VLOG(1) << out.str();
 }
@@ -677,14 +697,29 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
       const TabletServerId& low_load_uuid = state_->sorted_load_[left];
       const TabletServerId& high_load_uuid = state_->sorted_load_[right];
       int load_variance = state_->GetLoad(high_load_uuid) - state_->GetLoad(low_load_uuid);
+      bool is_global_balancing_move = false;
 
       // Check for state change or end conditions.
       if (left == right || load_variance < state_->options_->kMinLoadVarianceToBalance) {
-        // Either both left and right are at the end, or our load_variance is already too small,
-        // which means it will be too small for any TSs between left and right, so we can return.
-        if (right == last_pos) {
+        // Either both left and right are at the end, or there is no load_variance, which means
+        // there will be no load_variance for any TSs between left and right, so we can return.
+        if (right == last_pos && load_variance == 0) {
           return false;
+        }
+        // If there is load variance, then there is a chance we can benefit from globally balancing.
+        if (load_variance > 0 && CanBalanceGlobalLoad()) {
+          int global_load_variance = global_state_->GetGlobalLoad(high_load_uuid) -
+                                     global_state_->GetGlobalLoad(low_load_uuid);
+          if (global_load_variance < state_->options_->kMinGlobalLoadVarianceToBalance) {
+            // Already globally balanced. Since we are sorted by global load, we can return here as
+            // there are no other moves for us to make.
+            return false;
+          }
+          // Mark this move as a global balancing move and try to find a tablet to move.
+          is_global_balancing_move = true;
         } else {
+          // The load_variance is too low, which means we weren't able to find a load to move to
+          // the left tserver. Continue and try with the next left tserver.
           break;
         }
       }
@@ -696,6 +731,10 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
         *from_ts = high_load_uuid;
         *to_ts = low_load_uuid;
         RETURN_NOT_OK(MoveReplica(*moving_tablet_id, high_load_uuid, low_load_uuid));
+        // Update global state if necessary.
+        if (!is_global_balancing_move) {
+          can_balance_global_load_ = false;
+        }
         return true;
       }
     }
@@ -943,7 +982,13 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
     const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
     const auto& tablet_servers = tablet_meta.over_replicated_tablet_servers;
     auto comparator = PerTableLoadState::Comparator(state_);
-    vector<TabletServerId> sorted_ts(tablet_servers.begin(), tablet_servers.end());
+    vector<TabletServerId> sorted_ts;
+    // Don't include any tservers where this tablet is still starting.
+    std::copy_if(
+        tablet_servers.begin(), tablet_servers.end(), std::back_inserter(sorted_ts),
+        [&](const TabletServerId& ts_uuid) {
+          return !state_->per_ts_meta_[ts_uuid].starting_tablets.count(tablet_id);
+        });
     if (sorted_ts.empty()) {
       return STATUS_SUBSTITUTE(IllegalState, "No tservers to remove from over-replicated "
                                              "tablet $0", tablet_id);
@@ -1117,12 +1162,10 @@ void ClusterLoadBalancer::CountPendingTasksUnlocked(const TableId& table_uuid,
   *pending_add_replica_tasks += state_->pending_add_replica_tasks_[table_uuid].size();
   *pending_remove_replica_tasks += state_->pending_remove_replica_tasks_[table_uuid].size();
   *pending_stepdown_leader_tasks += state_->pending_stepdown_leader_tasks_[table_uuid].size();
-  state_->total_starting_ += *pending_add_replica_tasks;
-  global_state_->total_starting_tablets_ += *pending_add_replica_tasks;
   for (auto e : state_->pending_add_replica_tasks_[table_uuid]) {
     const auto& ts_uuid = e.second;
     const auto& tablet_id = e.first;
-    state_->per_ts_meta_[ts_uuid].starting_tablets.insert(tablet_id);
+    state_->AddStartingTablet(tablet_id, ts_uuid);
   }
 }
 
