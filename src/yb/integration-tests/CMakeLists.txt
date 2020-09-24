@@ -41,6 +41,7 @@ set(INTEGRATION_TESTS_SRCS
   mini_cluster_utils.cc
   test_workload.cc
   load_generator.cc
+  load_balancer_test_util.cc
   yb_table_test_base.cc
   yb_mini_cluster_test_base.cc
   redis_table_test_base.cc
@@ -127,6 +128,7 @@ ADD_YB_TEST(update_scan_delta_compact-test)
 ADD_YB_TEST(log_version-test)
 ADD_YB_TEST(load_balancer-test)
 ADD_YB_TEST(load_balancer_multi_table-test)
+ADD_YB_TEST(load_balancer_colocated_tables-test)
 ADD_YB_TEST(load_balancer_respect_affinity-test)
 ADD_YB_TEST(load_balancer_placement_policy-test)
 
