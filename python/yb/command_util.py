@@ -44,7 +44,7 @@ def trim_output(output, max_lines):
     return "\n".join(lines[:max_lines] + ['({} lines skipped)'.format(len(lines) - max_lines)])
 
 
-def run_program(args, error_ok=False, max_error_lines=100, cwd=None):
+def run_program(args, error_ok=False, max_error_lines=100, cwd=None, log_command=False):
     """
     Run the given program identified by its argument list, and return a ProgramResult object.
 
@@ -52,6 +52,8 @@ def run_program(args, error_ok=False, max_error_lines=100, cwd=None):
     """
     if not isinstance(args, list):
         args = [args]
+    if log_command:
+        logging.info("Running command: %s", args)
     try:
         program_subprocess = subprocess.Popen(
             args,
