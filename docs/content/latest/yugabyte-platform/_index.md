@@ -14,10 +14,10 @@ menu:
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="requirements/">
+    <a class="section-link icon-offset" href="plan/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">System requirements</div>
+        <div class="title">Plan</div>
       </div>
       <div class="body">
         System requirements for installing Yugabyte Platform and YugabyteDB universes.

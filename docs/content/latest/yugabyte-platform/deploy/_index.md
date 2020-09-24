@@ -1,8 +1,8 @@
 ---
-title: Deploy the Yugabyte Platform for mission-critical deployments
+title: Deploy the Yugabyte Platform
 headerTitle: Deploy the Yugabyte Platform
 linkTitle: Deploy
-description: Use Yugabyte Platform to deploy and manage mission-critical YugabyteDB clusters.
+description: Deploy the Yugabyte Platform to orchestrate and manage YugabyteDB universes.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:
@@ -12,7 +12,7 @@ menu:
   latest:
     identifier: deploy-yugabyte-platform
     parent: yugabyte-platform
-    weight: 638
+    weight: 620
 ---
 
 The Yugabyte Platform is best fit for mission-critical deployments, such as production or pre-production testing. The YugabyteDB Admin Console is used in a highly available mode and orchestrates and manages YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers).

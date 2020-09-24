@@ -1,11 +1,11 @@
 ---
-title: System requirements for installing the Yugabyte Platform
-headerTitle: System requirements for installing the Yugabyte Platform
+title: System requirements
+headerTitle: System requirements
 linkTitle: System requirements
-description: System requirements for installing Yugabyte Platform.
+description: System requirements for Yugabyte Platform.
 menu:
   latest:
-    parent: requirements
+    parent: plan-yugabyte-platform
     identifier: yp-system-reqs
     weight: 623
 type: page

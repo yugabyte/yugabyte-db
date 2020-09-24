@@ -1,27 +1,27 @@
 ---
-title: System requirements for the Yugabyte Platform
-headerTitle: System requirements for the Yugabyte Platform
-linkTitle: System requirements
-description: System requirements for installing and deploying the Yugabyte Platform
+title: Plan and prepare for Yugabyte Platform
+headerTitle: Plan and prepare for Yugabyte Platform
+linkTitle: Plan
+description: Plan and prepare for installing and deploying the Yugabyte Platform
 image: /images/section_icons/deploy/enterprise.png
-headcontent: System requirements for installing and deploying the Yugabyte Platform.
+headcontent: Plan and prepare for installing and deploying the Yugabyte Platform.
 menu:
   latest:
-    identifier: requirements
+    identifier: plan-yugabyte-platform
     parent: yugabyte-platform
-    weight: 620
+    weight: 610
 ---
 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="system-reqs-yp/">
+    <a class="section-link icon-offset" href="yp-system-reqs/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise.png" aria-hidden="true" />
-        <div class="title">System requirements for the Yugabyte Platform</div>
+        <div class="title">Prepare for installing Yugabyte Platform</div>
       </div>
       <div class="body">
-        System requirements for installing Yugabyte Platform and deploying YugabyteDB universes.
+        Prepare your environment for installing Yugabyte Platform and deploying YugabyteDB universes.
       </div>
     </a>
   </div>
