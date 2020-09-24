@@ -40,6 +40,7 @@ const schemaValidation =  Yup.object().shape({
     .required('Number of threads is required'),
   transactionalBackup: Yup.bool(),
   schedulingFrequency: Yup.number('Frequency must be a number'),
+  timeBeforeDelete: Yup.number('Time before deletion needs to be a number'),
   cronExpression: Yup.string().test({
     name: "isValidCron",
     test: (value) => (value && cron.isValidCron(value)) || !value,
@@ -69,6 +70,7 @@ export default class CreateBackup extends Component {
         "schedulingFrequency": isEmptyString(values.schedulingFrequency) ? null : values.schedulingFrequency,
         "cronExpression": isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
         "parallelism": values.parallelism,
+        "timeBeforeDelete": values.timeBeforeDelete * 24 * 60 * 60 * 1000,
         "actionType": "CREATE"
       };
       if (isDefinedNotNull(values.tableKeyspace) && values.tableKeyspace.value === "allkeyspaces") {
@@ -196,7 +198,7 @@ export default class CreateBackup extends Component {
           initialValues={initialValues}
           validationSchema={schemaValidation}
           render={({
-            values: { cronExpression, schedulingFrequency, backupTableUUID, storageConfigUUID, tableKeyspace, parallelism },
+            values: { cronExpression, schedulingFrequency, backupTableUUID, storageConfigUUID, tableKeyspace, parallelism, timeBeforeDelete },
             values,
             errors
           }) => {
@@ -209,6 +211,8 @@ export default class CreateBackup extends Component {
             const isTableSelected = backupTableUUID && backupTableUUID.length;
 
             const s3StorageSelected = storageConfigUUID && storageConfigUUID.label === 'S3 Storage';
+
+            const hasScheduleFreq = isSchedulingFrequencyReadOnly || isCronExpressionReadOnly;
 
             const showTransactionalToggle = isKeyspaceSelected &&
               (!!isTableSelected && (backupTableUUID.length > 1 || backupTableUUID[0].value === 'alltables'));
@@ -358,12 +362,17 @@ export default class CreateBackup extends Component {
                 label={"Enable Server-Side Encryption"}
               />
               }
-              {
-                <Field
-                  name="parallelism"
-                  component={YBFormInput}
-                  label={"Parallel Threads"}
-                />
+              {<Field
+                name="parallelism"
+                component={YBFormInput}
+                label={"Parallel Threads"}
+              />
+              }
+              {hasScheduleFreq && <Field
+                name="timeBeforeDelete"
+                component={YBFormInput}
+                label={"Number of Days to Retain Backup"}
+              />
               }
             </Fragment>);
           }}

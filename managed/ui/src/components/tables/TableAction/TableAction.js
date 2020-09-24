@@ -2,7 +2,7 @@
 
 import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
-import { BulkImportContainer, DropTableContainer, CreateBackupContainer, RestoreBackupContainer } from '../../../components/tables';
+import { BulkImportContainer, DropTableContainer, CreateBackupContainer, RestoreBackupContainer, DeleteBackupContainer } from '../../../components/tables';
 import { ImportReleaseContainer, UpdateReleaseContainer } from '../../../components/releases';
 import {  MenuItem } from 'react-bootstrap';
 import { YBLabelWithIcon } from '../../common/descriptors';
@@ -27,7 +27,8 @@ export default class TableAction extends Component {
     actionType: PropTypes.oneOf([
       'drop', 'import', 'create-backup',
       'create-scheduled-backup', 'restore-backup', 'import-release',
-      'active-release', 'disable-release', 'delete-release'
+      'active-release', 'disable-release', 'delete-release',
+      'delete-backup'
     ])
   };
 
@@ -106,6 +107,15 @@ export default class TableAction extends Component {
         visible={this.state.showModal}
         onHide={this.closeModal}
         onModalSubmit={this.props.onModalSubmit}
+      />);
+    }
+    else if (actionType === "delete-backup") {
+      btnLabel = "Delete Backup";
+      btnIcon = "fa fa-trash";
+      modalContainer = (<DeleteBackupContainer
+        visible = {this.state.showModal}
+        onHide = { this.closeModal}
+        tableInfo = {this.state.selectedRow}
       />);
     } else if (["disable-release", "delete-release", "active-release"].includes(actionType)) {
       let action;

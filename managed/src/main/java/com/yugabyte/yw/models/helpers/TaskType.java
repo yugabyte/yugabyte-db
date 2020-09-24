@@ -34,6 +34,8 @@ public enum TaskType {
 
   BackupUniverse("BackupUniverse"),
 
+  DeleteBackup("DeleteBackup"),
+
   MultiTableBackup("MultiTableBackup"),
 
   EditUniverse("EditUniverse"),
