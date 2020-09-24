@@ -42,6 +42,30 @@ A dedicated host or virtual machine (VM) is required to run the Yugabyte Platfor
 
 ## Prerequisites
 
+For Yugabyte Platform, see [Review system requirements](../../../plan/system-reqs-yp).
+
+## Install Yugabyte Platform on a VM
 
 
+Requirements for YugabyteDB nodes
+
+Create a user on the YB Platform VM that has passwordless sudo privileges user on yw:
+$ sudo groupadd yw
+$ sudo useradd -m -s /bin/bash -g yw yw
+$ sudo passwd yw
+$ sudo usermod -aG wheel yw
+
+Setup a new user account that has ssh access to the VM. The user being created in this case is yw with sudo privileges on the node ideally.
+
+Do the following as the new user (yw) to enable passwordless ssh
+$ mkdir .ssh
+$ chmod 700 .ssh
+$ touch .ssh/authorized_keys
+$ chmod 600 .ssh/authorized_keys
+
+Make custom directory for airgap install, here the /data directory is being used
+$ sudo mkdir /data
+$ sudo chown yw:yw /data
+
+Install Platform according to the instructions on the Yugabyte Platform deployment docs page.
 

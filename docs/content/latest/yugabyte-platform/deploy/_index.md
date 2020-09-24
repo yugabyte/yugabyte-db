@@ -1,6 +1,6 @@
 ---
-title: Deploy the Yugabyte Platform
-headerTitle: Deploy the Yugabyte Platform
+title: Deploy Yugabyte Platform
+headerTitle: Deploy Yugabyte Platform
 linkTitle: Deploy
 description: Deploy the Yugabyte Platform to orchestrate and manage YugabyteDB universes.
 headcontent:

@@ -60,23 +60,22 @@ showAsideToc: true
 
 ## Step 1. Configure the on-premises provider using the docs instructions
 
-1. Specify the SSH user as the `yw user required for provisioning YB Nodes
+1. Specify the SSH user as the `yw` user required for provisioning YugabyteDB nodes.
 2. Ensure that the SSH key is pasted correctly (Supported format is `RSA`)
-3. Type the home directory path  (default is `/home/yugabyte`).
+3. Keep the default home directory path (`/home/yugabyte`).
 4. For mount paths, use a mount point with enough space to contain your node density. Use `/data`.  If you have multiple drives, add these as a comma-separated list: `/mnt/d0,/mnt/d1`.
 
-## Step 2. Provision as many YugabyteDB nodes as needed
+## Step 2. Provision the YugabyteDB nodes
+
+Follow the steps below to provision as many nodes as your application requires:
 
 1. Add the YugabyteDB node IP addresses to the on-premises cloud provider using the **Manage Instances** workflow.
 2. Use DNS names or IP addresses when adding instances.
-3. Create a new universe using the .
-https://docs.yugabyte.com/latest/yugabyte-platform/manage/create-universe-multi-zone/
+3. Use [Create a multi-zone universe](../manage/create-universe-multi-zone/).
 
+---
 
-
-
-
-
+???
 
 ![Configure On-Premises Data center Provider](/images/ee/onprem/configure-onprem-1.png)
 

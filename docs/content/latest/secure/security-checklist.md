@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Below are a list of security measures that can be implemented to protect your YugabyteDB installation.
+Below are security measures that can be implemented to protect your YugabyteDB installation.
 
 ## Enable authentication
 

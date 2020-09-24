@@ -6,7 +6,7 @@ description: System requirements for Yugabyte Platform.
 menu:
   latest:
     parent: plan-yugabyte-platform
-    identifier: yp-system-reqs
+    identifier: system-reqs-yp
     weight: 623
 type: page
 isTocNested: true
@@ -17,14 +17,6 @@ The Yugabyte Platform (aka YugaWare) first needs to be installed on a host machi
 
 To install Yugabyte Platform, you must meet the following requirements.
 
-## Supported operating systems
-
-Only Linux-based systems are supported by Replicated. The Linux operating system should be meet these requirements:
-
-- Kernel: 3.10 or later
-- 64-bit
-- Ready to run Docker Engine, versions 1.7.1 to 17.06.2-ce (with 17.06.2-ce being the recommended version). 
-
 ### Supported Linux distributions
 
 Yugabyte Platform can be installed on the following Linux distributions:
@@ -34,6 +26,14 @@ Yugabyte Platform can be installed on the following Linux distributions:
 - CentOS: 7 or later.
 - Amazon AMI: 2014.03, 2014.09, 2015.03, 2015.09, 2016.03, and 2016.09.
 - Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
+
+## Supported operating systems
+
+Only Linux-based systems are supported by Replicated. The Linux operating system should be meet these requirements:
+
+- Kernel: 3.10 or later
+- 64-bit
+- Ready to run Docker Engine, versions 1.7.1 to 17.06.2-ce (with 17.06.2-ce being the recommended version). 
 
 ## Access and privilege requirements
 
@@ -62,3 +62,19 @@ To install Yugabyte Platform on Airgapped hosts, without access to any Internet 
 - Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum
 - A Yugabyte Platform license file (attached to your welcome email from Yugabyte Support)
 - Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes. If this is not set up, [setup passwordless ssh](#step-5-troubleshoot-yugaware).
+
+
+
+-----------
+
+???
+
+From requirements for creating a Yugabyte Platform VM:
+
+OS Requirements: Ubuntu 16.04 / 18.04 LTS, CentOS or RHEL 7.x
+Connectivity to the Internet, either directly or via a http proxy. If no connectivity follow “airgapped” instructions
+Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes via ssh. If not setup passwordless ssh
+Ability to install and configure docker
+Ability to install and configure Replicated, which is a containerized application itself and needs to pull containers from its own Replicated.com container registry
+Ability to pull Yugabyte container images from Quay.io  container registry, this will be done by Replicated automatically
+Open ports 22, 880, and 80
