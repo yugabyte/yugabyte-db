@@ -17,7 +17,7 @@ menu:
     <a class="section-link icon-offset" href="plan/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Plan</div>
+        <div class="title">Plan and prepare</div>
       </div>
       <div class="body">
         System requirements for installing Yugabyte Platform and YugabyteDB universes.
@@ -44,7 +44,31 @@ menu:
         <div class="title">Manage</div>
       </div>
       <div class="body">
-        Manage YugabyteDB clusters through Yugabyte Platform.
+        Uses Yugabyte Platform to manage YugabyteDB universes.
+      </div>
+    </a>
+  </div>
+
+    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="secure/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
+        <div class="title">Manage</div>
+      </div>
+      <div class="body">
+        Secure your Yugabyte Platform and YugabyteDB universes.
+      </div>
+    </a>
+  </div>
+
+    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="monitor-and-alert/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
+        <div class="title">Monitor and alert</div>
+      </div>
+      <div class="body">
+        Monitor your YugabyteDB universes using built-in dashboards and custom Grafana dashboards.
       </div>
     </a>
   </div>
