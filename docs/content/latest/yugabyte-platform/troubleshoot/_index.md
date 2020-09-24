@@ -12,7 +12,7 @@ menu:
   latest:
     identifier: troubleshoot-yugabyte-platform
     parent: yugabyte-platform
-    weight: 850
+    weight: 670
 ---
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
