@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## What is YugaWare?
 
-The Yugabyte Platform, previously referred to as YugaWare, provides built-in orchestration and monitoring for creating and managing YugabyteDB universes and clusters and can be used to deploy YugabyteDB in any public or private cloud.
+The Yugabyte Platform, previously named YugaWare, provides built-in orchestration and monitoring for creating and managing YugabyteDB universes and clusters and can be used to deploy YugabyteDB in any public or private cloud.
 
 ## How does the installation work for Yugabyte Platform?
 
@@ -55,10 +55,6 @@ For airgapped hosts, a supported version of docker-engine (currently 1.7.1 to 17
 - A Yugabyte Platform license file (attached to your welcome email from Yugabyte Support)
 - Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes. If this is not set up, [setup passwordless ssh](#step-5-troubleshoot-yugaware).
 
-## What are the OS requirements and permissions to run the YugabyteDB data nodes?
-
-Prerequisites for the YugabyteDB data nodes are listed [here](../../../deploy/multi-node-cluster/#prerequisites).
-
 ## How are the build artifacts packaged and stored for Yugabyte Platform?
 
 The Yugabyte Platform software is packaged as a set of Docker container images hosted on the [Quay.io](https://quay.io/) container registry and managed by the [Replicated](https://www.replicated.com/) management tool. Installation of the admin console starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images the Replicated.com container registry. The Yugabyte Platform (YugaWare) then becomes a managed application of Replicated, which starts by pulling the Yugabyte Platform (`yugaware`) container images from Quay.io for the very first time. Replicated ensures that the Yugabyte Platform remains highly available as well as allows for instant upgrades by simply pulling the incremental container images associated with a newer YugaWare release. Note that if the host running the YugabyteDB Admin Console does not have Internet connectivity, then a fully air-gapped installation option is also available.
@@ -67,7 +63,7 @@ The data node software is packaged into the Yugabyte Platform application. Yugab
 
 ## How does the YugabyteDB Admin Console interact with the YugabyteDB data nodes?
 
-The YugabyteDB Admin Console creates a passwordless SSH connection to interact with the data nodes. It needs to have the access key file (like a PEM file) uploaded into it using the YugabyteDB Admin Console. The setup on each of the data nodes to configure password-less SSH is documented [here](../../deploy/#private-cloud-or-on-premises-data-centers).
+The YugabyteDB Admin Console creates a passwordless SSH connection to interact with the data nodes. It needs to have the access key file (like a PEM file) uploaded into it using the YugabyteDB Admin Console. The setup on each of the data nodes to configure passwordless SSH is documented [here](../../deploy/#private-cloud-or-on-premises-data-centers).
 
 A REST API is also exposed by the YugabyteDB Admin Console to the end users in addition to the UI as another means of interacting with the data platform.
 

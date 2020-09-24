@@ -10,29 +10,41 @@ menu:
     identifier: install-yp-3-kubernetes
     parent: deploy-yugabyte-platform
     weight: 670
+type: page
 isTocNested: true
 showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
   <li >
     <a href="/latest/yugabyte-platform/deploy/install-admin-console/default" class="nav-link">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
+
+  <li >
+    <a href="/latest/yugabyte-platform/deploy/install-admin-console/onprem" class="nav-link">
+      <i class="fas fa-cloud"></i>
+      On-premises
+    </a>
+  </li>
+
   <li >
     <a href="/latest/yugabyte-platform/deploy/install-admin-console/airgapped" class="nav-link">
       <i class="fas fa-unlink"></i>
       Airgapped
     </a>
   </li>
+
   <li>
     <a href="/latest/yugabyte-platform/deploy/install-admin-console/kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
+
 </ul>
 
 ## Prerequisites

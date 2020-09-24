@@ -1,6 +1,6 @@
 ---
 title: Deploy the Yugabyte Platform for mission-critical deployments
-headerTitle: Deploy Yugabyte Platform
+headerTitle: Deploy the Yugabyte Platform
 linkTitle: Deploy
 description: Use Yugabyte Platform to deploy and manage mission-critical YugabyteDB clusters.
 headcontent:
@@ -20,6 +20,7 @@ The Yugabyte Platform is best fit for mission-critical deployments, such as prod
 Yugabyte Platform is a containerized application that is installed and managed using <a href="https://www.replicated.com/" target="_blank">Replicated</a> for mission-critical environments (for example, production, performance, or failure mode testing). Replicated is a purpose-built tool for on-premises deployments and life cycle management of containerized applications. For environments that are not mission-critical, such as those needed for local development or simple functional testing, you can also use <a href="../../quick-start/install">YugabyteDB</a>.
 
 <div class="row">
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="prepare-cloud-environment/">
       <div class="head">
@@ -67,4 +68,5 @@ Yugabyte Platform is a containerized application that is installed and managed u
       </div>
     </a>
   </div>
+
 </div>

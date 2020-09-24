@@ -1,38 +1,50 @@
 ---
-title: Install Yugabyte Platform
-headerTitle: Install Yugabyte Platform on Airgapped
+title: Install the Yugabyte Platform on airgapped
+headerTitle: Install the Yugabyte Platform on an airgapped host
 linkTitle: 2. Install Yugabyte Platform
-description: Install Yugabyte Platform (aka YugaWare).
+description: Install Yugabyte Platform (aka YugaWare) on an airgapped host.
 aliases:
   - /latest/deploy/enterprise-edition/install-admin-console/airgapped
 menu:
   latest:
-    identifier: install-yp-2-airgapped
+    identifier: install-yp-3-airgapped
     parent: deploy-yugabyte-platform
     weight: 670
+type: page
 isTocNested: true
 showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
   <li >
     <a href="/latest/yugabyte-platform/deploy/install-admin-console/default" class="nav-link">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
+
+  <li >
+    <a href="/latest/yugabyte-platform/deploy/install-admin-console/onprem" class="nav-link">
+      <i class="fas fa-cloud"></i>
+      On-premises
+    </a>
+  </li>
+
   <li >
     <a href="/latest/yugabyte-platform/deploy/install-admin-console/airgapped" class="nav-link active">
       <i class="fas fa-unlink"></i>
       Airgapped
     </a>
   </li>
+
   <li>
     <a href="/latest/yugabyte-platform/deploy/install-admin-console/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
+
 </ul>
 
 An “air-gapped” host has either no or a restricted path to inbound or outbound Internet traffic at all.

@@ -6,7 +6,7 @@
 
   {{/* Get section name */}}
   {{ $itemSection := default "Misc" (index $item.Page.Params "section") }}
-
+                                              
   {{/* Find open section item */}}
   {{ $absoluteLinkUrl := $item.URL | absURL | printf "%s" }}
   {{ if eq $absoluteLinkUrl (substr $.context.Permalink 0 (len $absoluteLinkUrl)) }}

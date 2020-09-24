@@ -5,7 +5,7 @@ linkTitle: 2. Install Yugabyte Platform
 description: On-premises install of Yugabyte Platform (aka YugaWare).
 menu:
   latest:
-    identifier: install-yp-on-premises
+    identifier: install-yp-2-onprem
     parent: deploy-yugabyte-platform
     weight: 670
 isTocNested: true
@@ -22,6 +22,13 @@ showAsideToc: true
   </li>
 
   <li >
+    <a href="/latest/yugabyte-platform/deploy/install-admin-console/onprem" class="nav-link active">
+      <i class="fas fa-cloud"></i>
+      On-premises
+    </a>
+  </li>
+
+  <li >
     <a href="/latest/yugabyte-platform/deploy/install-admin-console/airgapped" class="nav-link">
       <i class="fas fa-unlink"></i>
       Airgapped
@@ -29,7 +36,7 @@ showAsideToc: true
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/deploy/install-admin-console/kubernetes" class="nav-link active">
+    <a href="/latest/yugabyte-platform/deploy/install-admin-console/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

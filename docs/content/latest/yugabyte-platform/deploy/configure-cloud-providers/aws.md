@@ -90,12 +90,12 @@ In order to actually deploy YugabyteDB nodes in your AWS account, the Yugabyte P
 - Directly provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html)
 - Attach an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the Yugabyte Platform VM in the EC2 tab.
 
-## KeyPairs
+## SSH Key Pairs
 
 In order to be able to provision EC2 instances with YugabyteDB, the Yugabyte Platform will require SSH access to these. To that end, there are two  to choose from:
 
-- Allow Yugabyte Platform to create and manage [KeyPairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, the Yugabyte Platform will create KeyPairs across all the regions you choose to setup and store the relevant private key part of these locally in order to SSH into future EC2 instances.
-- Use your own already existing KeyPairs. For this you will need to provide the name of the KeyPair, as well as the private key content and the corresponding SSH user. **Note that currently, all this info must be the same across all the regions you choose to provision!**
+- Allow Yugabyte Platform to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, the Yugabyte Platform will create SSH Key Pairs across all the regions you choose to setup and store the relevant private key part of these locally in order to SSH into future EC2 instances.
+- Use your own already existing Key Pairs. For this you will need to provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. **Note that currently, all this info must be the same across all the regions you choose to provision!**
 
 ## Enabling hosted zones
 
@@ -135,7 +135,7 @@ One really important note if you choose to provide your own VPC information: **i
 
 ## Final notes
 
-If you use the Yugabyte Platform to manage KeyPairs for you and you deploy multiple Yugabyte Platform instances across your environment, then the AWS Provider name should be unique for each instance of Yugabyte Platform integrating with a given AWS Account.
+If you use the Yugabyte Platform to manage SSH Key Pairs for you and you deploy multiple Yugabyte Platform instances across your environment, then the AWS Provider name should be unique for each instance of Yugabyte Platform integrating with a given AWS Account.
 
 ## Marketplace acceptance
 

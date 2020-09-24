@@ -8,7 +8,7 @@ aliases:
   - /latest/yugabyte-platform/deploy/prepare-cloud-environment/
 menu:
   latest:
-    identifier: prepare-cloud-1-aws
+    identifier: prepare-envt-3-aws
     name: Prepare cloud environment
     parent: deploy-yugabyte-platform
     weight: 669

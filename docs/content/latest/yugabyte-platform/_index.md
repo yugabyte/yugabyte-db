@@ -10,7 +10,21 @@ menu:
     identifier: yugabyte-platform
     weight: 600
 ---
+
 <div class="row">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="requirements/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
+        <div class="title">System requirements</div>
+      </div>
+      <div class="body">
+        System requirements for installing Yugabyte Platform and YugabyteDB universes.
+      </div>
+    </a>
+  </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="deploy/">
       <div class="head">
@@ -46,5 +60,5 @@ menu:
       </div>
     </a>
   </div>
-</div>
 
+</div>

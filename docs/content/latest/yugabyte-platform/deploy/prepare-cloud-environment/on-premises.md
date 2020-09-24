@@ -5,7 +5,7 @@ linkTitle: 1. Prepare environment
 description: Prepare your on-premises environment for the Yugabyte Platform.
 menu:
   latest:
-    identifier: prepare-on-premises
+    identifier: prepare-envt-1-on-premises
     parent: deploy-yugabyte-platform
     weight: 669
 isTocNested: true
