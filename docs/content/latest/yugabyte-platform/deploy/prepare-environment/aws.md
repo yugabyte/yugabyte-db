@@ -1,23 +1,29 @@
 ---
-title: Prepare cloud environments for Yugabyte Platform
-headerTitle: Prepare cloud environment for AWS
-linkTitle: 1. Prepare environment
-description: Prepare your AWS environment for the Yugabyte Platform.
+title: Prepare the AWS cloud environment
+headerTitle: Prepare the AWS cloud environment
+linkTitle: 1. Prepare the environment
+description: Prepare the AWS environment for the Yugabyte Platform.
 aliases:
   - /latest/deploy/enterprise-edition/prepare-environment/
   - /latest/yugabyte-platform/deploy/prepare-environment/
 menu:
   latest:
     identifier: prepare-environment-3-aws
-    name: Prepare cloud environment
     parent: deploy-yugabyte-platform
     weight: 669
 isTocNested: true
 showAsideToc: true
-
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/yugabyte-platform/deploy/prepare-environment/prepare-on-premises" class="nav-link">
+      <i class="icon-aws" aria-hidden="true"></i>
+      On-premises
+    </a>
+  </li>
+
   <li >
     <a href="/latest/yugabyte-platform/deploy/prepare-environment/aws" class="nav-link active">
       <i class="icon-aws" aria-hidden="true"></i>

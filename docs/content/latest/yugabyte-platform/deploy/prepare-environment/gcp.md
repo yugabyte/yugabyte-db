@@ -1,12 +1,11 @@
 ---
-title: Prepare cloud environments for Yugabyte Platform
-headerTitle: Prepare cloud environment for GCP
-linkTitle: 1. Prepare environment
+title: Prepare the GCP cloud environment
+headerTitle: Prepare the GCP cloud environment
+linkTitle: 1. Prepare the environment
 description: Prepare your GCP environment for the Yugabyte Platform.
 menu:
   latest:
     identifier: prepare-environment-2-gcp
-    name: Prepare cloud environment
     parent: deploy-yugabyte-platform
     weight: 669
 isTocNested: true
@@ -15,6 +14,13 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/yugabyte-platform/deploy/prepare-environment/prepare-on-premises" class="nav-link">
+      <i class="icon-aws" aria-hidden="true"></i>
+      On-premises
+    </a>
+  </li>
 
   <li >
     <a href="/latest/yugabyte-platform/deploy/prepare-environment/aws" class="nav-link">

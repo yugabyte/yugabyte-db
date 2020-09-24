@@ -55,7 +55,7 @@ To install Yugabyte Platform on Airgapped hosts, without access to any Internet 
 - Pull Yugabyte container images from [Quay.io](https://quay.io/) container registry. Required images are pulled automatically by Replicated.
 - Install using `sudo`.
 - Docker Engine: supported versions `1.7.1` to `17.03.1-ce`. If not installed, see [Installing Docker in airgapped]](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
-- The following ports should be open on the YugaWare host:
+- The following ports should be open on the Yugabyte Platform host:
   - `8800` – HTTP access to the Replicated UI
   - `80` – HTTP access to the YugabyteDB Admin Console)
   - `22` – SSH

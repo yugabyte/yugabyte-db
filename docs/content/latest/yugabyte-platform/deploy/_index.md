@@ -25,10 +25,10 @@ Yugabyte Platform is a containerized application that is installed and managed u
     <a class="section-link icon-offset" href="prepare-environment/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
-        <div class="title">Prepare cloud environment</div>
+        <div class="title">Prepare the environment</div>
       </div>
       <div class="body">
-        Prepare your cloud environment before installing the Yugabyte Platform.
+        Prepare your environment (on-premises/AWS/GCP) for installing Yugabyte Platform.
       </div>
     </a>
   </div>
@@ -40,7 +40,7 @@ Yugabyte Platform is a containerized application that is installed and managed u
         <div class="title">Install Yugabyte Platform</div>
       </div>
       <div class="body">
-        Install the Yugabyte Platform (aka YugaWare) on any host of your choice.
+        Install the Yugabyte Platform on any host of your choice.
       </div>
     </a>
   </div>
