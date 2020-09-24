@@ -7,7 +7,7 @@ menu:
   latest:
     parent: secure-yugabyte-platform
     identifier: security-checklist-yp
-    weight: 642
+    weight: 672
 type: page
 isTocNested: true
 showAsideToc: true

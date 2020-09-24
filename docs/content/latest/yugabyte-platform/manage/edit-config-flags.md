@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: edit-config-flags
     parent: manage-yugabyte-platform
-    weight: 740
+    weight: 634
 isTocNested: true
 showAsideToc: true
 ---

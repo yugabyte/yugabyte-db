@@ -6,7 +6,7 @@ description: System requirements for Yugabyte Platform.
 menu:
   latest:
     parent: plan-yugabyte-platform
-    identifier: system-reqs-yp
+    identifier: review-system-reqs-yp
     weight: 623
 type: page
 isTocNested: true
@@ -17,7 +17,7 @@ The Yugabyte Platform (aka YugaWare) first needs to be installed on a host machi
 
 To install Yugabyte Platform, you must meet the following requirements.
 
-### Supported Linux distributions
+## Supported Linux distributions
 
 Yugabyte Platform can be installed on the following Linux distributions:
 

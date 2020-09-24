@@ -10,5 +10,5 @@ menu:
   latest:
     identifier: secure-yugabyte-platform
     parent: yugabyte-platform
-    weight: 640
+    weight: 670
 ---

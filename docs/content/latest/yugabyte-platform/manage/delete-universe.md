@@ -1,5 +1,5 @@
 ---
-title: Delete a universe using Yugabyte Platform
+title: Delete a universe
 headerTitle: Delete a universe
 linkTitle: Delete a universe
 description: Use Yugabyte Platform to delete a universe.
@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: delete-universe
     parent: manage-yugabyte-platform
-    weight: 760
+    weight: 642
 isTocNested: true
 showAsideToc: true
 ---

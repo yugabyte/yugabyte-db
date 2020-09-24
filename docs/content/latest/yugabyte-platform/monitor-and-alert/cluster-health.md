@@ -1,16 +1,16 @@
 ---
-title: Configure health checks and alerts using using Yugabyte Platform
+title: Configure health checks and alerts
 headerTitle: Configure health checks and alerts
 linkTitle: Configure health checks and alerts
-description: Use Yugabyte Platform to configure health checks and alerts for universes.
+description: Use Yugabyte Platform to configure health checks and alerts for YugabyteDB universes.
 aliases:
   - /latest/manage/enterprise-edition/cluster-health/
   - /latest/manage/cluster-health/
 menu:
   latest:
-    identifier: cluster-health
-    parent: manage-yugabyte-platform
-    weight: 740
+    identifier: cluster-health-yp
+    parent: monitor-yugabyte-platform
+    weight: 663
 isTocNested: true
 showAsideToc: true
 ---

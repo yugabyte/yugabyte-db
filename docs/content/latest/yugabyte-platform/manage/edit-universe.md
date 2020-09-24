@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: edit-universe
     parent: manage-yugabyte-platform
-    weight: 730
+    weight: 633
 isTocNested: true
 showAsideToc: true
 ---

@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: troubleshoot-universes
     parent: troubleshoot-yugabyte-platform
-    weight: 853
+    weight: 683
 isTocNested: true
 showAsideToc: true
 ---

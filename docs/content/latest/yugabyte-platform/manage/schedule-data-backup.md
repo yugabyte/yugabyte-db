@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: schedule-data-backup
     parent: manage-yugabyte-platform
-    weight: 749
+    weight: 640
 isTocNested: true
 showAsideToc: true
 

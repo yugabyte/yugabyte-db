@@ -7,7 +7,7 @@ menu:
   latest:
     parent: secure-yugabyte-platform
     identifier: enable-encryption-at-rest-yp
-    weight: 643
+    weight: 673
 type: page
 isTocNested: true
 showAsideToc: true

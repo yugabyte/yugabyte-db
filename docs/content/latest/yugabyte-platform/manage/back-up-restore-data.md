@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: back-up-restore-data
     parent: manage-yugabyte-platform
-    weight: 747
+    weight: 639
 isTocNested: true
 showAsideToc: true
 ---

@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: create-edit-instance-tags
     parent: manage-yugabyte-platform
-    weight: 742
+    weight: 635
 isTocNested: true
 showAsideToc: true
 ---

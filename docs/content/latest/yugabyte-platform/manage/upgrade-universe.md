@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: upgrade-universes
     parent: manage-yugabyte-platform
-    weight: 750
+    weight: 641
 isTocNested: true
 showAsideToc: true
 ---

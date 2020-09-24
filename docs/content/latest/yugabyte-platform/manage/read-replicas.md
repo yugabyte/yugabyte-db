@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: create-read-replica-cluster
     parent: manage-yugabyte-platform
-    weight: 745
+    weight: 636
 isTocNested: true
 showAsideToc: true
 ---

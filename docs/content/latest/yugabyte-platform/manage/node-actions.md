@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: node-status-actions
     parent: manage-yugabyte-platform
-    weight: 745
+    weight: 637
 isTocNested: true
 showAsideToc: true
 ---
