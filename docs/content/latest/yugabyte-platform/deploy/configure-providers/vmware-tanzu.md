@@ -1,8 +1,8 @@
 ---
-title: Configure VMware Tanzu for YugabyteDB
-headerTitle: Configure the providers
+title: Configure the VMware Tanzu providers
+headerTitle: Configure the VMware Tanzu providers
 linkTitle: 4. Configure the providers
-description: Configure Kubernetes for YugabyteDB deployments using the YugabyteDB Admin Console
+description: Configure the VMware Tanzu providers
 aliases:
   - /deploy/pivotal-cloud-foundry/
   - /latest/deploy/pivotal-cloud-foundry/
@@ -16,6 +16,13 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/on-premises" class="nav-link">
+      <i class="fas fa-building"></i>
+      On-premises
+    </a>
+  </li>
 
   <li >
     <a href="/latest/yugabyte-platform/deploy/configure-providers/aws" class="nav-link">
@@ -52,16 +59,9 @@ showAsideToc: true
     </a>
   </li>
 
-  <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-providers/install-yugabyte-platform" class="nav-link">
-      <i class="fas fa-building"></i>
-      On-premises
-    </a>
-  </li>
-
 </ul>
 
-This tutorial walks through the steps to a create service instance of YugabyteDB in PCF.  
+This tutorial walks through the steps to a create service instance of YugabyteDB in VMware Tanzu, previously the Pivotal Cloud Foundry ().  
 
 ## Prerequisites
 

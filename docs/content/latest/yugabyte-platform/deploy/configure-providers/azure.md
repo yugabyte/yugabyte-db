@@ -1,6 +1,6 @@
 ---
-title: Configure Microsoft Azure for YugabyteDB deployments
-headerTitle: Configure the providers
+title: Configure the Microsoft Azure providers
+headerTitle: Configure the Microsoft Azure providers
 linkTitle: 4. Configure the providers
 description: Configure Microsoft Azure for YugabyteDB deployments using the YugabyteDB Admin Console
 aliases:
@@ -15,6 +15,15 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/on-premises" class="nav-link">
+      <i class="fas fa-building"></i>
+      On-premises
+    </a>
+  </li>
 
   <li >
     <a href="/latest/yugabyte-platform/deploy/configure-providers/aws" class="nav-link">
@@ -48,13 +57,6 @@ showAsideToc: true
     <a href="/latest/yugabyte-platform/deploy/configure-providers/vmware-tanzu" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
-    </a>
-  </li>
-
-  <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-providers/install-yugabyte-platform" class="nav-link">
-      <i class="fas fa-building"></i>
-      On-premises
     </a>
   </li>
 
