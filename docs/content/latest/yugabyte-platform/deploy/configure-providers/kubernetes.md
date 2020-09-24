@@ -7,7 +7,7 @@ aliases:
   - /latest/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
   latest:
-    identifier: configure-providers-4-kubernetes
+    identifier: configure-providers-5-kubernetes
     parent: deploy-yugabyte-platform
     weight: 680
 isTocNested: true

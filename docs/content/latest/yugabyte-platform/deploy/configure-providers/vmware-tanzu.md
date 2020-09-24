@@ -8,7 +8,7 @@ aliases:
   - /latest/deploy/pivotal-cloud-foundry/
 menu:
   latest:
-    identifier: configure-providers-5-vmware-tanzu
+    identifier: configure-providers-6-vmware-tanzu
     parent: deploy-yugabyte-platform
     weight: 680
 isTocNested: true

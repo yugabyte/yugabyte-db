@@ -7,7 +7,7 @@ aliases:
   - /latest/deploy/enterprise-edition/configure-cloud-providers/azure
 menu:
   latest:
-    identifier: configure-providers-3-azure
+    identifier: configure-providers-4-azure
     parent: deploy-yugabyte-platform
     weight: 680
 isTocNested: true

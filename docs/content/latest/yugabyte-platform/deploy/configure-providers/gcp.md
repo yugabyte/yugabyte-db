@@ -7,7 +7,7 @@ aliases:
   - /latest/deploy/enterprise-edition/configure-cloud-providers/gcp
 menu:
   latest:
-    identifier: configure-providers-2-gcp
+    identifier: configure-providers-3-gcp
     parent: deploy-yugabyte-platform
     weight: 680
 isTocNested: true

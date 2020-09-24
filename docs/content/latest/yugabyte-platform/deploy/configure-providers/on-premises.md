@@ -5,7 +5,7 @@ linkTitle: 4. Configure the providers
 description: Configure the on-premises data centers.
 menu:
   latest:
-    identifier: configure-providers-6-on-premises
+    identifier: configure-providers-1-on-premises
     parent: deploy-yugabyte-platform
     weight: 680
 isTocNested: true
