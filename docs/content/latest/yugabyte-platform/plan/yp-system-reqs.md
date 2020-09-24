@@ -1,7 +1,7 @@
 ---
-title: System requirements
-headerTitle: System requirements
-linkTitle: System requirements
+title: Review the system requirements
+headerTitle: Review the system requirements
+linkTitle: Review system requirements
 description: System requirements for Yugabyte Platform.
 menu:
   latest:

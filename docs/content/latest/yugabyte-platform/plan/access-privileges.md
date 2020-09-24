@@ -1,7 +1,7 @@
 ---
 title: Prepare access and privileges
 headerTitle: Prepare access and privileges
-linkTitle: Access and privilege
+linkTitle: Prepare access and privilege
 description: Access and privilege requirements for the Yugabyte Platform and YugabyteDB data nodes.
 menu:
   latest:

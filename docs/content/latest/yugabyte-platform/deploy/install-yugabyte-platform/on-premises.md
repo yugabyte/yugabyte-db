@@ -15,14 +15,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/default" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/on-premises/default" class="nav-link">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/install-yugabyte-platform" class="nav-link active">
+    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/on-premises" class="nav-link active">
       <i class="fas fa-cloud"></i>
       On-premises
     </a>
