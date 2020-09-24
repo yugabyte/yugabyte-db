@@ -1,7 +1,7 @@
 ---
 title: Configure VMware Tanzu for YugabyteDB
-headerTitle: Configure cloud providers
-linkTitle: 4. Configure cloud providers
+headerTitle: Configure the providers
+linkTitle: 4. Configure the providers
 description: Configure Kubernetes for YugabyteDB deployments using the YugabyteDB Admin Console
 aliases:
   - /deploy/pivotal-cloud-foundry/

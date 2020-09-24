@@ -1,10 +1,10 @@
 ---
 title: Configure Microsoft Azure for YugabyteDB deployments
-headerTitle: Configure cloud providers
-linkTitle: 4. Configure cloud providers
+headerTitle: Configure the providers
+linkTitle: 4. Configure the providers
 description: Configure Microsoft Azure for YugabyteDB deployments using the YugabyteDB Admin Console
 aliases:
-  - /latest/deploy/enterprise-edition/configure-providers/azure
+  - /latest/deploy/enterprise-edition/configure-cloud-providers/azure
 menu:
   latest:
     identifier: configure-providers-3-azure

@@ -1,10 +1,10 @@
 ---
-title: Configure Google Cloud Platform (GCP) for YugabyteDB deployments
-headerTitle: Configure cloud providers
-linkTitle: 4. Configure cloud providers
-description: Configure Google Cloud Platform (GCP) for YugabyteDB deployments using the YugabyteDB Admin Console
+title: Configure the Google Cloud Platform (GCP) providers
+headerTitle: Configure the Google Cloud Platform (GCP) providers
+linkTitle: 4. Configure the providers
+description: Configure the Google Cloud Platform (GCP) cloud providers.
 aliases:
-  - /latest/deploy/enterprise-edition/configure-providers/gcp
+  - /latest/deploy/enterprise-edition/configure-cloud-providers/gcp
 menu:
   latest:
     identifier: configure-providers-2-gcp

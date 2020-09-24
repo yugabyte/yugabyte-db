@@ -61,7 +61,7 @@ Yugabyte Platform is a containerized application that is installed and managed u
     <a class="section-link icon-offset" href="configure-providers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
-        <div class="title">Configure cloud providers</div>
+        <div class="title">Configure the providers</div>
       </div>
       <div class="body">
           Configure both public clouds and private on-premises data centers for running YugabyteDB.

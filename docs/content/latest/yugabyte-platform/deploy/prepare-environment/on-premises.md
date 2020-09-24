@@ -1,7 +1,7 @@
 ---
 title: Prepare the on-premises environment
 headerTitle: Prepare the on-premises environment
-linkTitle: 1. Prepare environment
+linkTitle: 1. Prepare the environment
 description: Prepare the on-premises environment for the Yugabyte Platform.
 menu:
   latest:
@@ -16,7 +16,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/prepare-environment/prepare-on-premises" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/prepare-environment/on-premises" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       On-premises
     </a>
