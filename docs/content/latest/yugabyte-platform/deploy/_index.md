@@ -22,7 +22,7 @@ Yugabyte Platform is a containerized application that is installed and managed u
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="prepare-cloud-environment/">
+    <a class="section-link icon-offset" href="prepare-environment/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
         <div class="title">Prepare cloud environment</div>
@@ -34,7 +34,7 @@ Yugabyte Platform is a containerized application that is installed and managed u
   </div>
   
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-admin-console/">
+    <a class="section-link icon-offset" href="install-yugabyte-platform/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Install Yugabyte Platform</div>
@@ -46,7 +46,7 @@ Yugabyte Platform is a containerized application that is installed and managed u
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure-admin-console/">
+    <a class="section-link icon-offset" href="configure-yugabyte-platform/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
         <div class="title">Configure Yugabyte Platform</div>
@@ -58,7 +58,7 @@ Yugabyte Platform is a containerized application that is installed and managed u
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure-cloud-providers/">
+    <a class="section-link icon-offset" href="configure-providers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
         <div class="title">Configure cloud providers</div>

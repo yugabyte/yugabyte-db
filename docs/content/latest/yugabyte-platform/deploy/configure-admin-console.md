@@ -4,10 +4,10 @@ headerTitle: Configure Yugabyte Platform
 linkTitle: 3. Configure Yugabyte Platform
 description: Configure Yugabyte Platform.
 aliases:
-  - /latest/deploy/enterprise-edition/configure-admin-console/
+  - /latest/deploy/enterprise-edition/configure-yugabyte-platform/
 menu:
   latest:
-    identifier: configure-admin-console
+    identifier: configure-yugabyte-platform
     parent: deploy-yugabyte-platform
     weight: 675
 isTocNested: true
@@ -34,7 +34,7 @@ Go to [http://yugaware-host-public-ip/register](http://yugaware-host-public-ip/r
 
 ![Register](/images/ee/register.png)
 
-After you click **Submit**, you are automatically logged into the YugabyteDB Admin Console. You can then proceed to [configuring cloud providers using the YugabyteDB Admin Console](../configure-cloud-providers/).
+After you click **Submit**, you are automatically logged into the YugabyteDB Admin Console. You can then proceed to [configuring cloud providers using the YugabyteDB Admin Console](../configure-providers/).
 
 ## Log in
 
@@ -46,7 +46,7 @@ Click on the top right drop-down list or go directly to [http://yugaware-host-pu
 
 ![Profile](/images/ee/profile.png)
 
-Next step is to configure one or more cloud providers in the YugabyteDB Admin Console as documented [here](../configure-cloud-providers/).
+Next step is to configure one or more cloud providers in the YugabyteDB Admin Console as documented [here](../configure-providers/).
 
 ## Back up data
 

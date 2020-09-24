@@ -4,10 +4,10 @@ headerTitle: Configure cloud providers
 linkTitle: 4. Configure cloud providers
 description: Configure Google Cloud Platform (GCP) for YugabyteDB deployments using the YugabyteDB Admin Console
 aliases:
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/gcp
+  - /latest/deploy/enterprise-edition/configure-providers/gcp
 menu:
   latest:
-    identifier: configure-cloud-providers-2-gcp
+    identifier: configure-providers-2-gcp
     parent: deploy-yugabyte-platform
     weight: 680
 isTocNested: true
@@ -17,42 +17,42 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/aws" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/gcp" class="nav-link active">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/gcp" class="nav-link active">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/azure" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/vmware-tanzu" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/vmware-tanzu" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/onprem" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/install-yugabyte-platform" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -85,7 +85,7 @@ Take note of the following for configuring your GCP provider:
 
 - Give this provider a relevant name. We recommend something that contains Google or GCP in it, especially if you will be configuring other providers as well.
 
-- Upload the JSON file that you obtained when you created your service account as per the [Initial Setup](../../prepare-cloud-environment/).
+- Upload the JSON file that you obtained when you created your service account as per the [Initial Setup](../../prepare-environment/).
 
 - Assuming this is a new deployment, Yugabyte recommends creating a new VPC specifically for YugabyteDB nodes. You have to ensure that the Yugabyte Platform host machine is able to connect to your Google Cloud account where this new VPC will be created. Otherwise, you can choose to specify an existing VPC for YugabyteDB nodes. The third option that is available only when your Yugabyte Platform host machine is also running on Google Cloud is to use the same VPC that the Yugabyte Platform host machine runs on.
 

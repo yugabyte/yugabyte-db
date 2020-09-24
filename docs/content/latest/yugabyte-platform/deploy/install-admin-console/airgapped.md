@@ -4,7 +4,7 @@ headerTitle: Install the Yugabyte Platform on an airgapped host
 linkTitle: 2. Install Yugabyte Platform
 description: Install Yugabyte Platform (aka YugaWare) on an airgapped host.
 aliases:
-  - /latest/deploy/enterprise-edition/install-admin-console/airgapped
+  - /latest/deploy/enterprise-edition/install-yugabyte-platform/airgapped
 menu:
   latest:
     identifier: install-yp-3-airgapped
@@ -18,28 +18,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/install-admin-console/default" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/default" class="nav-link">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/install-admin-console/onprem" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/install-yugabyte-platform" class="nav-link">
       <i class="fas fa-cloud"></i>
       On-premises
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/install-admin-console/airgapped" class="nav-link active">
+    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/airgapped" class="nav-link active">
       <i class="fas fa-unlink"></i>
       Airgapped
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/deploy/install-admin-console/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

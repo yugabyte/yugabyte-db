@@ -5,7 +5,7 @@ linkTitle: 1. Prepare environment
 description: Prepare your on-premises environment for the Yugabyte Platform.
 menu:
   latest:
-    identifier: prepare-envt-1-on-premises
+    identifier: prepare-environment-1-on-premises
     parent: deploy-yugabyte-platform
     weight: 669
 isTocNested: true
@@ -16,21 +16,21 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/prepare-cloud-environment/prepare-on-premises" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/prepare-environment/prepare-on-premises" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/prepare-cloud-environment/aws" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/prepare-environment/aws" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/deploy/prepare-cloud-environment/gcp" class="nav-link active">
+    <a href="/latest/yugabyte-platform/deploy/prepare-environment/gcp" class="nav-link active">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>

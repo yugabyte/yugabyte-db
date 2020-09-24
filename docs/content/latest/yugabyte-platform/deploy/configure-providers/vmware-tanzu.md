@@ -8,7 +8,7 @@ aliases:
   - /latest/deploy/pivotal-cloud-foundry/
 menu:
   latest:
-    identifier: configure-cloud-providers-5-vmwtanzu
+    identifier: configure-providers-5-vmware-tanzu
     parent: deploy-yugabyte-platform
     weight: 680
 isTocNested: true
@@ -18,42 +18,42 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/aws" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/gcp" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/azure" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/vmware-tanzu" class="nav-link active">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/vmware-tanzu" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/deploy/configure-cloud-providers/onprem" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/configure-providers/install-yugabyte-platform" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>

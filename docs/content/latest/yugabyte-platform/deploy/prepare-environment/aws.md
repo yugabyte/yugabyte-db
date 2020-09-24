@@ -4,11 +4,11 @@ headerTitle: Prepare cloud environment for AWS
 linkTitle: 1. Prepare environment
 description: Prepare your AWS environment for the Yugabyte Platform.
 aliases:
-  - /latest/deploy/enterprise-edition/prepare-cloud-environment/
-  - /latest/yugabyte-platform/deploy/prepare-cloud-environment/
+  - /latest/deploy/enterprise-edition/prepare-environment/
+  - /latest/yugabyte-platform/deploy/prepare-environment/
 menu:
   latest:
-    identifier: prepare-envt-3-aws
+    identifier: prepare-environment-3-aws
     name: Prepare cloud environment
     parent: deploy-yugabyte-platform
     weight: 669
@@ -19,21 +19,21 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/yugabyte-platform/deploy/prepare-cloud-environment/aws" class="nav-link active">
+    <a href="/latest/yugabyte-platform/deploy/prepare-environment/aws" class="nav-link active">
       <i class="icon-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/deploy/prepare-cloud-environment/gcp" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/prepare-environment/gcp" class="nav-link">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 </ul>
 
-A dedicated host or virtual machine (VM) is required to run the Yugabyte Platform server. For more details, see [this faq](../../../../faq/yugabyte-platform/#what-are-the-os-requirements-and-permissions-to-run-yugaware-the-yugabyte-admin-console). This page highlights the basic setup needed in order to install Yugabyte Platform.
+A dedicated host or virtual machine (VM) is required to run the Yugabyte Platform server.
 
 ## 1. Create a new security group [Optional]
 
@@ -58,7 +58,7 @@ You should see something like the screenshot below, click `Create` next.
 
 ## 2. Create a new IAM role [Optional]
 
-In order for Yugabyte Platform to manage YugabyteDB nodes, it will require some limited access to your AWS infrastructure. This can be accomplished through directly providing a set of credentials, when configuring the AWS provider, which you can read more later on [here](../../configure-cloud-providers/). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. Here is a sample of such a role:
+In order for Yugabyte Platform to manage YugabyteDB nodes, it will require some limited access to your AWS infrastructure. This can be accomplished through directly providing a set of credentials, when configuring the AWS provider, which you can read more later on [here](../../configure-providers/). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. Here is a sample of such a role:
 
 ```sh
 {
