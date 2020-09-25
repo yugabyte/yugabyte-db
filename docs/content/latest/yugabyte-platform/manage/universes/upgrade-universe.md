@@ -8,8 +8,8 @@ aliases:
 menu:
   latest:
     identifier: upgrade-universes
-    parent: manage-yugabyte-platform
-    weight: 641
+    parent: universes-manage-yugabyte-platform
+    weight: 639
 isTocNested: true
 showAsideToc: true
 ---

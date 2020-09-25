@@ -8,8 +8,8 @@ aliases:
 menu:
   latest:
     identifier: create-universe-multi-region
-    parent: manage-yugabyte-platform
-    weight: 632
+    parent: universes-manage-yugabyte-platform
+    weight: 637
 isTocNested: true
 showAsideToc: true
 ---

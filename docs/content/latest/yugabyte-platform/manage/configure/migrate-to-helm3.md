@@ -8,8 +8,8 @@ aliases:
 menu:
   latest:
     identifier: migrate-to-helm3
-    parent: manage-yugabyte-platform
-    weight: 643
+    parent: configure-manage-yugabyte-platform
+    weight: 646
 isTocNested: true
 showAsideToc: true
 ---

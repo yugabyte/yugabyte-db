@@ -8,8 +8,8 @@ aliases:
 menu:
   latest:
     identifier: node-status-actions
-    parent: manage-yugabyte-platform
-    weight: 637
+    parent: configure-manage-yugabyte-platform
+    weight: 645
 isTocNested: true
 showAsideToc: true
 ---

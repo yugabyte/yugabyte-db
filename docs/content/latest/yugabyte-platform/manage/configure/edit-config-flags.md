@@ -9,8 +9,8 @@ aliases:
 menu:
   latest:
     identifier: edit-config-flags
-    parent: manage-yugabyte-platform
-    weight: 634
+    parent: configure-manage-yugabyte-platform
+    weight: 643
 isTocNested: true
 showAsideToc: true
 ---

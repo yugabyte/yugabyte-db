@@ -1,6 +1,6 @@
 ---
 title: Create a read replica cluster
-headerTitle: Create a read replica cluster
+headerTitle: Create a read replica cluster98
 linkTitle: Create a read replica cluster
 description: Use Yugabyte Platform to create a read replica cluster.
 aliases:
@@ -8,8 +8,8 @@ aliases:
 menu:
   latest:
     identifier: create-read-replica-cluster
-    parent: manage-yugabyte-platform
-    weight: 636
+    parent: universes-manage-yugabyte-platform
+    weight: 638
 isTocNested: true
 showAsideToc: true
 ---

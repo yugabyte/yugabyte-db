@@ -9,8 +9,8 @@ aliases:
 menu:
   latest:
     identifier: create-multi-zone-universe
-    parent: manage-yugabyte-platform
-    weight: 631
+    parent: universes-manage-yugabyte-platform
+    weight: 636
 isTocNested: true
 showAsideToc: true
 ---

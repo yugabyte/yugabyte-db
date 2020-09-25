@@ -9,8 +9,8 @@ aliases:
 menu:
   latest:
     identifier: schedule-data-backup
-    parent: manage-yugabyte-platform
-    weight: 640
+    parent: back-up-and-restore-yugabyte-platform
+    weight: 653
 isTocNested: true
 showAsideToc: true
 

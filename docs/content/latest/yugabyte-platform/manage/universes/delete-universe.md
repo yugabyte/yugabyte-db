@@ -8,8 +8,8 @@ aliases:
 menu:
   latest:
     identifier: delete-universe
-    parent: manage-yugabyte-platform
-    weight: 642
+    parent: universes-manage-yugabyte-platform
+    weight: 640
 isTocNested: true
 showAsideToc: true
 ---
