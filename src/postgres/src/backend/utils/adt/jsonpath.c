@@ -562,6 +562,8 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 					appendStringInfoChar(buf, 'm');
 				if (v->content.like_regex.flags & JSP_REGEX_WSPACE)
 					appendStringInfoChar(buf, 'x');
+				if (v->content.like_regex.flags & JSP_REGEX_QUOTE)
+					appendStringInfoChar(buf, 'q');
 
 				appendStringInfoChar(buf, '"');
 			}
