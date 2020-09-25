@@ -27,4 +27,26 @@ menu:
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="data-nodes/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/enterprise.png" aria-hidden="true" />
+        <div class="title">Prepare data nodes for universe creation</div>
+      </div>
+      <div class="body">
+        Prepare nodes for deploying YugabyteDB universes.
+      </div>
+  </a>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="access-privileges/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/enterprise.png" aria-hidden="true" />
+        <div class="title">Prepare access and privileges</div>
+      </div>
+      <div class="body">
+        Prepare access and privileges required for installing Yugabyte Platform and deploying YugabyteDB universes.
+      </div>
+  </a>
+
 </div>

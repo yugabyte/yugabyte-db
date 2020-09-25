@@ -9,12 +9,14 @@ aliases:
   - /stable/troubleshoot/enterprise-edition/
   - /stable/troubleshoot/yugabyte-platform/
 block_indexing: true
+section: YUGABYTE PLATFORM
 menu:
   stable:
     identifier: troubleshoot-yugabyte-platform
     parent: yugabyte-platform
     weight: 850
 ---
+
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="universes">

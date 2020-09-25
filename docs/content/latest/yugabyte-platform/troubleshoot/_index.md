@@ -8,15 +8,18 @@ aliases:
   - /troubleshoot/enterprise-edition/
   - /latest/troubleshoot/enterprise-edition/
   - /latest/troubleshoot/yugabyte-platform/
+section: YUGABYTE PLATFORM
 menu:
   latest:
     identifier: troubleshoot-yugabyte-platform
     parent: yugabyte-platform
     weight: 680
 ---
+
 <div class="row">
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="universes">
+    <a class="section-link icon-offset" href="universes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
         <div class="title">Troubleshoot universes</div>
@@ -26,4 +29,5 @@ menu:
       </div>
     </a>
   </div>
+
 </div>

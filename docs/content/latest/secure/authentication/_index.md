@@ -5,6 +5,7 @@ linkTitle: Authentication
 description: Verify that users and clients are who they say they are.
 headcontent: Verify that users and clients are who they say they are.
 image: /images/section_icons/secure/authorization.png
+section: YUGABYTEDB CORE
 menu:
   latest:
     identifier: authentication

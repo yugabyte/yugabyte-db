@@ -7,6 +7,7 @@ headcontent: Enable authorization using role-based access control in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
 aliases:
   - /secure/authorization/
+section: YUGABYTEDB CORE
 menu:
   latest:
     identifier: authorization
