@@ -1,8 +1,8 @@
 ---
 title: Install Yugabyte Platform on Kubernetes
-headerTitle: Install Yugabyte Platform
+headerTitle: Install Yugabyte Platform on Kubernetes
 linkTitle: 2. Install Yugabyte Platform
-description: Install Yugabyte Platform (aka YugaWare) on Kubernetes
+description: Install Yugabyte Platform on Kubernetes
 aliases:
   - /latest/deploy/enterprise-edition/install-yugabyte-platform/kubernetes
 menu:
@@ -10,7 +10,6 @@ menu:
     identifier: install-yp-3-kubernetes
     parent: deploy-yugabyte-platform
     weight: 623
-type: page
 isTocNested: true
 showAsideToc: true
 ---

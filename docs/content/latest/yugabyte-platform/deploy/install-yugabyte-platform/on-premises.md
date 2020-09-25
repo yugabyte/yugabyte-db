@@ -1,11 +1,11 @@
 ---
-title: Yugabyte Platform on-premises install
-headerTitle: Install Yugabyte Platform (on-premises)
+title: Install Yugabyte Platform in on-premises
+headerTitle: Install Yugabyte Platform in on-premises
 linkTitle: 2. Install Yugabyte Platform
-description: On-premises install of Yugabyte Platform (aka YugaWare).
+description: On-premises install of Yugabyte Platform.
 menu:
   latest:
-    identifier: install-yp-2-install-yugabyte-platform
+    identifier: install-yp-2-on-premises
     parent: deploy-yugabyte-platform
     weight: 623
 isTocNested: true

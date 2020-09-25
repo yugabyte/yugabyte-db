@@ -28,7 +28,7 @@ Yugabyte Platform is a containerized application that is installed and managed u
         <div class="title">Prepare the environment</div>
       </div>
       <div class="body">
-        Prepare your environment (on-premises/AWS/GCP) for installing Yugabyte Platform.
+        Prepare your environment (on-premises, AWS, or GCP) for installing Yugabyte Platform.
       </div>
     </a>
   </div>
@@ -52,7 +52,7 @@ Yugabyte Platform is a containerized application that is installed and managed u
         <div class="title">Configure Yugabyte Platform</div>
       </div>
       <div class="body">
-        Configure your Yugabyte Platform (aka YugaWare) host.
+        Configure the Yugabyte Platform host.
       </div>
     </a>
   </div>
@@ -64,7 +64,7 @@ Yugabyte Platform is a containerized application that is installed and managed u
         <div class="title">Configure the providers</div>
       </div>
       <div class="body">
-          Configure both public clouds and private on-premises data centers for running YugabyteDB.
+          Configure providers (on-premises, AWS, or GCP).
       </div>
     </a>
   </div>

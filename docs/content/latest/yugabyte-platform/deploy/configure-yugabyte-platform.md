@@ -14,11 +14,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Configuring Yugabyte Platform, with its YugabyteDB Admin Console, is simple. A randomly generated password for the Yugabyte Platform configuration database is already pre-filled. You can make a note of it for future use or change it to a new password of your choice. Additionally, `/opt/yugabyte` is pre-filled as the location of the directory on the Yugabyte Platform host where all Yugabyte Platform data will be stored.  Click **Save** on this page to take you to the Replicated Dashboard.
+Configuring Yugabyte Platform, with its YugabyteDB Admin Console, is straightforward. A randomly-generated password for the Yugabyte Platform configuration database is already pre-filled. You can make a note of it for future use or change it to a new password of your choice. Additionally, the location of the directory on the Yugabyte Platform host where all Yugabyte Platform data will be stored is pre-filled (`/opt/yugabyte`).  Click **Save** on this page to go to the Replicated Dashboard.
 
 ![Replicated Yugabyte Platform Config](/images/replicated/replicated-yugaware-config.png)
 
-For air-gapped installations, all the containers powering the Yugabyte Platform application are already available with Replicated. For non-air-gapped installations, these containers will be downloaded from the Quay.io Registry when the Dashboard is first launched. Replicated will automatically start the Yugabyte Platform as soon as all the container images are available.
+For airgapped installations, all the containers powering the Yugabyte Platform application are already available with Replicated. For non-air-gapped installations, these containers will be downloaded from the Quay.io Registry when the Dashboard is first launched. Replicated will automatically start the Yugabyte Platform as soon as all the container images are available.
 
 ![Replicated Dashboard](/images/replicated/replicated-dashboard.png)
 

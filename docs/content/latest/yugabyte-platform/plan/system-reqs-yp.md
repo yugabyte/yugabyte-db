@@ -78,8 +78,8 @@ To install Yugabyte Platform on Airgapped hosts, without access to any Internet 
 From requirements for creating a Yugabyte Platform VM:
 
 OS Requirements: Ubuntu 16.04 / 18.04 LTS, CentOS or RHEL 7.x
-Connectivity to the Internet, either directly or via a http proxy. If no connectivity follow “airgapped” instructions
-Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes via ssh. If not setup passwordless ssh
+Connectivity to the Internet, either directly or via a http proxy. If no connectivity, follow air-gapped instructions
+Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes via ssh. If not setup passwordless SSH.
 Ability to install and configure docker
 Ability to install and configure Replicated, which is a containerized application itself and needs to pull containers from its own Replicated.com container registry
 Ability to pull Yugabyte container images from Quay.io  container registry, this will be done by Replicated automatically

@@ -19,11 +19,11 @@ Configuring Yugabyte Platform, with its YugabyteDB Admin Console, is simple. A r
 
 ![Replicated Yugabyte Platform Config](/images/replicated/replicated-yugaware-config.png)
 
-For air-gapped installations, all the containers powering the Yugabyte Platform application are already available with Replicated. For non-air-gapped installations, these containers will be downloaded from the Quay.io Registry when the Dashboard is first launched. Replicated will automatically start the Yugabyte Platform as soon as all the container images are available.
+For air-gapped installations, all containers powering the Yugabyte Platform application are already available with Replicated. For non-air-gapped installations, the containers will be downloaded from the Quay.io Registry when the Dashboard is first launched. Replicated automatically starts Yugabyte Platform as soon as all container images are available.
 
 ![Replicated Dashboard](/images/replicated/replicated-dashboard.png)
 
-To see the release history of the Yugabyte Platform (aka YugaWare) application, click **View release history**.
+To see the release history of the Yugabyte Platform application, click **View release history**.
 
 ![Replicated Release History](/images/replicated/replicated-release-history.png)
 

@@ -1,8 +1,8 @@
 ---
-title: Prepare the GCP cloud environment
-headerTitle: Prepare the GCP cloud environment
+title: Prepare the Google Cloud Platform (GCP) environment
+headerTitle: Prepare the Google Cloud Platform (GCP) environment
 linkTitle: 1. Prepare the environment
-description: Prepare your GCP environment for the Yugabyte Platform.
+description: Prepare the Google Cloud Platform (GCP) environment
 menu:
   latest:
     identifier: prepare-environment-2-gcp

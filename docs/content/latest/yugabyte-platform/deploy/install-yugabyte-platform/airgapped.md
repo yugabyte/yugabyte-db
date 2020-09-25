@@ -1,8 +1,8 @@
 ---
-title: Install the Yugabyte Platform on airgapped
-headerTitle: Install the Yugabyte Platform on an airgapped host
+title: Install Yugabyte Platform on an airgapped host
+headerTitle: Install Yugabyte Platform on an airgapped host
 linkTitle: 2. Install Yugabyte Platform
-description: Install Yugabyte Platform (aka YugaWare) on an airgapped host.
+description: Install Yugabyte Platform on an airgapped host.
 aliases:
   - /latest/deploy/enterprise-edition/on-premises/airgapped
 menu:
@@ -10,7 +10,6 @@ menu:
     identifier: install-yp-3-on-premises-airgapped
     parent: deploy-yugabyte-platform
     weight: 623
-type: page
 isTocNested: true
 showAsideToc: true
 ---
@@ -47,7 +46,7 @@ showAsideToc: true
 
 </ul>
 
-An “air-gapped” host has either no or a restricted path to inbound or outbound Internet traffic at all.
+An air-gapped host has either no or a restricted path to inbound or outbound Internet traffic at all.
 
 ## Prerequisites
 
@@ -152,21 +151,21 @@ Now, upload the Yugabyte license file received from Yugabyte Support.
 
 Two options to install Yugabyte Platform are presented.
 
-![Replicated License Airgapped Install](/images/replicated/replicated-license-airgapped-install-option.png)
+![Replicated License Air-gapped Install](/images/replicated/replicated-license-airgapped-install-option.png)
 
-![Replicated License Airgapped Path](/images/replicated/replicated-license-airgapped-path.png)
+![Replicated License Air-gapped Path](/images/replicated/replicated-license-airgapped-path.png)
 
-![Replicated License Airgapped Progress](/images/replicated/replicated-license-airgapped-progress.png)
+![Replicated License Air-gapped Progress](/images/replicated/replicated-license-airgapped-progress.png)
 
 ### Secure Replicated
 
-The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from Yugabyte Platform, the Admin Console for YugabyteDB).
+The next step is to add a password to protect the Replicated Admin Console (for Replicated use only and differs from the Yugabyte Platform console).
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
-### Pre-flight checks
+### Preflight checks
 
-Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the Yugabyte Platform application.
+Replicated will perform a set of preflight checks to ensure that the host is setup correctly for the Yugabyte Platform application.
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 

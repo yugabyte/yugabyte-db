@@ -44,11 +44,11 @@ The complete list of operating systems supported by Replicated are listed [here]
 
 - **Permissions necessary for airgapped host**
 
-An “airgapped” host has no path to inbound or outbound Internet traffic at all. For such hosts, the installation is performed as a `sudo` user.
+An air-gapped host has no path to inbound or outbound Internet traffic at all. For such hosts, the installation is performed as a `sudo` user.
 
 - **Additional requirements**
 
-For airgapped hosts, a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
+For air-gapped hosts, a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
 
 - Following ports should be open on the Yugabyte Platform host: `8800` (replicated ui), `80` (http for YugabyteDB Admin Console), `22` (ssh)
 - Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum

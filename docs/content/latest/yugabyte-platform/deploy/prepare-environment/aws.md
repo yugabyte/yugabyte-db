@@ -5,7 +5,6 @@ linkTitle: 1. Prepare the environment
 description: Prepare the AWS environment for the Yugabyte Platform.
 aliases:
   - /latest/deploy/enterprise-edition/prepare-environment/
-  - /latest/yugabyte-platform/deploy/prepare-environment/
 menu:
   latest:
     identifier: prepare-environment-3-aws
