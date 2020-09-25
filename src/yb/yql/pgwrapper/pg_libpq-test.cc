@@ -1404,7 +1404,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs)) {
 
   // Real-world numbers (debug build, local Mac): 328 RPCs before, 95 after the fix for #3049
   LOG(INFO) << "Master inbound RPC during connection: " << rpcs_during;
-  ASSERT_LT(rpcs_during, 150);
+  // RPC counter is affected no only by table read/write operations but also by heartbeat mechanism.
+  // As far as ASAN/TSAN builds are slower they can receive more heartbeats while
+  // processing requests. As a result RPC count might be higher in comparison to other build types.
+  ASSERT_LT(rpcs_during, RegularBuildVsSanitizers(150, 200));
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
