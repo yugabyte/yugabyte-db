@@ -7,8 +7,6 @@ image: /images/section_icons/manage/enterprise.png
 headcontent: Use Yugabyte Platform's orchestration and monitoring to manage YugabyteDB universes.
 aliases:
   - /latest/manage/enterprise-edition/
-  - /latest/yugabyte-platform/manage/
-section: YUGABYTE PLATFORM
 menu:
   latest:
     identifier: manage-yugabyte-platform

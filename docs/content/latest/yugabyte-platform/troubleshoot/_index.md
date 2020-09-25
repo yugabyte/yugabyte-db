@@ -8,7 +8,6 @@ aliases:
   - /troubleshoot/enterprise-edition/
   - /latest/troubleshoot/enterprise-edition/
   - /latest/troubleshoot/yugabyte-platform/
-section: YUGABYTE PLATFORM
 menu:
   latest:
     identifier: troubleshoot-yugabyte-platform
