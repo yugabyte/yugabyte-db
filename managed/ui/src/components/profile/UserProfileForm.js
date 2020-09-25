@@ -175,7 +175,6 @@ export default class UserProfileForm extends Component {
                         loading={getPromiseState(apiToken).isLoading()}
                         onClick={this.handleRefreshApiToken}
                         btnClass="btn btn-orange pull-right btn-api-token"
-                        disabled={isDisabled(customer.data.features, "universe.create")}
                       />
                     </FlexShrink>
                   </FlexContainer>
