@@ -39,7 +39,7 @@ showAsideToc: true
 
 A dedicated host or virtual machine (VM) is required to run the Yugabyte Platform server.
 
-## 1. [Optional] Create a new project
+## 1. (Optional) Create a new project
 
 A project forms the basis for creating, enabling and using all GCP services, managing APIs, enabling billing, adding and removing collaborators, and managing permissions. You would need browse to the [GCP cloud resource manager](https://console.cloud.google.com/cloud-resource-manager) and click on create project to get started. You can follow these instructions to [create a new GCP project](https://cloud.google.com/resource-manager/docs/creating-managing-projects).
 
@@ -77,13 +77,13 @@ Here is a screenshot with the above values in the form, click create once the va
 
 In order to access the Yugabyte Platform from outside the GCP environment, you would need to enable firewall rules. You will at minimum need to:
 
-- Access the Yugabyte Platform instance over SSH (port tcp:22)
-- Check, manage, and upgrade Yugabyte Platform (port tcp:8800)
-- View the YugabyteDB Admin Console (port tcp:80)
+- Access the Yugabyte Platform instance over SSH (port `tcp:22`)
+- Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
+- View the YugabyteDB Admin Console (port `tcp:80`)
 
 Let us create a firewall entry enabling all of that!
 
-Go to `VPC network` -> `Firewall rules` tab:
+Go to **VPC network > Firewall rules** tab:
 
 ![Firewall -- service entry](/images/ee/gcp-setup/firewall-tab.png)
 
@@ -111,7 +111,7 @@ Create an instance to run YugaWare. In order to do so, go to `Compute Engine` ->
 - Pick a region/zone (eg: `us-west1-b`).
 - Choose `4 vCPUs` (`n1-standard-4`) as the machine type.
 - Change the boot disk image to `Ubuntu 16.04` and increase the boot disk size to `100GB`.
-- Open the `Management, disks, networking, SSH keys` -> `Networking` tab. Add `yugaware-server` as the network tag (or the custom name you chose when setting up the firewall rules).
+- Open **Management, disks, networking, SSH keys` -> `Networking`** tab. Add `yugaware-server` as the network tag (or the custom name you chose when setting up the firewall rules).
 - Switch to the `SSH Keys` tab and add a custom public key and login user to this instance. First create a key-pair.
 
 You can do this as shown below.

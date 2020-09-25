@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Metrics page
 
-In the [Admin Console](../../deploy/install-yugabyte-platform/), click on the [Universe](../../../architecture/concepts/universe/) page, then go to the Metrics tab. The page shows a number of interactive metrics graphs that capture the state of the Yugabyte Universe over time.
+In the [Admin Console](../../deploy/install-yugabyte-platform/), select the [Universe](../../../architecture/concepts/universe/) page, then go to the **Metrics** tab. The page shows a number of interactive metrics graphs that capture the state of the Yugabyte Universe over time.
 
 ![Yugabyte Metrics Page](/images/troubleshooting/check-metrics.png)
 
@@ -24,7 +24,7 @@ Note: For a quick overview, check the query ops and latency graphs as well as th
 
 ## Nodes status
 
-In the [Admin Console](../../deploy/install-yugabyte-platform/), click on the [Universe](../../../architecture/concepts/universe/) page, then go to the Nodes tab.
+In the [Admin Console](../../deploy/install-yugabyte-platform/), click on the [Universe](../../../architecture/concepts/universe/) page, then go to the **Nodes** tab.
 The page will show the status of the Master and TServer on each YugabyteDB node.
 
 ![Yugabyte Nodes Page](/images/troubleshooting/check-node-status.png)

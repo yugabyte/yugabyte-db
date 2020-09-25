@@ -38,13 +38,13 @@ showAsideToc: true
 
 A dedicated host or virtual machine (VM) is required to run the Yugabyte Platform server.
 
-## 1. Create a new security group [Optional]
+## 1. (Optional) Create a new security group
 
 In order to access Yugabyte Platform from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the YugaWare machine. You will at minimum need to:
 
-- Access the Yugabyte Platform instance over SSH (port tcp:22)
-- Check, manage, and upgrade Yugabyte Platform (port tcp:8800)
-- View the YugabyteDB Admin Console (port tcp:80)
+- Access the Yugabyte Platform instance over SSH (port `tcp:22`)
+- Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
+- View the YugabyteDB Admin Console (port `tcp:80`)
 
 Let us create a security group enabling all of that!
 
@@ -52,10 +52,10 @@ Go to `EC2` -> `Security Groups`, click on `Create Security Group` and add the f
 
 - Enter `yugaware-sg` as the name (you can change the name if you want).
 - Add a description (for example, `Security group for Yugabyte Platform access`).
-- Add the appropriate ip addresses to the `Source IP ranges` field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
-- Add the ports `22`, `8800`, `80` to the `Port Range` field. The `Protocol` must be `TCP`.
+- Add the appropriate IP addresses to the **Source IP ranges** field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
+- Add the ports `22`, `8800`, and `80` to the `Port Range` field. The **Protocol** must be `TCP`.
 
-You should see something like the screenshot below, click `Create` next.
+You should see something like the screenshot below, click **Create** next.
 
 ![Create security group](/images/ee/aws-setup/yugaware-aws-create-sg.png)
 
@@ -117,14 +117,14 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, it will require some 
 
 ## 3. Provision instance for Yugabyte Platform
 
-Create an instance to run the Yugabyte Platform server. In order to do so, go to `EC2` -> `Instances` and click on `Launch Instance`. Fill in the following values.
+Create an instance to run the Yugabyte Platform server. In order to do so, go to **EC2 > Instances** and click **Launch Instance**. Fill in the following values.
 
 - Change the boot disk image to `Ubuntu 16.04` and continue to the next step.
 ![Pick OS Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
 
 - Choose `c5.xlarge` (4 vCPUs are recommended for production) as the machine type. Continue to the next step.
 
-- Choose the VPC, subnet and other settings as appropriate. Make sure to enable the `Auto-assign Public IP` setting, otherwise this machine would not be accessible from outside AWS. If you created an IAM role above, or already had one that you would like to use, provide that under `IAM role`. Continue to the next step.
+- Choose the VPC, subnet and other settings as appropriate. Make sure to enable the **Auto-assign Public IP** setting, otherwise this machine would not be accessible from outside AWS. If you created an IAM role above, or already had one that you would like to use, provide that under **IAM role**. Continue to the next step.
 
 - Increase the root storage volume size to at least `100GiB`. Continue to the next step.
 
@@ -134,6 +134,6 @@ Create an instance to run the Yugabyte Platform server. In order to do so, go to
 
 - Pick an existing key pair (or create a new one) in order to access the machine. Make sure you have the ssh access key. This is important to enable `ssh` access to this machine. In this example, assume that the key pair is `~/.ssh/yugaware.pem`.
 
-Finally, click `Launch` to launch the Yugabyte Platform server. You should see a machine being created as shown in the image below.
+Finally, click **Launch** to launch the Yugabyte Platform server. You should see a machine being created as shown in the image below.
 
 ![Pick OS Image](/images/ee/aws-setup/yugaware-machine-creation.png)

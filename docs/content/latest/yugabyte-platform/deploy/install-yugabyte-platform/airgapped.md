@@ -4,7 +4,7 @@ headerTitle: Install Yugabyte Platform on an airgapped host
 linkTitle: 2. Install Yugabyte Platform
 description: Install Yugabyte Platform on an airgapped host.
 aliases:
-  - /latest/deploy/enterprise-edition/on-premises/airgapped
+  - /latest/deploy/enterprise-edition/install-admin-console/airgapped
 menu:
   latest:
     identifier: install-yp-3-on-premises-air-gapped

@@ -4,7 +4,7 @@ headerTitle: Configure Yugabyte Platform
 linkTitle: 3. Configure Yugabyte Platform
 description: Configure Yugabyte Platform.
 aliases:
-  - /latest/deploy/enterprise-edition/configure-yugabyte-platform/
+  - /latest/deploy/enterprise-edition/configure-admin-console/
 menu:
   latest:
     identifier: configure-yugabyte-platform
@@ -98,7 +98,7 @@ Nex, uninstall Replicated itself by following instructions documented [here](htt
 
 ### SELinux turned on the Yugabyte Platform host
 
-If your host has SELinux turned on, then the Docker engine may not be able to connect with the host. To open the ports using firewall exceptions, run the following command.
+If your host has SELinux turned on, then Docker Engine might not be able to connect with the host. To open the ports using firewall exceptions, run the following command.
 
 ```sh
 sudo firewall-cmd --zone=trusted --add-interface=docker0
