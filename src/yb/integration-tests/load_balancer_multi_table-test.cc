@@ -123,8 +123,11 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
 
   // Disable leader balancing.
   for (int i = 0; i < num_masters(); ++i) {
-    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
-                                              "load_balancer_max_concurrent_moves", "0"));
+    ASSERT_OK(external_mini_cluster_->SetFlag(
+      external_mini_cluster_->master(i), "load_balancer_max_concurrent_moves", "0"));
+    // Don't remove leaders to ensure that we still have a leader move for each table later on.
+    ASSERT_OK(external_mini_cluster_->SetFlag(
+      external_mini_cluster_->master(i), "load_balancer_skip_leader_as_remove_victim", "true"));
   }
 
   // Add new tserver.
@@ -168,7 +171,7 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
     }
   }
 
-  // Ensure that we moved one run's worth of leaders.
+  // Ensure that we moved one run's worth of leaders (should be one leader move per table).
   LOG(INFO) << "Moved " << num_leader_moves << " leaders in total.";
   ASSERT_EQ(num_leader_moves, kMovesPerTable * kNumTables);
 }
