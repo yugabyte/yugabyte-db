@@ -1712,7 +1712,7 @@ ExecAgg(PlanState *pstate)
 			case AGG_HASHED:
 				if (!node->table_filled)
 					agg_fill_hash_table(node);
-				/* FALLTHROUGH */
+				switch_fallthrough();
 			case AGG_MIXED:
 				result = agg_retrieve_hash_table(node);
 				break;

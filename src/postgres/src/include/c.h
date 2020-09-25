@@ -95,6 +95,12 @@
 #define inline
 #endif
 
+#if defined(__APPLE__) && __clang_major__ > 11
+#define switch_fallthrough() __attribute__((fallthrough))
+#else
+#define switch_fallthrough()
+#endif
+
 /*
  * Attribute macros
  *
