@@ -52,7 +52,8 @@ class UserList extends Component {
   actionsDropdown = (user) => {
     const { customer } = this.props;
     const loginUserId = localStorage.getItem('userId');
-    if (user.uuid === loginUserId || isDisabled(customer.data.features, 'universe.create')) {
+    if (user.uuid === loginUserId || isDisabled(customer.data.features, 'universe.create')
+      || user.role === 'SuperAdmin') {
       return null;
     } else {
       return (

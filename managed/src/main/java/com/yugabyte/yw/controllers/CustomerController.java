@@ -36,6 +36,7 @@ import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -91,10 +92,14 @@ public class CustomerController extends AuthenticatedController {
     responseJson.put("callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
     Users user = (Users) ctx().args.get("user");
-    if (customer.getFeatures().size() == 0) {
-      responseJson.put("features", user.getFeatures());
-    } else {
+    if (customer.getFeatures().size() != 0 && user.getFeatures().size() != 0) {
+      JsonNode featureSet = user.getFeatures();
+      CommonUtils.deepMerge(featureSet, customer.getFeatures());
+      responseJson.put("features", featureSet);
+    } else if (customer.getFeatures().size() != 0) {
       responseJson.put("features", customer.getFeatures());
+    } else {
+      responseJson.put("features", user.getFeatures());
     }
 
     return ok(responseJson);

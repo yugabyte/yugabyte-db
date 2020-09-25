@@ -238,6 +238,32 @@ public class CustomerControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCustomerPUTWithValidUserFeatures() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("code", "tc");
+    params.put("email", "foo@bar.com");
+    params.put("name", "Test Customer");
+    JsonNode features = Json.parse("{\"foo\": \"bar\"}");
+    params.set("features", features);
+    user.setFeatures(Json.parse("{\"abc\": \"xyz\"}"));
+    user.save();
+    JsonNode expectedFeatures = Json.parse("{\"foo\": \"bar\", \"abc\": \"xyz\"}");
+
+    Result result = route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie)
+                                                                       .bodyJson(params));
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(features, json.get("features"));
+    result = route(fakeRequest("GET", baseRoute + customer.uuid).cookie(validCookie));
+    assertEquals(OK, result.status());
+    json = Json.parse(contentAsString(result));
+    assertEquals(expectedFeatures, json.get("features"));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
   public void testCustomerPUTWithInvalidFeatures() {
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
