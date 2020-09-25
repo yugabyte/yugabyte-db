@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: configure-providers-5-kubernetes
     parent: deploy-yugabyte-platform
-    weight: 680
+    weight: 627
 isTocNested: true
 showAsideToc: true
 ---

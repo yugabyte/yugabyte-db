@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: install-yp-3-on-premises-airgapped
     parent: deploy-yugabyte-platform
-    weight: 670
+    weight: 623
 type: page
 isTocNested: true
 showAsideToc: true

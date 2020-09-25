@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: install-yp-1-default
     parent: deploy-yugabyte-platform
-    weight: 670
+    weight: 623
 type: page
 isTocNested: true
 showAsideToc: true

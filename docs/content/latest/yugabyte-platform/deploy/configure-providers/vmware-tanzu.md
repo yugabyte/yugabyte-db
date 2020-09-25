@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: configure-providers-6-vmware-tanzu
     parent: deploy-yugabyte-platform
-    weight: 680
+    weight: 627
 isTocNested: true
 showAsideToc: true
 ---

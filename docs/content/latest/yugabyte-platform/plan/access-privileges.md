@@ -7,7 +7,7 @@ menu:
   latest:
     parent: plan-yugabyte-platform
     identifier: access-privileges
-    weight: 627
+    weight: 617
 type: page
 isTocNested: true
 showAsideToc: true

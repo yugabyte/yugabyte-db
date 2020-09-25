@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: cluster-health-yp
     parent: monitor-yugabyte-platform
-    weight: 663
+    weight: 653
 isTocNested: true
 showAsideToc: true
 ---

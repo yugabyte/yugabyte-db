@@ -7,7 +7,7 @@ menu:
   latest:
     parent: plan-yugabyte-platform
     identifier: review-system-reqs-yp
-    weight: 623
+    weight: 613
 type: page
 isTocNested: true
 showAsideToc: true
@@ -24,6 +24,7 @@ Yugabyte Platform can be installed on the following Linux distributions:
 - Ubuntu: 16.04 or later.
 - Red Hat Enterprise Linux: 6.5 or later.
 - CentOS: 7 or later.
+- Debian: 9 ???
 - Amazon AMI: 2014.03, 2014.09, 2015.03, 2015.09, 2016.03, and 2016.09.
 - Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
 
@@ -34,6 +35,11 @@ Only Linux-based systems are supported by Replicated. The Linux operating system
 - Kernel: 3.10 or later
 - 64-bit
 - Ready to run Docker Engine, versions 1.7.1 to 17.06.2-ce (with 17.06.2-ce being the recommended version). 
+
+## VM requirements ???
+
+- 4 vCPU, I GiB memory
+
 
 ## Access and privilege requirements
 

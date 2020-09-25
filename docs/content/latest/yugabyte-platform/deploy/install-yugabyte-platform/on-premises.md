@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: install-yp-2-install-yugabyte-platform
     parent: deploy-yugabyte-platform
-    weight: 670
+    weight: 623
 isTocNested: true
 showAsideToc: true
 ---

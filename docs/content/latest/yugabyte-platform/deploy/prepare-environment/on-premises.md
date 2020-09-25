@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: prepare-environment-1-on-premises
     parent: deploy-yugabyte-platform
-    weight: 669
+    weight: 621
 isTocNested: true
 showAsideToc: true
 

@@ -7,7 +7,7 @@ menu:
   latest:
     parent: plan-yugabyte-platform
     identifier: reqs-data-node
-    weight: 625
+    weight: 615
 type: page
 isTocNested: true
 showAsideToc: true

@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: configure-providers-3-gcp
     parent: deploy-yugabyte-platform
-    weight: 680
+    weight: 627
 isTocNested: true
 showAsideToc: true
 ---

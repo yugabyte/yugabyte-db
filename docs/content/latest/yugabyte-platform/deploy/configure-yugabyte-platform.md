@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: configure-yugabyte-platform
     parent: deploy-yugabyte-platform
-    weight: 675
+    weight: 615
 isTocNested: true
 showAsideToc: true
 ---

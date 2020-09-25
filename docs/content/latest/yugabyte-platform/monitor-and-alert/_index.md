@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: monitor-and-alert-yp
     parent: yugabyte-platform
-    weight: 660
+    weight: 650
 ---
 
 <div class="row">

@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: prepare-environment-3-aws
     parent: deploy-yugabyte-platform
-    weight: 669
+    weight: 621
 isTocNested: true
 showAsideToc: true
 ---
