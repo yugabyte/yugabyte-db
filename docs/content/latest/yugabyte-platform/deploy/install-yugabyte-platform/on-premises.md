@@ -3,6 +3,9 @@ title: Install Yugabyte Platform in on-premises
 headerTitle: Install Yugabyte Platform in on-premises
 linkTitle: 2. Install Yugabyte Platform
 description: On-premises install of Yugabyte Platform.
+aliases:
+  - /latest/deploy/enterprise-edition/prepare-environment/
+  - /latest/yugabyte-platform/deploy/install-yugabyte-platform/
 menu:
   latest:
     identifier: install-yp-2-on-premises
@@ -15,7 +18,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/deploy/on-premises/default" class="nav-link">
+    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/default" class="nav-link">
       <i class="fas fa-cloud"></i>
       Default
     </a>

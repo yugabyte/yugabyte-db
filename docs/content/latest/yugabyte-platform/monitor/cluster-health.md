@@ -6,6 +6,7 @@ description: Use Yugabyte Platform to configure health checks and alerts for Yug
 aliases:
   - /latest/manage/enterprise-edition/cluster-health/
   - /latest/manage/cluster-health/
+  - /latest/yugabyte-platform/manage/cluster-health/
 menu:
   latest:
     identifier: cluster-health-yp

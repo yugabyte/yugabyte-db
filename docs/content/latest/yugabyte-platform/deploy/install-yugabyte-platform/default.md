@@ -16,7 +16,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
@@ -39,12 +38,14 @@ showAsideToc: true
       Airgapped
     </a>
   </li>
+
   <li>
     <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
+
 </ul>
 
 YugabyteDB universes and clusters are created and managed using the Yugabyte Platform. The default option to install Yugabyte Platform on a host machine that is connected to the Internet.

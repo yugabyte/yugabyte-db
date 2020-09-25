@@ -3,6 +3,8 @@ title: Configure the on-premises data centers
 headerTitle: Configure the on-premise providers
 linkTitle: 4. Configure the providers
 description: Configure the on-premises data centers.
+aliases:
+ - /latest/yugabyte-platform/deploy/configure-providers/
 menu:
   latest:
     identifier: configure-providers-1-on-premises

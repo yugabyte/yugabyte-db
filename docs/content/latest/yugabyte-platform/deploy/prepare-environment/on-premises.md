@@ -3,6 +3,9 @@ title: Prepare the on-premises environment
 headerTitle: Prepare the on-premises environment
 linkTitle: 1. Prepare the environment
 description: Prepare the on-premises environment for Yugabyte Platform.
+aliases:
+  - /latest/deploy/enterprise-edition/prepare-environment/
+  - /latest/yugabyte-platform/deploy/prepare-environment/
 menu:
   latest:
     identifier: prepare-environment-1-on-premises
