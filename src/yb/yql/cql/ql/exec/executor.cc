@@ -45,6 +45,7 @@ using std::string;
 using std::shared_ptr;
 using namespace std::placeholders;
 
+using audit::AuditLogger;
 using client::YBColumnSpec;
 using client::YBOperation;
 using client::YBqlOpPtr;
@@ -68,8 +69,10 @@ using strings::Substitute;
 
 //--------------------------------------------------------------------------------------------------
 
-Executor::Executor(QLEnv *ql_env, Rescheduler* rescheduler, const QLMetrics* ql_metrics)
+Executor::Executor(QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* rescheduler,
+                   const QLMetrics* ql_metrics)
     : ql_env_(ql_env),
+      audit_logger_(*audit_logger),
       rescheduler_(rescheduler),
       session_(ql_env_->NewSession()),
       ql_metrics_(ql_metrics) {
@@ -166,6 +169,8 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
     RETURN_STMT_NOT_OK(Execute(parse_tree, params));
   }
 
+  RETURN_STMT_NOT_OK(audit_logger_.EndBatchRequest());
+
   FlushAsync();
 }
 
@@ -177,7 +182,14 @@ Status Executor::Execute(const ParseTree& parse_tree, const StatementParameters&
   exec_context_ = &exec_contexts_.back();
   auto root_node = parse_tree.root().get();
   RETURN_NOT_OK(PreExecTreeNode(root_node));
-  return ProcessStatementStatus(parse_tree, ExecTreeNode(root_node));
+  RETURN_NOT_OK(audit_logger_.LogStatement(root_node, exec_context_->stmt(),
+                                           false /* is_prepare */));
+  Status s = ExecTreeNode(root_node);
+  if (!s.ok()) {
+    RETURN_NOT_OK(audit_logger_.LogStatementError(root_node, exec_context_->stmt(), s,
+                                                  false /* error_is_formatted */));
+  }
+  return ProcessStatementStatus(parse_tree, s);
 }
 
 //--------------------------------------------------------------------------------------------------
