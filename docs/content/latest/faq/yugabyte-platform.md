@@ -22,39 +22,6 @@ The Yugabyte Platform, previously named YugaWare, provides built-in orchestratio
 
 Yugabyte Platform first needs to be installed on any machine. The next step is to configure Yugabyte Platform to work with public and/or private clouds. In the case of public clouds, Yugabyte Platform spawns the machines to orchestrate bringing up the data platform. In the case of private clouds, you add the nodes you want to be a part of the data platform into Yugabyte Platform. Yugabyte Platform would need SSH access into these nodes in order to manage them.
 
-## What are the OS requirements and permissions to run the Yugabyte Platform?
-
-**OS requirements**
-
-Only Linux-based systems are supported by Replicated at this point. This Linux OS should be 3.10+ kernel, 64-bit, and ready to run docker-engine 1.7.1 - 17.06.2-ce (with 17.06.2-ce being the recommended version). Some of the supported OS versions are:
-
-- Ubuntu 16.04+
-- Red Hat Enterprise Linux 6.5+
-- CentOS 7+
-- Amazon AMI 2014.03 / 2014.09 / 2015.03 / 2015.09 / 2016.03 / 2016.09
-
-The complete list of operating systems supported by Replicated are listed [here](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
-
-- **Permissions necessary for Internet-connected host**
-
-- Connectivity to the Internet, either directly or via a http proxy
-- Ability to install and configure [docker-engine](https://docs.docker.com/engine/)
-- Ability to install and configure [Replicated](https://www.replicated.com/), which is a containerized application itself and needs to pull containers from its own Replicated.com container registry
-- Ability to pull Yugabyte container images from [Quay.io](https://quay.io/) container registry, this will be done by Replicated automatically
-
-- **Permissions necessary for airgapped host**
-
-An air-gapped host has no path to inbound or outbound Internet traffic at all. For such hosts, the installation is performed as a `sudo` user.
-
-- **Additional requirements**
-
-For air-gapped hosts, a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
-
-- Following ports should be open on the Yugabyte Platform host: `8800` (replicated ui), `80` (http for YugabyteDB Admin Console), `22` (ssh)
-- Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum
-- A Yugabyte Platform license file (attached to your welcome email from Yugabyte Support)
-- Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes. If this is not set up, [setup passwordless ssh](#step-5-troubleshoot-yugaware).
-
 ## How are the build artifacts packaged and stored for Yugabyte Platform?
 
 The Yugabyte Platform software is packaged as a set of Docker container images hosted on the [Quay.io](https://quay.io/) container registry and managed by the [Replicated](https://www.replicated.com/) management tool. Installation of the admin console starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images the Replicated.com container registry. The Yugabyte Platform then becomes a managed application of Replicated, which starts by pulling the Yugabyte Platform (`yugaware`) container images from Quay.io for the very first time. Replicated ensures that the Yugabyte Platform remains highly available as well as allows for instant upgrades by simply pulling the incremental container images associated with a newer YugaWare release. Note that if the host running the YugabyteDB Admin Console does not have Internet connectivity, then a fully air-gapped installation option is also available.

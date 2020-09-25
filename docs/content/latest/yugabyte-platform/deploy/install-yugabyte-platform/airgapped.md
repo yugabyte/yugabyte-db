@@ -7,7 +7,7 @@ aliases:
   - /latest/deploy/enterprise-edition/on-premises/airgapped
 menu:
   latest:
-    identifier: install-yp-3-on-premises-airgapped
+    identifier: install-yp-3-on-premises-air-gapped
     parent: deploy-yugabyte-platform
     weight: 623
 isTocNested: true

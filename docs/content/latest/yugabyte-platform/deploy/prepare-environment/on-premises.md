@@ -10,7 +10,6 @@ menu:
     weight: 621
 isTocNested: true
 showAsideToc: true
-
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

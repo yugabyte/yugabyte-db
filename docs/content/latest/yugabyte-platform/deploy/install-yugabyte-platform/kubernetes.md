@@ -2,12 +2,12 @@
 title: Install Yugabyte Platform on Kubernetes
 headerTitle: Install Yugabyte Platform on Kubernetes
 linkTitle: 2. Install Yugabyte Platform
-description: Install Yugabyte Platform on Kubernetes
+description: Install Yugabyte Platform on Kubernetes.
 aliases:
   - /latest/deploy/enterprise-edition/install-yugabyte-platform/kubernetes
 menu:
   latest:
-    identifier: install-yp-3-kubernetes
+    identifier: install-yp-4-kubernetes
     parent: deploy-yugabyte-platform
     weight: 623
 isTocNested: true
@@ -33,7 +33,7 @@ showAsideToc: true
   <li >
     <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/airgapped" class="nav-link">
       <i class="fas fa-unlink"></i>
-      Airgapped
+      Air-gapped
     </a>
   </li>
 
