@@ -103,6 +103,9 @@ class QLProcessor : public Rescheduler {
   // Environment (YBClient) that processor uses to execute statement.
   QLEnv ql_env_;
 
+  // Used for logging audit records.
+  audit::AuditLogger audit_logger_;
+
   // Semantic analysis processor.
   Analyzer analyzer_;
 
