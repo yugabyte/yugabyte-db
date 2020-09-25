@@ -43,7 +43,7 @@ class TableTitle extends Component {
           <div className="backup-action-btn-group">
             <UniverseAction className="table-action" universe={currentUniverse}
               actionType="toggle-backup" btnClass={"btn-orange"}
-              disabled={isDisabled(currentCustomer.data.features, "universes.tableActions")}
+              disabled={isDisabled(currentCustomer.data.features, "universes.backup")}
             />
           </div>
         </div>
@@ -126,7 +126,7 @@ class ListTableGrid extends Component {
     const formatKeySpace = function(cell) {
       return <div>{cell}</div>;
     };
-    const actions_disabled = isDisabled(currentCustomer.data.features, "universes.tableActions");
+    const actions_disabled = isDisabled(currentCustomer.data.features, "universes.backup");
     const formatActionButtons = function(item, row, disabled) {
       if (!row.isIndexTable) {
         const actions = [
