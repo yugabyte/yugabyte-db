@@ -19,21 +19,21 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
-  <li >
+  <li>
     <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/default" class="nav-link active">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
 
-  <li >
+  <li>
     <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/on-premises" class="nav-link">
       <i class="fas fa-cloud"></i>
       On-premises
     </a>
   </li>
 
-  <li >
+  <li>
     <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/airgapped" class="nav-link">
       <i class="fas fa-unlink"></i>
       Airgapped

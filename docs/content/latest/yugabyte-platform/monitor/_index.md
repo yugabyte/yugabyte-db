@@ -8,7 +8,7 @@ headcontent: Plan and prepare for installing and deploying the Yugabyte Platform
 section: YUGABYTE PLATFORM
 menu:
   latest:
-    identifier: monitor-and-alert-yp
+    identifier: monitor-yp
     parent: yugabyte-platform
     weight: 650
 ---

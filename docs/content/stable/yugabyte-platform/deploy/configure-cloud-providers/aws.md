@@ -21,7 +21,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/yugabyte-platform/deploy/configure-providers/aws" class="nav-link active">
+    <a href="/stable/yugabyte-platform/deploy/configure-cloud-providers/aws" class="nav-link active">
       <i class="fab fa-aws"></i>
       AWS
     </a>

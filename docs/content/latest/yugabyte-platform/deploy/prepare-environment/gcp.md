@@ -14,14 +14,14 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
-  <li >
+  <li>
     <a href="/latest/yugabyte-platform/deploy/prepare-environment/on-premises" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
 
-  <li >
+  <li>
     <a href="/latest/yugabyte-platform/deploy/prepare-environment/aws" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       AWS
