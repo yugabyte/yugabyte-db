@@ -4,7 +4,7 @@ headerTitle: Configure the Google Cloud Platform (GCP) providers
 linkTitle: 4. Configure the providers
 description: Configure the Google Cloud Platform (GCP) cloud providers.
 aliases:
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/gcp
+  - /latest/deploy/enterprise-edition/configure-providers/gcp
 menu:
   latest:
     identifier: configure-providers-3-gcp

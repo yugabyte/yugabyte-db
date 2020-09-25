@@ -4,7 +4,7 @@ headerTitle: Configure the Kubernetes providers
 linkTitle: 4. Configure the providers
 description: Configure the Kubernetes providers
 aliases:
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/kubernetes
+  - /latest/deploy/enterprise-edition/configure-providers/kubernetes
 menu:
   latest:
     identifier: configure-providers-5-kubernetes

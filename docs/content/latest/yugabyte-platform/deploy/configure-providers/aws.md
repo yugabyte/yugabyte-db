@@ -5,7 +5,7 @@ linkTitle: 4. Configure the providers
 description: Configure Amazon Web Services (AWS) cloud providers.
 aliases:
   - /latest/deploy/enterprise-edition/configure-providers/
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/aws
+  - /latest/deploy/enterprise-edition/configure-providers/aws
 menu:
   latest:
     identifier: configure-providers-2-aws
