@@ -17,13 +17,13 @@ This extension is supported on [those platforms](http://www.postgresql.org/docs/
 In Red Hat/CentOS:
 
 ```
-$ sudo yum install wal2json12
+$ sudo yum install wal2json13
 ```
 
 In Debian/Ubuntu:
 
 ```
-$ sudo apt-get install postgresql-12-wal2json
+$ sudo apt-get install postgresql-13-wal2json
 ```
 
 You can also keep up with the latest fixes and features cloning the Git repository.
@@ -35,14 +35,14 @@ $ git clone https://github.com/eulerto/wal2json.git
 Unix based Operating Systems
 ----------------------------
 
-Before installing **wal2json**, you should have PostgreSQL 9.4+ installed (including the header files). If PostgreSQL is not in your search path, add it. If you are using [PostgreSQL yum repository](https://yum.postgresql.org), install `postgresql12-devel` and add `/usr/pgsql-12/bin` to your search path (yum uses `12, 11, 10, 96, 95 or 94`). If you are using [PostgreSQL apt repository](https://wiki.postgresql.org/wiki/Apt), install `postgresql-server-dev-12` and add `/usr/lib/postgresql/12/bin` to your search path. (apt uses `12, 11, 10, 9.6, 9.5 or 9.4`).
+Before installing **wal2json**, you should have PostgreSQL 9.4+ installed (including the header files). If PostgreSQL is not in your search path, add it. If you are using [PostgreSQL yum repository](https://yum.postgresql.org), install `postgresql13-devel` and add `/usr/pgsql-13/bin` to your search path (yum uses `13, 12, 11, 10, 96 or 95`). If you are using [PostgreSQL apt repository](https://wiki.postgresql.org/wiki/Apt), install `postgresql-server-dev-13` and add `/usr/lib/postgresql/13/bin` to your search path. (apt uses `13, 12, 11, 10, 9.6 or 9.5`).
 
-If you compile PostgreSQL by yourself and install it in `/home/euler/pg12`:
+If you compile PostgreSQL by yourself and install it in `/home/euler/pg13`:
 
 ```
-$ tar -zxf wal2json-wal2json_2_2.tar.gz
-$ cd wal2json-wal2json_2_2
-$ export PATH=/home/euler/pg12/bin:$PATH
+$ tar -zxf wal2json-wal2json_2_3.tar.gz
+$ cd wal2json-wal2json_2_3
+$ export PATH=/home/euler/pg13/bin:$PATH
 $ make
 $ make install
 ```
@@ -50,10 +50,10 @@ $ make install
 If you are using [PostgreSQL yum repository](https://yum.postgresql.org):
 
 ```
-$ sudo yum install postgresql12-devel
-$ tar -zxf wal2json-wal2json_2_2.tar.gz
-$ cd wal2json-wal2json_2_2
-$ export PATH=/usr/pgsql-12/bin:$PATH
+$ sudo yum install postgresql13-devel
+$ tar -zxf wal2json-wal2json_2_3.tar.gz
+$ cd wal2json-wal2json_2_3
+$ export PATH=/usr/pgsql-13/bin:$PATH
 $ make
 $ make install
 ```
@@ -61,10 +61,10 @@ $ make install
 If you are using [PostgreSQL apt repository](https://wiki.postgresql.org/wiki/Apt):
 
 ```
-$ sudo apt-get install postgresql-server-dev-12
-$ tar -zxf wal2json-wal2json_2_2.tar.gz
-$ cd wal2json-wal2json_2_2
-$ export PATH=/usr/lib/postgresql/12/bin:$PATH
+$ sudo apt-get install postgresql-server-dev-13
+$ tar -zxf wal2json-wal2json_2_3.tar.gz
+$ cd wal2json-wal2json_2_3
+$ export PATH=/usr/lib/postgresql/13/bin:$PATH
 $ make
 $ make install
 ```
