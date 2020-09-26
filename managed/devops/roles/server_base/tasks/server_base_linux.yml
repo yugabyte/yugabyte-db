@@ -90,11 +90,6 @@
     become: yes
     when: ansible_os_family == "RedHat" and update_yum_cache
 
-  - name: Set Backup packages to Install
-    set_fact:
-      linux_packages: "{{ linux_packages + backup_packages }}"
-    when: install_backup_packages
-
   - name: Set Dev packages to Install
     set_fact:
       linux_packages: "{{ linux_packages + dev_packages }}"
@@ -186,29 +181,5 @@
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
     when: ansible_os_family != "RedHat"
-
-  - name: Install backup roles - gsutil
-    become: yes
-    become_method: sudo
-    include_role:
-      name: role-install-gcloud
-    vars:
-      gcloud_archive_name: "{{ backup_gcloud_package }}"
-      gcloud_override_components: "{{ backup_gcloud_components }}"
-      gcloud_install_path: "/usr"
-    when: install_backup_packages and cloud_type != "gcp"
-
-  - name: Download and install azcopy
-    become: yes
-    become_method: sudo
-    unarchive:
-      src: "{{ backup_azcopy_src }}"
-      dest: /usr/bin
-      remote_src: yes
-      mode: 0755
-      exclude:
-        - ThirdPartyNotice.txt
-      extra_opts: [--strip-components=1] # Remove tarball directory from extracted path.
-    when: install_backup_packages
 
   when: not air_gap
