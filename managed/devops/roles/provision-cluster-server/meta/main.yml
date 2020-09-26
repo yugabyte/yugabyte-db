@@ -29,3 +29,15 @@ dependencies:
       id_rsa_pub: "{{ cluster_server_vault | get_value('id_rsa_pub') }}"
       sudo_user: "{{ yb_server_ssh_user | default(omit) }}"
       authorized_keys: "{{ cluster_server_vault | get_value('authorized_keys') }}"
+
+  - role: install_backup_util
+    util:
+      name: "azcopy"
+
+  - role: install_backup_util
+    util:
+      name: "gsutil"
+
+  - role: install_backup_util
+    util:
+      name: "s3cmd"
