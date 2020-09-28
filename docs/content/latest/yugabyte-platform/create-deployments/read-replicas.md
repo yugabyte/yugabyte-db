@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: create-read-replica-cluster
     parent: create-deployments-yugabyte-platform
-    weight: 638
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---

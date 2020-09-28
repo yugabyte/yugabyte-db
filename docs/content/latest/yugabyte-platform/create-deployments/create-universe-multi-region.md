@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: create-universe-multi-region
     parent: create-deployments-yugabyte-platform
-    weight: 637
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---

@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: create-multi-zone-universe
     parent: create-deployments-yugabyte-platform
-    weight: 636
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---

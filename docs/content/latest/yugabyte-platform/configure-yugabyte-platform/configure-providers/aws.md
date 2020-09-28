@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: configure-providers-2-aws
     parent: configure-providers-configure-yugabyte-platform
-    weight: 627
+    weight: 100
 isTocNested: true
 showAsideToc: true
 ---

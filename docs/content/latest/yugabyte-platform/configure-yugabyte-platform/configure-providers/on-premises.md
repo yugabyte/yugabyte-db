@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: configure-providers-1-on-premises
     parent: configure-providers-configure-yugabyte-platform
-    weight: 627
+    weight: 100
 isTocNested: true
 showAsideToc: true
 ---
