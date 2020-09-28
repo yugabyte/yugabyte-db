@@ -110,26 +110,28 @@ class OnPremNodesList extends Component {
     this.props.reset();
   };
 
-  handleCheckNodesUsage = (data, row) => {
+  handleCheckNodesUsage = (inUse, row) => {
+    let result = 'n/a';
     const { universeList } = this.props;
-    if (data && getPromiseState(universeList).isSuccess()) {
-      const result = universeList.data.find(u => {
-        const nodes = u.universeDetails.nodeDetailsSet;
-        if (nodes) {
-          return !!nodes.find(n => n.azUuid === row.zoneUuid ||
-            (n.nodeUuid && n.nodeUuid === row.nodeUuid));
+
+    if (inUse) {
+      if (getPromiseState(universeList).isLoading() || getPromiseState(universeList).isInit()) {
+        result = 'Loading...';
+      } else if (getPromiseState(universeList).isSuccess()) {
+        const universe = universeList.data.find(item => {
+          // TODO: match by nodeUuid when it's fully supported by universe
+          return !!(item.universeDetails.nodeDetailsSet || [])
+            .find(node => node.nodeName && row.nodeName && node.nodeName === row.nodeName);
+        });
+        if (universe) {
+          result = <Link to={`/universes/${universe.universeUUID}`}>{universe.name}</Link>;
         }
-        return false;
-      });
-      if (result) {
-        return (
-          <Link to={`/universes/${result.universeUUID}`}>
-            {result.name}
-          </Link>
-        );
       }
+    } else {
+      result = 'NOT USED';
     }
-    return 'NOT USED';
+
+    return result;
   }
 
   UNSAFE_componentWillMount() {
@@ -162,6 +164,7 @@ class OnPremNodesList extends Component {
       nodeListItems = nodeInstanceList.data.map(function(item) {
         return {
           nodeId: item.nodeUuid,
+          nodeName: item.nodeName,
           inUse: item.inUse,
           ip: item.details.ip,
           instanceType: item.details.instanceType,
