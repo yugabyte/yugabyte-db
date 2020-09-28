@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: upgrade-software
     parent: manage-deployments-yugabyte-platform
-    weight: 643
+    weight: 80
 isTocNested: true
 showAsideToc: true
 ---

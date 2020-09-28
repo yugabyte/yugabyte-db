@@ -9,5 +9,5 @@ menu:
   latest:
     identifier: deployment-options
     parent: overview-yugabyte-platform
-    weight: 660
+    weight: 20
 ---

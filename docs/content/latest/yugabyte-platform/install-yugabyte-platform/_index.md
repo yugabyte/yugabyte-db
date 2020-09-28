@@ -5,7 +5,7 @@ linkTitle: Install Yugabyte Platform
 description: Install Yugabyte Platform and prepare universe nodes.
 menu:
   latest:
-    identifier: prepare-nodes
+    identifier: prepare-nodes-yp
     parent: install-yugabyte-platform
 weight: 615
 type: page

@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: view-universe-details
     parent: manage-deployments-yugabyte-platform
-    weight: 643
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---

@@ -7,8 +7,8 @@ aliases:
   - /latest/deploy/enterprise-edition/configure-admin-console/
 menu:
   latest:
-    identifier: configure-yugabyte-platform
-    parent: deploy-yugabyte-platform
+    identifier: configure-yp-yugabyte-platform
+    parent: configure-yugabyte-platform-yugabyte-platform
     weight: 615
 isTocNested: true
 showAsideToc: true

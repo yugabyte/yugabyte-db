@@ -7,7 +7,7 @@ image: /images/section_icons/manage/enterprise.png
 headcontent: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
 menu:
   latest:
-    identifier: back-up-and-restore-yugabyte-platform
+    identifier: back-up-restore-yugabyte-platform
     parent: yugabyte-platform
     weight: 650
 ---

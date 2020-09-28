@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: edit-config-flags
     parent: manage-deployments-yugabyte-platform
-    weight: 643
+    weight: 60
 isTocNested: true
 showAsideToc: true
 ---

@@ -7,9 +7,9 @@ aliases:
   - /latest/manage/enterprise-edition/back-up-restore-yp
 menu:
   latest:
-    identifier: back-up-restore-yugabyte-yp
+    identifier: back-up-restore-yp
     parent: back-up-and-restore-yugabyte-platform
-    weight: 651
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---

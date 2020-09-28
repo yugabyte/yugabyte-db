@@ -7,7 +7,7 @@ image: /images/section_icons/deploy/enterprise.png
 headcontent: Overview or Yugabyte Platform and architecture.
 menu:
   latest:
-    identifier: monitor-yugabyte-platform
-    parent: overview-yugabyte-platform
+    identifier: overview-yugabyte-platform
+    parent: yugabyte-platform
     weight: 660
 ---

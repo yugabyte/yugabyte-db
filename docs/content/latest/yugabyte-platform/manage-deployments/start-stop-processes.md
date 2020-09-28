@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: start-stop-processes
     parent: manage-deployments-yugabyte-platform
-    weight: 643
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---

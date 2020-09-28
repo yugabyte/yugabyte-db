@@ -3,14 +3,11 @@ title: Troubleshoot installation and upgrade issues
 headerTitle: 
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered during installing or upgrading Yugabyte Platform.
-aliases:
-  - /troubleshoot/enterprise-edition/universes/
-  - /latest/troubleshoot/enterprise-edition/universes/
 menu:
   latest:
-    identifier: troubleshoot-universes
+    identifier: install-upgrade-issues
     parent: troubleshoot-yugabyte-platform
-    weight: 693
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---

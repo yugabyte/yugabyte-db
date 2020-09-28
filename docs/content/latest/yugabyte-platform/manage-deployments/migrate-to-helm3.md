@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: migrate-to-helm3
     parent: manage-deployments-yugabyte-platform
-    weight: 646
+    weight: 90
 isTocNested: true
 showAsideToc: true
 ---

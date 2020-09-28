@@ -7,7 +7,7 @@ menu:
   latest:
     parent: secure-yugabyte-platform
     identifier: enable-encryption-in-transit-yp
-    weight: 684
+    weight: 30
 type: page
 isTocNested: true
 showAsideToc: true

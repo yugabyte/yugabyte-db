@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     identifier: create-read-replica-cluster
-    parent: universes-manage-yugabyte-platform
+    parent: create-deployments-yugabyte-platform
     weight: 638
 isTocNested: true
 showAsideToc: true

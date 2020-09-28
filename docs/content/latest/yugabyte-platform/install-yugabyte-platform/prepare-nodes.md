@@ -5,7 +5,7 @@ linkTitle: Prepare YugabyteDB universe nodes
 description: Prepare your YugabyteDB nodes.
 menu:
   latest:
-    identifier: prepare-nodes
+    identifier: prepare-universe-nodes
     parent: install-yugabyte-platform
 weight: 615
 type: page

@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: delete-universe
     parent: manage-deployments-yugabyte-platform
-    weight: 640
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---

@@ -9,5 +9,8 @@ menu:
   latest:
     identifier: yugabyte-platform-architecture
     parent: overview-yugabyte-platform
-    weight: 660
+    weight: 10
 ---
+
+??? Content is needed
+;2q

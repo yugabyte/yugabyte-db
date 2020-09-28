@@ -10,8 +10,8 @@ aliases:
 menu:
   latest:
     identifier: back-up-restore-data
-    parent: back-up-and-restore-yugabyte-platform
-    weight: 652
+    parent: back-up-restore-yugabyte-platform
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---

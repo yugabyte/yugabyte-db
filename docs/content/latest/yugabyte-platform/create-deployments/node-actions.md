@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     identifier: node-status-actions
-    parent: configure-manage-yugabyte-platform
+    parent: create-deployments-yugabyte-platform
     weight: 645
 isTocNested: true
 showAsideToc: true
@@ -105,32 +105,6 @@ Do not `REMOVE` more than (RF - 1)/2 nodes at any given time. For example, on a 
 The second scenario is for more of a 'quick' planned change that can be performed on a node. For example, the DevOps wants to mount a new disk on the node or just install and run a new security daemon. In that case, the instance is still in use and stopping any running YugabyteDB process might be needed. Then the user can select the **Stop Processes** option, perform the system task, and then select **Start Processes** for that node.
 
 The following two steps helps stop the server processes on the node and restart it back up. There is no data moved out of the node proactively, but the data shard/tablet leaders could change based on RAFT requirements.
-
-### Stop processes
-
-Let's say `yb-14-node-actions-n4` is the node that needs the intervention, then you would pick the **Stop Processes** option.
-
-![Stop Node Actions](/images/ee/node-actions-stop.png)
-
-Once the `yb-tserver` (and `yb-master`, if applicable) are stopped, the node status is updated and the instance is ready for the planned system changes.
-
-![Stop Node Actions](/images/ee/node-actions-stopped.png)
-
-{{< note title="Note" >}}
-
-Do not STOP more than (RF - 1)/2 processes at any given time. For example, on an RF=3 cluster with three nodes, there can only be one node with stopped processes to allow majority of nodes to perform consensus operations.
-
-{{< /note >}}
-
-### Start processes
-
-After the work is complete, the processes can be restarted using the same dropdown for that node.
-
-![Start Node Actions](/images/ee/node-actions-start.png)
-
-The node will go back to the `Live` state once the processes are up and running.
-
-In the worst case scenario, when the system runs into some unrecoverable errors at this stage, there is a **Release Instance** option for the stopped node, which will help remove the backing instance as well, as described above.
 
 ## Node action task summary
 

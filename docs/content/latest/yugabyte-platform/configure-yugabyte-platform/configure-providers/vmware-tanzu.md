@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: configure-providers-6-vmware-tanzu
-    parent: configure-providers-configure-yugabyte-platformm
+    parent: configure-providers-configure-yugabyte-platform
     weight: 627
 isTocNested: true
 showAsideToc: true

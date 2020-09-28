@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: add-node-yp
     parent: manage-deployments-yugabyte-platform
-    weight: 637
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---
