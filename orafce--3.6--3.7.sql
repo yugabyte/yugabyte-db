@@ -30,6 +30,13 @@ RETURNS TIMESTAMP
 AS $$ SELECT (pg_catalog.add_months($1::pg_catalog.date, $2) + $1::time)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
+drop view oracle.user_tables;
+
+create view oracle.user_tables as
+    select table_name
+      from information_schema.tables
+     where table_type = 'BASE TABLE';
+
 -- new functionality
 CREATE FUNCTION oracle.orafce_concat2(varchar2, varchar2)
 RETURNS varchar2
