@@ -237,8 +237,6 @@ export default class CreateBackup extends Component {
             const isTableSelected = backupTableUUID && backupTableUUID.length;
             const s3StorageSelected = storageConfigUUID && storageConfigUUID.label === 'S3 Storage';
 
-            const hasScheduleFreq = isSchedulingFrequencyReadOnly || isCronExpressionReadOnly;
-
             const showTransactionalToggle = isKeyspaceSelected &&
               (!!isTableSelected && (backupTableUUID.length > 1 || backupTableUUID[0].value === 'alltables'));
 
@@ -383,7 +381,7 @@ export default class CreateBackup extends Component {
                     label={"Encrypt Backup"}
                   />
                   }
-                  {hasScheduleFreq && <Field
+                  {isScheduled && <Field
                     name="timeBeforeDelete"
                     type={"number"}
                     component={YBFormInput}
@@ -448,7 +446,7 @@ export default class CreateBackup extends Component {
                     component={YBFormInput}
                     label={"Parallel Threads"}
                   />
-                  {hasScheduleFreq && <Field
+                  {isScheduled && <Field
                     name="timeBeforeDelete"
                     type={"number"}
                     component={YBFormInput}
