@@ -146,6 +146,7 @@ class UniverseForm extends Component {
         useTimeSync: formValues[clusterType].useTimeSync,
         assignPublicIP: formValues[clusterType].assignPublicIP,
         enableYSQL: formValues[clusterType].enableYSQL,
+        enableIPV6: formValues[clusterType].enableIPV6,
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
       };
@@ -282,6 +283,7 @@ class UniverseForm extends Component {
         enableYSQL: self.getYSQLstate(),
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
+        enableIPV6: formValues[clusterType].enableIPV6,
         awsArnString: formValues[clusterType].awsArnString,
         providerType: self.getCurrentProvider(formValues[clusterType].provider).code,
         instanceType: formValues[clusterType].instanceType,
@@ -701,7 +703,7 @@ class PrimaryClusterFields extends Component {
         'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags',
         'primary.instanceTags', 'primary.ybSoftwareVersion', 'primary.diskIops',
         'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
-        'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL',
+        'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.enableIPV6',
         'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt',
         'primary.enableEncryptionAtRest', 'primary.selectEncryptionAtRestConfig'
       ]}
@@ -716,7 +718,8 @@ class ReadOnlyClusterFields extends Component {
       <Fields names={['primary.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
         'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.diskIops',
         'async.numVolumes','async.volumeSize',
-        'async.storageType', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL', 'async.enableNodeToNodeEncrypt',
+        'async.storageType', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL',
+        'async.enableIPV6', 'async.enableNodeToNodeEncrypt',
         'async.enableClientToNodeEncrypt']}
       component={ClusterFields} {...this.props} clusterType={"async"}/>
     );
