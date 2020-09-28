@@ -479,8 +479,14 @@ public class UniverseController extends AuthenticatedController {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                              Universe.HelmLegacy.V3.toString()));
+        } else {
+          if (primaryCluster.userIntent.enableIPV6) {
+            return ApiResponse.error(
+                  BAD_REQUEST,
+                  "IPV6 not supported for platform deployed VMs."
+                );
+          }
         }
-
         if (primaryCluster.userIntent.enableNodeToNodeEncrypt ||
                 primaryCluster.userIntent.enableClientToNodeEncrypt) {
           if (taskParams.rootCA == null) {
