@@ -7,8 +7,8 @@ image: /images/section_icons/deploy/enterprise.png
 headcontent: Plan and prepare for installing and deploying the Yugabyte Platform.
 menu:
   latest:
-    identifier: monitor-yugabyte-platform
-    parent: monitor-yugabyte-platform
+    identifier: yugabyte-platform
+    parent: monitor
     weight: 660
 ---
 

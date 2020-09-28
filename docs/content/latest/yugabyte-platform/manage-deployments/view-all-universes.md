@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to view all universes.
 menu:
   latest:
     identifier: view-all-universes
-    parent: manage-deployments-yugabyte-platform
+    parent: manage-deployments
     weight: 20
 isTocNested: true
 showAsideToc: true

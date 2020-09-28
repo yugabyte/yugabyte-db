@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     identifier: migrate-to-helm3
-    parent: manage-deployments-yugabyte-platform
+    parent: manage-deployments
     weight: 90
 isTocNested: true
 showAsideToc: true

@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to start and stop processes.
 menu:
   latest:
     identifier: start-stop-processes
-    parent: manage-deployments-yugabyte-platform
+    parent: manage-deployments
     weight: 10
 isTocNested: true
 showAsideToc: true

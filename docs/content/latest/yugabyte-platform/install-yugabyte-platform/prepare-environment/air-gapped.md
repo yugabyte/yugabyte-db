@@ -1,14 +1,14 @@
 ---
-title: Install Yugabyte Platform on an airgapped host
-headerTitle: Install Yugabyte Platform on an airgapped host
+title: Install Yugabyte Platform in an on-premises, airgapped host
+headerTitle: Install Yugabyte Platform in an on-premises, airgapped host
 linkTitle: 2. Install Yugabyte Platform
 description: Install Yugabyte Platform on an airgapped host.
 aliases:
   - /latest/deploy/enterprise-edition/install-admin-console/airgapped
 menu:
   latest:
-    identifier: install-yp-3-on-premises-air-gapped
-    parent: deploy-yugabyte-platform
+    identifier: install-yp-6-air-gapped
+    parent: prepare-environment
     weight: 623
 isTocNested: true
 showAsideToc: true
@@ -17,30 +17,44 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/default" class="nav-link">
-      <i class="fas fa-cloud"></i>
-      Default
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
+      <i class="fab fa-aws" aria-hidden="true"></i>
+      AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/on-premises" class="nav-link">
-      <i class="fas fa-cloud"></i>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
+       <i class="fab fa-google" aria-hidden="true"></i>
+      GCP
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
+      <i class="icon azure" aria-hidden="true"></i>
+      Azure
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
+      <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/airgapped" class="nav-link active">
-      <i class="fas fa-unlink"></i>
-      Airgapped
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/deploy/install-yugabyte-platform/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Kubernetes
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/air-gapped" class="nav-link active">
+      <i class="fas fa-unlinked aria-hidden="true"></i>
+      Air-gapped
     </a>
   </li>
 

@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to upgrade software.
 menu:
   latest:
     identifier: upgrade-software
-    parent: manage-deployments-yugabyte-platform
+    parent: manage-deployments
     weight: 80
 isTocNested: true
 showAsideToc: true

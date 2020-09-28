@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     identifier: remove-node-yp
-    parent: manage-deployments-yugabyte-platform
+    parent: manage-deployments
     weight: 50
 isTocNested: true
 showAsideToc: true

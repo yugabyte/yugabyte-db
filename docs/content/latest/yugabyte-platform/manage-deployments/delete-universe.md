@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     identifier: delete-universe
-    parent: manage-deployments-yugabyte-platform
+    parent: manage-deployments
     weight: 40
 isTocNested: true
 showAsideToc: true

@@ -10,7 +10,7 @@ aliases:
 menu:
   latest:
     identifier: install-yp-1-default
-    parent: deploy-yugabyte-platform
+    parent: prepare-environment
     weight: 623
 isTocNested: true
 showAsideToc: true

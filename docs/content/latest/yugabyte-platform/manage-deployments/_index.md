@@ -5,8 +5,8 @@ linkTitle: Manage deployments
 description: Manage YugabyteDB universe deployments
 menu:
   latest:
-    identifier: manage-deployments-yugabyte-platform
-    parent: manage-deployments-yp-yugabyte-platform
+    identifier: manage-deployments
+    parent: yugabyte-platform
     weight: 637
 isTocNested: true
 showAsideToc: true

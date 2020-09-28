@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: edit-config-flags
-    parent: manage-deployments-yugabyte-platform
+    parent: manage-deployments
     weight: 60
 isTocNested: true
 showAsideToc: true

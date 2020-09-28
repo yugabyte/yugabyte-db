@@ -8,8 +8,8 @@ aliases:
   - /latest/yugabyte-platform/deploy/prepare-environment/
 menu:
   latest:
-    identifier: prepare-environment-1-on-premises
-    parent: prepare-environment-install-yugabyte-platform
+    identifier: prepare-environment-5-on-premises
+    parent: prepare-environment
     weight: 621
 isTocNested: true
 showAsideToc: true
@@ -18,23 +18,44 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/deploy/prepare-environment/on-premises" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
-      On-premises
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/deploy/prepare-environment/aws" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
+      <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/deploy/prepare-environment/gcp" class="nav-link active">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
+      <i class="icon azure" aria-hidden="true"></i>
+      Azure
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link active">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link active">
+      <i class="fas fa-building" aria-hidden="true"></i>
+      On-premises
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/air-gapped" class="nav-link">
+      <i class="fas fa-unlinked aria-hidden="true"></i>
+      Air-gapped
     </a>
   </li>
 
@@ -47,7 +68,6 @@ A dedicated host or virtual machine (VM) is required to run the Yugabyte Platfor
 For Yugabyte Platform, see [Review system requirements](../../../plan/system-reqs-yp).
 
 ## Install Yugabyte Platform on a VM
-
 
 Requirements for YugabyteDB nodes
 
@@ -70,4 +90,3 @@ $ sudo mkdir /data
 $ sudo chown yw:yw /data
 
 Install Platform according to the instructions on the Yugabyte Platform deployment docs page.
-
