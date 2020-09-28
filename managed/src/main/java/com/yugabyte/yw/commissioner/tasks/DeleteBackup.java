@@ -53,15 +53,30 @@ public class DeleteBackup extends AbstractTaskBase {
       }
       backup.transitionState(Backup.BackupState.Deleted);
       BackupTableParams backupParams = Json.fromJson(backup.backupInfo, BackupTableParams.class);
-      backupParams.actionType = BackupTableParams.ActionType.DELETE;
-      ShellProcessHandler.ShellResponse response = tableManager.deleteBackup(backupParams);
-      JsonNode jsonNode = Json.parse(response.message);
-      if (response.code != 0 || jsonNode.has("error")) {
-        LOG.error("Delete Backup failed. Response code={}, hasError={}.",
-                  response.code, jsonNode.has("error"));
-        throw new RuntimeException(response.message);
+      if (backupParams.backupList != null || backupParams.backupList.size() != 0) {
+        for (BackupTableParams childBackupParams : backupParams.backupList) {
+          childBackupParams.actionType = BackupTableParams.ActionType.DELETE;
+          ShellProcessHandler.ShellResponse response = tableManager.deleteBackup(childBackupParams);
+          JsonNode jsonNode = Json.parse(response.message);
+          if (response.code != 0 || jsonNode.has("error")) {
+            LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
+                      childBackupParams.storageLocation, response.code, jsonNode.has("error"));
+            throw new RuntimeException(response.message);
+          } else {
+            LOG.info("[" + getName() + "] STDOUT: " + response.message);
+          }
+        }
       } else {
-        LOG.info("[" + getName() + "] STDOUT: " + response.message);
+        backupParams.actionType = BackupTableParams.ActionType.DELETE;
+        ShellProcessHandler.ShellResponse response = tableManager.deleteBackup(backupParams);
+        JsonNode jsonNode = Json.parse(response.message);
+        if (response.code != 0 || jsonNode.has("error")) {
+          LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
+                    backupParams.storageLocation, response.code, jsonNode.has("error"));
+          throw new RuntimeException(response.message);
+        } else {
+          LOG.info("[" + getName() + "] STDOUT: " + response.message);
+        }
       }
     } catch (Exception e) {
       LOG.error("Errored out with: " + e);
