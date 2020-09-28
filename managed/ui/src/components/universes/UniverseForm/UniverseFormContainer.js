@@ -154,11 +154,11 @@ const formFieldNames =
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes',
     'primary.volumeSize', 'primary.storageType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL',
-    'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest',
+    'primary.enableIPV6', 'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest',
     'primary.selectEncryptionAtRestConfig', 'primary.mountPoints', 'primary.awsArnString',
     'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.numNodes', 'async.instanceType',
     'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL',
-    'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints', 'masterGFlags',
+    'async.enableIPV6', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints', 'masterGFlags',
     'tserverGFlags', 'instanceTags', 'asyncClusters'];
 
 
@@ -175,6 +175,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].assignPublicIP = userIntent.assignPublicIP;
     data[clusterType].useTimeSync = userIntent.useTimeSync;
     data[clusterType].enableYSQL = userIntent.enableYSQL;
+    data[clusterType].enableIPV6 = userIntent.enableIPV6;
     data[clusterType].enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     data[clusterType].enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
     data[clusterType].provider = userIntent.provider;
@@ -226,6 +227,7 @@ function mapStateToProps(state, ownProps) {
       "assignPublicIP":  true,
       "useTimeSync": false,
       "enableYSQL": true,
+      "enableIPV6": false,
       "enableNodeToNodeEncrypt": false,
       "enableClientToNodeEncrypt": false,
       "enableEncryptionAtRest": false,
@@ -239,6 +241,7 @@ function mapStateToProps(state, ownProps) {
       "assignPublicIP":  true,
       "useTimeSync": false,
       "enableYSQL": true,
+      "enableIPV6": false,
       "enableNodeToNodeEncrypt": false,
       "enableClientToNodeEncrypt": false
     }
@@ -268,7 +271,7 @@ function mapStateToProps(state, ownProps) {
       'primary.ybSoftwareVersion', 'primary.accessKeyCode', 'primary.masterGFlags',
       'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes',
       'primary.volumeSize', 'primary.storageType', 'primary.diskIops', 'primary.assignPublicIP',
-      'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL',
+      'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.enableIPV6',
       'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt',
       'primary.enableEncryptionAtRest', 'primary.selectEncryptionAtRestConfig',
       'primary.tlsCertificateId', 'primary.awsArnString', 'primary.masterHttpPort',
@@ -279,8 +282,8 @@ function mapStateToProps(state, ownProps) {
       'async.replicationFactor', 'async.numNodes', 'async.instanceType', 'async.deviceInfo',
       'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.diskIops', 'async.numVolumes',
       'async.volumeSize',  'async.storageType', 'async.assignPublicIP', 'async.enableYSQL',
-      'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints',
-      'async.useTimeSync', 'masterGFlags', 'tserverGFlags', 'instanceTags',
+      'async.enableIPV6', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt',
+      'async.mountPoints', 'async.useTimeSync', 'masterGFlags', 'tserverGFlags', 'instanceTags',
       'primary.installNodeExporter'
     )
   };
