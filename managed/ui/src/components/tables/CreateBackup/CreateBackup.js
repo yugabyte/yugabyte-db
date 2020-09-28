@@ -89,7 +89,6 @@ export default class CreateBackup extends Component {
   validateForm = (values) => {
     const errors = {};
 
-    console.log(values);
     if (values.schedulingFrequency && !_.isNumber(values.schedulingFrequency)) {
       errors.schedulingFrequency = 'Frequency must be a number';
     }
