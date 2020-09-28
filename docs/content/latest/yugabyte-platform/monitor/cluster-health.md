@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: cluster-health-yp
-    parent: monitor-yugabyte-platform
+    parent: monitor-alert-yugabyte-platform
     weight: 663
 isTocNested: true
 showAsideToc: true
