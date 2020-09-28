@@ -181,7 +181,9 @@ export default class ListBackups extends Component {
         <TableHeaderColumn dataField="tableType" dataAlign="left">
           Backup Type
         </TableHeaderColumn>
-        <TableHeaderColumn dataField="tableName" caretRender={this.renderCaret} dataSort dataAlign="left">
+        <TableHeaderColumn dataField="tableName" caretRender={this.renderCaret}
+          dataFormat={this.displayMultiTableNames} dataSort dataAlign="left"
+        >
           Table Name
         </TableHeaderColumn>
         <TableHeaderColumn dataField="storageLocation" dataFormat={this.copyStorageLocation} dataAlign="left">
