@@ -7,7 +7,7 @@ menu:
   latest:
     parent: install-yp
     identifier: prepare-access-privileges
-    weight: 617
+    weight: 40
 type: page
 isTocNested: true
 showAsideToc: true

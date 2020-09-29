@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: install-yp-6-air-gapped
     parent: install-yp
-    weight: 621
+    weight: 77
 isTocNested: true
 showAsideToc: true
 ---

@@ -7,7 +7,7 @@ menu:
   latest:
     parent: install-yp
     identifier: uninstall-y-p
-    weight: 613
+    weight: 80
 type: page
 isTocNested: true
 showAsideToc: true

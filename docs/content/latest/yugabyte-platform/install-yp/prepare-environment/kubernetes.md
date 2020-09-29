@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: prepare-environment-4-kubernetes
     parent: prepare-environment
-    weight: 112
+    weight: 55
 isTocNested: true
 showAsideToc: true
 ---

@@ -7,7 +7,7 @@ menu:
   latest:
     parent: install-yp
     identifier: review-system-reqs
-    weight: 613
+    weight: 20
 type: page
 isTocNested: true
 showAsideToc: true

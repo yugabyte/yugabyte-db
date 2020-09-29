@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: install-yp-3-azure
     parent: install-yp
-    weight: 621
+    weight: 77
 isTocNested: true
 showAsideToc: true
 ---

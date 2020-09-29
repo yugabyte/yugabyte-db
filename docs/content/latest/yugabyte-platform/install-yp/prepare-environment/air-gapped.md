@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: prepare-environment-6-air-gapped
     parent: prepare-environment
-    weight: 112
+    weight: 55
 isTocNested: true
 showAsideToc: true
 ---

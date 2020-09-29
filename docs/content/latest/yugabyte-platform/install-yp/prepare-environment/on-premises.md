@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: prepare-environment-5-on-premises
     parent: prepare-environment
-    weight: 112
+    weight: 55
 isTocNested: true
 showAsideToc: true
 ---

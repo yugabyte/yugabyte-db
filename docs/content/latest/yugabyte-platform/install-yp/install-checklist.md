@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: install-checklist-yp
     parent: install-yp
-    weight: 623
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---
