@@ -168,6 +168,19 @@ Enable or disable the "call home" feature that sends analytics data to Yugabyte.
 
 Enable or disable the webserver UI. Default is `false`.
 
+##### --ysql_enable_auth *bool*
+
+Enable or disable YSQL Authentication. Default is `false`.
+If the `YSQL_PASSWORD` environment variable exists then, authentication mode is automatically changed to enforced.
+
+##### --use_cassandra_authentication *bool*
+
+Enable or disable YCQL Authentication. Default is `false`.
+If the `YCQL_USER` or `YCQL_PASSWORD` environment variables exist then, authentication mode is automatically changed to enforced.
+
+**Note**
+- Environment variables have more priority than the command-line flag.
+
 -----
 
 ### stop
@@ -426,7 +439,7 @@ Combinations of environment variables and their uses.
 
 **Note**
 - In the case of multi-node deployment, all nodes should have similar environment variables. 
-
+- Environment variables can change the configuration only on the first run.
 -----
 
 ## Examples
