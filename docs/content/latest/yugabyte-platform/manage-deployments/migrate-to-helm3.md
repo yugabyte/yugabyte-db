@@ -25,8 +25,11 @@ Starting with YugabyteDB version 2.1.8, Helm 2 is not supported. Follow the step
 
 1. Check the chart name using the `helm2 ls` command.
 
-```
+```sh
 $ helm2 ls
+```
+
+```
 NAME   	REVISION	UPDATED                 STATUS  	CHART         	APP VERSION	NAMESPACE
 yw-test	1       	Tue May 12 22:21:16 2020	DEPLOYED	yugaware-2.2.0 2.2.0.0-76 	yw-test  
 ```
@@ -37,6 +40,9 @@ For details, see [Migrating Helm v2 to v3](https://helm.sh/docs/topics/v2_v3_mig
 
 ```sh
 $ helm 2to3 convert yw-test
+```
+
+```
 2020/05/12 22:25:49 Release "yw-test" will be converted from Helm v2 to Helm v3.
 2020/05/12 22:25:49 [Helm 3] Release "yw-test" will be created.
 2020/05/12 22:25:49 [Helm 3] ReleaseVersion "yw-test.v1" will be created.
@@ -51,6 +57,9 @@ $ helm 2to3 convert yw-test
 
 ```sh
 $ helm ls -n yw-test
+```
+
+```
 NAME   	NAMESPACE	REVISION	UPDATED                               	STATUS  	CHART         	APP VERSION
 yw-test	yw-test  	1       	2020-06-16 16:51:16.44463488 +0000 UTC	deployed	yugaware-2.2.0	2.2.0.0-b80 
 ```
@@ -61,6 +70,9 @@ Because older charts (v.2.1.4 and earlier) used to have the `clusterIP` field in
 
 ```sh
 $ kubectl get svc -n yw-test
+```
+
+```
 NAME                         TYPE                CLUSTER-IP    EXTERNAL-IP   PORT(S)                                       AGE
 yw-test-yugaware-ui   LoadBalancer   10.103.85.235   10.103.85.235   80:30265/TCP,9090:30661/TCP   18m
 ```
@@ -69,8 +81,11 @@ Also, because the `Release.Service` for Helm 3 is`Helm`, and Helm 2 had it as `T
 
 For Yugabyte Platform, set the following fields, along with the other necessary changes, by running the following command.
 
-```
+```sh
 22:39 $ helm upgrade yw-test yugaware --set helm2Legacy=true,yugaware.service.clusterIP="10.103.85.235" -n yw-test
+```
+
+```
 Release "yw-test" has been upgraded. Happy Helming!
 NAME: yw-test
 LAST DEPLOYED: Tue May 12 22:43:49 2020

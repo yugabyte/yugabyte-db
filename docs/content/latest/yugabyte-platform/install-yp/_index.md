@@ -8,7 +8,6 @@ menu:
     identifier: install-yp
     parent: yugabyte-platform
 weight: 615
-type: page
 isTocNested: true
 showAsideToc: true
 ---

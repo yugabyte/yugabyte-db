@@ -12,7 +12,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 ## SSH user
 
 Identify an SSH user or create an SSH  user. This user must have `sudo` privileges on each YugabyteDB node. 
