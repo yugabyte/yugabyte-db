@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to enable encryption in transit for YugabyteD
 menu:
   latest:
     identifier: enable-encryption-in-transit
-    parent: secure-yugabyte-platform
+    parent: secure-yp
     weight: 30
 isTocNested: true
 showAsideToc: true

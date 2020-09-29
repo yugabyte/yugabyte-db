@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to enable encryption at rest for data stored 
 menu:
   latest:
     identifier: enable-encryption-at-rest
-    parent: secure-yugabyte-platform
+    parent: secure-yp
     weight: 20
 isTocNested: true
 showAsideToc: true

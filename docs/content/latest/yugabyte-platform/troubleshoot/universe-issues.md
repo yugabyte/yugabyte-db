@@ -8,7 +8,7 @@ aliases:
   - /latest/troubleshoot/enterprise-edition/universes/
 menu:
   latest:
-    identifier: troubleshoot-universe
+    identifier: universe-issues
     parent: troubleshoot-yp
     weight: 20
 isTocNested: true

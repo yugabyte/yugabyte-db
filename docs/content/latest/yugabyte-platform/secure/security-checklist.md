@@ -6,7 +6,7 @@ description: Review the security checklist for important security considerations
 menu:
   latest:
     identifier: security-checklist-yp
-    parent: secure-yugabyte-platform
+    parent: secure-yp
     weight: 10
 type: page
 isTocNested: true

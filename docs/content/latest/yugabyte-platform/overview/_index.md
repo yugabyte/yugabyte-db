@@ -4,7 +4,7 @@ headerTitle: Overview
 linkTitle: Overview
 description: Overview of the Yugabyte Platform and its architecture.
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Overview or Yugabyte Platform and architecture.
+headcontent: Overview of the Yugabyte Platform and architecture.
 menu:
   latest:
     identifier: overview-yp
