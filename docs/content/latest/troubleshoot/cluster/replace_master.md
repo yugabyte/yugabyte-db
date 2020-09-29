@@ -29,7 +29,7 @@ If the master you wish to replace is already dead (eg: VM was terminated), you m
 {{< /note >}}
 
 
-1. Start the new (replacement) YB-Master server in standby mode. 
+## Start the new (replacement) YB-Master server in standby mode. 
 
 To start `yb-master` in standby mode, set the `--master_addresses` flag to an empty string (`""`).
 
@@ -37,7 +37,7 @@ To start `yb-master` in standby mode, set the `--master_addresses` flag to an em
 ./bin/yb-master --master_addresses=""
 ```
 
-2. Add the new YB-Master server into the existing cluster.
+## Add the new YB-Master server into the existing cluster.
 
 To add the new YB-Master server, run the [`yb-admin change_master_config ADD_SERVER`](../../admin/cli/yb-admin/#change-master-config) command.
 
@@ -45,7 +45,7 @@ To add the new YB-Master server, run the [`yb-admin change_master_config ADD_SER
 ./bin/yb-admin -master_addresses M1:7100,M2:7100,M3:7100 change_master_config ADD_SERVER M4 7100
 ```
 
-3. Remove the old YB-Master server from the cluster.
+## Remove the old YB-Master server from the cluster.
 
 To remove the failed YB-Master server from the cluster, use the [`yb-admin change_master_config REMOVE_SERVER`](../../admin/yb-admin/#change-master-config`) command.
 
