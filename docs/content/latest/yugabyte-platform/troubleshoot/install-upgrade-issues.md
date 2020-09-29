@@ -6,7 +6,7 @@ description: Troubleshoot issues encountered during installing or upgrading Yuga
 menu:
   latest:
     identifier: install-upgrade-issues
-    parent: troubleshoot
+    parent: troubleshoot-yugabyte-platform
     weight: 10
 isTocNested: true
 showAsideToc: true

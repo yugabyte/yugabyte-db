@@ -10,7 +10,7 @@ aliases:
   - /latest/troubleshoot/yugabyte-platform/
 menu:
   latest:
-    identifier: troubleshoot
+    identifier: troubleshoot-yugabyte-platform
     parent: yugabyte-platform
     weight: 690
 ---
