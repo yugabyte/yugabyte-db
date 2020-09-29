@@ -4,13 +4,12 @@ headerTitle: Create a read replica cluster
 linkTitle: Create a read replica cluster
 description: Use Yugabyte Platform to create a read replica cluster.
 aliases:
-  - /stable/manage/enterprise-edition/read-replicas/
-block_indexing: true
+  - /latest/manage/enterprise-edition/read-replicas/
 menu:
-  stable:
+  latest:
     identifier: create-read-replica-cluster
-    parent: manage-yugabyte-platform
-    weight: 745
+    parent: create-deployments
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---
@@ -19,18 +18,18 @@ This section will describe how to create a universe with both a primary and [rea
 
 ## Create the universe
 
-First, enter the following values to create a primary cluster on [GCP](../../deploy/configure-cloud-providers/gcp) cloud provider. Click **Create Universe** and then enter the following intent.
+First, enter the following values to create a primary cluster on [GCP](../../deploy/configure-providers/gcp) cloud provider. Click **Create Universe** and then enter the following intent.
 
 - Enter a universe name: **helloworld3**
 - Enter the set of regions: **Oregon**
 - Enter the replication factor: **3**
 - Change instance type: **n1-standard-8**
-- Add the following GFlag (flag) for Master and T-Server: **leader_failure_max_missed_heartbeat_periods = 10**. Since the the data is globally replicated, RPC latencies are higher. You can use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+- Add the following configuration flag for YB-Master and YB-TServer: `leader_failure_max_missed_heartbeat_periods = 10`. Since the the data is globally replicated, RPC latencies are higher. You can use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 ![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
 
 Then, click **Configure Read Replica** and then enter the following intent to create a read replica
-cluster on [AWS](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-aws).
+cluster on [AWS](../../../deploy/enterprise-edition/configure-providers/#configure-aws).
 
 - Enter the set of regions: **US East**
 - Enter the replication factor: **3**
