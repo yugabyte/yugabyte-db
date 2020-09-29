@@ -208,6 +208,7 @@ public class MultiTableBackup extends UniverseTaskBase {
         tableBackupParams.universeUUID = params().universeUUID;
         tableBackupParams.sse = params().sse;
         tableBackupParams.parallelism = params().parallelism;
+        tableBackupParams.timeBeforeDelete = params().timeBeforeDelete;
         tableBackupParams.transactionalBackup = params().transactionalBackup;
         tableBackupParams.backupType = params().backupType;
         Backup backup = Backup.create(params().customerUUID, tableBackupParams);
@@ -259,6 +260,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     backupParams.universeUUID = params().universeUUID;
     backupParams.sse = params().sse;
     backupParams.parallelism = params().parallelism;
+    backupParams.timeBeforeDelete = params().timeBeforeDelete;
     backupParams.scheduleUUID = params().scheduleUUID;
     backupParams.keyspace = tableKeySpace;
     backupParams.backupType = backupType;
@@ -305,6 +307,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     backupParams.universeUUID = params().universeUUID;
     backupParams.sse = params().sse;
     backupParams.parallelism = params().parallelism;
+    backupParams.timeBeforeDelete = params().timeBeforeDelete;
     backupParams.scheduleUUID = params().scheduleUUID;
     return backupParams;
   }
