@@ -8,6 +8,7 @@ aliases:
 menu:
   latest:
     identifier: install-yp-1-aws
+    name: 3. Install Yugabyte Platform
     parent: install-yugabyte-platform
     weight: 77
 isTocNested: true

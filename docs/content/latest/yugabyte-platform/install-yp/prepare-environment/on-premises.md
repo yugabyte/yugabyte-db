@@ -9,6 +9,7 @@ aliases:
 menu:
   latest:
     identifier: prepare-environment-5-on-premises
+    name: 1. Prepare the environment
     parent: prepare-environment
     weight: 55
 isTocNested: true

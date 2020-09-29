@@ -6,6 +6,7 @@ description: Install Yugabyte Platform in your on-premises environment.
 menu:
   latest:
     identifier: install-yp-5-on-premises
+    name: 3. Install Yugabyte Platform
     parent: install-yugabyte-platform
     weight: 77
 isTocNested: true

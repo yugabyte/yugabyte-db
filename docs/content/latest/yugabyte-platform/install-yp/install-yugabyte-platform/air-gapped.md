@@ -6,6 +6,7 @@ description: Install Yugabyte Platform in your on-premises, air-gapped environme
 menu:
   latest:
     identifier: install-yp-6-air-gapped
+    name: 3. Install Yugabyte Platform
     parent: install-yugabyte-platform
     weight: 77
 isTocNested: true

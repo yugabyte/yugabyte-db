@@ -6,6 +6,7 @@ description: Prepare the Google Cloud Platform (GCP) environment
 menu:
   latest:
     identifier: prepare-environment-2-gcp
+    name: 1. Prepare the environment
     parent: prepare-environment
     weight: 55
 isTocNested: true
