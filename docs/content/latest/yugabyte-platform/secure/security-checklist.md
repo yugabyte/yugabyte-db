@@ -1,8 +1,8 @@
 ---
-title: Security checklist for Yugabyte Platform
+title: Security checklist
 headerTitle: Security checklist
 linkTitle: Security checklist
-description: Check important security considerations.
+description: Review the security checklist for important security considerations.
 menu:
   latest:
     identifier: security-checklist-yp

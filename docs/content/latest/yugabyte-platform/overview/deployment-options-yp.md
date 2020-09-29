@@ -2,7 +2,7 @@
 title: Deployment options
 headerTitle: Deployment options
 linkTitle: Deployment options
-description: Options for deploying YugabyteDB universes.
+description: Options in the Yugabyte Platform for deploying YugabyteDB universes.
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Options for deploying YugabyteDB universes.
 menu:
@@ -11,3 +11,5 @@ menu:
     parent: overview-yugabyte-platform
     weight: 20
 ---
+
+??? Content is needed

@@ -10,7 +10,7 @@ aliases:
   - /latest/troubleshoot/yugabyte-platform/
 menu:
   latest:
-    identifier: troubleshoot-yugabyte-platform
+    identifier: troubleshoot-yp
     parent: yugabyte-platform
     weight: 690
 ---
@@ -18,7 +18,7 @@ menu:
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-upgrade/">
+    <a class="section-link icon-offset" href="install-upgrade-yp-issues/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
         <div class="title">Install and upgrade issues</div>
@@ -30,13 +30,13 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="universes/">
+    <a class="section-link icon-offset" href="universe-issues/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Universe issues</div>
+        <div class="title">Troubleshoot universe issues</div>
       </div>
       <div class="body">
-        Troubleshoot a YugabyteDB universe using the YugabyteDB Admin Console.
+        Troubleshoot a YugabyteDB universe.
       </div>
     </a>
   </div>

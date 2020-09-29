@@ -5,8 +5,8 @@ linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered during installing or upgrading Yugabyte Platform.
 menu:
   latest:
-    identifier: install-upgrade-issues
-    parent: troubleshoot-yugabyte-platform
+    identifier: install-upgrade-yp-issues
+    parent: troubleshoot-yp
     weight: 10
 isTocNested: true
 showAsideToc: true

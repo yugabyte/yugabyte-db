@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: troubleshoot-universe
-    parent: troubleshoot-yugabyte-platform
+    parent: troubleshoot-yp
     weight: 20
 isTocNested: true
 showAsideToc: true

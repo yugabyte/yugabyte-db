@@ -8,9 +8,9 @@ menu:
     identifier: enable-encryption-in-transit
     parent: secure-yugabyte-platform
     weight: 30
-type: page
 isTocNested: true
 showAsideToc: true
 ---
 
-???
+??? Content is needed
+

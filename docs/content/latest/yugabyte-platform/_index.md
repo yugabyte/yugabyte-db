@@ -56,7 +56,7 @@ menu:
         <div class="title">Manage deployments</div>
       </div>
       <div class="body">
-        Uses Yugabyte Platform to manage deployments.
+        Use Yugabyte Platform to manage deployments.
       </div>
     </a>
   </div>
@@ -77,10 +77,10 @@ menu:
     <a class="section-link icon-offset" href="monitor/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Monitor and alert</div>
+        <div class="title">Alert and monitor</div>
       </div>
       <div class="body">
-        Monitor your YugabyteDB universes using built-in dashboards and custom Grafana dashboards.
+        Get alerts and monitor your YugabyteDB universes.
       </div>
     </a>
   </div>
@@ -92,7 +92,7 @@ menu:
         <div class="title">Back up and restore</div>
       </div>
       <div class="body">
-        Back up and restore Yugabyte Platform and universe data.
+        Back up and restore YugabyteDB and universe data.
       </div>
     </a>
   </div>

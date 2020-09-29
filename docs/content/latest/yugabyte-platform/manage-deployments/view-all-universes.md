@@ -1,5 +1,5 @@
 ---
-title: View all universes
+title: Use Yugabyte Platform to view all universes
 headerTitle: View all universes
 linkTitle: View all universes
 description: Use Yugabyte Platform to view all universes.

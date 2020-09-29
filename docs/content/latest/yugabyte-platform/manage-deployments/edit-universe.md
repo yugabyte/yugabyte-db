@@ -1,5 +1,5 @@
 ---
-title: Edit a universe using Yugabyte Platform
+title: Use Yugabyte Platform to edit a universe
 headerTitle: Edit a universe
 linkTitle: Edit a universe
 description: Use Yugabyte Platform to edit a universe.

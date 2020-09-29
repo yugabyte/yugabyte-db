@@ -17,13 +17,13 @@ showAsideToc: true
 
 {{< note title="Note" >}}
 
-Starting with YugabyteDB version 2.1.8, Helm 2 is not supported. Following the steps below to migrate your existing YugabyteDB universes and the Yugabyte Platform from Helm 2 to Helm 3.
+Starting with YugabyteDB version 2.1.8, Helm 2 is not supported. Follow the steps below to migrate your existing YugabyteDB universes and the Yugabyte Platform from Helm 2 to Helm 3.
 
 {{< /note >}}
 
 ## Migrate existing Yugabyte Platform and YugabyteDB from Helm 2 to Helm 3
 
-1. Check the chart name using the following command.
+1. Check the chart name using the `helm2 ls` command.
 
 ```
 $ helm2 ls

@@ -1,8 +1,8 @@
 ---
-title: View universe details
+title: Use Yugabyte Platform to view universe details
 headerTitle: View universe details
 linkTitle: View universe details
-description: Use Yugabyte Platform to view universe details.
+description: Use the Yugabyte Platform console to view universe details.
 menu:
   latest:
     identifier: view-universe-details
@@ -12,4 +12,4 @@ isTocNested: true
 showAsideToc: true
 ---
 
-??? Content needed
+??? Content is needed

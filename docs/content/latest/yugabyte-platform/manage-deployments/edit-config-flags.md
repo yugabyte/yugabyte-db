@@ -15,7 +15,21 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Edit the configuration flags for your [YB-Master](../../../reference/configuration/yb-master/) and [YB-TServer](../../../reference/configuration/yb-tserver/) nodes in a YugabyteDB universe by clicking **Edit GFlags** from the **More** drop-down on the **Universe Detail** page.
+The configuration flags for your YB-Master and YB-TServer nodes in a YugabyteDB universe can be edited and customized to:
+
+- use custom settings
+- resolve issues
+- improve performance
+
+For details on the configuration flags, see:
+
+- [YB-TServer configuration reference](../../../reference/configuration/yb-tserver/)
+- [YB-Master configuration reference](../../../reference/configuration/yb-master/)
+
+## To edit configuration flags:
+
+1. In the Yugabyte Platform console, go to the **Universe Detail** page.
+2. In the **More** drop-down list, click **Edit Flags**.
 
 ![Edit Config Dropdown](/images/ee/edit-config-1.png)
 
