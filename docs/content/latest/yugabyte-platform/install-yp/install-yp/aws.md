@@ -3,6 +3,8 @@ title: Install Yugabyte Platform on AWS
 headerTitle: Install Yugabyte Platform on AWS
 linkTitle: 3. Install Yugabyte Platform
 description: Install Yugabyte Platform on AWS.
+aliases:
+ - /latest/yugabyte-platform/install-yp/install-yp/
 menu:
   latest:
     identifier: install-yp-1-aws
