@@ -1,7 +1,7 @@
 ---
-title: Troubleshoot Yugabyte Platform
+title: Troubleshoot 
 linkTitle: Troubleshoot
-description: Troubleshoot Yugabyte Platform
+description: Troubleshoot
 image: /images/section_icons/manage/enterprise.png
 headcontent: Tools and issues specific to the Yugabyte Platform.
 aliases:
@@ -10,7 +10,7 @@ aliases:
   - /latest/troubleshoot/yugabyte-platform/
 menu:
   latest:
-    identifier: troubleshoot-yugabyte-platform
+    identifier: troubleshoot
     parent: yugabyte-platform
     weight: 690
 ---

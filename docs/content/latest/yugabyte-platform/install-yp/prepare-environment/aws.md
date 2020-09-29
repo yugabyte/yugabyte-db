@@ -3,11 +3,13 @@ title: Prepare the Amazon Web Services (AWS) cloud environment
 headerTitle: Prepare the Amazon Web Services (AWS) cloud environment
 linkTitle: 1. Prepare the environment
 description: Prepare the Amazon Web Services (AWS) environment for the Yugabyte Platform.
+aliases:
+ - /latest/yugabyte-platform/install-yp/prepare-environment/
 menu:
   latest:
     identifier: prepare-environment-1-aws
     parent: prepare-environment
-    weight: 621
+    weight: 112
 isTocNested: true
 showAsideToc: true
 ---
@@ -15,42 +17,42 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link active">
+    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/aws" class="nav-link active">
       <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/gcp" class="nav-link">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/azure" class="nav-link">
       <i class="icon azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/on-premises" class="nav-link">
       <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/air-gapped" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/air-gapped" class="nav-link">
       <i class="fas fa-unlinked aria-hidden="true"></i>
       Air-gapped
     </a>

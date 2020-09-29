@@ -5,8 +5,8 @@ linkTitle: Enable encryption in transit
 description: Use Yugabyte Platform to enable encryption in transit for YugabyteDB universes.
 menu:
   latest:
-    parent: secure-yugabyte-platform
-    identifier: enable-encryption-in-transit-yp
+    identifier: enable-encryption-in-transit
+    parent: secure
     weight: 30
 type: page
 isTocNested: true

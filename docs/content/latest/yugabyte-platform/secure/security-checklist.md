@@ -5,8 +5,8 @@ linkTitle: Security checklist
 description: Check important security considerations.
 menu:
   latest:
-    parent: secure-yugabyte-platform
-    identifier: security-checklist-yp
+    identifier: security-checklist
+    parent: secure
     weight: 10
 type: page
 isTocNested: true

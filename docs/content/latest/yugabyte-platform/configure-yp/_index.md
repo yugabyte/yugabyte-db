@@ -8,7 +8,7 @@ headcontent: Configure Yugabyte Platform.
 menu:
   latest:
     identifier: configure-yugabyte-platform
-    parent: yugabyte-platform
+    parent: configure-yp
     weight: 641
 ---
 
@@ -34,6 +34,18 @@ menu:
       </div>
       <div class="body">
         Configure providers for on-premises, AWS, GCP, Azure, and Kubernetes.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="configure-backup-target/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
+        <div class="title">Configure backup target</div>
+      </div>
+      <div class="body">
+        Configure backup target for scheduled backups.
       </div>
     </a>
   </div>

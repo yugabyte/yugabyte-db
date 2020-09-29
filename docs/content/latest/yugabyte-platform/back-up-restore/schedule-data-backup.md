@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: schedule-data-backup
     parent: back-up-restore
-    weight: 653
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---

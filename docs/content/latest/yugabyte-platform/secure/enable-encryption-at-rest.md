@@ -5,8 +5,8 @@ linkTitle: Enable encryption at rest
 description: Use Yugabyte Platform to enable encryption at rest for data stored on YugabyteDB universes.
 menu:
   latest:
-    parent: secure-yugabyte-platform
-    identifier: enable-encryption-at-rest-yp
+    identifier: enable-encryption-at-rest
+    parent: secure
     weight: 20
 type: page
 isTocNested: true
