@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: cluster-health-yp
-    parent: monitor
+    parent: alert-and-monitor
     weight: 10
 isTocNested: true
 showAsideToc: true

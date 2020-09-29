@@ -47,7 +47,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
         <div class="title">Upgrade Yugabyte Platform</div>
       </div>
       <div class="body">
-        Upgrad Yugabyte Platform to the latest release.
+        Upgrade Yugabyte Platform to the latest release.
       </div>
     </a>
   </div>
