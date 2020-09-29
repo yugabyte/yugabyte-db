@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: create-multi-zone-universe
-    parent: create-deployments-yugabyte-platform
+    parent: create-deployments
     weight: 20
 isTocNested: true
 showAsideToc: true
