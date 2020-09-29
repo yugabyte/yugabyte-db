@@ -51,13 +51,13 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="migrate-to-helm3/">
+    <a class="section-link icon-offset" href="instance-tags/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
-        <div class="title">Migrate from Helm 2 to Helm 3</div>
+        <div class="title">Configure instance tags</div>
       </div>
       <div class="body">
-        Migrate YugabyteDB universes and Yugabyte Platform from Helm 2 to Helm 3.
+        Use Yugabyte Platform to edit instance tags.
       </div>
     </a>
   </div>

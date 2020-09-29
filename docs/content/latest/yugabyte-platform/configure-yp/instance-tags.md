@@ -7,7 +7,7 @@ aliases:
   - /latest/manage/enterprise-edition/instance-tags/
 menu:
   latest:
-    identifier: create-edit-instance-tags
+    identifier: instance-tags-yp
     parent: configure-yp
     weight: 644
 isTocNested: true
