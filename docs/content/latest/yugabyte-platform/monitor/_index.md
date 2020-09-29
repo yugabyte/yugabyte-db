@@ -8,7 +8,7 @@ headcontent: Use Yugabyte Platform to alert and monitor.
 menu:
   latest:
     identifier: alert-and-monitor
-    parent: monitor
+    parent: yugabyte-platform
     weight: 660
 ---
 
