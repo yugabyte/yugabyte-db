@@ -45,6 +45,9 @@ typedef enum
     WAGT_END_OBJECT
 } agtype_iterator_token;
 
+#define AGTYPE_ITERATOR_TOKEN_IS_HASHABLE(x) \
+    (x > WAGT_DONE && x < WAGT_BEGIN_ARRAY)
+
 /* Strategy numbers for GIN index opclasses */
 #define AGTYPE_CONTAINS_STRATEGY_NUMBER 7
 #define AGTYPE_EXISTS_STRATEGY_NUMBER 9
@@ -442,6 +445,8 @@ Datum get_numeric_datum_from_agtype_value(agtype_value *agtv);
 bool is_numeric_result(agtype_value *lhs, agtype_value *rhs);
 
 /* agtype.c support functions */
+agtype_value *get_agtype_value_object_value(const agtype_value *agtv_object,
+                                            char *key);
 char *agtype_to_cstring(StringInfo out, agtype_container *in,
                         int estimated_len);
 char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,

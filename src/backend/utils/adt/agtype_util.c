@@ -272,6 +272,7 @@ int compare_agtype_containers_orderability(agtype_container *a,
                 case AGTV_FLOAT:
                 case AGTV_EDGE:
                 case AGTV_VERTEX:
+                case AGTV_PATH:
                     res = compare_agtype_scalar_values(&va, &vb);
                     break;
                 case AGTV_ARRAY:
@@ -303,8 +304,6 @@ int compare_agtype_containers_orderability(agtype_container *a,
                                       1;
                         }
                     }
-                    break;
-                case AGTV_PATH:
                     break;
                 case AGTV_OBJECT:
                     break;
@@ -1372,7 +1371,7 @@ void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash)
 void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
                                        uint64 *hash, uint64 seed)
 {
-    uint64 tmp;
+    uint64 tmp = 0;
 
     switch (scalar_val->type)
     {
@@ -1414,17 +1413,30 @@ void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
     case AGTV_VERTEX:
     {
         graphid id;
-        id = scalar_val->val.object.pairs[0].value.val.int_value;
+        agtype_value *id_agt = get_agtype_value_object_value(scalar_val, "id");
+        id = id_agt->val.int_value;
         tmp = DatumGetUInt64(DirectFunctionCall2(
-            hashfloat8extended, Float8GetDatum(id), UInt64GetDatum(seed)));
+            hashint8extended, Float8GetDatum(id), UInt64GetDatum(seed)));
         break;
     }
     case AGTV_EDGE:
     {
         graphid id;
-        id = scalar_val->val.object.pairs[0].value.val.int_value;
+        agtype_value *id_agt = get_agtype_value_object_value(scalar_val, "id");
+        id = id_agt->val.int_value;
         tmp = DatumGetUInt64(DirectFunctionCall2(
-            hashfloat8extended, Float8GetDatum(id), UInt64GetDatum(seed)));
+            hashint8extended, Float8GetDatum(id), UInt64GetDatum(seed)));
+        break;
+    }
+    case AGTV_PATH:
+    {
+        int i;
+        for (i = 0; i < scalar_val->val.array.num_elems; i++)
+        {
+            agtype_value v;
+            v = scalar_val->val.array.elems[i];
+            agtype_hash_scalar_value_extended(&v, &tmp, seed);
+        }
         break;
     }
     default:
@@ -1562,10 +1574,16 @@ int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
             return compare_two_floats_orderability(a->val.float_value,
                                                    b->val.float_value);
         case AGTV_VERTEX:
+        case AGTV_EDGE:
         {
+            agtype_value *a_id, *b_id;
             graphid a_graphid, b_graphid;
-            a_graphid = a->val.object.pairs[0].value.val.int_value;
-            b_graphid = b->val.object.pairs[0].value.val.int_value;
+
+            a_id = get_agtype_value_object_value(a, "id");
+            b_id = get_agtype_value_object_value(b, "id");
+
+            a_graphid = a_id->val.int_value;
+            b_graphid = b_id->val.int_value;
 
             if (a_graphid == b_graphid)
                 return 0;
@@ -1573,6 +1591,29 @@ int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
                 return 1;
             else
                 return -1;
+        }
+        case AGTV_PATH:
+        {
+            int i;
+
+            if (a->val.array.num_elems != b->val.array.num_elems)
+                return  a->val.array.num_elems > b->val.array.num_elems ? 1 : -1;
+
+            for (i = 0; i < a->val.array.num_elems; i++)
+            {
+                agtype_value a_elem, b_elem;
+                int res;
+
+                a_elem = a->val.array.elems[i];
+                b_elem = b->val.array.elems[i];
+
+                res = compare_agtype_scalar_values(&a_elem, &b_elem);
+
+                if (res)
+                    return res;
+            }
+
+            return 0;
         }
         default:
             ereport(ERROR, (errmsg("invalid agtype scalar type %d for compare",

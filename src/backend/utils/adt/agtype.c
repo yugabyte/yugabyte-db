@@ -121,8 +121,6 @@ static bool is_agtype_null(agtype *agt);
 static agtype_value *string_to_agtype_value(char *s);
 static uint64 get_edge_uniqueness_value(Datum d, Oid type, bool is_null,
                                         int index);
-static agtype_value *get_agtype_value_object_value(agtype_value *agtv_object,
-                                             char *key);
 /* graph entity retrieval */
 static Datum get_vertex(const char *graph, const char *vertex_label,
                          int64 graphid);
@@ -2676,6 +2674,71 @@ static bool is_agtype_null(agtype *agt)
     return false;
 }
 
+#define LEFT_ROTATE(n, i) ((n << i) | (n >> (64 - i)))
+#define RIGHT_ROTATE(n, i)  ((n >> i) | (n << (64 - i)))
+
+//Hashing Function for Hash Indexes
+PG_FUNCTION_INFO_V1(agtype_hash_cmp);
+
+Datum agtype_hash_cmp(PG_FUNCTION_ARGS)
+{
+    uint64 hash = 0;
+    agtype *agt;
+    agtype_iterator *it;
+    agtype_iterator_token tok;
+    agtype_value *r;
+    uint64 seed = 0xF0F0F0F0;
+
+    if (PG_ARGISNULL(0))
+        PG_RETURN_INT16(0);
+
+    agt = AG_GET_ARG_AGTYPE_P(0);
+
+    r = palloc(sizeof(agtype_value));
+
+    it = agtype_iterator_init(&agt->root);
+    while ((tok = agtype_iterator_next(&it, r, false)) != WAGT_DONE)
+    {
+        if (IS_A_AGTYPE_SCALAR(r) && AGTYPE_ITERATOR_TOKEN_IS_HASHABLE(tok))
+            agtype_hash_scalar_value_extended(r, &hash, seed);
+        else if (tok == WAGT_BEGIN_ARRAY && !r->val.array.raw_scalar)
+            seed = LEFT_ROTATE(seed, 4);
+        else if (tok == WAGT_BEGIN_OBJECT)
+            seed = LEFT_ROTATE(seed, 6);
+        else if (tok == WAGT_END_ARRAY && !r->val.array.raw_scalar)
+            seed = RIGHT_ROTATE(seed, 4);
+        else if (tok == WAGT_END_OBJECT)
+            seed = RIGHT_ROTATE(seed, 4);
+
+        seed = LEFT_ROTATE(seed, 1);
+    }
+
+    PG_RETURN_INT16(hash);
+}
+
+// Comparision function for btree Indexes
+PG_FUNCTION_INFO_V1(agtype_btree_cmp);
+
+Datum agtype_btree_cmp(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_lhs;
+    agtype *agtype_rhs;
+
+    if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
+        PG_RETURN_INT16(0);
+    else if (PG_ARGISNULL(0))
+        PG_RETURN_INT16(1);
+    else if (PG_ARGISNULL(1))
+        PG_RETURN_INT16(-1);
+
+    agtype_lhs = AG_GET_ARG_AGTYPE_P(0);
+    agtype_rhs = AG_GET_ARG_AGTYPE_P(1);
+
+    PG_RETURN_INT16(compare_agtype_containers_orderability(&agtype_lhs->root,
+                                                     &agtype_rhs->root));
+}
+
+
 PG_FUNCTION_INFO_V1(agtype_typecast_numeric);
 /*
  * Execute function to typecast an agtype to an agtype numeric
@@ -3154,7 +3217,7 @@ Datum _ag_enforce_edge_uniqueness(PG_FUNCTION_ARGS)
 }
 
 /* helper function to retrieve a value, given a key, from an agtype_value */
-static agtype_value *get_agtype_value_object_value(agtype_value *agtv_object,
+agtype_value *get_agtype_value_object_value(const agtype_value *agtv_object,
                                              char *key)
 {
     int i;
@@ -3238,7 +3301,6 @@ Datum id(PG_FUNCTION_ARGS)
     Assert(agtv_result->type = AGTV_INTEGER);
 
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
-    AG_RETURN_GRAPHID(agtv_result->val.int_value);
 }
 
 PG_FUNCTION_INFO_V1(start_id);

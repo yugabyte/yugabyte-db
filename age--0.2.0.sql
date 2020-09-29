@@ -557,6 +557,38 @@ CREATE OPERATOR >= (
   JOIN = scalargejoinsel
 );
 
+CREATE FUNCTION agtype_btree_cmp(agtype, agtype)
+RETURNS INTEGER
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR CLASS agtype_ops_btree
+  DEFAULT
+  FOR TYPE agtype
+  USING btree AS
+  OPERATOR 1 <,
+  OPERATOR 2 <=,
+  OPERATOR 3 =,
+  OPERATOR 4 >,
+  OPERATOR 5 >=,
+  FUNCTION 1 agtype_btree_cmp(agtype, agtype);
+
+CREATE FUNCTION agtype_hash_cmp(agtype)
+RETURNS INTEGER
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR CLASS agtype_ops_hash
+  DEFAULT
+  FOR TYPE agtype
+  USING hash AS
+  OPERATOR 1 =,
+  FUNCTION 1 agtype_hash_cmp(agtype);
+
 --
 -- graph id conversion function
 --

@@ -1231,7 +1231,7 @@ SELECT agtype_access_operator(
 
 --Edge in a list
 SELECT agtype_build_list(
-	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid, 
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
 			   $$label_name$$, agtype_build_map()),
 	_agtype_build_edge('2'::graphid, '2'::graphid, '3'::graphid,
 			   $$label_name$$, agtype_build_map()));
@@ -1430,6 +1430,312 @@ SELECT agtype_string_match_contains('"abcdefghijklmnopqrstuvwxyz"', '"hijl"');
  agtype_string_match_contains 
 ------------------------------
  false
+(1 row)
+
+--Agtype Hash Comparison Function
+SELECT agtype_hash_cmp(NULL);
+ agtype_hash_cmp 
+-----------------
+               0
+(1 row)
+
+SELECT agtype_hash_cmp('1'::agtype);
+ agtype_hash_cmp 
+-----------------
+      -123017199
+(1 row)
+
+SELECT agtype_hash_cmp('1.0'::agtype);
+ agtype_hash_cmp 
+-----------------
+       614780178
+(1 row)
+
+SELECT agtype_hash_cmp('"1"'::agtype);
+ agtype_hash_cmp 
+-----------------
+      -888576106
+(1 row)
+
+SELECT agtype_hash_cmp('[1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+       434414509
+(1 row)
+
+SELECT agtype_hash_cmp('[1, 1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+     -1551022880
+(1 row)
+
+SELECT agtype_hash_cmp('[1, 1, 1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+        -3900769
+(1 row)
+
+SELECT agtype_hash_cmp('[1, 1, 1, 1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+      1756986519
+(1 row)
+
+SELECT agtype_hash_cmp('[1, 1, 1, 1, 1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+       -47741579
+(1 row)
+
+SELECT agtype_hash_cmp('[[1]]'::agtype);
+ agtype_hash_cmp 
+-----------------
+       878744030
+(1 row)
+
+SELECT agtype_hash_cmp('[[1, 1]]'::agtype);
+ agtype_hash_cmp 
+-----------------
+     -1254522284
+(1 row)
+
+SELECT agtype_hash_cmp('[[1], 1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+        -1005036
+(1 row)
+
+SELECT agtype_hash_cmp('[1543872]'::agtype);
+ agtype_hash_cmp 
+-----------------
+     -1925093371
+(1 row)
+
+SELECT agtype_hash_cmp('[1, "abcde", 2.0]'::agtype);
+ agtype_hash_cmp 
+-----------------
+     -1128310748
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('null'));
+ agtype_hash_cmp 
+-----------------
+      -505290271
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('[null]'));
+ agtype_hash_cmp 
+-----------------
+       505290241
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('[null, null]'));
+ agtype_hash_cmp 
+-----------------
+               3
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('[null, null, null]'));
+ agtype_hash_cmp 
+-----------------
+      2021160967
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('[null, null, null, null]'));
+ agtype_hash_cmp 
+-----------------
+              15
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('[null, null, null, null, null]'));
+ agtype_hash_cmp 
+-----------------
+      -505290721
+(1 row)
+
+SELECT agtype_hash_cmp('{"id":1, "label":"test", "properties":{"id":100}}'::agtype);
+ agtype_hash_cmp 
+-----------------
+      1116453668
+(1 row)
+
+SELECT agtype_hash_cmp('{"id":1, "label":"test", "properties":{"id":100}}::vertex'::agtype);
+ agtype_hash_cmp 
+-----------------
+      1848106598
+(1 row)
+
+SELECT agtype_hash_cmp('{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}'::agtype);
+ agtype_hash_cmp 
+-----------------
+      1064722414
+(1 row)
+
+SELECT agtype_hash_cmp('{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge'::agtype);
+ agtype_hash_cmp 
+-----------------
+     -1790838958
+(1 row)
+
+SELECT agtype_hash_cmp('
+	[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	 {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	 {"id":5, "label":"vlabel", "properties":{}}::vertex]'::agtype);
+ agtype_hash_cmp 
+-----------------
+      -231467898
+(1 row)
+
+SELECT agtype_hash_cmp('
+	[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	 {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	 {"id":5, "label":"vlabel", "properties":{}}::vertex]::path'::agtype);
+ agtype_hash_cmp 
+-----------------
+       843330291
+(1 row)
+
+--Agtype BTree Comparison Function
+SELECT agtype_btree_cmp('1'::agtype, '1'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp('1'::agtype, '1.0'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp('1'::agtype, '"1"'::agtype);
+ agtype_btree_cmp 
+------------------
+                1
+(1 row)
+
+SELECT agtype_btree_cmp('"string"'::agtype, '"string"'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp('"string"'::agtype, '"string "'::agtype);
+ agtype_btree_cmp 
+------------------
+               -1
+(1 row)
+
+SELECT agtype_btree_cmp(NULL, NULL);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(NULL, '1'::agtype);
+ agtype_btree_cmp 
+------------------
+                1
+(1 row)
+
+SELECT agtype_btree_cmp('1'::agtype, NULL);
+ agtype_btree_cmp 
+------------------
+               -1
+(1 row)
+
+SELECT agtype_btree_cmp(agtype_in('null'), NULL);
+ agtype_btree_cmp 
+------------------
+               -1
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'1'::agtype,
+	'{"id":1, "label":"test", "properties":{"id":100}}::vertex'::agtype);
+ agtype_btree_cmp 
+------------------
+                1
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":1, "label":"test", "properties":{"id":100}}'::agtype,
+	'{"id":1, "label":"test", "properties":{"id":100}}'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":1, "label":"test", "properties":{"id":100}}'::agtype,
+	'{"id":1, "label":"test", "properties":{"id":200}}'::agtype);
+ agtype_btree_cmp 
+------------------
+               -1
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":1, "label":"test", "properties":{"id":100}}::vertex'::agtype,
+	'{"id":1, "label":"test", "properties":{"id":100}}::vertex'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":1, "label":"test", "properties":{"id":100}}::vertex'::agtype,
+	'{"id":1, "label":"test", "properties":{"id":200}}::vertex'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge'::agtype,
+	'{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{"prop1": 1}}::edge'::agtype,
+	'{"id":2, "start_id":4, "end_id": 5, "label":"elabel", "properties":{"prop2": 2}}::edge'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{"prop1": 1}}::edge'::agtype,
+	'{"id":8, "start_id":4, "end_id": 5, "label":"elabel", "properties":{"prop2": 2}}::edge'::agtype);
+ agtype_btree_cmp 
+------------------
+               -1
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	  {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	  {"id":3, "label":"vlabel", "properties":{}}::vertex]::path'::agtype,
+	'[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	  {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	  {"id":3, "label":"vlabel", "properties":{}}::vertex]::path'::agtype);
+ agtype_btree_cmp 
+------------------
+                0
+(1 row)
+
+SELECT agtype_btree_cmp(
+	'[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	  {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	  {"id":3, "label":"vlabel", "properties":{}}::vertex]::path'::agtype,
+	'[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	  {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	  {"id":4, "label":"vlabel", "properties":{}}::vertex]::path'::agtype);
+ agtype_btree_cmp 
+------------------
+               -1
 (1 row)
 
 --

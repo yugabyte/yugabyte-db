@@ -401,6 +401,34 @@ SELECT * FROM cypher('cypher_match',
 AS (u agtype);
 
 --
+--Distinct
+--
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (u)
+	RETURN DISTINCT u.id
+$$) AS (i agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+	CREATE (u:duplicate)-[:dup_edge {id:1 }]->(:other_v)
+$$) AS (a agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (u:duplicate)
+	CREATE (u)-[:dup_edge {id:2 }]->(:other_v)
+$$) AS (a agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (u:duplicate)-[]-(:other_v)
+	RETURN DISTINCT u
+$$) AS (i agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+	MATCH p=(:duplicate)-[]-(:other_v)
+	RETURN DISTINCT p
+$$) AS (i agtype);
+
+
+--
 -- Clean up
 --
 

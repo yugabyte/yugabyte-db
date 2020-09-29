@@ -35,6 +35,7 @@
 #include "parser/parse_target.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteHandler.h"
+#include "utils/typcache.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
@@ -965,8 +966,8 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
     label_cache_data *lcd = search_label_name_graph_cache(label,
                                                           cpstate->graph_oid);
     A_Const *n;
-    FuncCall *fc;
-    Value *ag_catalog, *extract_label_id;
+    FuncCall *fc, *conversion_fc;
+    Value *ag_catalog, *extract_label_id, *agtype_to_graphid;
     int32 label_id = lcd->id;
 
     n = makeNode(A_Const);
@@ -976,9 +977,13 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
 
     ag_catalog = makeString("ag_catalog");
     extract_label_id = makeString("_extract_label_id");
+    agtype_to_graphid = makeString("agtygpe_to_grapghid");
+
+    conversion_fc = makeFuncCall(list_make2(ag_catalog, agtype_to_graphid),
+                                 list_make1(id_field), -1);
 
     fc = makeFuncCall(list_make2(ag_catalog, extract_label_id),
-                      list_make1(id_field), -1);
+                      list_make1(conversion_fc), -1);
 
     return makeSimpleA_Expr(AEXPR_OP, "=", (Node *)fc, (Node *)n, -1);
 }

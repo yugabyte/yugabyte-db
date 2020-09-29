@@ -765,10 +765,58 @@ ERROR:  syntax error at or near ")"
 LINE 2:  $$MATCH (u) WHERE EXISTS(u) RETURN u$$)
                                    ^
 --
+--Distinct
+--
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (u)
+	RETURN DISTINCT u.id
+$$) AS (i agtype);
+     i     
+-----------
+ 
+ "end"
+ "initial"
+ "middle"
+(4 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+	CREATE (u:duplicate)-[:dup_edge {id:1 }]->(:other_v)
+$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (u:duplicate)
+	CREATE (u)-[:dup_edge {id:2 }]->(:other_v)
+$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (u:duplicate)-[]-(:other_v)
+	RETURN DISTINCT u
+$$) AS (i agtype);
+ERROR:  function ag_catalog.agtygpe_to_grapghid(agtype) does not exist
+LINE 1: SELECT * FROM cypher('cypher_match', $$
+                                              ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM cypher('cypher_match', $$
+	MATCH p=(:duplicate)-[]-(:other_v)
+	RETURN DISTINCT p
+$$) AS (i agtype);
+                                                                                                                                                i                                                                                                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 3377699720527873, "label": "duplicate", "properties": {}}::vertex, {"id": 3659174697238529, "label": "dup_edge", "end_id": 3940649673949185, "start_id": 3377699720527873, "properties": {"id": 1}}::edge, {"id": 3940649673949185, "label": "other_v", "properties": {}}::vertex]::path
+ [{"id": 3377699720527873, "label": "duplicate", "properties": {}}::vertex, {"id": 3659174697238530, "label": "dup_edge", "end_id": 3940649673949186, "start_id": 3377699720527873, "properties": {"id": 2}}::edge, {"id": 3940649673949186, "label": "other_v", "properties": {}}::vertex]::path
+(2 rows)
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);
-NOTICE:  drop cascades to 11 other objects
+NOTICE:  drop cascades to 14 other objects
 DETAIL:  drop cascades to table cypher_match._ag_label_vertex
 drop cascades to table cypher_match._ag_label_edge
 drop cascades to table cypher_match.v
@@ -780,6 +828,9 @@ drop cascades to table cypher_match.v3
 drop cascades to table cypher_match.e3
 drop cascades to table cypher_match.loop
 drop cascades to table cypher_match.self
+drop cascades to table cypher_match.duplicate
+drop cascades to table cypher_match.dup_edge
+drop cascades to table cypher_match.other_v
 NOTICE:  graph "cypher_match" has been dropped
  drop_graph 
 ------------
