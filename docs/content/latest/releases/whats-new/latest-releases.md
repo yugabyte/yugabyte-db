@@ -57,9 +57,9 @@ Note: Content will be added as new notable features and changes are available in
 
 #### Downloads (binaries)
 
-- [macOS](https://downloads.yugabyte.com/yugabyte-2.3.1.0-darwin.tar.gz)
-- [Linux](https://downloads.yugabyte.com/yugabyte-2.3.1.0-linux.tar.gz)
-- Docker: `docker pull yugabytedb/yugabyte:2.3.1.0-b15`
+- [macOS](https://downloads.yugabyte.com/yugabyte-2.3.2.0-darwin.tar.gz)
+- [Linux](https://downloads.yugabyte.com/yugabyte-2.3.2.0-linux.tar.gz)
+- Docker: `docker pull yugabytedb/yugabyte:2.3.2.0-b37`
 
 #### Features and changes
 
