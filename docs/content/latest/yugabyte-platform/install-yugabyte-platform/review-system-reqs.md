@@ -6,7 +6,7 @@ description: System requirements for Yugabyte Platform.
 menu:
   latest:
     parent: install-yugabyte-platform
-    identifier: review-system-reqs-yp
+    identifier: review-system-reqs
     weight: 613
 type: page
 isTocNested: true

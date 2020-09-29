@@ -9,10 +9,11 @@ aliases:
 menu:
   latest:
     identifier: schedule-data-backup
-    parent: back-up-restore-yugabyte-platform
-    weight: 30
+    parent: back-up-restore
+    weight: 653
 isTocNested: true
 showAsideToc: true
+
 ---
 
 Use Yugabyte Platform to perform a regularly scheduled backup of a full YugabyteDB universe or selected tables.

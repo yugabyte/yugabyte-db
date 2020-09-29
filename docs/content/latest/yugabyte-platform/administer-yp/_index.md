@@ -1,15 +1,15 @@
 ---
-title: Back up and restore
-headerTitle: Back up and restore
-linkTitle: Back up and restore
-description: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
+title: Administer Yugabyte Platform
+headerTitle: Administer Yugabyte Platform
+linkTitle: Administer Yugabyte Platform
+description: Administer Yugabyte Platform.
 image: /images/section_icons/manage/enterprise.png
-headcontent: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
+headcontent: Administer Yugabyte Platform.
 menu:
   latest:
-    identifier: back-up-restore
+    identifier: administer-yp
     parent: yugabyte-platform
-    weight: 650
+    weight: 690
 ---
 
 Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pods, machines, etc., provided by IaaS), logically grouped together to form one logical distributed database. Each universe includes one or more clusters. A universe is comprised of one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
@@ -17,19 +17,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="backup-restore/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="title">Back up and restore data</div>
-      </div>
-      <div class="body">
-        Use Yugabyte Platform to back up and restore universe data.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="back-up-restore-yp/">
+    <a class="section-link icon-offset" href="backup-restore-yp/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
         <div class="title">Back up and restore Yugabyte Platform</div>
@@ -41,13 +29,25 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="schedule-data-backup/">
+    <a class="section-link icon-offset" href="upgrade-yp/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="title">Schedule a data backup</div>
+        <div class="title">Upgrade Yugabyte Platform</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to perform a regular scheduled backup of universe data.
+        Upgrade to the latest Yugabyte Platform release.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="upgrade-yp/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <div class="title">Upgrade Yugabyte Platform</div>
+      </div>
+      <div class="body">
+        Upgrad Yugabyte Platform to the latest release.
       </div>
     </a>
   </div>
