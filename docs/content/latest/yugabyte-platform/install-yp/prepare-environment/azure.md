@@ -6,6 +6,7 @@ description: Prepare the Microsoft Azure environment for the Yugabyte Platform.
 menu:
   latest:
     identifier: prepare-environment-3-azure
+    name: 1. Prepare the environment
     parent: prepare-environment
     weight: 55
 isTocNested: true

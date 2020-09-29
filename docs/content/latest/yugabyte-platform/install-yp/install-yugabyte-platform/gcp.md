@@ -6,6 +6,7 @@ description: Install Yugabyte Platform in your Google Cloud Platform (GCP) envir
 menu:
   latest:
     identifier: install-yp-2-gcp
+    name: 3. Install Yugabyte Platform
     parent: install-yugabyte-platform
     weight: 77
 isTocNested: true

@@ -6,6 +6,7 @@ description: Install Yugabyte Platform on Microsoft Azure.
 menu:
   latest:
     identifier: install-yp-3-azure
+    name: 3. Install Yugabyte Platform
     parent: install-yugabyte-platform
     weight: 77
 isTocNested: true

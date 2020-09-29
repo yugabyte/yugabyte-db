@@ -8,6 +8,7 @@ aliases:
 menu:
   latest:
     identifier: prepare-environment-4-kubernetes
+    name: 1. Prepare the environment
     parent: prepare-environment
     weight: 55
 isTocNested: true
