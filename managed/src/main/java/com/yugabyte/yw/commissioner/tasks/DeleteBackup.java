@@ -45,20 +45,23 @@ public class DeleteBackup extends AbstractTaskBase {
 
   @Override
   public void run() {
+    Backup backup = null;
     try {
-      Backup backup = Backup.get(params().customerUUID, params().backupUUID);
+      backup = Backup.get(params().customerUUID, params().backupUUID);
       if (backup.state != Backup.BackupState.Completed) {
         LOG.error("Cannot delete backup in any other state other than completed.");
         throw new RuntimeException("Backup cannot be deleted");
       }
       backup.transitionState(Backup.BackupState.Deleted);
       BackupTableParams backupParams = Json.fromJson(backup.backupInfo, BackupTableParams.class);
-      if (backupParams.backupList != null || backupParams.backupList.size() != 0) {
+      if (backupParams.backupList != null) {
         for (BackupTableParams childBackupParams : backupParams.backupList) {
           childBackupParams.actionType = BackupTableParams.ActionType.DELETE;
           ShellProcessHandler.ShellResponse response = tableManager.deleteBackup(childBackupParams);
           JsonNode jsonNode = Json.parse(response.message);
           if (response.code != 0 || jsonNode.has("error")) {
+            // Revert state to completed since it couldn't get deleted.
+            backup.transitionState(Backup.BackupState.Completed);
             LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
                       childBackupParams.storageLocation, response.code, jsonNode.has("error"));
             throw new RuntimeException(response.message);
@@ -71,6 +74,8 @@ public class DeleteBackup extends AbstractTaskBase {
         ShellProcessHandler.ShellResponse response = tableManager.deleteBackup(backupParams);
         JsonNode jsonNode = Json.parse(response.message);
         if (response.code != 0 || jsonNode.has("error")) {
+          // Revert state to completed since it couldn't get deleted.
+          backup.transitionState(Backup.BackupState.Completed);
           LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
                     backupParams.storageLocation, response.code, jsonNode.has("error"));
           throw new RuntimeException(response.message);
@@ -80,6 +85,10 @@ public class DeleteBackup extends AbstractTaskBase {
       }
     } catch (Exception e) {
       LOG.error("Errored out with: " + e);
+      if (backup != null) {
+        // Revert state to completed since it couldn't get deleted.
+        backup.transitionState(Backup.BackupState.Completed);
+      }
       throw new RuntimeException(e);
     }
   }
