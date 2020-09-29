@@ -8,7 +8,7 @@ headcontent: Overview of the Yugabyte Platform architecture.
 menu:
   latest:
     identifier: yugabyte-platform-architecture
-    parent: overview-yugabyte-platform
+    parent: overview-yp
     weight: 10
 ---
 

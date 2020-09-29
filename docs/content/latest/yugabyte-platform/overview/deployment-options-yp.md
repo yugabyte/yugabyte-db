@@ -8,7 +8,7 @@ headcontent: Options for deploying YugabyteDB universes.
 menu:
   latest:
     identifier: deployment-options
-    parent: overview-yugabyte-platform
+    parent: overview-yp
     weight: 20
 ---
 
