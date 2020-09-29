@@ -12,7 +12,7 @@ menu:
   latest:
     identifier: troubleshoot-yp
     parent: yugabyte-platform
-    weight: 690
+    weight: 670
 ---
 
 <div class="row">
