@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: delete-universe
     parent: manage-deployments
-    weight: 40
+    weight: 85
 isTocNested: true
 showAsideToc: true
 ---

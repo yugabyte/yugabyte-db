@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: edit-universe
     parent: manage-deployments
-    weight: 642
+    weight: 53
 isTocNested: true
 showAsideToc: true
 ---
