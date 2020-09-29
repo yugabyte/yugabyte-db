@@ -1404,7 +1404,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs)) {
 
   // Real-world numbers (debug build, local Mac): 328 RPCs before, 95 after the fix for #3049
   LOG(INFO) << "Master inbound RPC during connection: " << rpcs_during;
-  ASSERT_LT(rpcs_during, 150);
+  // RPC counter is affected no only by table read/write operations but also by heartbeat mechanism.
+  // As far as ASAN/TSAN builds are slower they can receive more heartbeats while
+  // processing requests. As a result RPC count might be higher in comparison to other build types.
+  ASSERT_LT(rpcs_during, RegularBuildVsSanitizers(150, 200));
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
@@ -1557,7 +1560,6 @@ TEST_F_EX(PgLibPqTest,
 }
 
 // Test that adding a tserver causes colocation tablets to offload tablet-peers to the new tserver.
-// For now, the load should **not** move because of issue #4407.
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
   constexpr int kNumDatabases = 3;
   const auto kTimeout = 60s;
@@ -1603,13 +1605,19 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
     }
   }
 
-  // TODO(jason): make sure that the load of colocation tablets is balanced properly after closing
-  // issue #4407.  For now, expect none of the colocation tablets replicas to have moved (indicating
-  // no balancing was done).
+  // Ensure that the load is properly distributed.
+  int min_load = kNumDatabases;
+  int max_load = 0;
   for (const auto& entry : ts_loads) {
-    ASSERT_EQ(entry.second, kNumDatabases);
+    if (entry.second < min_load) {
+      min_load = entry.second;
+    } else if (entry.second > max_load) {
+      max_load = entry.second;
+    }
   }
-  ASSERT_EQ(ts_loads.size(), 3);
+  LOG(INFO) << "Found max_load on a TS = " << max_load << ", and min_load on a ts = " << min_load;
+  ASSERT_LT(max_load - min_load, 2);
+  ASSERT_EQ(ts_loads.size(), kNumDatabases + 1);
 }
 
 // Override the base test to start a cluster with index backfill enabled.

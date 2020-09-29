@@ -192,11 +192,13 @@ static bool IsSystemCatalogChange(Relation rel)
 }
 
 /*
- * Utility method to execute a prepared write statement.
+ * Utility method to execute a prepared write statement and clean it up.
  * Will handle the case if the write changes the system catalogs meaning
  * we need to increment the catalog versions accordingly.
  */
-static void YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel, int *rows_affected_count)
+static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
+                             Relation rel,
+                             int *rows_affected_count)
 {
 	bool is_syscatalog_change = IsSystemCatalogChange(rel);
 	bool modifies_row = false;
@@ -238,6 +240,7 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel, int *rows_af
 		// TODO(shane) also update the shared memory catalog version here.
 		yb_catalog_cache_version += 1;
 	}
+	YBCPgDeleteStatement(ybc_stmt);
 }
 
 /*
@@ -664,7 +667,13 @@ bool YBCExecuteUpdate(Relation rel,
 
 	/* Execute the statement. */
 	int rows_affected_count = 0;
-	YBCExecWriteStmt(update_stmt, rel, isSingleRow ? &rows_affected_count : NULL);
+
+	/* Currently only allows batching of single row updates for PGSQL procedures. */
+	bool can_batch_update = !isSingleRow ||
+							(YBCGetEnableUpdateBatching() && estate->yb_can_batch_updates);
+
+	/* If update batching is allowed, then ignore rows_affected_count. */
+	YBCExecWriteStmt(update_stmt, rel, can_batch_update ? NULL : &rows_affected_count);
 
 	/* Cleanup. */
 	update_stmt = NULL;

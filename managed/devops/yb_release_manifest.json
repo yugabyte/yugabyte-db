@@ -49,13 +49,13 @@
     "roles/mount_ephemeral_drives",
     "roles/provision-cluster-server",
     "roles/server_base",
-    "roles/swamper"
+    "roles/swamper",
+    "roles/install_backup_util"
   ],
   "third-party/roles": [
     "third-party/roles/ansible-prometheus",
     "third-party/roles/ansible-sshd",
-    "third-party/roles/ansible-chrony",
-    "third-party/roles/role-install-gcloud"
+    "third-party/roles/ansible-chrony"
   ],
   "vars": [
     "vars/placeholder.yml"

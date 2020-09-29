@@ -72,6 +72,10 @@ DEFINE_int32(ysql_output_buffer_size, 262144,
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "
              "we're free to transparently restart operation in case of restart read error.");
 
+DEFINE_bool(ysql_enable_update_batching, true,
+            "Whether to enable batching of updates where possible. Currently update batching is "
+            "only supported for PGSQL procedures.");
+
 DEFINE_bool(ysql_suppress_unsupported_error, false,
             "Suppress ERROR on use of unsupported SQL statement and use WARNING instead");
 
@@ -101,3 +105,9 @@ DEFINE_bool(ysql_serializable_isolation_for_ddl_txn, false,
 DEFINE_int32(ysql_select_parallelism, -1,
             "Number of read requests to issue in parallel to tablets of a table "
             "for SELECT.");
+
+DEFINE_int32(ysql_max_write_restart_attempts, 20,
+             "Max number of restart attempts made for writes on transaction conflicts.");
+
+DEFINE_bool(ysql_sleep_before_retry_on_txn_conflict, true,
+            "Whether to sleep before retrying the write on transaction conflicts.");

@@ -1378,7 +1378,8 @@ Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tabl
     const ListTabletServersResponsePB_Entry& e = resp.servers(i);
     auto ts = std::make_unique<YBTabletServer>(
         e.instance_id().permanent_uuid(),
-        DesiredHostPort(e.registration().common(), data_->cloud_info_pb_).host());
+        DesiredHostPort(e.registration().common(), data_->cloud_info_pb_).host(),
+        e.registration().common().placement_uuid());
     tablet_servers->push_back(std::move(ts));
   }
   return Status::OK();
@@ -1563,12 +1564,18 @@ std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinR
     const TabletId& tablet_id) {
   std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
   auto& tablet = data_->tablet_requests_[tablet_id];
+  if (tablet.request_id_seq == kInitializeFromMinRunning) {
+    return std::make_pair(kInitializeFromMinRunning, kInitializeFromMinRunning);
+  }
   auto id = tablet.request_id_seq++;
   tablet.running_requests.insert(id);
   return std::make_pair(id, *tablet.running_requests.begin());
 }
 
 void YBClient::RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id) {
+  if (request_id == kInitializeFromMinRunning) {
+    return;
+  }
   std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
   auto& tablet = data_->tablet_requests_[tablet_id];
   auto it = tablet.running_requests.find(request_id);
@@ -1577,6 +1584,16 @@ void YBClient::RequestFinished(const TabletId& tablet_id, RetryableRequestId req
   } else {
     LOG(DFATAL) << "RequestFinished called for an unknown request: "
                 << tablet_id << ", " << request_id;
+  }
+}
+
+void YBClient::MaybeUpdateMinRunningRequestId(
+    const TabletId& tablet_id, RetryableRequestId min_running_request_id) {
+  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
+  auto& tablet = data_->tablet_requests_[tablet_id];
+  if (tablet.request_id_seq == kInitializeFromMinRunning) {
+    tablet.request_id_seq = min_running_request_id + (1 << 24);
+    VLOG(1) << "Set request_id_seq for tablet " << tablet_id << " to " << tablet.request_id_seq;
   }
 }
 

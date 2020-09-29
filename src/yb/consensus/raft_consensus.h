@@ -263,6 +263,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     return majority_num_sst_files_.load(std::memory_order_acquire);
   }
 
+  int64_t TEST_LeaderTerm() const;
+
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
   // If the replication was successful, an status will be OK. Otherwise, it

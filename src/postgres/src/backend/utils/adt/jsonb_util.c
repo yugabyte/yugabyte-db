@@ -595,7 +595,7 @@ pushJsonbValueScalar(JsonbParseState **pstate, JsonbIteratorToken seq,
 			break;
 		case WJB_END_OBJECT:
 			uniqueifyJsonbObject(&(*pstate)->contVal);
-			/* fall through! */
+			switch_fallthrough();
 		case WJB_END_ARRAY:
 			/* Steps here common to WJB_END_OBJECT case */
 			Assert(!scalarVal);
@@ -1318,7 +1318,7 @@ equalsJsonbScalarValue(JsonbValue *aScalar, JsonbValue *bScalar)
 		}
 	}
 	elog(ERROR, "jsonb scalar type mismatch");
-	return -1;
+	return false;
 }
 
 /*
@@ -1728,6 +1728,14 @@ convertJsonbScalar(StringInfo buffer, JEntry *jentry, JsonbValue *scalarVal)
 			break;
 
 		case jbvNumeric:
+			/* replace numeric NaN with string "NaN" */
+			if (numeric_is_nan(scalarVal->val.numeric))
+			{
+				appendToBuffer(buffer, "NaN", 3);
+				*jentry = 3;
+				break;
+			}
+
 			numlen = VARSIZE_ANY(scalarVal->val.numeric);
 			padlen = padBufferToInt(buffer);
 

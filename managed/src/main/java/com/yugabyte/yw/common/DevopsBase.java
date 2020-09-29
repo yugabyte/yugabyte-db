@@ -34,10 +34,6 @@ public abstract class DevopsBase {
   // Command that we would need to execute eg: instance, network, access.
   protected abstract String getCommandType();
 
-  protected String getBaseCommand() {
-    return YBCLOUD_SCRIPT;
-  }
-
   @Inject
   ShellProcessHandler shellProcessHandler;
 

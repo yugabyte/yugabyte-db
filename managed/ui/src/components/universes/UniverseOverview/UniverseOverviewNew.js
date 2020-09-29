@@ -563,7 +563,7 @@ export default class UniverseOverviewNew extends Component {
     const lastUpdateDate = this.getLastUpdateDate();
     const { updateAvailable, currentCustomer } = this.props;
     const showUpdate = updateAvailable &&
-                       isEnabled(currentCustomer.data.features, "universes.actions");
+                       !isDisabled(currentCustomer.data.features, "universes.actions");
 
     const infoWidget = (<YBWidget
         headerLeft={
@@ -627,7 +627,6 @@ export default class UniverseOverviewNew extends Component {
               universeUuid={universeInfo.universeUUID}
               type={"overview"}
               origin={"universe"}
-              width={width}
               nodePrefixes={nodePrefixes}
               isKubernetesUniverse={isItKubernetesUniverse}
             />

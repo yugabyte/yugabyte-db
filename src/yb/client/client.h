@@ -100,10 +100,8 @@ class TabletServerServiceProxy;
 
 namespace client {
 namespace internal {
+template <class Req, class Resp>
 class ClientMasterRpc;
-class CreateCDCStreamRpc;
-class DeleteCDCStreamRpc;
-class GetCDCStreamRpc;
 }
 
 // This needs to be called by a client app before performing any operations that could result in
@@ -699,6 +697,9 @@ class YBClient {
       const TabletId& tablet_id);
   void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
 
+  void MaybeUpdateMinRunningRequestId(
+      const TabletId& tablet_id, RetryableRequestId min_running_request_id);
+
   void Shutdown();
 
  private:
@@ -718,10 +719,8 @@ class YBClient {
   friend class internal::RemoteTabletServer;
   friend class internal::AsyncRpc;
   friend class internal::TabletInvoker;
+  template <class Req, class Resp>
   friend class internal::ClientMasterRpc;
-  friend class internal::CreateCDCStreamRpc;
-  friend class internal::DeleteCDCStreamRpc;
-  friend class internal::GetCDCStreamRpc;
   friend class PlacementInfoTest;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);

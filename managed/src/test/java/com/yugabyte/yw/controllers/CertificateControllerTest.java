@@ -39,6 +39,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNotNull;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 import static org.mockito.Mockito.when;
 import static com.yugabyte.yw.common.AssertHelper.*;
@@ -106,6 +107,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     for (LinkedHashMap e : certs) {
       result_uuids.add(UUID.fromString(e.get("uuid").toString()));
       result_labels.add(e.get("label").toString());
+      assertEquals(e.get("certType"), "SelfSigned");
     }
     assertEquals(test_certs, result_labels);
     assertEquals(test_certs_uuids, result_uuids);
@@ -131,6 +133,42 @@ public class CertificateControllerTest extends FakeDBApplication {
     Date date = new Date();
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
+    bodyJson.put("certType", "SelfSigned");
+    Result result = uploadCertificate(customer.uuid, bodyJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    UUID certUUID = UUID.fromString(json.asText());
+    CertificateInfo ci = CertificateInfo.get(certUUID);
+    assertEquals(ci.label, "test");
+    assertEquals(ci.certType, CertificateInfo.Type.SelfSigned);
+    assertTrue(ci.certificate.contains("/tmp"));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testUploadCertificateNoKeyFail() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("label", "test");
+    bodyJson.put("certContent", "cert_test");
+    Date date = new Date();
+    bodyJson.put("certStart", date.getTime());
+    bodyJson.put("certExpiry", date.getTime());
+    bodyJson.put("certType", "SelfSigned");
+    Result result = uploadCertificate(customer.uuid, bodyJson);
+    assertEquals(BAD_REQUEST, result.status());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testUploadCustomCertificate() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("label", "test");
+    bodyJson.put("certContent", "cert_test");
+    Date date = new Date();
+    bodyJson.put("certStart", date.getTime());
+    bodyJson.put("certExpiry", date.getTime());
+    bodyJson.put("certType", "CustomCertHostPath");
+
     Result result = uploadCertificate(customer.uuid, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -138,20 +176,8 @@ public class CertificateControllerTest extends FakeDBApplication {
     CertificateInfo ci = CertificateInfo.get(certUUID);
     assertEquals(ci.label, "test");
     assertTrue(ci.certificate.contains("/tmp"));
+    assertEquals(ci.certType, CertificateInfo.Type.CustomCertHostPath);
     assertAuditEntry(1, customer.uuid);
-  }
-
-  @Test
-  public void testUploadCertificateFail() {
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("label", "test");
-    bodyJson.put("certContent", "cert_test");
-    Date date = new Date();
-    bodyJson.put("certStart", date.getTime());
-    bodyJson.put("certExpiry", date.getTime());
-    Result result = uploadCertificate(customer.uuid, bodyJson);
-    assertBadRequest(result, "{\"keyContent\":[\"This field is required\"]}");
-    assertAuditEntry(0, customer.uuid);
   }
 
   @Test

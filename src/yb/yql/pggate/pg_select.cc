@@ -45,7 +45,7 @@ Status PgSelect::Prepare() {
 
     // Create secondary index query.
     secondary_index_query_ =
-      make_scoped_refptr<PgSelectIndex>(pg_session_, table_id_, index_id_, &prepare_params_);
+      std::make_unique<PgSelectIndex>(pg_session_, table_id_, index_id_, &prepare_params_);
   }
 
   // Allocate READ requests to send to DocDB.

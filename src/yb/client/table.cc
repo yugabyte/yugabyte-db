@@ -131,6 +131,10 @@ const bool YBTable::colocated() const {
   return info_.colocated;
 }
 
+const boost::optional<master::ReplicationInfoPB>& YBTable::replication_info() const {
+  return info_.replication_info;
+}
+
 std::string YBTable::ToString() const {
   return strings::Substitute(
       "$0 $1 IndexInfo: $2 IndexMap $3", (IsIndex() ? "Index Table" : "Normal Table"), id(),

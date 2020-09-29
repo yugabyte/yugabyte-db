@@ -1296,8 +1296,8 @@ Status CatalogManager::InitSysCatalogAsync() {
   Status s = sys_catalog_->Load(master_->fs_manager());
 
   if (!s.ok() && s.IsNotFound()) {
-    // We are on our first run, need to create the metadata file.
-    LOG(INFO) << "Did not find previous SysCatalogTable data on disk";
+    // We have yet to intialize the syscatalog metadata, need to create the metadata file.
+    LOG(INFO) << "Did not find previous SysCatalogTable data on disk. " << s;
 
     if (!master_->opts().AreMasterAddressesProvided()) {
       master_->SetShellMode(true);
@@ -1306,7 +1306,9 @@ Status CatalogManager::InitSysCatalogAsync() {
     }
 
     RETURN_NOT_OK(CheckLocalHostInMasterAddresses());
-    RETURN_NOT_OK(sys_catalog_->CreateNew(master_->fs_manager()));
+    RETURN_NOT_OK_PREPEND(sys_catalog_->CreateNew(master_->fs_manager()),
+        Substitute("Encountered errors during system catalog initialization:"
+                   "\n\tError on Load: $0\n\tError on CreateNew: ", s.ToString()));
 
     return Status::OK();
   }
@@ -1466,17 +1468,65 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   return CheckIfNoLongerLeaderAndSetupError(s, resp);
 }
 
-Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) {
-  // TODO(bogdan): add the actual subset rules, instead of just erroring out as not supported.
+Result<ReplicationInfoPB> CatalogManager::ResolveReplicationInfo(
+  const ReplicationInfoPB& table_replication_info) {
+
+  if (IsReplicationInfoSet(table_replication_info)) {
+      // The table has custom replication info set for it, return it if valid.
+      RETURN_NOT_OK(ValidateTableReplicationInfo(table_replication_info));
+      return table_replication_info;
+  }
+
+  // Table level replication info not set. Return cluster level
+  // replication info.
+  auto l = cluster_config_->LockForRead();
+  return l->data().pb.replication_info();
+}
+
+bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
   const auto& live_placement_info = replication_info.live_replicas();
   if (!(live_placement_info.placement_blocks().empty() &&
         live_placement_info.num_replicas() <= 0 &&
         live_placement_info.placement_uuid().empty()) ||
       !replication_info.read_replicas().empty() ||
       !replication_info.affinitized_leaders().empty()) {
-    return STATUS(
-        InvalidArgument,
-        "Unsupported: cannot set table level replication info yet.");
+
+      return true;
+  }
+  return false;
+}
+
+Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) {
+  if (!IsReplicationInfoSet(replication_info)) {
+    return STATUS(InvalidArgument, "No replication info set.");
+  }
+  // We don't support setting any other fields other than live replica placements for now.
+  if (!replication_info.read_replicas().empty() ||
+      !replication_info.affinitized_leaders().empty()) {
+
+      return STATUS(InvalidArgument, "Only live placement info can be set for table "
+          "level replication info.");
+  }
+  // Today we support setting table level replication info only in clusters where read replica
+  // placements is not set. Return error if the cluster has read replica placements set.
+  auto l = cluster_config_->LockForRead();
+  const ReplicationInfoPB& cluster_replication_info = l->data().pb.replication_info();
+  if (!cluster_replication_info.read_replicas().empty() ||
+      !cluster_replication_info.affinitized_leaders().empty()) {
+
+      return STATUS(InvalidArgument, "Setting table level replication info is not supported "
+          "for clusters with read replica placements");
+  }
+  // If the replication info has placement_uuid set, verify that it matches the cluster
+  // placement_uuid.
+  if (replication_info.live_replicas().placement_uuid().empty()) {
+    return Status::OK();
+  }
+  if (replication_info.live_replicas().placement_uuid() !=
+      cluster_replication_info.live_replicas().placement_uuid()) {
+
+      return STATUS(InvalidArgument, "Placement uuid for table level replication info "
+          "must match that of the cluster's live placement info.");
   }
   return Status::OK();
 }
@@ -1613,9 +1663,19 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
 
 namespace {
 
-std::array<PartitionPB, 2> CreateNewTabletsPartition(
+Result<std::array<PartitionPB, 2>> CreateNewTabletsPartition(
     const TabletInfo& tablet_info, const std::string& split_partition_key) {
   const auto& source_partition = tablet_info.LockForRead()->data().pb.partition();
+
+  if (source_partition.partition_key_start() == split_partition_key ||
+      source_partition.partition_key_end() == split_partition_key) {
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Can't split tablet $0 (partition_key_start: $1 partition_key_end: $2) by partition "
+        "boundary (split_key: $3)",
+        tablet_info.tablet_id(), source_partition.partition_key_start(),
+        source_partition.partition_key_end(), split_partition_key);
+  }
 
   std::array<PartitionPB, 2> new_tablets_partition;
 
@@ -1646,8 +1706,8 @@ Status CatalogManager::DoSplitTablet(
 
   constexpr auto kNumSplitParts = 2;
 
-  std::array<PartitionPB, kNumSplitParts> new_tablets_partition = CreateNewTabletsPartition(
-      *source_tablet_info, split_partition_key);
+  std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
+      CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
 
   std::array<TabletId, kNumSplitParts> new_tablet_ids;
   for (int i = 0; i < kNumSplitParts; ++i) {
@@ -1786,6 +1846,7 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
   // Create table info in memory.
   scoped_refptr<TableInfo> table;
   vector<TabletInfo*> tablets;
+  scoped_refptr<TabletInfo> sys_catalog_tablet;
   {
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
@@ -1805,12 +1866,18 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
         *req, schema, partition_schema, false /* create_tablets */, namespace_id, namespace_name,
         partitions, nullptr /* index_info */, nullptr /* tablets */, resp, &table));
 
-    scoped_refptr<TabletInfo> tablet = tablet_map_->find(kSysCatalogTabletId)->second;
-    auto tablet_lock = tablet->LockForWrite();
+    sys_catalog_tablet = tablet_map_->find(kSysCatalogTabletId)->second;
+  }
+  {
+    auto tablet_lock = sys_catalog_tablet->LockForWrite();
     tablet_lock->mutable_data()->pb.add_table_ids(table->id());
-    table->AddTablet(tablet.get());
 
-    RETURN_NOT_OK(sys_catalog_->UpdateItem(tablet.get(), leader_ready_term()));
+    Status s = sys_catalog_->UpdateItem(sys_catalog_tablet.get(), leader_ready_term());
+    if (PREDICT_FALSE(!s.ok())) {
+      return AbortTableCreation(table.get(), tablets, s.CloneAndPrepend(
+        "An error occurred while inserting to sys-tablets: "), resp);
+    }
+    table->AddTablet(sys_catalog_tablet.get());
     tablet_lock->Commit();
   }
   TRACE("Inserted new table info into CatalogManager maps");
@@ -1819,12 +1886,8 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
   table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
   Status s = sys_catalog_->AddItem(table.get(), leader_ready_term());
   if (PREDICT_FALSE(!s.ok())) {
-    // TODO(NIC): tablets is empty here.  Probably want 'tablet' in the previous scope?
-    return AbortTableCreation(table.get(), tablets,
-                              s.CloneAndPrepend(
-                                  Substitute("An error occurred while inserting to sys-tablets: $0",
-                                             s.ToString())),
-                              resp);
+    return AbortTableCreation(table.get(), tablets, s.CloneAndPrepend(
+      "An error occurred while inserting to sys-tablets: "), resp);
   }
   TRACE("Wrote table to system table");
 
@@ -2115,12 +2178,17 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  // Get cluster level placement info.
-  ReplicationInfoPB replication_info;
-  {
-    auto l = cluster_config_->LockForRead();
-    replication_info = l->data().pb.replication_info();
+  // Verify that custom placement policy has not been specified for colocated table.
+  if (colocated && IsReplicationInfoSet(req.replication_info())) {
+    Status s = STATUS(InvalidArgument, "Custom placement policy should not be set for "
+      "colocated tables");
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
+
+  // Get placement info.
+  const ReplicationInfoPB& replication_info = VERIFY_RESULT(
+  ResolveReplicationInfo(req.replication_info()));
+
   // Calculate number of tablets to be used.
   int num_tablets = req.schema().table_properties().num_tablets();
   if (num_tablets <= 0) {
@@ -2179,12 +2247,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     } else {
       DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid partition method"));
     }
-  }
-
-  // Validate the table placement rules are a subset of the cluster ones.
-  s = ValidateTableReplicationInfo(req.replication_info());
-  if (PREDICT_FALSE(!s.ok())) {
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
   }
 
   // For index table, populate the index info.
@@ -2904,7 +2966,9 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   metadata->set_namespace_name(namespace_name);
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
-  // TODO(bogdan): add back in replication_info once we allow overrides!
+  if (req.has_replication_info()) {
+    metadata->mutable_replication_info()->CopyFrom(req.replication_info());
+  }
   // Use the Schema object passed in, since it has the column IDs already assigned,
   // whereas the user request PB does not.
   SchemaToPB(schema, metadata->mutable_schema());
@@ -3812,6 +3876,22 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     has_changes = true;
   }
 
+  // Check if there has been any changes to the placement policies for this table.
+  if (req->has_replication_info()) {
+    // If this is a colocated table, it does not make sense to set placement
+    // policy for this table, as the tablet associated with it is shared by
+    // multiple tables.
+    if (table->colocated()) {
+      const Status s = STATUS(InvalidArgument,
+          "Placement policy cannot be altered for a colocated table");
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+    }
+    // Validate table replication info.
+    RETURN_NOT_OK(ValidateTableReplicationInfo(req->replication_info()));
+    table_pb.mutable_replication_info()->CopyFrom(req->replication_info());
+    has_changes = true;
+  }
+
   // TODO(hector): Simplify the AlterSchema workflow to avoid doing the same checks on every layer
   // this request goes through: https://github.com/YugaByte/yugabyte-db/issues/1882.
   if (req->has_wal_retention_secs()) {
@@ -3941,6 +4021,7 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
   new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
       source_tablet_meta.committed_consensus_state());
   new_tablet_meta.set_split_depth(source_tablet_meta.split_depth() + 1);
+  new_tablet_meta.set_split_parent_tablet_id(source_tablet_info.tablet_id());
   // TODO(tsplit): consider and handle failure scenarios, for example:
   // - Crash or leader failover before sending out the split tasks.
   // - Long enough partition while trying to send out the splits so that they timeout and
@@ -4029,7 +4110,9 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     VLOG(1) << " Returning pb.schema() ";
   }
   resp->mutable_partition_schema()->CopyFrom(l->data().pb.partition_schema());
-  // TODO(bogdan): add back in replication_info once we allow overrides!
+  if (IsReplicationInfoSet(l->data().pb.replication_info())) {
+    resp->mutable_replication_info()->CopyFrom(l->data().pb.replication_info());
+  }
   resp->set_create_table_done(!table->IsCreateInProgress());
   resp->set_table_type(table->metadata().state().pb.table_type());
   resp->mutable_identifier()->set_table_name(l->data().pb.name());
@@ -6164,6 +6247,16 @@ Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& pee
   *common->mutable_broadcast_addresses() = peer.last_known_broadcast_addr();
   *common->mutable_cloud_info() = peer.cloud_info();
 
+  // Todo(Rahul) : May need to be changed when we implement table level overrides.
+  SysClusterConfigEntryPB config;
+  RETURN_NOT_OK(GetClusterConfig(&config));
+  // If the config has no replication info, use empty string for the placement uuid, otherwise
+  // calculate it from the reported peer.
+  auto placement_uuid = config.has_replication_info() ?
+      VERIFY_RESULT(CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
+          config.replication_info(), peer)) : "";
+  common->set_placement_uuid(placement_uuid);
+
   return master_->ts_manager()->RegisterTS(instance_pb, registration_pb, master_->MakeCloudInfoPB(),
                                            &master_->proxy_cache(),
                                            RegisteredThroughHeartbeat::kFalse);
@@ -6976,15 +7069,8 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
         tablet->tablet_id());
   }
 
-  // Validate that we do not have placement blocks in both cluster and table data.
-  RETURN_NOT_OK(ValidateTableReplicationInfo(table_guard->data().pb.replication_info()));
-
-  // Default to the cluster placement object.
-  ReplicationInfoPB replication_info;
-  {
-    auto l = cluster_config_->LockForRead();
-    replication_info = l->data().pb.replication_info();
-  }
+  const ReplicationInfoPB& replication_info = VERIFY_RESULT(ResolveReplicationInfo(
+    table_guard->data().pb.replication_info()));
 
   // Select the set of replicas for the tablet.
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
@@ -6993,9 +7079,6 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   cstate->set_current_term(kMinimumTerm);
   consensus::RaftConfigPB *config = cstate->mutable_config();
   config->set_opid_index(consensus::kInvalidOpIdIndex);
-
-  // TODO: we do this defaulting to cluster if no table data in two places, should refactor and
-  // have a centralized getter, that will ultimately do the subsetting as well.
 
   Status s = HandlePlacementUsingReplicationInfo(replication_info, ts_descs, config);
   if (!s.ok()) {
@@ -7290,9 +7373,8 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 
     const auto& metadata = tablet->metadata().state().pb;
     locs_pb->mutable_partition()->CopyFrom(metadata.partition());
-    if (metadata.has_split_depth()) {
-      locs_pb->set_split_depth(metadata.split_depth());
-    }
+    locs_pb->set_split_depth(metadata.split_depth());
+    locs_pb->set_split_parent_tablet_id(metadata.split_parent_tablet_id());
   }
 
   locs_pb->set_tablet_id(tablet->tablet_id());
@@ -7397,8 +7479,15 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   table->GetTabletsInRange(req, &tablets_in_range);
 
   bool require_tablets_runnings = req->require_tablets_running();
+
+  int expected_live_replicas = 0;
+  int expected_read_replicas = 0;
+  GetExpectedNumberOfReplicas(&expected_live_replicas, &expected_read_replicas);
   for (const scoped_refptr<TabletInfo>& tablet : tablets_in_range) {
-    auto status = BuildLocationsForTablet(tablet, resp->add_tablet_locations());
+    TabletLocationsPB* locs_pb = resp->add_tablet_locations();
+    locs_pb->set_expected_live_replicas(expected_live_replicas);
+    locs_pb->set_expected_read_replicas(expected_read_replicas);
+    auto status = BuildLocationsForTablet(tablet, locs_pb);
     if (!status.ok()) {
       // Not running.
       if (require_tablets_runnings) {
@@ -7779,6 +7868,15 @@ Status CatalogManager::GetReplicationFactorForTablet(const scoped_refptr<TabletI
     return Status::OK();
   }
   return GetReplicationFactor(num_replicas);
+}
+
+void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas) {
+  auto l = cluster_config_->LockForRead();
+  const ReplicationInfoPB& replication_info = l->data().pb.replication_info();
+  *num_live_replicas = GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
+  for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
+    *num_read_replicas = read_replica_placement_info.num_replicas();
+  }
 }
 
 string CatalogManager::placement_uuid() const {

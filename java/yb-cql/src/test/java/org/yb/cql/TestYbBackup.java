@@ -23,12 +23,12 @@ import org.junit.runner.RunWith;
 import org.json.JSONObject;
 
 import org.yb.client.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanAsan;
+import org.yb.util.YBTestRunnerNonSanitizersOrMac;
 
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-@RunWith(value=YBTestRunnerNonTsanAsan.class)
+@RunWith(value=YBTestRunnerNonSanitizersOrMac.class)
 public class TestYbBackup extends BaseCQLTest {
   private final static int defaultYbBackupTimeoutInSeconds = 180;
 

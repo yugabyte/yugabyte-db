@@ -588,6 +588,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS GetReplicationFactorForTablet(const scoped_refptr<TabletInfo>& tablet,
       int* num_replicas);
 
+  void GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas);
+
   // Get the percentage of tablets that have been moved off of the black-listed tablet servers.
   CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
 
@@ -1058,9 +1060,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
-  // Validates that the passed-in table replication information respects the overall cluster level
-  // configuration. This should essentially not be more broader reaching than the cluster. As an
-  // example, if the cluster is confined to AWS, you cannot have tables in GCE.
+  // Returns 'table_replication_info' itself if set. Otherwise returns the cluster level
+  // replication info.
+  Result<ReplicationInfoPB> ResolveReplicationInfo(const ReplicationInfoPB& table_replication_info);
+
+  // Returns whether 'replication_info' has any relevant fields set.
+  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+
+  // Validates that 'replication_info' for a table has supported fields set.
   CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
 
   // Report metrics.

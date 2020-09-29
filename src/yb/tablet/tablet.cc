@@ -2258,7 +2258,7 @@ Status Tablet::UpdateIndexInBatches(
     index_request->set_type(QLWriteRequestPB::QL_STMT_INSERT);
     RETURN_NOT_OK(docdb::PrepareIndexWriteAndCheckIfIndexKeyChanged(
         &expr_executor, kEmptyRow, row, &index, index_request, &ignored_key_changed));
-    index_request->set_is_backfilling(true);
+    index_request->set_is_backfill(true);
   }
 
   // Update the index write op.
@@ -3208,6 +3208,15 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
                             : docdb::DocKeyPart::kWholeDocKey;
   const auto split_key_size = VERIFY_RESULT(DocKey::EncodedSize(middle_key, key_part));
   middle_key.resize(split_key_size);
+  const Slice middle_key_slice(middle_key);
+  if (middle_key_slice.compare(key_bounds_.lower) <= 0 ||
+      (!key_bounds_.upper.empty() && middle_key_slice.compare(key_bounds_.upper) >= 0)) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Failed to detect middle key (got \"$0\") for tablet $1 (key_bounds: $2 - $3), this can "
+        "happen if post-split tablet wasn't fully compacted after split",
+        middle_key, tablet_id(), key_bounds_.lower, key_bounds_.upper);
+  }
   return middle_key;
 }
 

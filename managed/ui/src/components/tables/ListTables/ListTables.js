@@ -43,7 +43,7 @@ class TableTitle extends Component {
           <div className="backup-action-btn-group">
             <UniverseAction className="table-action" universe={currentUniverse}
               actionType="toggle-backup" btnClass={"btn-orange"}
-              disabled={isDisabled(currentCustomer.data.features, "universes.tableActions")}
+              disabled={isDisabled(currentCustomer.data.features, "universes.backup")}
             />
           </div>
         </div>
@@ -126,7 +126,7 @@ class ListTableGrid extends Component {
     const formatKeySpace = function(cell) {
       return <div>{cell}</div>;
     };
-    const actions_disabled = isDisabled(currentCustomer.data.features, "universes.tableActions");
+    const actions_disabled = isDisabled(currentCustomer.data.features, "universes.backup");
     const formatActionButtons = function(item, row, disabled) {
       if (!row.isIndexTable) {
         const actions = [
@@ -169,6 +169,22 @@ class ListTableGrid extends Component {
       }
     };
 
+    const formatBytes = function(item, row) {
+      if (Number.isInteger(item)) {
+        var bytes = item;
+        var sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
+        var k = 1024;
+        if (bytes <= 0) {
+          return bytes + " " + sizes[0];
+        }
+
+        var sizeIndex = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, sizeIndex)).toFixed(2)) + " " + sizes[sizeIndex];
+      } else {
+        return "-";
+      }
+    };
+
     let listItems = [];
     if (isNonEmptyArray(self.props.tables.universeTablesList)) {
       listItems = self.props.tables.universeTablesList.map(function (item, idx) {
@@ -180,7 +196,8 @@ class ListTableGrid extends Component {
           "status": "success",
           "read": tablePlacementDummyData.read,
           "write": tablePlacementDummyData.write,
-          "isIndexTable": item.isIndexTable
+          "isIndexTable": item.isIndexTable,
+          "sizeBytes": item.sizeBytes,
         };
       });
     }
@@ -209,26 +226,28 @@ class ListTableGrid extends Component {
     const tableListDisplay = (
       <BootstrapTable data={sortedListItems} >
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
-        <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName}
-                          columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"}>
+        <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName} width="20%"
+                          columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"} dataSort>
           Table Name</TableHeaderColumn>
-        <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon }
-                          columnClassName={"table-type-image-header yb-table-cell"} className={"yb-table-cell"}>
+        <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon } width="10%"
+                          columnClassName={"table-type-image-header yb-table-cell"} className={"yb-table-cell"} dataSort>
           Table Type</TableHeaderColumn>
-        <TableHeaderColumn dataField={"keySpace"}
-                          columnClassName={"yb-table-cell"} dataFormat={formatKeySpace}>
+        <TableHeaderColumn dataField={"keySpace"} width="15%"
+                          columnClassName={"yb-table-cell"} dataFormat={formatKeySpace} dataSort>
           Keyspace</TableHeaderColumn>
-
-        <TableHeaderColumn dataField={"status"}
+        <TableHeaderColumn dataField={"status"} width="10%"
                           columnClassName={"yb-table-cell"} dataFormat={formatTableStatus}>
           Status</TableHeaderColumn>
-        <TableHeaderColumn dataField={"read"}
+          <TableHeaderColumn dataField={"sizeBytes"} width="15%"
+                          columnClassName={"yb-table-cell"} dataFormat={formatBytes} dataSort>
+          Size</TableHeaderColumn>
+        <TableHeaderColumn dataField={"read"} width="10%"
                           columnClassName={"yb-table-cell"} >
           Read</TableHeaderColumn>
-        <TableHeaderColumn dataField={"write"}
+        <TableHeaderColumn dataField={"write"} width="10%"
                           columnClassName={"yb-table-cell"} >
           Write</TableHeaderColumn>
-        <TableHeaderColumn dataField={"actions"} columnClassName={"yb-actions-cell"}
+        <TableHeaderColumn dataField={"actions"} columnClassName={"yb-actions-cell"} width="10%"
                            dataFormat={formatActionButtons}>
           Actions
         </TableHeaderColumn>

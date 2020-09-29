@@ -121,7 +121,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
   string tmp_dir_;
 };
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackup)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackup)) {
   client::KeyValueTableTest::CreateTable(
       client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
   const string& keyspace = table_.name().namespace_name();
@@ -190,17 +190,17 @@ void YBBackupTest::DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp) {
   ));
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackup)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLKeyspaceBackup)) {
   DoTestYSQLKeyspaceBackup(helpers::TableOp::kKeepTable);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackupWithDropTable)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLKeyspaceBackupWithDropTable)) {
   DoTestYSQLKeyspaceBackup(helpers::TableOp::kDropTable);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKeyspace)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreBackupToNewKeyspace)) {
   // Test hash-table.
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE hashtbl(k INT PRIMARY KEY, v TEXT)"));
   // Test single shard range-table.
@@ -462,7 +462,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYBBackupWrongUsage)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYBBackupWrongUsage)) {
   client::KeyValueTableTest::CreateTable(
       client::Transactional::kTrue, CalcNumTablets(3), client_.get(), &table_);
   const string& keyspace = table_.name().namespace_name();

@@ -130,6 +130,9 @@ message MasterErrorPB {
     LOAD_BALANCER_RECENTLY_ACTIVE = 33;
 
     INTERNAL_ERROR = 34;
+
+    // Client set some fields in the table replication info incorrectly.
+    INVALID_TABLE_REPLICATION_INFO = 35;
   }
 
   // The error code.
@@ -310,8 +313,10 @@ message SysTabletsEntryPB {
   // Replaced by the map below.
   optional bytes DEPRECATED_backfilled_until = 10;
 
-  // For tablets which are results of splitting we set this to split parent split_depth + 1.
+  // For tablets that are results of splitting we set this to split parent split_depth + 1.
   optional uint64 split_depth = 11;
+
+  optional bytes split_parent_tablet_id = 13;
 
   // If the tablet is in the backfilling state, this is used to keep track
   // of how far along backfill has completed.
@@ -805,8 +810,15 @@ message TabletLocationsPB {
   // Table ids for all the tables on this tablet.
   repeated bytes table_ids = 8;
 
-  // See SysTabletsEntryPB for field with the same name.
+  // See SysTabletsEntryPB for fields with the same name.
   optional uint64 split_depth = 9;
+  optional bytes split_parent_tablet_id = 12;
+
+  // Number of expected live replicas.
+  optional int32 expected_live_replicas = 10;
+
+  // Number of expected read replicas.
+  optional int32 expected_read_replicas = 11;
 }
 
 // Info about a single tablet server, returned to the client as part
@@ -1057,6 +1069,9 @@ message AlterTableRequestPB {
   // request.
   // This is useful to trigger index permissions update.
   optional bool force_send_alter_request = 7 [default = false];
+
+  // Replication information for this table.
+  optional ReplicationInfoPB replication_info = 8;
 }
 
 message AlterTableResponsePB {

@@ -43,7 +43,7 @@ set_yb_src_root() {
   fi
   YB_COMPILER_WRAPPER_CC=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/cc
   YB_COMPILER_WRAPPER_CXX=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/c++
-  yb_java_project_dirs=( "$YB_SRC_ROOT/java" "$YB_SRC_ROOT/ent/java" )
+  yb_java_project_dirs=( "$YB_SRC_ROOT/java" )
 }
 
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
@@ -2043,10 +2043,13 @@ lint_java_code() {
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanOnly\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanAsan\.class\)' \
+             "$java_test_file" &&
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
-            "YBTestRunnerNonTsanOnly, nor YBTestRunnerNonTsanAsan are being used in test"
+            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan " \
+            "nor YBTestRunnerNonSanitizersOrMac are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||

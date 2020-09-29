@@ -85,8 +85,7 @@ ExecLimit(PlanState *pstate)
 				pstate->state->yb_exec_params.limit_count = node->count;
 				pstate->state->yb_exec_params.limit_offset = node->offset;
 			}
-
-			/* FALL THRU */
+			switch_fallthrough();
 
 		case LIMIT_RESCAN:
 			pstate->state->yb_exec_params.limit_use_default = false;

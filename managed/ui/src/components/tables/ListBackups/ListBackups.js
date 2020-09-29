@@ -4,17 +4,28 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { DropdownButton } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import moment from 'moment';
 import { YBPanelItem } from '../../panels';
+import { YBCopyButton } from '../../common/descriptors';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isAvailable } from '../../../utils/LayoutUtils';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { TableAction } from '../../tables';
+import ListTablesModal from './ListTablesModal';
 import SchedulesContainer from '../../schedules/SchedulesContainer';
 
 import './ListBackups.scss';
 
+const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
+const YCQL_TABLE_TYPE = 'YQL_TABLE_TYPE';
+
 export default class ListBackups extends Component {
+  state = {
+    selectedRowList: null,
+    showModal: false
+  }
+
   static defaultProps = {
     title : "Backups"
   }
@@ -33,38 +44,163 @@ export default class ListBackups extends Component {
     this.props.resetUniverseBackups();
   }
 
-   isMultiTableBackup = (row) => {
-    if (row.tableUUIDList && row.tableUUIDList.length > 1) {
-      return true;
-    } else if (row.backupList && Array.isArray(row.backupList)) {
-      return true;
+   isMultiTableBackup = () => {
+    return true
+  }
+
+  copyStorageLocation = (item, row) => {
+    return (
+      <YBCopyButton text={item} title={item} />
+    );     
+  }
+
+  openModal = (row) => {
+    this.setState({
+      selectedRowList: row.tableNameList,
+      showModal: true
+    });
+  }
+
+  closeModal = () => {
+    this.setState({
+      showModal: false
+    });
+  }
+
+  parseTableType = (cell, rowData) => {
+    const { universeTableTypes } = this.props;
+    if (rowData.backupType && rowData.backupType === YSQL_TABLE_TYPE) {
+      return 'YSQL';
+    } else if (rowData.backupType && rowData.backupType === YCQL_TABLE_TYPE) {
+      return 'YCQL';
+    } else {
+      return rowData.tableUUIDList ?
+        universeTableTypes[rowData.tableUUIDList[0]] :
+        universeTableTypes[rowData.tableUUID];
     }
-    return false;
+  }
+
+  displayMultiTableNames = (cell, rowData) => {
+    if (rowData.tableNameList && rowData.tableNameList.length) {
+      if (rowData.tableNameList.length > 3) {
+        // Display list of table names truncated if longer than 3
+        const additionalTablesLink = <strong className="bold-primary-link" onClick={() => this.openModal(rowData)}>
+          {rowData.tableNameList.length - 3} more
+        </strong>;
+        
+        return (
+          <div>{rowData.tableNameList.slice(0, 3).join(', ')}, and {additionalTablesLink}</div>
+        );
+      }
+      return rowData.tableNameList.join(', ');      
+    }
+    return cell;
+  }
+
+  renderCaret = (direction, fieldName) => {
+    if (direction === 'asc') {
+      return (
+        <span className="order">
+          <i className="fa fa-caret-up orange-icon"></i>
+        </span>
+      );
+    }
+    if (direction === 'desc') {
+      return (
+        <span className="order">
+          <i className="fa fa-caret-down orange-icon"></i>
+        </span>
+      );
+    }
+    return (
+      <span className="order">
+        <i className="fa fa-caret-down orange-icon"></i>
+        <i className="fa fa-caret-up orange-icon"></i>
+      </span>
+    );
   }
 
   showMultiTableInfo = (row) => {
     const { universeTableTypes } = this.props;
+    let displayTableData = [];
     if (Array.isArray(row.backupList) && row.backupList.length) {
-      return row.backupList.map((backup, index) => {
-        const tableName = backup.tableUUIDList ? backup.tableNameList.join(', ') : backup.tableName;
-        const tableType = backup.tableUUIDList ? universeTableTypes[backup.tableUUIDList[0]] : universeTableTypes[backup.tableUUID];
-        return (
-          <div key={`universe-backup-${index}`} style={{display: 'flex', margin: '15px 0'}}>
-            <span style={{flex: '0 0 14.3%'}}>{backup.keyspace}</span>
-            <span style={{flex: '0 0 14.3%'}}>{tableName}</span>
-            <span style={{flex: '0 0 14.3%'}}>{tableType}</span>
-            <span style={{flex: '0 0 auto'}}>{backup.storageLocation}</span>
-          </div>
-        );
-      });
+      return (
+        <BootstrapTable data={row.backupList} className="backup-info-table"
+          headerContainerClass="backup-header"
+        >
+          <TableHeaderColumn dataField="storageLocation" isKey={true} hidden={true}/>
+          <TableHeaderColumn dataField="keyspace" caretRender={this.renderCaret}
+            dataSort dataAlign="left"
+          >
+            Keyspace
+          </TableHeaderColumn>
+          <TableHeaderColumn dataFormat={this.parseTableType} dataAlign="left">
+            Backup Type
+          </TableHeaderColumn>
+          <TableHeaderColumn dataField="tableName" dataFormat={this.displayMultiTableNames}
+            caretRender={this.renderCaret} dataSort dataAlign="left"
+          >
+            Table Name
+          </TableHeaderColumn>
+          <TableHeaderColumn dataField="storageLocation" dataFormat={this.copyStorageLocation}
+            dataSort dataAlign="left"
+          >
+            Storage Location
+          </TableHeaderColumn>
+        </BootstrapTable>
+      );
+    } else if (row.tableUUIDList && row.tableUUIDList.length) {
+      let displayedTablesText = row.tableNameList.length > 3 ?
+        <div>{row.tableNameList.slice(0, 3).join(', ')}, and <strong className="bold-primary-link" onClick={() => this.openModal(row)}>{row.tableNameList.length - 3} more</strong></div> :
+        row.tableNameList.join(', ');
+      displayTableData = [{
+        keyspace: row.keyspace,
+        tableName: displayedTablesText,
+        tableUUID: row.tableUUIDList[0], // Tables can't be repeated so take first one as row key
+        tableType: universeTableTypes[row.tableUUIDList[0]],
+        storageLocation: row.storageLocation
+      }];
+    } else if (row.tableUUID) {
+      displayTableData = [{
+        ...row,
+        tableType: universeTableTypes[row.tableUUID]
+      }];
+    } else if (row.keyspace) {
+      displayTableData = [{
+        ...row,
+        tableType: row.backupType === YSQL_TABLE_TYPE ? 'YSQL' : 'YCQL'
+      }]
     }
-    return row.tableUUIDList.map((uuid, index) => (
-      <div key={`multi-backup-${uuid}`} style={{display: 'flex', margin: '15px 0'}}>
-        <span style={{flex: '0 0 14.3%'}}>{row.keyspace}</span>
-        <span style={{flex: '0 0 14.3%'}}>{row.tableNameList[index]}</span>
-        <span style={{flex: '0 0 14.3%'}}>{universeTableTypes[uuid]}</span>
-      </div>
-    ));
+
+    return (
+      <BootstrapTable data={displayTableData} className="backup-info-table" headerContainerClass="backup-header">
+        <TableHeaderColumn dataField="tableUUID" isKey={true} hidden={true}/>
+        <TableHeaderColumn dataField="keyspace" caretRender={this.renderCaret} dataSort dataAlign="left">
+          {row.backupType === YSQL_TABLE_TYPE ? 'Namespace' : 'Keyspace'}
+        </TableHeaderColumn>
+        <TableHeaderColumn dataField="tableType" dataAlign="left">
+          Backup Type
+        </TableHeaderColumn>
+        <TableHeaderColumn dataField="tableName" caretRender={this.renderCaret}
+          dataFormat={this.displayMultiTableNames} dataSort dataAlign="left"
+        >
+          Table Name
+        </TableHeaderColumn>
+        <TableHeaderColumn dataField="storageLocation" dataFormat={this.copyStorageLocation} dataAlign="left">
+          Storage Location
+        </TableHeaderColumn>
+      </BootstrapTable>
+    );
+  }
+
+  expandColumnComponent = ({ isExpandableRow, isExpanded }) => {
+    if (isExpandableRow) {
+      return isExpanded ?
+        <i className="fa fa-chevron-down"></i> :
+        <i className="fa fa-chevron-right"></i>;
+    } else {
+      return <span>&nbsp;</span>;
+    }
   }
 
   render() {
@@ -74,6 +210,7 @@ export default class ListBackups extends Component {
       universeTableTypes,
       title,
     } = this.props;
+    const { showModal, selectedRowList } = this.state;
     if (getPromiseState(universeBackupList).isLoading() ||
         getPromiseState(universeBackupList).isInit()) {
       return <YBLoadingCircleIcon size="medium" />;
@@ -84,6 +221,8 @@ export default class ListBackups extends Component {
         backupInfo.backupUUID = b.backupUUID;
         backupInfo.status = b.state;
         backupInfo.createTime = b.createTime;
+        backupInfo.expiry = b.expiry;
+        backupInfo.updateTime = b.updateTime;
         if (backupInfo.tableUUIDList && backupInfo.tableUUIDList.length > 1) {
           backupInfo.tableName = backupInfo.tableNameList.join(', ');
           backupInfo.tableType = [
@@ -101,15 +240,46 @@ export default class ListBackups extends Component {
       return null;
     }).filter(Boolean);
 
-    const formatActionButtons = function(item, row) {
+    const formatActionButtons = (item, row) => {
       if (row.showActions && isAvailable(currentCustomer.data.features, "universes.backup")) {
         return (
           <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
             <TableAction currentRow={row} actionType="restore-backup" />
+            <TableAction currentRow={row} actionType="delete-backup" />
           </DropdownButton>
         );
       }
     };
+
+    const getBackupDuration = (item, row) => {
+      const diffInMs = row.updateTime - row.createTime;
+      return moment.duration(diffInMs).humanize();
+    }
+
+    const showBackupType = function(item, row) {
+      if (row.backupList && row.backupList.length) {
+        return (
+          <div className="backup-type">
+            <i className="fa fa-globe" aria-hidden="true"></i> Universe backup
+          </div>
+        );
+      } else if (row.tableUUIDList && row.tableUUIDList.length) {
+        return (
+          <div className="backup-type"><i className="fa fa-table"></i> Multi-Table backup</div>
+        );
+      } else if (row.tableUUID) {
+        return (
+          <div className="backup-type"><i className="fa fa-file"></i> Table backup</div>
+        );
+      } else if (row.keyspace != null) {
+        const backupTableType = row.backupType === YSQL_TABLE_TYPE ? 'Namespace backup' : 'Keyspace backup';
+        return (
+          <div className="backup-type">
+            <i className="fa fa-database"></i> {backupTableType}
+          </div>
+        );
+      }
+    }
     return (
       <div>
         <SchedulesContainer />
@@ -137,42 +307,47 @@ export default class ListBackups extends Component {
               className="backup-list-table"
               expandableRow={this.isMultiTableBackup}
               expandComponent={this.showMultiTableInfo}
-            >
+              expandColumnOptions={{ 
+                expandColumnVisible: true,
+                expandColumnComponent: this.expandColumnComponent,
+                columnWidth: 50,
+              }}
+              options={{
+                expandBy: 'column'
+              }}>
               <TableHeaderColumn dataField="backupUUID" isKey={true} hidden={true}/>
-              <TableHeaderColumn dataField="keyspace" dataSort
-                                columnClassName="no-border name-column" className="no-border">
-                Keyspace
-              </TableHeaderColumn>
-              <TableHeaderColumn dataField="tableName" dataSort
-                                columnClassName="no-border name-column" className="no-border">
-                Table Name
-              </TableHeaderColumn>
-              <TableHeaderColumn dataField="tableType" dataSort
-                                columnClassName="no-border name-column" className="no-border">
-                Table Type
+              <TableHeaderColumn dataField={"backupType"} dataFormat={showBackupType}
+                                 expandable={false}>
+                Type
               </TableHeaderColumn>
               <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter} dataSort
-                                columnClassName="no-border " className="no-border"
+                                columnClassName="no-border " className="no-border" expandable={false}
                                 dataAlign="left">
                 Created At
               </TableHeaderColumn>
-              <TableHeaderColumn dataField="status" dataSort
+              <TableHeaderColumn dataField="expiry" dataFormat={timeFormatter} dataSort
+                                columnClassName="no-border " className="no-border" expandable={false}
+                                dataAlign="left">
+                Expiry Time
+              </TableHeaderColumn>
+              <TableHeaderColumn dataFormat={getBackupDuration} dataSort
+                                columnClassName="no-border " className="no-border" expandable={false}
+                                dataAlign="left">
+                Duration
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="status" dataSort expandable={false}
                                 columnClassName="no-border name-column" className="no-border"
                                 dataFormat={successStringFormatter} >
                 Status
               </TableHeaderColumn>
-              <TableHeaderColumn dataField="storageLocation"
-                                columnClassName="no-border storage-cell"
-                                className="no-border storage-cell" >
-                Storage Location
-              </TableHeaderColumn>
               <TableHeaderColumn dataField={"actions"} columnClassName={"no-border yb-actions-cell"} className={"no-border yb-actions-cell"}
-                                dataFormat={formatActionButtons} headerAlign='center' dataAlign='center' >
+                                dataFormat={formatActionButtons} headerAlign='center' dataAlign='center' expandable={false} >
                 Actions
               </TableHeaderColumn>
             </BootstrapTable>
           }
         />
+        <ListTablesModal visible={showModal} data={selectedRowList} title={"Tables in backup"} onHide={this.closeModal}/>
       </div>
     );
   }

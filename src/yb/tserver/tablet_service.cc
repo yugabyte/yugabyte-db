@@ -137,7 +137,7 @@ DEFINE_int32(num_concurrent_backfills_allowed, 8,
 
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
 
-DEFINE_int32(max_stale_read_bound_time_ms, 0, "If we are allowed to read from followers, "
+DEFINE_int32(max_stale_read_bound_time_ms, 60000, "If we are allowed to read from followers, "
              "specify the maximum time a follower can be behind by using the last message received "
              "from the leader. If set to zero, a read can be served by a follower regardless of "
              "when was the last time it received a message from the leader or how far behind this"
@@ -205,9 +205,11 @@ DEFINE_test_flag(bool, assert_reads_served_by_follower, false, "If set, we verif
                  "consistency level is CONSISTENT_PREFIX, and that this server is not the leader "
                  "for the tablet");
 
-DEFINE_test_flag(bool, simulate_time_out_failures, false,
-                 "If true, we will randomly mark replicas as failed to simulate time out failures."
-                 "The periodic refresh of the lookup cache will eventually mark them as available");
+DEFINE_test_flag(int32, simulate_time_out_failures_msecs, 0, "If greater than 0, we will randomly "
+                 "mark read requests as timed out and sleep for the specificed amount of time by "
+                 "this flag to simulate time out failures. The requester will mark the timed out "
+                 "replica as failed, and its periodic refresh mechanism for the lookup cache will "
+                 "mark them as available.");
 
 DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
                  "Probability to respond that write request is failed");
@@ -402,7 +404,7 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
     }
 
     if (!status_.ok()) {
-      LOG(INFO) << "Write failed: " << status_;
+      LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status_;
       SetupErrorAndRespond(get_error(), status_, code_, context_.get());
       return;
     }
@@ -1526,6 +1528,8 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
         auto now_micros = server_->Clock()->Now().GetPhysicalValueMicros();
         auto follower_staleness_ms = (now_micros - safe_time_micros) / 1000;
         if (follower_staleness_ms > FLAGS_max_stale_read_bound_time_ms) {
+          VLOG(1) << "Rejecting stale read with staleness "
+                     << follower_staleness_ms << " ms";
           SetupErrorAndRespond(resp->mutable_error(), STATUS(IllegalState, "Stale follower"),
                                TabletServerErrorPB::STALE_FOLLOWER, context);
           return false;
@@ -1782,8 +1786,9 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     leader_peer.leader_term = yb::OpId::kUnknownTerm;
   }
 
-  if (PREDICT_FALSE(FLAGS_TEST_simulate_time_out_failures) && RandomUniformInt(0, 10) < 3) {
-    LOG(INFO) << "Marking request as timed out for test";
+  if (FLAGS_TEST_simulate_time_out_failures_msecs > 0 && RandomUniformInt(0, 10) < 2) {
+    LOG(INFO) << "Marking request as timed out for test: " << req->ShortDebugString();
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_simulate_time_out_failures_msecs));
     SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, "timed out for test"),
         TabletServerErrorPB::UNKNOWN_ERROR, &context);
     return;

@@ -115,6 +115,10 @@ YBCStatus YBCPgResetMemctx(YBCPgMemctx memctx) {
   return ToYBCStatus(pgapi->ResetMemctx(memctx));
 }
 
+void YBCPgDeleteStatement(YBCPgStatement handle) {
+  pgapi->DeleteStatement(handle);
+}
+
 YBCStatus YBCPgInvalidateCache() {
   return ToYBCStatus(pgapi->InvalidateCache());
 }
@@ -651,6 +655,10 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecUpdate(handle));
 }
 
+bool YBCGetEnableUpdateBatching() {
+  return FLAGS_ysql_enable_update_batching;
+}
+
 // DELETE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
@@ -762,6 +770,10 @@ YBCStatus YBCPgBeginTransaction() {
   return ToYBCStatus(pgapi->BeginTransaction());
 }
 
+YBCStatus YBCPgRecreateTransaction() {
+  return ToYBCStatus(pgapi->RecreateTransaction());
+}
+
 YBCStatus YBCPgRestartTransaction() {
   return ToYBCStatus(pgapi->RestartTransaction());
 }
@@ -857,6 +869,14 @@ YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
 
 int32_t YBCGetMaxReadRestartAttempts() {
   return FLAGS_ysql_max_read_restart_attempts;
+}
+
+int32_t YBCGetMaxWriteRestartAttempts() {
+  return FLAGS_ysql_max_write_restart_attempts;
+}
+
+bool YBCShouldSleepBeforeRetryOnTxnConflict() {
+  return FLAGS_ysql_sleep_before_retry_on_txn_conflict;
 }
 
 int32_t YBCGetOutputBufferSize() {

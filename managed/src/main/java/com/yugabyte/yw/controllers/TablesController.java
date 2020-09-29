@@ -5,8 +5,10 @@ package com.yugabyte.yw.controllers;
 import java.util.List;
 import java.util.UUID;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.stream.Collectors;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -19,6 +21,9 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.metrics.MetricQueryResponse;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.GetTableSchemaResponse;
@@ -28,11 +33,16 @@ import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 import org.yb.master.Master.RelationType;
 import org.yb.Common.TableType;
 
+import org.joda.time.DateTime;
+
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.services.YBClientService;
+
 
 import play.data.Form;
 import play.data.FormFactory;
@@ -55,6 +65,9 @@ public class TablesController extends AuthenticatedController {
 
   // The YB client to use.
   public YBClientService ybService;
+
+  @Inject
+  MetricQueryHelper metricQueryHelper;
 
   @Inject
   public TablesController(YBClientService service) { this.ybService = service; }
@@ -217,6 +230,18 @@ public class TablesController extends AuthenticatedController {
       LOG.warn(errMsg);
       return ok(errMsg);
     }
+
+    // Query prometheus for table sizes.
+    HashMap<String, Double> tableSizes = new HashMap<>();
+    try {
+      tableSizes = queryTableSizes(universe.getUniverseDetails().nodePrefix);
+    } catch (Exception e) {
+      LOG.error(
+        "Error querying for table sizes for universe {} from prometheus",
+        universe.getUniverseDetails().nodePrefix, e
+      );
+    }
+
     String certificate = universe.getCertificate();
     YBClient client = null;
     try {
@@ -237,6 +262,10 @@ public class TablesController extends AuthenticatedController {
           String tableUUID = table.getId().toStringUtf8();
           node.put("tableUUID", String.valueOf(getUUIDRepresentation(tableUUID)));
           node.put("isIndexTable", table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
+          Double tableSize = tableSizes.get(tableUUID);
+          if (tableSize != null) {
+            node.put("sizeBytes", tableSize);
+          }
           resultNode.add(node);
         }
       }
@@ -522,5 +551,24 @@ public class TablesController extends AuthenticatedController {
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
+  }
+
+  private HashMap<String, Double> queryTableSizes(String nodePrefix) {
+    // Execute query and check for errors.
+    ArrayList<MetricQueryResponse.Entry> values = metricQueryHelper.queryDirect(
+      "sum by (table_id) (rocksdb_total_sst_file_size{node_prefix=\"" + nodePrefix + "\"})"
+    );
+
+   HashMap<String, Double> result = new HashMap<String, Double>();
+   for (final MetricQueryResponse.Entry entry : values) {
+      String tableID = entry.labels.get("table_id");
+      if (tableID == null || tableID.isEmpty() ||
+          entry.values == null || entry.values.size() == 0) {
+        continue;
+      }
+      result.put(tableID, entry.values.get(0).getRight());
+    }
+    return result;
+
   }
 }

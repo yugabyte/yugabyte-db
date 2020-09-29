@@ -26,14 +26,6 @@ namespace pggate {
 
 class PgInsert : public PgDmlWrite {
  public:
-  // Public types.
-  typedef scoped_refptr<PgInsert> ScopedRefPtr;
-  typedef scoped_refptr<const PgInsert> ScopedRefPtrConst;
-
-  typedef std::unique_ptr<PgInsert> UniPtr;
-  typedef std::unique_ptr<const PgInsert> UniPtrConst;
-
-  // Constructors.
   PgInsert(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_single_row_txn)
       : PgDmlWrite(std::move(pg_session), table_id, is_single_row_txn) {}
 

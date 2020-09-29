@@ -573,6 +573,7 @@ ybcFreeStatementObject(YbFdwExecState* yb_fdw_exec_state)
 	{
 		ResourceOwnerForgetYugaByteStmt(yb_fdw_exec_state->stmt_owner,
 										yb_fdw_exec_state->handle);
+		YBCPgDeleteStatement(yb_fdw_exec_state->handle);
 		yb_fdw_exec_state->handle = NULL;
 		yb_fdw_exec_state->stmt_owner = NULL;
 		yb_fdw_exec_state->exec_params = NULL;

@@ -49,6 +49,7 @@ YBCStatus YBCPgInitSession(const YBCPgEnv pg_env, const char *database_name);
 YBCPgMemctx YBCPgCreateMemctx();
 YBCStatus YBCPgDestroyMemctx(YBCPgMemctx memctx);
 YBCStatus YBCPgResetMemctx(YBCPgMemctx memctx);
+void YBCPgDeleteStatement(YBCPgStatement handle);
 
 // Invalidate the sessions table cache.
 YBCStatus YBCPgInvalidateCache();
@@ -385,6 +386,9 @@ YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 
+// Retrieve value of ysql_enable_update_batching gflag.
+bool YBCGetEnableUpdateBatching();
+
 // DELETE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgOid database_oid,
                          YBCPgOid table_oid,
@@ -414,6 +418,7 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec
 
 // Transaction control -----------------------------------------------------------------------------
 YBCStatus YBCPgBeginTransaction();
+YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgCommitTransaction();
 YBCStatus YBCPgAbortTransaction();
@@ -471,6 +476,12 @@ void YBCInitFlags();
 
 // Retrieves value of ysql_max_read_restart_attempts gflag
 int32_t YBCGetMaxReadRestartAttempts();
+
+// Retrieves the value of ysql_max_write_restart_attempts gflag.
+int32_t YBCGetMaxWriteRestartAttempts();
+
+// Retrieves the value of ysql_sleep_before_retry_on_txn_conflict gflag.
+bool YBCShouldSleepBeforeRetryOnTxnConflict();
 
 // Retrieves value of ysql_output_buffer_size gflag
 int32_t YBCGetOutputBufferSize();

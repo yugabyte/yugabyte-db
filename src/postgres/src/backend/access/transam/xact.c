@@ -2020,6 +2020,42 @@ StartTransaction(void)
 	ShowTransactionState("StartTransaction");
 }
 
+/*
+ * Recreates the state required to restart the write that received a transaction
+ * conflict.
+ */
+void
+YBCRestartWriteTransaction()
+{
+	/*
+	 * Disable the buffering of operations that was enabled during the execution
+	 * of the write.
+	 */
+	YBEndOperationsBuffering();
+
+	/*
+	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
+	 * that we restart the writes only when we haven't sent any data back to the
+	 * user, removing all snapshots is safe.
+	 */
+	PopAllActiveSnapshots();
+
+	AtEOXact_SPI(false /* isCommit */);
+
+	/*
+	 * Recreate the global state present for triggers that would have changed
+	 * during the execution of the failed write.
+	 */
+	AfterTriggerEndXact(false /* isCommit */);
+	AfterTriggerBeginXact();
+
+	/*
+	 * Recreate the YB state for the transaction. This call preserves the
+	 * priority of the current YB transaction so that when we retry, we re-use
+	 * the same priority.
+	 */
+	YBCRecreateTransaction();
+}
 
 /*
  *	CommitTransaction

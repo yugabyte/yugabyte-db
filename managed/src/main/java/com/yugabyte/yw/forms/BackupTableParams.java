@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import org.yb.Common.TableType;
 import play.data.validation.Constraints;
 
 import java.util.List;
@@ -11,7 +12,8 @@ public class BackupTableParams extends TableManagerParams {
   public enum ActionType {
     CREATE,
     RESTORE,
-    RESTORE_KEYS
+    RESTORE_KEYS,
+    DELETE
   }
 
   @Constraints.Required
@@ -25,6 +27,8 @@ public class BackupTableParams extends TableManagerParams {
 
   @Constraints.Required
   public ActionType actionType;
+
+  public TableType backupType;
 
   public List<String> tableNameList;
 
@@ -40,7 +44,7 @@ public class BackupTableParams extends TableManagerParams {
   // Specifies the cron expression in case a recurring backup is expected.
   public String cronExpression = null;
 
-  // Specifies the time before deleting the backup from the storage
+  // Specifies the time in millisecs before deleting the backup from the storage
   // bucket.
   public long timeBeforeDelete = 0L;
 
@@ -52,4 +56,7 @@ public class BackupTableParams extends TableManagerParams {
 
   // The number of concurrent commands to run on nodes over SSH
   public int parallelism = 8;
+
+  // The associated schedule UUID (if applicable)
+  public UUID scheduleUUID = null;
 }

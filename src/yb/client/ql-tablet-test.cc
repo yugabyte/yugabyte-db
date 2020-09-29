@@ -78,6 +78,7 @@ DECLARE_uint64(sst_files_soft_limit);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(TEST_preparer_batch_inject_latency_ms);
 
 namespace yb {
 namespace client {
@@ -1243,21 +1244,26 @@ Result<OpId> GetAllAppliedOpId(const std::vector<tablet::TabletPeerPtr>& peers) 
   return STATUS(NotFound, "No leader found");
 }
 
-Status WaitForAppliedOpIdsStabilized(
+CHECKED_STATUS WaitForAppliedOpIdsStabilized(
     const std::vector<tablet::TabletPeerPtr>& peers, const MonoDelta& timeout) {
   std::vector<OpId> prev_last_applied_op_ids;
   return WaitFor(
       [&]() {
         std::vector<OpId> last_applied_op_ids = GetLastAppliedOpIds(peers);
-        return last_applied_op_ids == prev_last_applied_op_ids;
+        LOG(INFO) << "last_applied_op_ids: " << AsString(last_applied_op_ids);
+        if (last_applied_op_ids == prev_last_applied_op_ids) {
+          return true;
+        }
+        prev_last_applied_op_ids = last_applied_op_ids;
+        return false;
       },
-      timeout, "Waiting for applied op IDs to stabilize", 500ms * kTimeMultiplier, 1);
+      timeout, "Waiting for applied op IDs to stabilize", 2000ms * kTimeMultiplier, 1);
 }
 
 } // namespace
 
 TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
-  constexpr auto kAppliesTimeout = 5s * kTimeMultiplier;
+  constexpr auto kAppliesTimeout = 10s * kTimeMultiplier;
 
   TableHandle table;
   CreateTable(kTable1Name, &table, /* num_tablets =*/1);
@@ -1273,9 +1279,11 @@ TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
 
-  WaitForAppliedOpIdsStabilized(peers, kAppliesTimeout);
+  ASSERT_OK(WaitForAppliedOpIdsStabilized(peers, kAppliesTimeout));
   auto last_applied_op_ids = GetLastAppliedOpIds(peers);
+  LOG(INFO) << "last_applied_op_ids: " << AsString(last_applied_op_ids);
   auto all_applied_op_id = ASSERT_RESULT(GetAllAppliedOpId(peers));
+  LOG(INFO) << "all_applied_op_id: " << AsString(all_applied_op_id);
   for (const auto& last_applied_op_id : last_applied_op_ids) {
     ASSERT_EQ(last_applied_op_id, all_applied_op_id);
   }
@@ -1291,13 +1299,13 @@ TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
   }
   LOG(INFO) << "Writing completed";
 
-  WaitForAppliedOpIdsStabilized(peers, kAppliesTimeout);
+  ASSERT_OK(WaitForAppliedOpIdsStabilized(peers, kAppliesTimeout));
   auto new_all_applied_op_id = ASSERT_RESULT(GetAllAppliedOpId(peers));
   // We expect turned off TS to lag behind and not let all applied OP ids to advance.
   // In case TS-0 was leader, all_applied_op_id will be 0 on a new leader until it hears from TS-0.
   ASSERT_TRUE(new_all_applied_op_id == all_applied_op_id || new_all_applied_op_id.empty());
 
-  // Remember max applied op ID.
+  // Save max applied op ID.
   last_applied_op_ids = GetLastAppliedOpIds(peers);
   auto max_applied_op_id = OpId::Min();
   for (const auto& last_applied_op_id : last_applied_op_ids) {
@@ -1318,6 +1326,29 @@ TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
   for (const auto& last_applied_op_id : last_applied_op_ids) {
     ASSERT_EQ(last_applied_op_id, max_applied_op_id);
   }
+}
+
+TEST_F(QLTabletTest, SlowPrepare) {
+  FLAGS_TEST_preparer_batch_inject_latency_ms = 100;
+
+  const int kNumTablets = 1;
+
+  auto session = client_->NewSession();
+  session->SetTimeout(60s);
+
+  TestWorkload workload(cluster_.get());
+  workload.set_table_name(kTable1Name);
+  workload.set_write_timeout_millis(30000 * kTimeMultiplier);
+  workload.set_num_tablets(kNumTablets);
+  workload.set_num_write_threads(2);
+  workload.set_write_batch_size(1);
+  workload.Setup();
+  workload.Start();
+
+  std::this_thread::sleep_for(2s);
+  StepDownAllTablets(cluster_.get());
+
+  workload.StopAndJoin();
 }
 
 } // namespace client

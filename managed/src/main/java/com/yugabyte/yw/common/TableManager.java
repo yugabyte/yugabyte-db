@@ -15,10 +15,12 @@ import java.util.*;
 
 import com.yugabyte.yw.common.PlacementInfoUtil;
 
+import org.yb.Common.TableType;
 import play.libs.Json;
 
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
+import static com.yugabyte.yw.common.TableManager.CommandSubType.DELETE;
 
 @Singleton
 public class TableManager extends DevopsBase {
@@ -26,19 +28,21 @@ public class TableManager extends DevopsBase {
   private static final String YB_CLOUD_COMMAND_TYPE = "table";
   private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
   private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
+  private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
 
   public enum CommandSubType {
-    BACKUP,
-    BULK_IMPORT;
+    BACKUP(BACKUP_SCRIPT),
+    BULK_IMPORT("bin/yb_bulk_load.py"),
+    DELETE(BACKUP_SCRIPT);
+
+    private String script;
+
+    CommandSubType(String script) {
+      this.script = script;
+    }
 
     public String getScript() {
-      switch (this) {
-        case BACKUP:
-          return "bin/yb_backup.py";
-        case BULK_IMPORT:
-          return "bin/yb_bulk_load.py";
-      }
-      return null;
+      return script;
     }
   }
 
@@ -60,8 +64,6 @@ public class TableManager extends DevopsBase {
     Map<String, String> namespaceToConfig = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
-    String yb_home_dir = provider.getYbHome();
-    String certsDir = yb_home_dir + VM_CERT_DIR;
 
     if (region.provider.code.equals("kubernetes")) {
       PlacementInfo pi = primaryCluster.placementInfo;
@@ -74,9 +76,13 @@ public class TableManager extends DevopsBase {
     commandArgs.add("--masters");
     commandArgs.add(universe.getMasterAddresses());
 
+    BackupTableParams backupTableParams = null;
+    Customer customer = null;
+    CustomerConfig customerConfig = null;
+
     switch (subType) {
       case BACKUP:
-        BackupTableParams backupTableParams = (BackupTableParams) taskParams;
+        backupTableParams = (BackupTableParams) taskParams;
         commandArgs.add("--parallelism");
         commandArgs.add(Integer.toString(backupTableParams.parallelism));
         if (backupTableParams.actionType == BackupTableParams.ActionType.CREATE) {
@@ -95,7 +101,11 @@ public class TableManager extends DevopsBase {
               commandArgs.add(taskParams.tableName);
             }
             commandArgs.add("--keyspace");
-            commandArgs.add(taskParams.keyspace);
+            if (backupTableParams.backupType == TableType.PGSQL_TABLE_TYPE) {
+              commandArgs.add("ysql." + taskParams.keyspace);
+            } else {
+              commandArgs.add(taskParams.keyspace);
+            }
           }
         } else if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
           if (backupTableParams.tableUUIDList != null && !backupTableParams.tableUUIDList.isEmpty()) {
@@ -113,9 +123,9 @@ public class TableManager extends DevopsBase {
           }
         }
 
-        Customer customer = Customer.find.query().where().idEq(universe.customerId).findOne();
-        CustomerConfig customerConfig = CustomerConfig.get(customer.uuid,
-                                                           backupTableParams.storageConfigUUID);
+        customer = Customer.find.query().where().idEq(universe.customerId).findOne();
+        customerConfig = CustomerConfig.get(customer.uuid,
+                                            backupTableParams.storageConfigUUID);
         File backupKeysFile = EncryptionAtRestUtil
           .getUniverseBackupKeysFile(backupTableParams.storageLocation);
 
@@ -133,25 +143,6 @@ public class TableManager extends DevopsBase {
                 commandArgs.add(backupKeysFile.getAbsolutePath());
             }
         }
-
-        if (region.provider.code.equals("kubernetes")) {
-            commandArgs.add("--k8s_config");
-            commandArgs.add(Json.stringify(Json.toJson(namespaceToConfig)));
-            certsDir = K8S_CERT_PATH;
-        } else {
-          if (accessKey.getKeyInfo().sshUser != null && !accessKey.getKeyInfo().sshUser.isEmpty()) {
-            commandArgs.add("--ssh_user");
-            commandArgs.add(accessKey.getKeyInfo().sshUser);
-          }
-          commandArgs.add("--ssh_port");
-          commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
-          commandArgs.add("--ssh_key_path");
-          commandArgs.add(accessKey.getKeyInfo().privateKey);
-        }
-        commandArgs.add("--backup_location");
-        commandArgs.add(backupTableParams.storageLocation);
-        commandArgs.add("--storage_type");
-        commandArgs.add(customerConfig.name.toLowerCase());
         if (taskParams.tableUUID != null) {
           commandArgs.add("--table_uuid");
           commandArgs.add(taskParams.tableUUID.toString().replace("-", ""));
@@ -159,15 +150,13 @@ public class TableManager extends DevopsBase {
         commandArgs.add("--no_auto_name");
         if (nodeToNodeTlsEnabled) {
           commandArgs.add("--certs_dir");
-          commandArgs.add(certsDir);
-        }
-        commandArgs.add(backupTableParams.actionType.name().toLowerCase());
-        if (backupTableParams.enableVerboseLogs) {
-          commandArgs.add("--verbose");
+          commandArgs.add(getCertsDir(region, provider));
         }
         if (taskParams.sse) {
           commandArgs.add("--sse");
         }
+        addCommonCommandArgs(backupTableParams, accessKey, region, customerConfig,
+                             namespaceToConfig, commandArgs);
         // Update env vars with customer config data after provider config to make sure the correct
         // credentials are used.
         extraVars.putAll(customerConfig.dataAsMap());
@@ -207,10 +196,52 @@ public class TableManager extends DevopsBase {
         extraVars.put("AWS_DEFAULT_REGION", region.code);
 
         break;
+      case DELETE:
+        backupTableParams = (BackupTableParams) taskParams;
+        customer = Customer.find.query().where().idEq(universe.customerId).findOne();
+        customerConfig = CustomerConfig.get(customer.uuid,
+                                            backupTableParams.storageConfigUUID);
+        LOG.info("Deleting backup at location {}", backupTableParams.storageLocation);
+        addCommonCommandArgs(backupTableParams, accessKey, region, customerConfig,
+                             namespaceToConfig, commandArgs);
+        extraVars.putAll(customerConfig.dataAsMap());
+        break;
     }
 
     LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
     return shellProcessHandler.run(commandArgs, extraVars);
+  }
+
+  private String getCertsDir(Region region, Provider provider) {
+    return region.provider.code.equals("kubernetes") ? K8S_CERT_PATH :
+                                                       provider.getYbHome() + VM_CERT_DIR;
+  }
+
+  private void addCommonCommandArgs(BackupTableParams backupTableParams, AccessKey accessKey,
+                                    Region region, CustomerConfig customerConfig,
+                                    Map<String, String> namespaceToConfig,
+                                    List<String> commandArgs) {
+    if (region.provider.code.equals("kubernetes")) {
+      commandArgs.add("--k8s_config");
+      commandArgs.add(Json.stringify(Json.toJson(namespaceToConfig)));
+    } else {
+      if (accessKey.getKeyInfo().sshUser != null && !accessKey.getKeyInfo().sshUser.isEmpty()) {
+        commandArgs.add("--ssh_user");
+        commandArgs.add(accessKey.getKeyInfo().sshUser);
+      }
+      commandArgs.add("--ssh_port");
+      commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
+      commandArgs.add("--ssh_key_path");
+      commandArgs.add(accessKey.getKeyInfo().privateKey);
+    }
+    commandArgs.add("--backup_location");
+    commandArgs.add(backupTableParams.storageLocation);
+    commandArgs.add("--storage_type");
+    commandArgs.add(customerConfig.name.toLowerCase());
+    commandArgs.add(backupTableParams.actionType.name().toLowerCase());
+    if (backupTableParams.enableVerboseLogs) {
+      commandArgs.add("--verbose");
+    }
   }
 
   @Override
@@ -224,5 +255,9 @@ public class TableManager extends DevopsBase {
 
   public ShellProcessHandler.ShellResponse createBackup(BackupTableParams taskParams) {
     return runCommand(BACKUP, taskParams);
+  }
+
+  public ShellProcessHandler.ShellResponse deleteBackup(BackupTableParams taskParams) {
+    return runCommand(DELETE, taskParams);
   }
 }

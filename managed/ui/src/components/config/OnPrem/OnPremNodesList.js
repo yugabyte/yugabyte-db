@@ -72,24 +72,20 @@ class OnPremNodesList extends Component {
         return instances[region].reduce(function (acc, val) {
           if (isNonEmptyObject(val) && isNonEmptyString(val.zone)) {
             const currentZone = val.zone.trim();
+            const instanceName = isNonEmptyString(val.instanceName) ? val.instanceName.trim() : "";
             const currentZoneUUID = zoneList[region][currentZone];
-            const instanceNames = val.instanceNames.split(",");
             acc[currentZoneUUID] = acc[currentZoneUUID] || [];
-            if (val.instanceTypeIPs) {
-              val.instanceTypeIPs.split(",").forEach((ip, index) => {
-                acc[currentZoneUUID].push({
-                  zone: currentZone,
-                  region: region,
-                  ip: ip.trim(),
-                  instanceType: val.machineType,
-                  sshUser: isNonEmptyObject(currentCloudAccessKey) ?
-                    currentCloudAccessKey.keyInfo.sshUser : "",
-                  sshPort: isNonEmptyObject(currentCloudAccessKey) ?
-                    currentCloudAccessKey.keyInfo.sshPort : null,
-                  instanceName: instanceNames[index]
-                });
-              });
-            }
+            acc[currentZoneUUID].push({
+              zone: currentZone,
+              region: region,
+              ip: val.instanceTypeIP.trim(),
+              instanceType: val.machineType,
+              sshUser: isNonEmptyObject(currentCloudAccessKey) ?
+                currentCloudAccessKey.keyInfo.sshUser : "",
+              sshPort: isNonEmptyObject(currentCloudAccessKey) ?
+                currentCloudAccessKey.keyInfo.sshPort : null,
+              instanceName: instanceName
+            });
           }
           return acc;
         }, {});
@@ -114,26 +110,28 @@ class OnPremNodesList extends Component {
     this.props.reset();
   };
 
-  handleCheckNodesUsage = (data, row) => {
+  handleCheckNodesUsage = (inUse, row) => {
+    let result = 'n/a';
     const { universeList } = this.props;
-    if (data && getPromiseState(universeList).isSuccess()) {
-      const result = universeList.data.find(u => {
-        const nodes = u.universeDetails.nodeDetailsSet;
-        if (nodes) {
-          return !!nodes.find(n => n.azUuid === row.zoneUuid ||
-            (n.nodeUuid && n.nodeUuid === row.nodeUuid));
+
+    if (inUse) {
+      if (getPromiseState(universeList).isLoading() || getPromiseState(universeList).isInit()) {
+        result = 'Loading...';
+      } else if (getPromiseState(universeList).isSuccess()) {
+        const universe = universeList.data.find(item => {
+          // TODO: match by nodeUuid when it's fully supported by universe
+          return !!(item.universeDetails.nodeDetailsSet || [])
+            .find(node => node.nodeName && row.nodeName && node.nodeName === row.nodeName);
+        });
+        if (universe) {
+          result = <Link to={`/universes/${universe.universeUUID}`}>{universe.name}</Link>;
         }
-        return false;
-      });
-      if (result) {
-        return (
-          <Link to={`/universes/${result.universeUUID}`}>
-            {result.name}
-          </Link>
-        );
       }
+    } else {
+      result = 'NOT USED';
     }
-    return data;
+
+    return result;
   }
 
   UNSAFE_componentWillMount() {
@@ -166,6 +164,7 @@ class OnPremNodesList extends Component {
       nodeListItems = nodeInstanceList.data.map(function(item) {
         return {
           nodeId: item.nodeUuid,
+          nodeName: item.nodeName,
           inUse: item.inUse,
           ip: item.details.ip,
           instanceType: item.details.instanceType,
@@ -245,14 +244,21 @@ class OnPremNodesList extends Component {
 
         <Row>
           <Col xs={12}>
-            <BootstrapTable data={nodeListItems} >
-              <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} />
-              <TableHeaderColumn dataField="instanceName">Identifier</TableHeaderColumn>
-              <TableHeaderColumn dataField="ip">Address</TableHeaderColumn>
-              <TableHeaderColumn dataField="inUse" dataFormat={this.handleCheckNodesUsage}>In Use</TableHeaderColumn>
-              <TableHeaderColumn dataField="region">Region</TableHeaderColumn>
-              <TableHeaderColumn dataField="zone">Zone</TableHeaderColumn>
-              <TableHeaderColumn dataField="instanceType">Instance Type</TableHeaderColumn>
+            <BootstrapTable data={nodeListItems}
+              search
+              multiColumnSearch
+              options={{
+                clearSearch: true
+              }}
+              containerClass="onprem-nodes-table"
+            >
+              <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} dataSort/>
+              <TableHeaderColumn dataField="instanceName" dataSort>Identifier</TableHeaderColumn>
+              <TableHeaderColumn dataField="ip" dataSort>Address</TableHeaderColumn>
+              <TableHeaderColumn dataField="inUse" dataFormat={this.handleCheckNodesUsage} dataSort>Universe Name</TableHeaderColumn>
+              <TableHeaderColumn dataField="region" dataSort>Region</TableHeaderColumn>
+              <TableHeaderColumn dataField="zone" dataSort>Zone</TableHeaderColumn>
+              <TableHeaderColumn dataField="instanceType" dataSort>Instance Type</TableHeaderColumn>
               <TableHeaderColumn dataField="" dataFormat={removeNodeItem}/>
             </BootstrapTable>
           </Col>

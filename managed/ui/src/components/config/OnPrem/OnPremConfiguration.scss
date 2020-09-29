@@ -124,3 +124,23 @@
   margin-top: 5px;
   margin-bottom: -5px;
 }
+
+
+.onprem-nodes-table.react-bs-table-container {
+  margin-top: 90px;
+
+  .form-group.react-bs-table-search-form {
+    margin-right: 50px;
+    margin-top: -72px;
+
+    .input-group-btn {
+      button.react-bs-table-search-clear-btn {
+        height: 42px;
+        padding: 5px 15px;
+        border-top-right-radius: 5px;
+        border-bottom-right-radius: 5px;
+      }
+    }
+  }
+ 
+}

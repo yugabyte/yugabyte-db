@@ -349,12 +349,23 @@ Status RaftGroupMetadata::LoadOrCreate(FsManager* fs_manager,
 template <class TablesMap>
 CHECKED_STATUS MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
                                  const TablesMap& tables) {
+  std::string table_name = "<unknown_table_name>";
+  if (!table_id.empty()) {
+    const auto iter = tables.find(table_id);
+    if (iter != tables.end()) {
+      table_name = iter->second->table_name;
+    }
+  }
+  std::ostringstream string_stream;
+  string_stream << "Table " << table_name << " (" << table_id << ") not found in Raft group "
+      << raft_group_id;
+  std::string msg = string_stream.str();
 #ifndef NDEBUG
   // This very large message should be logged instead of being appended to STATUS.
   std::string suffix = Format(". Tables: $0.", tables);
-  VLOG(1) << "Table " << table_id << " not found in Raft group " << raft_group_id << suffix;
+  VLOG(1) << msg << suffix;
 #endif
-  return STATUS_FORMAT(NotFound, "Table $0 not found in Raft group $1", table_id, raft_group_id);
+  return STATUS(NotFound, msg);
 }
 
 Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(const std::string& table_id) const {
@@ -495,7 +506,7 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
       raft_group_id_(std::move(raft_group_id)),
       partition_(std::make_shared<Partition>(std::move(partition))),
       primary_table_id_(table_id),
-      kv_store_(KvStoreId(raft_group_id), rocksdb_dir),
+      kv_store_(KvStoreId(raft_group_id_), rocksdb_dir),
       fs_manager_(fs_manager),
       wal_dir_(wal_dir),
       tablet_data_state_(tablet_data_state),
@@ -523,7 +534,7 @@ RaftGroupMetadata::~RaftGroupMetadata() {
 RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id)
     : state_(kNotLoadedYet),
       raft_group_id_(std::move(raft_group_id)),
-      kv_store_(KvStoreId(raft_group_id)),
+      kv_store_(KvStoreId(raft_group_id_)),
       fs_manager_(fs_manager) {
 }
 

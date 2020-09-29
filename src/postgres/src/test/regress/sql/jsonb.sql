@@ -642,6 +642,8 @@ SELECT rec FROM jsonb_populate_record(
 -- anonymous record type
 SELECT jsonb_populate_record(null::record, '{"x": 0, "y": 1}');
 SELECT jsonb_populate_record(row(1,2), '{"f1": 0, "f2": 1}');
+SELECT * FROM
+  jsonb_populate_record(null::record, '{"x": 776}') AS (x int, y int);
 
 -- composite domain
 SELECT jsonb_populate_record(null::jb_ordered_pair, '{"x": 0, "y": 1}');
@@ -665,11 +667,15 @@ SELECT jsonb_populate_recordset(null::record, '[{"x": 0, "y": 1}]');
 SELECT jsonb_populate_recordset(row(1,2), '[{"f1": 0, "f2": 1}]');
 SELECT i, jsonb_populate_recordset(row(i,50), '[{"f1":"42"},{"f2":"43"}]')
 FROM (VALUES (1),(2)) v(i);
+SELECT * FROM
+  jsonb_populate_recordset(null::record, '[{"x": 776}]') AS (x int, y int);
 
 -- empty array is a corner case
 SELECT jsonb_populate_recordset(null::record, '[]');
 SELECT jsonb_populate_recordset(row(1,2), '[]');
 SELECT * FROM jsonb_populate_recordset(NULL::jbpop,'[]') q;
+SELECT * FROM
+  jsonb_populate_recordset(null::record, '[]') AS (x int, y int);
 
 -- composite domain
 SELECT jsonb_populate_recordset(null::jb_ordered_pair, '[{"x": 0, "y": 1}]');
@@ -709,6 +715,13 @@ select * from jsonb_to_record('{"ia2": [1, 2, 3]}') as x(ia2 int[][]);
 select * from jsonb_to_record('{"ia2": [[1, 2], [3, 4]]}') as x(ia2 int4[][]);
 select * from jsonb_to_record('{"ia2": [[[1], [2], [3]]]}') as x(ia2 int4[][]);
 
+select * from jsonb_to_record('{"out": {"key": 1}}') as x(out json);
+select * from jsonb_to_record('{"out": [{"key": 1}]}') as x(out json);
+select * from jsonb_to_record('{"out": "{\"key\": 1}"}') as x(out json);
+select * from jsonb_to_record('{"out": {"key": 1}}') as x(out jsonb);
+select * from jsonb_to_record('{"out": [{"key": 1}]}') as x(out jsonb);
+select * from jsonb_to_record('{"out": "{\"key\": 1}"}') as x(out jsonb);
+
 -- test type info caching in jsonb_populate_record()
 CREATE TEMP TABLE jsbpoptest (js jsonb);
 
@@ -740,6 +753,24 @@ SELECT count(*) FROM testjsonb WHERE j ? 'public';
 SELECT count(*) FROM testjsonb WHERE j ? 'bar';
 SELECT count(*) FROM testjsonb WHERE j ?| ARRAY['public','disabled'];
 SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) || exists($.disabled)';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled)';
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 
 CREATE INDEX jidx ON testjsonb USING gin (j);
 SET enable_seqscan = off;
@@ -757,6 +788,39 @@ SELECT count(*) FROM testjsonb WHERE j ? 'public';
 SELECT count(*) FROM testjsonb WHERE j ? 'bar';
 SELECT count(*) FROM testjsonb WHERE j ?| ARRAY['public','disabled'];
 SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.wait == null))';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.wait ? (@ == null))';
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) || exists($.disabled)';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled)';
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.array[*] == "bar")';
+SELECT count(*) FROM testjsonb WHERE j @? '$.array ? (@[*] == "bar")';
+SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 
 -- array exists - array elements should behave as keys (for GIN index scans too)
 CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
@@ -806,6 +870,34 @@ SELECT count(*) FROM testjsonb WHERE j @> '{"age":25}';
 SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
 -- exercise GIN_SEARCH_MODE_ALL
 SELECT count(*) FROM testjsonb WHERE j @> '{}';
+
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.wait == null))';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.wait ? (@ == null))';
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.array[*] == "bar")';
+SELECT count(*) FROM testjsonb WHERE j @? '$.array ? (@[*] == "bar")';
+SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 
 RESET enable_seqscan;
 DROP INDEX jidx;

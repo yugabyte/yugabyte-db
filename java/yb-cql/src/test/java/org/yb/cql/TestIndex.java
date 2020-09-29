@@ -1256,13 +1256,19 @@ public class TestIndex extends BaseCQLTest {
     LOG.info("Start test: " + getCurrentTestMethodName());
 
     // Test scalar index against ORDER BY non existing column.
-    session.execute("CREATE TABLE test_order_by(a INT PRIMARY KEY, b INT, c INT) " +
-                    "WITH TRANSACTIONS = {'enabled' : true};");
-    session.execute("CREATE INDEX test_order_by_idx ON test_order_by(b, c);");
+    session.execute("CREATE TABLE test_order_by(a INT PRIMARY KEY, b INT, c INT," +
+                    "  non_index_column INT, non_index_cluster_column INT)" +
+                    "  WITH TRANSACTIONS = {'enabled' : true};");
+    session.execute("CREATE INDEX test_order_by_idx ON test_order_by(b, c)" +
+                    "  INCLUDE (non_index_cluster_column);");
     // Run one valid query to make sure the setup is correct.
     runValidSelect("SELECT * FROM test_order_by WHERE b = 3 ORDER BY c;");
-    // Test invalid ORDER BY.
+    // Test invalid ORDER BY for non-existing column.
     runInvalidQuery("SELECT * FROM test_order_by WHERE b = 3 ORDER BY non_existent_column;");
+    // Test invalid ORDER BY for column "non_index_column" that exists in TABLE but not in INDEX.
+    runInvalidQuery("SELECT * FROM test_order_by WHERE b = 3 ORDER BY non_index_column;");
+    // Test invalid ORDER BY for column that is not an INDEX clustering column.
+    runInvalidQuery("SELECT * FROM test_order_by WHERE b = 3 ORDER BY non_index_cluster_column;");
 
     // Test jsonb index against ORDER BY non existing field.
     session.execute("CREATE TABLE test_jsonb_order_by(i INT, j JSONB, k INT, PRIMARY KEY (i, k))" +
@@ -1270,8 +1276,10 @@ public class TestIndex extends BaseCQLTest {
     session.execute("CREATE INDEX test_jsonb_order_by_idx ON test_jsonb_order_by(k, j->>'x');");
     // Run one valid query to make sure the setup is correct.
     runValidSelect("SELECT * FROM test_jsonb_order_by WHERE k = 1 ORDER BY j->>'x';");
-    // Test invalid ORDER BY.
+    // Test invalid ORDER BY non existing column "j->>'y'".
     runInvalidQuery("SELECT * FROM test_jsonb_order_by WHERE k = 1 ORDER BY j->>'y';");
+    // Test invalid ORDER BY column "j" that exists in the TABLE but not the INDEX.
+    runInvalidQuery("SELECT * FROM test_jsonb_order_by WHERE k = 1 ORDER BY j;");
   }
 
   @Test

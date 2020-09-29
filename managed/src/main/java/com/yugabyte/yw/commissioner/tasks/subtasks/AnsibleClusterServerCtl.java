@@ -49,6 +49,8 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     } catch (Exception e) {
       if (!taskParams().isForceDelete) {
         throw e;
+      } else {
+        LOG.debug("Ignoring error: {}", e.getMessage());
       }
     }
 

@@ -354,6 +354,81 @@ Deletes the `yb_demo_northwind` northwind database.
 
 -----
 
+## Environment Variables
+
+### For YSQL:  `YSQL_USER` `YSQL_PASSWORD` `YSQL_DB`
+
+Set `YSQL_PASSWORD` to use the cluster in enforced authentication mode.
+
+Combinations of environment variables and their uses. 
+
+- `YSQL_PASSWORD`
+   
+  Update the default yugabyte user's password.
+
+- `YSQL_PASSWORD, YSQL_DB`
+
+  Update the default yugabyte user's password and create `YSQL_DB` named DB.
+
+- `YSQL_PASSWORD, YSQL_USER`
+
+  Create `YSQL_USER` named user and DB with password `YSQL_PASSWORD`.
+
+- `YSQL_USER`
+
+  Create `YSQL_USER` named user and DB with password `YSQL_USER`.
+
+- `YSQL_USER, YSQL_DB`
+
+  Create `YSQL_USER` named user with password `YSQL_USER` and `YSQL_DB` named DB.
+
+- `YSQL_DB`
+
+  Create `YSQL_DB` named DB.
+
+- `YSQL_USER, YSQL_PASSWORD, YSQL_DB`
+  
+  Create `YSQL_USER` named user with password `YSQL_PASSWORD` and `YSQL_DB` named DB.
+
+### For YCQL:  `YCQL_USER` `YCQL_PASSWORD` `YCQL_KEYSPACE`
+
+Set `YCQL_USER` or `YCQL_PASSWORD` to use the cluster in enforced authentication mode.
+
+Combinations of environment variables and their uses.
+
+- `YCQL_PASSWORD`
+   
+  Update the default cassandra user's password.
+
+- `YCQL_PASSWORD, YCQL_KEYSPACE`
+
+  Update the default cassandra user's password and create `YCQL_KEYSPACE` named keyspace.
+
+- `YCQL_PASSWORD, YCQL_USER`
+
+  Create `YCQL_USER` named user and DB with password `YCQL_PASSWORD`.
+
+- `YCQL_USER`
+
+  Create `YCQL_USER` named user and DB with password `YCQL_USER`.
+
+- `YCQL_USER, YCQL_KEYSPACE`
+
+  Create `YCQL_USER` named user with password `YCQL_USER` and `YCQL_USER` named keyspace.
+
+- `YCQL_KEYSPACE`
+
+  Create `YCQL_KEYSPACE` named keyspace.
+
+- `YCQL_USER, YCQL_PASSWORD, YCQL_KEYSPACE`
+  
+  Create `YCQL_USER` named user with password `YCQL_PASSWORD` and `YCQL_KEYSPACE` named keyspace.
+
+**Note**
+- In the case of multi-node deployment, all nodes should have similar environment variables. 
+
+-----
+
 ## Examples
 
 ### Create a single-node cluster
@@ -361,7 +436,7 @@ Deletes the `yb_demo_northwind` northwind database.
 Create a single-node cluster with a given base dir and listen address. Note the need to provide a fully-qualified directory path for the base dir parameter.
 
 ```sh
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.0.0/data1 --listen=127.0.0.1
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.1.0/data1 --listen=127.0.0.1
 ```
 
 ### Create a multi-node cluster
@@ -369,8 +444,8 @@ bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.0.0/data1 --listen=1
 Add two more nodes to the cluster using the `join` option.
 
 ```sh
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.0.0/data2 --listen=127.0.0.2 --join=127.0.0.1
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.0.0/data3 --listen=127.0.0.3 --join=127.0.0.1
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.1.0/data2 --listen=127.0.0.2 --join=127.0.0.1
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.1.0/data3 --listen=127.0.0.3 --join=127.0.0.1
 ```
 
 ### Destroy a multi-node cluster
@@ -378,7 +453,7 @@ bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.0.0/data3 --listen=1
 Destroy the above multi-node cluster.
 
 ```sh
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.0.0/data1
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.0.0/data2
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.0.0/data1
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.1.0/data1
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.1.0/data2
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.1.0/data1
 ```

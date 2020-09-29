@@ -589,6 +589,7 @@ bool IntermittentTxnFailure(const Status& status) {
     "Transaction expired"s,
     "Transaction metadata missing"s,
     "Unknown transaction, could be recently aborted"s,
+    "Transaction was recently aborted"s,
   };
   auto msg = status.ToString();
   for (const auto& allowed : kAllowedMessages) {
@@ -685,10 +686,14 @@ void SnapshotTxnTest::TestMultiWriteWithRestart() {
         op = ReadRow(session, key->value);
         auto flush_result = session->Flush();
         if (flush_result.ok()) {
-          break;
+          if (op->succeeded()) {
+            break;
+          }
+          if (op->response().error_message().find("timed out after") == std::string::npos) {
+            ASSERT_TRUE(op->succeeded()) << "Read failed: " << op->response().ShortDebugString();
+          }
         }
       }
-      ASSERT_TRUE(op->succeeded()) << "Read failed: " << op->response().ShortDebugString();
       auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
       ASSERT_EQ(rowblock->row_count(), 1);
       const auto& first_column = rowblock->row(0).column(0);

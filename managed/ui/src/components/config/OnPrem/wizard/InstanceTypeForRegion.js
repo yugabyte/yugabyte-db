@@ -24,9 +24,9 @@ export default class InstanceTypeForRegion extends Component {
   render() {
     const self = this;
     const {fields, zoneOptions, machineTypeOptions, formType, useHostname} = this.props;
-    let addressType = useHostname ? 'Hostnames' : 'IP Addresses';
+    let addressType = useHostname ? 'Hostname' : 'IP Address';
     if (formType === 'modal') {
-      addressType = useHostname ? 'Hosts' : 'IPs';
+      addressType = useHostname ? 'Hostname' : 'IP Address';
     }
 
     return (
@@ -39,10 +39,10 @@ export default class InstanceTypeForRegion extends Component {
             Instance Type
           </Col>
           <Col lg={3}>
-            Instances <span className="row-head-subscript">Comma Separated {addressType}</span>
+            Instance <span className="row-head-subscript">{addressType}</span>
           </Col>
           <Col lg={3}>
-            Instance ID <span className="row-head-subscript">Comma Separated Instance Identifiers</span>
+            Instance ID <span className="row-head-subscript">(Optional)</span>
           </Col>
         </Row>
         {
@@ -62,10 +62,10 @@ export default class InstanceTypeForRegion extends Component {
                 <Field name={`${instanceTypeItem}.machineType`} component={YBSelect} insetError={true} options={machineTypeOptions} />
               </Col>
               <Col lg={3}>
-                <Field name={`${instanceTypeItem}.instanceTypeIPs`} component={YBInputField} insetError={true} />
+                <Field name={`${instanceTypeItem}.instanceTypeIP`} component={YBInputField} insetError={true} />
               </Col>
               <Col lg={3}>
-                <Field name={`${instanceTypeItem}.instanceNames`} component={YBInputField} insetError={true} />
+                <Field name={`${instanceTypeItem}.instanceName`} component={YBInputField} insetError={true} />
               </Col>
             </Row>
           ))

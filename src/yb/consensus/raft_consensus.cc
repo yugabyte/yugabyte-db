@@ -3133,5 +3133,10 @@ void RaftConsensus::TrackOperationMemory(const yb::OpId& op_id) {
   queue_->TrackOperationsMemory({op_id});
 }
 
+int64_t RaftConsensus::TEST_LeaderTerm() const {
+  auto lock = state_->LockForRead();
+  return state_->GetCurrentTermUnlocked();
+}
+
 }  // namespace consensus
 }  // namespace yb

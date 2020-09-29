@@ -14,6 +14,7 @@
 #ifndef YB_CONSENSUS_RETRYABLE_REQUESTS_H
 #define YB_CONSENSUS_RETRYABLE_REQUESTS_H
 
+#include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/util/restart_safe_clock.h"
@@ -61,12 +62,25 @@ class RetryableRequests {
   // Returns number or running requests and number of ranges of replicated requests.
   RetryableRequestsCounts TEST_Counts();
 
+  Result<RetryableRequestId> MinRunningRequestId(const ClientId& client_id) const;
+
   void SetMetricEntity(const scoped_refptr<MetricEntity>& metric_entity);
 
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+struct MinRunningRequestIdTag : yb::IntegralErrorTag<int64_t> {
+  // It is part of the wire protocol and should not be changed once released.
+  static constexpr uint8_t kCategory = 13;
+
+  static std::string ToMessage(Value value) {
+    return Format("Min running request ID: $0", value);
+  }
+};
+
+typedef yb::StatusErrorCodeImpl<MinRunningRequestIdTag> MinRunningRequestIdStatusData;
 
 } // namespace consensus
 } // namespace yb

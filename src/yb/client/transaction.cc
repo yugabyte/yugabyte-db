@@ -37,6 +37,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tsan_util.h"
 
@@ -126,6 +127,10 @@ class YBTransaction::Impl final {
 
   void SetPriority(uint64_t priority) {
     metadata_.priority = priority;
+  }
+
+  uint64_t GetPriority() const {
+    return metadata_.priority;
   }
 
   YBTransactionPtr CreateSimilarTransaction() {
@@ -477,7 +482,23 @@ class YBTransaction::Impl final {
   }
 
   Status ApplyChildResult(const ChildTransactionResultPB& result) {
+    std::vector<std::string> cleanup_tablet_ids;
+    auto se = ScopeExit([this, &cleanup_tablet_ids] {
+      if (cleanup_tablet_ids.empty()) {
+        return;
+      }
+      CleanupTransaction(
+          manager_->client(), manager_->clock(), metadata_.transaction_id, Sealed::kFalse,
+          cleanup_tablet_ids);
+    });
     std::unique_lock<std::mutex> lock(mutex_);
+    if (state_.load(std::memory_order_acquire) == TransactionState::kAborted) {
+      cleanup_tablet_ids.reserve(result.tablets().size());
+      for (const auto& tablet : result.tablets()) {
+        cleanup_tablet_ids.push_back(tablet.tablet_id());
+      }
+    }
+
     RETURN_NOT_OK(CheckRunning(&lock));
     if (child_) {
       return STATUS(IllegalState, "Apply child result of child transaction");
@@ -545,7 +566,7 @@ class YBTransaction::Impl final {
 
  private:
   void CompleteConstruction() {
-    log_prefix_ = Format("$0: ", metadata_.transaction_id);
+    log_prefix_ = Format("$0$1: ", metadata_.transaction_id, child_ ? " (CHILD)" : "");
     heartbeat_handle_ = manager_->rpcs().InvalidHandle();
     commit_handle_ = manager_->rpcs().InvalidHandle();
     abort_handle_ = manager_->rpcs().InvalidHandle();
@@ -661,9 +682,9 @@ class YBTransaction::Impl final {
       std::lock_guard<std::mutex> lock(mutex_);
       tablet_ids.reserve(tablets_.size());
       for (const auto& tablet : tablets_) {
-        if (tablet.second.has_metadata) {
-          tablet_ids.push_back(tablet.first);
-        }
+        // We don't check has_metadata here, because intents could be written even in case of
+        // failure. For instance in case of conflict on unique index.
+        tablet_ids.push_back(tablet.first);
       }
     }
 
@@ -873,7 +894,8 @@ class YBTransaction::Impl final {
           },
           std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
     } else {
-      LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status;
+      auto state = state_.load(std::memory_order_acquire);
+      LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status << ", state: " << state;
       if (status.IsAborted()) {
         // Service is shutting down, no reason to retry.
         SetError(status);
@@ -881,10 +903,11 @@ class YBTransaction::Impl final {
           NotifyWaiters(status);
         }
         return;
-      } else if (status.IsExpired()) {
+      }
+      if (status.IsExpired()) {
         SetError(status);
         // If state is committed, then we should not cleanup.
-        if (state_.load(std::memory_order_acquire) == TransactionState::kRunning) {
+        if (state == TransactionState::kRunning) {
           DoAbortCleanup(transaction);
         }
         if (transaction_status == TransactionStatus::CREATED) {
@@ -1015,6 +1038,10 @@ YBTransaction::~YBTransaction() {
 
 void YBTransaction::SetPriority(uint64_t priority) {
   impl_->SetPriority(priority);
+}
+
+uint64_t YBTransaction::GetPriority() const {
+  return impl_->GetPriority();
 }
 
 Status YBTransaction::Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
