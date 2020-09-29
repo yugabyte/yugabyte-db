@@ -17,49 +17,49 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/configure-providers/aws" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/configure-providers/gcp" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/configure-providers/azure" class="nav-link active">
+    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/azure" class="nav-link active">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/configure-providers/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/configure-providers/vmware-tanzu" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/vmware-tanzu" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/configure-providers/on-premises" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/on-premises" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/configure-providers/air-gapped" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/air-gapped" class="nav-link">
       <i class="fas ed"></i>
       Air-gapped
     </a>
