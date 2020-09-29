@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: instance-tags
     parent: configure-yp
-    weight: 644
+    weight: 
 isTocNested: true
 showAsideToc: true
 ---

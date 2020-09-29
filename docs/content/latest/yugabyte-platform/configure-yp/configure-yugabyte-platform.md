@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: configure-yugabyte-platform
     parent: configure-yp
-    weight: 100
+    weight: 115
 isTocNested: true
 showAsideToc: true
 ---

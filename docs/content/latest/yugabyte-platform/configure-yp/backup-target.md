@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: backup-target
     parent: configure-yp
-    weight: 120
+    weight: 112
 isTocNested: true
 showAsideToc: true
 ---
