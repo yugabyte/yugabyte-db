@@ -39,7 +39,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure-backup-target/">
+    <a class="section-link icon-offset" href="backup-target/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
         <div class="title">Configure backup target</div>
