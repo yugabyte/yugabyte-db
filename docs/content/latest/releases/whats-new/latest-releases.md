@@ -31,27 +31,7 @@ Prior to v2.0, YSQL was still in beta. Upon release of v2.0, a backward-incompat
 
 {{< /note >}}
 
-## Notable features and changes
-
-Note: Content will be added as new notable features and changes are available in the patch releases of the v2.3 latest release series.
-
-### YSQL
-
-- Load data from a large file to a table using the improved `COPY <table> FROM <file>` statement. For details, see [`COPY`](../../../api/ysql/commands/). Improved memory management should prevent out-of-memory (OOM) issues.
-
-- Specify smaller transaction sizes using the `COPY OPTION` `ROWS_PER_TRANSACTION`. For an example, see [Import a large table using smaller transactions](../../../api/ysql/commands/cmd_copy/#import-a-large-table-using-smaller-transactions)
-
-### Yugabyte Platform
-
-#### Add Microsoft Azure integration
-
-- Use existing network resources [#5389]
-- Create default network resources [#5388]
-- Add UI for Azure provider [#5378]
-
-## Release notes
-
-# v2.3.2 - September 29, 2020
+## Latest release: v2.3.2 - September 29, 2020
 
 **Build:** `2.3.2.0-b37`
 
@@ -71,6 +51,51 @@ Note: Content will be added as new notable features and changes are available in
 <br />
 
 ### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.3.2.0-b37
+```
+
+## Notable features and changes (cumulative for the v2.3 latest release series)
+
+Note: Content will be added as new notable features and changes are available in the patch releases of the v2.3 latest release series. For the latest v2.3 release notes, see [Release notes](#release-notes) below.
+
+### YSQL
+
+- Load data from a large file to a table using the improved `COPY <table> FROM <file>` statement. For details, see [`COPY`](../../../api/ysql/commands/). Improved memory management should prevent out-of-memory (OOM) issues.
+
+- Specify smaller transaction sizes using the `COPY OPTION` `ROWS_PER_TRANSACTION`. For an example, see [Import a large table using smaller transactions](../../../api/ysql/commands/cmd_copy/#import-a-large-table-using-smaller-transactions)
+
+### Yugabyte Platform
+
+#### Add Microsoft Azure integration
+
+- Use existing network resources [#5389]
+- Create default network resources [#5388]
+- Add UI for Azure provider [#5378]
+
+## Release notes
+
+### v2.3.2 - September 29, 2020
+
+**Build:** `2.3.2.0-b37`
+
+#### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.2.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.2.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+#### Docker
 
 ```sh
 docker pull yugabytedb/yugabyte:2.3.2.0-b37
