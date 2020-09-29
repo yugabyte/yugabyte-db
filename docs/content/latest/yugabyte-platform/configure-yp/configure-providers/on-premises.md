@@ -7,9 +7,9 @@ aliases:
  - /latest/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
   latest:
-    identifier: configure-providers-1-on-premises
-    parent: configure-providers-configure-yugabyte-platform
-    weight: 100
+    identifier: configure-providers-6-on-premises
+    parent: configure-providers
+    weight: 111
 isTocNested: true
 showAsideToc: true
 ---

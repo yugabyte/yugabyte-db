@@ -6,7 +6,7 @@ description: Prepare your YugabyteDB nodes.
 menu:
   latest:
     identifier: prepare-universe-nodes
-    parent: install-yugabyte-platform
+    parent: install-yp
 weight: 615
 type: page
 isTocNested: true

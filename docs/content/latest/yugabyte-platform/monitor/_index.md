@@ -1,13 +1,13 @@
 ---
-title: Monitor and alert
-headerTitle: Monitor and alert
-linkTitle: Monitor and alert
-description: Monitor Yugabyte Platform and alert on events.
+title: Alert and monitor universes
+headerTitle: Alert and monitor universes
+linkTitle: Alert and monitor universes
+description: Use Yugabyte Platform to alert and monitor.
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Plan and prepare for installing and deploying the Yugabyte Platform.
+headcontent: Use Yugabyte Platform to alert and monitor.
 menu:
   latest:
-    identifier: yugabyte-platform
+    identifier: alert-and-monitor
     parent: monitor
     weight: 660
 ---

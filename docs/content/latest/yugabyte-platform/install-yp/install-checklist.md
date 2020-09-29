@@ -6,7 +6,7 @@ description: Checklist of high-level stops for installing Yugabyte Platform.
 menu:
   latest:
     identifier: install-checklist-yp
-    parent: install-yugabyte-platform
+    parent: install-yp
     weight: 623
 isTocNested: true
 showAsideToc: true

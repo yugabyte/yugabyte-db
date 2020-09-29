@@ -13,7 +13,6 @@ menu:
     weight: 653
 isTocNested: true
 showAsideToc: true
-
 ---
 
 Use Yugabyte Platform to perform a regularly scheduled backup of a full YugabyteDB universe or selected tables.

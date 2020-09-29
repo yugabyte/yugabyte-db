@@ -9,6 +9,7 @@ menu:
   latest:
     identifier: back-up-restore-yp
     parent: administer-yp
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---

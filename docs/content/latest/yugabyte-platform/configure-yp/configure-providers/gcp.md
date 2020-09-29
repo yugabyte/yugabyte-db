@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: configure-providers-2-gcp
     parent: configure-providers
-    weight: 100
+    weight: 111
 isTocNested: true
 showAsideToc: true
 ---

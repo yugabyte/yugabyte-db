@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: configure-providers-3-azure
     parent: configure-providers
-    weight: 100
+    weight: 111
 isTocNested: true
 showAsideToc: true
 ---

@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     identifier: configure-yp-yugabyte-platform
-    parent: configure-yugabyte-platform-yugabyte-platform
+    parent: configure-yp
     weight: 615
 isTocNested: true
 showAsideToc: true

@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     identifier: create-edit-instance-tags
-    parent: configure-yugabyte-platform-yugabyte-platform
+    parent: configure-yp
     weight: 644
 isTocNested: true
 showAsideToc: true

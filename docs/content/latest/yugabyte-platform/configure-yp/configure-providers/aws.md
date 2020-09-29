@@ -7,11 +7,12 @@ aliases:
   - /latest/deploy/enterprise-edition/configure-cloud-providers/aws
   - /latest/deploy/enterprise-edition/configure-cloud-providers/aws
   - /latest/yugabyte-platform/deploy/configure-cloud-providers/aws
+  - /latest/yugabyte-platform/configure-yugabyte-platform/
 menu:
   latest:
     identifier: configure-providers-1-aws
     parent: configure-providers
-    weight: 100
+    weight: 111
 isTocNested: true
 showAsideToc: true
 ---

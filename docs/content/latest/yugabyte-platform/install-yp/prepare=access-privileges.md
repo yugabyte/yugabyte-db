@@ -5,7 +5,7 @@ linkTitle: Prepare access and privilege
 description: Access and privilege requirements for the Yugabyte Platform and YugabyteDB data nodes.
 menu:
   latest:
-    parent: install-yugabyte-platform
+    parent: install-yp
     identifier: prepare-access-privileges
     weight: 617
 type: page

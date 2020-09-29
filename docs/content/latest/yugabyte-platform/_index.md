@@ -26,7 +26,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-yugabyte-platform/">
+    <a class="section-link icon-offset" href="install-yp/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
         <div class="title">Install Yugabyte Platform</div>
@@ -38,7 +38,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure-yugabyte-platform/">
+    <a class="section-link icon-offset" href="configure-yp/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
         <div class="title">Configure Yugabyte Platform</div>
@@ -105,6 +105,18 @@ menu:
       </div>
       <div class="body">
         Troubleshoot YugabyteDB clusters through Yugabyte Platform.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="administer-yp/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
+        <div class="title">Administer Yugabyte Platform</div>
+      </div>
+      <div class="body">
+        Administer Yugabyte Platform.
       </div>
     </a>
   </div>
