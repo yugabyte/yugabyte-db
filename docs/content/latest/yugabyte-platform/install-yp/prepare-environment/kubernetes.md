@@ -1,7 +1,7 @@
 ---
 title: Prepare the Kubernetes environment
 headerTitle: Prepare the Kubernetes environment
-linkTitle: 1. Prepare the Kubernetes environment
+linkTitle: 1. Prepare the environment
 description: Prepare the Kubernetes environment for Yugabyte Platform.
 aliases:
   - /latest/deploy/enterprise-edition/prepare-environment/

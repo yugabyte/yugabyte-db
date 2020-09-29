@@ -1,8 +1,8 @@
 ---
-title: Install Yugabyte Platform in an on-premises, airgapped host
-headerTitle: Install Yugabyte Platform in an on-premises, airgapped host
-linkTitle: 2. Install Yugabyte Platform
-description: Install Yugabyte Platform on an airgapped host.
+title: Prepare the on-premises, airgapped host environment
+headerTitle: Prepare the on-premises, airgapped host environment
+linkTitle: 1. Prepare the environment
+description: Prepare the on-premises, airgapped host environment.
 aliases:
   - /latest/deploy/enterprise-edition/install-admin-console/airgapped
 menu:
@@ -179,10 +179,10 @@ The next step is to add a password to protect the Replicated Admin Console (for 
 
 ### Preflight checks
 
-Replicated will perform a set of preflight checks to ensure that the host is setup correctly for the Yugabyte Platform application.
+Replicated will perform a set of preflight checks to ensure that the host is set up correctly for Yugabyte Platform.
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 
 Clicking **Continue** above will bring you to the Yugabyte Platform configuration.
 
-In case the pre-flight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to identify the resolution.
+In case the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to identify the resolution.

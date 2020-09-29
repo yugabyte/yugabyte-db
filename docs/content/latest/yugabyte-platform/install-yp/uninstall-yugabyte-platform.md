@@ -5,10 +5,9 @@ linkTitle: Uninstall Yugabyte Platform
 description: Uninstall Yugabyte Platform.
 menu:
   latest:
-    parent: install-yp
     identifier: uninstall-y-p
+    parent: install-yp
     weight: 80
-type: page
 isTocNested: true
 showAsideToc: true
 ---

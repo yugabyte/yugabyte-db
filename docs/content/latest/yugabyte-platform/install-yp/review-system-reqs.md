@@ -5,10 +5,9 @@ linkTitle: Review system requirements
 description: System requirements for Yugabyte Platform.
 menu:
   latest:
-    parent: install-yp
     identifier: review-system-reqs
+    parent: install-yp
     weight: 20
-type: page
 isTocNested: true
 showAsideToc: true
 ---

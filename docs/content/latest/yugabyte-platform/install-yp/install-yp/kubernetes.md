@@ -135,11 +135,11 @@ $ helm search repo yugabytedb/yugabyte
 The latest Helm Chart version and App version will be displayed.
 
 ```
-NAME               	CHART VERSION	APP VERSION	DESRIPTION                                       
+NAME               	CHART VERSION	APP VERSION	DESRIPTION
 yugabytedb/yugabyte	2.3.0        	2.3.1.0	YugabyteDB is the high-performance distributed ..
 ```
 
-4. Run the following `helm install` command to install Yugabyte Platform (YugaWare).
+4. Run the following `helm install` command to install Yugabyte Platform (`yugaware`).
 
 ```sh
 $ helm install yw-test yugabytedb/yugaware --version 2.3.0 -n yw-test --wait
@@ -175,7 +175,7 @@ NAME                                           READY   AGE
 statefulset.apps/yw-test-yugaware   1/1     5m52s
 ```
 
-## Upgrade Yugabyte Platform (YugaWare)
+## Upgrade Yugabyte Platform
 
 To upgrade your installed Yugabyte Platform, run the following `helm upgrade` command.
 
@@ -194,7 +194,7 @@ REVISION: 2
 TEST SUITE: None
 ```
 
-## Delete the Yugabyte Platform (YugaWare)
+## Delete the Yugabyte Platform
 
 To remove the Yugabyte Platform, run the `helm delete` command:
 
@@ -219,4 +219,3 @@ You should see the following message:
 ```
 namespace "yw-test" deleted
 ```
-

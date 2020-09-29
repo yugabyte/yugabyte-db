@@ -5,10 +5,9 @@ linkTitle: Prepare access and privilege
 description: Access and privilege requirements for the Yugabyte Platform and YugabyteDB data nodes.
 menu:
   latest:
-    parent: install-yp
     identifier: prepare-access-privileges
+    parent: install-yp
     weight: 40
-type: page
 isTocNested: true
 showAsideToc: true
 ---
@@ -41,7 +40,6 @@ $ sudo passwd yw
 4. Ensure the `/home/yw` home directory exists for this user. The directory should have been created automatrically as a result of the above steps.
 
 5. Verify the `/home/yw` directory is owned by `yw:yw`.
-
 
 ## Access as `sudo`
 

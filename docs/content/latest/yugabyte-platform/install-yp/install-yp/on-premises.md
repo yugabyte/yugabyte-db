@@ -94,7 +94,7 @@ You should see an output similar to the following.
 
 ### Set up HTTPS for Replicated
 
-Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). You will address this warning as soon after setting up HTTPS for the Replicated Admin Console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated Admin Console.
+Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). You will address this warning as soon after setting up HTTPS for the Replicated Admin Console in the next step. Click **Continue to Setup** and then **ADVANCED** to bypass this warning and go to the Replicated Admin Console.
 
 ![Replicated SSL warning](/images/replicated/replicated-warning.png)
 
@@ -120,16 +120,16 @@ If you are asked to choose an installation type, choose `Online`.
 
 ### Secure Replicated
 
-The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from Yugabyte Platform, the Admin Console for YugabyteDB).
+The next step is to add a password to protect the Replicated Admin Console (this is different from the Yugabyte Platform console.
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
-### Pre-flight checks
+### Preflight checks
 
-Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the Yugabyte Platform application.
+Replicated will perform a set of preflight checks to ensure that the host is set up correctly for the Yugabyte Platform.
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 
-Clicking Continue above will bring us to Yugabyte Platform configuration.
+Clicking **Continue** above will bring you to Yugabyte Platform configuration.
 
-In case the pre-flight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to identify the resolution.
+In case the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to identify the resolution.

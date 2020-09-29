@@ -8,7 +8,6 @@ menu:
     identifier: prepare-universe-nodes
     parent: install-yp
 weight: 30
-type: page
 isTocNested: true
 showAsideToc: true
 ---
