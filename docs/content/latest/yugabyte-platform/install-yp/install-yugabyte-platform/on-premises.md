@@ -6,7 +6,7 @@ description: Install Yugabyte Platform in your on-premises environment.
 menu:
   latest:
     identifier: install-yp-5-on-premises
-    parent: install-yp
+    parent: install-yugabyte-platform
     weight: 77
 isTocNested: true
 showAsideToc: true
@@ -15,42 +15,42 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-yp/aws" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yp/install-yugabyte-platform/aws" class="nav-link">
       <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-yp/gcp" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yp/install-yugabyte-platform/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-yp/azure" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yp/install-yugabyte-platform/azure" class="nav-link">
        <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-yp/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yp/install-yugabyte-platform/kubernetes" class="nav-link">
        <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-yp/on-premises" class="nav-link active">
+    <a href="/latest/yugabyte-platform/install-yp/install-yugabyte-platform/on-premises" class="nav-link active">
        <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-yp/air-gapped" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yp/install-yugabyte-platform/air-gapped" class="nav-link">
        <i class="fas fa-unlink" aria-hidden="true"></i>
       Air-gapped
     </a>
