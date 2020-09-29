@@ -205,6 +205,74 @@ COPY t FROM stdin;
 
 SELECT COUNT(*) FROM t;
 
+-- Test COPY FROM on combination of cases
+
+-- Create trigger functions
+create or replace function noticeBefore() returns trigger as $$begin raise notice 'b: %', new.b; return NEW; end$$ language plpgsql;
+create or replace function noticeAfter() returns trigger as $$begin raise notice 'a: %', new.b; return NEW; end$$ language plpgsql;
+
+-- Test before and after row insert trigger
+create table q (a int not null, b int);
+create trigger trigBefore_q before insert on q for each row execute procedure noticeBefore();
+create trigger trigAfter_q after insert on q for each row execute procedure noticeAfter();
+copy q from stdin;
+1	5
+2	6
+1	7
+\.
+
+-- Test before row insert trigger with check constraint
+create table p (a int check (a > 0), b int);
+create trigger trigBefore_p before insert on p for each row execute procedure noticeBefore();
+copy p from stdin;
+1	5
+1	6
+\.
+
+-- should fail, fails constraint
+copy p from stdin;
+0	1
+\.
+
+-- Test index and auto generated column
+create table u (a serial, b int);
+create unique index key on u (a);
+copy u from stdin;
+3	5
+4	6
+\.
+
+copy u (b) from stdin;
+7
+8
+\.
+
+-- should fail, a duplicates
+copy u from stdin;
+1	9
+\.
+
+-- Test after row insert trigger with check constraint, index, and auto generated column
+create table v (a int default 1 check (a > 0), b serial);
+create unique index key2 on v (a, b);
+create trigger trigAfter_v after insert on v for each row execute procedure noticeAfter();
+copy v from stdin;
+1	5
+1	6
+1	7
+\.
+
+copy v (b) from stdin;
+8
+9
+10
+\.
+
+-- should fail, duplicate key (1, 5)
+copy v (b) from stdin;
+5
+\.
+
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE x;
@@ -213,3 +281,7 @@ DROP TABLE testnl;
 DROP TABLE testeoc;
 DROP TABLE testnull;
 DROP TABLE t;
+DROP TABLE q;
+DROP TABLE p;
+DROP TABLE u;
+DROP TABLE v;

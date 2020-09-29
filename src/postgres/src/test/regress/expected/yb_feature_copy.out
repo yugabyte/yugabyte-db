@@ -284,6 +284,57 @@ SELECT COUNT(*) FROM t;
      0
 (1 row)
 
+-- Test COPY FROM on combination of cases
+-- Create trigger functions
+create or replace function noticeBefore() returns trigger as $$begin raise notice 'b: %', new.b; return NEW; end$$ language plpgsql;
+create or replace function noticeAfter() returns trigger as $$begin raise notice 'a: %', new.b; return NEW; end$$ language plpgsql;
+-- Test before and after row insert trigger
+create table q (a int not null, b int);
+create trigger trigBefore_q before insert on q for each row execute procedure noticeBefore();
+create trigger trigAfter_q after insert on q for each row execute procedure noticeAfter();
+copy q from stdin;
+NOTICE:  b: 5
+NOTICE:  b: 6
+NOTICE:  b: 7
+NOTICE:  a: 5
+NOTICE:  a: 6
+NOTICE:  a: 7
+-- Test before row insert trigger with check constraint
+create table p (a int check (a > 0), b int);
+create trigger trigBefore_p before insert on p for each row execute procedure noticeBefore();
+copy p from stdin;
+NOTICE:  b: 5
+NOTICE:  b: 6
+-- should fail, fails constraint
+copy p from stdin;
+NOTICE:  b: 1
+ERROR:  new row for relation "p" violates check constraint "p_a_check"
+DETAIL:  Failing row contains (0, 1).
+CONTEXT:  COPY p, line 1: "0	1"
+-- Test index and auto generated column
+create table u (a serial, b int);
+create unique index key on u (a);
+copy u from stdin;
+copy u (b) from stdin;
+-- should fail, a duplicates
+copy u from stdin;
+ERROR:  duplicate key value violates unique constraint "key"
+-- Test after row insert trigger with check constraint, index, and auto generated column
+create table v (a int default 1 check (a > 0), b serial);
+create unique index key2 on v (a, b);
+create trigger trigAfter_v after insert on v for each row execute procedure noticeAfter();
+copy v from stdin;
+NOTICE:  a: 5
+NOTICE:  a: 6
+NOTICE:  a: 7
+copy v (b) from stdin;
+NOTICE:  a: 8
+NOTICE:  a: 9
+NOTICE:  a: 10
+-- should fail, duplicate key (1, 5)
+copy v (b) from stdin;
+NOTICE:  a: 5
+ERROR:  duplicate key value violates unique constraint "key2"
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE x;
@@ -292,3 +343,7 @@ DROP TABLE testnl;
 DROP TABLE testeoc;
 DROP TABLE testnull;
 DROP TABLE t;
+DROP TABLE q;
+DROP TABLE p;
+DROP TABLE u;
+DROP TABLE v;
