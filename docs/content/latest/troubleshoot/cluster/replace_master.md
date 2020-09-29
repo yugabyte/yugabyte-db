@@ -54,7 +54,7 @@ To remove the failed YB-Master server from the cluster, use the [`yb-admin chang
 ```
 {{< note title="Note" >}}
 
-Make sure to specify all YB-Master addresses which will prevent the new YB-Master server from unexpectedly becoming the leader.
+Make sure to specify all YB-Master addresses including M4 to make sure that if M4 becomes the leader, then yb-admin can find it.
 
 {{< /note >}}
 ## Validate cluster
