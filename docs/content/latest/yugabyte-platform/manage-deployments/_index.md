@@ -101,7 +101,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   </div>
   
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="edit-universes/">
+    <a class="section-link icon-offset" href="edit-universe/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
         <div class="title">Edit universes</div>
