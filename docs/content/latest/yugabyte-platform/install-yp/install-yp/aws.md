@@ -30,7 +30,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yp/install-yp/azure" class="nav-link">
-       <i class="icon azure" aria-hidden="true"></i>
+       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
@@ -58,6 +58,4 @@ showAsideToc: true
 
 </ul>
 
-
 ??? Content is needed
-

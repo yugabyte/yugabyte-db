@@ -30,7 +30,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yp/install-yp/azure" class="nav-link">
-       <i class="icon azure" aria-hidden="true"></i>
+       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
@@ -60,7 +60,7 @@ showAsideToc: true
 
 ## Prerequisites
 
-The Yugabyte Platform (YugaWare) Helm chart was tested using the following software versions:
+The Yugabyte Platform Helm chart was tested using the following software versions:
 
 - Kubernetes 1.10 or later.
 - Helm 3.0 or later.

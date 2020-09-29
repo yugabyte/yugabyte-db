@@ -30,7 +30,7 @@ ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
     <a href="/latest/yugabyte-platform/install-yp/prepare-environment/azure" class="nav-link">
-      <i class="icon azure" aria-hidden="true"></i>
+      <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
