@@ -19,7 +19,7 @@ For staying aware of potential issues with your deployment, the Yugabyte Platfor
 
 ## How to enable and tweak
 
-To configure health checking, visit your profile page in the YugabyteDB Admin Console by clicking the top-right dropdown featuring your account email and then clicking on the **Profile** entry.
+To configure health checking, go to your profile page in the Yugabyte Platform console by clicking the top-right drop-down list featuring your account email and then select the **Profile** option.
 
 ![Profile Dropdown](/images/ee/health/profile-button.png)
 
@@ -32,12 +32,12 @@ Under the **Alerting Controls**, there are two fields that you can edit:
 - A text input for a CSV of custom email addresses to send alerts to.
 - A toggle to switch on/off sending the same alerts back to the Yugabyte support team.
 
-Either setting at least one email address or enabling sending to Yugabyte will turn the feature on and subsequently begin to track the health of your universes. Currently, this has two modes of operation:
+Setting at least one email address or enabling sending to Yugabyte will enable the feature and subsequently begin to track the health of your universes. Currently, this has two modes of operation:
 
 - Every 5 minutes, the background checker will run over every universe and perform a set of checks for each individual node. If any of the checks fails, the Health tab of the universe will highlight the errors and an email will be sent out to all the configured email addresses.
-- Every 12 hours, whether or not there are errors, a status email is sent out to ensure that the checking is actually taking place and you are not just getting a false sense of security!
+- Every 12 hours, whether or not there are errors, a status email message is sent out to ensure that the health checking is occurring.
 
-Both of the timers are currently fixed, but will soon be user-configurable knobs.
+Both timing options are hard-coded, but will soon become user-configurable knobs.
 
 ## How to view the health of a universe
 

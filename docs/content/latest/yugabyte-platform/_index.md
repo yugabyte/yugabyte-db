@@ -74,7 +74,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="monitor/">
+    <a class="section-link icon-offset" href="alert-monitor/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Alert and monitor</div>
@@ -86,7 +86,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="back-up-and-restore/">
+    <a class="section-link icon-offset" href="back-up-restore/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
         <div class="title">Back up and restore</div>

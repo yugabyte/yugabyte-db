@@ -4,7 +4,7 @@ headerTitle: Alert and monitor universes
 linkTitle: Alert and monitor universes
 description: Use Yugabyte Platform to alert and monitor.
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Use Yugabyte Platform to alert and monitor.
+headcontent: Use Yugabyte Platform to alert and monitor YugabyteDB universes.
 menu:
   latest:
     identifier: alert-and-monitor
