@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: secure-yp
     parent: yugabyte-platform
-    weight: 665
+    weight: 647
 ---
 
 <div class="row">

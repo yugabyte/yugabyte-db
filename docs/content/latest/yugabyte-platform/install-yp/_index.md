@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: install-yp
     parent: yugabyte-platform
-weight: 650
+weight: 642
 isTocNested: true
 showAsideToc: true
 ---

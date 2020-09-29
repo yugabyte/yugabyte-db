@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: configure-yp
     parent: yugabyte-platform
-    weight: 645
+    weight: 641
 ---
 
 <div class="row">

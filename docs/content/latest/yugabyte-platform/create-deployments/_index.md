@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: create-deployments
     parent: yugabyte-platform
-    weight: 655
+    weight: 643
 isTocNested: true
 showAsideToc: true
 ---
