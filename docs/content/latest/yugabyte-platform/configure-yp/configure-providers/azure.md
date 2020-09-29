@@ -60,7 +60,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/configure-yugabyte-platform/configure-providers/air-gapped" class="nav-link">
-      <i class="fas fa-unlinked"></i>
+      <i class="fas ed"></i>
       Air-gapped
     </a>
   </li>

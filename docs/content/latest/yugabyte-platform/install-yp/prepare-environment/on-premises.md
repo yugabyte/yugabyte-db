@@ -54,7 +54,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yp/prepare-environment/air-gapped" class="nav-link">
-      <i class="fas fa-unlinked aria-hidden="true"></i>
+      <i class="fas fa-unlinked" aria-hidden="true"></i>
       Air-gapped
     </a>
   </li>
