@@ -5,9 +5,9 @@ linkTitle: Configure backup target
 description: Configure backup target.
 menu:
   latest:
-    identifier: configure-backup-target
+    identifier: backup-target
     parent: configure-yp
-    weight: 615
+    weight: 120
 isTocNested: true
 showAsideToc: true
 ---
