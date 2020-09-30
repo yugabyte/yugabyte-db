@@ -281,7 +281,7 @@ class ReplicaState {
   //
   // If this advanced the committed index, sets *committed_op_id_changed to true.
   CHECKED_STATUS UpdateMajorityReplicatedUnlocked(
-      const OpIdPB& majority_replicated, OpIdPB* committed_op_id, bool* committed_op_id_changed,
+      const OpId& majority_replicated, OpId* committed_op_id, bool* committed_op_id_changed,
       OpId* last_applied_op_id);
 
   // Advances the committed index.
@@ -478,7 +478,7 @@ class ReplicaState {
   // this id do not need to be resent by the leader. This is not guaranteed to
   // be monotonically increasing due to the possibility for log truncation and
   // aborted operations when a leader change occurs.
-  yb::OpId last_received_op_id_;
+  OpId last_received_op_id_;
 
   // Same as last_received_op_id_ but only includes operations sent by the
   // current leader. The "term" in this op may not actually match the current
@@ -492,7 +492,7 @@ class ReplicaState {
   // The ID of the operation that was last committed. Initialized to MinimumOpId().
   // NOTE: due to implementation details at this and lower layers all operations up to
   // last_committed_op_id_ are guaranteed to be already applied.
-  yb::OpId last_committed_op_id_;
+  OpId last_committed_op_id_;
 
   // The id of the split operation requesting to split this tablet. This is set when split
   // operation is added to log and cleared if this operation is aborted.
@@ -503,7 +503,7 @@ class ReplicaState {
   // After n-th split the latest after-split tablet created could have n split operations in its
   // Raft log, but split_op_id will be uninitialized, because all these split operations are
   // designated for "ancestors" of this tablet, but not for this tablet itself.
-  yb::OpId split_op_id_;
+  OpId split_op_id_;
 
   // If set, a leader election is pending upon the specific op id commitment to this peer's log.
   OpIdPB pending_election_opid_;

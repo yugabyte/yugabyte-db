@@ -79,6 +79,7 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(TEST_preparer_batch_inject_latency_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 namespace yb {
 namespace client {
@@ -1349,6 +1350,54 @@ TEST_F(QLTabletTest, SlowPrepare) {
   StepDownAllTablets(cluster_.get());
 
   workload.StopAndJoin();
+}
+
+TEST_F(QLTabletTest, ElectUnsynchronizedFollower) {
+  TableHandle table;
+  CreateTable(kTable1Name, &table, 1);
+
+  auto unsynchronized_follower = cluster_->mini_tablet_server(0)->server()->permanent_uuid();
+  LOG(INFO) << "Unsynchronized follower: " << unsynchronized_follower;
+  cluster_->mini_tablet_server(0)->Shutdown();
+
+  auto session = CreateSession();
+  SetValue(session, 1, -1, table);
+
+  int leader_idx = -1;
+  for (int i = 1; i != cluster_->num_tablet_servers(); ++i) {
+    auto* ts_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
+    if (ts_manager->GetLeaderCount() == 1) {
+      leader_idx = i;
+      break;
+    }
+  }
+  ASSERT_GE(leader_idx, 1);
+  LOG(INFO) << "Leader: " << cluster_->mini_tablet_server(leader_idx)->server()->permanent_uuid();
+  int follower_idx = 1 ^ 2 ^ leader_idx;
+  LOG(INFO) << "Turning off follower: "
+            << cluster_->mini_tablet_server(follower_idx)->server()->permanent_uuid();
+  cluster_->mini_tablet_server(follower_idx)->Shutdown();
+  auto peers =
+      cluster_->mini_tablet_server(leader_idx)->server()->tablet_manager()->GetTabletPeers();
+  ASSERT_EQ(peers.size(), 1);
+  {
+    google::FlagSaver flag_saver;
+    consensus::LeaderStepDownRequestPB req;
+    req.set_tablet_id(peers.front()->tablet_id());
+    req.set_force_step_down(true);
+    req.set_new_leader_uuid(unsynchronized_follower);
+    consensus::LeaderStepDownResponsePB resp;
+
+    FLAGS_leader_failure_max_missed_heartbeat_periods = 10000;
+    ASSERT_OK(peers.front()->raft_consensus()->StepDown(&req, &resp));
+    ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
+  }
+
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+
+  ASSERT_NO_FATALS(SetValue(session, 2, -2, table));
+
+  ASSERT_OK(cluster_->mini_tablet_server(follower_idx)->Start());
 }
 
 } // namespace client

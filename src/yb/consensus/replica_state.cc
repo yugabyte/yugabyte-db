@@ -746,10 +746,9 @@ scoped_refptr<ConsensusRound> ReplicaState::GetPendingOpByIndexOrNullUnlocked(in
 }
 
 Status ReplicaState::UpdateMajorityReplicatedUnlocked(
-    const OpIdPB& majority_replicated, OpIdPB* committed_op_id,
+    const OpId& majority_replicated, OpId* committed_op_id,
     bool* committed_op_id_changed, OpId* last_applied_op_id) {
   DCHECK(IsLocked());
-  DCHECK(majority_replicated.IsInitialized());
   if (PREDICT_FALSE(state_ == kShuttingDown || state_ == kShutDown)) {
     return STATUS(ServiceUnavailable, "Cannot trigger apply. Replica is shutting down.");
   }
@@ -761,8 +760,8 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(
   // then 'committed_op_id' is simply equal to majority replicated.
   if (last_committed_op_id_.term == GetCurrentTermUnlocked()) {
     *committed_op_id_changed = VERIFY_RESULT(AdvanceCommittedOpIdUnlocked(
-        yb::OpId::FromPB(majority_replicated), CouldStop::kFalse));
-    last_committed_op_id_.ToPB(committed_op_id);
+        majority_replicated, CouldStop::kFalse));
+    *committed_op_id = last_committed_op_id_;
     *last_applied_op_id = GetLastAppliedOpIdUnlocked();
     return Status::OK();
   }
@@ -770,11 +769,11 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(
   // If the last committed operation is not in the current term (such as when
   // we change leaders) but 'majority_replicated' is then we can advance the
   // 'committed_op_id' too.
-  if (majority_replicated.term() == GetCurrentTermUnlocked()) {
+  if (majority_replicated.term == GetCurrentTermUnlocked()) {
     auto previous = last_committed_op_id_;
     *committed_op_id_changed = VERIFY_RESULT(AdvanceCommittedOpIdUnlocked(
-        yb::OpId::FromPB(majority_replicated), CouldStop::kFalse));
-    last_committed_op_id_.ToPB(committed_op_id);
+        majority_replicated, CouldStop::kFalse));
+    *committed_op_id = last_committed_op_id_;
     *last_applied_op_id = GetLastAppliedOpIdUnlocked();
     LOG_WITH_PREFIX(INFO)
         << "Advanced the committed_op_id across terms."
@@ -783,13 +782,13 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(
     return Status::OK();
   }
 
-  last_committed_op_id_.ToPB(committed_op_id);
+  *committed_op_id = last_committed_op_id_;
   *last_applied_op_id = GetLastAppliedOpIdUnlocked();
   YB_LOG_EVERY_N_SECS(WARNING, 1) << LogPrefix()
           << "Can't advance the committed index across term boundaries"
           << " until operations from the current term are replicated."
           << " Last committed operation was: " << last_committed_op_id_ << ","
-          << " New majority replicated is: " << majority_replicated.ShortDebugString() << ","
+          << " New majority replicated is: " << majority_replicated << ","
           << " Current term is: " << GetCurrentTermUnlocked();
 
   return Status::OK();
