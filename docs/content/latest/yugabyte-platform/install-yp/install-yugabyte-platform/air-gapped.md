@@ -5,10 +5,11 @@ linkTitle: 3. Install Yugabyte Platform
 description: Install Yugabyte Platform in your on-premises, air-gapped environment.
 menu:
   latest:
-    identifier: install-yp-6-air-gapped
-    name: 3. Install Yugabyte Platform
     parent: install-yugabyte-platform
+    name: 3. Install Yugabyte Platform
+    identifier: install-yugabyte-platform-6-air-gapped
     weight: 77
+type: page
 isTocNested: true
 showAsideToc: true
 ---

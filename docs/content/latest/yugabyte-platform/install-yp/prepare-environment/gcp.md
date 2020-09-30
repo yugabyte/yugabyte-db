@@ -5,10 +5,11 @@ linkTitle: 1. Prepare the environment
 description: Prepare the Google Cloud Platform (GCP) environment
 menu:
   latest:
-    identifier: prepare-environment-2-gcp
-    name: 1. Prepare the environment
     parent: prepare-environment
+    name: 1. Prepare the environment
+    identifier: prepare-environment-2-gcp
     weight: 55
+type: page
 isTocNested: true
 showAsideToc: true
 ---

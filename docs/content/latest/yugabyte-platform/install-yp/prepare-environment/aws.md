@@ -7,10 +7,11 @@ aliases:
  - /latest/yugabyte-platform/install-yp/prepare-environment/
 menu:
   latest:
-    identifier: prepare-environment-1-aws
-    name: 1. Prepare the environment
     parent: prepare-environment
+    name: 1. Prepare the environment
+    identifier: prepare-environment-1-aws
     weight: 55
+type: page
 isTocNested: true
 showAsideToc: true
 ---

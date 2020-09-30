@@ -8,10 +8,11 @@ aliases:
   - /latest/yugabyte-platform/deploy/prepare-environment/
 menu:
   latest:
-    identifier: prepare-environment-5-on-premises
-    name: 1. Prepare the environment
     parent: prepare-environment
+    name: 1. Prepare the environment
+    identifier: prepare-environment-5-on-premises
     weight: 55
+type: page
 isTocNested: true
 showAsideToc: true
 ---

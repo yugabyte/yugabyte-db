@@ -7,10 +7,11 @@ aliases:
   - /latest/deploy/enterprise-edition/install-admin-console/airgapped
 menu:
   latest:
-    identifier: prepare-environment-6-air-gapped
-    name: 1. Prepare the environment
     parent: prepare-environment
+    name: 1. Prepare the environment
+    identifier: prepare-environment-6-air-gapped
     weight: 55
+type: page
 isTocNested: true
 showAsideToc: true
 ---

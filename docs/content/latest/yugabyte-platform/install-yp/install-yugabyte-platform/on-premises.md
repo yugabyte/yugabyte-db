@@ -3,11 +3,12 @@ title: Install Yugabyte Platform - On-premises
 headerTitle: Install Yugabyte Platform - On-premises
 linkTitle: 3. Install Yugabyte Platform
 description: Install Yugabyte Platform in your on-premises environment.
+type: page
 menu:
   latest:
-    identifier: install-yp-5-on-premises
-    name: 3. Install Yugabyte Platform
     parent: install-yugabyte-platform
+    name: 3. Install Yugabyte Platform
+    identifier: install-yugabyte-platform-5-on-premises
     weight: 77
 isTocNested: true
 showAsideToc: true

@@ -5,8 +5,8 @@ linkTitle: Install Yugabyte Platform
 description: Install Yugabyte Platform and prepare universe nodes.
 menu:
   latest:
-    identifier: install-yp
     parent: yugabyte-platform
+    identifier: install-yp
 weight: 642
 isTocNested: true
 showAsideToc: true

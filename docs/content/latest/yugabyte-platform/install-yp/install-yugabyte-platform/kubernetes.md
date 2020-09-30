@@ -5,10 +5,11 @@ linkTitle: 3. Install Yugabyte Platform
 description: Install Yugabyte Platform in your Kubernetes environment.
 menu:
   latest:
-    identifier: install-yp-4-kubernetes
-    name: 3. Install Yugabyte Platform
     parent: install-yugabyte-platform
+    name: 3. Install Yugabyte Platform
+    identifier: install-yugabyte-platform-4-kubernetes
     weight: 77
+type: page
 isTocNested: true
 showAsideToc: true
 ---
