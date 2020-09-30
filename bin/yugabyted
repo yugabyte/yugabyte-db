@@ -1117,7 +1117,7 @@ class ControlScript(object):
 
         default_base_dir = os.path.join(YUGABYTE_DIR, "var")
         default_conf_path = os.path.join(default_base_dir, "conf", "{}.conf".format(SCRIPT_NAME))
-        base_dir = args.base_dir or default_base_dir
+        base_dir = os.path.abspath(args.base_dir) if args.base_dir else default_base_dir
         base_dir_conf = ''
         if args.base_dir:
             base_dir_conf = os.path.join(base_dir, "conf", "{}.conf".format(SCRIPT_NAME))
