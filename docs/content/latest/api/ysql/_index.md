@@ -25,9 +25,9 @@ The main components of YSQL include the data definition language (DDL), the data
 
 {{< note title="Note" >}}
 
-The YSQL subsystem directly uses the SQL query layer from the PostgreSQL source code and exposes the same syntax and semantics. If you don't find what you're looking for in the Yugabyte documentation, you might find answers in the relevant [PostgreSQL documentation](https://www.postgresql.org/docs/11/index.html). Successive YugabyteDB releases preserve the syntax and semantics of the PostgreSQL query layer, although some features might not be supported for distributed SQL. Consult the YSQL documentation for supported syntax and extensions.
+The YSQL subsystem directly uses the SQL processing layer from the PostgreSQL source code and exposes almost identical syntax and semantics. If you don't find what you're looking for in the Yugabyte documentation, you might find answers in the relevant [PostgreSQL documentation](https://www.postgresql.org/docs/11/index.html). Successive YugabyteDB releases preserve the syntax and semantics of the PostgreSQL query layer, although some features might not be supported for distributed SQL. Consult the YSQL documentation for supported syntax and extensions.
 
-To find the version of the PostgreSQL query layer used in YugabyteDB, you can use the `version()` function. The following YSQL query displays only the first part of the returned value:
+To find the version of the PostgreSQL processing layer used in YugabyteDB, you can use the `version()` function. The following YSQL query displays only the first part of the returned value:
 
 ```plpgsql
 select rpad(version(), 18)||'...' as v;
