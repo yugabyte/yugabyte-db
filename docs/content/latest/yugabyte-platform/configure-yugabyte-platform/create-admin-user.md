@@ -1,8 +1,8 @@
 ---
-title: Create admin user
-headerTitle: Create admin user
-linkTitle: 3. Create admin user
-description: Create admin user.
+title: Create the admin user
+headerTitle: Create the admin user
+linkTitle: Create admin user
+description: Create the admin user.
 menu:
   latest:
     identifier: create-admin-user

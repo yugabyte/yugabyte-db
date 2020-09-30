@@ -1,8 +1,8 @@
 ---
-title: Configure backup target
-headerTitle: Configure backup target
-linkTitle: Configure backup target
-description: Configure backup target.
+title: Configure the backup target
+headerTitle: Set the backup target
+linkTitle: Backup target
+description: Set the backup target.
 menu:
   latest:
     identifier: backup-target
@@ -11,5 +11,3 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-
-??? Content is needed
