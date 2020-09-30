@@ -521,6 +521,8 @@ class YBClient {
                     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
                     StdStatusCallback callback);
 
+  void DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback);
+
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
   // If primary_only is set to true, we expect the primary/sync cluster tserver count only.

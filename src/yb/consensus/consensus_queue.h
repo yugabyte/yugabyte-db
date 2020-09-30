@@ -303,7 +303,7 @@ class PeerMessageQueue {
 
   OpId TEST_GetCommittedIndex() const;
 
-  OpId TEST_GetAllAppliedOpId() const;
+  OpId GetAllAppliedOpId() const;
 
   // Returns the current majority replicated OpId, for tests.
   OpId TEST_GetMajorityReplicatedOpId() const;
@@ -500,7 +500,7 @@ class PeerMessageQueue {
   // Updates op id replicated on each node.
   void UpdateAllReplicatedOpId(OpId* result) REQUIRES(queue_lock_);
 
-  // Updates op id applied on each node.
+  // Updates op ID applied on each node.
   void UpdateAllAppliedOpId(OpId* result) REQUIRES(queue_lock_);
 
   // Updates op id replicated on each non-lagging node.

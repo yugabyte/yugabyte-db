@@ -64,6 +64,9 @@ class CatalogManagerUtil {
   static Result<std::string> GetPlacementUuidFromRaftPeer(
       const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer);
 
+  // Returns error if tablet partition is not covered by running inner tablets partitions.
+  static CHECKED_STATUS CheckIfCanDeleteSingleTablet(const scoped_refptr<TabletInfo>& tablet);
+
  private:
   CatalogManagerUtil();
 

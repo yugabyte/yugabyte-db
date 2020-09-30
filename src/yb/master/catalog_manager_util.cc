@@ -219,5 +219,62 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
   }
 }
 
+CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
+    const scoped_refptr<TabletInfo>& tablet) {
+  const auto& tablet_id = tablet->tablet_id();
+
+  const auto tablet_lock = tablet->LockForRead();
+  const auto tablet_pb = tablet_lock->data().pb;
+  if (tablet_pb.state() == SysTabletsEntryPB::DELETED) {
+    return STATUS_FORMAT(NotFound, "Tablet $0 has been already deleted", tablet_id);
+  }
+  const auto partition = tablet_pb.partition();
+
+  TabletInfos tablets_in_range;
+  VLOG(3) << "Tablet " << tablet_id << " " << AsString(partition);
+  tablet->table()->GetTabletsInRange(
+      partition.partition_key_start(), partition.partition_key_end(), &tablets_in_range);
+
+  std::string partition_key = partition.partition_key_start();
+  for (const auto& inner_tablet : tablets_in_range) {
+    if (inner_tablet->tablet_id() == tablet_id) {
+      continue;
+    }
+    PartitionPB inner_partition;
+    SysTabletsEntryPB::State inner_tablet_state;
+    {
+      const auto inner_tablet_lock = inner_tablet->LockForRead();
+      const auto& pb = inner_tablet_lock->data().pb;
+      inner_partition = pb.partition();
+      inner_tablet_state = pb.state();
+    }
+    VLOG(3) << "Inner tablet " << inner_tablet->tablet_id()
+            << " partition: " << AsString(inner_partition)
+            << " state: " << SysTabletsEntryPB_State_Name(inner_tablet_state);
+    if (inner_tablet_state != SysTabletsEntryPB::RUNNING) {
+      continue;
+    }
+    if (partition_key != inner_partition.partition_key_start()) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "Can't delete tablet $0 not covered by child tablets. Partition gap: $1 ... $2",
+          tablet_id, Slice(partition_key).ToDebugString(),
+          Slice(inner_partition.partition_key_start()).ToDebugString());
+    }
+    partition_key = inner_partition.partition_key_end();
+    if (!partition.partition_key_end().empty() && partition_key >= partition.partition_key_end()) {
+      break;
+    }
+  }
+  if (partition_key != partition.partition_key_end()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Can't delete tablet $0 not covered by child tablets. Partition gap: $1 ... $2",
+        tablet_id, Slice(partition_key).ToDebugString(),
+        Slice(partition.partition_key_end()).ToDebugString());
+  }
+  return Status::OK();
+}
+
 } // namespace master
 } // namespace yb
