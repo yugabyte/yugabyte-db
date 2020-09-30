@@ -870,5 +870,10 @@ void MasterServiceImpl::SplitTablet(
   HandleIn(req, resp, &rpc, &CatalogManager::SplitTablet);
 }
 
+void MasterServiceImpl::DeleteTablet(
+    const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::DeleteTablet);
+}
+
 } // namespace master
 } // namespace yb

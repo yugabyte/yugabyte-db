@@ -363,7 +363,7 @@ TEST_F(ConsensusQueueTest, TestPeersDontAckBeyondWatermarks) {
   // replicated watermark to the last op appended to the local log.
   ASSERT_EQ(queue_->TEST_GetAllReplicatedIndex(), MakeOpIdForIndex(kNumMessages));
   ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), OpId::Min());
-  ASSERT_EQ(queue_->TEST_GetAllAppliedOpId(), OpId::Min());
+  ASSERT_EQ(queue_->GetAllAppliedOpId(), OpId::Min());
 
   // Start to track the peer after the queue has some messages in it
   // at a point that is halfway through the current messages in the queue.
@@ -379,7 +379,7 @@ TEST_F(ConsensusQueueTest, TestPeersDontAckBeyondWatermarks) {
   ASSERT_EQ(queue_->TEST_GetAllReplicatedIndex(), OpId::Min());
   ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), OpId::Min());
   ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), OpId::Min());
-  ASSERT_EQ(queue_->TEST_GetAllAppliedOpId(), OpId::Min());
+  ASSERT_EQ(queue_->GetAllAppliedOpId(), OpId::Min());
 
   ReplicateMsgsHolder refs;
   bool needs_remote_bootstrap;
@@ -443,7 +443,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   queue_->raft_pool_observers_token_->Wait();
   ASSERT_EQ(queue_->TEST_GetCommittedIndex(), OpId::Min());
   ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), OpId::Min());
-  ASSERT_EQ(queue_->TEST_GetAllAppliedOpId(), OpId::Min());
+  ASSERT_EQ(queue_->GetAllAppliedOpId(), OpId::Min());
 
   // NOTE: We don't need to get operations from the queue. The queue
   // only cares about what the peer reported as received, not what was sent.
@@ -462,7 +462,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   queue_->raft_pool_observers_token_->Wait();
   ASSERT_EQ(queue_->TEST_GetCommittedIndex(), OpId::Min());
   ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), OpId::Min());
-  ASSERT_EQ(queue_->TEST_GetAllAppliedOpId(), OpId::Min());
+  ASSERT_EQ(queue_->GetAllAppliedOpId(), OpId::Min());
 
   // Ack the first five operations for peer-2
   response.set_responder_uuid("peer-2");
@@ -640,7 +640,7 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
   // 0.0 since we haven't had a successful exchange with the 'remote' peer.
   ASSERT_EQ(queue_->TEST_GetAllReplicatedIndex(), OpId::Min());
   ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), committed_op_id);
-  ASSERT_EQ(queue_->TEST_GetAllAppliedOpId(), OpId::Min());
+  ASSERT_EQ(queue_->GetAllAppliedOpId(), OpId::Min());
 
   // Test even when a correct peer responds (meaning we actually get to execute
   // watermark advancement) we sill have the same all-replicated watermark.
@@ -650,7 +650,7 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
 
   ASSERT_EQ(queue_->TEST_GetAllReplicatedIndex(), OpId::Min());
   ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), committed_op_id);
-  ASSERT_EQ(queue_->TEST_GetAllAppliedOpId(), OpId::Min());
+  ASSERT_EQ(queue_->GetAllAppliedOpId(), OpId::Min());
 
   // Generate another request for the remote peer, which should include
   // all of the ops since the peer's last-known committed index.

@@ -3020,8 +3020,8 @@ yb::OpId RaftConsensus::GetLastAppliedOpId() {
   return state_->GetLastAppliedOpIdUnlocked();
 }
 
-yb::OpId RaftConsensus::TEST_GetAllAppliedOpId() {
-  return queue_->TEST_GetAllAppliedOpId();
+yb::OpId RaftConsensus::GetAllAppliedOpId() {
+  return queue_->GetAllAppliedOpId();
 }
 
 yb::OpId RaftConsensus::GetSplitOpId() {

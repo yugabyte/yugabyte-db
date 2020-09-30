@@ -29,9 +29,24 @@ namespace master {
 
 const string default_cloud = "aws";
 const string default_region = "us-west-1";
-const int kNumReplicas = 3;
+const int kDefaultNumReplicas = 3;
 const string kLivePlacementUuid = "live";
 const string kReadReplicaPlacementUuidPrefix = "rr_$0";
+
+scoped_refptr<TabletInfo> CreateTablet(
+    const scoped_refptr<TableInfo>& table, const TabletId& tablet_id, const string& start_key,
+    const string& end_key) {
+  scoped_refptr<TabletInfo> tablet = new TabletInfo(table, tablet_id);
+  auto l = tablet->LockForWrite();
+  PartitionPB* partition = l->mutable_data()->pb.mutable_partition();
+  partition->set_partition_key_start(start_key);
+  partition->set_partition_key_end(end_key);
+  l->mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+
+  table->AddTablet(tablet.get());
+  l->Commit();
+  return tablet;
+}
 
 void CreateTable(const vector<string> split_keys, const int num_replicas, bool setup_placement,
                  TableInfo* table, vector<scoped_refptr<TabletInfo>>* tablets) {
@@ -41,16 +56,7 @@ void CreateTable(const vector<string> split_keys, const int num_replicas, bool s
     const string& end_key = (i == kNumSplits) ? "" : split_keys[i];
     string tablet_id = strings::Substitute("tablet-$0-$1", start_key, end_key);
 
-    TabletInfo* tablet = new TabletInfo(table, tablet_id);
-    auto l = tablet->LockForWrite();
-    PartitionPB* partition = l->mutable_data()->pb.mutable_partition();
-    partition->set_partition_key_start(start_key);
-    partition->set_partition_key_end(end_key);
-    l->mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
-
-    table->AddTablet(tablet);
-    l->Commit();
-    tablets->push_back(make_scoped_refptr(tablet));
+    tablets->push_back(CreateTablet(table, tablet_id, start_key, end_key));
   }
 
   if (setup_placement) {
@@ -77,7 +83,7 @@ void SetupRaftPeer(consensus::RaftPeerPB::MemberType member_type, std::string az
 void SetupClusterConfig(vector<string> azs, ReplicationInfoPB* replication_info) {
 
   PlacementInfoPB* placement_info = replication_info->mutable_live_replicas();
-  placement_info->set_num_replicas(kNumReplicas);
+  placement_info->set_num_replicas(kDefaultNumReplicas);
   for (const string& az : azs) {
     auto pb = placement_info->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
@@ -452,7 +458,7 @@ class TestLoadBalancerBase {
 
   void TestLeaderOverReplication() {
     LOG(INFO) << "Skip leader TS being picked with over-replication.";
-    replication_info_.mutable_live_replicas()->set_num_replicas(kNumReplicas);
+    replication_info_.mutable_live_replicas()->set_num_replicas(kDefaultNumReplicas);
 
     // Create one more TS.
     ts_descs_.push_back(SetupTS("3333", "a"));
@@ -544,7 +550,7 @@ class TestLoadBalancerBase {
   void TestNoPlacement() {
     LOG(INFO) << "Testing with no placement information";
     PlacementInfoPB* cluster_placement = replication_info_.mutable_live_replicas();
-    cluster_placement->set_num_replicas(kNumReplicas);
+    cluster_placement->set_num_replicas(kDefaultNumReplicas);
     // Analyze the tablets into the internal state.
     AnalyzeTablets();
 
@@ -596,7 +602,7 @@ class TestLoadBalancerBase {
   void TestMovingMultipleTabletsFromSameServer() {
     LOG(INFO) << "Testing moving multiple tablets from the same tablet server";
     PlacementInfoPB *cluster_placement = replication_info_.mutable_live_replicas();
-    cluster_placement->set_num_replicas(kNumReplicas);
+    cluster_placement->set_num_replicas(kDefaultNumReplicas);
 
     // Add three more tablet servers
     ts_descs_.push_back(SetupTS("3333", "a"));

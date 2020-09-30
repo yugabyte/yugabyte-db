@@ -215,7 +215,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   yb::OpId GetLastAppliedOpId() override;
 
-  yb::OpId TEST_GetAllAppliedOpId();
+  yb::OpId GetAllAppliedOpId();
 
   yb::OpId GetSplitOpId() override;
 

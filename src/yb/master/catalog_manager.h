@@ -680,6 +680,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc);
 
+  CHECKED_STATUS DeleteTablet(
+      const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc);
+
   // Test wrapper around protected DoSplitTablet method.
   CHECKED_STATUS TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
@@ -1010,9 +1013,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Request tablet servers to delete all replicas of the tablet.
   void DeleteTabletReplicas(const TabletInfo* tablet, const std::string& msg);
 
+  // Returns error if and only if it is forbidden to both:
+  // 1) Delete single tablet from table.
+  // 2) Delete the whole table.
+  // This is used for pre-checks in both `DeleteTablet` and `DeleteTabletsAndSendRequests`.
+  CHECKED_STATUS CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<TableInfo>& table);
+
   // Marks each of the tablets in the given table as deleted and triggers requests to the tablet
-  // servers to delete them.  The table parameter is expected to be given "write locked".
+  // servers to delete them. The table parameter is expected to be given "write locked".
   void DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table);
+
+  // Marks tablet as deleted and triggers requests to the tablet servers to delete them.
+  void DeleteTabletAndSendRequests(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& deletion_msg);
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.

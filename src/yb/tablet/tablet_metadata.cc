@@ -442,6 +442,8 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     LOG_IF(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
   }
 
+  // TODO(tsplit): decide what to do with snapshots for split tablets that we delete after split.
+  // As for now, snapshots will be deleted as well.
   const auto snapshots_dir = this->snapshots_dir();
   if (fs_manager_->env()->FileExists(snapshots_dir)) {
     auto s = fs_manager_->env()->DeleteRecursively(snapshots_dir);

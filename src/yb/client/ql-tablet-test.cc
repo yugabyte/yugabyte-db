@@ -1239,7 +1239,7 @@ std::vector<OpId> GetLastAppliedOpIds(const std::vector<tablet::TabletPeerPtr>& 
 Result<OpId> GetAllAppliedOpId(const std::vector<tablet::TabletPeerPtr>& peers) {
   for (auto& peer : peers) {
     if (peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
-      return peer->raft_consensus()->TEST_GetAllAppliedOpId();
+      return peer->raft_consensus()->GetAllAppliedOpId();
     }
   }
   return STATUS(NotFound, "No leader found");
