@@ -6,7 +6,7 @@ description: Configure backup target.
 menu:
   latest:
     identifier: backup-target
-    parent: configure-yp
+    parent: configure-yugabyte-platform
     weight: 112
 isTocNested: true
 showAsideToc: true
