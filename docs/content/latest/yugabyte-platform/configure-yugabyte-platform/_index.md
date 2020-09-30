@@ -7,7 +7,7 @@ image: /images/section_icons/manage/enterprise.png
 headcontent: Configure Yugabyte Platform.
 menu:
   latest:
-    identifier: configure-yp
+    identifier: configure-yugabyte-platform
     parent: yugabyte-platform
     weight: 641
 ---

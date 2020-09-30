@@ -1,14 +1,14 @@
 ---
-title: Configure the VMware Tanzu providers
-headerTitle: Configure the VMware Tanzu providers
-linkTitle: 4. Configure the providers
-description: Configure the VMware Tanzu providers.
+title: Set up the VMware Tanzu provider
+headerTitle: Set up the VMware Tanzu provider
+linkTitle: Set up the cloud provider
+description: Set up the VMware Tanzu provider.
 aliases:
   - /deploy/pivotal-cloud-foundry/
   - /latest/deploy/pivotal-cloud-foundry/
 menu:
   latest:
-    identifier: configure-providers-4-vmware-tanzu
+    identifier: set-up-cloud-provider-4-vmware-tanzu
     parent: configure-yugabyte-platform
     weight: 111
 isTocNested: true
@@ -18,42 +18,42 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/on-premises" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/on-premises" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/aws" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/gcp" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/azure" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yp/configure-providers/vmware-tanzu" class="nav-link active">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/vmware-tanzu" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>

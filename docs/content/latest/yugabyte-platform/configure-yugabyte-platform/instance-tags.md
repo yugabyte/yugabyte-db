@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     identifier: instance-tags
-    parent: configure-yp
+    parent: Create admin user
     weight: 
 isTocNested: true
 showAsideToc: true
