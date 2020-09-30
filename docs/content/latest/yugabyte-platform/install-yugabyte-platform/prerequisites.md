@@ -6,7 +6,7 @@ description: Prerequisites for installing Yugabyte Platform.
 menu:
   latest:
     identifier: prerequisites
-    parent: install-yp
+    parent: install-yugabyte-platform
     weight: 20
 isTocNested: true
 showAsideToc: true

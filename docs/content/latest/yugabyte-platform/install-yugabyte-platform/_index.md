@@ -6,7 +6,7 @@ description: Install Yugabyte Platform and prepare universe nodes.
 menu:
   latest:
     parent: yugabyte-platform
-    identifier: install-yp
+    identifier: install-yugabyte-platform
 weight: 642
 isTocNested: true
 showAsideToc: true
@@ -75,13 +75,25 @@ showAsideToc: true
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-yugabyte-platform/">
+    <a class="section-link icon-offset" href="install-software/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
-        <div class="title">Install Yugabyte Platform</div>
+        <div class="title">Install software</div>
       </div>
       <div class="body">
-        Install Yugabyte platform on a host.
+        Install Yugabyte platform software on a host.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="uninstall-software/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
+        <div class="title">Uninstall software</div>
+      </div>
+      <div class="body">
+        Uninstall Yugabyte platform software on a host.
       </div>
     </a>
   </div>
