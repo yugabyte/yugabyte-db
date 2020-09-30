@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: backup-target
     parent: configure-yugabyte-platform
-    weight: 112
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---

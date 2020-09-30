@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: create-admin-user
     parent: configure-yugabyte-platform
-    weight: 115
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---

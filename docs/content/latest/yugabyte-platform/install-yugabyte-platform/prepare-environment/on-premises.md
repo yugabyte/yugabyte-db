@@ -11,82 +11,94 @@ menu:
     parent: install-yugabyte-platform
     identifier: prepare-environment-5-on-premises
     weight: 55
-isTocNested: true
-showAsideToc: true
+isTocNested: false
+showAsideToc: false
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/aws" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
       <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/gcp" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
+<!--
+
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/azure" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
+-->
+
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/kubernetes" class="nav-link active">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/on-premises" class="nav-link active">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link active">
       <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/air-gapped" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/air-gapped" class="nav-link">
       <i class="fas fa-unlinked" aria-hidden="true"></i>
-      Air-gapped
+      Airgapped
     </a>
   </li>
 
 </ul>
 
-A dedicated host or virtual machine (VM) is required to run the Yugabyte Platform server. For more details, see this faq. This page highlights the basic setup needed in order to install Yugabyte Platform.
-
+<!--
 ## Prerequisites
 
-For Yugabyte Platform, see [Review system requirements](../../../plan/system-reqs-yp).
+For Yugabyte Platform, see [Prerequisites](../../../install-yugabyte-platform/prerequisites).
 
-## Install Yugabyte Platform on a VM
+-->
 
-Requirements for YugabyteDB nodes
+## Prepare the Yugabyte Platform host for on-premises
 
-Create a user on the YB Platform VM that has passwordless sudo privileges user on yw:
-$ sudo groupadd yw
-$ sudo useradd -m -s /bin/bash -g yw yw
-$ sudo passwd yw
-$ sudo usermod -aG wheel yw
+Create a user on the YB Platform VM that has passwordless sudo privileges user on yugabyte:
 
-Setup a new user account that has ssh access to the VM. The user being created in this case is yw with sudo privileges on the node ideally.
+```sh
+$ sudo groupadd yugabyte
+$ sudo useradd -m -s /bin/bash -g yugabyte yugabyte
+$ sudo passwd yugabyte
+$ sudo usermod -aG wheel yugabyte
+```
 
-Do the following as the new user (yw) to enable passwordless ssh
+Setup a new user account that has ssh access to the VM. The user being created in this case is yugabyte with sudo privileges on the node ideally.
+
+Do the following as the new user (yugabyte) to enable passwordless ssh
+
+```sh
 $ mkdir .ssh
 $ chmod 700 .ssh
 $ touch .ssh/authorized_keys
 $ chmod 600 .ssh/authorized_keys
+```
 
 Make custom directory for airgap install, here the /data directory is being used
+
+```sh
 $ sudo mkdir /data
-$ sudo chown yw:yw /data
+$ sudo chown yugabyte:yugabyte /data
+```
 
 Install Platform according to the instructions on the Yugabyte Platform deployment docs page.

@@ -8,57 +8,59 @@ menu:
     parent: install-yugabyte-platform
     identifier: prepare-environment-2-gcp
     weight: 55
-isTocNested: true
-showAsideToc: true
+isTocNested: false
+showAsideToc: false
 ---
 
-ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/aws" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/gcp" class="nav-link active">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link active">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
+<!--
+
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/azure" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
+-->
+
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
+      <i class="icon-aws" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/on-premises" class="nav-link active">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/air-gapped" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
-      On-premises
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/air-gapped" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
-      Air-gapped
+      Airgapped
     </a>
   </li>
 
 </ul>
-
-A dedicated host or virtual machine (VM) is required to run the Yugabyte Platform server.
 
 ## 1. (Optional) Create a new project
 

@@ -1,81 +1,41 @@
 ---
-title: Prepare the on-premises, airgapped host environment
-headerTitle: Prepare the on-premises, airgapped host environment
-linkTitle: Prepare the environment
-description: Prepare the on-premises, airgapped host environment.
-aliases:
-  - /latest/deploy/enterprise-edition/install-admin-console/airgapped
+title: Install Yugabyte Platform software - Airgapped
+headerTitle: Install Yugabyte Platform software - Airgapped
+linkTitle: Install software
+description: Install Yugabyte Platform software in your on-premises, airgapped environment.
 menu:
   latest:
-    identifier: prepare-environment-6-air-gapped
     parent: install-yugabyte-platform
-    weight: 55
+    identifier: install-software-3-air-gapped
+    weight: 77
 isTocNested: true
 showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/aws" class="nav-link">
-      <i class="fab fa-aws" aria-hidden="true"></i>
-      AWS
+  <li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link">
+      <i class="fas fa-cloud"></i>
+      Default
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link active">
+      <i class="fas fa-unlink"></i>
+      Airgapped
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/gcp" class="nav-link">
-       <i class="fab fa-google" aria-hidden="true"></i>
-      GCP
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/azure" class="nav-link">
-      <i class="icon-azure" aria-hidden="true"></i>
-      Azure
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/on-premises" class="nav-link">
-      <i class="fas fa-building" aria-hidden="true"></i>
-      On-premises
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/prepare-environment/air-gapped" class="nav-link active">
-      <i class="fas fa-unlinked" aria-hidden="true"></i>
-      Air-gapped
-    </a>
-  </li>
-
 </ul>
-
-An air-gapped host has either no or a restricted path to inbound or outbound Internet traffic at all.
-
-## Prerequisites
-
-### 1. Whitelist endpoints
-
-In order to install Replicated and the Yugabyte Platform on a host with no Internet connectivity at all, you have to first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation.
-
-```sh
-https://downloads.yugabyte.com
-https://download.docker.com
-```
-
-### 2. Install Docker Engine
-
-A supported version of Docker Engine (`docker-engine`) (currently 1.7.1 to 17.03.1-ce) needs to be installed on the host. If you do not have docker-engine installed, follow the instructions [here](https://help.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install Docker Engine on an air-gapped host. After Docker Engine is installed, perform the following steps to install Replicated and then Yugabyte Platform.
 
 ## Step 1 — Install Replicated
 

@@ -1,3 +1,4 @@
+/*
 ---
 title: Yugabyte Platform architecture
 headerTitle: Yugabyte Platform architecture
@@ -11,5 +12,4 @@ menu:
     parent: overview-yp
     weight: 10
 ---
-
-??? Content is needed
+*/

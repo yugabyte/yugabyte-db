@@ -1,16 +1,31 @@
 ---
-title: Prepare access and privileges
-headerTitle: Prepare access and privileges
-linkTitle: Prepare access and privilege
-description: Access and privilege requirements for the Yugabyte Platform and YugabyteDB data nodes.
+title: Prepare nodes (on-prem)
+headerTitle: Prepare nodes (on-prem)
+linkTitle: Prepare nodes (on-prem)
+description: Prepare YugabyteDB nodes for on-premises deployments.
 menu:
   latest:
-    identifier: prepare-access-privileges
+    identifier: prepare-on-prem-nodes
     parent: install-yugabyte-platform
-    weight: 40
+    weight: 79
 isTocNested: true
 showAsideToc: true
 ---
+
+For on-premises deployments of Yugabyte Platform, you need to import nodes which can be managed by Yugabyte Platform. This page outlines the steps required to prepare these YugabyteDB nodes for on-premises deployments.
+
+{{< note title="Note" >}}
+
+For airgapped, on-premises deployments (without Internet connectivity), additional steps are required as outlined below.
+
+{{< /note >}}
+
+Ensure that the YugabyteDB nodes conform to the requirements outlines in the [deployment checklist](../../../deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](../../../deploy/checklist/#running-on-public-clouds).
+
+Install the prerequisites and verify the system resource limits as described in [system configuration](../../../deploy/manual-deployment/system-config).
+
+
+
 
 ## SSH user
 
