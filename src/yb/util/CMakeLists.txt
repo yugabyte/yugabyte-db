@@ -165,7 +165,9 @@ set(UTIL_SRCS
   encrypted_file.cc
   encrypted_file_factory.cc
   encryption_util.cc
-  env.cc env_posix.cc env_util.cc
+  env.cc
+  env_posix.cc
+  env_util.cc
   errno.cc
   ev_util.cc
   failure_detector.cc
@@ -256,7 +258,6 @@ set(UTIL_SRCS
   varint.cc
   version_info.cc
   async_util.cc
-  ${UTIL_SRCS_EXTENSIONS}
   )
 
 set(UTIL_LIBS
@@ -278,8 +279,7 @@ set(UTIL_LIBS
   encryption_proto
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
-  ${OPENSSL_SSL_LIBRARY}
-  ${UTIL_LIBS_EXTENSIONS})
+  ${OPENSSL_SSL_LIBRARY})
 
 if (NOT APPLE AND NOT USING_LINUXBREW)
   set(UTIL_LIBS ${UTIL_LIBS} atomic)

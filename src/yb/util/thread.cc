@@ -389,9 +389,9 @@ int Compare(const Result<StackTrace>& lhs, const Result<StackTrace>& rhs) {
 
 void ThreadMgr::RenderThreadCategoryRows(const ThreadCategory& category, std::string* output) {
   struct ThreadData {
-    int64_t tid;
-    ThreadIdForStack tid_for_stack;
-    const std::string* name;
+    int64_t tid = 0;
+    ThreadIdForStack tid_for_stack = 0;
+    const std::string* name = nullptr;
     ThreadStats stats;
     Result<StackTrace> stack_trace = StackTrace();
     int rowspan = -1;

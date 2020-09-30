@@ -22,9 +22,6 @@ ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
                DEPS ${PGWRAPPER_LIBS})
 
-include_directories(${YB_BUILD_ROOT}/postgres/include)
-link_directories(${YB_BUILD_ROOT}/postgres/lib)
-
 add_library(
     pg_wrapper_test_base
     pg_mini_test_base.cc
@@ -32,8 +29,9 @@ add_library(
     libpq_test_base.cc
     libpq_utils.cc)
 
-# PostgresSQL needs to be fully built before we can use libpq.
-add_dependencies(pg_wrapper_test_base postgres)
+# TODO: find a way to add this only to the top-level CMakeLists.txt file.
+# See https://github.com/yugabyte/yugabyte-db/issues/5853 for more details.
+allow_using_postgres_libraries()
 
 target_link_libraries(pg_wrapper_test_base pq gutil integration-tests yb_pggate_flags)
 
