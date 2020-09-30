@@ -7,10 +7,11 @@ aliases:
   - /latest/deploy/enterprise-edition/prepare-environment/
 menu:
   latest:
-    identifier: prepare-environment-4-kubernetes
-    name: 1. Prepare the environment
     parent: prepare-environment
+    name: 1. Prepare the environment
+    identifier: prepare-environment-4-kubernetes
     weight: 55
+type: page
 isTocNested: true
 showAsideToc: true
 ---

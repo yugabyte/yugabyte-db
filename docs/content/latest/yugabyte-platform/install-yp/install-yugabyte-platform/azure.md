@@ -3,11 +3,12 @@ title: Install Yugabyte Platform on Microsoft Azure
 headerTitle: Install Yugabyte Platform on Microsoft Azure
 linkTitle: 3. Install Yugabyte Platform
 description: Install Yugabyte Platform on Microsoft Azure.
+type: page
 menu:
   latest:
-    identifier: install-yp-3-azure
-    name: 3. Install Yugabyte Platform
     parent: install-yugabyte-platform
+    identifier: install-yugabyte-platform-3-azure
+    name: 3. Install Yugabyte Platform
     weight: 77
 isTocNested: true
 showAsideToc: true

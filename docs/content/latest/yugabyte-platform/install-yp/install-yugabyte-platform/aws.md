@@ -5,11 +5,12 @@ linkTitle: 3. Install Yugabyte Platform
 description: Install Yugabyte Platform on AWS.
 aliases:
  - /latest/yugabyte-platform/install-yp/install-yugabyte-platform/
+type: page
 menu:
   latest:
-    identifier: install-yp-1-aws
-    name: 3. Install Yugabyte Platform
     parent: install-yugabyte-platform
+    identifier: install-yugabyte-platform-1-aws
+    name: 3. Install Yugabyte Platform
     weight: 77
 isTocNested: true
 showAsideToc: true

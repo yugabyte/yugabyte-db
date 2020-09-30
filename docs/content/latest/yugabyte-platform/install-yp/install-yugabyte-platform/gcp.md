@@ -3,11 +3,12 @@ title: Install Yugabyte Platform - GCP
 headerTitle: Install Yugabyte Platform - GCP
 linkTitle: 3. Install Yugabyte Platform
 description: Install Yugabyte Platform in your Google Cloud Platform (GCP) environment.
+type: page
 menu:
   latest:
-    identifier: install-yp-2-gcp
-    name: 3. Install Yugabyte Platform
     parent: install-yugabyte-platform
+    name: 3. Install Yugabyte Platform
+    identifier: install-yugabyte-platform-2-gcp
     weight: 77
 isTocNested: true
 showAsideToc: true

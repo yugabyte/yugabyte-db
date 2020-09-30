@@ -5,10 +5,11 @@ linkTitle: 1. Prepare the environment
 description: Prepare the Microsoft Azure environment for the Yugabyte Platform.
 menu:
   latest:
-    identifier: prepare-environment-3-azure
-    name: 1. Prepare the environment
     parent: prepare-environment
+    name: 1. Prepare the environment
+    identifier: prepare-environment-3-azure
     weight: 55
+type: page
 isTocNested: true
 showAsideToc: true
 ---
