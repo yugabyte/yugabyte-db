@@ -6,7 +6,7 @@ description: Checklist for installing Yugabyte Platform.
 menu:
   latest:
     identifier: install-checklist-yp
-    parent: install-yp
+    parent: install-yugabyte-platform
     weight: 10
 isTocNested: true
 showAsideToc: true

@@ -6,7 +6,7 @@ description: Access and privilege requirements for the Yugabyte Platform and Yug
 menu:
   latest:
     identifier: prepare-access-privileges
-    parent: install-yp
+    parent: install-yugabyte-platform
     weight: 40
 isTocNested: true
 showAsideToc: true
