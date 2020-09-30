@@ -67,6 +67,8 @@ public class BackupsController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
+    taskParams.universeUUID = universeUUID;
+
     // Change the BackupTableParams in list to be "RESTORE" action type
     if (taskParams.backupList != null) {
       for (BackupTableParams subParams: taskParams.backupList) {
@@ -78,6 +80,7 @@ public class BackupsController extends AuthenticatedController {
         subParams.tableUUID = null;
         subParams.tableName = null;
         subParams.keyspace = null;
+        subParams.universeUUID = universeUUID;
         subParams.parallelism = taskParams.parallelism;;
       }
     }
@@ -90,8 +93,6 @@ public class BackupsController extends AuthenticatedController {
       String errMsg = "Restore table request must specify keyspace.";
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-
-    taskParams.universeUUID = universeUUID;
 
     Backup newBackup = Backup.create(customerUUID, taskParams);
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
