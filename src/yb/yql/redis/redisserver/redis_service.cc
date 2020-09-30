@@ -366,7 +366,7 @@ class SessionPool {
     queue_.push(session.get());
   }
  private:
-  client::YBClient* client_;
+  client::YBClient* client_ = nullptr;
   std::mutex mutex_;
   std::vector<std::shared_ptr<client::YBSession>> sessions_;
   boost::lockfree::queue<client::YBSession*> queue_{30};
@@ -788,7 +788,7 @@ struct RedisServiceImplData : public RedisServiceData {
   // Mutex that protects the creation of client_ and populating db_to_opened_table_.
   std::mutex yb_mutex_;
   std::atomic<bool> initialized_;
-  client::YBClient* client_;
+  client::YBClient* client_ = nullptr;
   SessionPool session_pool_;
   std::unordered_map<std::string, std::shared_ptr<client::YBTable>> db_to_opened_table_;
   std::shared_ptr<client::YBMetaDataCache> tables_cache_;
@@ -809,8 +809,7 @@ struct RedisServiceImplData : public RedisServiceData {
   MonoTime redis_cached_password_validity_expiry_;
   vector<string> redis_cached_passwords_;
 
-  RedisServer* server_;
-
+  RedisServer* server_ = nullptr;
 };
 
 class BatchContextImpl : public BatchContext {
@@ -823,6 +822,7 @@ class BatchContextImpl : public BatchContext {
         call_(call),
         consumption_(impl_data->server_->mem_tracker(), 0),
         operations_(&arena_),
+        lookups_left_(0),
         tablets_(&arena_) {
   }
 

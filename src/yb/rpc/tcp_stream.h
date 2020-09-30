@@ -125,7 +125,7 @@ class TcpStream : public Stream {
   // The remote address we're talking to.
   const Endpoint remote_;
 
-  StreamContext* context_;
+  StreamContext* context_ = nullptr;
 
   // Notifies us when our socket is readable or writable.
   ev::io io_;

@@ -209,7 +209,7 @@ struct ThreadStackHelper {
   size_t allocated_entries = 0;
 
   // Incremented by each signal handler.
-  std::atomic<int64_t> left_to_collect;
+  std::atomic<int64_t> left_to_collect{0};
 
   std::vector<std::unique_ptr<ThreadStackEntry[]>> allocated_chunks;
 

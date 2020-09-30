@@ -574,7 +574,7 @@ endif()
 # Generate a Clang compile_commands.json "compilation database" file for use
 # with various development tools, such as Vim's YouCompleteMe plugin.
 # See http://clang.llvm.org/docs/JSONCompilationDatabase.html
-if ("$ENV{CMAKE_EXPORT_COMPILE_COMMANDS}" STREQUAL "1" OR
+if ("$ENV{YB_EXPORT_COMPILE_COMMANDS}" STREQUAL "1" OR
     "$ENV{YB_RUN_AFFECTED_TESTS_ONLY}" STREQUAL "1")
   set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 endif()
@@ -1106,6 +1106,30 @@ function(ADD_YB_LIBRARY LIB_NAME)
   if(ARG_NONLINK_DEPS)
     add_dependencies(${LIB_NAME} ${ARG_NONLINK_DEPS})
   endif()
+endfunction()
+
+# Import a shared library (e.g. libpq) that is built as part of PostgreSQL as a CMake target.
+# See https://github.com/yugabyte/yugabyte-db/issues/5853: we currently have to run this function
+# separately for each library from each CMakeLists.txt file that uses that library.
+function(ADD_POSTGRES_SHARED_LIBRARY LIB_NAME SHARED_LIB_PATH)
+  if ("${SHARED_LIB_PATH}" STREQUAL "")
+    message(FATAL_ERROR
+            "Shared library path cannot be empty. "
+            "LIB_NAME=${LIB_NAME} "
+            "CMAKE_CURRENT_LIST_DIR=${CMAKE_CURRENT_LIST_DIR}")
+  endif()
+  add_library(${LIB_NAME} SHARED IMPORTED)
+  set_target_properties(${LIB_NAME} PROPERTIES IMPORTED_LOCATION "${SHARED_LIB_PATH}")
+  # "postgres" is the target that actually builds this shared library.
+  add_dependencies(${LIB_NAME} postgres)
+  message("Added target ${LIB_NAME} for a shared library built as part of PostgreSQL code: "
+          "${SHARED_LIB_PATH} (invoked from ${CMAKE_CURRENT_LIST_FILE})")
+endfunction()
+
+function(allow_using_postgres_libraries)
+  include_directories(${YB_BUILD_ROOT}/postgres/include)
+  add_postgres_shared_library(pq "${LIBPQ_SHARED_LIB}")
+  add_postgres_shared_library(yb_pgbackend "${YB_PGBACKEND_SHARED_LIB}")
 endfunction()
 
 ############################################################
@@ -1736,7 +1760,11 @@ endif()
 
 message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
 
-set(PQ_SHARED_LIB
+# Define full paths to libpq and libyb_pgbackend shared libraries. These libraries are built as part
+# of building PostgreSQL. We need to declare these as by-products of running the PostgreSQL build
+# command, as well as wrap them into CMake targets so that other libraries and executables can
+# depend on them.
+set(LIBPQ_SHARED_LIB
     "${YB_BUILD_ROOT}/postgres/lib/libpq${YB_SHARED_LIBRARY_SUFFIX}")
 set(YB_PGBACKEND_SHARED_LIB
     "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend${YB_SHARED_LIBRARY_SUFFIX}")

@@ -220,8 +220,8 @@ struct TransactionMetadata {
   IsolationLevel isolation = IsolationLevel::NON_TRANSACTIONAL;
   TabletId status_tablet;
 
-  // By default random value is picked for newly created transaction.
-  uint64_t priority;
+  // By default, a random value is picked for a newly created transaction.
+  uint64_t priority = 0;
 
   // Used for snapshot isolation (as read time and for conflict resolution).
   // start_time is used only for backward compability during rolling update.

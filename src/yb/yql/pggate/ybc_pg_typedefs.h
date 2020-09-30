@@ -210,15 +210,18 @@ typedef struct PgExecParameters {
   //     for filtering before LIMIT is applied.
   //   o ORDER BY clause is not processed by YugaByte. Similarly all rows must be fetched and sent
   //     to Postgres code layer.
-  uint64_t limit_count;
-  uint64_t limit_offset;
-  bool limit_use_default;
   // For now we only support one rowmark.
 #ifdef __cplusplus
+  uint64_t limit_count = 0;
+  uint64_t limit_offset = 0;
+  bool limit_use_default = false;
   int rowmark = -1;
   uint64_t read_time = 0;
   char *partition_key = NULL;
 #else
+  uint64_t limit_count;
+  uint64_t limit_offset;
+  bool limit_use_default;
   int rowmark;
   uint64_t read_time;
   char *partition_key;

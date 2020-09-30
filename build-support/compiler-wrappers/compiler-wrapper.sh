@@ -578,19 +578,32 @@ set_default_compiler_type
 find_or_download_thirdparty
 find_compiler_by_type "$YB_COMPILER_TYPE"
 
+if [[ $cc_or_cxx == "compiler-wrapper.sh" && $compiler_args_str == "--version" ]]; then
+  # Allow invoking this script not through a symlink but directly in one special case: when trying
+  # to determine the compiler version.
+  cc_or_cxx=cc
+fi
+
 case "$cc_or_cxx" in
-  cc) compiler_executable="$cc_executable" ;;
-  c++) compiler_executable="$cxx_executable" ;;
-  default)
-    echo "The $SCRIPT_NAME script should be invoked through a symlink named 'cc' or 'c++', " \
-         "found: $cc_or_cxx" >&2
-    exit 1
+  cc) compiler_executable=$cc_executable ;;
+  c++) compiler_executable=$cxx_executable ;;
+  *)
+    fatal "The $SCRIPT_NAME script should be invoked through a symlink named 'cc' or 'c++', " \
+          "found: $cc_or_cxx." \
+          "Just in case:" \
+          "cc_executable=${cc_executable:-undefined}," \
+          "cxx_executable=${cxx_executable:-undefined}."
 esac
+
+if [[ -z ${compiler_executable:-} ]]; then
+  fatal "[Host $(hostname)] The compiler_executable variable is not defined." \
+        "Command line: $compiler_args_str"
+fi
 
 if [[ ! -x $compiler_executable ]]; then
   log_diagnostics_about_local_thirdparty
   fatal "[Host $(hostname)] Compiler executable does not exist or is not executable:" \
-        "$compiler_executable"
+        "$compiler_executable. Command line: $compiler_args_str"
 fi
 
 # We use ccache if it is available and YB_NO_CCACHE is not set.
@@ -829,6 +842,11 @@ if [[ $compiler_exit_code -ne 0 ]]; then
   fi
 
   exit "$compiler_exit_code"
+fi
+
+if grep -Eq 'ld: warning: directory not found for option' "$stderr_path"; then
+  log "Linker failed to find a directory (probably a library directory) that should exist."
+  exit 1
 fi
 
 if is_clang &&

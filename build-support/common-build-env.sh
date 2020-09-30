@@ -140,6 +140,7 @@ readonly -a VALID_BUILD_TYPES=(
   release
   tsan
   tsan_slow
+  pvs
 )
 make_regex_from_list VALID_BUILD_TYPES "${VALID_BUILD_TYPES[@]}"
 
@@ -537,8 +538,14 @@ set_cmake_build_type_and_compiler_type() {
     ;;
     compilecmds)
       cmake_build_type=debug
-      export CMAKE_EXPORT_COMPILE_COMMANDS=1
       export YB_EXPORT_COMPILE_COMMANDS=1
+    ;;
+    pvs)
+      cmake_build_type=debug
+      export YB_EXPORT_COMPILE_COMMANDS=1
+      export YB_DO_NOT_BUILD_TESTS=1
+      export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
+      export YB_REMOTE_COMPILATION=0
     ;;
     idebug|ifastdebug|irelease)
       cmake_build_type=${build_type:1}

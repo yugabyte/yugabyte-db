@@ -156,8 +156,8 @@ class QLProcessor : public Rescheduler {
     void Done(const Status& status) override {}
 
     QLProcessor* processor_ = nullptr;
-    const std::string* stmt_;
-    const StatementParameters* params_;
+    const std::string* stmt_ = nullptr;
+    const StatementParameters* params_ = nullptr;
     StatementExecutedCallback cb_;
   };
 
