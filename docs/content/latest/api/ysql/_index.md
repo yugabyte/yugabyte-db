@@ -23,6 +23,27 @@ Yugabyte Structured Query Language (YSQL) is an ANSI SQL, fully-relational API t
 
 The main components of YSQL include the data definition language (DDL), the data manipulation language (DML), and the data control language (DCL). A number of elements are used to construct these components, including data types, database objects, names and qualifiers, expressions, and comments. Other components are also provided for different purposes such as system control, transaction control, and performance tuning.
 
+{{< note title="Note" >}}
+
+The YSQL subsystem directly uses the SQL query layer from the PostgreSQL source code and exposes the same syntax and semantics. If you don't find what you're looking for in the Yugabyte documentation, you might find answers in the relevant [PostgreSQL documentation](https://www.postgresql.org/docs/11/index.html). Successive YugabyteDB releases preserve the syntax and semantics of the PostgreSQL query layer, although some features might not be supported for distributed SQL. Consult the YSQL documentation for supported syntax and extensions.
+
+To find the version of the PostgreSQL query layer used in YugabyteDB, you can use the `version()` function. The following YSQL query displays only the first part of the returned value:
+
+```plpgsql
+select rpad(version(), 18)||'...' as v;
+```
+
+For the “latest” release series of YugabyteDB, as reflected in this main documentation URL, 
+the query result shows that the PostrgreSQL version is 11.2:
+
+```
+           v
+-----------------------
+ PostgreSQL 11.2-YB...
+```
+
+{{< /note >}}
+
 ## Quick Start
 
 You can explore the basics of the YSQL API using the [Quick Start](../../quick-start/explore-ysql) steps.
