@@ -19,7 +19,20 @@ import './ListBackups.scss';
 
 const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 const YCQL_TABLE_TYPE = 'YQL_TABLE_TYPE';
+const YEDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE';
 
+const getTableType = (text) => {
+  switch(text) {
+    case YSQL_TABLE_TYPE:
+      return 'YSQL';
+    case YCQL_TABLE_TYPE:
+      return 'YCQL';
+    case YEDIS_TABLE_TYPE:
+      return 'YEDIS'
+    default:
+      return null;
+  }
+}
 export default class ListBackups extends Component {
   state = {
     selectedRowList: null,
@@ -69,14 +82,18 @@ export default class ListBackups extends Component {
 
   parseTableType = (cell, rowData) => {
     const { universeTableTypes } = this.props;
-    if (rowData.backupType && rowData.backupType === YSQL_TABLE_TYPE) {
-      return 'YSQL';
-    } else if (rowData.backupType && rowData.backupType === YCQL_TABLE_TYPE) {
-      return 'YCQL';
-    } else {
+    if (rowData.backupType) {
+      return getTableType(rowData.backupType);
+    } else if (rowData.tableUUIDList || rowData.tableUUID) {
       return rowData.tableUUIDList ?
         universeTableTypes[rowData.tableUUIDList[0]] :
         universeTableTypes[rowData.tableUUID];
+    } else if (rowData.keyspace) {
+      if (rowData.keyspace.indexOf('ysql.') === 0) {
+        return 'YSQL';
+      } else {
+        return 'YCQL';
+      }
     }
   }
 
@@ -122,7 +139,7 @@ export default class ListBackups extends Component {
 
   showMultiTableInfo = (row) => {
     const { universeTableTypes } = this.props;
-    let displayTableData = [];
+    let displayTableData = [{ ...row }];
     if (Array.isArray(row.backupList) && row.backupList.length) {
       return (
         <BootstrapTable data={row.backupList} className="backup-info-table"
@@ -156,20 +173,9 @@ export default class ListBackups extends Component {
       displayTableData = [{
         keyspace: row.keyspace,
         tableName: displayedTablesText,
-        tableUUID: row.tableUUIDList[0], // Tables can't be repeated so take first one as row key
-        tableType: universeTableTypes[row.tableUUIDList[0]],
+        tableUUID: row.tableUUIDList[0], // Tables can't be repeated so take first one as row key       
         storageLocation: row.storageLocation
       }];
-    } else if (row.tableUUID) {
-      displayTableData = [{
-        ...row,
-        tableType: universeTableTypes[row.tableUUID]
-      }];
-    } else if (row.keyspace) {
-      displayTableData = [{
-        ...row,
-        tableType: row.backupType === YSQL_TABLE_TYPE ? 'YSQL' : 'YCQL'
-      }]
     }
 
     return (
@@ -178,7 +184,7 @@ export default class ListBackups extends Component {
         <TableHeaderColumn dataField="keyspace" caretRender={this.renderCaret} dataSort dataAlign="left">
           {row.backupType === YSQL_TABLE_TYPE ? 'Namespace' : 'Keyspace'}
         </TableHeaderColumn>
-        <TableHeaderColumn dataField="tableType" dataAlign="left">
+        <TableHeaderColumn dataFormat={this.parseTableType} dataAlign="left">
           Backup Type
         </TableHeaderColumn>
         <TableHeaderColumn dataField="tableName" dataFormat={this.displayMultiTableNames} caretRender={this.renderCaret} dataSort dataAlign="left">
