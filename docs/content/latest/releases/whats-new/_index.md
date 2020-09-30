@@ -23,7 +23,7 @@ menu:
               <div class="title">What's new in the v2.3 latest release series</div>
           </div>
           <div class="body">
-              Features, enhancements, and fixes in the v2.3 latest release series (Updated September 15, 2020).
+              Features, enhancements, and fixes in the v2.3 latest release series (Updated September 29, 2020).
           </div>
       </a>
   </div>
