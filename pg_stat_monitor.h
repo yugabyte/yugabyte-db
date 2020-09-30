@@ -310,8 +310,8 @@ typedef struct pgssJumbleState
 void init_guc(void);
 
 /* hash_create.c */
-void add_object_entry(uint64 queryid, char *objects);
-void remove_object_entry(uint64 queryid, char *objects);
+void hash_alloc_object_entry(uint64 queryid, char *objects);
+void hash_dealloc_object_entry(uint64 queryid, char *objects);
 bool IsHashInitialize(void);
 void pgss_shmem_startup(void);
 void pgss_shmem_shutdown(int code, Datum arg);
@@ -327,7 +327,7 @@ void hash_entry_reset(void);
 void hash_entry_dealloc(int bucket);
 pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
 Size hash_memsize(void);
-pgssEntry* pgsm_create_query_entry(unsigned int queryid, unsigned int userid, unsigned int dbid, unsigned int bucket_id, unsigned int ip);
+pgssEntry* hash_create_query_entry(unsigned int queryid, unsigned int userid, unsigned int dbid, unsigned int bucket_id, unsigned int ip);
 
 /*---- GUC variables ----*/
 #define PGSM_MAX conf[0].guc_variable

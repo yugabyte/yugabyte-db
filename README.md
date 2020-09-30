@@ -69,20 +69,20 @@ make USE_PGXS=1 install
 Here is the complete list of configuration parameters.
 
 ```
-postgres=# select name,value, minimum, maximum from pg_stat_monitor_settings;
-                     name                      | value  | minimum |  maximum   
------------------------------------------------+--------+---------+------------
- pg_stat_monitor.pgsm_max                      |   5000 |    5000 | 2147483647
- pg_stat_monitor.pgsm_query_max_len            |   1024 |    1024 | 2147483647
- pg_stat_monitor.pgsm_enable                   |      1 |       0 |          0
- pg_stat_monitor.pgsm_track_utility            |      1 |       0 |          0
- pg_stat_monitor.pgsm_normalized_query         |      1 |       0 |          0
- pg_stat_monitor.pgsm_max_buckets              |     10 |       1 |         10
- pg_stat_monitor.pgsm_bucket_time              |     60 |       1 | 2147483647
- pg_stat_monitor.pgsm_object_cache             | 500000 |       5 |         10
- pg_stat_monitor.pgsm_respose_time_lower_bound |      5 |       1 | 2147483647
- pg_stat_monitor.pgsm_respose_time_step        |      1 |       1 | 2147483647
- pg_stat_monitor.pgsm_query_shared_buffer      |      1 |  500000 | 2147483647
+postgres=# select * from pg_stat_monitor_settings;
+                     name                      | value  | default_value |                            description                            | minimum |  maximum   | restart 
+-----------------------------------------------+--------+---------------+-------------------------------------------------------------------+---------+------------+---------
+ pg_stat_monitor.pgsm_max                      |   5000 |          5000 | Sets the maximum number of statements tracked by pg_stat_monitor. |    5000 | 2147483647 |       1
+ pg_stat_monitor.pgsm_query_max_len            |   1024 |          1024 | Sets the maximum length of query.                                 |    1024 | 2147483647 |       1
+ pg_stat_monitor.pgsm_enable                   |      1 |             1 | Enable/Disable statistics collector.                              |       0 |          0 |       1
+ pg_stat_monitor.pgsm_track_utility            |      1 |             0 | Selects whether utility commands are tracked.                     |       0 |          0 |       0
+ pg_stat_monitor.pgsm_normalized_query         |      1 |             0 | Selects whether save query in normalized format.                  |       0 |          0 |       0
+ pg_stat_monitor.pgsm_max_buckets              |     10 |            10 | Sets the maximum number of buckets.                               |       1 |         10 |       1
+ pg_stat_monitor.pgsm_bucket_time              |     60 |            60 | Sets the time in seconds per bucket.                              |       1 | 2147483647 |       1
+ pg_stat_monitor.pgsm_object_cache             |     50 |            50 | Sets the maximum number of object cache                           |      50 | 2147483647 |       1
+ pg_stat_monitor.pgsm_respose_time_lower_bound |      1 |             1 | Sets the time in millisecond.                                     |       1 | 2147483647 |       1
+ pg_stat_monitor.pgsm_respose_time_step        |      1 |             1 | Sets the respose time steps in millisecond.                       |       1 | 2147483647 |       1
+ pg_stat_monitor.pgsm_query_shared_buffer      | 500000 |        500000 | Sets the query shared_buffer size.                                |  500000 | 2147483647 |       1
 (11 rows)
 ```
 

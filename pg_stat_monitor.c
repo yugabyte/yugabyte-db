@@ -259,7 +259,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 				}
 			}
 		}
-		add_object_entry(query->queryId, tables_name);
+		hash_alloc_object_entry(query->queryId, tables_name);
 	}
 
 	/*
@@ -711,7 +711,7 @@ static void pgss_store(const char *query, uint64 queryId,
 	if (queryId == UINT64CONST(0))
 		queryId = pgss_hash_string(query, query_len);
 
-	remove_object_entry(queryId, tables_name);
+	hash_dealloc_object_entry(queryId, tables_name);
 	len = strlen(tables_name);
  
 	/* Set up key for hashtable search */

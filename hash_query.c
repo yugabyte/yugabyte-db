@@ -3,7 +3,7 @@
  * hash_query.c
  *		Track statement execution times across a whole database cluster.
  *
- * Copyright (c) 2008-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2020, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pg_stat_monitor/hash_query.c
@@ -57,8 +57,8 @@ pgss_shmem_startup(void)
 	pgss_waiteventshash = NULL;
 
 	/*
-	 * Create or attach to the shared memory state, including hash table
-	 */
+	* Create or attach to the shared memory state, including hash table
+	*/
 	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
 
 	pgss = ShmemInitStruct("pg_stat_monitor", sizeof(pgssSharedState), &found);
@@ -71,28 +71,17 @@ pgss_shmem_startup(void)
 	}
 
 	pgss->query_buf_size_bucket = PGSM_QUERY_BUF_SIZE / PGSM_MAX_BUCKETS;
+
 	for (i = 0; i < PGSM_MAX_BUCKETS; i++)
 		pgss_qbuf[i] = (unsigned char *) ShmemAlloc(pgss->query_buf_size_bucket);
 
-	pgss_hash = hash_init("pg_stat_monitor: Queries hashtable",
-							sizeof(pgssHashKey),
-							sizeof(pgssEntry),
-							PGSM_MAX);
+	pgss_hash = hash_init("pg_stat_monitor: Queries hashtable", sizeof(pgssHashKey), sizeof(pgssEntry),PGSM_MAX);
 
-	pgss_buckethash = hash_init("pg_stat_monitor: Bucket hashtable",
-							sizeof(pgssBucketHashKey),
-							sizeof(pgssBucketEntry),
-							PGSM_MAX_BUCKETS);
+	pgss_buckethash = hash_init("pg_stat_monitor: Bucket hashtable", sizeof(pgssBucketHashKey), sizeof(pgssBucketEntry), PGSM_MAX_BUCKETS);
 
-	pgss_waiteventshash = hash_init("pg_stat_monitor: Wait Event hashtable",
-							sizeof(pgssWaitEventKey),
-							sizeof(pgssWaitEventEntry),
-							100);
+	pgss_waiteventshash = hash_init("pg_stat_monitor: Wait Event hashtable", sizeof(pgssWaitEventKey), sizeof(pgssWaitEventEntry), 100);
 
-	pgss_object_hash = hash_init("pg_stat_monitor: Object hashtable",
-							sizeof(pgssObjectHashKey),
-							sizeof(pgssObjectEntry),
-							PGSM_OBJECT_CACHE);
+	pgss_object_hash = hash_init("pg_stat_monitor: Object hashtable", sizeof(pgssObjectHashKey), sizeof(pgssObjectEntry), PGSM_OBJECT_CACHE);
 
 	Assert(IsHashInitialize());
 
@@ -133,9 +122,9 @@ pgss_shmem_startup(void)
 	LWLockRelease(AddinShmemInitLock);
 
 	/*
-	 * If we're in the postmaster (or a standalone backend...), set up a shmem
-	 * exit hook to dump the statistics to disk.
-	 */
+	* If we're in the postmaster (or a standalone backend...), set up a shmem
+	* exit hook to dump the statistics to disk.
+	*/
 	if (!IsUnderPostmaster)
 		on_shmem_exit(pgss_shmem_shutdown, (Datum) 0);
 }
@@ -143,7 +132,6 @@ pgss_shmem_startup(void)
 int
 pgsm_get_bucket_size(void)
 {
-	Assert(pgss->query_buf_size_bucket <= 0);
 	return pgss->query_buf_size_bucket;
 }
 
@@ -155,26 +143,31 @@ pgssSharedState* pgsm_get_ss(void)
 
 HTAB* pgsm_get_hash(void)
 {
+	Assert(pgss_hash);
 	return pgss_hash;
 }
 
 pgssBucketEntry** pgsm_get_bucket_entries(void)
 {
+	Assert(pgssBucketEntries);
 	return pgssBucketEntries;
 }
 
 HTAB* pgsm_get_wait_event_hash(void)
 {
+	Assert(pgss_waiteventshash);
 	return pgss_waiteventshash;
 }
 
 pgssBucketEntry** pgsm_get_bucket(void)
 {
+	Assert(pgssBucketEntries);
 	return pgssBucketEntries;
 }
 
 pgssWaitEventEntry** pgsm_get_wait_event_entry(void)
 {
+	Assert(pgssWaitEventEntries);
 	return pgssWaitEventEntries;
 }
 
@@ -308,7 +301,7 @@ hash_entry_reset()
 }
 
 void
-add_object_entry(uint64 queryid, char *objects)
+hash_alloc_object_entry(uint64 queryid, char *objects)
 {
     pgssObjectEntry *entry = NULL;
     bool            found;
@@ -328,7 +321,7 @@ add_object_entry(uint64 queryid, char *objects)
 
 /* De-alocate memory */
 void
-remove_object_entry(uint64 queryid, char *objects)
+hash_dealloc_object_entry(uint64 queryid, char *objects)
 {
     pgssObjectHashKey       key;
     pgssObjectEntry         *entry;
@@ -346,7 +339,7 @@ remove_object_entry(uint64 queryid, char *objects)
 }
 
 pgssEntry*
-pgsm_create_query_entry(unsigned int queryid,
+hash_create_query_entry(unsigned int queryid,
                         unsigned int userid,
                         unsigned int dbid,
                         unsigned int bucket_id,
