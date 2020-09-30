@@ -246,6 +246,10 @@ class YBClient::Data {
                     CoarseTimePoint deadline,
                     StdStatusCallback callback);
 
+  void DeleteTablet(
+      YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
+      StdStatusCallback callback);
+
   CHECKED_STATUS InitLocalHostNames();
 
   bool IsLocalHostPort(const HostPort& hp) const;

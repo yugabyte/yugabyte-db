@@ -307,6 +307,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) override;
 
+  void DeleteTablet(
+      const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext rpc) override;
+
  private:
 };
 

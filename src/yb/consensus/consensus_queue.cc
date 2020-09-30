@@ -1228,7 +1228,7 @@ OpId PeerMessageQueue::TEST_GetAllReplicatedIndex() const {
   return queue_state_.all_replicated_op_id;
 }
 
-OpId PeerMessageQueue::TEST_GetAllAppliedOpId() const {
+OpId PeerMessageQueue::GetAllAppliedOpId() const {
   LockGuard lock(queue_lock_);
   return queue_state_.all_applied_op_id;
 }
