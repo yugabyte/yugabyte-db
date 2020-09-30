@@ -1,8 +1,8 @@
 ---
-title: Manage YugabyteDB universe deployments
-headerTitle: Manage YugabyteDB universe deployments
-linkTitle: Manage deployments
-description: Manage YugabyteDB universe deployments
+title: Create YugabyteDB universe deployments
+headerTitle: Create YugabyteDB universe deployments
+linkTitle: Create deployments
+description: Create YugabyteDB universe deployments.
 menu:
   latest:
     identifier: create-deployments

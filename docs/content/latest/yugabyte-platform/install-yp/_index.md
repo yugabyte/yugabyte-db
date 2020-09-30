@@ -27,13 +27,13 @@ showAsideToc: true
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="review-system-reqs/">
+    <a class="section-link icon-offset" href="prerequisites/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
-        <div class="title">Review system requirements</div>
+        <div class="title">Prerequisites</div>
       </div>
       <div class="body">
-        Review the system requirements for Yugabyte Platform.
+        Prerequisites for installing Yugabyte Platform.
       </div>
     </a>
   </div>

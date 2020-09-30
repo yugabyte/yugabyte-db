@@ -1,8 +1,8 @@
 ---
-title: Review the install Yugabyte Platform checklist
-headerTitle: Review the install Yugabyte Platform checklist
-linkTitle: Review the install Yugabyte Platform checklist
-description: Checklist of high-level stops for installing Yugabyte Platform.
+title: Install Yugabyte Platform checklist
+headerTitle: Install Yugabyte Platform checklist
+linkTitle: Install checklist
+description: Checklist for installing Yugabyte Platform.
 menu:
   latest:
     identifier: install-checklist-yp

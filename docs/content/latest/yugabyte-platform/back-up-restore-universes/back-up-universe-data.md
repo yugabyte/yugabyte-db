@@ -1,22 +1,22 @@
 ---
-title: Back up and restore data using Yugabyte Platform
-headerTitle: Back up and restore data
-linkTitle: Back up and restore data
-description: Use Yugabyte Platform to back up and restore data in YCQL tables.
+title: Back up data universe data
+headerTitle: Back up universe data
+linkTitle: Back up data
+description: Use Yugabyte Platform to back up data in YCQL tables.
 aliases:
   - /latest/manage/enterprise-edition/backup-restore
   - /latest/manage/enterprise-edition/back-up-restore-data
   - /latest/yugabyte-platform/manage/backup-restore
 menu:
   latest:
-    identifier: back-up-restore-data
-    parent: back-up-restore
+    parent: back-up-restore-universes
+    identifier: back-up-universe-data
     weight: 20
 isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to use the Yugabyte Platform to back up and restore data in YCQL tables.
+This section will describe how to use the Yugabyte Platform to back up data in YCQL tables.
 
 ## Create universe
 
@@ -68,17 +68,3 @@ as the storage, the **S3 Storage** dropdown option can be chosen during this bac
 ![Backup Modal](/images/ee/create-backup-modal.png)
 
 Select `OK`. If you refresh the page, you'll eventually see a completed task.
-
-## Restore data
-
-On that same completed task, click on the **Actions** dropdown and click **Restore Backup**.
-You will see a modal where you can select the universe, keyspace, and table you want to restore to. Enter in
-values like this (making sure to change the table name you restore to) and click **OK**.
-
-![Restore Modal](/images/ee/restore-backup-modal.png)
-
-If you now go to the **Tasks** tab, you will eventually see a completed **Restore Backup** task. To
-confirm this worked, go to the **Tables** tab to see both the original table and the table you
-restored to.
-
-![Tables View](/images/ee/tables-view.png)

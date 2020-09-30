@@ -1,7 +1,7 @@
 ---
 title: Create a read replica cluster
 headerTitle: Create a read replica cluster
-linkTitle: Create a read replica cluster
+linkTitle: Read replica cluster
 description: Use Yugabyte Platform to create a read replica cluster.
 aliases:
   - /latest/manage/enterprise-edition/read-replicas/
