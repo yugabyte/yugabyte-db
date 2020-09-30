@@ -2009,6 +2009,9 @@ class YcqlProxy(object):
         run_process_checked(cmd)
 
     # Runs ycqlsh with specified files.
+    # Example:
+    # 1. bin/ycqlsh -f directory/a.ycql
+    # 2. If environment variables exists: bin/ycqlsh -u user -p password -f directory/b.ycql
     def load_files(self, filepaths):
         cmd = self.cmd
         if self.setup_env_init.is_exists('YCQL_USER') or \
