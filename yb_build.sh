@@ -181,7 +181,7 @@ Options:
   --download-thirdparty, --dltp  (This is the default.)
     Use prebuilt third-party dependencies, downloadable e.g. from a GitHub release. Also records the
     third-party URL in the build root so that further invocations of yb_build.sh don't reqiure
-    this option (this could be reset by --clean). Only supported on Mac and CentOS.
+    this option (this could be reset by --clean).
   --no-download-thirdparty|--ndltp)
     Disable downloading pre-built third-party dependencies.
   --collect-java-tests
