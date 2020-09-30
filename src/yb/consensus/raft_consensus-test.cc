@@ -88,8 +88,8 @@ class MockQueue : public PeerMessageQueue {
           FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock, nullptr /* consensus_queue */,
           std::move(raft_pool_observers_token)) {}
 
-  MOCK_METHOD1(Init, void(const OpIdPB& locally_replicated_index));
-  MOCK_METHOD4(SetLeaderMode, void(const OpIdPB& committed_opid,
+  MOCK_METHOD1(Init, void(const OpId& locally_replicated_index));
+  MOCK_METHOD4(SetLeaderMode, void(const OpId& committed_opid,
                                    int64_t current_term,
                                    const OpId& last_applied_op_id,
                                    const RaftConfigPB& active_config));
@@ -418,11 +418,11 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
   ASSERT_OK(consensus_->EmulateElection());
 
   // Commit the first noop round, created on EmulateElection();
-  OpIdPB committed_index;
+  OpId committed_index;
   OpId last_applied_op_id;
-  consensus_->UpdateMajorityReplicatedInTests(
-      rounds_[0]->id(), &committed_index, &last_applied_op_id);
-  ASSERT_OPID_EQ(rounds_[0]->id(), committed_index);
+  consensus_->TEST_UpdateMajorityReplicated(
+      OpId::FromPB(rounds_[0]->id()), &committed_index, &last_applied_op_id);
+  ASSERT_EQ(OpId::FromPB(rounds_[0]->id()), committed_index);
   ASSERT_EQ(last_applied_op_id, OpId::FromPB(rounds_[0]->id()));
 
   // Append 10 rounds
@@ -430,7 +430,8 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
     scoped_refptr<ConsensusRound> round = AppendNoOpRound();
     // queue reports majority replicated index in the leader's term
     // committed index should move accordingly.
-    consensus_->UpdateMajorityReplicatedInTests(round->id(), &committed_index, &last_applied_op_id);
+    consensus_->TEST_UpdateMajorityReplicated(
+        OpId::FromPB(round->id()), &committed_index, &last_applied_op_id);
     ASSERT_EQ(last_applied_op_id, OpId::FromPB(round->id()));
   }
 }
@@ -457,11 +458,11 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
   ASSERT_OK(consensus_->Start(info));
   ASSERT_OK(consensus_->EmulateElection());
 
-  OpIdPB committed_index;
+  OpId committed_index;
   OpId last_applied_op_id;
-  consensus_->UpdateMajorityReplicatedInTests(
-      rounds_[0]->id(), &committed_index, &last_applied_op_id);
-  ASSERT_OPID_EQ(rounds_[0]->id(), committed_index);
+  consensus_->TEST_UpdateMajorityReplicated(
+      OpId::FromPB(rounds_[0]->id()), &committed_index, &last_applied_op_id);
+  ASSERT_EQ(OpId::FromPB(rounds_[0]->id()), committed_index);
   ASSERT_EQ(last_applied_op_id, OpId::FromPB(rounds_[0]->id()));
 
   // Append another round in the current term (besides the original config round).
@@ -473,22 +474,22 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
 
   // Now tell consensus that 'round' has been majority replicated, this _shouldn't_
   // advance the committed index, since that belongs to a previous term.
-  OpIdPB new_committed_index;
+  OpId new_committed_index;
   OpId new_last_applied_op_id;
-  consensus_->UpdateMajorityReplicatedInTests(
-      round->id(), &new_committed_index, &new_last_applied_op_id);
-  ASSERT_OPID_EQ(committed_index, new_committed_index);
+  consensus_->TEST_UpdateMajorityReplicated(
+      OpId::FromPB(round->id()), &new_committed_index, &new_last_applied_op_id);
+  ASSERT_EQ(committed_index, new_committed_index);
   ASSERT_EQ(last_applied_op_id, new_last_applied_op_id);
 
   const scoped_refptr<ConsensusRound>& last_config_round = rounds_[2];
 
   // Now notify that the last change config was committed, this should advance the
   // commit index to the id of the last change config.
-  consensus_->UpdateMajorityReplicatedInTests(
-      last_config_round->id(), &committed_index, &last_applied_op_id);
+  consensus_->TEST_UpdateMajorityReplicated(
+      OpId::FromPB(last_config_round->id()), &committed_index, &last_applied_op_id);
 
   DumpRounds();
-  ASSERT_OPID_EQ(last_config_round->id(), committed_index);
+  ASSERT_EQ(OpId::FromPB(last_config_round->id()), committed_index);
   ASSERT_EQ(last_applied_op_id, OpId::FromPB(last_config_round->id()));
 }
 
@@ -575,26 +576,25 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
   // Now tell consensus all original orphaned replicates were majority replicated.
   // This should not advance the committed index because we haven't replicated
   // anything in the current term.
-  OpIdPB committed_index;
+  OpId committed_index;
   OpId last_applied_op_id;
-  consensus_->UpdateMajorityReplicatedInTests(
-      info.orphaned_replicates.back()->id(), &committed_index, &last_applied_op_id);
+  consensus_->TEST_UpdateMajorityReplicated(
+      OpId::FromPB(info.orphaned_replicates.back()->id()), &committed_index, &last_applied_op_id);
   // Should still be the last committed in the wal.
-  ASSERT_OPID_EQ(committed_index, info.last_committed_id);
+  ASSERT_EQ(committed_index, OpId::FromPB(info.last_committed_id));
   ASSERT_EQ(last_applied_op_id, OpId::FromPB(info.last_committed_id));
 
   // Now mark the last operation (the no-op round) as committed.
   // This should advance the committed index, since that round in on our current term,
   // and we should be able to commit all previous rounds.
-  OpIdPB cc_round_id = info.orphaned_replicates.back()->id();
-  cc_round_id.set_term(11);
+  OpId cc_round_id = OpId::FromPB(info.orphaned_replicates.back()->id());
+  cc_round_id.term = 11;
 
   // +1 here because index is incremented during emulated election.
-  cc_round_id.set_index(cc_round_id.index() + 1);
-  consensus_->UpdateMajorityReplicatedInTests(
-      cc_round_id, &committed_index, &last_applied_op_id);
-  ASSERT_OPID_EQ(committed_index, cc_round_id);
-  ASSERT_EQ(last_applied_op_id, OpId::FromPB(cc_round_id));
+  ++cc_round_id.index;
+  consensus_->TEST_UpdateMajorityReplicated(cc_round_id, &committed_index, &last_applied_op_id);
+  ASSERT_EQ(committed_index, cc_round_id);
+  ASSERT_EQ(last_applied_op_id, cc_round_id);
 }
 
 MATCHER_P2(RoundHasOpId, term, index, "") {
