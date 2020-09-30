@@ -15,25 +15,25 @@ menu:
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure-yugabyte-platform/">
+    <a class="section-link icon-offset" href="create-admin-user/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
-        <div class="title">Configure Yugabyte Platform</div>
+        <div class="title">Create the admin user</div>
       </div>
       <div class="body">
-        Configure initial Yugabyte Platform.
+        Create the admin user.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure-providers/">
+    <a class="section-link icon-offset" href="set-up-cloud-provider/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
-        <div class="title">Configure providers</div>
+        <div class="title">Set up the cloud provider</div>
       </div>
       <div class="body">
-        Configure providers for on-premises, AWS, GCP, Azure, and Kubernetes.
+        Set up providers for on-premises, AWS, GCP, Azure, and Kubernetes.
       </div>
     </a>
   </div>
@@ -42,10 +42,10 @@ menu:
     <a class="section-link icon-offset" href="backup-target/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
-        <div class="title">Configure backup target</div>
+        <div class="title">Backup target</div>
       </div>
       <div class="body">
-        Configure backup target for scheduled backups.
+        Set the backup target for scheduled backups.
       </div>
     </a>
   </div>

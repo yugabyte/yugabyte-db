@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     identifier: instance-tags
-    parent: Create admin user
+    parent: configure-yugabyte-platform
     weight: 
 isTocNested: true
 showAsideToc: true

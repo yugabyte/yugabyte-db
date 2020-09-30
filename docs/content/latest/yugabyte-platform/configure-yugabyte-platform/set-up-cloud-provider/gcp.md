@@ -1,7 +1,7 @@
 ---
 title: Set up the Google Cloud Platform (GCP) provider
 headerTitle: Set up the Google Cloud Platform (GCP) provider
-linkTitle: Set up the cloud provider
+linkTitle: Set up cloud provider
 description: Configure the Google Cloud Platform (GCP) cloud provider.
 aliases:
   - /latest/deploy/enterprise-edition/configure-cloud-providers/gcp
