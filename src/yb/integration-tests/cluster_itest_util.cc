@@ -66,6 +66,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/net/net_util.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 namespace itest {
@@ -836,7 +837,15 @@ Status LeaderStepDown(
     return StatusFromPB(resp.error().status())
       .CloneAndPrepend(Substitute("Code $0", TabletServerErrorPB::Code_Name(resp.error().code())));
   }
-  return Status::OK();
+  return WaitFor([&]() -> Result<bool> {
+    rpc.Reset();
+    GetConsensusStateRequestPB state_req;
+    state_req.set_dest_uuid(replica->uuid());
+    state_req.set_tablet_id(tablet_id);
+    GetConsensusStateResponsePB state_resp;
+    RETURN_NOT_OK(replica->consensus_proxy->GetConsensusState(state_req, &state_resp, &rpc));
+    return state_resp.cstate().leader_uuid() != replica->uuid();
+  }, timeout, "Leader change");
 }
 
 Status WriteSimpleTestRow(const TServerDetails* replica,
