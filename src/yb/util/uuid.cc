@@ -20,6 +20,7 @@
 namespace yb {
 
 Uuid::Uuid() {
+  memset(&boost_uuid_, 0, sizeof(boost_uuid_));
 }
 
 Uuid::Uuid(const Uuid& other) {

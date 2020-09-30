@@ -31,7 +31,7 @@ struct QLTableColumn {
   static constexpr int64_t kUninitializedWriteTime = std::numeric_limits<int64_t>::min();
 
   QLValuePB value;
-  int64_t ttl_seconds;
+  int64_t ttl_seconds = 0;
   int64_t write_time = kUninitializedWriteTime;
 
   std::string ToString() const {

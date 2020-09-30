@@ -136,9 +136,9 @@ Status DecodeEncodedStr(rocksdb::Slice* slice, string* result) {
         break;
       }
       if (*p == END_OF_STRING_ESCAPE) {
-        // Character END_OF_STRING is encoded as AB.
+        // 0 is encoded as 00 01 in ascending encoding and FF FE in descending encoding.
         if (result != nullptr) {
-          result->push_back(END_OF_STRING ^ END_OF_STRING);
+          result->push_back(0);
         }
         ++p;
       } else {

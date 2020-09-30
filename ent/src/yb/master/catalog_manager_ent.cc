@@ -1089,12 +1089,12 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   }
 
   TRACE("Locking table");
-  auto l = table->LockForRead();
+  auto table_lock = table->LockForRead();
   vector<scoped_refptr<TabletInfo>> new_tablets;
   table->GetAllTablets(&new_tablets);
 
   for (const scoped_refptr<TabletInfo>& tablet : new_tablets) {
-    auto l = tablet->LockForRead();
+    auto tablet_lock = tablet->LockForRead();
     const PartitionPB& partition_pb = tablet->metadata().state().pb.partition();
     const ExternalTableSnapshotData::PartitionKeys key(
         partition_pb.partition_key_start(), partition_pb.partition_key_end());
