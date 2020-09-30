@@ -1,7 +1,7 @@
 ---
 title: Schedule a data backup
 headerTitle: Schedule a data backup
-linkTitle: Schedule a data backup
+linkTitle: Schedule data backups
 description: Use Yugabyte Platform to create a scheduled backup of a universe or cluster.
 aliases:
   - /latest/manage/enterprise-edition/schedule-backups/
@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: schedule-data-backup
-    parent: back-up-restore
+    parent: back-up-restore-universes
     weight: 40
 isTocNested: true
 showAsideToc: true

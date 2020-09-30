@@ -1,7 +1,7 @@
 ---
 title: Uninstall Yugabyte Platform
 headerTitle: Uninstall Yugabyte Platform
-linkTitle: Uninstall Yugabyte Platform
+linkTitle: Uninstall
 description: Uninstall Yugabyte Platform.
 menu:
   latest:

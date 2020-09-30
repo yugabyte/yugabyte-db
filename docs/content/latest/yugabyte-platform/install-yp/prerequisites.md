@@ -1,11 +1,11 @@
 ---
-title: Review the system requirements
-headerTitle: Review the system requirements
-linkTitle: Review system requirements
-description: System requirements for Yugabyte Platform.
+title: Prerequisites
+headerTitle: Prerequisites
+linkTitle: Prerequisites
+description: Prerequisites for installing Yugabyte Platform.
 menu:
   latest:
-    identifier: review-system-reqs
+    identifier: prerequisites
     parent: install-yp
     weight: 20
 isTocNested: true
