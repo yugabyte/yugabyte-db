@@ -1,8 +1,8 @@
 ---
-title: Set up the on-premises provider
-headerTitle: Set up the on-premises provider
+title: Set up the on-premises data center provider
+headerTitle: Set up the on-premises data center provider
 linkTitle: Set up the cloud provider
-description: Set up the on-premises provider.
+description: Set up the on-premises data center provider.
 aliases:
  - /latest/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
@@ -76,8 +76,6 @@ Follow the steps below to provision as many nodes as your application requires:
 3. Use [Create a multi-zone universe](../manage/create-universe-multi-zone/).
 
 ---
-
-???
 
 ![Configure On-Premises Data center Provider](/images/ee/onprem/configure-onprem-1.png)
 
