@@ -1,7 +1,7 @@
 ---
 title: Back up and restore universes
 headerTitle: Back up and restore universes
-linkTitle: Back up and restore universes
+linkTitle: Back up and restore
 description: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.

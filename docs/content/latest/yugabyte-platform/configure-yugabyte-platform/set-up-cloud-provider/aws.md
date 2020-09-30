@@ -1,6 +1,6 @@
 ---
 title: Set up the Amazon Web Services (AWS) cloud provider
-headerTitle: Set up the AWS cloud provider
+headerTitle: Set up the Amazon Web Services (AWS) cloud provider
 linkTitle: Set up cloud provider
 description: Set up the Amazon Web Services (AWS) cloud provider.
 aliases:
@@ -12,57 +12,57 @@ menu:
   latest:
     identifier: set-up-cloud-provider-1-aws
     parent: configure-yugabyte-platform
-    weight: 111
+    weight: 20
 isTocNested: true
-showAsideToc: true
+showAsideToc: false
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/aws" class="nav-link active">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link active">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/gcp" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/azure" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/vmware-tanzu" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/on-premises" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-provider/air-gapped" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/air-gapped" class="nav-link">
       <i class="fas fa-unlinked"></i>
       Air-gapped
     </a>
@@ -70,7 +70,7 @@ showAsideToc: true
 
 </ul>
 
-This page details how to configure Amazon Web Services (AWS) for YugabyteDB using the YugabyteDB Admin Console. If no cloud providers are configured, the main Dashboard page highlights the need to configure at least one cloud provider.
+This page details how to configure Amazon Web Services (AWS) for YugabyteDB using the Yugabyte Platform Admin UI. If no cloud providers are configured, the main **Dashboard** page highlights that you need to configure at least one cloud provider.
 
 ![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
 
@@ -78,7 +78,7 @@ This page details how to configure Amazon Web Services (AWS) for YugabyteDB usin
 
 ### Amazon Web Services (AWS)
 
-If you plan to run YugabyteDB nodes on Amazon Web Services (AWS), all you need to provide on YugabyteDB Admin Console is your cloud provider credentials. The Yugabyte Platform will use those credentials to automatically provision and de-provision instances that run YugabyteDB. An 'instance' for YugabyteDB includes a compute instance as well as local or remote disk storage attached to the compute instance.
+To run YugabyteDB nodes on Amazon Web Services (AWS), you need to provide your cloud provider credentials on the Yugabyte Platform Admin UI. Yugabyte Platform uses the credentials to automatically provision and deprovision YugabyteDB instances. A YugabyteDB *instance* includes a compute instance as well as attached local or remote disk storage.
 
 ## Configure AWS
 
@@ -95,18 +95,18 @@ This is an internal tag used for organizing your providers, so you know where yo
 In order to actually deploy YugabyteDB nodes in your AWS account, the Yugabyte Platform will require access to a set of cloud credentials. These can be provided in one of the following ways:
 
 - Directly provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html)
-- Attach an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the Yugabyte Platform VM in the EC2 tab.
+- Attach an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the Yugabyte Platform VM in the **EC2** tab.
 
 ## SSH Key Pairs
 
-In order to be able to provision EC2 instances with YugabyteDB, the Yugabyte Platform will require SSH access to these. To that end, there are two  to choose from:
+In order to be able to provision EC2 instances with YugabyteDB, the Yugabyte Platform requires SSH access. Here are two ways to provide SSH access:
 
-- Allow Yugabyte Platform to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, the Yugabyte Platform will create SSH Key Pairs across all the regions you choose to setup and store the relevant private key part of these locally in order to SSH into future EC2 instances.
-- Use your own already existing Key Pairs. For this you will need to provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. **Note that currently, all this info must be the same across all the regions you choose to provision!**
+- Enable Yugabyte Platform to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, the Yugabyte Platform will create SSH Key Pairs across all the regions you choose to set up and store the relevant private key part of these locally in order to SSH into future EC2 instances.
+- Use your own existing Key Pairs. To do this, provide the name of the Key Pair as well as the private key content and the corresponding SSH user. **Currently, this information must be the same across all the regions you choose to provision!**
 
 ## Enabling hosted zones
 
-Integrating with hosted zones can make YugabyteDB universes easily discoverable. The Yugabyte Platform can integrate with Route53 to provide you managed CNAME entries for your YugabyteDB universes, which will be updated as you change the set of nodes, to include all the relevant ones for each of your universes.
+Integrating with hosted zones can make YugabyteDB universes easily discoverable. The Yugabyte Platform can integrate with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed CNAME entries for your YugabyteDB universes, which will be updated as you change the set of nodes to include all relevant ones for each of your universes.
 
 ## Global deployment
 
@@ -114,25 +114,25 @@ For deployment, the Yugabyte Platform aims to provide you with easy access to th
 
 ### Yugabyte Platform-managed configuration
 
-If you choose to use the Yugabyte Platform to configure, own and, manage a full cross-region deployment of VPCs, it will generate a YugabyteDB-specific VPC in each selected region, then interconnect them, as well as the VPC in which the Yugabyte Platform was deployed, through [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode will also setup all the other relevant sub-components in all regions, such as Subnets, Security Groups, and Routing Table entries. Some notes:
+If you choose to use the Yugabyte Platform to configure, own, and manage a full cross-region deployment of VPCs, it will generate a YugabyteDB-specific VPC in each selected region, then interconnect them, as well as the VPC in which the Yugabyte Platform was deployed, using [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant subcomponents in all regions, such as Subnets, Security Groups, and Routing Table entries. Some notes:
 
-- You can **optionally** provide a custom CIDR block for each regional VPC, else we will choose some sensible defaults internally, aiming to not overlap across regions.
-- You can **optionally** provide a custom AMI ID to use in each region, else, we will use a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS).
+- (Optional) Provide a custom CIDR block for each regional VPC, else we will choose some sensible defaults internally, aiming to not overlap across regions.
+- (Optional) Provide a custom AMI ID to use in each region; otherwise use a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS).
 
 ![New Region Modal](/images/ee/aws-setup/aws_new_region.png)
 
 ### Self-managed configuration
 
-If you wish to use your own custom VPCs, this is also supported. This will allow you the most level of customization over your VPC setup:
+Using your own custom VPCs is supported. This allows you the highest level of customization for your VPC setup:
 
-- You **must** provide a VPC ID to use for each region.
-- You **must** provide a Security Group ID to use for each region. This will be attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
-- You **must** provide the mapping of what Subnet IDs to use for each Availability Zone in which you wish to be able to deploy. This is required to ensure the Yugabyte Platform can deploy nodes in the correct network isolation that you desire in your environment.
-- You can **optionally** provide a custom AMI ID to use in each region, else, we will use a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS).
+- Provide a **VPC ID** to use for each region.
+- Provide a **Security Group ID** to use for each region. This will be attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
+- Provide the mapping of what Subnet IDs to use for each Availability Zone in which you wish to be able to deploy. This is required to ensure the Yugabyte Platform can deploy nodes in the correct network isolation that you desire in your environment.
+- (Optional) Provide a custom AMI ID to use in each region; otherwise, use a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS).
 
 ![Custom Region Modal](/images/ee/aws-setup/aws_custom_region.png)
 
-One really important note if you choose to provide your own VPC information: **it is your responsibility to have preconfigured networking connectivity!** In the case of a single region deployment, this might simply be a matter of region or VPC local Security Groups. However, across regions, the setup can get quite complex. We suggest using the VPC Peering feature of AWS, such that you can setup private IP connectivity between nodes across regions:
+If you choose to provide your own VPC information: **you are responsible for having preconfigured networking connectivity.** For single-region deployments, this might simply be a matter of region or VPC local Security Groups. Across regions, however, the setup can get quite complex. Yugabyte suggests using the [VPC peering](https://docs.aws.amazon.com/vpc/latest/peering/what-is-vpc-peering.html) feature of [Amazon Virtual Private Cloud (Amazon VPC)](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html) to set up private IP connectivity between nodes located across regions:
 
 - VPC Peering Connections must be established in an N x N matrix, such that every VPC in every region you configure must be peered to every other VPC in every other region.
 - Routing Table entries in every regional VPC should route traffic to every other VPC CIDR block across the PeeringConnection to that respective VPC. This must match the Subnets that you provided during the configuration step.
@@ -146,13 +146,13 @@ If you use the Yugabyte Platform to manage SSH Key Pairs for you and you deploy 
 
 ## Marketplace acceptance
 
-Finally, in case you did not provide your own custom AMI IDs, before we can proceed to creating a universe, let us check that you can actually spin up EC2 instances with our default AMIs. Our reference AMIs come from a [Marketplace CentOS 7 Product](https://aws.amazon.com/marketplace/pp/B00O7WM7QW/). Visit that link while logged into your AWS account and click **Continue to Subscribe**.
+Finally, if you did not provide your own custom AMI IDs, before we can proceed to creating a universe, verify that you can actually spin up EC2 instances with the default AMIs in Yugabyte Platform. The reference AMIs come from a [Marketplace CentOS 7 Product](https://aws.amazon.com/marketplace/pp/B00O7WM7QW/). While logged into your AWS account, go to that link and click **Continue to Subscribe**.
 
 If you are not already subscribed and have thus not accepted the _Terms and Conditions_, then you should see something like this:
 
 ![Marketplace accept](/images/ee/aws-setup/marketplace-accept.png)
 
-If so, please click the **Accept Terms** button and wait for the page to switch to a successful state. You should see the following once the operation completes, or if you had already previously subscribed and accepted the terms:
+If so, click the **Accept Terms** button and wait for the page to switch to a successful state. Once the operation completes, or if you previously subscribed and accepted the terms, you should see the following:
 
 ![Marketplace success](/images/ee/aws-setup/marketplace-success.png)
 

@@ -6,7 +6,7 @@ description: Install Yugabyte Platform software in your Kubernetes environment.
 menu:
   latest:
     parent: install-yugabyte-platform
-    identifier: install-software-4-kubernetes
+    identifier: install-software-2-kubernetes
     weight: 77
 isTocNested: true
 showAsideToc: true
@@ -14,75 +14,28 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/aws" class="nav-link">
-      <i class="fab fa-aws" aria-hidden="true"></i>
-      AWS
+  <li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link">
+      <i class="fas fa-cloud"></i>
+      Default
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link">
+      <i class="fas fa-unlink"></i>
+      Airgapped
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/gcp" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
-      GCP
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/azure" class="nav-link">
-       <i class="icon-azure" aria-hidden="true"></i>
-      Azure
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/kubernetes" class="nav-link active">
-       <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link active">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/on-premises" class="nav-link">
-       <i class="fas fa-building" aria-hidden="true"></i>
-      On-premises
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/air-gapped" class="nav-link">
-       <i class="fas fa-unlink" aria-hidden="true"></i>
-      Air-gapped
-    </a>
-  </li>
-
 </ul>
-
-## Prerequisites
-
-The Yugabyte Platform Helm chart was tested using the following software versions:
-
-- Kubernetes 1.10 or later.
-- Helm 3.0 or later.
-- Yugabyte Platform (`yugaware`) Docker image 1.1.0 or later.
-
-Before installing the YugbyteDB Admin Console, verify you have the following:
-
-- A Kubernetes cluster configured with [Helm](https://helm.sh/).
-- A Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to Yugabyte Platform.
-- A Kubernetes secret obtained from Yugabyte Support.
-
-To confirm that `helm` is configured correctly, run the following command:
-
-```sh
-$ helm version
-```
-
-The output should be similar to the following:
-
-```
-version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
-```
 
 ## Install Yugabyte Platform
 

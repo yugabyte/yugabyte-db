@@ -1,12 +1,14 @@
 ---
-title: Install Yugabyte Platform software - On-premises
-headerTitle: Install Yugabyte Platform software - On-premises
+title: Install Yugabyte Platform
+headerTitle: Install Yugabyte Platform
 linkTitle: Install software
-description: Install Yugabyte Platform in your on-premises environment.
+description: Install the Yugabyte Platform software.
+aliases:
+ - /latest/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
   latest:
     parent: install-yugabyte-platform
-    identifier: install-software-5-on-premises
+    identifier: install-software-1-default
     weight: 77
 isTocNested: true
 showAsideToc: true
@@ -14,45 +16,24 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/aws" class="nav-link">
-      <i class="fab fa-aws" aria-hidden="true"></i>
-      AWS
+  <li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link active">
+      <i class="fas fa-cloud"></i>
+      Default
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link">
+      <i class="fas fa-unlink"></i>
+      Airgapped
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/gcp" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
-      GCP
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/azure" class="nav-link">
-       <i class="icon-azure" aria-hidden="true"></i>
-      Azure
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/kubernetes" class="nav-link">
-       <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/on-premises" class="nav-link active">
-       <i class="fas fa-building" aria-hidden="true"></i>
-      On-premises
-    </a>
-  </li>
-
-  <li>
-    <a href="/latest/yugabyte-platform/install-yp/install-software/air-gapped" class="nav-link">
-       <i class="fas fa-unlink" aria-hidden="true"></i>
-      Air-gapped
     </a>
   </li>
 
@@ -90,11 +71,9 @@ You should see an output similar to the following.
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-## Step 2. Install Yugabyte Platform
-
 ### Set up HTTPS for Replicated
 
-Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). You will address this warning as soon after setting up HTTPS for the Replicated Admin Console in the next step. Click **Continue to Setup** and then **ADVANCED** to bypass this warning and go to the Replicated Admin Console.
+Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). You will address this warning as soon after setting up HTTPS for the Replicated Admin Console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated Admin Console.
 
 ![Replicated SSL warning](/images/replicated/replicated-warning.png)
 
@@ -120,16 +99,16 @@ If you are asked to choose an installation type, choose `Online`.
 
 ### Secure Replicated
 
-The next step is to add a password to protect the Replicated Admin Console (this is different from the Yugabyte Platform console.
+The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from Yugabyte Platform, the Admin Console for YugabyteDB).
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
-### Preflight checks
+### Pre-flight checks
 
-Replicated will perform a set of preflight checks to ensure that the host is set up correctly for the Yugabyte Platform.
+Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the Yugabyte Platform application.
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 
-Clicking **Continue** above will bring you to Yugabyte Platform configuration.
+Clicking Continue above will bring us to Yugabyte Platform configuration.
 
-In case the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to identify the resolution.
+In case the pre-flight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to identify the resolution.
