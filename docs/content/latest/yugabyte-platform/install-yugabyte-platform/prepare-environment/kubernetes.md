@@ -55,13 +55,6 @@ showAsideToc: false
     </a>
   </li>
 
-  <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/air-gapped" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
-      Airgapped
-    </a>
-  </li>
-
 </ul>
 
 The Yugabyte Platform Helm chart has been tested using the following software versions:

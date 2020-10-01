@@ -34,3 +34,28 @@ In case of issues, more information about each Master or TServer is available on
 Generally the link is: `<node-ip>:7000` for Masters and `<node-ip>:9000` for TServers.
 
 Note that in some setups, these links may not be accessible, depending on the configuration of your on-premises  data center or cloud-provider account. To fix this, read more [here](../../../troubleshoot/nodes/check-processes/).
+
+## Check host resources on the nodes
+
+To check host resources on your YugabyteDB nodes, run the following script, replacing the IP addresses with the IP addresses of your YugabyteDB nodes.
+
+```sh
+for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do echo $IP; ssh $IP 'echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem'; done
+```
+
+The output display will look similar to this:
+
+```
+10.1.12.103
+CPUs: 72
+Mem: 251G
+Disk: /dev/sda2       160G   13G  148G   8% /
+10.1.12.104
+CPUs: 88
+Mem: 251G
+Disk: /dev/sda2       208G   22G  187G  11% /
+10.1.12.105
+CPUs: 88
+Mem: 251G
+Disk: /dev/sda2       208G  5.1G  203G   3% /
+```

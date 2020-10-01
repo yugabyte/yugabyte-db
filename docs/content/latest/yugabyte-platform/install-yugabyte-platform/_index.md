@@ -57,7 +57,7 @@ showAsideToc: true
         <div class="title">Prepare nodes (on-prem)</div>
       </div>
       <div class="body">
-        Prepare YugabyteDB nodes for on-premises install.
+        Prepare YugabyteDB nodes for on-premises installation.
       </div>
     </a>
   </div>

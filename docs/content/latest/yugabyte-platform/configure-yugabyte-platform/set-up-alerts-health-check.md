@@ -1,11 +1,11 @@
 ---
-title: Set up alerts and health check
-headerTitle: Set up the alerts and health check
-linkTitle: Alerts and health check
-description: Set up the initial alerts and health check.
+title: Set up alerts and health checking
+headerTitle: Set up the alerts and health checking
+linkTitle: Alerts and health checking
+description: Set up the initial alerts and health checking.
 menu:
   latest:
-    identifier: set-up-alerts-health-check
+    identifier: set-up-alerts-health-checking
     parent: configure-yugabyte-platform
     weight: 40
 isTocNested: true
@@ -14,7 +14,7 @@ showAsideToc: true
 
 To help you stay aware of potential deployment issues, the Yugabyte Platform has the capability to check on each individual universe for several types of issues and proactively send out email alerts when problems arise.
 
-## How to enable and tweak
+## Set up alerts and health checking
 
 To configure health checking, go to your profile page in the Yugabyte Platform console by clicking the top-right drop-down list featuring your account email and then select the **Profile** option.
 

@@ -55,16 +55,9 @@ showAsideToc: false
     </a>
   </li>
 
-  <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/air-gapped" class="nav-link">
-      <i class="fas fa-unlinked" aria-hidden="true"></i>
-      Airgapped
-    </a>
-  </li>
-
 </ul>
 
-## 1. (Optional) Create a new security group
+## 1. Create a new security group (optional)
 
 In order to access Yugabyte Platform from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the YugaWare machine. You will at minimum need to:
 
@@ -72,22 +65,20 @@ In order to access Yugabyte Platform from outside the AWS environment, you would
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
 - View the YugabyteDB Admin Console (port `tcp:80`)
 
-Let us create a security group enabling all of that!
+To create a security group that enables these, go to **EC2 > Security Groups**, click **Create Security Group** and then add the following values:
 
-Go to `EC2` -> `Security Groups`, click on `Create Security Group` and add the following values:
-
-- Enter `yugaware-sg` as the name (you can change the name if you want).
+- For the name, enter `yugaware-sg` (you can change the name if you want).
 - Add a description (for example, `Security group for Yugabyte Platform access`).
 - Add the appropriate IP addresses to the **Source IP ranges** field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
-- Add the ports `22`, `8800`, and `80` to the `Port Range` field. The **Protocol** must be `TCP`.
+- Add the ports `22`, `8800`, and `80` to the **Port Range** field. The **Protocol** selected must be `TCP`.
 
-You should see something like the screenshot below, click **Create** next.
+You should see something like the screenshot below. Click **Create** next.
 
 ![Create security group](/images/ee/aws-setup/yugaware-aws-create-sg.png)
 
-## 2. Create a new IAM role [Optional]
+## 2. Create a new IAM role (optional)
 
-In order for Yugabyte Platform to manage YugabyteDB nodes, it will require some limited access to your AWS infrastructure. This can be accomplished through directly providing a set of credentials, when configuring the AWS provider, which you can read more later on [here](../../configure-providers/). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. Here is a sample of such a role:
+In order for Yugabyte Platform to manage YugabyteDB nodes, it requires limited access to your AWS infrastructure. This can be accomplished through directly providing a set of credentials, when configuring the AWS provider, which you can read more later on [here](../../configure-cloud-providers/aws). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. Here is a sample of such a role:
 
 ```sh
 {
@@ -141,7 +132,7 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, it will require some 
 }
 ```
 
-## 3. Provision instance for Yugabyte Platform
+## 3. Provision an instance for Yugabyte Platform
 
 Create an instance to run the Yugabyte Platform server. In order to do so, go to **EC2 > Instances** and click **Launch Instance**. Fill in the following values.
 
