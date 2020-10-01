@@ -444,7 +444,7 @@ void TabletSplitITest::VerifyTriggeredPostSplitCompaction(int num_peers) {
 Result<uint64_t> TabletSplitITest::GetActiveTabletsBytesRead() {
   uint64_t read_bytes_1 = 0, read_bytes_2 = 0;
   for (auto peer : VERIFY_RESULT(ListPostSplitChildrenTabletPeers())) {
-    auto this_peer_read_bytes = peer->tablet()->rocksdb_statistics()->getTickerCount(
+    auto this_peer_read_bytes = peer->tablet()->regulardb_statistics()->getTickerCount(
         rocksdb::Tickers::COMPACT_READ_BYTES);
     if (read_bytes_1 == 0) {
       read_bytes_1 = this_peer_read_bytes;
@@ -470,7 +470,7 @@ Result<uint64_t> TabletSplitITest::GetActiveTabletsBytesRead() {
 Result<uint64_t> TabletSplitITest::GetInactiveTabletsBytesWritten() {
   uint64_t write_bytes = 0;
   for (auto peer : VERIFY_RESULT(ListSplitCompleteTabletPeers())) {
-    auto this_peer_written_bytes = peer->tablet()->rocksdb_statistics()->getTickerCount(
+    auto this_peer_written_bytes = peer->tablet()->regulardb_statistics()->getTickerCount(
         rocksdb::Tickers::COMPACT_WRITE_BYTES);
     if (write_bytes == 0) write_bytes = this_peer_written_bytes;
     if (write_bytes != this_peer_written_bytes) {
