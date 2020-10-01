@@ -7,7 +7,7 @@ aliases:
   - /latest/deploy/enterprise-edition/prepare-environment/
   - /latest/yugabyte-platform/deploy/prepare-environment/
 menu:
-  latest:
+  stable:
     parent: install-yugabyte-platform
     identifier: prepare-environment-5-on-premises
     weight: 55

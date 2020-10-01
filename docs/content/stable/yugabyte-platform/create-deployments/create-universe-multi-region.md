@@ -6,7 +6,7 @@ description: Create a YugabyteDB universe that spans multiple geographic regions
 aliases:
   - /latest/manage/enterprise-edition/create-universe-multi-region
 menu:
-  latest:
+  stable:
     identifier: create-universe-multi-region
     parent: create-deployments
     weight: 30

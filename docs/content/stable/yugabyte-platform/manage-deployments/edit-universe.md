@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to edit a universe.
 aliases:
   - /latest/manage/enterprise-edition/edit-universe/
 menu:
-  latest:
+  stable:
     identifier: edit-universe
     parent: manage-deployments
     weight: 53

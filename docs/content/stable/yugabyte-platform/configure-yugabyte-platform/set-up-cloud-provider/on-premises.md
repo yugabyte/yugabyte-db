@@ -6,7 +6,7 @@ description: Configure the on-premises data center provider.
 aliases:
  - /latest/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
-  latest:
+  stable:
     identifier: set-up-cloud-provider-6-on-premises
     parent: configure-yugabyte-platform
     weight: 20

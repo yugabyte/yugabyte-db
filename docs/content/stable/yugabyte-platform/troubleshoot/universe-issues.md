@@ -7,7 +7,7 @@ aliases:
   - /troubleshoot/enterprise-edition/universes/
   - /latest/troubleshoot/enterprise-edition/universes/
 menu:
-  latest:
+  stable:
     identifier: universe-issues
     parent: troubleshoot-yp
     weight: 20

@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to add a node.
 aliases:
   - /latest/manage/enterprise-edition/create-universe-multi-region
 menu:
-  latest:
+  stable:
     identifier: add-nodes
     parent: manage-deployments
     weight: 40

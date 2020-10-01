@@ -6,7 +6,7 @@ description: Configure the Kubernetes provider
 aliases:
   - /latest/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
-  latest:
+  stable:
     identifier: set-up-cloud-provider-5-kubernetes
     parent: configure-yugabyte-platform
     weight: 20
