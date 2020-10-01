@@ -1314,4 +1314,49 @@ public class TestIndex extends BaseCQLTest {
     query = String.format("SELECT * FROM test_coverage WHERE v = %d AND vv = %d;", v, vv);
     assertEquals(1, session.execute(query).all().size());
   }
+
+  @Test
+  public void testIndexUpdateWithChangeInExpressionResult() throws Exception {
+    // Create test table and indexes.
+    session.execute("CREATE TABLE test_update (h int PRIMARY KEY, j JSONB) " +
+                    "WITH transactions = {'enabled' : true};");
+    // Note: indexed expression is "j->>'x'", but it will be NULL if we set j={"a":n}.
+    session.execute("CREATE INDEX i1 on test_update (j->>'x');");
+
+    // test_update: Row[1, {"a":1}]
+    session.execute("insert into test_update (h, j) values (1, '{\"a\":1}');");
+    assertQuery("select * from test_update;", "Row[1, {\"a\":1}]");
+    assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".i1;", "Row[1, NULL]");
+
+    // Note: in the following UPDATE the value of column 'j' in the main table is CHANGED,
+    // but the EXPR(j) = j->>'x' is still UNCHANGED and equal NULL.
+    // test_update: Row[1, {"a":2}]
+    session.execute("update test_update set j = '{\"a\":2}' where h = 1;");
+    assertQuery("select * from test_update;", "Row[1, {\"a\":2}]");
+    assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".i1;", "Row[1, NULL]");
+
+    // test_update: Row[1, {"x":3}]
+    session.execute("update test_update set j = '{\"x\":3}' where h = 1;");
+    assertQuery("select * from test_update;", "Row[1, {\"x\":3}]");
+    assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".i1;", "Row[1, 3]");
+
+    // test_update: Row[1, {"x":3}], Row[2, {"a":1}]
+    session.execute("insert into test_update (h, j) values (2, '{\"a\":1}');");
+    assertQuery("select * from test_update;", "Row[1, {\"x\":3}]Row[2, {\"a\":1}]");
+    assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".i1;", "Row[1, 3]Row[2, NULL]");
+
+    session.execute("update test_update set j = '{\"x\":3}' where h = 1;");
+    assertQuery("select * from test_update;", "Row[1, {\"x\":3}]Row[2, {\"a\":1}]");
+    assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".i1;", "Row[1, 3]Row[2, NULL]");
+
+    // test_update: Row[1, {"x":3}], Row[2, {"x":3}]
+    session.execute("update test_update set j = '{\"x\":3}' where h = 2;");
+    assertQuery("select * from test_update;", "Row[1, {\"x\":3}]Row[2, {\"x\":3}]");
+    assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".i1;", "Row[1, 3]Row[2, 3]");
+
+    // test_update: Row[1, '{"x":3, "z":7}'], Row[2, {"x":3}]
+    session.execute("update test_update set j = '{\"x\":3, \"z\":7}' where h = 1;");
+    assertQuery("select * from test_update;", "Row[1, {\"x\":3,\"z\":7}]Row[2, {\"x\":3}]");
+    assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".i1;", "Row[1, 3]Row[2, 3]");
+  }
 }
