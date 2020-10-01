@@ -58,13 +58,6 @@ showAsideToc: false
     </a>
   </li>
 
-  <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/airgapped" class="nav-link">
-      <i class="fas ed"></i>
-      Air-gapped
-    </a>
-  </li>
-
 </ul>
 
 Support for Microsoft Azure in Yugabyte Platform is currently in the works.

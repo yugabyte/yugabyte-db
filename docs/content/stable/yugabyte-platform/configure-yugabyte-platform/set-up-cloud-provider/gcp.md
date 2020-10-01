@@ -58,13 +58,6 @@ showAsideToc: false
     </a>
   </li>
 
-  <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/airgapped" class="nav-link">
-      <i class="fas fa-unlinked"></i>
-      Air-gapped
-    </a>
-  </li>
-
 </ul>
 
 This page details how to configure Google Cloud Platform (GCP) for YugabyteDB clusters using the YugabyteDB Admin Console. If no cloud providers are configured yet, the main Dashboard page highlights the need to configure at least one cloud provider.
@@ -92,7 +85,7 @@ Take note of the following for configuring your GCP provider:
 
 - Give this provider a relevant name. We recommend something that contains Google or GCP in it, especially if you will be configuring other providers as well.
 
-- Upload the JSON file that you obtained when you created your service account as per the [Initial Setup](../../prepare-environment/).
+- Upload the JSON file that you obtained when you created your service account in [Prepare the Google Cloud Platform (GCP) environment](../../../install-yugabyte-platform/prepare-environment/gcp).
 
 - Assuming this is a new deployment, Yugabyte recommends creating a new VPC specifically for YugabyteDB nodes. You have to ensure that the Yugabyte Platform host machine is able to connect to your Google Cloud account where this new VPC will be created. Otherwise, you can choose to specify an existing VPC for YugabyteDB nodes. The third option that is available only when your Yugabyte Platform host machine is also running on Google Cloud is to use the same VPC that the Yugabyte Platform host machine runs on.
 
