@@ -59,7 +59,7 @@ showAsideToc: false
 
 ## 1. Create a new security group (optional)
 
-In order to access Yugabyte Platform from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the YugaWare machine. You will at minimum need to:
+In order to access Yugabyte Platform from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the Yugabyte Platform machine. You will at minimum need to:
 
 - Access the Yugabyte Platform instance over SSH (port `tcp:22`)
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)

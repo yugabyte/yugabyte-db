@@ -1,8 +1,8 @@
 ---
 title: Uninstall Yugabyte Platform software
-headerTitle: Uninstall Yugabyte Platform software
+headerTitle: Uninstall the Yugabyte Platform software
 linkTitle: Uninstall software
-description: Uninstall Yugabyte Platform software.
+description: Uninstall the Yugabyte Platform software.
 menu:
   latest:
     identifier: uninstall-software
@@ -12,7 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-To uninstall Yugabyte Platformo, follow these steps:
+To uninstall Yugabyte Platform, follow the steps for Docker or Kubernetes environments.
+
+## Uninstall in Docker environments
 
 1. Stop and remove the Yugabyte Platform on Replicated first.
 
@@ -54,7 +56,7 @@ To uninstall Yugabyte Platformo, follow these steps:
     $ helm del yw-test -n yw-test
     ```
 
-A message displays that the Yugabyte Platform release and the namespace is deleted.
+    A message displays that the Yugabyte Platform release and the namespace is deleted.
 
     ```
     release "yw-test" uninstalled
@@ -64,7 +66,8 @@ A message displays that the Yugabyte Platform release and the namespace is delet
 
     ```sh
     $ kubectl delete namespace yw-test
-    `    ``
+  
+    ```
 
     You should see the following message:
 

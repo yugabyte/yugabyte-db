@@ -117,9 +117,9 @@ You should see something like the screenshot below, click **Create** next.
 
 ![Firewall -- create full](/images/ee/gcp-setup/firewall-create-full.png)
 
-## 5. Provision instance for YugaWare
+## 5. Provision instance for Yugabyte Platform
 
-Create an instance to run YugaWare. In order to do so, go to **Compute Engine > VM instances** and click **Create**. Fill in the following values.
+Create an instance to run Yugabyte Platform. In order to do so, go to **Compute Engine > VM instances** and click **Create**. Fill in the following values.
 
 - Enter `yugaware-1` as the name.
 - Pick a region/zone (eg: `us-west1-b`).
