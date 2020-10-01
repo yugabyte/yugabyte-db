@@ -63,7 +63,7 @@ In order to access Yugabyte Platform from outside the AWS environment, you would
 
 - Access the Yugabyte Platform instance over SSH (port `tcp:22`)
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
-- View the YugabyteDB Admin Console (port `tcp:80`)
+- View the Yugabyte Platform console (port `tcp:80`)
 
 To create a security group that enables these, go to **EC2 > Security Groups**, click **Create Security Group** and then add the following values:
 

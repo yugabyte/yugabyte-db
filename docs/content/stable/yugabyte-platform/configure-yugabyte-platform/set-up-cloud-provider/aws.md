@@ -63,7 +63,7 @@ showAsideToc: false
 
 </ul>
 
-This page details how to configure Amazon Web Services (AWS) for YugabyteDB using the Yugabyte Platform Admin UI. If no cloud providers are configured, the main **Dashboard** page highlights that you need to configure at least one cloud provider.
+This page details how to configure Amazon Web Services (AWS) for YugabyteDB using the Yugabyte Platform console. If no cloud providers are configured, the main **Dashboard** page highlights that you need to configure at least one cloud provider.
 
 ![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
 
@@ -71,7 +71,7 @@ This page details how to configure Amazon Web Services (AWS) for YugabyteDB usin
 
 ### Amazon Web Services (AWS)
 
-To run YugabyteDB nodes on Amazon Web Services (AWS), you need to provide your cloud provider credentials on the Yugabyte Platform Admin UI. Yugabyte Platform uses the credentials to automatically provision and deprovision YugabyteDB instances. A YugabyteDB *instance* includes a compute instance as well as attached local or remote disk storage.
+To run YugabyteDB nodes on Amazon Web Services (AWS), you need to provide your cloud provider credentials on the Yugabyte Platform console. Yugabyte Platform uses the credentials to automatically provision and deprovision YugabyteDB instances. A YugabyteDB *instance* includes a compute instance as well as attached local or remote disk storage.
 
 ## Configure AWS
 
@@ -131,7 +131,7 @@ If you choose to provide your own VPC information: **you are responsible for hav
 - Routing Table entries in every regional VPC should route traffic to every other VPC CIDR block across the PeeringConnection to that respective VPC. This must match the Subnets that you provided during the configuration step.
 - Security Groups in each VPC can be hardened by only opening up the relevant ports to the CIDR blocks of the VPCs from which you are expecting traffic.
 - If you deploy Yugabyte Platform in a different VPC than the ones in which you intend to deploy YugabyteDB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up Routing Table entries in the source VPC (Yugabyte Platform) and allowing one further CIDR block (or public IP) ingress rule on the Security Groups for the YugabyteDB nodes (to allow traffic from the Yugabyte Platform or its VPC).
-- When a public IP address is not enabled on a universe, a network address translation (NAT) gateway or device is required. You must configure the NAT gateway before creating the VPC that you add to the Yugabyte Platform Admin UI. For more information, see [NAT](https://docs.aws.amazon.com/vpc/stable/userguide/vpc-nat.html) and [Tutorial: Creating a VPC with Public and Private Subnets for Your Clusters](https://docs.aws.amazon.com/AmazonECS/stable/developerguide/create-public-private-vpc.html) in the AWS documentation.
+- When a public IP address is not enabled on a universe, a network address translation (NAT) gateway or device is required. You must configure the NAT gateway before creating the VPC that you add to the Yugabyte Platform console. For more information, see [NAT](https://docs.aws.amazon.com/vpc/stable/userguide/vpc-nat.html) and [Tutorial: Creating a VPC with Public and Private Subnets for Your Clusters](https://docs.aws.amazon.com/AmazonECS/stable/developerguide/create-public-private-vpc.html) in the AWS documentation.
 
 ## Final notes
 

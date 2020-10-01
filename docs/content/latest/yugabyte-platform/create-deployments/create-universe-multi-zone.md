@@ -110,11 +110,11 @@ $ sudo su - yugabyte
 
 - **Export the `YCQL_ENDPOINTS` env variable**
 
-Export an environment variable telling the IP addresses for nodes in the cluster. Browse to the **Universe Overview** tab in the YugabyteDB Admin Console and click **YCQL Endpoints**. A new tab opens with a list of IP addresses.
+Export an environment variable telling the IP addresses for nodes in the cluster. Browse to the **Universe Overview** tab in the Yugabyte Platform console and click **YCQL Endpoints**. A new tab opens with a list of IP addresses.
 
 ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
 
-Export this into a shell variable on the database node `yb-dev-helloworld1-n1` you had connected to. Remember to replace the IP addresses below with those shown by the YugabyteDB Admin Console.
+Export this into a shell variable on the database node `yb-dev-helloworld1-n1` you had connected to. Remember to replace the IP addresses below with those shown by the Yugabyte Platform console.
 
 ```sh
 $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
@@ -157,7 +157,7 @@ Read: 47419.99 ops/sec (0.67 ms/op), 1053156 total ops | Write: 1303.85 ops/sec 
 Read: 47220.98 ops/sec (0.68 ms/op), 1289285 total ops | Write: 1311.67 ops/sec (1.52 ms/op), 35979 total ops
 ```
 
-Browse to the **Metrics** tab of the universe in the YugabyteDB Admin Console. You should be able to see the metrics show up. The metrics tab displays a variety of metrics, a few are shown in the screenshot below. Note that these numbers (server side metrics) tally with what the load tester reports (client side metrics).
+Browse to the **Metrics** tab of the universe in the Yugabyte Platform console. You should be able to see the metrics show up. The metrics tab displays a variety of metrics, a few are shown in the screenshot below. Note that these numbers (server side metrics) tally with what the load tester reports (client side metrics).
 
 ![YCQL Load Metrics](/images/ee/multi-zone-universe-ycql-load-metrics.png)
 
@@ -190,7 +190,7 @@ Read: 50209.09 ops/sec (0.64 ms/op), 908653 total ops  | Write: 1454.87 ops/sec 
 Read: 50016.18 ops/sec (0.64 ms/op), 1158794 total ops | Write: 1463.26 ops/sec (1.37 ms/op), 33443 total ops
 ```
 
-Browse to the **Metrics** tab of the universe in the YugabyteDB Admin Console. You should be able to see the metrics show up. The metrics tab displays a variety of metrics, a few are shown in the screenshot below. Note that these numbers (server side metrics) tally with what the load tester reports (client side metrics).
+Browse to the **Metrics** tab of the universe in the Yugabyte Platform console. You should be able to see the metrics show up. The metrics tab displays a variety of metrics, a few are shown in the screenshot below. Note that these numbers (server side metrics) tally with what the load tester reports (client side metrics).
 
 ![YEDIS Load Metrics Per Node](/images/ee/multi-zone-universe-yedis-load-metrics.png)
 

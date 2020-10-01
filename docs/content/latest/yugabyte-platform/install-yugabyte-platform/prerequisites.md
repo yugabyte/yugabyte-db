@@ -61,7 +61,7 @@ To install Yugabyte Platform on Airgapped hosts, without access to any Internet 
 - Docker Engine: supported versions `1.7.1` to `17.03.1-ce`. If not installed, see [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
 - The following ports should be open on the Yugabyte Platform host:
   - `8800` – HTTP access to the Replicated UI
-  - `80` – HTTP access to the YugabyteDB Admin Console)
+  - `80` – HTTP access to the Yugabyte Platform console)
   - `22` – SSH
 - Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum
 - The Yugabyte Platform airgapped install package (contact Yugabyte support)

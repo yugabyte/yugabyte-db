@@ -60,7 +60,7 @@ showAsideToc: false
 
 </ul>
 
-This page details how to configure Google Cloud Platform (GCP) for YugabyteDB clusters using the YugabyteDB Admin Console. If no cloud providers are configured yet, the main Dashboard page highlights the need to configure at least one cloud provider.
+This page details how to configure Google Cloud Platform (GCP) for YugabyteDB clusters using the Yugabyte Platform console. If no cloud providers are configured yet, the main Dashboard page highlights the need to configure at least one cloud provider.
 
 ![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
 
@@ -68,7 +68,7 @@ This page details how to configure Google Cloud Platform (GCP) for YugabyteDB cl
 
 ### Google Cloud Platform (GCP)
 
-If you plan to run YugabyteDB nodes on Google Cloud Platform (GCP), all you need to provide on YugabyteDB Admin Console is your cloud provider credentials. The Yugabyte Platform will use those credentials to automatically provision and de-provision instances that run YugabyteDB. An 'instance' for YugabyteDB includes a compute instance as well as local or remote disk storage attached to the compute instance.
+If you plan to run YugabyteDB nodes on Google Cloud Platform (GCP), all you need to provide on Yugabyte Platform console is your cloud provider credentials. The Yugabyte Platform will use those credentials to automatically provision and de-provision instances that run YugabyteDB. An 'instance' for YugabyteDB includes a compute instance as well as local or remote disk storage attached to the compute instance.
 
 ## Configure GCP
 

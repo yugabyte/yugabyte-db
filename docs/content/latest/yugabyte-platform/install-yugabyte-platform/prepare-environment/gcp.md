@@ -77,7 +77,7 @@ Here is a screenshot with the above values in the form, click create once the va
 
 ![Service Account -- filled create form](/images/ee/gcp-setup/service-account-filled-create.png)
 
-**NOTE**: Your web browser downloads the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the Yugabyte Platform Console.
+**NOTE**: Your web browser downloads the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the Yugabyte Platform console.
 
 ## 3. Give permissions to the service account
 
@@ -95,7 +95,7 @@ In order to access the Yugabyte Platform from outside the GCP environment, you w
 
 - Access the Yugabyte Platform instance over SSH (port `tcp:22`)
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
-- View the YugabyteDB Admin Console (port `tcp:80`)
+- View the Yugabyte Platform console (port `tcp:80`)
 
 Create a firewall entry enabling these by going to **VPC network > Firewall rules**:
 
@@ -108,7 +108,7 @@ Create a firewall entry enabling these by going to **VPC network > Firewall rule
 Click **CREATE FIREWALL RULE** and fill in the following.
 
 - Enter `yugaware-firewall-rule` as the name (you can change the name if you want).
-- Add a description (for example, `Firewall setup for YugabyteDB Admin Console`).
+- Add a description (for example, `Firewall setup for Yugabyte Platform console`).
 - Add a tag `yugaware-server` to the **Target tags** field. This will be used later when creating instances.
 - Add the appropriate ip addresses to the **Source IP ranges** field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
 - Add the ports `tcp:22,8800,80` to the **Protocol and ports** field.

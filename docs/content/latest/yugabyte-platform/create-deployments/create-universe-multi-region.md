@@ -38,7 +38,7 @@ Click **Create**.
 
 Wait for the universe to get created. Note that Yugabyte Platform can manage multiple universes as shown below.
 
-![Multiple universes in YugabyteDB Admin Console](/images/ee/multi-region-multiple-universes.png)
+![Multiple universes in Yugabyte Platform console](/images/ee/multi-region-multiple-universes.png)
 
 Once the universe is created, you should see something like the screenshot below in the universe overview.
 
@@ -88,7 +88,7 @@ $ sudo su - yugabyte
 
 3. Export the `YCQL_ENDPOINTS` environment variable.
 
-Export an environment variable telling us the IP addresses for nodes in the cluster. Browse to the **Universe Overview** tab in YugabyteDB Admin Console and click **YCQL Endpoints**. A new tab opens displaying a list of IP addresses.
+Export an environment variable telling us the IP addresses for nodes in the cluster. Browse to the **Universe Overview** tab in Yugabyte Platform console and click **YCQL Endpoints**. A new tab opens displaying a list of IP addresses.
 
 ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
 
@@ -113,7 +113,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --with_local_dc <REGION>
 ```
 
-You can find the region codes for each of the nodes by browsing to the **Nodes** tab for this universe in the YugabyteDB Admin Console. A screenshot is shown below. In this example, the value for `<REGION>` is:
+You can find the region codes for each of the nodes by browsing to the **Nodes** tab for this universe in the Yugabyte Platform console. A screenshot is shown below. In this example, the value for `<REGION>` is:
 
 - `us-east4` for node `yb-dev-helloworld2-n1`
 - `asia-northeast1` for node `yb-dev-helloworld2-n2`
@@ -128,7 +128,7 @@ Recall that we expect the app to have the following characteristics based on its
 - Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
 - Low latency reads from the nearest data center, which offers timeline consistency (similar to async replication).
 
-Let us verify this by browse to the **Metrics** tab of the universe in the YugabyteDB Admin Console to see the overall performance of the app. It should look similar to the screenshot below.
+Let us verify this by browse to the **Metrics** tab of the universe in the Yugabyte Platform console to see the overall performance of the app. It should look similar to the screenshot below.
 
 ![YCQL Load Metrics](/images/ee/multi-region-read-write-metrics.png)
 

@@ -24,7 +24,7 @@ You should see something like the following:
 
 ![Alerting Controls](/images/ee/health/alerting-controls.png)
 
-Under the **Alerting Controls**, you can::
+Under the **Alerting controls**, you can::
 
 - Add email addresses to send alerts to. Use comma-separated values.
 - Enable or disable sending the same alerts back to the Yugabyte support team.

@@ -39,5 +39,5 @@ To back up to the Amazon Web Services (AWS) cloud, use the **Amazon S3** tab in 
 
 ![AWS Backup](/images/ee/br-aws-s3.png)
 
-The **Access Key** and **Secret** values can be added for the IAM of the user. The destination S3 Bucket where backups are
+The **Access Key** and **Secret** values can be added for the IAM of the user. The destination **S3 Bucket** where backups are
 stored can be entered in the format shown in the sample above.
