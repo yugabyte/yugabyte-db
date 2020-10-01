@@ -609,23 +609,29 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
 
 #ifndef NDEBUG
 
-#define DSCHECK(expr, type, msg) SCHECK(expr, type, msg)
-#define DSCHECK_EQ(var1, var2, type, msg) SCHECK_EQ(var1, var2, type, msg)
-#define DSCHECK_NE(var1, var2, type, msg) SCHECK_NE(var1, var2, type, msg)
-#define DSCHECK_GT(var1, var2, type, msg) SCHECK_GT(var1, var2, type, msg)
-#define DSCHECK_GE(var1, var2, type, msg) SCHECK_GE(var1, var2, type, msg)
-#define DSCHECK_LT(var1, var2, type, msg) SCHECK_LT(var1, var2, type, msg)
-#define DSCHECK_LE(var1, var2, type, msg) SCHECK_LE(var1, var2, type, msg)
+// Debug mode ("not defined NDEBUG (non-debug-mode)" means "debug mode").
+// In case the check condition is false, we will crash with a CHECK failure.
+
+#define RSTATUS_DCHECK(expr, type, msg) DCHECK(expr) << msg
+#define RSTATUS_DCHECK_EQ(var1, var2, type, msg) DCHECK_EQ(var1, var2) << msg
+#define RSTATUS_DCHECK_NE(var1, var2, type, msg) DCHECK_NE(var1, var2) << msg
+#define RSTATUS_DCHECK_GT(var1, var2, type, msg) DCHECK_GT(var1, var2) << msg
+#define RSTATUS_DCHECK_GE(var1, var2, type, msg) DCHECK_GE(var1, var2) << msg
+#define RSTATUS_DCHECK_LT(var1, var2, type, msg) DCHECK_LT(var1, var2) << msg
+#define RSTATUS_DCHECK_LE(var1, var2, type, msg) DCHECK_LE(var1, var2) << msg
 
 #else
 
-#define DSCHECK(expr, type, msg) DCHECK(expr) << msg
-#define DSCHECK_EQ(var1, var2, type, msg) DCHECK_EQ(var1, var2) << msg
-#define DSCHECK_NE(var1, var2, type, msg) DCHECK_NE(var1, var2) << msg
-#define DSCHECK_GT(var1, var2, type, msg) DCHECK_GT(var1, var2) << msg
-#define DSCHECK_GE(var1, var2, type, msg) DCHECK_GE(var1, var2) << msg
-#define DSCHECK_LT(var1, var2, type, msg) DCHECK_LT(var1, var2) << msg
-#define DSCHECK_LE(var1, var2, type, msg) DCHECK_LE(var1, var2) << msg
+// Release mode.
+// In case the check condition is false, we will return an error status.
+
+#define RSTATUS_DCHECK(expr, type, msg) SCHECK(expr, type, msg)
+#define RSTATUS_DCHECK_EQ(var1, var2, type, msg) SCHECK_EQ(var1, var2, type, msg)
+#define RSTATUS_DCHECK_NE(var1, var2, type, msg) SCHECK_NE(var1, var2, type, msg)
+#define RSTATUS_DCHECK_GT(var1, var2, type, msg) SCHECK_GT(var1, var2, type, msg)
+#define RSTATUS_DCHECK_GE(var1, var2, type, msg) SCHECK_GE(var1, var2, type, msg)
+#define RSTATUS_DCHECK_LT(var1, var2, type, msg) SCHECK_LT(var1, var2, type, msg)
+#define RSTATUS_DCHECK_LE(var1, var2, type, msg) SCHECK_LE(var1, var2, type, msg)
 
 #endif
 

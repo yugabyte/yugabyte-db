@@ -75,7 +75,7 @@ Status InitGFlags(const char* argv0) {
     RETURN_NOT_OK(Env::Default()->GetExecutablePath(&executable_path_str));
     executable_path = executable_path_str.c_str();
   }
-  DSCHECK(executable_path != nullptr, RuntimeError, "Unable to get path to executable");
+  RSTATUS_DCHECK(executable_path != nullptr, RuntimeError, "Unable to get path to executable");
 
   // Change current working directory from postgres data dir (as set by postmaster)
   // to the one from yb-tserver so that relative paths in gflags would be resolved in the same way.

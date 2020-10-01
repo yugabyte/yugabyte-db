@@ -346,7 +346,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
 
     // Verify that the snapshot does not exist.
     auto inserted = non_txn_snapshot_ids_map_.emplace(snapshot_id, snapshot).second;
-    DSCHECK(inserted, IllegalState, Format("Snapshot already exists: $0", snapshot_id));
+    RSTATUS_DCHECK(inserted, IllegalState, Format("Snapshot already exists: $0", snapshot_id));
     current_snapshot_id_ = snapshot_id;
   }
 

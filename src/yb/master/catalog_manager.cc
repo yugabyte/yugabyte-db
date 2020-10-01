@@ -2365,7 +2365,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         // to place the table on as a child table.
         scoped_refptr<TabletInfo> tablet =
             tablegroup_tablet_ids_map_[ns->id()][req.tablegroup_id()];
-        DSCHECK(
+        RSTATUS_DCHECK(
             tablet->colocated(), InternalError,
             "The tablet for tablegroup should be colocated.");
         tablets.push_back(tablet.get());
@@ -2380,7 +2380,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       } else {
         // If the table is a tablegroup parent table, it creates a dummy tablet for the tablegroup
         // along with updating the catalog manager maps.
-        DSCHECK_EQ(
+        RSTATUS_DCHECK_EQ(
             tablets.size(), 1, InternalError,
             "Only one tablet should be created for each tablegroup");
         tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
@@ -2393,7 +2393,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       // if the tablet already exists, add the tablet to tablets
       if (tablets_exist) {
         scoped_refptr<TabletInfo> tablet = colocated_tablet_ids_map_[ns->id()];
-        DSCHECK(
+        RSTATUS_DCHECK(
             tablet->colocated(), InternalError,
             "The tablet for colocated database should be colocated.");
         tablets.push_back(tablet.get());
@@ -2405,7 +2405,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         tablet->mutable_metadata()->StartMutation();
         table->AddTablets(tablets);
       } else {  // Record the tablet
-        DSCHECK_EQ(
+        RSTATUS_DCHECK_EQ(
             tablets.size(), 1, InternalError,
             "Only one tablet should be created for each colocated database");
         tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
@@ -5599,7 +5599,8 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
       if (l->data().namespace_id() != database->id() || l->data().started_deleting()) {
         continue;
       }
-      DSCHECK(!l->data().pb.is_pg_shared_table(), Corruption, "Shared table found in database");
+      RSTATUS_DCHECK(
+          !l->data().pb.is_pg_shared_table(), Corruption, "Shared table found in database");
 
       if (IsSystemTableUnlocked(*table)) {
         sys_table_ids.insert(table->id());
