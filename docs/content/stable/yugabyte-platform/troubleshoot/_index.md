@@ -9,7 +9,7 @@ aliases:
   - /latest/troubleshoot/enterprise-edition/
   - /latest/troubleshoot/yugabyte-platform/
 menu:
-  latest:
+  stable:
     identifier: troubleshoot-yp
     parent: yugabyte-platform
     weight: 648

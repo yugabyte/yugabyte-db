@@ -6,7 +6,7 @@ description: Prepare the Amazon Web Services (AWS) environment for the Yugabyte 
 aliases:
  - /latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/
 menu:
-  latest:
+  stable:
     identifier: prepare-environment-1-aws
     parent: install-yugabyte-platform
     weight: 55

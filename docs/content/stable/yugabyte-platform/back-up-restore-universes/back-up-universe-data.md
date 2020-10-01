@@ -8,7 +8,7 @@ aliases:
   - /latest/manage/enterprise-edition/back-up-restore-data
   - /latest/yugabyte-platform/manage/backup-restore
 menu:
-  latest:
+  stable:
     parent: back-up-restore-universes
     identifier: back-up-universe-data
     weight: 20

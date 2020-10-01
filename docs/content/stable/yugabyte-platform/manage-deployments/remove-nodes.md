@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to remove a nonresponsive node.
 aliases:
   - /latest/manage/enterprise-edition/create-universe-multi-region
 menu:
-  latest:
+  stable:
     identifier: remove-nodes
     parent: manage-deployments
     weight: 50

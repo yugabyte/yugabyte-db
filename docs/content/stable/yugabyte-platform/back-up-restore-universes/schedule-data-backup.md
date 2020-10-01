@@ -7,7 +7,7 @@ aliases:
   - /latest/manage/enterprise-edition/schedule-backups/
   - /latest/manage/enterprise-edition/schedule-data-backup/
 menu:
-  latest:
+  stable:
     identifier: schedule-data-backup
     parent: back-up-restore-universes
     weight: 40

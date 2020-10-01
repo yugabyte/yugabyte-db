@@ -6,7 +6,7 @@ description: Configure the Microsoft Azure cloud provider.
 aliases:
   - /latest/deploy/enterprise-edition/configure-cloud-providers/azure
 menu:
-  latest:
+  stable:
     identifier: set-up-cloud-provider-3-azure
     parent: configure-yugabyte-platform
     weight: 20

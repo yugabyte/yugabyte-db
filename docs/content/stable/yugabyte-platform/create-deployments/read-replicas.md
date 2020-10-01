@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to create a read replica cluster.
 aliases:
   - /latest/manage/enterprise-edition/read-replicas/
 menu:
-  latest:
+  stable:
     identifier: create-read-replica-cluster
     parent: create-deployments
     weight: 40

@@ -6,7 +6,7 @@ description: Use a script file to back up and restore Yugabyte Platform.
 aliases:
   - /latest/manage/enterprise-edition/back-up-restore-yp
 menu:
-  latest:
+  stable:
     identifier: back-up-restore-yp
     parent: administer-yp
     weight: 10
