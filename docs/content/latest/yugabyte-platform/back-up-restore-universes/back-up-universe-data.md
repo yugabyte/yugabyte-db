@@ -65,4 +65,4 @@ as the storage, the **S3 Storage** dropdown option can be chosen during this bac
 
 ![Backup Modal](/images/ee/create-backup-modal.png)
 
-Click `OK`. If you refresh the page, you'll eventually see a completed task.
+Select `OK`. If you refresh the page, you'll eventually see a completed task.

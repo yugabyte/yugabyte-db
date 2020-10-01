@@ -14,11 +14,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to create a universe with both a primary and [read replica](../../../../architecture/concepts/replication/#read-only-replicas) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove, a read replica cluster. In this example, you are first going to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
+This section will describe how to create a universe with both a primary and [read replica](../../../architecture/concepts/replication/#read-only-replicas) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove, a read replica cluster. In this example, you are first going to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
 
 ## Create the universe
 
-First, enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-providers/gcp) cloud provider. Click **Create Universe** and then enter the following intent.
+First, enter the following values to create a primary cluster on [GCP](../../deploy/configure-providers/gcp) cloud provider. Click **Create Universe** and then enter the following intent.
 
 - Enter a universe name: **helloworld3**
 - Enter the set of regions: **Oregon**

@@ -7,7 +7,7 @@ aliases:
   - /latest/deploy/enterprise-edition/configure-cloud-providers/aws
   - /latest/deploy/enterprise-edition/configure-cloud-providers/aws
   - /latest/yugabyte-platform/deploy/configure-cloud-providers/aws
-  - /latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/
+  - /latest/yugabyte-platform/configure-yp/
 menu:
   latest:
     identifier: set-up-cloud-provider-1-aws
