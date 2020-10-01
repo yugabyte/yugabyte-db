@@ -4,7 +4,7 @@ headerTitle: Create a multi-region universe
 linkTitle: Multi-region universe
 description: Create a YugabyteDB universe that spans multiple geographic regions using Yugabyte Platform.
 aliases:
-  - /latest/manage/enterprise-edition/create-universe-multi-region
+  - /stable/manage/enterprise-edition/create-universe-multi-region
 menu:
   stable:
     identifier: create-universe-multi-region

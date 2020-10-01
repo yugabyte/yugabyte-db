@@ -6,8 +6,8 @@ image: /images/section_icons/troubleshoot/troubleshoot.png
 headcontent: Tools and issues specific to the Yugabyte Platform.
 aliases:
   - /troubleshoot/enterprise-edition/
-  - /latest/troubleshoot/enterprise-edition/
-  - /latest/troubleshoot/yugabyte-platform/
+  - /stable/troubleshoot/enterprise-edition/
+  - /stable/troubleshoot/yugabyte-platform/
 menu:
   stable:
     identifier: troubleshoot-yp

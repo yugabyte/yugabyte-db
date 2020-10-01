@@ -4,7 +4,7 @@ headerTitle: Create and edit instance tags
 linkTitle: Create and edit instance tags
 description: Use Yugabyte Platform to create and edit instance tags.
 aliases:
-  - /latest/manage/enterprise-edition/instance-tags/
+  - /stable/manage/enterprise-edition/instance-tags/
 menu:
   stable:
     identifier: instance-tags
@@ -15,7 +15,7 @@ showAsideToc: true
 ---
 
 The instances created on a cloud provider can be assigned special metadata to help manage, bill or audit the resources. On Amazon Web Services (AQS), they are referred to as
-[instance tags](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html). You can create and edit these on the **Universe** dashboard of the
+[instance tags](https://docs.aws.amazon.com/AWSEC2/stable/UserGuide/Using_Tags.html). You can create and edit these on the **Universe** dashboard of the
 YugabyteDB Admin Console.
 
 {{< note title="Note" >}}
