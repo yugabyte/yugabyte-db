@@ -499,8 +499,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   ScopedRWOperation GetPermitToWrite(CoarseTimePoint deadline);
 
   // Used from tests
-  const std::shared_ptr<rocksdb::Statistics>& rocksdb_statistics() const {
-    return rocksdb_statistics_;
+  const std::shared_ptr<rocksdb::Statistics>& regulardb_statistics() const {
+    return regulardb_statistics_;
+  }
+
+  const std::shared_ptr<rocksdb::Statistics>& intentsdb_statistics() const {
+    return intentsdb_statistics_;
   }
 
   TransactionCoordinator* transaction_coordinator() {
@@ -747,7 +751,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::shared_ptr<FlushCompactCommonHooks> common_hooks_;
 
   // Statistics for the RocksDB database.
-  std::shared_ptr<rocksdb::Statistics> rocksdb_statistics_;
+  std::shared_ptr<rocksdb::Statistics> regulardb_statistics_;
+  std::shared_ptr<rocksdb::Statistics> intentsdb_statistics_;
 
   // RocksDB database for key-value tables.
   std::unique_ptr<rocksdb::DB> regular_db_;

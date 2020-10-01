@@ -43,6 +43,7 @@ public class TestPgForeignKeyBatching extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_session_max_batch_size", Integer.toString(MAX_BATCH_SIZE));
+    flagMap.put("TEST_export_intentdb_metrics", "true");
     return flagMap;
   }
 
@@ -84,7 +85,7 @@ public class TestPgForeignKeyBatching extends BasePgSQLTest {
         String tableName = obj.getAsJsonObject("attributes").get("table_name").getAsString();
         Counter writes = counter.tableWrites.get(tableName);
         if (writes != null) {
-          writes.update(new Metrics(obj).getCounter("rocksdb_write_self").value);
+          writes.update(new Metrics(obj).getCounter("intentsdb_rocksdb_write_self").value);
         }
       }
     }

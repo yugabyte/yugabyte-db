@@ -922,7 +922,8 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
     int64_t bytes = 0;
     for (const auto& peer : peers) {
       if (peer->tablet()) {
-        bytes += peer->tablet()->rocksdb_statistics()->getTickerCount(rocksdb::COMPACT_READ_BYTES);
+        bytes +=
+            peer->tablet()->intentsdb_statistics()->getTickerCount(rocksdb::COMPACT_READ_BYTES);
       }
     }
     LOG(INFO) << "Compact read bytes: " << bytes;

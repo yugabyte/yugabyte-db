@@ -348,7 +348,7 @@ size_t CountIterators(MiniCluster* cluster) {
     std::vector<std::shared_ptr<tablet::TabletPeer>> peers;
     cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
     for (const auto& peer : peers) {
-      auto statistics = peer->tablet()->rocksdb_statistics();
+      auto statistics = peer->tablet()->regulardb_statistics();
       auto value = statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
       result += value;
     }
