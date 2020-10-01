@@ -16,15 +16,15 @@ This design document explains how online backfill of indexes in YugabyteDB works
 
 Before a schema change is initiated, the currently active copy of the schema is stored in the YB-Master, and cached on all the nodes (YB-TServers). The process of schema change is initiated by sending an RPC call to the YB-Master. The overall protocol for safely creating and backfilling an index (in other words, the protocol for performing online schema changes) relies on transitioning through various intermediate states explained below.
 
-Let us say that we have a table `MyTable` with pre-existing data and we are adding an index `MyIndex` to this table. 
+Let us say that we have a table `MyTable` with pre-existing data and we are adding an index `MyIndex` to this table.
 
 ## Intermediate states of the index table
 
-Once the updates are made, the YB-Master leader then creates the desired number of new tablets for the index table `MyIndex` and sends asynchronous `HandleAlterTable()` requests to each tablet leader of the table. Typically, until the backfill process is complete, the newly created index will *not* be available for any reads. However, incoming write operations that are concurrent with the backfill process may need to update the index. 
+Once the updates are made, the YB-Master leader then creates the desired number of new tablets for the index table `MyIndex` and sends asynchronous `HandleAlterTable()` requests to each tablet leader of the table. Typically, until the backfill process is complete, the newly created index will *not* be available for any reads. However, incoming write operations that are concurrent with the backfill process may need to update the index.
 
 The backfill process moves through the following 4 states (after the `MyIndex` index table has already been created). The currently active state of the `MyIndex` index is persisted by the YB-Master and replicated across all the YB-TServers as a part of the system catalog / metadata. The `IndexPermissions` state entry for `MyIndex` is used to determine what kind of index updates/access will be allowed against the index at any point in time.
 
-* **`DELETE_ONLY`:** In this state, whenever a row in `MyTable` is updated, the delete operation on the index (corresponding to the old value) is applied to the `MyIndex` index table. However, writes to the index (corresponding to the new value) are prohibited. All the queries/updates continue against `MyTable` (and the existing indexes if any). 
+* **`DELETE_ONLY`:** In this state, whenever a row in `MyTable` is updated, the delete operation on the index (corresponding to the old value) is applied to the `MyIndex` index table. However, writes to the index (corresponding to the new value) are prohibited. All the queries/updates continue against `MyTable` (and the existing indexes if any).
 
     For example, in a typical update operation consisting of the following steps, only the `DELETE` operation is applied to the index:
     ```
@@ -80,7 +80,7 @@ Once all the schema changes are propagated to all the nodes, the index state is 
 
 ### 3. Backfill the data
 
-After the index state is updated to `DB_REORG`, the YB-Master orchestrates the backfill process by issuing `BackfillIndex()` RPC calls to each tablet. This starts building the index across all the tablets of the table `MyTable`. The YB-Master keeps track of how many tablets have completed the build. At this point, the YB-Master  needs to wait for the backfill to complete on all the tablets before updating the table to the `READ_WRITE_AND_DELETE` state. 
+After the index state is updated to `DB_REORG`, the YB-Master orchestrates the backfill process by issuing `BackfillIndex()` RPC calls to each tablet. This starts building the index across all the tablets of the table `MyTable`. The YB-Master keeps track of how many tablets have completed the build. At this point, the YB-Master  needs to wait for the backfill to complete on all the tablets before updating the table to the `READ_WRITE_AND_DELETE` state.
 
 > **Note:** Details of how the index backfill works on any tablet is covered in detail in the next section.
 
@@ -121,14 +121,14 @@ A unique index will accept the writes only if **both** the following conditions 
     * there is an entry and the immediately next entry is a delete.
     * there is an entry and the immediately next entry value matches the value being written.
 
-Requirement 1) is similar to what a unique index would do anyways. Condition 2) is require to detect cases where a concurrent insert/update - that violates uniqueness - may have been accepted; because the conflicting row was not backfilled. Having this criteria will help detect the conflict when the backfilled entry arrives after the concurrent write. 
+Requirement 1) is similar to what a unique index would do anyways. Condition 2) is require to detect cases where a concurrent insert/update - that violates uniqueness - may have been accepted; because the conflicting row was not backfilled. Having this criteria will help detect the conflict when the backfilled entry arrives after the concurrent write.
 
 
 ### Throttling index build rate
 
 The rate at which the backfill should proceed can be specified by the desired number of rows of the primary table `MyTable` to process per second. In order to enforce this rate, the index backfill process keeps track of the number of rows being processed per second from the primary table `MyTable`. Note that this counter is maintained per backfill task.
 
-Additionally, the maximum number of backfill operations happening on any YB-TServer across tablets can also be specified in order to rate-limit backfilling. 
+Additionally, the maximum number of backfill operations happening on any YB-TServer across tablets can also be specified in order to rate-limit backfilling.
 
 ### Waiting for pending transactions to finish
 
@@ -138,7 +138,7 @@ So far, the discussion has made the assumption that all the concurrent updates (
 
 However, this may not hold true for “transactions” where the write/index-permission checking is done at “apply” time. However the backfill algorithm, that may kick in later, will only see the “commit” time.
 
-This means that if a write was “applied” before getting to update the index (wrt deleting the old value), and commits “after” the backfill timestamp is chosen, then neither operations may be updating the “index” to delete the overwritten value. 
+This means that if a write was “applied” before getting to update the index (wrt deleting the old value), and commits “after” the backfill timestamp is chosen, then neither operations may be updating the “index” to delete the overwritten value.
 
 To guard against this case, the `GetSafeTime()` operation will wait for all “pending transactions” to finish (i.e. commit or abort) before determining the timestamp at which the scan is to be performed for backfill.
 
