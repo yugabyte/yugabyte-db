@@ -17,13 +17,6 @@ showAsideToc: false
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link active">
-      <i class="fas fa-building"></i>
-      On-premises
-    </a>
-  </li>
-
-  <li>
     <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
@@ -55,6 +48,13 @@ showAsideToc: false
     <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link active">
+      <i class="fas fa-building"></i>
+      On-premises
     </a>
   </li>
 

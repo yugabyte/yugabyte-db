@@ -58,13 +58,6 @@ showAsideToc: false
     </a>
   </li>
 
-  <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/airgapped" class="nav-link">
-      <i class="fas fa-unlinked"></i>
-      Air-gapped
-    </a>
-  </li>
-
 </ul>
 
 This page details how to configure Kubernetes for YugabyteDB universes using the Yugabyte Platform. If no cloud providers are configured in the YugabyteDB Admin Console yet, the main Dashboard page highlights the need to configure at least one cloud provider.

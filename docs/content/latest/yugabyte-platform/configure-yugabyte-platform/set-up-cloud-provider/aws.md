@@ -61,13 +61,6 @@ showAsideToc: false
     </a>
   </li>
 
-  <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/airgapped" class="nav-link">
-      <i class="fas fa-unlinked"></i>
-      Air-gapped
-    </a>
-  </li>
-
 </ul>
 
 This page details how to configure Amazon Web Services (AWS) for YugabyteDB using the Yugabyte Platform Admin UI. If no cloud providers are configured, the main **Dashboard** page highlights that you need to configure at least one cloud provider.

@@ -58,13 +58,6 @@ showAsideToc: false
     </a>
   </li>
 
-  <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/airgapped" class="nav-link">
-      <i class="fas fa-unlinked"></i>
-      Air-gapped
-    </a>
-  </li>
-
 </ul>
 
 This page details how to configure Google Cloud Platform (GCP) for YugabyteDB clusters using the YugabyteDB Admin Console. If no cloud providers are configured yet, the main Dashboard page highlights the need to configure at least one cloud provider.
