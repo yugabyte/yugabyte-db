@@ -99,7 +99,30 @@ Most applications have a need to frequently evolve the database schema, while si
 
 ## Release notes
 
-### v3 – September 30, 2020
+### v2.2.3 – September 30, 2020
+
+**Build:** `2.2.3.0-b35`
+
+#### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.3.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.3.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+#### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.2.3.0-b35
+```
 
 #### New features
 
@@ -184,11 +207,11 @@ Most applications have a need to frequently evolve the database schema, while si
 
 ---
 
-### v2 - August 19, 2020
+### v2.2.2 - August 19, 2020
 
-**Build:** `2.0-b15`
+**Build:** `2.2.2.0-b15`
 
-### Downloads
+#### Downloads
 
 <a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-0.0-darwin.tar.gz">
   <button>
@@ -203,13 +226,13 @@ Most applications have a need to frequently evolve the database schema, while si
 </a>
 <br />
 
-### Docker
+#### Docker
 
 ```sh
 docker pull yugabytedb/yugabyte:2.0-b15
 ```
 
-### YSQL
+#### YSQL
 
 * Fix failed backup if restored table was deleted before restoration. [#5274](https://github.com/yugabyte/yugabyte-db/issues/5274)
 * Newly elected YB-Master leader should pause before initiating load balancing. [#5221](https://github.com/yugabyte/yugabyte-db/issues/5221)
@@ -218,14 +241,14 @@ docker pull yugabytedb/yugabyte:2.0-b15
 * For non-prepared statements, optimize `pg_statistic` system table lookups. [#5051](https://github.com/yugabyte/yugabyte-db/issues/5051)
 * [CDC] Avoid periodic querying of the `cdc_state` table for xDC metrics if there are no replication streams enabled. [#5173](https://github.com/yugabyte/yugabyte-db/issues/5173)
 
-### YCQL
+#### YCQL
 
 * Implement DNS cache to significantly reduce CPU loads due to a large number of DNS resolution requests (especially for YCQL connections). Adds [`dns_cache_expiration_ms`](../../../reference/configuration/yb-master/#dns-cache-expiration-ms) flag (default is 1 minute). [#5201](https://github.com/yugabyte/yugabyte-db/issues/5201)
 * Fixed incorrect names de-mangling in index creation from `CatalogManager::ImportSnapshot()`. [#5157](https://github.com/yugabyte/yugabyte-db/issues/5157)
 * Fixed crashes when inserting literals containing newline characters. [#5270](https://github.com/yugabyte/yugabyte-db/issues/5270)
 * Reuse CQL parser between processors to improve memory usage. Add new `cql_processors_limit` flag to control processor allocation. [#5057](https://github.com/yugabyte/yugabyte-db/issues/5057)
 
-### Core database
+#### Core database
 
 * Fix `yugabyted` fails to start UI due to class binding failure. [#5069](https://github.com/yugabyte/yugabyte-db/issues/5069)
 * Show hostnames in YB-Master and YB-TServer Admin UI when hostnames are specified in `--webserver_interface`, `rpc_bind_addresses`, and `server_broadcast_addresses` flags. [#5002](https://github.com/yugabyte/yugabyte-db/issues/5002)
@@ -247,7 +270,7 @@ docker pull yugabytedb/yugabyte:2.0-b15
 * `Not the leader` errors should not cause a replica to be marked as failed. [#5072](https://github.com/yugabyte/yugabyte-db/issues/5072)
 * Use difference between follower's hybrid time and its safe time as a measure of staleness. [#4868](https://github.com/yugabyte/yugabyte-db/issues/4868)
 
-### Yugabyte Platform
+#### Yugabyte Platform
 
 * Add **Master** section below **Tablet Server** section in **Metrics** page. [#5233](https://github.com/yugabyte/yugabyte-db/issues/5233)
 * Add `rpc_connections_alive` metrics for YSQL and YCQL APIs. [#5223](https://github.com/yugabyte/yugabyte-db/issues/5223)
@@ -262,9 +285,9 @@ docker pull yugabytedb/yugabyte:2.0-b15
 * Disable glob before running cleanup of old log files using `zip_purge_yb_logs.sh`. Fixes issue on Red Hat. [#5169](https://github.com/yugabyte/yugabyte-db/issues/5169)
 * Fix Replication graph units and missing graph in **Replication** tab when metrics exist. [#5423](https://github.com/yugabyte/yugabyte-db/issues/5423)
 
-### v0 - July 15, 2020
+### v2.2.0 - July 15, 2020
 
-**Build:** `0.0-b80`
+**Build:** `2.2.0.0-b80`
 
 #### Downloads
 
