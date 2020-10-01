@@ -18,9 +18,9 @@ All documentation pages must start with front matter as shown below.
 
 ```
 ---
-title: Browser-Title
+title: SEO-Title-Browser-Tab-Title
 headerTitle: Doc-Page-Title
-linkTitle: My-Left-Nav-Link
+linkTitle: Navigation-Link
 description: SEO-Meta-Description
 image: Icon-For-Page-Title
 headcontent: Brief-description
