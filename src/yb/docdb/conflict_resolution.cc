@@ -670,7 +670,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   CHECKED_STATUS CheckConflictWithCommitted(
       const TransactionId& id, HybridTime commit_time) override {
-    DSCHECK(commit_time.is_valid(), Corruption, "Invalid transaction commit time");
+    RSTATUS_DCHECK(commit_time.is_valid(), Corruption, "Invalid transaction commit time");
 
     VLOG(4) << ToString() << ", committed: " << id << ", commit_time: " << commit_time
             << ", read_time: " << read_time_;

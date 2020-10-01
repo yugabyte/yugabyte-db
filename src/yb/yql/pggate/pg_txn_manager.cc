@@ -311,7 +311,7 @@ void PgTxnManager::ResetTxnAndSession() {
 }
 
 Status PgTxnManager::EnterSeparateDdlTxnMode() {
-  DSCHECK(!ddl_txn_,
+  RSTATUS_DCHECK(!ddl_txn_,
           IllegalState, "EnterSeparateDdlTxnMode called when already in a DDL transaction");
   VLOG(2) << __PRETTY_FUNCTION__;
 
@@ -328,7 +328,7 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
 
 Status PgTxnManager::ExitSeparateDdlTxnMode(bool is_success) {
   VLOG(2) << __PRETTY_FUNCTION__ << ": ddl_txn_=" << ddl_txn_.get();
-  DSCHECK(!!ddl_txn_,
+  RSTATUS_DCHECK(!!ddl_txn_,
           IllegalState, "ExitSeparateDdlTxnMode called when not in a DDL transaction");
   if (is_success) {
     RETURN_NOT_OK(ddl_txn_->CommitFuture().get());

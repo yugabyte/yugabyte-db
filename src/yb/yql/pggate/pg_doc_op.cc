@@ -594,7 +594,8 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
       partition_keys.begin(),
       partition_keys.end(),
       a2b_hex(exec_params_.partition_key));
-  DSCHECK(partition_key != partition_keys.end(), InvalidArgument, "invalid partition key given");
+  RSTATUS_DCHECK(
+      partition_key != partition_keys.end(), InvalidArgument, "invalid partition key given");
 
   // Set paging state.
   PgsqlReadRequestPB *req = template_op_->mutable_request();

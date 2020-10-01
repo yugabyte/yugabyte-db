@@ -232,12 +232,12 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     tables[i].set_table_id(table.id());
     tables[i].set_namespace_id(table.namespace_().id());
 
-    DSCHECK(table.relation_type() == master::USER_TABLE_RELATION ||
+    RSTATUS_DCHECK(table.relation_type() == master::USER_TABLE_RELATION ||
             table.relation_type() == master::INDEX_TABLE_RELATION, InternalError,
             Format("Invalid relation type: $0", table.relation_type()));
-    DSCHECK_EQ(table.namespace_().name(), ns.name, InternalError,
+    RSTATUS_DCHECK_EQ(table.namespace_().name(), ns.name, InternalError,
                Format("Invalid namespace name: $0", table.namespace_().name()));
-    DSCHECK_EQ(table.namespace_().database_type(), ns.db_type, InternalError,
+    RSTATUS_DCHECK_EQ(table.namespace_().database_type(), ns.db_type, InternalError,
                Format("Invalid namespace type: $0",
                       YQLDatabase_Name(table.namespace_().database_type())));
   }
