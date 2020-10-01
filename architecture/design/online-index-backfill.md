@@ -105,7 +105,6 @@ The index build on a single tablet does the following:
 * It is important that the generated write entries being applied to the index table are written with a hybrid timestamp that is in the past, so that it is older than the hybrid timestamp of the new update operations that are running concurrent with the backfill process. These entries can either be written with one of the following hybrid logical timestamps (HTS):
     * The update time of the row being read
     * The timestamp `t_read` with which we are performing the scan
-    * Some  specific timestamp guranteed to be before all *current times* - such as timestamp 0 or something special
 
 * Note that compactions for the Index table would not reclaim the delete markers until the backfill process is complete, i.e. until the index is in READ_WRITE_AND_DELETE state.
 
