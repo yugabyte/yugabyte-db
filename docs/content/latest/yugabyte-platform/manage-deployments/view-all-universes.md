@@ -1,3 +1,5 @@
+/*
+
 ---
 title: Use Yugabyte Platform to view all universes
 headerTitle: View all universes
@@ -12,4 +14,4 @@ isTocNested: true
 showAsideToc: true
 ---
 
-??? Content needed
+*/

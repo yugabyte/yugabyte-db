@@ -12,11 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-??? Content needed
-
 The YugabyteDB release that is powering a universe can be upgraded to get the new features and fixes in a release.
-
-## To perform a rolling upgrade
 
 A rolling upgrade can be performed on a live universe deployment by following these steps:
 

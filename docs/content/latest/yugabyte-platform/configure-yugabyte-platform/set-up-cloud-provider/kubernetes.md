@@ -1,7 +1,7 @@
 ---
 title: Configure the Kubernetes provider
 headerTitle: Configure the Kubernetes provider
-linkTitle: Set up the cloud provider
+linkTitle: Configure the cloud provider
 description: Configure the Kubernetes provider
 aliases:
   - /latest/deploy/enterprise-edition/configure-cloud-providers/kubernetes

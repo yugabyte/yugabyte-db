@@ -3,6 +3,7 @@ title: Manage YugabyteDB universe deployments
 headerTitle: Manage YugabyteDB universe deployments
 linkTitle: Manage deployments
 description: Manage YugabyteDB universe deployments
+image: /images/section_icons/quick_start/sample_apps.png
 menu:
   latest:
     identifier: manage-deployments
@@ -16,6 +17,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
 
 <div class="row">
 
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="view-all-universes/">
       <div class="head">
@@ -39,6 +41,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
       </div>
     </a>
   </div>
+-->
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="start-stop-processes/">
@@ -55,8 +58,8 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="add-nodes/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
-        <div class="title">Add nodes</div>
+        <img class="icon" src="/images/section_icons/deploy/system.png" aria-hidden="true" />
+        <div class="title">Add a node</div>
       </div>
       <div class="body">
         Add nodes to your YugabyteDB universe.
@@ -67,8 +70,8 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="remove-nodes/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
-        <div class="title">Remove nodes</div>
+        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
+        <div class="title">Remove a node</div>
       </div>
       <div class="body">
         Remove nodes from a universes.
@@ -79,7 +82,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="edit-config-flags/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
         <div class="title">Edit configuration flags</div>
       </div>
       <div class="body">
@@ -91,7 +94,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="upgrade-software/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Upgrade YugabyteDB software</div>
       </div>
       <div class="body">
@@ -103,8 +106,8 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="edit-universe/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="title">Edit universes</div>
+        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
+        <div class="title">Edit a universe</div>
       </div>
       <div class="body">
         Use Yugabyte Platform to edit a universe.
@@ -115,7 +118,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="delete-universe/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
         <div class="title">Delete a universe</div>
       </div>
       <div class="body">

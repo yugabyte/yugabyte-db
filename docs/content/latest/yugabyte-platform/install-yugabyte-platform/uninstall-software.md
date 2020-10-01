@@ -48,7 +48,7 @@ To uninstall Yugabyte Platform, follow the steps for Docker or Kubernetes enviro
 
 6. Uninstall Replicated by following instructions documented in [Removing Replicated](https://help.replicated.com/docs/native/customer-installations/installing-via-script/#removing-replicated).
 
-## Uninstall on Kubernetes environments
+## Uninstall in Kubernetes environments
 
 1. To remove the Yugabyte Platform, run the `helm delete` command:
 

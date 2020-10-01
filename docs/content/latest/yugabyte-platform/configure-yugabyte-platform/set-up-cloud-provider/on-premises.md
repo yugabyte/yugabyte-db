@@ -1,7 +1,7 @@
 ---
 title: Configure the on-premises data center provider
 headerTitle: Configure the on-premises data center provider
-linkTitle: Set up the cloud provider
+linkTitle: Configure the cloud provider
 description: Configure the on-premises data center provider.
 aliases:
  - /latest/deploy/enterprise-edition/configure-cloud-providers/onprem

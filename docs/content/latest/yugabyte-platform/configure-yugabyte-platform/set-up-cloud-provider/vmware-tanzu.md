@@ -1,7 +1,7 @@
 ---
 title: Configure the VMware Tanzu provider
 headerTitle: Configure the VMware Tanzu provider
-linkTitle: Set up the cloud provider
+linkTitle: Configure the cloud provider
 description: Configure the VMware Tanzu provider.
 aliases:
   - /deploy/pivotal-cloud-foundry/

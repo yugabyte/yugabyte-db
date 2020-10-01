@@ -1,8 +1,8 @@
 ---
-title: Set the backup target
-headerTitle: Set the backup target
-linkTitle: Backup target
-description: Set the backup target.
+title: Configure the backup target
+headerTitle: Configure the backup target
+linkTitle: Configure backup target
+description: Configure the backup target.
 menu:
   latest:
     identifier: backup-target
