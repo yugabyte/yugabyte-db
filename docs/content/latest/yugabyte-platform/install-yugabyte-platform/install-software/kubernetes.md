@@ -88,8 +88,9 @@ $ helm search repo yugabytedb/yugabyte
 The latest Helm Chart version and App version will be displayed.
 
 ```
-NAME               	CHART VERSION	APP VERSION	DESRIPTION
-yugabytedb/yugabyte	2.3.0        	2.3.1.0	YugabyteDB is the high-performance distributed ..
+NAME               	CHART VERSION	APP VERSION	DESRIPTION                                       
+yugabytedb/yugabyte	2.3.2        	2.3.2.0	YugabyteDB is the high-performance distributed ..
+>>>>>>> 629314407... Fix merge conflict
 ```
 
 4. Run the following `helm install` command to install Yugabyte Platform (`yugaware`).
