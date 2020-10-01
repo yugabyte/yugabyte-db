@@ -98,7 +98,7 @@ The backfill process is a background job that runs on each of the tablets of the
 
 The index build on a single tablet does the following:
 
-* The index build requires a scan of the entire tablet data. However, there could be new updates happening on the dataset which would affect the values read by this scan. In order to prevent this, the scan is performed at a fixed timestamp. This hybrid logical timestamp `t_read` is picked by the YB-Master and send to all the tablets. The data is scanned using this timestamp `t_read` as the read point so that subsequent writes do not affect the values read by this scan.
+* The index build requires a scan of the entire tablet data. However, there could be new updates happening on the dataset which would affect the values read by this scan. In order to prevent this, the scan is performed at a fixed timestamp. This hybrid logical timestamp `t_read` is picked by the YB-Master and sent to all the tablets. The data is scanned using this timestamp `t_read` as the read point so that subsequent writes do not affect the values read by this scan.
 
 * The data is then scanned to generate the writes that need to be applied to the index table. These generated writes are batched and a batched write is performed to update the index table.
 
