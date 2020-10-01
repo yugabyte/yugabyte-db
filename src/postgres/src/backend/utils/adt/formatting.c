@@ -3213,7 +3213,7 @@ DCH_from_char(FormatNode *node, char *in, TmFromChar *out, bool std)
 			case DCH_FF5:
 			case DCH_FF6:
 				out->ff = n->key->id - DCH_FF1 + 1;
-				/* fall through */
+				switch_fallthrough();
 			case DCH_US:		/* microsecond */
 				len = from_char_parse_int_len(&out->us, &s,
 											  n->key->id == DCH_US ? 6 :
