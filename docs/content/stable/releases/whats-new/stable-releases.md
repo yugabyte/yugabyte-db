@@ -209,17 +209,17 @@ docker pull yugabytedb/yugabyte:2.2.3.0-b35
 
 ### v2.2.2 - August 19, 2020
 
-**Build:** `2.2.2.0-b15`
+#### New features
 
 #### Downloads
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-0.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.2.0-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-0.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.2.0-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -229,10 +229,10 @@ docker pull yugabytedb/yugabyte:2.2.3.0-b35
 #### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.0-b15
+docker pull yugabytedb/yugabyte:2.2.2.0-b15
 ```
 
-#### YSQL
+##### Core database
 
 * Fix failed backup if restored table was deleted before restoration. [#5274](https://github.com/yugabyte/yugabyte-db/issues/5274)
 * Newly elected YB-Master leader should pause before initiating load balancing. [#5221](https://github.com/yugabyte/yugabyte-db/issues/5221)
@@ -241,14 +241,30 @@ docker pull yugabytedb/yugabyte:2.0-b15
 * For non-prepared statements, optimize `pg_statistic` system table lookups. [#5051](https://github.com/yugabyte/yugabyte-db/issues/5051)
 * [CDC] Avoid periodic querying of the `cdc_state` table for xDC metrics if there are no replication streams enabled. [#5173](https://github.com/yugabyte/yugabyte-db/issues/5173)
 
-#### YCQL
+#### Improvements
 
 * Implement DNS cache to significantly reduce CPU loads due to a large number of DNS resolution requests (especially for YCQL connections). Adds [`dns_cache_expiration_ms`](../../../reference/configuration/yb-master/#dns-cache-expiration-ms) flag (default is 1 minute). [#5201](https://github.com/yugabyte/yugabyte-db/issues/5201)
 * Fixed incorrect names de-mangling in index creation from `CatalogManager::ImportSnapshot()`. [#5157](https://github.com/yugabyte/yugabyte-db/issues/5157)
 * Fixed crashes when inserting literals containing newline characters. [#5270](https://github.com/yugabyte/yugabyte-db/issues/5270)
 * Reuse CQL parser between processors to improve memory usage. Add new `cql_processors_limit` flag to control processor allocation. [#5057](https://github.com/yugabyte/yugabyte-db/issues/5057)
 
-#### Core database
+* Backup improvements
+  * YCQL, YSQL, and YEDIS backups are split into different tabs on backup UI screen
+  * Back up operation creates a single restore object regardless of “transactional” field selection
+  * Added a new field parallel thread for multi-threading backups
+  * YSQL backups only support namespace level backup
+  * Backup table list has been revamped with the new UX and shows more details - expiration time, duration, backup ty
+  * Universe can be restored with a single action
+  * Backup objects can be manually deleted
+  * Scheduled backups `cron` expression shows the next run time in local browser time and the label displays that `cron` supports UTC only [#4709](https://github.com/yugabyte/yugabyte-db/issues/4709)
+* Improve the Replication graph for xDC replication set up to display the graph and metric names cleanly [#5429](https://github.com/yugabyte/yugabyte-db/issues/5429)
+* UI improvements for displaying On-prem instances
+  * Instance ID is now optional and also shown in the nodes page [#4760](https://github.com/yugabyte/yugabyte-dbissues/4760)
+  * “In Use” column has been renamed to “Universe Name”
+  * Supports adding multiple instances in different rows instead of comma-separated entries 
+* Supports generating API tokens for SSO-enabled users
+* Yugabyte Platform restart cancels any tasks that were in progress
+* Remove `sudo` requirement in DB backup script [#5440](https://github.com/yugabyte/yugabyte-db/issues/5440)
 
 * Fix `yugabyted` fails to start UI due to class binding failure. [#5069](https://github.com/yugabyte/yugabyte-db/issues/5069)
 * Show hostnames in YB-Master and YB-TServer Admin UI when hostnames are specified in `--webserver_interface`, `rpc_bind_addresses`, and `server_broadcast_addresses` flags. [#5002](https://github.com/yugabyte/yugabyte-db/issues/5002)
@@ -270,7 +286,36 @@ docker pull yugabytedb/yugabyte:2.0-b15
 * `Not the leader` errors should not cause a replica to be marked as failed. [#5072](https://github.com/yugabyte/yugabyte-db/issues/5072)
 * Use difference between follower's hybrid time and its safe time as a measure of staleness. [#4868](https://github.com/yugabyte/yugabyte-db/issues/4868)
 
-#### Yugabyte Platform
+* [DocDB] Removal of unreachable (dead) nodes from YugabyteDB UI [#4759](https://github.com/yugabyte/yugabyte-db/issues/4759)
+* [DocDB] Improvements with selecting better default flags for Index backfill [#5494](https://github.com/yugabyte/yugabyte-db/issues/5494)
+* [DocDB] Lower the leader load balancer parallelism for performance improvements [#5461](https://github.com/yugabyte/yugabyte-db/issues/5461)
+
+#### Bug fixes
+
+##### Yugabyte Platform
+
+* [Platform] Security hardening: Added CSRF token support
+* [Platform] Support for PingFederate OIDC SSO login for Non Replicated deployments
+* [Platform] Allow on-prem nodes to be reused after releasing them from a universe [#5703](https://github.com/yugabyte/yugabyte-db/issues/5703)
+
+##### Core Database
+
+* [YCQL] Fix for CQL Index scans when `ORDER BY` columns exist in table but not in chosen index [#5690](https://github.com/yugabyte/yugabyte-db/issues/5690)
+* [YSQL] Avoids Pushdown down of `UPDATE` with `RETURNING` clause [#5366](https://github.com/yugabyte/yugabyte-db/issues/5366)
+* [YSQL] Fix for UPDATE operation with partial and expression Indexes [#4939](https://github.com/yugabyte/yugabyte-db/issues/4939)
+* [YSQL] OOM issue fix in `COPY FROM` query [#2855](https://github.com/yugabyte/yugabyte-db/issues/2855)
+* [YSQL] OOM issue fix in `COPY TO` query [#5205](https://github.com/yugabyte/yugabyte-db/issues/5205)
+* [DocDB] Crash fix for DNS-enabled Yugabyte Universes [#5561](https://github.com/yugabyte/yugabyte-db/issues/5561)
+* [DocDB] Fix for in-memory state not getting updated correctly when using read-from-follower query semantics [#1052](https://github.com/yugabyte/yugabyte-db/issues/1052)
+* [DocDB] For Yugabyte Universes using cross-cluster async replication (2DC), added RPC throttling on idle CDC tables to avoid wasting CPU [#5472](https://github.com/yugabyte/yugabyte-db/issues/5472)
+* [DocDB] Fix for rare deadlock scenario when the node switches from Leader to Follower state of the tablet and there are pending operations on Leader side [#5741](https://github.com/yugabyte/yugabyte-db/issues/5741)
+* [DocDB] Fix to ensure all Yugabyte Tablet Servers are accounted for when Master fails over [#5501](https://github.com/yugabyte/yugabyte-db/issues/5501)
+
+#### Known Issues
+
+##### Yugabyte Platform
+
+* Universe disk usage shows up empty on the universe page [#5548](https://github.com/yugabyte/yugabyte-db/issues/5548)
 
 * Add **Master** section below **Tablet Server** section in **Metrics** page. [#5233](https://github.com/yugabyte/yugabyte-db/issues/5233)
 * Add `rpc_connections_alive` metrics for YSQL and YCQL APIs. [#5223](https://github.com/yugabyte/yugabyte-db/issues/5223)
@@ -285,19 +330,21 @@ docker pull yugabytedb/yugabyte:2.0-b15
 * Disable glob before running cleanup of old log files using `zip_purge_yb_logs.sh`. Fixes issue on Red Hat. [#5169](https://github.com/yugabyte/yugabyte-db/issues/5169)
 * Fix Replication graph units and missing graph in **Replication** tab when metrics exist. [#5423](https://github.com/yugabyte/yugabyte-db/issues/5423)
 
-### v2.2.0 - July 15, 2020
+##### Yugabyte Platform
 
-**Build:** `2.2.0.0-b80`
+* Platform backup script needs to preserve attributes on copy from Prometheus snapshot [#5612](https://github.com/yugabyte/yugabyte-db/issues/5612)
+* Platform backup fails if `/opt/yugabyte/release` directory does not exist [#5615](https://github.com/yugabyte/yugabyte-db/issues/5615)
+* Platform backup script needs to stop Prometheus service during the restore of Prometheus data [#5685](https://github.com/yugabyte/yugabyte-db/issues/5685)
 
 #### Downloads
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-0.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.0.0-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-0.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.0.0-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -307,7 +354,7 @@ docker pull yugabytedb/yugabyte:2.0-b15
 #### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:0.0-b80
+docker pull yugabytedb/yugabyte:2.2.0.0-b80
 ```
 
 #### YSQL

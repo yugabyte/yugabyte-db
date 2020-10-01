@@ -95,7 +95,7 @@ yugabytedb/yugabyte	2.2.3        	2.2.3.0	YugabyteDB is the high-performance dis
 4. Run the following `helm install` command to install Yugabyte Platform (`yugaware`).
 
 ```sh
-$ helm install yw-test yugabytedb/yugaware --version 2.3.0 -n yw-test --wait
+$ helm install yw-test yugabytedb/yugaware --version 2.2.3 -n yw-test --wait
 ```
 
 A message should appear showing that the deployment succeeded.
