@@ -50,7 +50,8 @@ namespace client {
 YB_DEFINE_ENUM(BankAccountsOption, (kTimeStrobe)(kStepDown)(kTimeJump));
 typedef EnumBitSet<BankAccountsOption> BankAccountsOptions;
 
-class SnapshotTxnTest : public TransactionCustomLogSegmentSizeTest<0, TransactionTestBase> {
+class SnapshotTxnTest
+    : public TransactionCustomLogSegmentSizeTest<0, TransactionTestBase<MiniCluster>> {
  protected:
   void SetUp() override {
     SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
@@ -543,7 +544,7 @@ TEST_F(SnapshotTxnTest, HotRow) {
     auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
     session->SetTransaction(txn);
 
-    ASSERT_OK(Increment(&table_, session, kKey));
+    ASSERT_OK(kv_table_test::Increment(&table_, session, kKey));
     ASSERT_OK(session->FlushFuture().get());
     ASSERT_OK(txn->CommitFuture().get());
     if (i % kBlockSize == 0) {
@@ -644,7 +645,7 @@ void SnapshotTxnTest::TestMultiWriteWithRestart() {
           if (j > 1) {
             std::this_thread::sleep_for(100ms);
           }
-          auto write_result = WriteRow(&table_, session, k, j);
+          auto write_result = WriteRow(session, k, j);
           if (!write_result.ok()) {
             ASSERT_TRUE(IntermittentTxnFailure(write_result.status())) << write_result.status();
             good = false;

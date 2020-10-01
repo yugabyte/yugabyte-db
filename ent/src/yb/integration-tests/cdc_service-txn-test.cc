@@ -37,16 +37,16 @@ using client::TransactionTestBase;
 using client::WriteOpType;
 using rpc::RpcController;
 
-class CDCServiceTxnTest : public TransactionTestBase {
+class CDCServiceTxnTest : public TransactionTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     mini_cluster_opt_.num_masters = 1;
     mini_cluster_opt_.num_tablet_servers = 1;
     create_table_ = false;
     SetIsolationLevel(IsolationLevel::SERIALIZABLE_ISOLATION);
+    SetNumTablets(1);
     TransactionTestBase::SetUp();
-    client::KeyValueTableTest::CreateTable(
-        client::Transactional::kTrue, 1 /* num tablets */, client_.get(), &table_);
+    CreateTable();
 
     const auto mini_server = cluster_->mini_tablet_servers().front();
     cdc_proxy_ = std::make_unique<CDCServiceProxy>(

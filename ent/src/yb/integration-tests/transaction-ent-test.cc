@@ -31,7 +31,7 @@ DECLARE_int32(intents_flush_max_delay_ms);
 
 namespace yb {
 
-class TransactionEntTest : public client::KeyValueTableTest {
+class TransactionEntTest : public client::KeyValueTableTest<MiniCluster> {
  protected:
   virtual ~TransactionEntTest() {}
 

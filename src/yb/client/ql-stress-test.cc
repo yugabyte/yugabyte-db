@@ -92,7 +92,7 @@ const std::string kValueColumn = "v";
 
 }
 
-class QLStressTest : public QLDmlTestBase {
+class QLStressTest : public QLDmlTestBase<MiniCluster> {
  public:
   QLStressTest() {
   }
