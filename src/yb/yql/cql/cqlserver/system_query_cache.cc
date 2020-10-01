@@ -48,8 +48,8 @@ static bool parse_tables(
     const std::string& text,
     std::vector<QualifiedTable>* tables) {
   auto raw_tables = yb::StringSplit(text, ';');
-  std::remove_if(raw_tables.begin(), raw_tables.end(),
-      [](const std::string& s) { return s.length() == 0; });
+  raw_tables.erase(std::remove_if(raw_tables.begin(), raw_tables.end(),
+      [](const std::string& s) { return s.length() == 0; }), raw_tables.end());
 
   for (const auto& raw : raw_tables) {
     auto table_pair = yb::StringSplit(raw, '.');
