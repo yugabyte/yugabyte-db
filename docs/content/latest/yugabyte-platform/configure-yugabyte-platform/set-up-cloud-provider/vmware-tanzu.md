@@ -1,8 +1,8 @@
 ---
-title: Set up the VMware Tanzu provider
-headerTitle: Set up the VMware Tanzu provider
+title: Configure the VMware Tanzu provider
+headerTitle: Configure the VMware Tanzu provider
 linkTitle: Set up the cloud provider
-description: Set up the VMware Tanzu provider.
+description: Configure the VMware Tanzu provider.
 aliases:
   - /deploy/pivotal-cloud-foundry/
   - /latest/deploy/pivotal-cloud-foundry/
@@ -65,7 +65,7 @@ This tutorial walks through the steps to a create service instance of YugabyteDB
 
 ## Prerequisites
 
-Before creating the Service Instance, you need to have YugabyteDB tile installed in your PCF marketplace. Follow the instructions[here](https://docs.pivotal.io/partners/yugabyte-db/). Also in your YugaWare instance that you brought up in your PCF environment you have configured cloud provider. 
+Before creating the Service Instance, you need to have YugabyteDB tile installed in your PCF marketplace. Follow the instructions[here](https://docs.pivotal.io/partners/yugabyte-db/). Also in your Yugabyte Platform instance that you brought up in your PCF environment you have configured cloud provider. 
 
 After installing the tile, you have two ways to create a YugabyteDB instance, one is through the App Manager UI, and other is through Cloud Foundry CLI (cf).
 
@@ -108,7 +108,7 @@ This section lists various override options that you can specify when creating a
 
 ### Overriding cloud provider
 
-Based on what cloud providers you have setup in your YugaWare, you can create Yugabyte service instances by providing
+Based on what cloud providers you have setup in your Yugabyte Platform, you can create Yugabyte service instances by providing
 the overrides as below.
 
 To provision in AWS/GCP cloud, your overrides would include the appropriate `provider_type` and `region_codes` as a array
@@ -172,7 +172,7 @@ in GB for each of those volumes, lets say if you want to have 2 volumes with 100
 ### Overriding the YugabyteDB software version to use
 
 To override the YugabyteDB software version to use, just include `yb_version` with the desired value. Just make sure that particular
-version exists in YugaWare.
+version exists in Yugabyte Platform.
 
 ```sh
 {

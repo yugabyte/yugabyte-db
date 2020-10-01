@@ -24,58 +24,55 @@ Ensure that the YugabyteDB nodes conform to the requirements outlines in the [de
 
 Install the prerequisites and verify the system resource limits as described in [system configuration](../../../deploy/manual-deployment/system-config).
 
-
-
-
 ## SSH user
 
-Identify an SSH user or create an SSH  user. This user must have `sudo` privileges on each YugabyteDB node. 
+Identify or create an SSH user. This user must have `sudo` privileges on each YugabyteDB node.
 
 To add a new SSH user, follow this procedure:
 
-1. Add the `yw` group.
+1. Add the `yugabyte` group.
 
 ```sh
-$ sudo groupadd yw
+$ sudo groupadd yugabyte
 ```
 
-2. Add the SSH user `yw`.
+2. Add the SSH user `yugabyte`.
 
 ```ssh
-$ sudo useradd -m -s /bin/bash -g yw yw
+$ sudo useradd -m -s /bin/bash -g yugabyte yugabyte
 ```
 
-3. Add a password for the user `yw`.
+3. Add a password for the user `yugabyte`.
 
 ```sh
-$ sudo passwd yw
+$ sudo passwd yugabyte
 ```
 
-4. Ensure the `/home/yw` home directory exists for this user. The directory should have been created automatrically as a result of the above steps.
+4. Ensure the `/home/yugabyte` home directory exists for this user. The directory should have been created automatically as a result of the above steps.
 
-5. Verify the `/home/yw` directory is owned by `yw:yw`.
+5. Verify the `/home/yugabyte` directory is owned by `yugabyte:yugabyte`.
 
 ## Access as `sudo`
 
-1. Add the `yw` user to the sudo users file (`/etc/sudoers`) using the `visudo` command. 
+1. Add the `yugabyte` user to the `sudo` users file (`/etc/sudoers`) using the `visudo` command. 
 
 2. Add the line below to the end of the file and then save your changes:
 
 ```sh
-yw	ALL=(ALL)	NOPASSWD: ALL
+yugabyte	ALL=(ALL)	NOPASSWD: ALL
 ```
 
 ## Passwordless access
 
-1. Add the SSH keys to enable passwordless SSH as the `yw` user:
+1. Add the SSH keys to enable passwordless SSH as the `yugabyte` user:
 
 ```sh
-$ sudo mkdir /home/yw/.ssh
-$ sudo chown yw:yw /home/yw/.ssh
-$ sudo chmod 700 /home/yw/.ssh
-$ sudo touch /home/yw/.ssh/authorized_keys
-$ sudo chmod 600 /home/yw/.ssh/authorized_keys
-$ sudo chown yw:yw /home/yw/.ssh/authorized_keys
+$ sudo mkdir /home/yugabyte/.ssh
+$ sudo chown yugabyte:yugabyte /home/yugabyte/.ssh
+$ sudo chmod 700 /home/yugabyte/.ssh
+$ sudo touch /home/yugabyte/.ssh/authorized_keys
+$ sudo chmod 600 /home/yugabyte/.ssh/authorized_keys
+$ sudo chown yugabyte:yugabyte /home/yugabyte/.ssh/authorized_keys
 ```
 
 2. Add the public key of the on-premises provider to authorized keys for this user. This is a public key derived from the provider private key created when installing the Yugabyte Platform:
@@ -87,5 +84,5 @@ $ ssh-keygen -y -f <private-key-file>.pem
 3.Verify that you can `ssh` into this node (from your local machine, if node has a public address).
 
 ```ssh
-$ ssh -i your_private_key.pem yw@node_ip
+$ ssh -i your_private_key.pem yugabyte@node_ip
 ```
