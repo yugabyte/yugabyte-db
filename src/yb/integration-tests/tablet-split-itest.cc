@@ -60,12 +60,12 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 namespace yb {
 
-class TabletSplitITest : public client::TransactionTestBase {
+class TabletSplitITest : public client::TransactionTestBase<MiniCluster> {
  public:
   void SetUp() override {
     mini_cluster_opt_.num_tablet_servers = 3;
     create_table_ = false;
-    client::TransactionTestBase::SetUp();
+    TransactionTestBase::SetUp();
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());
   }
 

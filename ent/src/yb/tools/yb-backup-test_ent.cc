@@ -122,7 +122,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
 };
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackup)) {
-  client::KeyValueTableTest::CreateTable(
+  client::kv_table_test::CreateTable(
       client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
   const string& keyspace = table_.name().namespace_name();
 
@@ -463,7 +463,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreBackupT
 }
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYBBackupWrongUsage)) {
-  client::KeyValueTableTest::CreateTable(
+  client::kv_table_test::CreateTable(
       client::Transactional::kTrue, CalcNumTablets(3), client_.get(), &table_);
   const string& keyspace = table_.name().namespace_name();
   const string& table = table_.name().table_name();

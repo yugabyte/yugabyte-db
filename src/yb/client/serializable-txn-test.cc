@@ -29,7 +29,8 @@ DECLARE_int32(txn_max_apply_batch_records);
 namespace yb {
 namespace client {
 
-class SerializableTxnTest : public TransactionCustomLogSegmentSizeTest<0, TransactionTestBase> {
+class SerializableTxnTest
+    : public TransactionCustomLogSegmentSizeTest<0, TransactionTestBase<MiniCluster>> {
  protected:
   void SetUp() override {
     SetIsolationLevel(IsolationLevel::SERIALIZABLE_ISOLATION);
@@ -177,7 +178,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
       if (!entry.op) {
         // Execute UPDATE table SET value = value + 1 WHERE key = kKey
         entry.session->SetTransaction(entry.txn);
-        entry.op = ASSERT_RESULT(Increment(&table_, entry.session, key));
+        entry.op = ASSERT_RESULT(kv_table_test::Increment(&table_, entry.session, key));
         entry.write_future = entry.session->FlushFuture();
       } else if (entry.write_future.valid()) {
         if (entry.write_future.wait_for(0s) == std::future_status::ready) {

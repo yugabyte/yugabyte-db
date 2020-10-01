@@ -172,6 +172,8 @@ struct ExternalMiniClusterOptions {
 // other hand, there is little access to inspect the internal state of the daemons.
 class ExternalMiniCluster : public MiniClusterBase {
  public:
+  typedef ExternalMiniClusterOptions Options;
+
   // Mode to which node types a certain action (like Shutdown()) should apply.
   enum NodeSelectionMode {
     TS_ONLY,
