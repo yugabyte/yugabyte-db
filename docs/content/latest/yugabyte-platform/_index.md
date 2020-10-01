@@ -62,30 +62,6 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="secure/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Secure universes</div>
-      </div>
-      <div class="body">
-        Secure your Yugabyte Platform and YugabyteDB universes.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="alert-monitor/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Alert and monitor</div>
-      </div>
-      <div class="body">
-        Get alerts and monitor your YugabyteDB universes.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="back-up-restore-universes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />

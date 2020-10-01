@@ -1,7 +1,7 @@
 ---
 title: Troubleshoot install and upgrade issues
 headerTitle: 
-linkTitle: Install and upgrade issues
+linkTitle: Install and upgrade
 description: Troubleshoot issues encountered during installing or upgrading Yugabyte Platform.
 menu:
   latest:

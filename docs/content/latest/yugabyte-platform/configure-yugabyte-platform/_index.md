@@ -3,7 +3,7 @@ title: Configure Yugabyte Platform
 headerTitle: Configure Yugabyte Platform
 linkTitle: Configure Yugabyte Platform
 description: Configure Yugabyte Platform.
-image: /images/section_icons/manage/enterprise.png
+image: /images/section_icons/deploy/manual-deployment.png
 headcontent: Configure Yugabyte Platform.
 menu:
   latest:
@@ -30,7 +30,7 @@ menu:
     <a class="section-link icon-offset" href="set-up-cloud-provider/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
-        <div class="title">Set up the cloud provider</div>
+        <div class="title">Configure the cloud provider</div>
       </div>
       <div class="body">
         Set up providers for on-premises, AWS, GCP, Azure, and Kubernetes.
@@ -41,11 +41,23 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="backup-target/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
-        <div class="title">Backup target</div>
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Configure backup target</div>
       </div>
       <div class="body">
-        Set the backup target for scheduled backups.
+        Configure the backup target for scheduled backups.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="set-up-alerts-health-check/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
+        <div class="title">Configure alerts and health checking</div>
+      </div>
+      <div class="body">
+        Configure alerts and health checking.
       </div>
     </a>
   </div>
@@ -53,7 +65,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="instance-tags/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
         <div class="title">Configure instance tags</div>
       </div>
       <div class="body">

@@ -3,6 +3,8 @@ title: Install Yugabyte Platform
 headerTitle: Install Yugabyte Platform
 linkTitle: Install Yugabyte Platform
 description: Install Yugabyte Platform and prepare universe nodes.
+image: /images/section_icons/quick_start/install.png
+headcontent: Install Yugabyte Platform to begin creating and managing deployments.
 menu:
   latest:
     parent: yugabyte-platform
@@ -17,7 +19,7 @@ showAsideToc: true
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="prerequisites/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
         <div class="title">Prerequisites</div>
       </div>
       <div class="body">
@@ -41,7 +43,7 @@ showAsideToc: true
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="install-software/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Install software</div>
       </div>
       <div class="body">
@@ -53,7 +55,7 @@ showAsideToc: true
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="prepare-on-prem-nodes/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
         <div class="title">Prepare nodes (on-prem)</div>
       </div>
       <div class="body">

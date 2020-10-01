@@ -3,7 +3,7 @@ title: Back up and restore universes
 headerTitle: Back up and restore universes
 linkTitle: Back up and restore
 description: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
-image: /images/section_icons/manage/enterprise.png
+image: /images/section_icons/manage/backup.png
 headcontent: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
 menu:
   latest:
@@ -19,7 +19,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="back-up-universe-data/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
         <div class="title">Back up data</div>
       </div>
       <div class="body">
@@ -31,7 +31,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="restore-universe-data/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
         <div class="title">Restore data</div>
       </div>
       <div class="body">
@@ -43,7 +43,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="schedule-data-backup/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
         <div class="title">Schedule backups</div>
       </div>
       <div class="body">
