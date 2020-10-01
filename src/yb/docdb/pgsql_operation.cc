@@ -122,7 +122,7 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
     case PgsqlWriteRequestPB::PGSQL_UPSERT: {
       // Upserts should not have column refs (i.e. require read).
-      DSCHECK(!request_.has_column_refs() || request_.column_refs().ids().empty(),
+      RSTATUS_DCHECK(!request_.has_column_refs() || request_.column_refs().ids().empty(),
               IllegalState,
               "Upsert operation should not have column references");
       return ApplyInsert(data, IsUpsert::kTrue);
@@ -659,7 +659,7 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIte
     if (!next_row_key.doc_key().empty()) {
       const auto& keybytes = next_row_key.Encode();
       PgsqlPagingStatePB* paging_state = response_.mutable_paging_state();
-      DSCHECK(schema != nullptr, IllegalState, "Missing schema");
+      RSTATUS_DCHECK(schema != nullptr, IllegalState, "Missing schema");
       if (schema->num_hash_key_columns() > 0) {
         paging_state->set_next_partition_key(
            PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));

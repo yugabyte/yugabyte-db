@@ -533,7 +533,7 @@ CHECKED_STATUS GetRangePartitionKey(
     const Schema& schema, const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& range_cols,
     std::string* key) {
   vector<docdb::PrimitiveValue> range_components;
-  DSCHECK(!schema.num_hash_key_columns(), IllegalState,
+  RSTATUS_DCHECK(!schema.num_hash_key_columns(), IllegalState,
       "Cannot get range partition key for hash partitioned table");
 
   RETURN_NOT_OK(GetRangeComponents(schema, range_cols, &range_components));

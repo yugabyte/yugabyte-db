@@ -510,7 +510,7 @@ PgDropIndex::~PgDropIndex() {
 Status PgDropIndex::Exec() {
   client::YBTableName indexed_table_name;
   Status s = pg_session_->DropIndex(table_id_, &indexed_table_name);
-  DSCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
+  RSTATUS_DCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
   PgObjectId indexed_table_id(indexed_table_name.table_id());
 
   pg_session_->InvalidateTableCache(table_id_);

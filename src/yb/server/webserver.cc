@@ -300,19 +300,21 @@ Status Webserver::GetBoundAddresses(std::vector<Endpoint>* addrs_ptr) const {
     switch (sockaddrs[i]->ss_family) {
       case AF_INET: {
         sockaddr_in* addr = reinterpret_cast<struct sockaddr_in*>(sockaddrs[i]);
-        DSCHECK(addrs[i].capacity() >= sizeof(*addr), IllegalState, "Unexpected size of struct");
+        RSTATUS_DCHECK(
+            addrs[i].capacity() >= sizeof(*addr), IllegalState, "Unexpected size of struct");
         memcpy(addrs[i].data(), addr, sizeof(*addr));
         break;
       }
       case AF_INET6: {
         sockaddr_in6* addr6 = reinterpret_cast<struct sockaddr_in6*>(sockaddrs[i]);
-        DSCHECK(addrs[i].capacity() >= sizeof(*addr6), IllegalState, "Unexpected size of struct");
+        RSTATUS_DCHECK(
+            addrs[i].capacity() >= sizeof(*addr6), IllegalState, "Unexpected size of struct");
         memcpy(addrs[i].data(), addr6, sizeof(*addr6));
         break;
       }
       default: {
         LOG(ERROR) << "Unexpected address family: " << sockaddrs[i]->ss_family;
-        DSCHECK(false, IllegalState, "Unexpected address family");
+        RSTATUS_DCHECK(false, IllegalState, "Unexpected address family");
         break;
       }
     }

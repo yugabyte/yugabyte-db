@@ -550,7 +550,7 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
 Status PartitionSchema::CreatePartitions(
     const std::vector<std::string>& split_rows,
     const Schema& schema, std::vector<Partition>* partitions) const {
-  DSCHECK(!schema.num_hash_key_columns(), IllegalState,
+  RSTATUS_DCHECK(!schema.num_hash_key_columns(), IllegalState,
       "Cannot create partitions using split rows for hash partitioned tables");
   *partitions = vector<Partition>();
 
