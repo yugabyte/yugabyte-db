@@ -100,13 +100,13 @@ java -jar ~/yb-sample-apps-no-table-drop.jar    \
 
 The table on which the benchmark was run had the following simple schema.
 
-```postgresql
+```plpgsql
 CREATE TABLE table_name (k varchar PRIMARY KEY, v varchar);
 ```
 
 This workload performed a number of INSERTs using prepared statements, as shown below.
 
-```postgresql
+```plpgsql
 INSERT INTO table_name (k, v) VALUES (?, ?);
 ```
 
@@ -149,7 +149,7 @@ java -jar ~/yb-sample-apps-no-table-drop.jar \
 
 The SELECT workload looks up random rows on the table that the INSERT workload (described in the previous section) populated. Each SELECT query is performed using prepared statements, as shown below.
 
-```postgresql
+```plpgsql
 SELECT * FROM table_name WHERE k=?;
 ```
 
