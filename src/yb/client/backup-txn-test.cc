@@ -49,7 +49,7 @@ using ImportedSnapshotData = google::protobuf::RepeatedPtrField<
 
 constexpr auto kWaitTimeout = 15s;
 
-class BackupTxnTest : public TransactionTestBase {
+class BackupTxnTest : public TransactionTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     FLAGS_enable_history_cutoff_propagation = true;

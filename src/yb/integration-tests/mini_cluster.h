@@ -105,6 +105,7 @@ class MiniCluster : public MiniClusterBase {
   typedef std::vector<std::shared_ptr<master::MiniMaster> > MiniMasters;
   typedef std::vector<std::shared_ptr<tserver::MiniTabletServer> > MiniTabletServers;
   typedef std::vector<uint16_t> Ports;
+  typedef MiniClusterOptions Options;
 
   MiniCluster(Env* env, const MiniClusterOptions& options);
   ~MiniCluster();

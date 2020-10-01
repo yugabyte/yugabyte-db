@@ -73,7 +73,7 @@ struct WriteConflictsOptions {
   bool non_txn_writes = false;
 };
 
-class QLTransactionTest : public TransactionTestBase {
+class QLTransactionTest : public TransactionTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);

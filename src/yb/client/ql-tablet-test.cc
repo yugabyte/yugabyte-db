@@ -104,7 +104,7 @@ const int kBigSeqNo = 100500;
 
 } // namespace
 
-class QLTabletTest : public QLDmlTestBase {
+class QLTabletTest : public QLDmlTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     server::SkewedClock::Register();

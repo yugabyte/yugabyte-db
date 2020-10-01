@@ -110,7 +110,7 @@ RowValue ValueForIndex(int32_t index) {
 
 } // namespace
 
-class QLDmlTest : public QLDmlTestBase {
+class QLDmlTest : public QLDmlTestBase<MiniCluster> {
  public:
   QLDmlTest() {
   }
