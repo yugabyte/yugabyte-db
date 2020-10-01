@@ -4,9 +4,9 @@ headerTitle: Back up universe data
 linkTitle: Back up data
 description: Use Yugabyte Platform to back up data in YCQL tables.
 aliases:
-  - /latest/manage/enterprise-edition/backup-restore
-  - /latest/manage/enterprise-edition/back-up-restore-data
-  - /latest/yugabyte-platform/manage/backup-restore
+  - /stable/manage/enterprise-edition/backup-restore
+  - /stable/manage/enterprise-edition/back-up-restore-data
+  - /stable/yugabyte-platform/manage/backup-restore
 menu:
   stable:
     parent: back-up-restore-universes

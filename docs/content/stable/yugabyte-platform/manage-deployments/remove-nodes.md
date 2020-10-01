@@ -4,7 +4,7 @@ headerTitle: Remove a node
 linkTitle: Remove a node
 description: Use Yugabyte Platform to remove a nonresponsive node.
 aliases:
-  - /latest/manage/enterprise-edition/create-universe-multi-region
+  - /stable/manage/enterprise-edition/create-universe-multi-region
 menu:
   stable:
     identifier: remove-nodes
