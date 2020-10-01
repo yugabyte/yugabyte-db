@@ -1,5 +1,5 @@
 ---
-title: Troubleshoot installation and upgrade issues
+title: Troubleshoot install and upgrade issues
 headerTitle: 
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered during installing or upgrading Yugabyte Platform.
@@ -32,47 +32,6 @@ sudo firewall-cmd --zone=public --add-port=9880/tcp
 sudo firewall-cmd --zone=public --add-port=9874-9879/tcp
 ```
 
-## Unable to perform passwordless SSH into the nodes
-
-If your Yugabyte Platform is not able to do passwordless SSH to the nodes, follow the steps below.
-
-Generate a key pair.
-
-```sh
-$ ssh-keygen -t rsa
-```
-
-Set up passwordless SSH to the nodes with private IP addresses: `10.1.13.150`, `10.1.13.151`, `10.1.13.152`.
-
-```sh
-$ for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do
-  ssh $IP mkdir -p .ssh;
-  cat ~/.ssh/id_rsa.pub | ssh $IP 'cat >> .ssh/authorized_keys';
-done
-```
-
-## Check host resources on the nodes
-
-Check resources on the nodes with the private IP addresses — `10.1.13.150`, `10.1.13.151`, and `10.1.13.152`.
-
-```sh
-for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do echo $IP; ssh $IP 'echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem'; done
-```
-
-```
-10.1.12.103
-CPUs: 72
-Mem: 251G
-Disk: /dev/sda2       160G   13G  148G   8% /
-10.1.12.104
-CPUs: 88
-Mem: 251G
-Disk: /dev/sda2       208G   22G  187G  11% /
-10.1.12.105
-CPUs: 88
-Mem: 251G
-Disk: /dev/sda2       208G  5.1G  203G   3% /
-```
 
 ## Create mount paths on the nodes
 

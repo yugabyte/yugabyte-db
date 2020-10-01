@@ -16,42 +16,40 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to use the Yugabyte Platform to back up data in YCQL tables.
-
-## Create universe
-
-First, create a universe similar to the steps shown in [Create universe](../create-universe-multi-zone).
-For the purposes of this demo you create a one-node cluster that looks something like this.
-
-![Create universe 1 Node](/images/ee/br-create-universe.png)
-
-Wait for the universe to become ready.
+This section describes how to use the Yugabyte Platform to back up data in YCQL tables.
 
 ## Set storage for backup
 
+If you already have a tserver directory to use for backups, skip to [Back up data](#back-up-data) below.
+
 ### Local storage
 
-In this example, you create a local directory on the tserver to back up to. Select the
-**Connect** modal in the **Nodes** tab of the universe and select the server from Admin Host.
+To create a local directory on a tserver to back up to, follow these steps:
 
-![Connect Modal](/images/ee/br-connect-modal.png)
+1. Select **Connect** in the **Nodes** tab of the universe and then select the server from **Admin Host**.
 
-Once you are connected using `ssh`, create a directory `/backup` and change the owner to `yugabyte`.
+    ![Connect Modal](/images/ee/br-connect-modal.png)
 
-```sh
-$ sudo mkdir /backup; sudo chown yugabyte /backup
-```
+2. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`.
 
-Note that when you have more than one node, an `nfs` mounted on each server is recommended, and
+    ```sh
+    $ sudo mkdir /backup; sudo chown yugabyte /backup
+    ```
+
+{{< note title="Note" >}}
+
+When you have more than one node, an `nfs` mounted on each server is recommended, and
 creating a local backup folder on each server will not work.
 
-### AWS cloud storage
+{{< /note >}}
 
-You can also back up to Amazon cloud using the `amazon S3` tab in Backup configuration.
+## AWS cloud storage
+
+To back up to the Amazon Web Services (AWS) cloud, use the **Amazon S3** tab in **Backup** configuration.
 
 ![AWS Backup](/images/ee/br-aws-s3.png)
 
-The Access Key & Secret text can be added for the IAM of the user. The destination S3 Bucket where backups are
+The **Access Key** and **Secret** values can be added for the IAM of the user. The destination S3 Bucket where backups are
 stored can be entered in the format shown in the sample above.
 
 ## Back up data

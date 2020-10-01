@@ -53,38 +53,31 @@ showAsideToc: false
     </a>
   </li>
 
-  <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/air-gapped" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
-      Airgapped
-    </a>
-  </li>
-
 </ul>
 
-## 1. (Optional) Create a new project
+## 1. Create a new project (optional)
 
-A project forms the basis for creating, enabling and using all GCP services, managing APIs, enabling billing, adding and removing collaborators, and managing permissions. You would need browse to the [GCP cloud resource manager](https://console.cloud.google.com/cloud-resource-manager) and click on create project to get started. You can follow these instructions to [create a new GCP project](https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+A project forms the basis for creating, enabling and using all GCP services, managing APIs, enabling billing, adding and removing collaborators, and managing permissions. Go to the [GCP cloud resource manager](https://console.cloud.google.com/cloud-resource-manager) and click on create project to get started. You can follow these instructions to [create a new GCP project](https://cloud.google.com/resource-manager/docs/creating-managing-projects).
 
-Give the project a suitable name (eg: `yugabyte-gcp`) and note the project ID (eg: `yugabyte-gcp`). You should see a dialog that looks like the screenshot below.
+Give the project a suitable name (for example, `yugabyte-gcp`) and note the project ID (for example, `yugabyte-gcp`). You should see a dialog that looks like the screenshot below.
 
 ![Creating a GCP project](/images/ee/gcp-setup/project-create.png)
 
 ## 2. Set up a new service account
 
-YugabyteDB Admin Console requires a service account with the appropriate permissions to provision and manage compute instances. Go to the `IAM & admin` -> `Service accounts` and click on `Create Service Account`. You can follow these instructions to [create a service account](https://cloud.google.com/iam/docs/creating-managing-service-accounts).
+The Yugabyte Platform console requires a service account with the appropriate permissions to provision and manage compute instances. Go to *IAM & admin > Service accounts* and click **Create Service Account**. You can follow these instructions to [create a service account](https://cloud.google.com/iam/docs/creating-managing-service-accounts).
 
 Fill the form with the following values:
 
 - Service account name is `yugaware` (you can customize the name, if needed).
-- Set role to `Project` -> `Owner`.
-- Check the box for **Furnish a new private key**, choose `JSON` option.
+- Set the **Project** role to `Owner`.
+- Check the box for **Furnish a new private key**, choose the `JSON` option.
 
 Here is a screenshot with the above values in the form, click create once the values are filled in.
 
 ![Service Account -- filled create form](/images/ee/gcp-setup/service-account-filled-create.png)
 
-**NOTE**: Your browser would have downloaded the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the YugabyteDB Admin Console.
+**NOTE**: Your web browser downloads the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the Yugabyte Platform Console.
 
 ## 3. Give permissions to the service account
 
@@ -92,7 +85,7 @@ Here is a screenshot with the above values in the form, click create once the va
 
 ![Service Account Email Address](/images/ee/gcp-setup/gcp-service-account-email.png)
 
-- Next, browse to **IAM & admin > IAM** and click **ADD**. Add the compute admin role for this service account. A screenshot is shown below.
+- Next, go to **IAM & admin > IAM** and click **ADD**. Add the compute admin role for this service account. A screenshot is shown below.
 
 ![Service Account Add Roles](/images/ee/gcp-setup/gcp-service-account-permissions.png)
 
@@ -104,9 +97,7 @@ In order to access the Yugabyte Platform from outside the GCP environment, you w
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
 - View the YugabyteDB Admin Console (port `tcp:80`)
 
-Let us create a firewall entry enabling all of that!
-
-Go to **VPC network > Firewall rules** tab:
+Create a firewall entry enabling these by going to **VPC network > Firewall rules**:
 
 ![Firewall -- service entry](/images/ee/gcp-setup/firewall-tab.png)
 
@@ -143,7 +134,7 @@ You can do this as shown below.
 $ ssh-keygen -t rsa -f ~/.ssh/yugaware-1-gcp -C centos
 ```
 
-Set the appropriate credentials for the ssh key.
+Set the appropriate credentials for the SSH key.
 
 ```sh
 $ chmod 400 ~/.ssh/yugaware-1-gcp
@@ -169,7 +160,7 @@ Finally, click **Create** to launch the Yugabyte Platform server.
 
 From the GCP web management console, find the public IP address of the instance you just launched.
 
-You can connect to this machine by running the following command (remember to replace `XX.XX.XX.XX` below with the IPå address, and also to enter the appropriate ssh key instead of `yugaware-1-gcp`).
+You can connect to this machine by running the following command (remember to replace `XX.XX.XX.XX` below with the IP address, and also to enter the appropriate SSH key instead of `yugaware-1-gcp`).
 
 ```sh
 $ ssh -i ~/.ssh/yugaware-1-gcp centos@XX.XX.XX.XX

@@ -62,7 +62,7 @@ showAsideToc: false
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/air-gapped" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/airgapped" class="nav-link">
       <i class="fas fa-unlinked"></i>
       Air-gapped
     </a>

@@ -21,17 +21,17 @@ showAsideToc: true
     </a>
   </li>
 
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link">
-      <i class="fas fa-unlink"></i>
-      Airgapped
-    </a>
-  </li>
-
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link">
+      <i class="fas fa-unlink"></i>
+      Airgapped
     </a>
   </li>
 
@@ -145,30 +145,4 @@ NAMESPACE: yw-test
 STATUS: deployed
 REVISION: 2
 TEST SUITE: None
-```
-
-## Delete the Yugabyte Platform
-
-To remove the Yugabyte Platform, run the `helm delete` command:
-
-```sh
-$ helm del yw-test -n yw-test
-```
-
-A message displays that the Yugabyte Platform release and the namespace is deleted.
-
-```
-release "yw-test" uninstalled
-```
-
-Run the following command to remove the namespace:
-
-```sh
-$ kubectl delete namespace yw-test
-```
-
-You should see the following message:
-
-```
-namespace "yw-test" deleted
 ```

@@ -9,18 +9,14 @@ menu:
     parent: configure-yugabyte-platform
     weight: 10
 isTocNested: true
-showAsideToc: true
+showAsideToc: false
 ---
 
-## Register tenant account
-
-To register a tenant account, go to [http://yugaware-host-public-ip/register](http://yugaware-host-public-ip/register). By default, Yugabyte Platform runs as a single-tenant application.
+To create an admin account, go to [http://yugaware-host-public-ip/register](http://yugaware-host-public-ip/register). By default, Yugabyte Platform runs as a single-tenant application.
 
 ![Register](/images/ee/register.png)
 
 After you click **Submit**, you are automatically logged into the Yugabyte Platform Admin UI. Proceed to [configuring cloud providers](../configure-cloud-providers/).
-
-## Log in
 
 By default, [http://yugaware-host-public-ip](http://yugaware-host-public-ip) redirects to [http://yugaware-host-public-ip/login](http://yugaware-host-public-ip/login). Login to the application using the credentials you had provided during the Register customer step.
 

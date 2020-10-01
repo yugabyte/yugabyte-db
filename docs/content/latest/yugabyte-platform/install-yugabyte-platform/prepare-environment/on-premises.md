@@ -56,13 +56,6 @@ showAsideToc: false
     </a>
   </li>
 
-  <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/air-gapped" class="nav-link">
-      <i class="fas fa-unlinked" aria-hidden="true"></i>
-      Airgapped
-    </a>
-  </li>
-
 </ul>
 
 <!--
@@ -72,9 +65,7 @@ For Yugabyte Platform, see [Prerequisites](../../../install-yugabyte-platform/pr
 
 -->
 
-## Prepare the Yugabyte Platform host for on-premises
-
-Create a user on the YB Platform VM that has passwordless sudo privileges user on yugabyte:
+Create a user on the Yugabyte Platform VM that has passwordless `sudo` privileges user on yugabyte:
 
 ```sh
 $ sudo groupadd yugabyte
@@ -83,9 +74,9 @@ $ sudo passwd yugabyte
 $ sudo usermod -aG wheel yugabyte
 ```
 
-Setup a new user account that has ssh access to the VM. The user being created in this case is yugabyte with sudo privileges on the node ideally.
+Set up a new user account that has SSH access to the VM. The user created here is `yugabyte` with `sudo` privileges on the node.
 
-Do the following as the new user (yugabyte) to enable passwordless ssh
+To enable passwordless SSH, do the following as the new user (`yugabyte`):
 
 ```sh
 $ mkdir .ssh
@@ -94,11 +85,9 @@ $ touch .ssh/authorized_keys
 $ chmod 600 .ssh/authorized_keys
 ```
 
-Make custom directory for airgap install, here the /data directory is being used
+Make a custom directory for your airgapped installation. In the following example, the `/data` directory is being used.
 
 ```sh
 $ sudo mkdir /data
 $ sudo chown yugabyte:yugabyte /data
 ```
-
-Install Platform according to the instructions on the Yugabyte Platform deployment docs page.

@@ -6,7 +6,7 @@ description: Install Yugabyte Platform software in your on-premises, airgapped e
 menu:
   latest:
     parent: install-yugabyte-platform
-    identifier: install-software-3-air-gapped
+    identifier: install-software-3-airgapped
     weight: 77
 isTocNested: true
 showAsideToc: true
@@ -21,13 +21,6 @@ showAsideToc: true
     </a>
   </li>
 
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link active">
-      <i class="fas fa-unlink"></i>
-      Airgapped
-    </a>
-  </li>
-
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
@@ -35,9 +28,16 @@ showAsideToc: true
     </a>
   </li>
 
+  <li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link active">
+      <i class="fas fa-unlink"></i>
+      Airgapped
+    </a>
+  </li>
+
 </ul>
 
-## Step 1 — Install Replicated
+## Install Replicated
 
 On a machine connected to the Internet, perform the following steps.
 
@@ -101,9 +101,7 @@ You should see an output similar to the following.
 
 Next, install Yugabyte Platform as described in step 2.
 
-## Step 2 — Install Yugabyte Platform using Replicated
-
-### Set up HTTPS for Replicated
+## Set up HTTPS (optional)
 
 Launch the Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will address this warning as soon as you configure HTTPS for the Replicated Admin Console in the next step. Click **Continue to Setup** and then **ADVANCED** to bypass this warning and go to the **Replicated Admin Console**.
 
@@ -117,7 +115,7 @@ The simplest option is use a self-signed cert for now and add the custom SSL cer
 
 ![Replicated Self Signed Cert](/images/replicated/replicated-selfsigned.png)
 
-### Upload license file
+## Upload license file
 
 Now, upload the Yugabyte license file received from Yugabyte Support.
 
@@ -131,13 +129,13 @@ Two options to install Yugabyte Platform are presented.
 
 ![Replicated License Air-gapped Progress](/images/replicated/replicated-license-airgapped-progress.png)
 
-### Secure Replicated
+## Secure Replicated
 
 The next step is to add a password to protect the Replicated Admin Console (for Replicated use only and differs from the Yugabyte Platform console).
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
-### Preflight checks
+## Preflight checks
 
 Replicated will perform a set of preflight checks to ensure that the host is set up correctly for Yugabyte Platform.
 
