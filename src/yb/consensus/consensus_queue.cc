@@ -423,7 +423,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         bool* needs_remote_bootstrap,
                                         RaftPeerPB::MemberType* member_type,
                                         bool* last_exchange_successful) {
-  DCHECK(request->ops().empty());
+  DCHECK(request->ops().empty()) << request->ShortDebugString();
 
   OpId preceding_id;
   MonoDelta unreachable_time = MonoDelta::kMin;
