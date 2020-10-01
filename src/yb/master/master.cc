@@ -177,11 +177,16 @@ Status Master::Init() {
       metric_entity(),
       mem_tracker(),
       messenger());
-  async_client_init_->builder().set_master_address_flag_name("master_addresses");
-  async_client_init_->builder().AddMasterAddressSource([this] {
+  async_client_init_->builder()
+      .set_master_address_flag_name("master_addresses")
+      .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
+      .AddMasterAddressSource([this] {
     std::vector<std::string> result;
     consensus::ConsensusStatePB state;
-    auto status = catalog_manager_->GetCurrentConfig(&state);
+    auto status = catalog_manager_->CheckOnline();
+    if (status.ok()) {
+      status = catalog_manager_->GetCurrentConfig(&state);
+    }
     if (!status.ok()) {
       LOG(WARNING) << "Failed to get current config: " << status;
       return result;
@@ -315,6 +320,7 @@ void Master::Shutdown() {
     // already shutdown.
     auto started = catalog_manager_->StartShutdown();
     LOG_IF(DFATAL, !started) << name << " catalog manager shutdown already in progress";
+    async_client_init_->Shutdown();
     RpcAndWebServerBase::Shutdown();
     catalog_manager_->CompleteShutdown();
     LOG(INFO) << name << " shutdown complete.";

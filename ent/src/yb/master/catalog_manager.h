@@ -336,9 +336,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   std::unordered_map<TabletServerId, bool> should_send_consumer_registry_
   GUARDED_BY(should_send_consumer_registry_mutex_);
 
-  // YBClient used to modify the cdc_state table from the master.
-  std::unique_ptr<client::YBClient> cdc_ybclient_;
-
   MasterSnapshotCoordinator snapshot_coordinator_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);

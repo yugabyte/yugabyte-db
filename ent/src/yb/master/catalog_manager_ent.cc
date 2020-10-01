@@ -240,9 +240,6 @@ CatalogManager::~CatalogManager() {
 
 void CatalogManager::CompleteShutdown() {
   snapshot_coordinator_.Shutdown();
-  if (cdc_ybclient_) {
-    cdc_ybclient_->Shutdown();
-  }
   // Call shutdown on base class before exiting derived class destructor
   // because BgTasks is part of base & uses this derived class on Shutdown.
   super::CompleteShutdown();
@@ -1879,45 +1876,21 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
   RETURN_NOT_OK(CheckOnline());
 
-  if (!cdc_ybclient_) {
-    // First. For each deleted stream, delete the cdc state rows.
-    std::vector<std::string> addrs;
-    for (auto const& master_address : *master_->opts().GetMasterAddresses()) {
-      for (auto const& host_port : master_address) {
-        addrs.push_back(host_port.ToString());
-      }
-    }
-    if (addrs.empty()) {
-      YB_LOG_EVERY_N_SECS(ERROR, 30) << "Unable to get master addresses for yb client";
-      return STATUS(InternalError, "Unable to get master address for yb client");
-    }
-    LOG(INFO) << "Using master addresses " << JoinCSVLine(addrs) << " to create cdc yb client";
-    auto result = yb::client::YBClientBuilder()
-        .master_server_addrs(addrs)
-        .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
-        .Build();
+  auto ybclient = master_->async_client_initializer().client();
 
-    std::unique_ptr<client::YBClient> client;
-    if (!result.ok()) {
-      YB_LOG_EVERY_N_SECS(ERROR, 30) << "Unable to create client: " << result.status();
-      return result.status().CloneAndPrepend("Unable to create yb client");
-    } else {
-      cdc_ybclient_ = std::move(*result);
-    }
-  }
-
+  // First. For each deleted stream, delete the cdc state rows.
   // Delete all the entries in cdc_state table that contain all the deleted cdc streams.
   client::TableHandle cdc_table;
   const client::YBTableName cdc_state_table_name(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  Status s = cdc_table.Open(cdc_state_table_name, cdc_ybclient_.get());
+  Status s = cdc_table.Open(cdc_state_table_name, ybclient);
   if (!s.ok()) {
     LOG(WARNING) << "Unable to open table " << master::kCdcStateTableName
                  << " to delete stream ids entries: " << s;
     return s.CloneAndPrepend("Unable to open cdc_state table");
   }
 
-  std::shared_ptr<client::YBSession> session = cdc_ybclient_->NewSession();
+  std::shared_ptr<client::YBSession> session = ybclient->NewSession();
   std::vector<std::pair<CDCStreamId, std::shared_ptr<client::YBqlWriteOp>>> stream_ops;
   std::set<CDCStreamId> failed_streams;
   for (const auto& stream : streams) {
