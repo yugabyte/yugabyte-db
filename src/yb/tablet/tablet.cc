@@ -214,6 +214,9 @@ DEFINE_test_flag(bool, tablet_verify_flushed_frontier_after_modifying, false,
 DEFINE_test_flag(bool, docdb_log_write_batches, false,
                  "Dump write batches being written to RocksDB");
 
+DEFINE_test_flag(bool, export_intentdb_metrics, false,
+                 "Dump intentsdb statistics to prometheus metrics");
+
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -271,15 +274,18 @@ using docdb::StorageDbType;
 namespace {
 
 void EmitRocksDbMetricsAsJson(
-    std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
+    std::shared_ptr<rocksdb::Statistics> regulardb_statistics,
+    std::shared_ptr<rocksdb::Statistics> intentsdb_statistics,
     JsonWriter* writer,
     const MetricJsonOptions& opts) {
-  // Make sure the class member 'rocksdb_statistics_' exists, as this is the stats object
+  // Make sure the class member 'regulardb_statistics_' exists, as this is the stats object
   // maintained by RocksDB for this tablet.
-  if (rocksdb_statistics == nullptr) {
+  if (regulardb_statistics == nullptr) {
     return;
   }
   // Emit all the ticker (gauge) metrics.
+  const bool export_intentdb_metrics =
+      intentsdb_statistics && GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics);
   for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
     // Start the metric object.
     writer->StartObject();
@@ -287,11 +293,24 @@ void EmitRocksDbMetricsAsJson(
     writer->String("name");
     writer->String(entry.second);
     // Write the value.
-    uint64_t value = rocksdb_statistics->getTickerCount(entry.first);
+    uint64_t value = regulardb_statistics->getTickerCount(entry.first);
     writer->String("value");
     writer->Uint64(value);
     // Finish the metric object.
     writer->EndObject();
+    if (export_intentdb_metrics) {
+      // Start the metric object.
+      writer->StartObject();
+      // Write the name.
+      writer->String("name");
+      writer->String(Format("intentsdb_$0", entry.second));
+      // Write the value.
+      uint64_t value = intentsdb_statistics->getTickerCount(entry.first);
+      writer->String("value");
+      writer->Uint64(value);
+      // Finish the metric object.
+      writer->EndObject();
+    }
   }
   // Emit all the histogram metrics.
   rocksdb::HistogramData histogram_data;
@@ -302,7 +321,7 @@ void EmitRocksDbMetricsAsJson(
     writer->String("name");
     writer->String(entry.second);
     // Write the value.
-    rocksdb_statistics->histogramData(entry.first, &histogram_data);
+    regulardb_statistics->histogramData(entry.first, &histogram_data);
     writer->String("total_count");
     writer->Double(histogram_data.count);
     writer->String("min");
@@ -327,23 +346,31 @@ void EmitRocksDbMetricsAsJson(
 }
 
 CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
-    std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
+    std::shared_ptr<rocksdb::Statistics> regulardb_statistics,
+    std::shared_ptr<rocksdb::Statistics> intentsdb_statistics,
     PrometheusWriter* writer,
     const MetricEntity::AttributeMap& attrs) {
-  // Make sure the class member 'rocksdb_statistics_' exists, as this is the stats object
+  // Make sure the class member 'regulardb_statistics_' exists, as this is the stats object
   // maintained by RocksDB for this tablet.
-  if (rocksdb_statistics == nullptr) {
+  if (regulardb_statistics == nullptr) {
     return Status::OK();
   }
+  const bool export_intentdb_metrics =
+      intentsdb_statistics && GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics);
   // Emit all the ticker (gauge) metrics.
   for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
     RETURN_NOT_OK(writer->WriteSingleEntry(
-        attrs, entry.second, rocksdb_statistics->getTickerCount(entry.first)));
+        attrs, entry.second, regulardb_statistics->getTickerCount(entry.first)));
+    if (export_intentdb_metrics) {
+      RETURN_NOT_OK(writer->WriteSingleEntry(
+          attrs, Format("intentsdb_$0", entry.second),
+          intentsdb_statistics->getTickerCount(entry.first)));
+    }
   }
   // Emit all the histogram metrics.
   rocksdb::HistogramData histogram_data;
   for (std::pair<rocksdb::Histograms, std::string> entry : rocksdb::HistogramsNameMap) {
-    rocksdb_statistics->histogramData(entry.first, &histogram_data);
+    regulardb_statistics->histogramData(entry.first, &histogram_data);
 
     auto copy_of_attr = attrs;
     const std::string hist_name = entry.second;
@@ -422,30 +449,34 @@ Tablet::Tablet(const TabletInitData& data)
         *metadata_->partition(), *schema());
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
     // If we are creating a KV table create the metrics callback.
-    rocksdb_statistics_ = rocksdb::CreateDBStatistics();
-    auto rocksdb_statistics = rocksdb_statistics_;
-    metric_entity_->AddExternalJsonMetricsCb(
-        [rocksdb_statistics](JsonWriter* jw, const MetricJsonOptions& opts) {
+    regulardb_statistics_ = rocksdb::CreateDBStatistics();
+    intentsdb_statistics_ = rocksdb::CreateDBStatistics();
+    auto regulardb_statistics = regulardb_statistics_;
+    auto intentsdb_statistics = intentsdb_statistics_;
+    metric_entity_->AddExternalJsonMetricsCb([regulardb_statistics, intentsdb_statistics](
+                                                 JsonWriter* jw, const MetricJsonOptions& opts) {
       // Assume all rocksdb statistics are at "info" level.
       if (MetricLevel::kInfo < opts.level) {
         return;
       }
 
-      EmitRocksDbMetricsAsJson(rocksdb_statistics, jw, opts);
+      EmitRocksDbMetricsAsJson(regulardb_statistics, intentsdb_statistics, jw, opts);
     });
 
     metric_entity_->AddExternalPrometheusMetricsCb(
-        [rocksdb_statistics, attrs](PrometheusWriter* pw, const MetricPrometheusOptions& opts) {
-      // Assume all rocksdb statistics are at "info" level.
-      if (MetricLevel::kInfo < opts.level) {
-        return;
-      }
+        [regulardb_statistics, intentsdb_statistics, attrs](
+            PrometheusWriter* pw, const MetricPrometheusOptions& opts) {
+          // Assume all rocksdb statistics are at "info" level.
+          if (MetricLevel::kInfo < opts.level) {
+            return;
+          }
 
-      auto s = EmitRocksDbMetricsAsPrometheus(rocksdb_statistics, pw, attrs);
-      if (!s.ok()) {
-        YB_LOG_EVERY_N(WARNING, 100) << "Failed to get Prometheus metrics: " << s.ToString();
-      }
-    });
+          auto s =
+              EmitRocksDbMetricsAsPrometheus(regulardb_statistics, intentsdb_statistics, pw, attrs);
+          if (!s.ok()) {
+            YB_LOG_EVERY_N(WARNING, 100) << "Failed to get Prometheus metrics: " << s.ToString();
+          }
+        });
 
     metrics_.reset(new TabletMetrics(metric_entity_));
 
@@ -701,29 +732,32 @@ Status Tablet::OpenKeyValueTablet() {
 
   if (transaction_participant_) {
     LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << db_dir + kIntentsDBSuffix;
-    docdb::SetLogPrefix(&rocksdb_options, LogPrefix(docdb::StorageDbType::kIntents));
+    rocksdb::Options intents_rocksdb_options(rocksdb_options);
+    docdb::SetLogPrefix(&intents_rocksdb_options, LogPrefix(docdb::StorageDbType::kIntents));
 
-    rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
+    intents_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
       return std::bind(&Tablet::IntentsDbFlushFilter, this, _1);
     });
 
-    rocksdb_options.compaction_filter_factory =
+    intents_rocksdb_options.compaction_filter_factory =
         FLAGS_tablet_do_compaction_cleanup_for_intents ?
         std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this, &key_bounds_) : nullptr;
 
-    rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kIntentsDB, mem_tracker_);
-    rocksdb_options.block_based_table_mem_tracker =
+    intents_rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kIntentsDB, mem_tracker_);
+    intents_rocksdb_options.block_based_table_mem_tracker =
         MemTracker::FindOrCreateTracker(
             Format("$0-$1", kIntentsDB, tablet_id()), block_based_table_mem_tracker_,
             AddToParent::kTrue, CreateMetrics::kFalse);
     // We may not have a metrics_entity_ instantiated in tests.
     if (metric_entity_) {
-      rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(metric_entity_,
+      intents_rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(metric_entity_,
         Format("$0_$1", "BlockBasedTable", kIntentsDB));
     }
+    intents_rocksdb_options.statistics = intentsdb_statistics_;
 
     rocksdb::DB* intents_db = nullptr;
-    RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
+    RETURN_NOT_OK(
+        rocksdb::DB::Open(intents_rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
     intents_db_.reset(intents_db);
     intents_db_->ListenFilesChanged(std::bind(&Tablet::CleanupIntentFiles, this));
   }
@@ -3219,7 +3253,7 @@ void Tablet::ListenNumSSTFilesChanged(std::function<void()> listener) {
 }
 
 void Tablet::InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix) {
-  docdb::InitRocksDBOptions(options, log_prefix, rocksdb_statistics_, tablet_options_);
+  docdb::InitRocksDBOptions(options, log_prefix, regulardb_statistics_, tablet_options_);
 }
 
 rocksdb::Env& Tablet::rocksdb_env() const {
