@@ -105,47 +105,47 @@ Most applications have a need to frequently evolve the database schema, while si
 
 ##### Yugabyte Platform
 
-* Enhancements to RBAC with a new “Backup Admin” role which allows all read-only permissions plus back up operations [5311](https://github.com/yugabyte/yugabyte-db/issues/5311)
-* Display table sizes in the Tables page [3581](https://github.com/yugabyte/yugabyte-db/issues/3581)
-* On-prem Cloud provider instances table list can be sorted and filtered [4757](https://github.com/yugabyte/yugabyte-db/issues/4757)
-* API for disabling auto-generation of database nodes certificate [5545](https://github.com/yugabyte/yugabyte-db/issues/5545)
-* Backup retention policy for auto-deletion of older backups [4493](https://github.com/yugabyte/yugabyte-db/issues/4493)
+* Enhancements to RBAC with a new “Backup Admin” role which allows all read-only permissions plus back up operations [#5311](https://github.com/yugabyte/yugabyte-db/issues/5311)
+* Display table sizes in the Tables page [#3581](https://github.com/yugabyte/yugabyte-db/issues/3581)
+* On-prem Cloud provider instances table list can be sorted and filtered [#4757](https://github.com/yugabyte/yugabyte-db/issues/4757)
+* API for disabling auto-generation of database nodes certificate [#5545](https://github.com/yugabyte/yugabyte-db/issues/5545)
+* Backup retention policy for auto-deletion of older backups [#4493](https://github.com/yugabyte/yugabyte-db/issues/4493)
 
 ##### Core database
 
-* [YCQL] Introducing Audit Logging feature for YCQL operations [5887](https://github.com/yugabyte/yugabyte-db/issues/5887)
-* [YSQL] Support for ALTER COLUMN type that does not require on-disk changes [4424](https://github.com/yugabyte/yugabyte-db/issues/4424)
-* [YSQL] Support for Transactional batch size in COPY FROM command syntax [2855](https://github.com/yugabyte/yugabyte-db/issues/2855), [5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
-* [YCQL] Finer grained permission control for TRUNCATE [5443](https://github.com/yugabyte/yugabyte-db/issues/5443)
-* [YSQL] Enable 2DC replication bootstrap for YSQL Tables [5601](https://github.com/yugabyte/yugabyte-db/issues/5601)
+* [YCQL] Introducing Audit Logging feature for YCQL operations [#5887](https://github.com/yugabyte/yugabyte-db/issues/5887)
+* [YSQL] Support for `ALTER COLUMN` type that does not require on-disk changes [#4424](https://github.com/yugabyte/yugabyte-db/issues/4424)
+* [YSQL] Support for Transactional batch size in `COPY FROM` command syntax [#2855](https://github.com/yugabyte/yugabyte-db/issues/2855), [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
+* [YCQL] Finer grained permission control for `TRUNCATE` [#5443](https://github.com/yugabyte/yugabyte-db/issues/5443)
+* [YSQL] Enable 2DC replication bootstrap for YSQL Tables [#5601](https://github.com/yugabyte/yugabyte-db/issues/5601)
 
 #### Improvements
 
 ##### Yugabyte Platform
 
 * Backup improvements
-  * YCQL, YSQL & YEDIS backups are split into different tabs on backup UI screen
+  * YCQL, YSQL, and YEDIS backups are split into different tabs on backup UI screen
   * Back up operation creates a single restore object regardless of “transactional” field selection
   * Added a new field parallel thread for multi-threading backups
   * YSQL backups only support namespace level backup
-  * Backup table list has been revamped with the new UX and shows more details - expiration time, duration,backup ty
+  * Backup table list has been revamped with the new UX and shows more details - expiration time, duration, backup ty
   * Universe can be restored with a single action
   * Backup objects can be manually deleted
-  * Scheduled backups cron expression shows the next run time in local browser time and the label displays thatcron supports UTC only [4709](https://github.com/yugabyte/yugabyte-db/issues/4709)
-* Improve the Replication graph for xDC replication set up to display the graph and metric names cleanly [5429](https://github.com/yugabyte/yugabyte-db/issues/5429)
+  * Scheduled backups `cron` expression shows the next run time in local browser time and the label displays that `cron` supports UTC only [#4709](https://github.com/yugabyte/yugabyte-db/issues/4709)
+* Improve the Replication graph for xDC replication set up to display the graph and metric names cleanly [#5429](https://github.com/yugabyte/yugabyte-db/issues/5429)
 * UI improvements for displaying On-prem instances
-  * Instance ID is now optional and also shown in the nodes page [4760](https://github.com/yugabyte/yugabyte-dbissues/4760)
+  * Instance ID is now optional and also shown in the nodes page [#4760](https://github.com/yugabyte/yugabyte-dbissues/4760)
   * “In Use” column has been renamed to “Universe Name”
   * Supports adding multiple instances in different rows instead of comma-separated entries 
-* Supports generating API tokens for SSO enabled users
-* Yugaware restart cancels any tasks that were in progress
-* Remove sudo requirement in DB backup script [5440](https://github.com/yugabyte/yugabyte-db/issues/5440)
+* Supports generating API tokens for SSO-enabled users
+* Yugabyte Platform restart cancels any tasks that were in progress
+* Remove `sudo` requirement in DB backup script [#5440](https://github.com/yugabyte/yugabyte-db/issues/5440)
 
 ##### Core database
 
-* [DocDB] Removal of unreachable(dead) nodes from YugabyteDB UI [4759](https://github.com/yugabyte/yugabyte-db/issues/4759)
-* [DocDB] Improvements with selecting better default flags for Index backfill [5494](https://github.com/yugabyte/yugabyte-db/issues/5494)
-* [DocDB] Lower the leader load balancer parallelism for performance improvements [5461](https://github.com/yugabyte/yugabyte-db/issues/5461)
+* [DocDB] Removal of unreachable (dead) nodes from YugabyteDB UI [#4759](https://github.com/yugabyte/yugabyte-db/issues/4759)
+* [DocDB] Improvements with selecting better default flags for Index backfill [#5494](https://github.com/yugabyte/yugabyte-db/issues/5494)
+* [DocDB] Lower the leader load balancer parallelism for performance improvements [#5461](https://github.com/yugabyte/yugabyte-db/issues/5461)
 
 #### Bug fixes
 
@@ -153,34 +153,34 @@ Most applications have a need to frequently evolve the database schema, while si
 
 * [Platform] Security hardening: Added CSRF token support
 * [Platform] Support for PingFederate OIDC SSO login for Non Replicated deployments
-* [Platform] Allow on-prem nodes to be reused after releasing them from a universe [5703](https://github.com/yugabyte/yugabyte-db/issues/5703)
+* [Platform] Allow on-prem nodes to be reused after releasing them from a universe [#5703](https://github.com/yugabyte/yugabyte-db/issues/5703)
 
 ##### Core Database
 
-* [YCQL] Fix for CQL Index scans when ORDER-BY columns exist in table but not in chosen index [5690](https://github.com/yugabyte/yugabyte-db/issues/5690)
-* [YSQL] Avoids Pushdown down of UPDATE with RETURNING clause [5366](https://github.com/yugabyte/yugabyte-db/issues/5366)
-* [YSQL] Fix for UPDATE operation with partial and expression Indexes [4939](https://github.com/yugabyte/yugabyte-db/issues/4939)
-* [YSQL] OOM issue fix in COPY FROM query [2855](https://github.com/yugabyte/yugabyte-db/issues/2855)
-* [YSQL] OOM issue fix in COPY TO query [5205](https://github.com/yugabyte/yugabyte-db/issues/5205)
-* [DocDB] Crash fix for DNS enabled Yugabyte Universes [5561](https://github.com/yugabyte/yugabyte-db/issues/5561)
-* [DocDB] Fix for in-memory state not getting updated correctly when using read-from-follower query semantics [1052](https://github.com/yugabyte/yugabyte-db/issues/1052)
-* [DocDB] For Yugabyte Universess using cross-cluster async replication(2DC), added RPC throttling on idle CDC tables to avoid wasting CPU [5472](https://github.com/yugabyte/yugabyte-db/issues/5472)
-* [DocDB] Fix for rare deadlock scenario when the node switches from Leader to Follower state of the tablet and there are pending operations on Leader side [5741](https://github.com/yugabyte/yugabyte-db/issues/5741)
-* [DocDB] Fix to ensure all Yugabyte Tablet Servers are accounted for when Master fails  over [5501](https://github.com/yugabyte/yugabyte-db/issues/5501)
+* [YCQL] Fix for CQL Index scans when `ORDER BY` columns exist in table but not in chosen index [#5690](https://github.com/yugabyte/yugabyte-db/issues/5690)
+* [YSQL] Avoids Pushdown down of `UPDATE` with `RETURNING` clause [#5366](https://github.com/yugabyte/yugabyte-db/issues/5366)
+* [YSQL] Fix for UPDATE operation with partial and expression Indexes [#4939](https://github.com/yugabyte/yugabyte-db/issues/4939)
+* [YSQL] OOM issue fix in `COPY FROM` query [#2855](https://github.com/yugabyte/yugabyte-db/issues/2855)
+* [YSQL] OOM issue fix in `COPY TO` query [#5205](https://github.com/yugabyte/yugabyte-db/issues/5205)
+* [DocDB] Crash fix for DNS-enabled Yugabyte Universes [#5561](https://github.com/yugabyte/yugabyte-db/issues/5561)
+* [DocDB] Fix for in-memory state not getting updated correctly when using read-from-follower query semantics [#1052](https://github.com/yugabyte/yugabyte-db/issues/1052)
+* [DocDB] For Yugabyte Universes using cross-cluster async replication (2DC), added RPC throttling on idle CDC tables to avoid wasting CPU [#5472](https://github.com/yugabyte/yugabyte-db/issues/5472)
+* [DocDB] Fix for rare deadlock scenario when the node switches from Leader to Follower state of the tablet and there are pending operations on Leader side [#5741](https://github.com/yugabyte/yugabyte-db/issues/5741)
+* [DocDB] Fix to ensure all Yugabyte Tablet Servers are accounted for when Master fails over [#5501](https://github.com/yugabyte/yugabyte-db/issues/5501)
 
 #### Known Issues
 
 ##### Yugabyte Platform
 
-* Universe disk usage shows up empty on the universe page [5548](https://github.com/yugabyte/yugabyte-db/issues/5548)
+* Universe disk usage shows up empty on the universe page [#5548](https://github.com/yugabyte/yugabyte-db/issues/5548)
 
 #### Platform Support Package Improvements (Only applicable to Non-Replicated installations)
 
 ##### Yugabyte Platform
 
-* Platform backup script needs to preserve attributes on copy from Prometheus snapshot [5612](https://github.com/yugabyte/yugabyte-db/issues/5612)
-* Platform backup fails if /opt/yugabyte/release directory does not exist [5615](https://github.com/yugabyte/yugabyte-db/issues/5615)
-* Platform backup script needs to stop Prometheus service during the restore of Prometheus data [5685](https://github.com/yugabyte/yugabyte-db/issues/5685)
+* Platform backup script needs to preserve attributes on copy from Prometheus snapshot [#5612](https://github.com/yugabyte/yugabyte-db/issues/5612)
+* Platform backup fails if `/opt/yugabyte/release` directory does not exist [#5615](https://github.com/yugabyte/yugabyte-db/issues/5615)
+* Platform backup script needs to stop Prometheus service during the restore of Prometheus data [#5685](https://github.com/yugabyte/yugabyte-db/issues/5685)
 
 ---
 
