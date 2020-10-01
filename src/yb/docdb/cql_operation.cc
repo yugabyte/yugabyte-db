@@ -1189,12 +1189,16 @@ Status PrepareIndexWriteAndCheckIfIndexKeyChanged(
       if (existing_row.IsEmpty()) {
         RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, result.Writer()));
       } else {
-        // The following code needs to be updated to support various expression including JSONB.
         // For each column in the index key, if there is a new value, see if the value is
         // specified in the new value. Otherwise, use the current value.
         if (new_row.IsColumnSpecified(index_column.indexed_column_id)) {
           RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, result.Writer()));
-          if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
+          // Compare new and existing results of the expression, if the results are equal
+          // that means the key is NOT changed in fact even if the column value is changed.
+          QLExprResult existing_result;
+          RETURN_NOT_OK(expr_executor->EvalExpr(
+              index_column.colexpr, existing_row, existing_result.Writer()));
+          if (result.Value() != existing_result.Value()) {
             index_key_changed = true;
           }
         } else {
