@@ -1,7 +1,7 @@
 ---
 title: What's new in the v2.3 latest release series
 headerTitle: What's new in the v2.3 latest release series
-linkTitle: 2.3 (latest)
+linkTitle: v2.3 (latest)
 description: Enhancements, changes, and resolved issues in the latest release series.
 headcontent: Features, enhancements, and resolved issues in the latest release series.
 image: /images/section_icons/quick_start/install.png

@@ -1,7 +1,7 @@
 ---
 title: What's new in the current v2.2 stable release series
 headerTitle: What's new in the current v2.2 stable release series
-linkTitle: 2.2 (stable)
+linkTitle: v2.2 (stable)
 description: Enhancements, changes, and resolved issues in the current stable release series, recommended for production deployments.
 headcontent: Features, enhancements, and resolved issues in the current stable release series, recommended for production deployments.
 image: /images/section_icons/quick_start/install.png
