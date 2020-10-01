@@ -788,7 +788,8 @@ Status RequestVote(const TServerDetails* replica,
                    boost::optional<bool> ignore_live_leader,
                    boost::optional<bool> is_pre_election,
                    const MonoDelta& timeout) {
-  DSCHECK(last_logged_opid.IsInitialized(), Uninitialized, "Last logged op id is uninitialized");
+  RSTATUS_DCHECK(
+      last_logged_opid.IsInitialized(), Uninitialized, "Last logged op id is uninitialized");
   consensus::VoteRequestPB req;
   req.set_dest_uuid(replica->uuid());
   req.set_tablet_id(tablet_id);

@@ -158,7 +158,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     running_sync_requests_.fetch_sub(1, std::memory_order_acquire);
   });
 
-  DSCHECK(deadline != CoarseTimePoint(), InvalidArgument, "Deadline is not set");
+  RSTATUS_DCHECK(deadline != CoarseTimePoint(), InvalidArgument, "Deadline is not set");
   CoarseTimePoint start_time;
 
   while (true) {
