@@ -474,6 +474,62 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     }
   }
 
+  private void updateNodeCountInAZ(UniverseDefinitionTaskParams udtp, int cloudIndex, int regionIndex, int azIndex, int change) {
+    udtp.getPrimaryCluster().placementInfo.cloudList.get(cloudIndex)
+      .regionList.get(regionIndex)
+      .azList.get(azIndex).numNodesInAZ += change;
+  }
+
+  /**
+   * Tests what happens to universe taskParams when removing a node from the
+   * AZ selector, changing the placementInfo. We first subtract node from
+   * `placementInfo` before CREATE operation to avoid setting the mode
+   * to NEW_CONFIG, which would decommission all nodes and create new ones,
+   * adding extra overhead to the setup operation. Change `userAZSelected`
+   * to indicate the AZ selector was modified.
+   */
+  @Test
+  public void testEditAZShrinkPlacement() {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UUID univUuid = t.univUuid;
+      UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
+      Cluster primaryCluster = udtp.getPrimaryCluster();
+      Universe.saveDetails(univUuid, t.setAzUUIDs());
+      udtp.universeUUID = univUuid;
+      primaryCluster.userIntent.numNodes = INITIAL_NUM_NODES - 1;
+      primaryCluster.userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+      primaryCluster.userIntent.ybSoftwareVersion = "0.0.1";
+      t.setAzUUIDs(udtp);
+      setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+        primaryCluster.uuid, CREATE);
+      Set<NodeDetails> nodes = udtp.nodeDetailsSet;
+      int oldSize = nodes.size();
+      assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
+      assertEquals(1, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getTserversToProvision(nodes).size());
+      t.removeNodesAndVerify(nodes);
+
+      udtp = universe.getUniverseDetails();
+      updateNodeCountInAZ(udtp, 0, 0, 1, -1);
+      // Requires this flag to associate correct mode with update operation
+      udtp.userAZSelected = true;
+      primaryCluster = udtp.getPrimaryCluster();
+      primaryCluster.userIntent.numNodes -= 1;
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+        primaryCluster.uuid, EDIT);
+      nodes = udtp.nodeDetailsSet;
+      assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
+      assertEquals(2, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getTserversToProvision(nodes).size());
+      assertEquals(oldSize, nodes.size());
+      t.removeNodesAndVerify(nodes);
+    }
+  }
+
   @Test
   public void testReplicationFactor() {
     for (TestData t : testData) {

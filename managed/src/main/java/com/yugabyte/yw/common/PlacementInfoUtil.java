@@ -1085,8 +1085,9 @@ public class PlacementInfoUtil {
    * 1. Reset AZ, it result in a full move as new config is generated
    * 2. Any subsequent operation after a Reset AZ will be a full move since subsequent operations will build on reset
    * 3. Simple Node Count increase will result in an expand.
-   * 4. Any Shrink scenario will be a full move. This is to prevent inconsistencies in cases where the node which is subtracted
-   * is a master node vs. if it is not a master node which are indistinguishable from an AZ Selector pov.
+   * 4. A shrink node count by AZ will check if the requested number of nodes is greater than or equal
+   * to the number of master nodes in the AZ. This is to prevent inconsistencies in cases where the
+   * node which is subtracted is a master node.
    * 5. Multi to Single AZ ops will also be a full move operation since it involves shrinks
    * @param taskParams
    */
@@ -1117,20 +1118,25 @@ public class PlacementInfoUtil {
           universe.getUniverseDetails().getNodesInCluster(currentCluster.uuid)
       );
 
-      boolean isSimpleExpand = true;
+      boolean isSimpleExpandShrink = true;
       for (UUID requiredAZUUID: requiredAZToNodeMap.keySet()) {
+        long masterNodesInAz = existingNodes.stream()
+          .filter(c -> c.azUuid.compareTo(requiredAZUUID) == 0 && c.isMaster)
+          .count();
+
+        // Check if new placement requires a removal of master node
         if (existingAZToNodeMap.containsKey(requiredAZUUID) &&
-            requiredAZToNodeMap.get(requiredAZUUID) < existingAZToNodeMap.get(requiredAZUUID)) {
-          isSimpleExpand = false;
+            requiredAZToNodeMap.get(requiredAZUUID) < (int)masterNodesInAz) {
+          isSimpleExpandShrink = false;
           break;
         } else {
           existingAZToNodeMap.remove(requiredAZUUID);
         }
       }
       if (existingAZToNodeMap.size() > 0) {
-        isSimpleExpand = false;
+        isSimpleExpandShrink = false;
       }
-      if (isSimpleExpand) {
+      if (isSimpleExpandShrink) {
         // If simple expand we can go in the configure using placement info path
         configureNodesUsingPlacementInfo(currentCluster,
                                          taskParams.nodeDetailsSet, true);
