@@ -47,14 +47,14 @@ showAsideToc: false
       Kubernetes
     </a>
   </li>
-
+<!--
   <li>
     <a href="/stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
-
+-->
 </ul>
 
 The Yugabyte Platform Helm chart has been tested using the following software versions:

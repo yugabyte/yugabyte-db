@@ -1,8 +1,8 @@
 ---
-title: Configure the on-premises data center provider
-headerTitle: Configure the on-premises data center provider
+title: Configure the on-premises cloud provider
+headerTitle: Configure the on-premises cloud provider
 linkTitle: Configure the cloud provider
-description: Configure the on-premises data center provider.
+description: Configure the on-premises cloud provider.
 aliases:
  - /stable/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
@@ -62,7 +62,7 @@ showAsideToc: false
 
 ## Step 1. Configure the on-premises provider using the docs instructions
 
-1. Specify the SSH user as the `yw` user required for provisioning YugabyteDB nodes.
+1. Specify the SSH user as the `yugabyte` user required for provisioning YugabyteDB nodes.
 2. Ensure that the SSH key is pasted correctly (Supported format is `RSA`)
 3. Keep the default home directory path (`/home/yugabyte`).
 4. For mount paths, use a mount point with enough space to contain your node density. Use `/data`.  If you have multiple drives, add these as a comma-separated list: `/mnt/d0,/mnt/d1`.
@@ -77,10 +77,8 @@ Follow the steps below to provision as many nodes as your application requires:
 
 ---
 
-![Configure On-Premises Data center Provider](/images/ee/onprem/configure-onprem-1.png)
+![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-1.png)
 
-![On-Premises Data center Provider Configuration in Progress](/images/ee/onprem/configure-install-onprem-2.png)
+![On-Premises Cloud Provider Configuration in Progress](/images/ee/onprem/configure-onprem-2.png)
 
-![On-Premises Data center Provider Configured Successfully](/images/ee/onprem/configure-onprem-3.png)
-http://localhost:1313/images/ee/onprem/configure-install-onprem-2.png
-https://docs.yugabyte.com/images/ee/onprem/configure-onprem-1.png
+![On-Premises Cloud Provider Configured Successfully](/images/ee/onprem/configure-onprem-3.png)

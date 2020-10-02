@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-For on-premises deployments of Yugabyte Platform, you need to import nodes which can be managed by Yugabyte Platform. This page outlines the steps required to prepare these YugabyteDB nodes for on-premises deployments.
+For on-premises deployments of YugabyteDB universes, you need to import nodes which can be managed by Yugabyte Platform. This page outlines the steps required to prepare these YugabyteDB nodes for on-premises deployments.
 
 {{< note title="Note" >}}
 

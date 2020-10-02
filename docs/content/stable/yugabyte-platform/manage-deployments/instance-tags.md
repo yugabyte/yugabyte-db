@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The instances created on a cloud provider can be assigned special metadata to help manage, bill or audit the resources. On Amazon Web Services (AQS), they are referred to as
+The instances created on a cloud provider can be assigned special metadata to help manage, bill or audit the resources. On Amazon Web Services (AWS), they are referred to as
 [instance tags](https://docs.aws.amazon.com/AWSEC2/stable/UserGuide/Using_Tags.html). You can create and edit these on the **Universe** dashboard of the
 Yugabyte Platform console.
 

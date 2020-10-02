@@ -20,7 +20,7 @@ You can use the Yugabyte Platform backup script to back up an existing Yugabyte 
 
 ## Back up a Yugabyte Platform server
 
-1. Copy the the Yugabyte Platform backup script (`yb_platform_backup.sh`) from the yugabyte-db repository using the following `wget` command:
+1. Copy the the Yugabyte Platform backup script (`yb_platform_backup.sh`) from the `yugabyte-db` repository using the following `wget` command:
 
     ```sh
     $ wget https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_platform_backup.sh 

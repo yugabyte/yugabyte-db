@@ -47,21 +47,22 @@ showAsideToc: false
       Kubernetes
     </a>
   </li>
-
+<!--
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
-
+-->
 </ul>
 
 The Yugabyte Platform Helm chart has been tested using the following software versions:
 
 - Kubernetes 1.10 or later.
 - Helm 3.0 or later.
-- Yugabyte Platform (`yugaware`) Docker image 1.1.0 or later.
+- Ability to pull Yugabyte Platform Docker image from quay.io repository
+
 
 Before installing the YugbyteDB Admin Console, verify you have the following:
 

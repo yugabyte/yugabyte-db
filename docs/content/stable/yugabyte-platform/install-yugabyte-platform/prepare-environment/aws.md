@@ -47,14 +47,14 @@ showAsideToc: false
       Kubernetes
     </a>
   </li>
-
+<!--
   <li>
     <a href="/stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
       <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
-
+-->
 </ul>
 
 ## 1. Create a new security group (optional)
