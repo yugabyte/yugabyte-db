@@ -1,7 +1,7 @@
 ---
 title: Configure the backup target
 headerTitle: Configure the backup target
-linkTitle: Configure backup target
+linkTitle: Configure the backup target
 description: Configure the backup target.
 menu:
   stable:
@@ -11,6 +11,8 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
+
+Configure the backup target for YugabyteDB universe data by following the steps below for your backup storage option.
 
 ### Local storage
 
@@ -33,11 +35,49 @@ creating a local backup folder on each server will not work.
 
 {{< /note >}}
 
-## AWS cloud storage
+## Amazon S3
 
-To back up to the Amazon Web Services (AWS) cloud, use the **Amazon S3** tab in **Backup** configuration.
+To configure Amazon S3 as the backup target, follow these steps:
 
-![AWS Backup](/images/ee/br-aws-s3.png)
+1. Click **Configs** on the left panel.
+2. Select the **Backup** tab.
+3. Click **Amazon S3** and enter values for **Access Key**, **Access Secret**, **S3 Bucket**, and **S3 Bucket Host Base**.
 
-The **Access Key** and **Secret** values can be added for the IAM of the user. The destination **S3 Bucket** where backups are
-stored can be entered in the format shown in the sample above.
+4. Click **Save**.
+
+![AWS Backup](/images/ee/cloud-provider-configuration-backup-aws.png)
+
+The **Access Key** and **Access Secret** values can be added for the IAM of the user.
+
+### NFS
+
+To configure NFS as the backup target, follow these steps:
+
+1. Select **Configuration** on the left panel.
+2. Select the **Backup** tab.
+3. Click **NFS** and enter the **NFS Storage Path** (`/backup` or another directory).
+4. Click **Save**.
+
+![NFS Cloud Provider Configuration](/images/ee/cloud-provider-configuration-backup-nfs.png)
+
+### Google Cloud Storage (GCS)
+
+To configure NFS as the backup target, follow these steps:
+
+1. Click **Configs** on the left panel.
+2. Click the **Backup** tab.
+3. Click **GCS** and enter values for **GCS Bucket** and **GCS Credentials**.
+4. Click **Save**.
+
+![GCS Backup](/images/ee/cloud-provider-configuration-backup-gcs.png)
+
+### Microsoft Azure
+
+To configure NFS as the backup target, follow these steps:
+
+1. Click **Configs** on the left panel.
+2. Click the **Backup** tab.
+3. Click **Azure** and enter values for **Container URL** and **SAS Token**.
+4. Click **Save**.
+
+![Azure Backup](/images/ee/cloud-provider-configuration-backup-azure.png)
