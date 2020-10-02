@@ -672,7 +672,7 @@ class YBClient {
 
   void LookupTabletByKey(const YBTable* table,
                          const std::string& partition_key,
-                        CoarseTimePoint deadline,
+                         CoarseTimePoint deadline,
                          LookupTabletCallback callback);
 
   void LookupTabletById(const std::string& tablet_id,
