@@ -88,7 +88,7 @@ class AuditLogger {
   using GflagsCache = std::unordered_map<GflagName, std::pair<GflagStringValue, GflagListValue>>;
 
   // Whether the execution is being retried.
-  bool rescheduled_ = false;
+  std::atomic<bool> rescheduled_{false};
 
   const QLEnv& ql_env_;
 
@@ -96,6 +96,7 @@ class AuditLogger {
   std::shared_ptr<const rpc::Connection> conn_;
 
   // Empty string means not in a batch processing mode.
+  // TODO(alex,mihnea): Look into potential races on this as well, see GH issue #5922.
   std::string batch_id_;
 
   // Cache of parsed gflags, to avoid re-parsing unchanged values.
