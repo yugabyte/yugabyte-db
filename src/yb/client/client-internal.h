@@ -449,8 +449,11 @@ class YBClient::Data {
 // returned to the caller, otherwise a Status::Timeout() will be returned.
 // If the deadline is already expired, no attempt will be made.
 Status RetryFunc(
-    CoarseTimePoint deadline, const std::string& retry_msg, const std::string& timeout_msg,
-    const std::function<Status(CoarseTimePoint, bool*)>& func);
+    CoarseTimePoint deadline,
+    const std::string& retry_msg,
+    const std::string& timeout_msg,
+    const std::function<Status(CoarseTimePoint, bool*)>& func,
+    const CoarseDuration max_wait = std::chrono::seconds(2));
 
 } // namespace client
 } // namespace yb
