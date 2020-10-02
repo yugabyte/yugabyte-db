@@ -213,13 +213,13 @@ docker pull yugabytedb/yugabyte:2.2.3.0-b35
 
 #### Downloads
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-0.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.2.0-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-0.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.2.0-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -229,7 +229,7 @@ docker pull yugabytedb/yugabyte:2.2.3.0-b35
 #### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.0-b15
+docker pull yugabytedb/yugabyte:2.2.2.0-b15
 ```
 
 #### YSQL
@@ -291,13 +291,13 @@ docker pull yugabytedb/yugabyte:2.0-b15
 
 #### Downloads
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-0.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.0.0-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-0.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.2.0.0-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -307,7 +307,7 @@ docker pull yugabytedb/yugabyte:2.0-b15
 #### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:0.0-b80
+docker pull yugabytedb/yugabyte:2.2.0.0-b80
 ```
 
 #### YSQL
