@@ -88,14 +88,14 @@ $ helm search repo yugabytedb/yugabyte
 The latest Helm Chart version and App version will be displayed.
 
 ```
-NAME               	CHART VERSION	APP VERSION	DESRIPTION
-yugabytedb/yugabyte	2.3.0        	2.3.1.0	YugabyteDB is the high-performance distributed ..
+NAME               	CHART VERSION	APP VERSION	DESRIPTION                                       
+yugabytedb/yugabyte	2.2.3        	2.2.3.0	YugabyteDB is the high-performance distributed ..
 ```
 
 4. Run the following `helm install` command to install Yugabyte Platform (`yugaware`).
 
 ```sh
-$ helm install yw-test yugabytedb/yugaware --version 2.3.0 -n yw-test --wait
+$ helm install yw-test yugabytedb/yugaware --version 2.2.3 -n yw-test --wait
 ```
 
 A message should appear showing that the deployment succeeded.
@@ -133,7 +133,7 @@ statefulset.apps/yw-test-yugaware   1/1     5m52s
 To upgrade your installed Yugabyte Platform, run the following `helm upgrade` command.
 
 ```sh
-$ helm upgrade yw-test yugabytedb/yugaware --version 2.3.0 --set image.tag=2.3.1.0-b15 -n yw-test
+$ helm upgrade yw-test yugabytedb/yugaware --version 2.2.3 --set image.tag=2.2.3.0-b35 -n yw-test
 ```
 
 ```

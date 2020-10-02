@@ -53,7 +53,7 @@ Use the `DROP PROCEDURE` statement to remove a procedure from a database.
 
 ## Examples
 
-```postgresql
+```plpgsql
 DROP PROCEDURE IF EXISTS transfer(integer, integer, dec) CASCADE;
 ```
 

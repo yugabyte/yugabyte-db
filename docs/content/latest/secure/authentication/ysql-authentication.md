@@ -56,7 +56,7 @@ If you are using YugabyteDB 2.0 (and **not** 2.0.1 or later) and have not assign
 1. With your YugabyteDB cluster up and running, open `ysqlsh`.
 2. Run the following `ALTER ROLE` statement, specifying a password (`yugabyte` or a password of your choice).
 
-    ```postgresql
+    ```plpgsql
     yugabyte=# ALTER ROLE yugabyte with password 'yugabyte';
     ```
 
@@ -131,13 +131,13 @@ To add a new user, run the [`CREATE ROLE` statement](../../../api/ysql/commands/
 
 To add a new regular user (with non-superuser privileges) named `john`, with the password `PasswdForJohn`, and grant him `LOGIN` privileges, run the following `CREATE ROLE` command.
 
-```postgresql
+```plpgsql
 yugabyte=# CREATE ROLE john WITH LOGIN PASSWORD 'PasswdForJohn';
 ```
 
 To verify the user account just created, you can run a query like this:
 
-```postgresql
+```plpgsql
 yugabyte=# SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
@@ -160,13 +160,13 @@ The `SUPERUSER` status should be given only to a limited number of users. Applic
 
 To create a superuser `admin` with the `LOGIN` privilege, run the following command using a superuser account:
 
-```postgresql
+```plpgsql
 yugabyte=# CREATE ROLE admin WITH LOGIN SUPERUSER PASSWORD 'PasswdForAdmin';
 ```
 
 To verify the `admin` account just created, run the following query.
 
-```postgresql
+```plpgsql
 yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles;
 ```
 
@@ -224,7 +224,7 @@ You can edit existing user accounts using the [ALTER ROLE](../../../api/ysql/com
 
 To change the password for `john` above, you can do:
 
-```postgresql
+```plpgsql
 yugabyte=# ALTER ROLE john PASSWORD 'new-password';
 ```
 
@@ -232,7 +232,7 @@ yugabyte=# ALTER ROLE john PASSWORD 'new-password';
 
 In the example above, you can verify that `john` is not a superuser using the following `SELECT` statement:
 
-```postgresql
+```plpgsql
 yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='john';
 ```
 
@@ -263,7 +263,7 @@ Users with `SUPERUSER` status display "Superuser" in the list of attributes for 
 
 To grant `SUPERUSER` privileges to `john`, run the following `ALTER ROLE` command.
 
-```postgresql
+```plpgsql
 yugabyte=# ALTER ROLE john SUPERUSER;
 ```
 
@@ -292,7 +292,7 @@ In YugabyteDB (just as in PostgreSQL), `SUPERUSER` status includes all of the fo
 
 Similarly, you can revoke superuser privileges by running:
 
-```postgresql
+```plpgsql
 yugabyte=# ALTER ROLE john WITH NOSUPERUSER;
 ```
 
@@ -300,7 +300,7 @@ yugabyte=# ALTER ROLE john WITH NOSUPERUSER;
 
 In the example above, you can verify that `john` can login to the database by doing the following:
 
-```postgresql
+```plpgsql
 yugabyte=# SELECT role, rolcanlogin FROM pg_roles WHERE role='john';
 ```
 
@@ -313,13 +313,13 @@ yugabyte=# SELECT role, rolcanlogin FROM pg_roles WHERE role='john';
 
 To disable login privileges for `john`, run the following command.
 
-```postgresql
+```plpgsql
 yugabyte=# ALTER ROLE john WITH NOLOGIN;
 ```
 
 You can verify this as follows.
 
-```postgresql
+```plpgsql
 yugabyte=# SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname='john';
 ```
 
@@ -345,7 +345,7 @@ ysqlsh: FATAL:  role "john" is not permitted to log in
 
 To re-enable login privileges for `john`, run the following command.
 
-```postgresql
+```plpgsql
 yugabyte=#  ALTER ROLE john WITH LOGIN;
 ```
 
@@ -355,13 +355,13 @@ You can delete a user with the [DROP ROLE](../../../api/ysql/commands/dcl_drop_r
 
 For example, to drop the user `john` in the above example, run the following command as a superuser:
 
-```postgresql
+```plpgsql
 yugabyte=# DROP ROLE john;
 ```
 
 You can quickly verify that the `john` role was dropped by running the `\du` command:
 
-```postgresql
+```plpgsql
 yugabyte=# \du
 ```
 
