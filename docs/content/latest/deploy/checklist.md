@@ -69,6 +69,16 @@ Memory depends on your application query pattern. Writes require memory but only
 
 YugabyteDB explicitly manages a block cache, and doesn't need the entire data set to fit in memory. It does not rely on OS to keep data in its buffers. If you give YugabyteDB sufficient memory data accessed and present in block cache will stay in memory.
 
+### Verify support for SSE2
+
+YugabyteDB requires SSE2 instruction set support, which was introduced into Intel chips with the Pentium 4 in 2001 and AMD processors in 2003. Most systems produced in the last several years are equipped with SSE2. YugabyteDB requires this instruction set.
+
+To verify that your system supports SSE2, run the following command:
+
+```sh
+$ cat /proc/cpuinfo | grep sse2
+```
+
 ### Disks
 
 - SSDs (solid state disks) are required. 
