@@ -16,11 +16,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section describes how to use the Yugabyte Platform to back up data in YCQL tables.
+Follow the steps here to use the Yugabyte Platform to configure storage for backups and to back up YugabyteDB universe data.
 
-## Set storage for backup
+## Configure storage for backup
 
-If you already have a tserver directory to use for backups, skip to [Back up data](#back-up-data) below.
+Depending on your cloud or on-premises environment, YugabyteDB universe data can be saved to the following storage options.
 
 ### Local storage
 
@@ -43,26 +43,58 @@ creating a local backup folder on each server will not work.
 
 {{< /note >}}
 
-## AWS cloud storage
+## Amazon S3
 
-To back up to the Amazon Web Services (AWS) cloud, use the **Amazon S3** tab in **Backup** configuration.
+To configure Amazon S3 as the backup target, follow these steps:
 
-![AWS Backup](/images/ee/br-aws-s3.png)
+1. Click **Configs** on the left panel.
+2. Select the **Backup** tab.
+3. Click **Amazon S3** and enter values for **Access Key**, **Access Secret**, **S3 Bucket**, and **S3 Bucket Host Base**.
 
-The **Access Key** and **Secret** values can be added for the IAM of the user. The destination S3 Bucket where backups are
-stored can be entered in the format shown in the sample above.
+4. Click **Save**.
 
-## Back up data
+![AWS Backup](/images/ee/cloud-provider-configuration-backup-aws.png)
 
-Now, select **Configuration** on the left panel, select the **Backup** tab on top, click **NFS** and then enter
-`/backup` as the NFS Storage Path before selecting **Save**.
+The **Access Key** and **Access Secret** values can be added for the IAM of the user.
 
-![Cloud Provider Configuration](/images/ee/cloud-provider-configuration.png)
+### NFS
 
-Now, go to the **Backups** tab and then click **Create Backup**. A modal should appear where you can
-enter the table (this demo uses the default redis table) and NFS Storage option. If S3 was selected
-as the storage, the **S3 Storage** dropdown option can be chosen during this backup creation.
+To configure NFS as the backup target, follow these steps:
+
+1. Select **Configuration** on the left panel.
+2. Select the **Backup** tab.
+3. Click **NFS** and enter the **NFS Storage Path** (`/backup` or another directory).
+4. Click **Save**.
+
+![NFS Cloud Provider Configuration](/images/ee/cloud-provider-configuration-backup-nfs.png)
+
+### Google Cloud Storage (GCS)
+
+To configure NFS as the backup target, follow these steps:
+
+1. Click **Configs** on the left panel.
+2. Click the **Backup** tab.
+3. Click **GCS** and enter values for **GCS Bucket** and **GCS Credentials**.
+4. Click **Save**.
+
+![GCS Backup](/images/ee/cloud-provider-configuration-backup-gcs.png)
+
+### Microsoft Azure
+
+To configure NFS as the backup target, follow these steps:
+
+1. Click **Configs** on the left panel.
+2. Click the **Backup** tab.
+3. Click **Azure** and enter values for **Container URL** and **SAS Token**.
+4. Click **Save**.
+
+![Azure Backup](/images/ee/cloud-provider-configuration-backup-azure.png)
+
+## Back up universe data
+
+1. Go to the **Backups** tab and then click **Create Backup**. A modal should appear where you can
+enter the table and select your backup options. 
 
 ![Backup Modal](/images/ee/create-backup-modal.png)
 
-Select `OK`. If you refresh the page, you'll eventually see a completed task.
+Click **OK**. If you refresh the page, you'll eventually see a completed task.
