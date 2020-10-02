@@ -187,7 +187,7 @@ export YB_USE_NINJA=1
 set_cmake_build_type_and_compiler_type
 
 if [[ ${YB_DOWNLOAD_THIRDPARTY:-auto} == "auto" ]]; then
-  if is_linux; then
+  if is_centos; then
     log "Setting YB_DOWNLOAD_THIRDPARTY=1 automatically on Linux"
     export YB_DOWNLOAD_THIRDPARTY=1
   else
@@ -344,6 +344,11 @@ fi
 
 # Configure the build
 #
+
+if is_ubuntu; then
+  cd "$YB_SRC_ROOT"
+  thirdparty/build_thirdparty.sh --skip llvm,include-what-you-use
+fi
 
 cd "$BUILD_ROOT"
 
