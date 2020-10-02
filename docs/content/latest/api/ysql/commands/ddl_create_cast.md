@@ -51,7 +51,7 @@ See the semantics of each option in the [PostgreSQL docs][postgresql-docs-create
 
 `WITH FUNCTION` example.
 
-```postgresql
+```plpgsql
 yugabyte=# CREATE FUNCTION sql_to_date(integer) RETURNS date AS $$
              SELECT $1::text::date
              $$ LANGUAGE SQL IMMUTABLE STRICT;
@@ -61,7 +61,7 @@ yugabyte=# SELECT CAST (3 AS date);
 
 `WITHOUT FUNCTION` example.
 
-```postgresql
+```plpgsql
 yugabyte=# CREATE TYPE myfloat4;
 yugabyte=# CREATE FUNCTION myfloat4_in(cstring) RETURNS myfloat4
              LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'float4in';
@@ -79,7 +79,7 @@ yugabyte=# SELECT CAST('3.14'::myfloat4 AS float4);
 
 `WITH INOUT` example.
 
-```postgresql
+```plpgsql
 yugabyte=# CREATE TYPE myint4;
 yugabyte=# CREATE FUNCTION myint4_in(cstring) RETURNS myint4
              LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int4in';

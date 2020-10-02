@@ -72,7 +72,7 @@ $ ./bin/ycqlsh
 
 Create a keyspace, table, index, and insert some test data.
 
-```postgresql
+```plpgsql
 ycqlsh> CREATE KEYSPACE ydb;
 ycqlsh> CREATE TABLE IF NOT EXISTS ydb.test_tb(user_id INT PRIMARY KEY, name TEXT) WITH transactions = {'enabled': true};
 ycqlsh> CREATE INDEX test_tb_name ON ydb.test_tb(name);
@@ -81,7 +81,7 @@ ycqlsh> INSERT INTO ydb.test_tb(user_id,name) VALUES (5,'John Doe');
 
 To verify that you have data in the database, run the following `SELECT` statement:
 
-```postgresql
+```plpgsql
 ycqlsh> SELECT * FROM ydb.test_tb;
 
  user_id | name
@@ -318,7 +318,7 @@ e982fe91-3b34-462a-971b-11d9e2ac1712 	RESTORED
 $ ./bin/ycqlsh
 ```
 
-```postgresql
+```plpgsql
 ycqlsh> select * from ydb.test_tb;
 
  user_id | name
