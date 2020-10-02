@@ -74,6 +74,7 @@ using tablet::TabletPeer;
 using gflags::FlagSaver;
 
 static const char* const kTabletId = "my-tablet-id";
+static const int kConsensusRunningWaitMs = 10000;
 
 class TsTabletManagerTest : public YBTest {
  public:
@@ -128,7 +129,8 @@ class TsTabletManagerTest : public YBTest {
       (*out_tablet_peer) = tablet_peer;
     }
 
-    RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromMilliseconds(2000)));
+    RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(
+          MonoDelta::FromMilliseconds(kConsensusRunningWaitMs)));
 
     return tablet_peer->consensus()->EmulateElection();
   }
