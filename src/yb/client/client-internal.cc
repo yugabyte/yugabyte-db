@@ -69,9 +69,10 @@
 #include "yb/rpc/messenger.h"
 #include "yb/tserver/tserver_flags.h"
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread_restrictions.h"
@@ -113,16 +114,18 @@ using internal::RemoteTabletServer;
 using internal::UpdateLocalTsState;
 
 Status RetryFunc(
-    CoarseTimePoint deadline, const string& retry_msg, const string& timeout_msg,
-    const std::function<Status(CoarseTimePoint, bool*)>& func) {
+    CoarseTimePoint deadline,
+    const string& retry_msg,
+    const string& timeout_msg,
+    const std::function<Status(CoarseTimePoint, bool*)>& func,
+    const CoarseDuration max_wait) {
   DCHECK(deadline != CoarseTimePoint());
 
-  if (deadline < CoarseMonoClock::Now()) {
+  CoarseBackoffWaiter waiter(deadline, max_wait);
+
+  if (waiter.ExpiredNow()) {
     return STATUS(TimedOut, timeout_msg);
   }
-
-  MonoDelta wait_time = 1ms;
-  MonoDelta kMaxSleep = 2s;
   for (;;) {
     bool retry = true;
     Status s = func(deadline, &retry);
@@ -130,18 +133,10 @@ Status RetryFunc(
       return s;
     }
 
-    VLOG(1) << retry_msg << " status=" << s.ToString();
-    wait_time = std::min(wait_time * 5 / 4, kMaxSleep);
-
-    // We assume that the function will take the same amount of time to run
-    // as it did in the previous attempt. If we don't have enough time left
-    // to sleep and run it again, we don't bother sleeping and retrying.
-    if (CoarseMonoClock::Now() + wait_time > deadline) {
+    VLOG(1) << retry_msg << " attempt=" << waiter.attempt() << " status=" << s.ToString();
+    if (!waiter.Wait()) {
       break;
     }
-
-    VLOG(1) << "Waiting for " << wait_time << " before retrying...";
-    SleepFor(wait_time);
   }
 
   return STATUS(TimedOut, timeout_msg);
@@ -1703,7 +1698,8 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
         IndexPermissions actual_index_permissions = VERIFY_RESULT(result);
         *retry = actual_index_permissions < target_index_permissions;
         return Status::OK();
-      }));
+      },
+      50ms /* max_wait */));
   // Now, the index permissions are guaranteed to be at (or beyond) the target.  Query again to
   // return it.
   return GetIndexPermissions(
