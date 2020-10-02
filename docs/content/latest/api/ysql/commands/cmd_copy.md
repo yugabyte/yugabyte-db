@@ -72,7 +72,7 @@ Specify the path of the file to be copied. An input file name can be an absolute
 
 The examples below assume a table like this:
 
-```postgresql
+```plpgsql
 yugabyte=# CREATE TABLE users(id BIGSERIAL PRIMARY KEY, name TEXT);
 yugabyte=# INSERT INTO users(name) VALUES ('John Doe'), ('Jane Doe'), ('Dorian Gray');
 yugabyte=# SELECT * FROM users;
@@ -88,7 +88,7 @@ yugabyte=# SELECT * FROM users;
 
 Copy the entire table to a CSV file using an absolute path, with column names in the header.
 
-```postgresql
+```plpgsql
 yugabyte=# COPY users TO '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
 ```
 
@@ -97,7 +97,7 @@ yugabyte=# COPY users TO '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HE
 In the following example, a `WHERE` clause is used to filter the rows and only the `name` column.
 
 
-```postgresql
+```plpgsql
 yugabyte=# COPY (SELECT name FROM users where name='Dorian Gray') TO '/home/yuga/Desktop/users.txt.sql' DELIMITER
  ',' CSV HEADER;
 ```
@@ -106,7 +106,7 @@ yugabyte=# COPY (SELECT name FROM users where name='Dorian Gray') TO '/home/yuga
 
 In the following example, the data exported in the previous examples are imported in the `users` table.
 
-```postgresql
+```plpgsql
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
 ```
 
@@ -116,7 +116,7 @@ yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV 
 When importing a very large table, Yugabyte recommends using many smaller transactions (rather than one large transaction).
 This can be achieved natively by using the `ROWS_PER_TRANSACTION` option.
 
-```postgresql
+```plpgsql
 yugabyte=# COPY large_table FROM '/home/yuga/Desktop/large_table.csv'
                WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 1000);
 ```
