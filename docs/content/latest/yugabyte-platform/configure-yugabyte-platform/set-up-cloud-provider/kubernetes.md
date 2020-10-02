@@ -1,8 +1,8 @@
 ---
-title: Configure the Kubernetes provider
-headerTitle: Configure the Kubernetes provider
+title: Configure the Kubernetes cloud provider
+headerTitle: Configure the Kubernetes cloud provider
 linkTitle: Configure the cloud provider
-description: Configure the Kubernetes provider
+description: Configure the Kubernetes cloud provider
 aliases:
   - /latest/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
@@ -83,16 +83,16 @@ Once you go to the appropriate tab, you should see a configuration form like thi
 
 Select the Kubernetes provider type from **Type**. In the case of Pivotal Container Service, this would be default to that option.
 
-## Configure the provider
+## Configure the cloud provider
 
-Take note of the following for configuring your K8s provider:
+Take note of the following for configuring your Kubernetes provider:
 
 - Give a meaningful name for your configuration.
 
 - **Service Account** provide the name of the service account which has necessary access to manage the cluster, refer to [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
 
-- **Kube Config** there are two ways to specify the kube config for an Availability Zone.
-  - Specify at **provider level** in the provider form as shown above. If specified, this config file will be used for all AZ's in all regions.
+- **Kube Config** there are two ways to specify the kube config for an availability zone.
+  - Specify at **provider level** in the provider form as shown above. If specified, this configuration file will be used for all availability zones in all regions.
   - Specify at **zone level** inside of the region form as described below, this is especially needed for **multi-az** or **multi-region** deployments.
 
 - **Image Registry** specifies where to pull YugabyteDB image from leave this to default, unless you are hosting the registry on your end.

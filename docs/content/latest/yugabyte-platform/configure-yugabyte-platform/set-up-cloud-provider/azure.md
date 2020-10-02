@@ -1,6 +1,6 @@
 ---
-title: Configure the Microsoft Azure provider
-headerTitle: Configure the Microsoft Azure provider
+title: Configure the Microsoft Azure cloud provider
+headerTitle: Configure the Microsoft Azure cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Microsoft Azure cloud provider.
 aliases:

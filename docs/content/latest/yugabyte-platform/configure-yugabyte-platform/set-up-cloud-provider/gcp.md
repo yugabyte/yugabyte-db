@@ -1,6 +1,6 @@
 ---
-title: Configure the Google Cloud Platform (GCP) provider
-headerTitle: Configure the Google Cloud Platform (GCP) provider
+title: Configure the Google Cloud Platform (GCP) cloud provider
+headerTitle: Configure the Google Cloud Platform (GCP) cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Google Cloud Platform (GCP) cloud provider.
 aliases:

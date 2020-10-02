@@ -1,8 +1,8 @@
 ---
-title: Configure the VMware Tanzu provider
-headerTitle: Configure the VMware Tanzu provider
+title: Configure the VMware Tanzu cloud provider
+headerTitle: Configure the VMware Tanzu cloud provider
 linkTitle: Configure the cloud provider
-description: Configure the VMware Tanzu provider.
+description: Configure the VMware Tanzu cloud rovider.
 aliases:
   - /deploy/pivotal-cloud-foundry/
   - /stable/deploy/pivotal-cloud-foundry/
@@ -108,10 +108,9 @@ This section lists various override options that you can specify when creating a
 
 ### Overriding cloud provider
 
-Based on what cloud providers you have setup in your Yugabyte Platform, you can create Yugabyte service instances by providing
-the overrides as below.
+Based on what cloud providers you have setup in your Yugabyte Platform, you can create Yugabyte service instances by providing the overrides as below.
 
-To provision in AWS/GCP cloud, your overrides would include the appropriate `provider_type` and `region_codes` as a array
+To provision in AWS or GCP clouds, your overrides would include the appropriate `provider_type` and `region_codes` as a array.
 
 ```sh
 {
@@ -133,8 +132,7 @@ To provision in Kubernetes, your overrides would include the appropriate `provid
 
 ### Overriding number of nodes
 
-To override the number of nodes, just include the `num_nodes` with desired value, include this parameter with along with
-other parameters for the cloud provider.
+To override the number of nodes, include the `num_nodes` with desired value, include this parameter with along with other parameters for the cloud provider.
 
 ```sh
 {

@@ -2,7 +2,7 @@
 title: Use Yugabyte Platform to remove a node
 headerTitle: Remove a node
 linkTitle: Remove a node
-description: Use Yugabyte Platform to remove a nonresponsive node.
+description: Use Yugabyte Platform to remove an unresponsive node.
 aliases:
   - /latest/manage/enterprise-edition/create-universe-multi-region
 menu:
@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Remove a nonresponsive node
+## Remove an unresponsive node
 
 If a VM or machine in a universe reaches its end of life and has unrecoverable hardware or other system (OS, disk, etc.) issues, it will be detected and displayed in the Yugabyte Platform console as an `Unreachable` node. The Raft consensus algorithm will ensure that other leaders will get elected for the underlying data shards. But, the universe is in a partially under-replicated scenario and will not be able to tolerate many more failures. So a quick remedy is needed.
 

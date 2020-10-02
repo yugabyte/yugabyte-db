@@ -122,7 +122,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
         <div class="title">Configure instance tags</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to edit and configure instance tags.
+        Use Yugabyte Platform to create and edit instance tags.
       </div>
     </a>
   </div>
