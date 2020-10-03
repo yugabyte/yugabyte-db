@@ -335,11 +335,25 @@ class YBClient {
   Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
       const TableId& table_id,
       const TableId& index_id,
-      const IndexPermissions& target_index_permissions);
+      const IndexPermissions& target_index_permissions,
+      const CoarseTimePoint deadline,
+      const CoarseDuration max_wait = std::chrono::seconds(2));
+  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
+      const TableId& table_id,
+      const TableId& index_id,
+      const IndexPermissions& target_index_permissions,
+      const CoarseDuration max_wait = std::chrono::seconds(2));
   Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
       const YBTableName& table_name,
       const YBTableName& index_name,
-      const IndexPermissions& target_index_permissions);
+      const IndexPermissions& target_index_permissions,
+      const CoarseDuration max_wait = std::chrono::seconds(2));
+  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
+      const YBTableName& table_name,
+      const YBTableName& index_name,
+      const IndexPermissions& target_index_permissions,
+      const CoarseTimePoint deadline,
+      const CoarseDuration max_wait = std::chrono::seconds(2));
 
   // Trigger an async index permissions update after new YSQL index permissions are committed.
   Status AsyncUpdateIndexPermissions(const TableId& indexed_table_id);
