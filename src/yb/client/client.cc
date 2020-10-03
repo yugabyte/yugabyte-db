@@ -635,25 +635,59 @@ Result<IndexPermissions> YBClient::GetIndexPermissions(
 Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
     const TableId& table_id,
     const TableId& index_id,
-    const IndexPermissions& target_index_permissions) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+    const IndexPermissions& target_index_permissions,
+    const CoarseTimePoint deadline,
+    const CoarseDuration max_wait) {
   return data_->WaitUntilIndexPermissionsAtLeast(
       this,
       table_id,
       index_id,
+      target_index_permissions,
       deadline,
-      target_index_permissions);
+      max_wait);
+}
+
+Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
+    const TableId& table_id,
+    const TableId& index_id,
+    const IndexPermissions& target_index_permissions,
+    const CoarseDuration max_wait) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitUntilIndexPermissionsAtLeast(
+      table_id,
+      index_id,
+      target_index_permissions,
+      deadline,
+      max_wait);
 }
 
 Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
     const YBTableName& table_name,
     const YBTableName& index_name,
-    const IndexPermissions& target_index_permissions) {
-  YBTableInfo table_info = VERIFY_RESULT(GetYBTableInfo(table_name));
-  YBTableInfo index_info = VERIFY_RESULT(GetYBTableInfo(index_name));
-  return WaitUntilIndexPermissionsAtLeast(table_info.table_id,
-                                          index_info.table_id,
-                                          target_index_permissions);
+    const IndexPermissions& target_index_permissions,
+    const CoarseTimePoint deadline,
+    const CoarseDuration max_wait) {
+  return data_->WaitUntilIndexPermissionsAtLeast(
+      this,
+      table_name,
+      index_name,
+      target_index_permissions,
+      deadline,
+      max_wait);
+}
+
+Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
+    const YBTableName& table_name,
+    const YBTableName& index_name,
+    const IndexPermissions& target_index_permissions,
+    const CoarseDuration max_wait) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitUntilIndexPermissionsAtLeast(
+      table_name,
+      index_name,
+      target_index_permissions,
+      deadline,
+      max_wait);
 }
 
 Status YBClient::AsyncUpdateIndexPermissions(const TableId& indexed_table_id) {

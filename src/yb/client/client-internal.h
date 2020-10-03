@@ -221,12 +221,25 @@ class YBClient::Data {
       const TableId& table_id,
       const TableId& index_id,
       const CoarseTimePoint deadline);
+  Result<IndexPermissions> GetIndexPermissions(
+      YBClient* client,
+      const YBTableName& table_name,
+      const YBTableName& index_name,
+      const CoarseTimePoint deadline);
   Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
       YBClient* client,
       const TableId& table_id,
       const TableId& index_id,
+      const IndexPermissions& target_index_permissions,
       const CoarseTimePoint deadline,
-      const IndexPermissions& target_index_permissions);
+      const CoarseDuration max_wait = std::chrono::seconds(2));
+  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
+      YBClient* client,
+      const YBTableName& table_name,
+      const YBTableName& index_name,
+      const IndexPermissions& target_index_permissions,
+      const CoarseTimePoint deadline,
+      const CoarseDuration max_wait = std::chrono::seconds(2));
 
   void CreateCDCStream(YBClient* client,
                        const TableId& table_id,
