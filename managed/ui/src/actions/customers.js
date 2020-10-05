@@ -3,6 +3,7 @@
 import axios from 'axios';
 import {IN_DEVELOPMENT_MODE, ROOT_URL, USE_SSO} from '../config';
 import Cookies from 'js-cookie';
+import { getCustomerEndpoint } from './common';
 
 // Get current user(me) from token in localStorage
 export const VALIDATE_FROM_TOKEN = 'VALIDATE_FROM_TOKEN';
@@ -368,6 +369,15 @@ export function retrieveClientCertificate(certUUID, config) {
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/certificates/${certUUID}`, config);
   return {
     type: FETCH_CLIENT_CERT,
+    payload: request
+  };
+}
+
+export function fetchRootCertificate(certUUID) {
+  const url = `${getCustomerEndpoint()}/certificates/${certUUID}/download`;
+  const request = axios.get(url);
+  return {
+    type: FETCH_CLIENT_CERT, // Reuse client cert action type b/c we don't have a reducer case yet
     payload: request
   };
 }
