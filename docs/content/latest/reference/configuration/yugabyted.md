@@ -90,6 +90,7 @@ Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
                                 [--webserver_port WEBSERVER_PORT]
                                 [--listen LISTEN] [--join JOIN]
                                 [--daemon BOOL] [--callhome BOOL] [--ui BOOL]
+                                [--initial_scripts_dir INITIAL_SCRIPTS_DIR]
 ```
 
 #### Flags
@@ -167,6 +168,12 @@ Enable or disable the "call home" feature that sends analytics data to Yugabyte.
 ##### --ui *bool*
 
 Enable or disable the webserver UI. Default is `false`.
+
+##### --initial_scripts_dir *initial-scripts-dir*
+
+The directory from where yugabyted reads initialization scripts.
+The format will be: For YSQL - `.sql`, For YCQL - `.cql`.
+Initialization scripts will be executed in sorted name order.
 
 -----
 
