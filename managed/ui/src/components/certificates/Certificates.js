@@ -1,6 +1,6 @@
 import React, { Component, Fragment } from 'react';
 import { YBPanelItem } from '../panels';
-import { Row, Col } from 'react-bootstrap';
+import { Row, Col, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Field } from 'formik';
 import * as Yup from 'yup';
@@ -23,6 +23,22 @@ const initialValues = {
   username: 'postgres'
 };
 
+const downloadAllFilesInObject = (data) => {
+  Object.entries(data).forEach((file) => {
+    const [filename, content] = file;
+    setTimeout(() => {
+      const element = document.createElement('a');
+      element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(content));
+      element.setAttribute('download', filename);
+
+      element.style.display = 'none';
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+    });
+  });
+};
+
 class DownloadCertificateForm extends Component {
 
   handleDownload = (values) => {
@@ -43,7 +59,7 @@ class DownloadCertificateForm extends Component {
         initialValues={initialValues}
         onFormSubmit={this.handleDownload}
         formName={'downloadCertificate'}
-        title={`Download Certificate ${certificate.name}`}
+        title={`Download YSQL Certificate ${certificate.name}`}
         id="download-cert-modal"
         visible={visible}
         onHide={onHide}
@@ -78,46 +94,45 @@ class Certificates extends Component {
     } else {
       return null;
     }
-  }
+  }  
 
-  downloadCertificates = (values) => {
+  downloadYCQLCertificates = (values) => {
     const { fetchClientCert } = this.props;
     this.setState({ showSubmitting: true });
     fetchClientCert(values.uuid, values).then((data) => {
-      this.setState({ showSubmitting: false });
-      Object.entries(data).forEach((file) => {
-        const [filename, content] = file;
-        setTimeout(() => {
-          const element = document.createElement('a');
-          element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(content));
-          element.setAttribute('download', filename);
-
-          element.style.display = 'none';
-          document.body.appendChild(element);
-          element.click();
-          document.body.removeChild(element);
-        });
-      });
-    }).catch(() => this.setState({ showSubmitting: false }));
+      downloadAllFilesInObject(data);
+    }).finally(() => this.setState({ showSubmitting: false }));
   }
 
-  getDownloadButton = (item, row) => {
+  downloadRootCertificate = (values) => {
+    this.setState({ showSubmitting: true });
+    this.props.fetchRootCert(values.uuid).then((data) => {
+      downloadAllFilesInObject(data);
+    }).finally(() => this.setState({ showSubmitting: false }));
+  }
+
+  formatActionButtons = (cell, row) => {
     const payload = {
       name: row.name,
       uuid: row.uuid,
       certStart: moment(row.creationTime).valueOf(),
       certExpiry: moment(row.expiryDate).valueOf(),
     };
+
     return (
-      <a onClick={() => {
-        this.setState({selectedCert: payload});
-        this.props.showDownloadCertificateModal();
-      }}
-        className="btn-orange"
-        style={{padding: '8px 15px', borderRadius: '7px', background: '#7a6f6f', cursor: 'pointer'}}
-      >
-        <i className="fa fa-download"></i> Download
-      </a>
+      <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
+        <MenuItem onClick={() => {
+          this.setState({selectedCert: payload});
+          this.props.showDownloadCertificateModal();
+        }}>
+          <i className="fa fa-download"></i> Download YSQL Cert
+        </MenuItem>
+        <MenuItem onClick={() => {
+          this.downloadRootCertificate(row);
+        }}>
+          <i className="fa fa-download"></i> Download Root CA Cert
+        </MenuItem>
+      </DropdownButton>
     );
   }
 
@@ -134,7 +149,7 @@ class Certificates extends Component {
           visibleModal
         },
       showAddCertificateModal
-      } = this.props;
+    } = this.props;
     const { showSubmitting } = this.state;
 
     const certificateArray = getPromiseState(userCertificates).isSuccess() ?
@@ -170,18 +185,18 @@ class Certificates extends Component {
             <Fragment>
               <BootstrapTable data={certificateArray} className="bs-table-certs" trClassName="tr-cert-name">
                 <TableHeaderColumn dataField='name' isKey={true}>Name</TableHeaderColumn>
-                <TableHeaderColumn dataField='creationTime' dataFormat={this.getDateColumn('creationTime')}>Creation Time</TableHeaderColumn>
-                <TableHeaderColumn dataField='expiryDate' dataFormat={this.getDateColumn('expiryDate')}>Expiration</TableHeaderColumn>
-                <TableHeaderColumn dataField='certificate'>Certificate</TableHeaderColumn>
-                <TableHeaderColumn dataField='privateKey'>Private Key</TableHeaderColumn>
-                <TableHeaderColumn dataField='actions' dataFormat={this.getDownloadButton}>Actions</TableHeaderColumn>
+                <TableHeaderColumn dataField='creationTime' dataAlign="left" dataFormat={this.getDateColumn('creationTime')}>Creation Time</TableHeaderColumn>
+                <TableHeaderColumn dataField='expiryDate' dataAlign="left" dataFormat={this.getDateColumn('expiryDate')}>Expiration</TableHeaderColumn>
+                <TableHeaderColumn dataField='certificate' dataAlign="left">Certificate</TableHeaderColumn>
+                <TableHeaderColumn dataField='privateKey' headerAlign="left" dataAlign="left">Private Key</TableHeaderColumn>
+                <TableHeaderColumn dataField='actions' columnClassName="yb-actions-cell" dataFormat={this.formatActionButtons}>Actions</TableHeaderColumn>
               </BootstrapTable>
               <AddCertificateFormContainer
                 visible={showModal && visibleModal === 'addCertificateModal'}
                 onHide={this.props.closeModal}
                 fetchCustomerCertificates={this.props.fetchCustomerCertificates}
-                />
-              <DownloadCertificateForm handleSubmit={this.downloadCertificates}
+              />
+              <DownloadCertificateForm handleSubmit={this.downloadYCQLCertificates}
                 visible={showModal && visibleModal === 'downloadCertificateModal'}
                 onHide={this.props.closeModal}
                 certificate={this.state.selectedCert}
