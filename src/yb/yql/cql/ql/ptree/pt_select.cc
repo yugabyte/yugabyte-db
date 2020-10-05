@@ -550,8 +550,10 @@ CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context) {
         // Clear the primary key operations. They be filled after the primary key is fetched from
         // the index.
         key_where_ops_.clear();
-        std::remove_if(where_ops_.begin(), where_ops_.end(),
-                       [](const ColumnOp& op) { return op.desc()->is_primary(); });
+        where_ops_.erase(std::remove_if(where_ops_.begin(),
+                                        where_ops_.end(),
+                                        [](const ColumnOp& op) { return op.desc()->is_primary(); }),
+                         where_ops_.end());
         const client::YBSchema& schema = table_->schema();
         for (size_t i = 0; i < schema.num_key_columns(); i++) {
           column_refs_.insert(schema.ColumnId(i));
