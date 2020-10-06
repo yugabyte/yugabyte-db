@@ -920,6 +920,10 @@ Result<master::TabletLocationsPB> GetColocatedTabletLocations(
   return tablets[0];
 }
 
+const TableId GetTableGroupTableId(const std::string& tablegroup_id) {
+  return tablegroup_id + master::kTablegroupParentTableIdSuffix;
+}
+
 Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
     client::YBClient* client,
     std::string database_name,
@@ -936,7 +940,7 @@ Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
   RETURN_NOT_OK(WaitFor(
       [&]() -> Result<bool> {
         Status s = client->GetTabletsFromTableId(
-            tablegroup_id + master::kTablegroupParentTableIdSuffix,
+            GetTableGroupTableId(tablegroup_id),
             0 /* max_tablets */,
             &tablets);
         if (s.ok()) {
@@ -963,6 +967,7 @@ Result<string> GetTableIdByTableName(
   }
   return STATUS(NotFound, "The table does not exist");
 }
+
 } // namespace
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
@@ -977,11 +982,13 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
 
   // A parent table with one tablet should be created when the database is created.
-  auto colocated_tablet_id = ASSERT_RESULT(GetColocatedTabletLocations(
+  const auto colocated_tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
       client.get(),
       kDatabaseName,
-      30s))
-    .tablet_id();
+      30s));
+  const auto colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  const auto colocated_table = ASSERT_RESULT(client->OpenTable(
+      colocated_tablet_locations.table_id()));
 
   // Create a range partition table, the table should share the tablet with the parent table.
   ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
@@ -1009,6 +1016,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   // colocation.
   ASSERT_OK(conn.Execute("CREATE INDEX bar_index ON bar (a)"));
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "bar_index"));
+  const auto table_bar_index = ASSERT_RESULT(client->OpenTable(table_id));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   for (auto& tablet : tablets) {
     ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
@@ -1049,6 +1057,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
         for (int i = 0; i < tablets_bar_index.size(); ++i) {
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
+              table_bar_index,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
                 tablet_founds[i] = result.ok();
@@ -1081,6 +1090,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
         rpc_calls++;
         client->LookupTabletById(
             colocated_tablet_id,
+            colocated_table,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               tablet_found = result.ok();
@@ -1149,6 +1159,39 @@ class PgLibPqTablegroupTest : public PgLibPqTest {
   }
 };
 
+namespace {
+
+struct TableGroupInfo {
+  int oid;
+  std::string id;
+  TabletId tablet_id;
+  std::shared_ptr<client::YBTable> table;
+};
+
+Result<TableGroupInfo> SelectTableGroup(
+    client::YBClient* client, PGConn* conn, const std::string& database_name,
+    const std::string& group_name) {
+  TableGroupInfo group_info;
+  auto res = VERIFY_RESULT(
+      conn->FetchFormat("SELECT oid FROM pg_database WHERE datname=\'$0\'", database_name));
+  const int database_oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
+  res = VERIFY_RESULT(
+      conn->FetchFormat("SELECT oid FROM pg_tablegroup WHERE grpname=\'$0\'", group_name));
+  group_info.oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
+
+  group_info.id = GetPgsqlTablegroupId(database_oid, group_info.oid);
+  group_info.tablet_id = VERIFY_RESULT(GetTablegroupTabletLocations(
+      client,
+      database_name,
+      group_info.id,
+      30s))
+    .tablet_id();
+  group_info.table = VERIFY_RESULT(client->OpenTable(GetTableGroupTableId(group_info.id)));
+  return group_info;
+}
+
+} // namespace
+
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
           PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
@@ -1164,19 +1207,8 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  auto res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_database WHERE datname=\'$0\'",
-                                            kDatabaseName));
-  int database_oid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-  res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_tablegroup WHERE grpname=\'$0\'",
-                                       kTablegroupName));
-  int tablegroup_oid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-
-  auto tablegroup_tablet_id = ASSERT_RESULT(GetTablegroupTabletLocations(
-      client.get(),
-      kDatabaseName,
-      GetPgsqlTablegroupId(database_oid, tablegroup_oid),
-      30s))
-    .tablet_id();
+  const auto tablegroup = ASSERT_RESULT(SelectTableGroup(
+      client.get(), &conn, kDatabaseName, kTablegroupName));
 
   // Create a range partition table, the table should share the tablet with the parent table.
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC)) TABLEGROUP $0",
@@ -1184,30 +1216,31 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "foo"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   ASSERT_EQ(tablets.size(), 1);
-  ASSERT_EQ(tablets[0].tablet_id(), tablegroup_tablet_id);
+  ASSERT_EQ(tablets[0].tablet_id(), tablegroup.tablet_id);
 
   // Create a index table that uses the tablegroup by default.
   ASSERT_OK(conn.Execute("CREATE INDEX foo_index1 ON foo (a)"));
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "foo_index1"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   ASSERT_EQ(tablets.size(), 1);
-  ASSERT_EQ(tablets[0].tablet_id(), tablegroup_tablet_id);
+  ASSERT_EQ(tablets[0].tablet_id(), tablegroup.tablet_id);
 
   // Create a hash partition table and dont use tablegroup.
   ASSERT_OK(conn.Execute("CREATE TABLE bar (a INT)"));
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "bar"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   for (auto& tablet : tablets) {
-    ASSERT_NE(tablet.tablet_id(), tablegroup_tablet_id);
+    ASSERT_NE(tablet.tablet_id(), tablegroup.tablet_id);
   }
 
   // Create an index on the table not in a tablegroup. The index should follow the table
   // and opt out of the tablegroup.
   ASSERT_OK(conn.Execute("CREATE INDEX bar_index ON bar (a)"));
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "bar_index"));
+  const auto table_bar_index = ASSERT_RESULT(client->OpenTable(table_id));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   for (auto& tablet : tablets) {
-    ASSERT_NE(tablet.tablet_id(), tablegroup_tablet_id);
+    ASSERT_NE(tablet.tablet_id(), tablegroup.tablet_id);
   }
   tablets_bar_index.Swap(&tablets);
 
@@ -1216,7 +1249,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "baz"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   ASSERT_EQ(tablets.size(), 1);
-  ASSERT_EQ(tablets[0].tablet_id(), tablegroup_tablet_id);
+  ASSERT_EQ(tablets[0].tablet_id(), tablegroup.tablet_id);
 
   // Create another table and index.
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE qux (a INT, PRIMARY KEY (a ASC)) TABLEGROUP $0",
@@ -1224,24 +1257,17 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.Execute("CREATE INDEX qux_index ON qux (a)"));
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "qux"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
-  ASSERT_EQ(tablets[0].tablet_id(), tablegroup_tablet_id);
+  ASSERT_EQ(tablets[0].tablet_id(), tablegroup.tablet_id);
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "qux_index"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
-  ASSERT_EQ(tablets[0].tablet_id(), tablegroup_tablet_id);
+  ASSERT_EQ(tablets[0].tablet_id(), tablegroup.tablet_id);
 
   // Now create a second tablegroup.
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupAltName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_tablegroup WHERE grpname=\'$0\'",
-                                       kTablegroupAltName));
-  tablegroup_oid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-  auto tablegroup_alt_tablet_id = ASSERT_RESULT(GetTablegroupTabletLocations(
-      client.get(),
-      kDatabaseName,
-      GetPgsqlTablegroupId(database_oid, tablegroup_oid),
-      30s))
-    .tablet_id();
+  auto tablegroup_alt = ASSERT_RESULT(SelectTableGroup(
+      client.get(), &conn, kDatabaseName, kTablegroupAltName));
 
   // Create another range partition table - should be part of the second tablegroup
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE quuz (a INT, PRIMARY KEY (a ASC)) TABLEGROUP $0",
@@ -1249,7 +1275,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "quuz"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   ASSERT_EQ(tablets.size(), 1);
-  ASSERT_EQ(tablets[0].tablet_id(), tablegroup_alt_tablet_id);
+  ASSERT_EQ(tablets[0].tablet_id(), tablegroup_alt.tablet_id);
 
     // Drop a table in the parent tablet.
   ASSERT_OK(conn.Execute("DROP TABLE quuz"));
@@ -1272,6 +1298,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         for (int i = 0; i < tablets_bar_index.size(); ++i) {
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
+              table_bar_index,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
                 tablet_founds[i] = result.ok();
@@ -1298,7 +1325,8 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
       [&] {
         rpc_calls++;
         client->LookupTabletById(
-            tablegroup_alt_tablet_id,
+            tablegroup_alt.tablet_id,
+            tablegroup_alt.table,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               alt_tablet_found = result.ok();
@@ -1314,23 +1342,16 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupAltName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_tablegroup WHERE grpname=\'$0\'",
-                                       kTablegroupAltName));
-  tablegroup_oid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  tablegroup_alt = ASSERT_RESULT(SelectTableGroup(
+        client.get(), &conn, kDatabaseName, kTablegroupAltName));
 
-  tablegroup_alt_tablet_id = ASSERT_RESULT(GetTablegroupTabletLocations(
-      client.get(),
-      kDatabaseName,
-      GetPgsqlTablegroupId(database_oid, tablegroup_oid),
-      30s))
-    .tablet_id();
   // Add a table back in and ensure that it is part of the recreated tablegroup.
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE quuz (a INT, PRIMARY KEY (a ASC)) TABLEGROUP $0",
                                kTablegroupAltName));
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "quuz"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   ASSERT_EQ(tablets.size(), 1);
-  ASSERT_EQ(tablets[0].tablet_id(), tablegroup_alt_tablet_id);
+  ASSERT_EQ(tablets[0].tablet_id(), tablegroup_alt.tablet_id);
 
   // Drop the database.
   conn = ASSERT_RESULT(Connect());
@@ -1347,7 +1368,8 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
       [&] {
         rpc_calls++;
         client->LookupTabletById(
-            tablegroup_tablet_id,
+            tablegroup.tablet_id,
+            tablegroup.table,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               orig_tablet_found = result.ok();
@@ -1364,7 +1386,8 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
       [&] {
         rpc_calls++;
         client->LookupTabletById(
-            tablegroup_alt_tablet_id,
+            tablegroup_alt.tablet_id,
+            tablegroup_alt.table,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               second_tablet_found = result.ok();

@@ -37,8 +37,11 @@ class TransactionCleanup : public std::enable_shared_from_this<TransactionCleanu
   void Perform(const std::vector<TabletId>& tablet_ids) {
     auto self = shared_from_this();
     for (const auto& tablet_id : tablet_ids) {
+      // TODO(tsplit): pass table if needed as a part of
+      // https://github.com/yugabyte/yugabyte-db/issues/4942.
       client_->LookupTabletById(
           tablet_id,
+          /* table =*/ nullptr,
           TransactionRpcDeadline(),
           std::bind(&TransactionCleanup::LookupTabletDone, this, _1, self),
           client::UseCache::kTrue);

@@ -98,6 +98,7 @@ TEST_F(TabletRpcTest, TabletInvokerSelectTabletServerRace) {
                                     nullptr /* command */,
                                     nullptr /* rpc */,
                                     remote_tablet.get(),
+                                    /* table =*/ nullptr,
                                     nullptr /* retrier */,
                                     trace.get());
     invoker.SelectTabletServer();

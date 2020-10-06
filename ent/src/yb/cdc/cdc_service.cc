@@ -698,6 +698,8 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
   auto start = CoarseMonoClock::Now();
   async_client_init_->client()->LookupTabletById(
       tablet_id,
+      // TODO(tsplit): decide whether we need to get info about stale table partitions here.
+      /* table =*/ nullptr,
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       callback, client::UseCache::kFalse);
   future.wait();

@@ -686,12 +686,13 @@ class YBClient {
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
-  void LookupTabletByKey(const YBTable* table,
+  void LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
                          const std::string& partition_key,
                          CoarseTimePoint deadline,
                          LookupTabletCallback callback);
 
   void LookupTabletById(const std::string& tablet_id,
+                        const std::shared_ptr<const YBTable>& table,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
                         UseCache use_cache);
@@ -750,7 +751,7 @@ class YBClient {
   FRIEND_TEST(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued);
 
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
-      const YBTable* table);
+      const std::shared_ptr<const YBTable>& table);
 
   YBClient();
 

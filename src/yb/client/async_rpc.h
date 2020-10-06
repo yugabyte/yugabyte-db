@@ -80,7 +80,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   void SendRpc() override;
   string ToString() const override;
 
-  const YBTable* table() const;
+  std::shared_ptr<const YBTable> table() const;
   const RemoteTablet& tablet() const { return *tablet_invoker_.tablet(); }
   const InFlightOps& ops() const { return ops_; }
 
@@ -110,11 +110,11 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // The trace buffer.
   scoped_refptr<Trace> trace_;
 
-  TabletInvoker tablet_invoker_;
-
   // Operations which were batched into this RPC.
   // These operations are in kRequestSent state.
   InFlightOps ops_;
+
+  TabletInvoker tablet_invoker_;
 
   MonoTime start_;
   std::shared_ptr<AsyncRpcMetrics> async_rpc_metrics_;
