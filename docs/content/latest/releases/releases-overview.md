@@ -67,7 +67,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 | v2.6 (stable)   | Apr 2021          |
 | v2.7            | Feb 2021          |
 
-## Recommended release series for your project
+## Recommended release series for project development
 
 To ensure that your production go-live uses the most up-to-date stable release, follow this guideline.
 
@@ -76,4 +76,4 @@ To ensure that your production go-live uses the most up-to-date stable release, 
 | < 3 months          | v2.2 (current stable)      |
 | > 3 months          | v2.3 (latest)              |
 
-If your production go-live is more than three months from now, start your development and testing with the latest release series. By the time your production is ready to go live, the latest release series you used will become the basis of the current stable release. By following this guideline, you ensure that your application is developing with the latest available features, enhancements, and fixes.
+If your production go-live is more than three months from now, start your development and testing with the latest release series. By the time your production is ready to go live, the current stable release series, based on the latest release series you used for development and testing, will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.
