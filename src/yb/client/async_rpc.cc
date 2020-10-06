@@ -14,6 +14,7 @@
 #include "yb/client/async_rpc.h"
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
+#include "yb/client/client_error.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
@@ -109,15 +110,16 @@ AsyncRpc::AsyncRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
     : Rpc(data->batcher->deadline(), data->batcher->messenger(), &data->batcher->proxy_cache()),
       batcher_(data->batcher),
       trace_(new Trace),
-      tablet_invoker_(LocalTabletServerOnly(data->ops),
+      ops_(std::move(data->ops)),
+      tablet_invoker_(LocalTabletServerOnly(ops_),
                       yb_consistency_level == YBConsistencyLevel::CONSISTENT_PREFIX,
                       data->batcher->client_,
                       this,
                       this,
                       data->tablet,
+                      table(),
                       mutable_retrier(),
                       trace_.get()),
-      ops_(std::move(data->ops)),
       start_(MonoTime::Now()),
       async_rpc_metrics_(data->batcher->async_rpc_metrics()) {
 
@@ -156,7 +158,7 @@ std::string AsyncRpc::ToString() const {
                 batcher_->transaction_metadata().transaction_id);
 }
 
-const YBTable* AsyncRpc::table() const {
+std::shared_ptr<const YBTable> AsyncRpc::table() const {
   // All of the ops for a given tablet obviously correspond to the same table,
   // so we'll just grab the table from the first.
   return ops_[0]->yb_op->table();
@@ -165,7 +167,8 @@ const YBTable* AsyncRpc::table() const {
 void AsyncRpc::Finished(const Status& status) {
   Status new_status = status;
   if (tablet_invoker_.Done(&new_status)) {
-    if (tablet().is_split()) {
+    if (tablet().is_split() ||
+        ClientError(new_status) == ClientErrorCode::kTablePartitionsAreStale) {
       ops_[0]->yb_op->MarkTablePartitionsAsStale();
     }
     ProcessResponseFromTserver(new_status);

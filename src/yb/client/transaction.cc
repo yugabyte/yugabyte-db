@@ -759,6 +759,7 @@ class YBTransaction::Impl final {
                           const YBTransactionPtr& transaction) {
     manager_->client()->LookupTabletById(
         tablet_id,
+        /* table =*/ nullptr,
         deadline,
         std::bind(&Impl::LookupTabletDone, this, _1, transaction),
         client::UseCache::kTrue);

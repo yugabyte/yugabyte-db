@@ -170,7 +170,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
       TabletLookupCallbackFastTrack(i);
     } else {
       local_client_->client->LookupTabletByKey(
-          table_.get(),
+          table_,
           PartitionSchema::EncodeMultiColumnHashValue(
               boost::lexical_cast<uint16_t>(twodc_resp_copy_.records(i).key(0).key())),
           CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),

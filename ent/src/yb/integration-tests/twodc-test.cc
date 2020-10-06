@@ -899,9 +899,9 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
   std::string ts_uuid;
   std::mutex data_mutex;
   {
-    ASSERT_OK(WaitFor([this, &tablet_id, &ts_uuid, &data_mutex] {
+    ASSERT_OK(WaitFor([this, &tablet_id, &table = tables[0], &ts_uuid, &data_mutex] {
         producer_client()->LookupTabletById(
-            tablet_id, CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
+            tablet_id, table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
             [&ts_uuid, &data_mutex](const Result<client::internal::RemoteTabletPtr>& result) {
               if (result.ok()) {
                 std::lock_guard<std::mutex> l(data_mutex);

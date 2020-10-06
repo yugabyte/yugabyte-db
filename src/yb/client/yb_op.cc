@@ -828,7 +828,7 @@ Result<QLRowBlock> YBPgsqlReadOp::MakeRowBlock() const {
 // YBNoOp
 ////////////////////////////////////////////////////////////
 
-YBNoOp::YBNoOp(YBTable* table)
+YBNoOp::YBNoOp(const std::shared_ptr<YBTable>& table)
   : table_(table) {
 }
 

@@ -94,7 +94,7 @@ class YBOperation {
   };
   virtual ~YBOperation();
 
-  const YBTable* table() const { return table_.get(); }
+  std::shared_ptr<const YBTable> table() const { return table_; }
 
   void ResetTable(std::shared_ptr<YBTable> new_table);
 
@@ -556,13 +556,13 @@ class YBNoOp {
  public:
   // Initialize the NoOp request object. The given 'table' object must remain valid
   // for the lifetime of this object.
-  explicit YBNoOp(YBTable* table);
+  explicit YBNoOp(const std::shared_ptr<YBTable>& table);
 
   // Executes a no-op request against the tablet server on which the row specified
   // by "key" lives.
   CHECKED_STATUS Execute(const YBPartialRow& key);
  private:
-  YBTable* table_;
+  const std::shared_ptr<YBTable> table_;
 
   DISALLOW_COPY_AND_ASSIGN(YBNoOp);
 };
