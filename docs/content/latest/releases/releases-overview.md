@@ -46,7 +46,7 @@ For details, see [Yugabyte Services Policy](https://www.yugabyte.com/support-pol
 
 ### Release support timelines
 
-| Release series                                                                  | Released     | Maintenance support ends | Ed of Life (EOL)          |
+| Release series                                                                  | Released     | Maintenance support ends | End of Life (EOL)          |
 | :-------------------------------------------------------------------- | :----------- | :----------------------- | :----------- |
 | [v2.3](../whats-new/latest-releases) ![LATEST](/images/releases/latest.png)            | Sep 08, 2020 | ---                      | ---          |
 | [v2.2](../whats-new/stable-releases) ![CURRENT STABLE](/images/releases/current-stable.png)               | Jul 15, 2020 | Jul 15, 2021             | Jan 15, 2022 |

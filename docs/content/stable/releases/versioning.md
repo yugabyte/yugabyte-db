@@ -6,7 +6,7 @@ description: Explains the new release versioning convention for latest and stabl
 section: RELEASES
 menu:
   stable:
-    identifier: versioning-22
+    identifier: versioning
     weight: 2586
 isTocNested: true
 showAsideToc: true
