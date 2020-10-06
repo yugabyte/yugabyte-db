@@ -3,6 +3,7 @@ title: Release versioning
 headerTitle: Release versioning
 linkTitle: Release versioning
 description: Explains the new release versioning convention for latest and stable releases.
+section: RELEASES
 menu:
   latest:
     identifier: versioning

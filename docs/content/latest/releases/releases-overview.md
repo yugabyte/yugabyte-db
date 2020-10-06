@@ -3,6 +3,7 @@ title: Releases overview
 headerTitle: Releases overview
 linkTitle: Releases overview
 description: An overview of the latest and current stable releases, and upcoming releases.
+section: RELEASES
 menu:
   latest:
     identifier: releases-overview
