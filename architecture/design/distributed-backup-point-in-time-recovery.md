@@ -97,11 +97,19 @@ Handling incremental backups for point in time recovery will be done by impement
 
 > **Note:** that these depend on [performing a full snapshot / backup of the distributed database](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md).
 
+
+
 ## Handling table data (DML changes)
 
 The data in user table is split into tablets, each tablet peer stores data in the form of a set of WAL files (write ahead log, or the journal) and sst files (data files). Any update to the data is assigned a hybrid timestamp, which represent the timestamp when the update occurs. Note that this tablet data might reference transactions (in progress, committed and aborted), and requires the information in the transaction status table in order to be resolved correctly.
 
-### Components of an incremental backup
+### Flashback database - retain all updates
+
+Currently, the hybrid timestamp representing the timestamp of the update is written into the WAL for each update, and applied into the sst data files. However, older updates are dropped automatically by a process called compactions. Further, the hybrid timestamps are retained only for a short time period in the sst files. Recovering to a point in time in the past (called *history cutoff timestamp* requires that both the intermediate updates as well as the hydrid timestamps for each DML update be retained at least up to the *history cutoff timestamp*. For example, to allow recovering to any point in time over the last 24 hours retain all updates for the last 25 hours. This would require the following changes when PITR is enabled:
+* Compactions should not purge any older values once updates to rows occur. They would continue to purge the older updates once it is outside the retention window.
+* Every update should retain its corresponding hybrid timestamp.
+
+### Incremental backup - distributed WAL archival
 
 Incremental backups would be performed using **distributed WAL archival**, where the older files in the write ahead log across various nodes in the database cluster are moved/hard-linked to a different filesystem - perhaps on a separate mount point (called an *archive location*). This serves as the location from which the WAL logs may be copied out remotely. This is the most realtime way of backing up data.
 
@@ -110,15 +118,23 @@ Based on the above, an incremental backup of the table data consists of the foll
 * an optional set of sst data files (an optimization to reduce the data size and recovery time)
 * the contents of the transaction status table
 
-### Retaining intermediate updates with hybrid timestamps
-Currently, the hybrid timestamp representing the timestamp of the update is written into the WAL for each update, and applied into the sst data files. However, older updates are dropped automatically by a process called compactions. Further, the hybrid timestamps are retained only for a short time period in the sst files. Recovering to a point in time in the past (called *history cutoff timestamp* requires that both the intermediate updates as well as the hydrid timestamps for each DML update be retained at least up to the *history cutoff timestamp*. For example, to allow recovering to any point in time over the last 24 hours retain all updates for the last 25 hours. This would require the following changes when PITR is enabled:
-* Compactions should not purge any older values once updates to rows occur. They would continue to purge the older updates once it is outside the retention window.
-* Every update should retain its corresponding hybrid timestamp.  
-
 
 ## Handling table schema (DDL changes)
 
-DDL operations in a distributed database occur over a period of time, right from the time the operation is initiated by the user to the time where all changes have completed across all nodes in the cluster.
+The scheme to backup DDL changes is the same in the case of both flashback database and incremental backups.
+
+DDL operations in a distributed database occur over a period of time, right from the timestamp `ts1` when the operation is initiated by the user to the timestamp `ts2` when these DDL changes have completed successfully across all nodes in the cluster. The new schema for the entire database (namespace) that contains the table being updated will be saved on both the system catalog and the various tablets that comprise the user table. The new schema will be saved at a candidate timestamp in the range [`ts1`, `ts2`]. 
+
+With the above scheme, the following changes would need to be implemented.
+
+### Restoring after `DROP TABLE` or `DROP INDEX`
+In this case, the actual table should not be dropped from disk, only purged from the system catalog. We would have the tablets belonging to the dropped table still running in the system, but the table itself would not be present in the system catalog. The physical drop of these tablets would be processed after the history cutoff.
+
+### Restoring after `CREATE TABLE` or `CREATE INDEX`
+In this case, the operation performing the roll back would need to drop the newly created tables since they did not exist earlier.
+
+### Restoring after `ALTER TABLE`
+In this case, the all of the tablets that make up the table would need to revert to the appropriate earlier version of the schema.
 
 
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/point-in-time-recovery.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
