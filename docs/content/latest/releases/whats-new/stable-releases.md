@@ -14,7 +14,7 @@ menu:
     identifier: stable-releases
     weight: 2586 
 isTocNested: true
-showAsideToc: true
+showAsideToc: false
 ---
 
 Included here are the notable new features and enhancements and the release notes for all releases in the current v2.2 stable release series.

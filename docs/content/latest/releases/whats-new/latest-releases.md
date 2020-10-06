@@ -14,7 +14,7 @@ menu:
     identifier: latest-release
     weight: 2585
 isTocNested: true
-showAsideToc: true 
+showAsideToc: false 
 ---
 
 Included here are the release notes for all releases in the v2.3 latest release series.
