@@ -67,7 +67,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 | v2.6 (stable)   | Apr 2021          |
 | v2.7            | Feb 2021          |
 
-## Recommended release series for project development
+## Recommended release series for projects
 
 To ensure that your production go-live uses the most up-to-date stable release, follow this guideline.
 

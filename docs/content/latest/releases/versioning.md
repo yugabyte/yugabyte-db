@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: false
 ---
 
-Starting with v2.2.0, Yugabyte follows a new release versioning convention for stable and development releases. The following sections covers the new release versioning convention and descriptions of stable releases and the latest release.
+Starting with v2.2.0, Yugabyte follows a new release versioning convention for stable and development releases. The following sections cover the new release versioning convention and includes descriptions of stable and latest releases.
 
 ## Release versioning convention
 
@@ -34,7 +34,8 @@ Patch releases in a stable release series (`MAJOR.EVEN.PATCH`) include bug fixes
 
 {{< note title="Important" >}}
 
-Yugabyte supports *production deployments* based on stable releases and can only be upgraded to the newer stable releases. For a list of supported stable releases, see [Current supported releases](../releases-overview/#current-supported-releases).
+- Yugabyte supports *production deployments* on stable releases and upgrades to newer stable releases. For a list of supported stable releases, see [Current supported releases](../releases-overview/#current-supported-releases).
+- For recommendations on which version to use for development and testing, see [Recommended release series for projects](../releases-overview/#recommended-releases-series-for-projects).
 
 {{< /note >}}
 
