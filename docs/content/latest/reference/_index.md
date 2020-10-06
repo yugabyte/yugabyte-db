@@ -1,10 +1,10 @@
 ---
-title: YugabyteDB Reference
+title: Yugabyte Reference
 headerTitle: Reference
 linkTitle: Reference
 description: Reference of YugabyteDB architecture, APIs, CLIs, drivers, connectors, tools, and sample data.
 image: /images/section_icons/quick_start/sample_apps.png
-headcontent:
+headcontent: Reference of YugabyteDB architecture, APIs, CLIs, drivers, connectors, tools, and sample data.
 section: REFERENCE
 menu:
   latest:

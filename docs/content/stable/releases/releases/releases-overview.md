@@ -14,7 +14,7 @@ showAsideToc: false
 
 {{< note title="Important" >}}
 
-As of v2.2, Yugabyte is following a new release versioning convention for YugabyteDB and Yugabyte Platform releases.  For details, see [Release versioning](../versioning).
+As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB and Yugabyte Platform releases.  For details, see [Release versioning](../versioning).
 
 {{< /note >}}
 

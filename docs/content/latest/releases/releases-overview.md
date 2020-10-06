@@ -14,7 +14,7 @@ showAsideToc: false
 
 {{< note title="Important" >}}
 
-As of v2.2, Yugabyte is following a new release versioning convention for YugabyteDB and Yugabyte Platform releases.  For details, see [Release versioning](../versioning).
+As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB and Yugabyte Platform releases.  For details, see [Release versioning](../versioning).
 
 {{< /note >}}
 
@@ -29,7 +29,7 @@ For details about the differences between the stable and latest release series, 
 
 ### Release support policy
 
-Each YugabyteDB stable release series goes through the following support cycle:
+Support for YugabyteDB stable release series includes:
 
 - **Maintenance support:** For at least 1 year from the minor release date, Yugabyte will provide Updates for such release.
 - **Extended support:** Following the maintenance support period, Yugabyte will provide Updates for at least an
@@ -42,9 +42,11 @@ does not exist.
 - **End of Life (EOL):** Yugabyte will post publicly on its website a notice of End of Life (EOL) for the affected
 Software and the timeline for discontinuing Support Services.
 
+For details, see [Yugabyte Services Policy](https://www.yugabyte.com/support-policy/).
+
 ### Release support timelines
 
-| Release series                                                                  | Released     | Maintenance support ends | EOL          |
+| Release series                                                                  | Released     | Maintenance support ends | Ed of Life (EOL)          |
 | :-------------------------------------------------------------------- | :----------- | :----------------------- | :----------- |
 | [v2.3](../whats-new/latest-releases) ![LATEST](/images/releases/latest.png)            | Sep 08, 2020 | ---                      | ---          |
 | [v2.2](../whats-new/stable-releases) ![CURRENT STABLE](/images/releases/current-stable.png)               | Jul 15, 2020 | Jul 15, 2021             | Jan 15, 2022 |
@@ -52,7 +54,7 @@ Software and the timeline for discontinuing Support Services.
 | [v2.0](../earlier-releases/v2.0.0)                                               | Sep 17, 2019 | Sep 17, 2020             | Mar 03, 2021 |
 | [v1.3](../earlier-releases/v1.3.0)                                               | Jul 15, 2019 | Jul 15, 2020             | Jan 15, 2021 |
 
-**Note:** Supported stable release series include `v2.1`, `v2.0`, and `v1.3`, which were released prior to the new release versioning convention.
+**Note:** Supported stable release series include v2.1, v2.0, and v1.3, which were released prior to the new release versioning convention.
 
 ## Upcoming release series
 

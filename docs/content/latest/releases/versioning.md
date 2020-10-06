@@ -43,7 +43,7 @@ Patch releases in a stable release series (`MAJOR.EVEN.PATCH`) include bug fixes
 
 Releases within the latest release series, denoted by `MAJOR.ODD` versioning, are under active development and incrementally introduces new features and changes and are intended for development, testing, and proof-of-concept projects. The v2.3 latest release series will become the basis for the next v2.4 stable release series. And the v2.5 latest release series will be the next actively developed .
 
-Patches released in the latest release series (`MAJOR.ODD.PATCH`) can introduce new features and changes that might break backward compatibility.
+Patch releases in the latest release series (`MAJOR.ODD.PATCH`) introduce new features, enhancements, and fixes.
 
 {{< note title="Note" >}}
 

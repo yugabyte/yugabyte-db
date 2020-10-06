@@ -11,7 +11,7 @@ menu:
     weight: 2589
 ---
 
-The release notes and downloads for earlier YugabyteDB are listed below.
+Links to the release notes and downloads for earlier YugabyteDB are listed below.
 
 Release | Date | Binary | Docker Image Tag
 --------|------|-------------------------------|-----------------

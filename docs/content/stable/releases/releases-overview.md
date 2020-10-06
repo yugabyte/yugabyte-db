@@ -14,40 +14,68 @@ showAsideToc: true
 
 {{< note title="Important" >}}
 
-As of v2.2, Yugabyte is following a new release versioning convention for YugabyteDB releases.  For details, see [Release versioning](../versioning).
+As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB and Yugabyte Platform releases.  For details, see [Release versioning](../versioning).
 
 {{< /note >}}
 
-## Supported stable and latest releases
+## Current supported releases
 
 The following release series include:
 
 - [Stable](../versioning/#stable-releases): Supported for production deployments.
 - [Latest](../versioning/#latest-releases): Supported for development and testing only.
 
-[Release versioning](../versioning) gives details on the stable and latest release series numbering convention that started with `2.2`.
+For details about the differences between the stable and latest release series, see [Release versioning](../versioning).
 
-[Upcoming releases](#upcoming-releases), in a section below, includes timelines for upcoming stable and latest release series.
+### Release support policy
 
-| Release series                                                                  | Released     | Maintenance support ends | EOL          |
-| :------------------------------------------------------------------------------ | :----------- | :----------------------- | :----------- |
-| [2.3](../whats-new/latest-releases) Latest (development and testing)            | Sep 08, 2020 | ---                      | ---          |
-| [2.2](../whats-new/stable-releases) Current Stable (recommended for production) | Jul 15, 2020 | Jul 15, 2021             | Jan 15, 2022 |
-| [2.1](../earlier-releases/v2.1.0)                                               | Feb 25, 2020 | Feb 25, 2021             | Aug 08, 2021 |
-| [2.0](../earlier-releases/v2.0.0)                                               | Sep 17, 2019 | Sep 17, 2020             | Mar 03, 2021 |
-| [1.3](../earlier-releases/v1.3.0)                                               | Jul 15, 2019 | Jul 15, 2020             | Jan 15, 2021 |
+Support for YugabyteDB stable release series includes:
 
-**Note:** The stable release series includes `2.1`, `2.0`, and `1.3`, released prior to the new [release versioning](../versioning) convention.
+- **Maintenance support:** For at least 1 year from the minor release date, Yugabyte will provide Updates for such release.
+- **Extended support:** Following the maintenance support period, Yugabyte will provide Updates for at least an
+additional 180 days subject to the following guidelines:
+  - Updates and Upgrades will not be made to the minor release.
+  - Yugabyte will direct Customers to existing Updates and workarounds applicable
+to the reported case.
+  - Yugabyte may direct Customers to Upgrade to a current release if a workaround
+does not exist.
+- **End of Life (EOL):** Yugabyte will post publicly on its website a notice of End of Life (EOL) for the affected
+Software and the timeline for discontinuing Support Services.
 
-## Upcoming releases
+For details, see [Yugabyte Services Policy](https://www.yugabyte.com/support-policy/).
 
-Listed below are tentative release dates for upcoming release series, subject to change.
+### Release support timelines
 
-To help you plan, visit [Current roadmap](https://github.com/yugabyte/yugabyte-db#current-roadmap) for insights into key features planned for the upcoming releases.
+| Release series                                                                  | Released     | Maintenance support ends | Ed of Life (EOL)          |
+| :-------------------------------------------------------------------- | :----------- | :----------------------- | :----------- |
+| [v2.3](../whats-new/latest-releases) ![LATEST](/images/releases/latest.png)            | Sep 08, 2020 | ---                      | ---          |
+| [v2.2](../whats-new/stable-releases) ![CURRENT STABLE](/images/releases/current-stable.png)               | Jul 15, 2020 | Jul 15, 2021             | Jan 15, 2022 |
+| [v2.1](../earlier-releases/v2.1.0)                                               | Feb 25, 2020 | Feb 25, 2021             | Aug 08, 2021 |
+| [v2.0](../earlier-releases/v2.0.0)                                               | Sep 17, 2019 | Sep 17, 2020             | Mar 03, 2021 |
+| [v1.3](../earlier-releases/v1.3.0)                                               | Jul 15, 2019 | Jul 15, 2020             | Jan 15, 2021 |
 
-| Planned release | Release series |
-| :-------------- | :------------- |
-| Nov 2020        | 2.5            |
-| Jan 2021        | 2.4 (stable)   |
-| Feb 2021        | 2.7            |
-| Apr 2021        | 2.6 (stable)   |
+**Note:** Supported stable release series include v2.1, v2.0, and v1.3, which were released prior to the new release versioning convention.
+
+## Upcoming release series
+
+The table below includes tentative release dates for upcoming release series, subject to change.
+
+For information on key features planned for the upcoming releases, visit [Current roadmap](https://github.com/yugabyte/yugabyte-db#current-roadmap).
+
+| Release series | Planned release   |
+| :------------- | :---------------- |
+| v2.4 (stable)   | Jan 2021          |
+| v2.5            | Nov 2020          |
+| v2.6 (stable)   | Apr 2021          |
+| v2.7            | Feb 2021          |
+
+## Recommended release series for projects
+
+To ensure that your production go-live uses the most up-to-date stable release, follow this guideline.
+
+| Production go-live  | Recommended release series |
+| :------------------ | :------------------------- |
+| < 3 months          | v2.2 (current stable)      |
+| > 3 months          | v2.3 (latest)              |
+
+If your production go-live is more than three months from now, start your development and testing with the latest release series. By the time your production is ready to go live, the current stable release series, based on the latest release series you used for development and testing, will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.
