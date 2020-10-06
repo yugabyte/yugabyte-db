@@ -235,6 +235,23 @@ class CppCassandraDriverTestIndexSlow : public CppCassandraDriverTestIndex {
   }
 };
 
+class CppCassandraDriverTestIndexSlower : public CppCassandraDriverTestIndex {
+ public:
+  std::vector<std::string> ExtraTServerFlags() override {
+    auto flags = CppCassandraDriverTestIndex::ExtraTServerFlags();
+    flags.push_back("--TEST_slowdown_backfill_by_ms=3000");
+    flags.push_back("--TEST_yb_num_total_tablets=1");
+    return flags;
+  }
+
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = CppCassandraDriverTestIndex::ExtraMasterFlags();
+    flags.push_back("--TEST_slowdown_backfill_alter_table_rpcs_ms=3000");
+    flags.push_back("--vmodule=backfill_index=3");
+    return flags;
+  }
+};
+
 class CppCassandraDriverTestIndexMultipleChunks : public CppCassandraDriverTestIndexSlow {
  public:
   std::vector<std::string> ExtraTServerFlags() override {
@@ -1279,6 +1296,194 @@ TEST_F_EX(
           return !index_table_info && index_table_info.status().IsNotFound();
         },
         10s, "waiting for index to be deleted");
+  }
+}
+
+// Simulate this situation:
+//   Session A                                    Session B
+//   ------------------------------------         -------------------------------------------
+//   CREATE TABLE (i, j, PRIMARY KEY (i))
+//                                                INSERT (1, 'a')
+//   CREATE UNIQUE INDEX (j)
+//   - DELETE_ONLY perm
+//                                                DELETE (1, 'a')
+//                                                (delete (1, 'a') to index)
+//                                                INSERT (2, 'a')
+//   - WRITE_DELETE perm
+//   - BACKFILL perm
+//     - get safe time for read
+//                                                INSERT (3, 'a')
+//                                                (insert (3, 'a') to index)
+//     - do the actual backfill
+//                                                (insert (2, 'a') to index--detect conflict)
+//   - READ_WRITE_DELETE perm
+// This test is for issue #5811.
+TEST_F_EX(
+    CppCassandraDriverTest,
+    CreateUniqueIndexWriteAfterSafeTime,
+    CppCassandraDriverTestIndexSlower) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
+
+  ASSERT_OK(session_.ExecuteQuery("INSERT INTO test_table (k, v) VALUES (1, 'a')"));
+
+  LOG(INFO) << "Creating index";
+  auto session2 = ASSERT_RESULT(EstablishSession());
+  CassandraFuture create_index_future = session2.ExecuteGetFuture(
+      "CREATE UNIQUE INDEX test_table_index_by_v ON test_table (v)");
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+
+  LOG(INFO) << "Wait for DELETE permission";
+  {
+    // Deadline is
+    //   3s for before WRITE perm sleep
+    // + 3s for extra
+    // = 6s
+    // Right after the "before WRITE", the index permissions become WRITE while the fully applied
+    // index permissions become DELETE.  (Actually, the index should already be fully applied DELETE
+    // before this since that's the starting permission.)
+    IndexPermissions perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name,
+        index_table_name,
+        IndexPermissions::INDEX_PERM_DELETE_ONLY,
+        CoarseMonoClock::Now() + 6s /* deadline */,
+        50ms /* max_wait */));
+    ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_DELETE_ONLY);
+  }
+
+  LOG(INFO) << "Do insert and delete before WRITE permission";
+  {
+    // Deadline is
+    //   3s for before WRITE perm sleep
+    // + 3s for extra
+    // = 6s
+    // We want to make sure the latest permissions are not WRITE.  The latest permissions become
+    // WRITE after "before WRITE".
+    CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 6s, CoarseMonoClock::Duration::max());
+    Status status;
+    do {
+      status = session_.ExecuteQuery("DELETE from test_table WHERE k = 1");
+      LOG(INFO) << "Got " << yb::ToString(status);
+      if (status.ok()) {
+        status = session_.ExecuteQuery("INSERT INTO test_table (k, v) VALUES (2, 'a')");
+      }
+      ASSERT_TRUE(waiter.Wait());
+    } while (!status.ok());
+  }
+
+  LOG(INFO) << "Ensure it is still DELETE permission";
+  {
+    IndexPermissions perm = ASSERT_RESULT(client_->GetIndexPermissions(
+        table_name,
+        index_table_name));
+    ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_DELETE_ONLY);
+  }
+
+  LOG(INFO) << "Wait for BACKFILL permission";
+  {
+    // Deadline is
+    //   3s for before WRITE perm sleep
+    // + 3s for after WRITE perm sleep
+    // + 3s for before BACKFILL perm sleep
+    // + 3s for after BACKFILL perm sleep
+    // + 3s for extra
+    // = 15s
+    IndexPermissions perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name,
+        index_table_name,
+        IndexPermissions::INDEX_PERM_DO_BACKFILL,
+        CoarseMonoClock::Now() + 15s /* deadline */,
+        50ms /* max_wait */));
+    EXPECT_EQ(perm, IndexPermissions::INDEX_PERM_DO_BACKFILL);
+  }
+
+  LOG(INFO) << "Wait to get safe time for backfill (currently approximated using 1s sleep)";
+  SleepFor(1s);
+
+  LOG(INFO) << "Do insert before backfill";
+  {
+    // Deadline is
+    //   2s for remainder of 3s sleep of backfill
+    // + 3s for extra
+    // = 5s
+    CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 5s, CoarseMonoClock::Duration::max());
+    while (true) {
+      Status status = session_.ExecuteQuery("INSERT INTO test_table (k, v) VALUES (3, 'a')");
+      LOG(INFO) << "Got " << yb::ToString(status);
+      if (status.ok()) {
+        break;
+      } else {
+        ASSERT_FALSE(status.IsIllegalState() &&
+                     status.message().ToBuffer().find("Duplicate value") != std::string::npos)
+            << "The insert should come before backfill, so it should not cause duplicate conflict.";
+        ASSERT_TRUE(waiter.Wait());
+      }
+    }
+  }
+
+  LOG(INFO) << "Wait for CREATE INDEX to finish (either succeed or fail)";
+  bool is_index_created;
+  {
+    // Deadline is
+    //   2s for remainder of 3s sleep of backfill
+    // + 3s for before READ or WRITE_WHILE_REMOVING perm sleep
+    // + 3s for after WRITE_WHILE_REMOVING perm sleep
+    // + 3s for before DELETE_WHILE_REMOVING perm sleep
+    // + 3s for extra
+    // = 14s
+    // (In the fail case) Right after the "before DELETE_WHILE_REMOVING", the index permissions
+    // become DELETE_WHILE_REMOVING while the fully applied index permissions become
+    // WRITE_WHILE_REMOVING, and WRITE_WHILE_REMOVING is the first permission in the fail case >=
+    // READ permission.
+    IndexPermissions perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name,
+        index_table_name,
+        IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE,
+        CoarseMonoClock::Now() + 14s /* deadline */,
+        50ms /* max_wait */));
+    if (perm != IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE) {
+      LOG(INFO) << "Wait for index to get deleted";
+      auto result = client_->WaitUntilIndexPermissionsAtLeast(
+          table_name,
+          index_table_name,
+          IndexPermissions::INDEX_PERM_NOT_USED,
+          50ms /* max_wait */);
+      ASSERT_TRUE(!result.ok());
+      ASSERT_TRUE(result.status().IsNotFound());
+      is_index_created = false;
+    } else {
+      is_index_created = true;
+    }
+  }
+
+  // Check.
+  {
+    auto result = GetTableSize(&session_, "test_table");
+    CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 10s, CoarseMonoClock::Duration::max());
+    while (!result.ok()) {
+      ASSERT_TRUE(waiter.Wait());
+      ASSERT_TRUE(result.status().IsQLError()) << result.status();
+      ASSERT_TRUE(result.status().message().ToBuffer().find("schema version mismatch")
+                  != std::string::npos) << result.status();
+      // Retry.
+      result = GetTableSize(&session_, "test_table");
+    }
+    const int64_t main_table_size = ASSERT_RESULT(result);
+    result = GetTableSize(&session_, "test_table_index_by_v");
+
+    ASSERT_EQ(main_table_size, 2);
+    if (is_index_created) {
+      // This is to demonstrate issue #5811.  These statements should not fail.
+      const int64_t index_table_size = ASSERT_RESULT(result);
+      ASSERT_EQ(index_table_size, 1);
+      // Since the main table has two rows while the index has one row, the index is inconsistent.
+      ASSERT_TRUE(false) << "index was created and is inconsistent with its indexed table";
+    } else {
+      ASSERT_NOK(result);
+    }
   }
 }
 
