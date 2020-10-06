@@ -2,7 +2,8 @@
 
 import React, { Component } from 'react';
 import { PageHeader } from 'react-bootstrap';
-import { YBButton, YBFormInput } from '../fields';
+import { YBButton } from '../fields';
+import { YBLabel } from '../../descriptors';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import YBLogo from '../../YBLogo/YBLogo';
 import { browserHistory } from 'react-router';
@@ -90,10 +91,21 @@ class LoginForm extends Component {
                   <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
                     {<strong>{JSON.stringify(authToken.error)}</strong>}
                   </div>
-
                   <div className="clearfix">
-                    <Field name="email" placeholder="Email Address" type="text" component={YBFormInput} />
-                    <Field name="password" placeholder="Password" type="password" component={YBFormInput} />
+                    <Field name="email">
+                      {(props) => (
+                        <YBLabel {...props} name="email">
+                          <input className="form-control" placeholder="Email Address" type="text" {...props.field} />
+                        </YBLabel>
+                    )}
+                   </Field>
+                   <Field name="password">
+                      {(props) => (
+                        <YBLabel {...props} name="password">
+                          <input className="form-control" placeholder="Password" type="password" {...props.field} />
+                        </YBLabel>
+                    )}
+                   </Field>
                   </div>
                   <div className="clearfix">
                     <YBButton btnType="submit" disabled={isSubmitting || getPromiseState(authToken).isLoading()}
