@@ -2231,14 +2231,15 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
     }
 
     DVLOG(2) << "Building index for fetched row: " << row.ToString();
-    RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, &index_requests, &last_flushed_at));
+    RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, read_time, &index_requests, &last_flushed_at));
     if (++num_rows_processed % kProgressInterval == 0) {
       VLOG(1) << "Processed " << num_rows_processed << " rows";
     }
   }
 
   VLOG(1) << "Processed " << num_rows_processed << " rows";
-  RETURN_NOT_OK(FlushIndexBatchIfRequired(&index_requests, /* forced */ true, &last_flushed_at));
+  RETURN_NOT_OK(FlushIndexBatchIfRequired(
+        &index_requests, /* forced */ true, read_time, &last_flushed_at));
   LOG(INFO) << "Done BackfillIndexes at " << read_time << " for "
             << yb::ToString(index_ids) << " until "
             << (resume_from.empty() ? "<end of the tablet>"
@@ -2247,7 +2248,9 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
 }
 
 Status Tablet::UpdateIndexInBatches(
-    const QLTableRow& row, const std::vector<IndexInfo>& indexes,
+    const QLTableRow& row,
+    const std::vector<IndexInfo>& indexes,
+    const HybridTime write_time,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
     CoarseTimePoint* last_flushed_at) {
   const QLTableRow& kEmptyRow = QLTableRow::empty_row();
@@ -2264,11 +2267,13 @@ Status Tablet::UpdateIndexInBatches(
   }
 
   // Update the index write op.
-  return FlushIndexBatchIfRequired(index_requests, false, last_flushed_at);
+  return FlushIndexBatchIfRequired(index_requests, false, write_time, last_flushed_at);
 }
 
 Status Tablet::FlushIndexBatchIfRequired(
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests, bool force_flush,
+    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    bool force_flush,
+    const HybridTime write_time,
     CoarseTimePoint* last_flushed_at) {
   if (!force_flush && index_requests->size() < FLAGS_backfill_index_write_batch_size) {
     return Status::OK();
@@ -2282,8 +2287,7 @@ Status Tablet::FlushIndexBatchIfRequired(
 
   auto client = client_future_.get();
   auto session = std::make_shared<YBSession>(client);
-  const HybridTime kBackfillAt(50);
-  session->SetHybridTimeForWrite(kBackfillAt);
+  session->SetHybridTimeForWrite(write_time);
 
   std::unordered_set<
       client::YBqlWriteOpPtr, client::YBqlWriteOp::PrimaryKeyComparator,
