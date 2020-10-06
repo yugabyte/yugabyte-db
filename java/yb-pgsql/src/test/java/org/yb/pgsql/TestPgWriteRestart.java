@@ -245,6 +245,7 @@ public class TestPgWriteRestart extends BasePgSQLTest {
     // Test without triggers.
     performParallelWrites(false /* usePreparedStatements */, "extended" /* query_mode */);
     performParallelWrites(false /* usePreparedStatements */, "simple" /* query_mode */);
+    performImplicitPreparedParallelWrites();
 
     createTrigger();
 
@@ -263,12 +264,13 @@ public class TestPgWriteRestart extends BasePgSQLTest {
     assertEquals(finalValue, initialValue + 2);
 
     initialValue = finalValue;
-    performParallelWrites(true /* usePreparedStatements */, "simple" /* query_mode */);
+    performParallelWrites(false /* usePreparedStatements */, "simple" /* query_mode */);
     finalValue = getValue("operations");
     assertEquals(finalValue, initialValue + 2);
 
+
     initialValue = finalValue;
-    performImplicitPreparedParallelWrites();
+    performParallelWrites(true /* usePreparedStatements */, "simple" /* query_mode */);
     finalValue = getValue("operations");
     assertEquals(finalValue, initialValue + 2);
 

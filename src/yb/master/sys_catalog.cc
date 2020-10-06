@@ -740,7 +740,7 @@ Status SysCatalogTable::CopyPgsqlTables(
 
   std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
 
-  DSCHECK_EQ(
+  RSTATUS_DCHECK_EQ(
       source_table_ids.size(), target_table_ids.size(), InvalidArgument,
       "size mismatch between source tables and target tables");
 

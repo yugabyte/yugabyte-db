@@ -1870,6 +1870,14 @@ message SplitTabletResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message DeleteTabletRequestPB {
+  required bytes tablet_id = 1;
+}
+
+message DeleteTabletResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -1999,4 +2007,5 @@ service MasterService {
       returns (HasUniverseKeyInMemoryResponsePB);
 
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
+  rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
 }

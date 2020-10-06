@@ -82,6 +82,7 @@ const initialState = {
   hasInstanceTypeChanged: false,
   useTimeSync: false,
   enableYSQL: true,
+  enableIPV6: false,
   enableNodeToNodeEncrypt: false,
   enableClientToNodeEncrypt: false,
   enableEncryptionAtRest: false,
@@ -108,6 +109,7 @@ export default class ClusterFields extends Component {
     this.toggleAssignPublicIP = this.toggleAssignPublicIP.bind(this);
     this.toggleUseTimeSync = this.toggleUseTimeSync.bind(this);
     this.toggleEnableYSQL = this.toggleEnableYSQL.bind(this);
+    this.toggleEnableIPV6 = this.toggleEnableIPV6.bind(this);
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
@@ -226,6 +228,7 @@ export default class ClusterFields extends Component {
           assignPublicIP: userIntent.assignPublicIP,
           useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
+          enableIPV6: userIntent.enableIPV6,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
           enableEncryptionAtRest: encryptionAtRestEnabled,
@@ -271,6 +274,10 @@ export default class ClusterFields extends Component {
           if (formValues[clusterType].enableYSQL) {
             // We would also default to whatever primary cluster's state for this one.
             this.setState({enableYSQL: formValues['primary'].enableYSQL});
+          }
+          if (formValues[clusterType].enableIPV6) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({enableIPV6: formValues['primary'].enableIPV6});
           }
           if (formValues[clusterType].enableNodeToNodeEncrypt) {
             // We would also default to whatever primary cluster's state for this one.
@@ -577,6 +584,17 @@ export default class ClusterFields extends Component {
       updateFormField('primary.enableYSQL', event.target.checked);
       updateFormField('async.enableYSQL', event.target.checked);
       this.setState({enableYSQL: event.target.checked});
+    }
+  }
+
+  toggleEnableIPV6(event) {
+    const { updateFormField, clusterType } = this.props;
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === "primary") {
+      updateFormField('primary.enableIPV6', event.target.checked);
+      updateFormField('async.enableIPV6', event.target.checked);
+      this.setState({enableIPV6: event.target.checked});
     }
   }
 
@@ -976,6 +994,7 @@ export default class ClusterFields extends Component {
     let assignPublicIP = <span />;
     let useTimeSync = <span />;
     let enableYSQL = <span />;
+    let enableIPV6 = <span />;
     let enableNodeToNodeEncrypt = <span />;
     let enableClientToNodeEncrypt = <span />;
     let selectTlsCert = <span />;
@@ -1297,6 +1316,7 @@ export default class ClusterFields extends Component {
                 {assignPublicIP}
                 {useTimeSync}
                 {enableYSQL}
+                {enableIPV6}
                 {enableNodeToNodeEncrypt}
                 {enableClientToNodeEncrypt}
                 {enableEncryptionAtRest}
@@ -1343,36 +1363,55 @@ export default class ClusterFields extends Component {
               </Col>
             </Row>
           }
-          <Row>
-            <Col md={12}>
-              <div className="form-right-aligned-labels">
-                <Field
-                  name={`${clusterType}.installNodeExporter`}
-                  component={YBToggle}
-                  defaultChecked={true}
-                  disableOnChange={disableToggleOnChange}
-                  checkedVal={this.state.installNodeExporter}
-                  onToggle={this.toggleInstallNodeExporter}
-                  label="Install Node Exporter" isReadOnly={isFieldReadOnly}
-                />
-              </div>
-            </Col>
-          </Row>
-          <Row>
-            <Col md={12}>
-              <div className="form-right-aligned-labels">
-                <Field
-                  name={`${clusterType}.customizePorts`}
-                  component={YBToggle}
-                  defaultChecked={false}
-                  disableOnChange={disableToggleOnChange}
-                  checkedVal={this.state.customizePorts}
-                  onToggle={this.toggleCustomizePorts}
-                  label="Override Deployment Ports" isReadOnly={isFieldReadOnly}
-                />
-              </div>
-            </Col>
-          </Row>
+          {isDefinedNotNull(currentProvider) && currentProvider.code === "kubernetes" &&
+            <Row>
+              <Col md={12}>
+                <div className="form-right-aligned-labels">
+                  <Field name={`${clusterType}.enableIPV6`}
+                    component={YBToggle} isReadOnly={isFieldReadOnly}
+                    disableOnChange={disableToggleOnChange}
+                    checkedVal={this.state.enableIPV6}
+                    onToggle={this.toggleEnableIPV6}
+                    label="Enable IPV6"
+                    subLabel="Whether or not to enable IPV6."/>
+                </div>
+              </Col>
+            </Row>
+          }
+          {isDefinedNotNull(currentProvider) && currentProvider.code !== "kubernetes" &&
+            <Row>
+              <Col md={12}>
+                <div className="form-right-aligned-labels">
+                  <Field
+                    name={`${clusterType}.installNodeExporter`}
+                    component={YBToggle}
+                    defaultChecked={true}
+                    disableOnChange={disableToggleOnChange}
+                    checkedVal={this.state.installNodeExporter}
+                    onToggle={this.toggleInstallNodeExporter}
+                    label="Install Node Exporter" isReadOnly={isFieldReadOnly}
+                  />
+                </div>
+              </Col>
+            </Row>
+          }
+          {isDefinedNotNull(currentProvider) && currentProvider.code !== "kubernetes" &&
+            <Row>
+              <Col md={12}>
+                <div className="form-right-aligned-labels">
+                  <Field
+                    name={`${clusterType}.customizePorts`}
+                    component={YBToggle}
+                    defaultChecked={false}
+                    disableOnChange={disableToggleOnChange}
+                    checkedVal={this.state.customizePorts}
+                    onToggle={this.toggleCustomizePorts}
+                    label="Override Deployment Ports" isReadOnly={isFieldReadOnly}
+                  />
+                </div>
+              </Col>
+            </Row>
+          }
           {this.state.customizePorts &&
             <Row>
               <Col sm={3}>

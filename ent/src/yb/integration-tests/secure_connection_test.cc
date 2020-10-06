@@ -36,7 +36,7 @@ DECLARE_string(TEST_public_hostname_suffix);
 
 namespace yb {
 
-class SecureConnectionTest : public client::KeyValueTableTest {
+class SecureConnectionTest : public client::KeyValueTableTest<MiniCluster> {
  public:
   SecureConnectionTest() {
   }
@@ -50,7 +50,7 @@ class SecureConnectionTest : public client::KeyValueTableTest {
     auto root_dir = env_util::GetRootDir(sub_dir);
     FLAGS_certs_dir = JoinPathSegments(root_dir, sub_dir);
 
-    client::QLDmlTestBase::SetUp();
+    KeyValueTableTest::SetUp();
 
     DontVerifyClusterBeforeNextTearDown(); // Verify requires insecure connection.
   }

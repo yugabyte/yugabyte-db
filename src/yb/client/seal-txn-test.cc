@@ -31,7 +31,7 @@ DECLARE_int64(transaction_rpc_timeout_ms);
 namespace yb {
 namespace client {
 
-class SealTxnTest : public TransactionTestBase {
+class SealTxnTest : public TransactionTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     FLAGS_enable_transaction_sealing = true;

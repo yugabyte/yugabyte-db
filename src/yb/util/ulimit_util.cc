@@ -42,6 +42,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/ulimit.h"
 
 using std::string;
 using std::stringstream;
@@ -105,19 +106,20 @@ namespace yb {
 static stringstream& getLimit(
     stringstream& ss, const std::string pfx, const std::string sfx, int resource, int rightshift) {
   ss << "ulimit: " << pfx << " ";
-  int64_t cur, max;
-  Status status = Env::Default()->GetUlimit(resource, &cur, &max);
-  if (status.ok()) {
-    if (cur == RLIM_INFINITY) {
+  const auto limits_or_status = Env::Default()->GetUlimit(resource);
+  if (limits_or_status.ok()) {
+    const ResourceLimit soft = limits_or_status->soft;
+    if (soft.IsUnlimited()) {
       ss << "unlimited";
     } else {
-      ss << (cur >> rightshift);
+      ss << (soft.RawValue() >> rightshift);
     }
     ss << "(";
-    if (max == RLIM_INFINITY) {
+    const ResourceLimit hard = limits_or_status->hard;
+    if (hard.IsUnlimited()) {
       ss << "unlimited";
     } else {
-      ss << (max >> rightshift);
+      ss << (hard.RawValue() >> rightshift);
     }
     ss << ")";
   } else {
@@ -187,64 +189,37 @@ string UlimitUtil::GetUlimitInfo() {
   return ss.str();
 }
 
-int64_t GetMinRlimValue(const int64_t x, const int64_t y) {
-  // Handle the fact that some systems may not define RLIM_INFINITY as max(int64_t).
-  if (x == RLIM_INFINITY)
-    return y;
-  else if (y == RLIM_INFINITY)
-    return x;
-  else
-    return std::min(x, y);
-}
-
-bool IsRlimNegative(int64_t rlimit_value) {
-  return rlimit_value != RLIM_INFINITY && rlimit_value < 0;
-}
-
-bool IsSysSoftLimitSufficient(int64_t min_soft_limit, int64_t sys_soft_limit) {
-  if (min_soft_limit == RLIM_INFINITY) return sys_soft_limit == RLIM_INFINITY;
-  if (sys_soft_limit == RLIM_INFINITY) return true;
-  return sys_soft_limit >= min_soft_limit;
-}
-
-std::string StringifyRlim(int64_t rlim_value) {
-  if (rlim_value == RLIM_INFINITY) return "unlimited";
-  return std::to_string(rlim_value);
-}
-
 void UlimitUtil::InitUlimits() {
   for (const auto& kv : kRlimitsToInit) {
-    int resource_id;
-    int64_t min_soft_limit;
-    std::tie(resource_id, min_soft_limit) = kv;
+    int resource_id = kv.first;
+    const ResourceLimit min_soft_limit(kv.second);
     const string resource_name = getCommandLineDescription(resource_id);
 
-    if (IsRlimNegative(min_soft_limit)) {
+    if (min_soft_limit.IsNegative()) {
       LOG(INFO)
           << "Skipping setrlimit for " << resource_name
-          << " with negative specified min value " << StringifyRlim(min_soft_limit);
+          << " with negative specified min value " << min_soft_limit.ToString();
       continue;
     }
 
-    int64_t sys_soft_limit;
-    int64_t sys_hard_limit;
-    Status get_ulim_status = Env::Default()->GetUlimit(
-        resource_id, &sys_soft_limit, &sys_hard_limit);
-    if (!get_ulim_status.ok()) {
+    const auto limits_or_status = Env::Default()->GetUlimit(resource_id);
+    if (!limits_or_status.ok()) {
       LOG(ERROR) << "Unable to fetch hard limit for resource " << resource_name
                  << " Skipping initialization.";
       continue;
     }
 
-    if (IsSysSoftLimitSufficient(min_soft_limit, sys_soft_limit)) {
+    const ResourceLimit sys_soft_limit = limits_or_status->soft;
+    if (min_soft_limit <= sys_soft_limit) {
       LOG(INFO)
           << "Configured soft limit for " << resource_name
-          << " is already larger than specified min value (" << StringifyRlim(sys_soft_limit)
-          << " vs. " << StringifyRlim(min_soft_limit) << "). Skipping.";
+          << " is already larger than specified min value (" << sys_soft_limit.ToString()
+          << " vs. " << min_soft_limit.ToString() << "). Skipping.";
       continue;
     }
 
-    const int64_t new_soft_limit = GetMinRlimValue(sys_hard_limit, min_soft_limit);
+    const ResourceLimit sys_hard_limit = limits_or_status->hard;
+    const ResourceLimit new_soft_limit = std::min(sys_hard_limit, min_soft_limit);
 
     Status set_ulim_status = Env::Default()->SetUlimit(resource_id, new_soft_limit, resource_name);
     if (!set_ulim_status.ok()) {

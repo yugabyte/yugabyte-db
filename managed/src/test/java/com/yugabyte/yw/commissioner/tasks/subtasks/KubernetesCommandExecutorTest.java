@@ -235,6 +235,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       tlsInfo.put("rootCA", rootCA);
       expectedOverrides.put("tls", tlsInfo);
     }
+    if (defaultUserIntent.enableIPV6) {
+      expectedOverrides.put("ip_version_support", "v6_only");
+    }
     // All flags as overrides.
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Master flags.
@@ -320,6 +323,36 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     // TODO implement exposeAll false case
     assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+    assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+    @Test
+  public void testHelmInstallIPV6() throws IOException {
+    defaultUserIntent.enableIPV6 = true;
+    Universe u = Universe.saveDetails(defaultUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
+
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(expectedConfig.capture(), expectedProviderUUID.capture(),
+                     expectedNodePrefix.capture(), expectedOverrideFile.capture());
+    assertEquals(config, expectedConfig.getValue());
+    assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
+    assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
     assertEquals(getExpectedOverrides(true), overrides);
   }
 

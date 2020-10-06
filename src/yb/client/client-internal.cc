@@ -69,9 +69,10 @@
 #include "yb/rpc/messenger.h"
 #include "yb/tserver/tserver_flags.h"
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread_restrictions.h"
@@ -113,16 +114,18 @@ using internal::RemoteTabletServer;
 using internal::UpdateLocalTsState;
 
 Status RetryFunc(
-    CoarseTimePoint deadline, const string& retry_msg, const string& timeout_msg,
-    const std::function<Status(CoarseTimePoint, bool*)>& func) {
+    CoarseTimePoint deadline,
+    const string& retry_msg,
+    const string& timeout_msg,
+    const std::function<Status(CoarseTimePoint, bool*)>& func,
+    const CoarseDuration max_wait) {
   DCHECK(deadline != CoarseTimePoint());
 
-  if (deadline < CoarseMonoClock::Now()) {
+  CoarseBackoffWaiter waiter(deadline, max_wait);
+
+  if (waiter.ExpiredNow()) {
     return STATUS(TimedOut, timeout_msg);
   }
-
-  MonoDelta wait_time = 1ms;
-  MonoDelta kMaxSleep = 2s;
   for (;;) {
     bool retry = true;
     Status s = func(deadline, &retry);
@@ -130,18 +133,10 @@ Status RetryFunc(
       return s;
     }
 
-    VLOG(1) << retry_msg << " status=" << s.ToString();
-    wait_time = std::min(wait_time * 5 / 4, kMaxSleep);
-
-    // We assume that the function will take the same amount of time to run
-    // as it did in the previous attempt. If we don't have enough time left
-    // to sleep and run it again, we don't bother sleeping and retrying.
-    if (CoarseMonoClock::Now() + wait_time > deadline) {
+    VLOG(1) << retry_msg << " attempt=" << waiter.attempt() << " status=" << s.ToString();
+    if (!waiter.Wait()) {
       break;
     }
-
-    VLOG(1) << "Waiting for " << wait_time << " before retrying...";
-    SleepFor(wait_time);
   }
 
   return STATUS(TimedOut, timeout_msg);
@@ -158,7 +153,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     running_sync_requests_.fetch_sub(1, std::memory_order_acquire);
   });
 
-  DSCHECK(deadline != CoarseTimePoint(), InvalidArgument, "Deadline is not set");
+  RSTATUS_DCHECK(deadline != CoarseTimePoint(), InvalidArgument, "Deadline is not set");
   CoarseTimePoint start_time;
 
   while (true) {
@@ -629,8 +624,11 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   }
   if (wait && resp.has_indexed_table()) {
     auto res = WaitUntilIndexPermissionsAtLeast(
-        client, resp.indexed_table().table_id(), resp.table_id(), deadline,
-        IndexPermissions::INDEX_PERM_NOT_USED);
+        client,
+        resp.indexed_table().table_id(),
+        resp.table_id(),
+        IndexPermissions::INDEX_PERM_NOT_USED,
+        deadline);
     if (!res && !res.status().IsNotFound()) {
       LOG(WARNING) << "Waiting for the index to be deleted from the indexed table, got " << res;
       return res.status();
@@ -1567,6 +1565,45 @@ void GetCDCStreamRpc::ProcessResponse(const Status& status) {
   user_cb_(status);
 }
 
+class DeleteTabletRpc
+    : public ClientMasterRpc<master::DeleteTabletRequestPB, master::DeleteTabletResponsePB> {
+ public:
+  DeleteTabletRpc(
+      YBClient* client,
+      const TabletId& tablet_id,
+      StdStatusCallback user_cb,
+      CoarseTimePoint deadline,
+      rpc::Messenger* messenger,
+      rpc::ProxyCache* proxy_cache)
+      : ClientMasterRpc(client, deadline, messenger, proxy_cache),
+        user_cb_(std::move(user_cb)) {
+    req_.set_tablet_id(tablet_id);
+  }
+
+  std::string ToString() const override {
+    return Format(
+        "DeleteTabletRpc(tablet_id: $0, num_attempts: $1)", req_.tablet_id(), num_attempts());
+  }
+
+  virtual ~DeleteTabletRpc() = default;
+
+ private:
+  void CallRemoteMethod() override {
+    master_proxy()->DeleteTabletAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&DeleteTabletRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+    }
+    user_cb_(status);
+  }
+
+  StdStatusCallback user_cb_;
+};
+
 } // namespace internal
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
@@ -1622,21 +1659,37 @@ Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
     const TableId& table_id,
     const TableId& index_id,
     const CoarseTimePoint deadline) {
-  std::shared_ptr<YBTableInfo> yb_table_info = std::make_shared<YBTableInfo>();
-  Synchronizer sync;
+  YBTableInfo yb_table_info;
 
-  RETURN_NOT_OK(GetTableSchemaById(client,
-                                   table_id,
-                                   deadline,
-                                   yb_table_info,
-                                   sync.AsStatusCallback()));
-  Status s = sync.Wait();
-  if (!s.ok()) {
-    return s;
-  }
+  RETURN_NOT_OK(GetTableSchema(client,
+                               table_id,
+                               deadline,
+                               &yb_table_info));
 
   const IndexInfo* index_info =
-      VERIFY_RESULT(yb_table_info->index_map.FindIndex(index_id));
+      VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+  return index_info->index_permissions();
+}
+
+Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
+    YBClient* client,
+    const YBTableName& table_name,
+    const YBTableName& index_name,
+    const CoarseTimePoint deadline) {
+  YBTableInfo yb_table_info;
+  YBTableInfo yb_index_info;
+
+  RETURN_NOT_OK(GetTableSchema(client,
+                               table_name,
+                               deadline,
+                               &yb_table_info));
+  RETURN_NOT_OK(GetTableSchema(client,
+                               index_name,
+                               deadline,
+                               &yb_index_info));
+
+  const IndexInfo* index_info =
+      VERIFY_RESULT(yb_table_info.index_map.FindIndex(yb_index_info.table_id));
   return index_info->index_permissions();
 }
 
@@ -1644,33 +1697,60 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
     YBClient* client,
     const TableId& table_id,
     const TableId& index_id,
+    const IndexPermissions& target_index_permissions,
     const CoarseTimePoint deadline,
-    const IndexPermissions& target_index_permissions) {
+    const CoarseDuration max_wait) {
+  const bool retry_on_not_found = (target_index_permissions != INDEX_PERM_NOT_USED);
+  IndexPermissions actual_index_permissions = INDEX_PERM_NOT_USED;
   RETURN_NOT_OK(RetryFunc(
       deadline,
       "Waiting for index to have desired permissions",
       "Timed out waiting for proper index permissions",
       [&](CoarseTimePoint deadline, bool* retry) -> Status {
         Result<IndexPermissions> result = GetIndexPermissions(client, table_id, index_id, deadline);
-        // Treat NotFound as success if we are looking for INDEX_PERM_NOT_USED.
-        if (!result && result.status().IsNotFound() &&
-            target_index_permissions == IndexPermissions::INDEX_PERM_NOT_USED) {
-          LOG(INFO) << "Waiting to delete index " << index_id << " from table " << table_id
-                    << " got " << result.ToString();
-          *retry = false;
-          return Status::OK();
+        if (!result) {
+          *retry = retry_on_not_found;
+          return result.status();
         }
-        IndexPermissions actual_index_permissions = VERIFY_RESULT(result);
+        actual_index_permissions = VERIFY_RESULT(result);
         *retry = actual_index_permissions < target_index_permissions;
         return Status::OK();
-      }));
-  // Now, the index permissions are guaranteed to be at (or beyond) the target.  Query again to
-  // return it.
-  return GetIndexPermissions(
-      client,
-      table_id,
-      index_id,
-      deadline);
+      },
+      max_wait));
+  // Now, the index permissions are guaranteed to be at (or beyond) the target.
+  return actual_index_permissions;
+}
+
+Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
+    YBClient* client,
+    const YBTableName& table_name,
+    const YBTableName& index_name,
+    const IndexPermissions& target_index_permissions,
+    const CoarseTimePoint deadline,
+    const CoarseDuration max_wait) {
+  const bool retry_on_not_found = (target_index_permissions != INDEX_PERM_NOT_USED);
+  IndexPermissions actual_index_permissions = INDEX_PERM_NOT_USED;
+  RETURN_NOT_OK(RetryFunc(
+      deadline,
+      "Waiting for index to have desired permissions",
+      "Timed out waiting for proper index permissions",
+      [&](CoarseTimePoint deadline, bool* retry) -> Status {
+        Result<IndexPermissions> result = GetIndexPermissions(
+            client,
+            table_name,
+            index_name,
+            deadline);
+        if (!result) {
+          *retry = retry_on_not_found;
+          return result.status();
+        }
+        actual_index_permissions = VERIFY_RESULT(result);
+        *retry = actual_index_permissions < target_index_permissions;
+        return Status::OK();
+      },
+      max_wait));
+  // Now, the index permissions are guaranteed to be at (or beyond) the target.
+  return actual_index_permissions;
 }
 
 void YBClient::Data::CreateCDCStream(YBClient* client,
@@ -1714,6 +1794,18 @@ void YBClient::Data::GetCDCStream(
       stream_id,
       table_id.get(),
       options.get(),
+      deadline,
+      messenger_,
+      proxy_cache_.get());
+}
+
+void YBClient::Data::DeleteTablet(
+    YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
+    StdStatusCallback callback) {
+  auto rpc = rpc::StartRpc<internal::DeleteTabletRpc>(
+      client,
+      tablet_id,
+      callback,
       deadline,
       messenger_,
       proxy_cache_.get());

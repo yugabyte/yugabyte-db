@@ -271,6 +271,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean enableVolumeEncryption = false;
 
+    public boolean enableIPV6 = false;
+
     public String awsArnString;
 
     // When this is set to true, YW will setup the universe to communicate by way of hostnames

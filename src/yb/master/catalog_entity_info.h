@@ -369,6 +369,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // This only returns tablets which are in RUNNING state.
   void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
+  void GetTabletsInRange(
+      const std::string& partition_key_start, const std::string& partition_key_end,
+      TabletInfos* ret,
+      int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const;
 
   // Get all tablets of the table.
   void GetAllTablets(TabletInfos *ret) const;

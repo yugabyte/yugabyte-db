@@ -1,7 +1,7 @@
 ---
 title: What's new in the v2.3 latest release series
 headerTitle: What's new in the v2.3 latest release series
-linkTitle: 2.3 (latest)
+linkTitle: v2.3 (latest)
 description: Enhancements, changes, and resolved issues in the latest release series.
 headcontent: Features, enhancements, and resolved issues in the latest release series.
 image: /images/section_icons/quick_start/install.png
@@ -187,7 +187,7 @@ docker pull yugabytedb/yugabyte:2.3.1.0-b15
 
 ##### Core database
 
-- Quickly evict known unresponsive tablet servers from the tablet location cache. Applies only to follower reads. For example, when tablet servers are nonresponsive or dead — not sending heartbeats to the master for 5 minutes. This could also happen after decommissioning nodes. [#1052](https://github.com/yugabyte/yugabyte-db/issues/1052)
+- Quickly evict known unresponsive tablet servers from the tablet location cache. Applies only to follower reads. For example, when tablet servers are unresponsive or dead — not sending heartbeats to the master for 5 minutes. This could also happen after decommissioning nodes. [#1052](https://github.com/yugabyte/yugabyte-db/issues/1052)
 
 ##### Yugabyte Platform
 

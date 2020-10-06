@@ -1776,6 +1776,23 @@ Status CatalogManager::SplitTablet(
   return DoSplitTablet(source_tablet_info, split_hash_code);
 }
 
+Status CatalogManager::DeleteTablet(
+    const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc) {
+  RETURN_NOT_OK(CheckOnline());
+
+  const auto& tablet_id = req->tablet_id();
+  const auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
+
+  const auto& table_info = tablet_info->table();
+
+  RETURN_NOT_OK(CheckIfForbiddenToDeleteTabletOf(table_info));
+
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
+
+  DeleteTabletAndSendRequests(tablet_info, "Tablet deleted upon request at " + LocalTimeAsString());
+  return Status::OK();
+}
+
 namespace {
 
 CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableResponsePB* resp) {
@@ -2365,7 +2382,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         // to place the table on as a child table.
         scoped_refptr<TabletInfo> tablet =
             tablegroup_tablet_ids_map_[ns->id()][req.tablegroup_id()];
-        DSCHECK(
+        RSTATUS_DCHECK(
             tablet->colocated(), InternalError,
             "The tablet for tablegroup should be colocated.");
         tablets.push_back(tablet.get());
@@ -2380,7 +2397,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       } else {
         // If the table is a tablegroup parent table, it creates a dummy tablet for the tablegroup
         // along with updating the catalog manager maps.
-        DSCHECK_EQ(
+        RSTATUS_DCHECK_EQ(
             tablets.size(), 1, InternalError,
             "Only one tablet should be created for each tablegroup");
         tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
@@ -2393,7 +2410,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       // if the tablet already exists, add the tablet to tablets
       if (tablets_exist) {
         scoped_refptr<TabletInfo> tablet = colocated_tablet_ids_map_[ns->id()];
-        DSCHECK(
+        RSTATUS_DCHECK(
             tablet->colocated(), InternalError,
             "The tablet for colocated database should be colocated.");
         tablets.push_back(tablet.get());
@@ -2405,7 +2422,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         tablet->mutable_metadata()->StartMutation();
         table->AddTablets(tablets);
       } else {  // Record the tablet
-        DSCHECK_EQ(
+        RSTATUS_DCHECK_EQ(
             tablets.size(), 1, InternalError,
             "Only one tablet should be created for each colocated database");
         tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
@@ -5599,7 +5616,8 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
       if (l->data().namespace_id() != database->id() || l->data().started_deleting()) {
         continue;
       }
-      DSCHECK(!l->data().pb.is_pg_shared_table(), Corruption, "Shared table found in database");
+      RSTATUS_DCHECK(
+          !l->data().pb.is_pg_shared_table(), Corruption, "Shared table found in database");
 
       if (IsSystemTableUnlocked(*table)) {
         sys_table_ids.insert(table->id());
@@ -6599,16 +6617,23 @@ void CatalogManager::DeleteTabletReplicas(
   }
 }
 
-void CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table) {
+Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<TableInfo>& table) {
   // Do not delete the system catalog tablet.
   {
     SharedLock<LockType> catalog_lock(lock_);
     if (IsSystemTableUnlocked(*table)) {
-      return;
+      return STATUS(InvalidArgument, "It is not allowed to delete tablets of the system tables.");
     }
   }
   // Do not delete the tablet of a colocated table.
   if (IsColocatedUserTable(*table)) {
+    return STATUS(InvalidArgument, "It is not allowed to delete tablets of the colocated tables.");
+  }
+  return Status::OK();
+}
+
+void CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table) {
+  if (!CheckIfForbiddenToDeleteTabletOf(table).ok()) {
     return;
   }
 
@@ -6618,12 +6643,7 @@ void CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>
   string deletion_msg = "Table deleted at " + LocalTimeAsString();
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    DeleteTabletReplicas(tablet.get(), deletion_msg);
-
-    auto tablet_lock = tablet->LockForWrite();
-    tablet_lock->mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
-    CHECK_OK(sys_catalog_->UpdateItem(tablet.get(), leader_ready_term()));
-    tablet_lock->Commit();
+    DeleteTabletAndSendRequests(tablet, deletion_msg);
   }
   if (IsColocatedParentTable(*table)) {
     SharedLock<LockType> catalog_lock(lock_);
@@ -6636,6 +6656,18 @@ void CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>
     }
     tablegroup_tablet_ids_map_.erase(table->namespace_id());
   }
+}
+
+void CatalogManager::DeleteTabletAndSendRequests(
+    const scoped_refptr<TabletInfo>& tablet, const std::string& deletion_msg) {
+  LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
+  DeleteTabletReplicas(tablet.get(), deletion_msg);
+
+  auto tablet_lock = tablet->LockForWrite();
+  tablet_lock->mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+  CHECK_OK(sys_catalog_->UpdateItem(tablet.get(), leader_ready_term()));
+  tablet_lock->Commit();
+  LOG(INFO) << "Deleted tablet " << tablet->tablet_id();
 }
 
 void CatalogManager::SendDeleteTabletRequest(

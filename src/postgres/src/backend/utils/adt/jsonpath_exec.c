@@ -66,6 +66,7 @@
 #include "miscadmin.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
+#include "utils/datetime.h"
 #include "utils/datum.h"
 #include "utils/formatting.h"
 #include "utils/float.h"
@@ -107,6 +108,7 @@ typedef struct JsonPathExecContext
 										 * ignored */
 	bool		throwErrors;	/* with "false" all suppressible errors are
 								 * suppressed */
+	bool		useTz;
 } JsonPathExecContext;
 
 /* Context for LIKE_REGEX execution. */
@@ -176,7 +178,8 @@ typedef JsonPathBool (*JsonPathPredicateCallback) (JsonPathItem *jsp,
 typedef Numeric (*BinaryArithmFunc) (Numeric num1, Numeric num2, bool *error);
 
 static JsonPathExecResult executeJsonPath(JsonPath *path, Jsonb *vars,
-				Jsonb *json, bool throwErrors, JsonValueList *result);
+				Jsonb *json, bool throwErrors,
+				JsonValueList *result, bool useTz);
 static JsonPathExecResult executeItem(JsonPathExecContext *cxt,
 			JsonPathItem *jsp, JsonbValue *jb, JsonValueList *found);
 static JsonPathExecResult executeItemOptUnwrapTarget(JsonPathExecContext *cxt,
@@ -219,6 +222,8 @@ static JsonPathBool executeLikeRegex(JsonPathItem *jsp, JsonbValue *str,
 static JsonPathExecResult executeNumericItemMethod(JsonPathExecContext *cxt,
 						 JsonPathItem *jsp, JsonbValue *jb, bool unwrap, PGFunction func,
 						 JsonValueList *found);
+static JsonPathExecResult executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
+                          JsonbValue *jb, JsonValueList *found);
 static JsonPathExecResult executeKeyValueMethod(JsonPathExecContext *cxt,
 					  JsonPathItem *jsp, JsonbValue *jb, JsonValueList *found);
 static JsonPathExecResult appendBoolResult(JsonPathExecContext *cxt,
@@ -230,7 +235,8 @@ static void getJsonPathVariable(JsonPathExecContext *cxt,
 static int	JsonbArraySize(JsonbValue *jb);
 static JsonPathBool executeComparison(JsonPathItem *cmp, JsonbValue *lv,
 				  JsonbValue *rv, void *p);
-static JsonPathBool compareItems(int32 op, JsonbValue *jb1, JsonbValue *jb2);
+static JsonPathBool compareItems(int32 op, JsonbValue *jb1, JsonbValue *jb2,
+				  bool useTz);
 static int	compareNumeric(Numeric a, Numeric b);
 static JsonbValue *copyJsonbValue(JsonbValue *src);
 static JsonPathExecResult getArrayIndex(JsonPathExecContext *cxt,
@@ -251,6 +257,8 @@ static JsonbValue *JsonbInitBinary(JsonbValue *jbv, Jsonb *jb);
 static int	JsonbType(JsonbValue *jb);
 static JsonbValue *getScalar(JsonbValue *scalar, enum jbvType type);
 static JsonbValue *wrapItemsInArray(const JsonValueList *items);
+static int	compareDatetime(Datum val1, Oid typid1, Datum val2, Oid typid2,
+							bool useTz, bool *have_error);
 
 /****************** User interface to JsonPath executor ********************/
 
@@ -266,8 +274,8 @@ static JsonbValue *wrapItemsInArray(const JsonValueList *items);
  *		SQL/JSON.  Regarding jsonb_path_match(), this function doesn't have
  *		an analogy in SQL/JSON, so we define its behavior on our own.
  */
-Datum
-jsonb_path_exists(PG_FUNCTION_ARGS)
+static Datum
+jsonb_path_exists_internal(FunctionCallInfo fcinfo, bool tz)
 {
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
@@ -281,7 +289,7 @@ jsonb_path_exists(PG_FUNCTION_ARGS)
 		silent = PG_GETARG_BOOL(3);
 	}
 
-	res = executeJsonPath(jp, vars, jb, !silent, NULL);
+	res = executeJsonPath(jp, vars, jb, !silent, NULL, tz);
 
 	PG_FREE_IF_COPY(jb, 0);
 	PG_FREE_IF_COPY(jp, 1);
@@ -290,6 +298,18 @@ jsonb_path_exists(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(res == jperOk);
+}
+
+Datum
+jsonb_path_exists(PG_FUNCTION_ARGS)
+{
+	return jsonb_path_exists_internal(fcinfo, false);
+}
+
+Datum
+jsonb_path_exists_tz(PG_FUNCTION_ARGS)
+{
+	return jsonb_path_exists_internal(fcinfo, true);
 }
 
 /*
@@ -301,7 +321,7 @@ Datum
 jsonb_path_exists_opr(PG_FUNCTION_ARGS)
 {
 	/* just call the other one -- it can handle both cases */
-	return jsonb_path_exists(fcinfo);
+	return jsonb_path_exists_internal(fcinfo, false);
 }
 
 /*
@@ -309,8 +329,8 @@ jsonb_path_exists_opr(PG_FUNCTION_ARGS)
  *		Returns jsonpath predicate result item for the specified jsonb value.
  *		See jsonb_path_exists() comment for details regarding error handling.
  */
-Datum
-jsonb_path_match(PG_FUNCTION_ARGS)
+static Datum
+jsonb_path_match_internal(FunctionCallInfo fcinfo, bool tz)
 {
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
@@ -324,7 +344,7 @@ jsonb_path_match(PG_FUNCTION_ARGS)
 		silent = PG_GETARG_BOOL(3);
 	}
 
-	(void) executeJsonPath(jp, vars, jb, !silent, &found);
+	(void) executeJsonPath(jp, vars, jb, !silent, &found, tz);
 
 	PG_FREE_IF_COPY(jb, 0);
 	PG_FREE_IF_COPY(jp, 1);
@@ -348,6 +368,18 @@ jsonb_path_match(PG_FUNCTION_ARGS)
 	PG_RETURN_NULL();
 }
 
+Datum
+jsonb_path_match(PG_FUNCTION_ARGS)
+{
+	return jsonb_path_match_internal(fcinfo, false);
+}
+
+Datum
+jsonb_path_match_tz(PG_FUNCTION_ARGS)
+{
+	return jsonb_path_match_internal(fcinfo, true);
+}
+
 /*
  * jsonb_path_match_opr
  *		Implementation of operator "jsonb @@ jsonpath" (2-argument version of
@@ -357,7 +389,7 @@ Datum
 jsonb_path_match_opr(PG_FUNCTION_ARGS)
 {
 	/* just call the other one -- it can handle both cases */
-	return jsonb_path_match(fcinfo);
+	return jsonb_path_match_internal(fcinfo, false);
 }
 
 /*
@@ -365,8 +397,8 @@ jsonb_path_match_opr(PG_FUNCTION_ARGS)
  *		Executes jsonpath for given jsonb document and returns result as
  *		rowset.
  */
-Datum
-jsonb_path_query(PG_FUNCTION_ARGS)
+static Datum
+jsonb_path_query_internal(FunctionCallInfo fcinfo, bool tz)
 {
 	FuncCallContext *funcctx;
 	List	   *found;
@@ -390,7 +422,7 @@ jsonb_path_query(PG_FUNCTION_ARGS)
 		vars = PG_GETARG_JSONB_P_COPY(2);
 		silent = PG_GETARG_BOOL(3);
 
-		(void) executeJsonPath(jp, vars, jb, !silent, &found);
+		(void) executeJsonPath(jp, vars, jb, !silent, &found, tz);
 
 		funcctx->user_fctx = JsonValueListGetList(&found);
 
@@ -411,13 +443,25 @@ jsonb_path_query(PG_FUNCTION_ARGS)
 	SRF_RETURN_NEXT(funcctx, JsonbPGetDatum(JsonbValueToJsonb(v)));
 }
 
+Datum
+jsonb_path_query(PG_FUNCTION_ARGS)
+{
+	return jsonb_path_query_internal(fcinfo, false);
+}
+
+Datum
+jsonb_path_query_tz(PG_FUNCTION_ARGS)
+{
+	return jsonb_path_query_internal(fcinfo, true);
+}
+
 /*
  * jsonb_path_query_array
  *		Executes jsonpath for given jsonb document and returns result as
  *		jsonb array.
  */
-Datum
-jsonb_path_query_array(PG_FUNCTION_ARGS)
+static Datum
+jsonb_path_query_array_internal(FunctionCallInfo fcinfo, bool tz)
 {
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
@@ -425,9 +469,21 @@ jsonb_path_query_array(PG_FUNCTION_ARGS)
 	Jsonb	   *vars = PG_GETARG_JSONB_P(2);
 	bool		silent = PG_GETARG_BOOL(3);
 
-	(void) executeJsonPath(jp, vars, jb, !silent, &found);
+	(void) executeJsonPath(jp, vars, jb, !silent, &found, tz);
 
 	PG_RETURN_JSONB_P(JsonbValueToJsonb(wrapItemsInArray(&found)));
+}
+
+Datum
+jsonb_path_query_array(PG_FUNCTION_ARGS)
+{
+	return jsonb_path_query_array_internal(fcinfo, false);
+}
+
+Datum
+jsonb_path_query_array_tz(PG_FUNCTION_ARGS)
+{
+	return jsonb_path_query_array_internal(fcinfo, true);
 }
 
 /*
@@ -435,8 +491,8 @@ jsonb_path_query_array(PG_FUNCTION_ARGS)
  *		Executes jsonpath for given jsonb document and returns first result
  *		item.  If there are no items, NULL returned.
  */
-Datum
-jsonb_path_query_first(PG_FUNCTION_ARGS)
+static Datum
+jsonb_path_query_first_internal(FunctionCallInfo fcinfo, bool tz)
 {
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
@@ -444,12 +500,24 @@ jsonb_path_query_first(PG_FUNCTION_ARGS)
 	Jsonb	   *vars = PG_GETARG_JSONB_P(2);
 	bool		silent = PG_GETARG_BOOL(3);
 
-	(void) executeJsonPath(jp, vars, jb, !silent, &found);
+	(void) executeJsonPath(jp, vars, jb, !silent, &found, tz);
 
 	if (JsonValueListLength(&found) >= 1)
 		PG_RETURN_JSONB_P(JsonbValueToJsonb(JsonValueListHead(&found)));
 	else
 		PG_RETURN_NULL();
+}
+
+Datum
+jsonb_path_query_first(PG_FUNCTION_ARGS)
+{
+	return jsonb_path_query_first_internal(fcinfo, false);
+}
+
+Datum
+jsonb_path_query_first_tz(PG_FUNCTION_ARGS)
+{
+	return jsonb_path_query_first_internal(fcinfo, true);
 }
 
 /********************Execute functions for JsonPath**************************/
@@ -474,7 +542,7 @@ jsonb_path_query_first(PG_FUNCTION_ARGS)
  */
 static JsonPathExecResult
 executeJsonPath(JsonPath *path, Jsonb *vars, Jsonb *json, bool throwErrors,
-				JsonValueList *result)
+				JsonValueList *result, bool useTz)
 {
 	JsonPathExecContext cxt;
 	JsonPathExecResult res;
@@ -504,6 +572,7 @@ executeJsonPath(JsonPath *path, Jsonb *vars, Jsonb *json, bool throwErrors,
 	cxt.lastGeneratedObjectId = vars ? 2 : 1;
 	cxt.innermostArraySize = -1;
 	cxt.throwErrors = throwErrors;
+	cxt.useTz = useTz;
 
 	if (jspStrictAbsenseOfErrors(&cxt) && !result)
 	{
@@ -1032,6 +1101,12 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			}
 			break;
 
+		case jpiDatetime:
+			if (unwrap && JsonbType(jb) == jbvArray)
+				return executeItemUnwrapTargetArray(cxt, jsp, jb, found, false);
+
+			return executeDateTimeMethod(cxt, jsp, jb, found);
+
 		case jpiKeyValue:
 			if (unwrap && JsonbType(jb) == jbvArray)
 				return executeItemUnwrapTargetArray(cxt, jsp, jb, found, false);
@@ -1218,7 +1293,7 @@ executeBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			jspGetLeftArg(jsp, &larg);
 			jspGetRightArg(jsp, &rarg);
 			return executePredicate(cxt, jsp, &larg, &rarg, jb, true,
-									executeComparison, NULL);
+									executeComparison, cxt);
 
 		case jpiStartsWith:		/* 'whole STARTS WITH initial' */
 			jspGetLeftArg(jsp, &larg);	/* 'whole' */
@@ -1702,6 +1777,136 @@ executeNumericItemMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 }
 
 /*
+ * Implementation of the .datetime() method.
+ *
+ * Converts a string into a date/time value. The actual type is determined at run time.
+ * If an argument is provided, this argument is used as a template string.
+ * Otherwise, the first fitting ISO format is selected.
+ */
+static JsonPathExecResult
+executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
+					  JsonbValue *jb, JsonValueList *found)
+{
+	JsonbValue	jbvbuf;
+	Datum		value;
+	text	   *datetime;
+	Oid			typid;
+	int32		typmod = -1;
+	int			tz = 0;
+	bool		hasNext;
+	JsonPathExecResult res = jperNotFound;
+	JsonPathItem elem;
+
+	if (!(jb = getScalar(jb, jbvString)))
+		RETURN_ERROR(ereport(ERROR,
+							 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
+							  errmsg("jsonpath item method .%s() can only be applied to a string",
+									 jspOperationName(jsp->type)))));
+
+	datetime = cstring_to_text_with_len(jb->val.string.val,
+										jb->val.string.len);
+
+	if (jsp->content.arg)
+	{
+		text	   *template;
+		char	   *template_str;
+		int			template_len;
+		bool		have_error = false;
+
+		jspGetArg(jsp, &elem);
+
+		if (elem.type != jpiString)
+			elog(ERROR, "invalid jsonpath item type for .datetime() argument");
+
+		template_str = jspGetString(&elem, &template_len);
+
+		template = cstring_to_text_with_len(template_str,
+											template_len);
+
+		value = parse_datetime(datetime, template, true,
+							   &typid, &typmod, &tz,
+							   jspThrowErrors(cxt) ? NULL : &have_error);
+
+		if (have_error)
+			res = jperError;
+		else
+			res = jperOk;
+	}
+	else
+	{
+		/*
+		 * According to SQL/JSON standard enumerate ISO formats for: date,
+		 * timetz, time, timestamptz, timestamp.
+		 */
+		static const char *fmt_str[] =
+		{
+			"yyyy-mm-dd",
+			"HH24:MI:SS TZH:TZM",
+			"HH24:MI:SS TZH",
+			"HH24:MI:SS",
+			"yyyy-mm-dd HH24:MI:SS TZH:TZM",
+			"yyyy-mm-dd HH24:MI:SS TZH",
+			"yyyy-mm-dd HH24:MI:SS"
+		};
+
+		/* cache for format texts */
+		static text *fmt_txt[lengthof(fmt_str)] = {0};
+		int			i;
+
+		/* loop until datetime format fits */
+		for (i = 0; i < lengthof(fmt_str); i++)
+		{
+			bool		have_error = false;
+
+			if (!fmt_txt[i])
+			{
+				MemoryContext oldcxt =
+				MemoryContextSwitchTo(TopMemoryContext);
+
+				fmt_txt[i] = cstring_to_text(fmt_str[i]);
+				MemoryContextSwitchTo(oldcxt);
+			}
+
+			value = parse_datetime(datetime, fmt_txt[i], true,
+								   &typid, &typmod, &tz,
+								   &have_error);
+
+			if (!have_error)
+			{
+				res = jperOk;
+				break;
+			}
+		}
+
+		if (res == jperNotFound)
+			RETURN_ERROR(ereport(ERROR,
+								 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
+								  errmsg("datetime format is not unrecognized"),
+								  errhint("use datetime template argument for explicit format specification"))));
+	}
+
+	pfree(datetime);
+
+	if (jperIsError(res))
+		return res;
+
+	hasNext = jspGetNext(jsp, &elem);
+
+	if (!hasNext && !found)
+		return res;
+
+	jb = hasNext ? &jbvbuf : palloc(sizeof(*jb));
+
+	jb->type = jbvDatetime;
+	jb->val.datetime.value = value;
+	jb->val.datetime.typid = typid;
+	jb->val.datetime.typmod = typmod;
+	jb->val.datetime.tz = tz;
+
+	return executeNextItem(cxt, jsp, &elem, jb, found, hasNext);
+}
+
+/*
  * Implementation of .keyvalue() method.
  *
  * .keyvalue() method returns a sequence of object's key-value pairs in the
@@ -1961,7 +2166,9 @@ JsonbArraySize(JsonbValue *jb)
 static JsonPathBool
 executeComparison(JsonPathItem *cmp, JsonbValue *lv, JsonbValue *rv, void *p)
 {
-	return compareItems(cmp->type, lv, rv);
+	JsonPathExecContext *cxt = (JsonPathExecContext *) p;
+
+	return compareItems(cmp->type, lv, rv, cxt->useTz);
 }
 
 /*
@@ -2056,7 +2263,7 @@ compareStrings(const char *mbstr1, int mblen1,
  * Compare two SQL/JSON items using comparison operation 'op'.
  */
 static JsonPathBool
-compareItems(int32 op, JsonbValue *jb1, JsonbValue *jb2)
+compareItems(int32 op, JsonbValue *jb1, JsonbValue *jb2, bool useTz)
 {
 	int			cmp;
 	bool		res;
@@ -2096,6 +2303,21 @@ compareItems(int32 op, JsonbValue *jb1, JsonbValue *jb2)
 
 			cmp = compareStrings(jb1->val.string.val, jb1->val.string.len,
 								 jb2->val.string.val, jb2->val.string.len);
+			break;
+		case jbvDatetime:
+			{
+				bool		cast_error;
+
+				cmp = compareDatetime(jb1->val.datetime.value,
+									  jb1->val.datetime.typid,
+									  jb2->val.datetime.value,
+									  jb2->val.datetime.typid,
+									  useTz,
+									  &cast_error);
+
+				if (cast_error)
+					return jpbUnknown;
+			}
 			break;
 
 		case jbvBinary:
@@ -2352,4 +2574,278 @@ wrapItemsInArray(const JsonValueList *items)
 		pushJsonbValue(&ps, WJB_ELEM, jbv);
 
 	return pushJsonbValue(&ps, WJB_END_ARRAY, NULL);
+}
+
+/* Check if the timezone required for casting from type1 to type2 is used */
+static void
+checkTimezoneIsUsedForCast(bool useTz, const char *type1, const char *type2)
+{
+	if (!useTz)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot convert value from %s to %s without timezone usage",
+						type1, type2),
+				 errhint("Use *_tz() function for timezone support.")));
+}
+
+/* Convert time datum to timetz datum */
+static Datum
+castTimeToTimeTz(Datum time, bool useTz)
+{
+	checkTimezoneIsUsedForCast(useTz, "time", "timetz");
+
+	return DirectFunctionCall1(time_timetz, time);
+}
+
+/*---
+ * Compares 'ts1' and 'ts2' timestamp, assuming that ts1 might be overflowed
+ * during cast from another datatype.
+ *
+ * 'overflow1' specifies overflow of 'ts1' value:
+ *  0 - no overflow,
+ * -1 - exceed lower boundary,
+ *  1 - exceed upper boundary.
+ */
+static int
+cmpTimestampWithOverflow(Timestamp ts1, int overflow1, Timestamp ts2)
+{
+	/*
+	 * All the timestamps we deal with in jsonpath are produced by
+	 * to_datetime() method.  So, they should be valid.
+	 */
+	Assert(IS_VALID_TIMESTAMP(ts2));
+
+	/*
+	 * Timestamp, which exceed lower (upper) bound, is always lower (higher)
+	 * than any valid timestamp except minus (plus) infinity.
+	 */
+	if (overflow1)
+	{
+		if (overflow1 < 0)
+		{
+			if (TIMESTAMP_IS_NOBEGIN(ts2))
+				return 1;
+			else
+				return -1;
+		}
+		if (overflow1 > 0)
+		{
+			if (TIMESTAMP_IS_NOEND(ts2))
+				return -1;
+			else
+				return 1;
+		}
+	}
+
+	return timestamp_cmp_internal(ts1, ts2);
+}
+
+/*
+ * Compare date to timestamptz without throwing overflow error during cast.
+ */
+static int
+cmpDateToTimestamp(DateADT date1, Timestamp ts2, bool useTz)
+{
+	TimestampTz ts1;
+	int			overflow = 0;
+
+	ts1 = date2timestamp_opt_overflow(date1, &overflow);
+
+	return cmpTimestampWithOverflow(ts1, overflow, ts2);
+}
+
+/*
+ * Compare date to timestamptz without throwing overflow error during cast.
+ */
+static int
+cmpDateToTimestampTz(DateADT date1, TimestampTz tstz2, bool useTz)
+{
+	TimestampTz tstz1;
+	int			overflow = 0;
+
+	checkTimezoneIsUsedForCast(useTz, "date", "timestamptz");
+
+	tstz1 = date2timestamptz_opt_overflow(date1, &overflow);
+
+	return cmpTimestampWithOverflow(tstz1, overflow, tstz2);
+}
+
+/*
+ * Compare timestamp to timestamptz without throwing overflow error during cast.
+ */
+static int
+cmpTimestampToTimestampTz(Timestamp ts1, TimestampTz tstz2, bool useTz)
+{
+	TimestampTz tstz1;
+	int			overflow = 0;
+
+	checkTimezoneIsUsedForCast(useTz, "timestamp", "timestamptz");
+
+	tstz1 = timestamp2timestamptz_opt_overflow(ts1, &overflow);
+
+	return cmpTimestampWithOverflow(tstz1, overflow, tstz2);
+}
+
+/*
+ * Cross-type comparison of two datetime SQL/JSON items.  If items are
+ * uncomparable *cast_error flag is set, otherwise *cast_error is unset.
+ * If the cast requires timezone and it is not used, then explicit error is thrown.
+ */
+static int
+compareDatetime(Datum val1, Oid typid1, Datum val2, Oid typid2,
+				bool useTz, bool *cast_error)
+{
+	PGFunction cmpfunc;
+
+	*cast_error = false;
+
+	switch (typid1)
+	{
+		case DATEOID:
+			switch (typid2)
+			{
+				case DATEOID:
+					cmpfunc = date_cmp;
+
+					break;
+
+				case TIMESTAMPOID:
+					return cmpDateToTimestamp(DatumGetDateADT(val1),
+											  DatumGetTimestamp(val2),
+											  useTz);
+
+				case TIMESTAMPTZOID:
+					return cmpDateToTimestampTz(DatumGetDateADT(val1),
+												DatumGetTimestampTz(val2),
+												useTz);
+
+				case TIMEOID:
+				case TIMETZOID:
+					*cast_error = true; /* uncomparable types */
+					return 0;
+
+				default:
+					elog(ERROR, "unrecognized SQL/JSON datetime type oid: %u",
+						 typid2);
+			}
+			break;
+
+		case TIMEOID:
+			switch (typid2)
+			{
+				case TIMEOID:
+					cmpfunc = time_cmp;
+
+					break;
+
+				case TIMETZOID:
+					val1 = castTimeToTimeTz(val1, useTz);
+					cmpfunc = timetz_cmp;
+
+					break;
+
+				case DATEOID:
+				case TIMESTAMPOID:
+				case TIMESTAMPTZOID:
+					*cast_error = true; /* uncomparable types */
+					return 0;
+
+				default:
+					elog(ERROR, "unrecognized SQL/JSON datetime type oid: %u",
+						 typid2);
+			}
+			break;
+
+		case TIMETZOID:
+			switch (typid2)
+			{
+				case TIMEOID:
+					val2 = castTimeToTimeTz(val2, useTz);
+					cmpfunc = timetz_cmp;
+
+					break;
+
+				case TIMETZOID:
+					cmpfunc = timetz_cmp;
+
+					break;
+
+				case DATEOID:
+				case TIMESTAMPOID:
+				case TIMESTAMPTZOID:
+					*cast_error = true; /* uncomparable types */
+					return 0;
+
+				default:
+					elog(ERROR, "unrecognized SQL/JSON datetime type oid: %u",
+						 typid2);
+			}
+			break;
+
+		case TIMESTAMPOID:
+			switch (typid2)
+			{
+				case DATEOID:
+					return -cmpDateToTimestamp(DatumGetDateADT(val2),
+											   DatumGetTimestamp(val1),
+											   useTz);
+
+				case TIMESTAMPOID:
+					cmpfunc = timestamp_cmp;
+
+					break;
+
+				case TIMESTAMPTZOID:
+					return cmpTimestampToTimestampTz(DatumGetTimestamp(val1),
+													 DatumGetTimestampTz(val2),
+													 useTz);
+
+				case TIMEOID:
+				case TIMETZOID:
+					*cast_error = true; /* uncomparable types */
+					return 0;
+
+				default:
+					elog(ERROR, "unrecognized SQL/JSON datetime type oid: %u",
+						 typid2);
+			}
+			break;
+
+		case TIMESTAMPTZOID:
+			switch (typid2)
+			{
+				case DATEOID:
+					return -cmpDateToTimestampTz(DatumGetDateADT(val2),
+												 DatumGetTimestampTz(val1),
+												 useTz);
+
+				case TIMESTAMPOID:
+					return -cmpTimestampToTimestampTz(DatumGetTimestamp(val2),
+													  DatumGetTimestampTz(val1),
+													  useTz);
+
+				case TIMESTAMPTZOID:
+					cmpfunc = timestamp_cmp;
+
+					break;
+
+				case TIMEOID:
+				case TIMETZOID:
+					*cast_error = true; /* uncomparable types */
+					return 0;
+
+				default:
+					elog(ERROR, "unrecognized SQL/JSON datetime type oid: %u",
+						 typid2);
+			}
+			break;
+
+		default:
+			elog(ERROR, "unrecognized SQL/JSON datetime type oid: %u", typid1);
+	}
+
+	if (*cast_error)
+		return 0;				/* cast error */
+
+	return DatumGetInt32(DirectFunctionCall2(cmpfunc, val1, val2));
 }

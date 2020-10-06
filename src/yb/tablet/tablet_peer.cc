@@ -1229,5 +1229,39 @@ void TabletPeer::StrandEnqueue(rpc::StrandTask* task) {
   strand->Enqueue(task);
 }
 
+bool TabletPeer::CanBeDeleted() {
+  if (!IsLeader()) {
+    return false;
+  }
+  if (can_be_deleted_) {
+    return can_be_deleted_;
+  }
+
+  const auto split_op_id = consensus_->GetSplitOpId();
+  const auto all_applied_op_id = consensus_->GetAllAppliedOpId();
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "split_op_id: " << split_op_id
+                               << " all_applied_op_id: " << all_applied_op_id;
+  if (split_op_id.empty() || all_applied_op_id < split_op_id) {
+    return can_be_deleted_;
+  }
+  const auto tablet_data_state = tablet()->metadata()->tablet_data_state();
+  if (tablet_data_state != TABLET_DATA_SPLIT_COMPLETED) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(DFATAL, 5) << Format(
+        "Expected tablet $0 data state to be TABLET_DATA_SPLIT_COMPLETED, but got: $1. "
+        "all_applied_op_id: $2, split_op_id: $3",
+        tablet_id(), TabletDataState_Name(tablet_data_state), all_applied_op_id,
+        consensus_->GetSplitOpId());
+    return can_be_deleted_;
+  }
+
+  can_be_deleted_ = true;
+  LOG_WITH_PREFIX(INFO) << Format(
+      "Marked tablet $0 as requiring cleanup due to all replicas have been split (all applied op "
+      "ID: $1, split op ID: $2)",
+      tablet_id(), all_applied_op_id, split_op_id);
+
+  return can_be_deleted_;
+}
+
 }  // namespace tablet
 }  // namespace yb

@@ -327,11 +327,11 @@ timestamp_scale(PG_FUNCTION_ARGS)
 }
 
 /*
- * AdjustTimestampForTypmod --- round off a timestamp to suit given typmod
+ * AdjustTimestampForTypmodError --- round off a timestamp to suit given typmod
  * Works for either timestamp or timestamptz.
  */
-void
-AdjustTimestampForTypmod(Timestamp *time, int32 typmod)
+bool
+AdjustTimestampForTypmodError(Timestamp *time, int32 typmod, bool *error)
 {
 	static const int64 TimestampScales[MAX_TIMESTAMP_PRECISION + 1] = {
 		INT64CONST(1000000),
@@ -357,10 +357,18 @@ AdjustTimestampForTypmod(Timestamp *time, int32 typmod)
 		&& (typmod != -1) && (typmod != MAX_TIMESTAMP_PRECISION))
 	{
 		if (typmod < 0 || typmod > MAX_TIMESTAMP_PRECISION)
+		{
+			if (error)
+			{
+				*error = true;
+				return false;
+			}
+
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("timestamp(%d) precision must be between %d and %d",
 							typmod, 0, MAX_TIMESTAMP_PRECISION)));
+		}
 
 		if (*time >= INT64CONST(0))
 		{
@@ -373,8 +381,15 @@ AdjustTimestampForTypmod(Timestamp *time, int32 typmod)
 					  * TimestampScales[typmod]);
 		}
 	}
+
+	return true;
 }
 
+void
+AdjustTimestampForTypmod(Timestamp *time, int32 typmod)
+{
+	(void) AdjustTimestampForTypmodError(time, typmod, NULL);
+}
 
 /* timestamptz_in()
  * Convert a string to internal form.
@@ -5086,8 +5101,15 @@ timestamp_timestamptz(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMPTZ(timestamp2timestamptz(timestamp));
 }
 
-static TimestampTz
-timestamp2timestamptz(Timestamp timestamp)
+/*
+ * Convert timestamp to timestamp with time zone.
+ *
+ * On overflow error is thrown if 'overflow' is NULL.  Otherwise, '*overflow'
+ * is set to -1 (+1) when result value exceed lower (upper) boundary and zero
+ * returned.
+ */
+TimestampTz
+timestamp2timestamptz_opt_overflow(Timestamp timestamp, int *overflow)
 {
 	TimestampTz result;
 	struct pg_tm tt,
@@ -5096,23 +5118,45 @@ timestamp2timestamptz(Timestamp timestamp)
 	int			tz;
 
 	if (TIMESTAMP_NOT_FINITE(timestamp))
-		result = timestamp;
-	else
-	{
-		if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+		return timestamp;
 
+	if (!timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL))
+	{
 		tz = DetermineTimeZoneOffset(tm, session_timezone);
 
-		if (tm2timestamp(tm, fsec, &tz, &result) != 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+		result = dt2local(timestamp, -tz);
+
+		if (IS_VALID_TIMESTAMP(result))
+		{
+			return result;
+		}
+		else if (overflow)
+		{
+			if (result < MIN_TIMESTAMP)
+				*overflow = -1;
+			else
+			{
+				Assert(result >= END_TIMESTAMP);
+				*overflow = 1;
+			}
+			return (TimestampTz) 0;
+		}
 	}
 
-	return result;
+	ereport(ERROR,
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			 errmsg("timestamp out of range")));
+
+	return 0;
+}
+
+/*
+ * Single-argument version of timestamp2timestamptz_opt_overflow().
+ */
+static TimestampTz
+timestamp2timestamptz(Timestamp timestamp)
+{
+	return timestamp2timestamptz_opt_overflow(timestamp, NULL);
 }
 
 /* timestamptz_timestamp()

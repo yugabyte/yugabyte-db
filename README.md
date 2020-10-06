@@ -20,7 +20,7 @@
 
 # What is YugabyteDB?
 
-YugabyteDB is a high-performance, cloud-native distributed SQL database that aims to support all PostgreSQL features. It is best fit for cloud-native OLTP (i.e. real-time, business critical) applications that need absolute data correctness and require at least one of the following: scalability, high tolerance to failures, globally-distributed deployments.
+**YugabyteDB** is a **high-performance, cloud-native distributed SQL database** that aims to support **all PostgreSQL features**. It is best fit for **cloud-native OLTP (i.e. real-time, business critical) applications** that need absolute **data correctness** and require at least one of the following: **scalability, high tolerance to failures, globally-distributed deployments.**
 
 
 The core features of YugabyteDB include:
@@ -70,11 +70,11 @@ YugabyteDB supports a number of languages and client drivers. Below is a brief l
 
 # What's being worked on?
 
-> This section has been updated on July 22, 2020.
+> This section has been updated on **July 22, 2020**.
 
 ## Current roadmap
 
-Here is a list of some of the key features being worked on for the upcoming releases. Note that the YugabyteDB v2.2 ~~release is expected around July 2020~~ was released July 15 2020 and the v2.3 release is expected in Nov 2020.
+Here is a list of some of the key features being worked on for the upcoming releases. Note that the YugabyteDB v2.2 ~~release is expected around July 2020~~ was released July 15 2020 and the **v2.3 release** is expected in **Nov 2020**.
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |

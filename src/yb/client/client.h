@@ -335,11 +335,25 @@ class YBClient {
   Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
       const TableId& table_id,
       const TableId& index_id,
-      const IndexPermissions& target_index_permissions);
+      const IndexPermissions& target_index_permissions,
+      const CoarseTimePoint deadline,
+      const CoarseDuration max_wait = std::chrono::seconds(2));
+  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
+      const TableId& table_id,
+      const TableId& index_id,
+      const IndexPermissions& target_index_permissions,
+      const CoarseDuration max_wait = std::chrono::seconds(2));
   Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
       const YBTableName& table_name,
       const YBTableName& index_name,
-      const IndexPermissions& target_index_permissions);
+      const IndexPermissions& target_index_permissions,
+      const CoarseDuration max_wait = std::chrono::seconds(2));
+  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
+      const YBTableName& table_name,
+      const YBTableName& index_name,
+      const IndexPermissions& target_index_permissions,
+      const CoarseTimePoint deadline,
+      const CoarseDuration max_wait = std::chrono::seconds(2));
 
   // Trigger an async index permissions update after new YSQL index permissions are committed.
   Status AsyncUpdateIndexPermissions(const TableId& indexed_table_id);
@@ -521,6 +535,8 @@ class YBClient {
                     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
                     StdStatusCallback callback);
 
+  void DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback);
+
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
   // If primary_only is set to true, we expect the primary/sync cluster tserver count only.
@@ -672,7 +688,7 @@ class YBClient {
 
   void LookupTabletByKey(const YBTable* table,
                          const std::string& partition_key,
-                        CoarseTimePoint deadline,
+                         CoarseTimePoint deadline,
                          LookupTabletCallback callback);
 
   void LookupTabletById(const std::string& tablet_id,

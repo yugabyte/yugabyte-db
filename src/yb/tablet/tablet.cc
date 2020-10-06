@@ -1836,6 +1836,8 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
 Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick) {
   TRACE_EVENT0("tablet", "Tablet::Flush");
 
+  ScopedRWOperation pending_op(&pending_op_counter_);
+
   rocksdb::FlushOptions options;
   options.ignore_if_flushed_after_tick = ignore_if_flushed_after_tick;
   bool flush_intents = intents_db_ && HasFlags(flags, FlushFlags::kIntents);
@@ -2012,7 +2014,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
         operation_state->request()->alter_table_id() : ""));
   auto key_schema = current_table_info->schema.CreateKeyProjection();
 
-  DSCHECK(key_schema.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())), IllegalState,
+  RSTATUS_DCHECK(key_schema.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())), IllegalState,
       "Schema keys cannot be altered");
 
   auto op_pause = PauseReadWriteOperations();

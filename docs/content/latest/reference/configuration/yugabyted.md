@@ -90,6 +90,9 @@ Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
                                 [--webserver_port WEBSERVER_PORT]
                                 [--listen LISTEN] [--join JOIN]
                                 [--daemon BOOL] [--callhome BOOL] [--ui BOOL]
+                                [--ysql_enable_auth BOOL]
+                                [--use_cassandra_authentication BOOL]
+                                [--initial_scripts_dir INITIAL_SCRIPTS_DIR]
 ```
 
 #### Flags
@@ -180,6 +183,12 @@ If the `YCQL_USER` or `YCQL_PASSWORD` environment variables exist then, authenti
 
 **Note**
 - Environment variables have more priority than the command-line flag.
+
+##### --initial_scripts_dir *initial-scripts-dir*
+
+The directory from where yugabyted reads initialization scripts.
+The format will be: For YSQL - `.sql`, For YCQL - `.cql`.
+Initialization scripts will be executed in sorted name order.
 
 -----
 

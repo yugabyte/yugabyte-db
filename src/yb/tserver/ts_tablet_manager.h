@@ -53,6 +53,7 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_splitter.h"
@@ -465,6 +466,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Used only for tests.
   void MaybeDoChecksForTests(const TableId& table_id);
 
+  void CleanupSplitTablets();
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -531,6 +534,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Thread pool for read ops, that are run in parallel, shared between all tablets.
   std::unique_ptr<ThreadPool> read_pool_;
+
+  std::unique_ptr<rpc::Poller> tablets_cleaner_;
 
   // Used for scheduling flushes
   std::unique_ptr<BackgroundTask> background_task_;

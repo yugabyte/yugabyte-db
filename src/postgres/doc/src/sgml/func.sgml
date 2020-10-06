@@ -6425,13 +6425,54 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
      <listitem>
       <para>
        <function>to_timestamp</function> and <function>to_date</function>
-       skip multiple blank spaces in the input string unless the
-       <literal>FX</literal> option is used. For example,
-       <literal>to_timestamp('2000&nbsp;&nbsp;&nbsp;&nbsp;JUN', 'YYYY MON')</literal> works, but
+       skip multiple blank spaces at the beginning of the input string and
+       around date and time values unless the <literal>FX</literal> option is used.  For example,
+       <literal>to_timestamp('&nbsp;2000&nbsp;&nbsp;&nbsp;&nbsp;JUN', 'YYYY MON')</literal> and
+       <literal>to_timestamp('2000 - JUN', 'YYYY-MON')</literal> work, but
        <literal>to_timestamp('2000&nbsp;&nbsp;&nbsp;&nbsp;JUN', 'FXYYYY MON')</literal> returns an error
-       because <function>to_timestamp</function> expects one space only.
+       because <function>to_timestamp</function> expects a single space only.
        <literal>FX</literal> must be specified as the first item in
        the template.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       A separator (a space or a non-letter/non-digit character) in the template string of
+       <function>to_timestamp</function> and <function>to_date</function>
+       matches any single separator in the input string or is skipped,
+       unless the <literal>FX</literal> option is used.
+       For example, <literal>to_timestamp('2000JUN', 'YYYY///MON')</literal> and
+       <literal>to_timestamp('2000/JUN', 'YYYY MON')</literal> work, but
+       <literal>to_timestamp('2000//JUN', 'YYYY/MON')</literal>
+       returns an error because the number of separators in the input string
+       exceeds the number of separators in the template.
+      </para>
+      <para>
+       If <literal>FX</literal> is specified, separator in template string
+       matches to exactly one character in input string.  Notice we don't insist
+       input string character to be the same as template string separator.
+       For example, <literal>to_timestamp('2000/JUN', 'FXYYYY MON')</literal>
+       works, but <literal>to_timestamp('2000/JUN', 'FXYYYY&nbsp;&nbsp;MON')</literal>
+       returns an error because a space second template string space consumed
+       letter <literal>J</literal> from the input string.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       <literal>TZH</literal> template pattern can match a signed number.
+       Without the <literal>FX</literal> option, it may lead to ambiguity in
+       interpretation of the minus sign, which can also be interpreted as a separator.
+       This ambiguity is resolved as follows.  If the number of separators before
+       <literal>TZH</literal> in the template string is less than the number of
+       separators before the minus sign in the input string, the minus sign
+       is interpreted as part of <literal>TZH</literal>.
+       Otherwise, the minus sign is considered to be a separator between values.
+       For example, <literal>to_timestamp('2000 -10', 'YYYY TZH')</literal> matches
+       <literal>-10</literal> to <literal>TZH</literal>, but
+       <literal>to_timestamp('2000 -10', 'YYYY&nbsp;&nbsp;TZH')</literal>
+       matches <literal>10</literal> to <literal>TZH</literal>.
       </para>
      </listitem>
 
@@ -6450,6 +6491,19 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
        string; for example <literal>"XX"</literal> skips two input characters
        (whether or not they are <literal>XX</literal>).
       </para>
+      <tip>
+        <para>
+          Prior to <productname>PostgreSQL</productname> 12, it was possible to
+          skip arbitrary text in the input string using non-letter or non-digit
+          characters. For example,
+          <literal>to_timestamp('2000y6m1d', 'yyyy-MM-DD')</literal> used to
+          work.  Now you can only use letter characters for this purpose.  For example,
+          <literal>to_timestamp('2000y6m1d', 'yyyytMMtDDt')</literal> and
+          <literal>to_timestamp('2000y6m1d', 'yyyy"y"MM"m"DD"d"')</literal>
+          skip <literal>y</literal>, <literal>m</literal>, and
+          <literal>d</literal>.
+        </para>
+      </tip>
      </listitem>
 
      <listitem>
@@ -11437,17 +11491,20 @@ table2-mapping
    For example, suppose you have some JSON data from a GPS tracker that you
    would like to parse, such as:
 <programlisting>
-{ "track" :
-  {
-    "segments" : [ 
-      { "location":   [ 47.763, 13.4034 ],
+{
+  "track": {
+    "segments": [
+      {
+        "location":   [ 47.763, 13.4034 ],
         "start time": "2018-10-14 10:05:14",
         "HR": 73
       },
-      { "location":   [ 47.706, 13.2635 ],
+      {
+        "location":   [ 47.706, 13.2635 ],
         "start time": "2018-10-14 10:39:21",
         "HR": 135
-      } ]
+      }
+    ]
   }
 }
 </programlisting>
@@ -11577,16 +11634,6 @@ table2-mapping
   </para>
 
   <itemizedlist>
-   <listitem>
-    <para>
-     <literal>.datetime()</literal> item method is not implemented yet
-     mainly because immutable <type>jsonpath</type> functions and operators
-     cannot reference session timezone, which is used in some datetime
-     operations.  Datetime support will be added to <type>jsonpath</type>
-     in future versions of <productname>PostgreSQL</productname>.
-    </para>
-   </listitem>
-
    <listitem>
     <para>
      A path expression can be a boolean predicate, although the SQL/JSON
@@ -11851,6 +11898,20 @@ table2-mapping
         <entry><literal>0.3</literal></entry>
        </row>
        <row>
+        <entry><literal>datetime()</literal></entry>
+        <entry>Date/time value converted from a string</entry>
+        <entry><literal>["2015-8-1", "2015-08-12"]</literal></entry>
+        <entry><literal>$[*] ? (@.datetime() &lt; "2015-08-2". datetime())</literal></entry>
+        <entry><literal>2015-8-1</literal></entry>
+       </row>
+       <row>
+        <entry><literal>datetime(<replaceable>template</replaceable>)</literal></entry>
+        <entry>Date/time value converted from a string using the specified template</entry>
+        <entry><literal>["12:30", "18:40"]</literal></entry>
+        <entry><literal>$[*].datetime("HH24:MI")</literal></entry>
+        <entry><literal>"12:30:00", "18:40:00"</literal></entry>
+       </row>
+       <row>
         <entry><literal>keyvalue()</literal></entry>
         <entry>
           Sequence of object's key-value pairs represented as array of items
@@ -11866,6 +11927,37 @@ table2-mapping
       </tbody>
      </tgroup>
     </table>
+
+    <note>
+     <para>
+      The result type of <literal>datetime()</literal> and
+      <literal>datetime(<replaceable>template</replaceable>)</literal>
+      methods can be <type>date</type>, <type>timetz</type>, <type>time</type>,
+      <type>timestamptz</type>, or <type>timestamp</type>.
+      Both methods determine the result type dynamically.
+     </para>
+     <para>
+      The <literal>datetime()</literal> method sequentially tries ISO formats
+      for <type>date</type>, <type>timetz</type>, <type>time</type>,
+      <type>timestamptz</type>, and <type>timestamp</type>. It stops on
+      the first matching format and the corresponding data type.
+     </para>
+     <para>
+      The <literal>datetime(<replaceable>template</replaceable>)</literal>
+      method determines the result type by the provided template string.
+     </para>
+     <para>
+      The <literal>datetime()</literal> and
+      <literal>datetime(<replaceable>template</replaceable>)</literal> methods
+      use the same parsing rules as <literal>to_timestamp</literal> SQL
+      function does (see <xref linkend="functions-formatting"/>) with three
+      exceptions.  At first, these methods doesn't allow unmatched template
+      patterns.  At second, only following separators are allowed in the
+      template string: minus sign, period, solidus, comma, apostrophe,
+      semicolon, colon and space.  At third, separators in the template string
+      must exactly match the input string.
+     </para>
+    </note>
 
     <table id="functions-sqljson-filter-ex-table">
      <title><type>jsonpath</type> Filter Expression Elements</title>
@@ -12010,6 +12102,15 @@ table2-mapping
       </tbody>
      </tgroup>
     </table>
+
+    <note>
+     <para>
+      When different date/time values are compared, an implicit cast is
+      applied. A <type>date</type> value can be cast to <type>timestamp</type>
+      or <type>timestamptz</type>, <type>timestamp</type> can be cast to
+      <type>timestamptz</type>, and <type>time</type> &mdash; to <type>timetz</type>.
+     </para>
+    </note>
    </sect3>
 
   </sect2>
@@ -12242,7 +12343,7 @@ table2-mapping
    <para>
     The <literal>@?</literal> and <literal>@@</literal> operators suppress
     the following errors: lacking object field or array element, unexpected
-    JSON item type, and numeric errors.
+    JSON item type, datetime and numeric errors.
     This behavior might be helpful while searching over JSON document
     collections of varying structure.
    </para>
@@ -12512,16 +12613,31 @@ table2-mapping
    <primary>jsonb_path_exists</primary>
   </indexterm>
   <indexterm>
+   <primary>jsonb_path_exists_tz</primary>
+  </indexterm>
+  <indexterm>
    <primary>jsonb_path_match</primary>
+  </indexterm>
+  <indexterm>
+   <primary>jsonb_path_match_tz</primary>
   </indexterm>
   <indexterm>
    <primary>jsonb_path_query</primary>
   </indexterm>
   <indexterm>
+   <primary>jsonb_path_query_tz</primary>
+  </indexterm>
+  <indexterm>
    <primary>jsonb_path_query_array</primary>
   </indexterm>
   <indexterm>
+   <primary>jsonb_path_query_array_tz</primary>
+  </indexterm>
+  <indexterm>
    <primary>jsonb_path_query_first</primary>
+  </indexterm>
+  <indexterm>
+   <primary>jsonb_path_query_first_tz</primary>
   </indexterm>
 
   <table id="functions-json-processing-table">
@@ -12779,7 +12895,7 @@ table2-mapping
        <entry><literal>[{"f1":1},2,null,3]</literal></entry>
        </row>
       <row>
-       <entry><para><literal>jsonb_set(target jsonb, path text[], new_value jsonb<optional>, <parameter>create_missing</parameter> <type>boolean</type></optional>)</literal>
+       <entry><para><literal>jsonb_set(target jsonb, path text[], new_value jsonb <optional>, create_missing boolean</optional>)</literal>
          </para></entry>
        <entry><para><type>jsonb</type></para></entry>
        <entry>
@@ -12787,10 +12903,10 @@ table2-mapping
          with the section designated by <replaceable>path</replaceable>
          replaced by <replaceable>new_value</replaceable>, or with
          <replaceable>new_value</replaceable> added if
-         <replaceable>create_missing</replaceable> is true ( default is
+         <replaceable>create_missing</replaceable> is true (default is
          <literal>true</literal>) and the item
          designated by <replaceable>path</replaceable> does not exist.
-         As with the path orientated operators, negative integers that
+         As with the path oriented operators, negative integers that
          appear in <replaceable>path</replaceable> count from the end
          of JSON arrays.
        </entry>
@@ -12804,7 +12920,7 @@ table2-mapping
       <row>
        <entry>
            <para><literal>
-           jsonb_insert(target jsonb, path text[], new_value jsonb, <optional><parameter>insert_after</parameter> <type>boolean</type></optional>)
+           jsonb_insert(target jsonb, path text[], new_value jsonb <optional>, insert_after boolean</optional>)
            </literal></para>
        </entry>
        <entry><para><type>jsonb</type></para></entry>
@@ -12819,7 +12935,7 @@ table2-mapping
          designated by <replaceable>path</replaceable> is in JSONB object,
          <replaceable>new_value</replaceable> will be inserted only if
          <replaceable>target</replaceable> does not exist. As with the path
-         orientated operators, negative integers that appear in
+         oriented operators, negative integers that appear in
          <replaceable>path</replaceable> count from the end of JSON arrays.
        </entry>
        <entry>
@@ -12860,7 +12976,10 @@ table2-mapping
        <row>
         <entry>
          <para><literal>
-           jsonb_path_exists(target jsonb, path jsonpath [, vars jsonb [, silent bool]])
+           jsonb_path_exists(target jsonb, path jsonpath <optional>, vars jsonb <optional>, silent bool</optional></optional>)
+         </literal></para>
+         <para><literal>
+           jsonb_path_exists_tz(target jsonb, path jsonpath <optional>, vars jsonb <optional>, silent bool</optional></optional>)
          </literal></para>
         </entry>
         <entry><type>boolean</type></entry>
@@ -12880,7 +12999,10 @@ table2-mapping
        <row>
         <entry>
          <para><literal>
-           jsonb_path_match(target jsonb, path jsonpath [, vars jsonb, silent bool])
+           jsonb_path_match(target jsonb, path jsonpath <optional>, vars jsonb <optional>, silent bool</optional></optional>)
+         </literal></para>
+         <para><literal>
+           jsonb_path_match_tz(target jsonb, path jsonpath <optional>, vars jsonb <optional>, silent bool</optional></optional>)
          </literal></para>
         </entry>
         <entry><type>boolean</type></entry>
@@ -12901,7 +13023,10 @@ table2-mapping
        <row>
         <entry>
          <para><literal>
-           jsonb_path_query(target jsonb, path jsonpath [, vars jsonb, silent bool])
+           jsonb_path_query(target jsonb, path jsonpath <optional>, vars jsonb <optional>, silent bool</optional></optional>)
+         </literal></para>
+         <para><literal>
+           jsonb_path_query_tz(target jsonb, path jsonpath <optional>, vars jsonb <optional>, silent bool</optional></optional>)
          </literal></para>
         </entry>
         <entry><type>setof jsonb</type></entry>
@@ -12929,7 +13054,10 @@ table2-mapping
        <row>
         <entry>
          <para><literal>
-           jsonb_path_query_array(target jsonb, path jsonpath [, vars jsonb, silent bool])
+           jsonb_path_query_array(target jsonb, path jsonpath <optional>, vars jsonb <optional>, silent bool</optional></optional>)
+         </literal></para>
+         <para><literal>
+           jsonb_path_query_array_tz(target jsonb, path jsonpath <optional>, vars jsonb <optional>, silent bool</optional></optional>)
          </literal></para>
         </entry>
         <entry><type>jsonb</type></entry>
@@ -12949,7 +13077,10 @@ table2-mapping
        <row>
         <entry>
          <para><literal>
-           jsonb_path_query_first(target jsonb, path jsonpath [, vars jsonb, silent bool])
+           jsonb_path_query_first(target jsonb, path jsonpath <optional>, vars jsonb <optional>, silent bool</optional></optional>)
+         </literal></para>
+         <para><literal>
+           jsonb_path_query_first_tz(target jsonb, path jsonpath <optional>, vars jsonb <optional>, silent bool</optional></optional>)
          </literal></para>
         </entry>
         <entry><type>jsonb</type></entry>
@@ -13093,11 +13224,8 @@ table2-mapping
 
   <note>
    <para>
-    The <literal>jsonb_path_exists</literal>, <literal>jsonb_path_match</literal>,
-    <literal>jsonb_path_query</literal>, <literal>jsonb_path_query_array</literal>, and
-    <literal>jsonb_path_query_first</literal>
-    functions have optional <literal>vars</literal> and <literal>silent</literal>
-    arguments.
+    The <literal>jsonb_path_*</literal> functions have optional
+    <literal>vars</literal> and <literal>silent</literal> arguments.
    </para>
    <para>
     If the <parameter>vars</parameter> argument is specified, it provides an
@@ -13108,6 +13236,20 @@ table2-mapping
     If the <parameter>silent</parameter> argument is specified and has the
     <literal>true</literal> value, these functions suppress the same errors
     as the <literal>@?</literal> and <literal>@@</literal> operators.
+   </para>
+  </note>
+
+  <note>
+   <para>
+    Some of the <literal>jsonb_path_*</literal> functions have the
+    <literal>_tz</literal> suffix. These functions have been implemented to
+    support comparison of date/time values that involves implicit
+    timezone-aware casts. Since operations with time zones are not immutable,
+    these functions are qualified as stable. Their counterparts without the
+    suffix do not support such casts, so they are immutable and can be used for
+    such use-cases as expression indexes
+    (see <xref linkend="indexes-expressional"/>). There is no difference
+    between these functions for other <type>jsonpath</type> operations.
    </para>
   </note>
 

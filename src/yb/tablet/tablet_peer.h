@@ -390,6 +390,9 @@ class TabletPeer : public consensus::ConsensusContext,
   // Returns the number of segments in log_.
   int GetNumLogSegments() const;
 
+  // Might update the can_be_deleted_.
+  bool CanBeDeleted();
+
   std::string LogPrefix() const;
 
  protected:
@@ -496,6 +499,11 @@ class TabletPeer : public consensus::ConsensusContext,
   }
 
   TabletSplitter* tablet_splitter_;
+
+  // can_be_deleted_ is set to true if tablet can be deleted (all replicas have been split and
+  // tablet is no longer needed). After setting to true it will stay that way forever until
+  // TabletPeer is destroyed.
+  std::atomic<bool> can_be_deleted_ = {false};
 
   std::shared_future<client::YBClient*> client_future_;
 

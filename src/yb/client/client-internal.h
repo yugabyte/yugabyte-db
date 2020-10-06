@@ -221,12 +221,25 @@ class YBClient::Data {
       const TableId& table_id,
       const TableId& index_id,
       const CoarseTimePoint deadline);
+  Result<IndexPermissions> GetIndexPermissions(
+      YBClient* client,
+      const YBTableName& table_name,
+      const YBTableName& index_name,
+      const CoarseTimePoint deadline);
   Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
       YBClient* client,
       const TableId& table_id,
       const TableId& index_id,
+      const IndexPermissions& target_index_permissions,
       const CoarseTimePoint deadline,
-      const IndexPermissions& target_index_permissions);
+      const CoarseDuration max_wait = std::chrono::seconds(2));
+  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
+      YBClient* client,
+      const YBTableName& table_name,
+      const YBTableName& index_name,
+      const IndexPermissions& target_index_permissions,
+      const CoarseTimePoint deadline,
+      const CoarseDuration max_wait = std::chrono::seconds(2));
 
   void CreateCDCStream(YBClient* client,
                        const TableId& table_id,
@@ -245,6 +258,10 @@ class YBClient::Data {
                     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
                     CoarseTimePoint deadline,
                     StdStatusCallback callback);
+
+  void DeleteTablet(
+      YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
+      StdStatusCallback callback);
 
   CHECKED_STATUS InitLocalHostNames();
 
@@ -449,8 +466,11 @@ class YBClient::Data {
 // returned to the caller, otherwise a Status::Timeout() will be returned.
 // If the deadline is already expired, no attempt will be made.
 Status RetryFunc(
-    CoarseTimePoint deadline, const std::string& retry_msg, const std::string& timeout_msg,
-    const std::function<Status(CoarseTimePoint, bool*)>& func);
+    CoarseTimePoint deadline,
+    const std::string& retry_msg,
+    const std::string& timeout_msg,
+    const std::function<Status(CoarseTimePoint, bool*)>& func,
+    const CoarseDuration max_wait = std::chrono::seconds(2));
 
 } // namespace client
 } // namespace yb
