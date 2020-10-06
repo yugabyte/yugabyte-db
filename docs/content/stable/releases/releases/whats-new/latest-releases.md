@@ -8,7 +8,7 @@ image: /images/section_icons/quick_start/install.png
 aliases:
   - /latest/releases/
 menu:
-  latest:
+  stable:
     parent: whats-new
     identifier: latest-release
     weight: 2585

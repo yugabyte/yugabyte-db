@@ -6,7 +6,7 @@ description: Enhancements, changes, and resolved issues in the current stable re
 headcontent: Features, enhancements, and resolved issues in the current stable release series, recommended for production deployments.
 image: /images/section_icons/quick_start/install.png
 menu:
-  latest:
+  stable:
     parent: whats-new
     identifier: stable-releases
     weight: 2586 
