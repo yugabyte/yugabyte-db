@@ -184,11 +184,9 @@ export default class Importer extends Component {
 
     const validationSchema = Yup.object().shape({
       universeName: Yup.string()
-      .required('Universe name is Required'),
-
+        .required('Universe name is Required'),
       masterAddresses: Yup.string()
-      .required('Enter the master addresses of the universe'),
-
+        .required('Enter the master addresses of the universe'),
     });
 
     const initialValues = {

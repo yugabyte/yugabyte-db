@@ -9,7 +9,7 @@ const mapDispatchToProps = (dispatch) => {
     deleteBackup: (backupUUID) => {
       dispatch(deleteBackup(backupUUID)).then((response) => {
         dispatch(deleteBackupResponse(response));
-      })
+      });
     }
   };
 };
