@@ -19,6 +19,7 @@
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
+#include "utils/json.h"
 #include "utils/jsonapi.h"
 #include "utils/jsonb.h"
 #include "utils/memutils.h"
