@@ -33,7 +33,7 @@ menu:
         <div class="title">Release versioning</div>
       </div>
       <div class="body">
-        Understand the release versioning convention and the differences between the stable and latest release series.
+        Overview of current supported releases, release support, and upcoming releases.
       </div>
     </a>
   </div>

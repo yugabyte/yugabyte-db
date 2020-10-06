@@ -18,8 +18,8 @@ Included here are the notable new features and enhancements and the release note
 
 {{< note title="New release versioning" >}}
 
-Starting with v0, Yugabyte release versions follow a [new release versioning convention](../../versioning). Stable release series are denoted by `MAJOR.EVEN`, introduce new features and changes added since the previous stable release series and are supported for production deployments. Patch releases, denoted by `MAJOR.EVEN.PATCH`, include bug fixes and revisions that do not break backwards compatibility.
-For more information, see [Supported and planned releases](../../releases-overview).
+Starting with v2.2.0, Yugabyte follows a [new release versioning convention](../../versioning). Stable release series are denoted by `MAJOR.EVEN`, introduce new features and changes added since the previous stable release series, and are supported for production deployments. Patch releases, denoted by `MAJOR.EVEN.PATCH`, include bug fixes and revisions that do not break backwards compatibility.
+For more information, see [Releases overview](../../releases-overview).
 
 {{< /note >}}
 

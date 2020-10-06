@@ -1,7 +1,7 @@
 ---
-title: Supported and upcoming releases
-headerTitle: Supported and upcoming releases
-linkTitle: Supported and upcoming releases
+title: Releases overview
+headerTitle: Releases overview
+linkTitle: Releases overview
 description: An overview of the latest and current stable releases, and upcoming releases.
 section: RELEASES
 menu:
