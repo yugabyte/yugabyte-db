@@ -22,6 +22,9 @@ While it is important to ensure a low RPO, it often becomes essential to trade i
 #### 3. RTO needs to be reasonable
 Note that while recovery time objective or RTO needs to be reasonable, it is typically not an important metric in the case of a backup restore. This is especially true in the case of YugabyteDB, where regular outages have a very low RTO since the database is inherently highly available.
 
+#### 4. Enabled at a namespace level
+This feature is currently designed to operate at the level of a YSQL database (namespace) or a YCQL keyspace.
+
 ## Recovery Scenarios
 
 This feature will address the following recovery scenarios.
@@ -44,11 +47,11 @@ In a distributed SQL database such as YugabyteDB, scenarios #1 and #2 can be mit
 #### C. Recover from disaster scenarios
 This is the scenario when the data in the entire source cluster is lost irrecoverably, and a restore needs to be performed from a remote location. While the likelihood of this scenario is low, it is still important to understand the probability of correlated failures. For example, a disaster due to a natural disaster has a very low probability of occurrence in a multi-region deployment, and it’s probability of occurrence increases with the proximity of the replicas.
 
-## Terminology
+# Features
 
 The sections below describe the various features that will enable PITR and incremental backups, with a view to standardizing the terminology that will be used henceforth.
 
-### Flashback Database
+## Flashback Database
 The flashback database feature allows rolling back an existing database or an existing backup to a specific point in time in the past, up to some maximum time history. For example, if a database is configured for flashback up to the last 25 hours, it should be possible to roll this database back to a point in time that is 25 hours ago. Also note that any backup taken from this database should preserve the same ability to rollback to a point in time.
 
 Key points:
@@ -58,7 +61,7 @@ Key points:
 * This feature does not help with reducing the size of backups, since this would be comparable to a full backup
 
 
-### Cumulative and Differential Incremental Backups
+## Incremental Backups
 Incremental backups only extract and backup the updates that occur after a specified point in time in the past. For example, an incremental might only contain all the changes that happened in the last hour. Note that the database should have been configured with the maximum history retention window (similar to the flashback database option). Therefore, if a database is configured to retain 25 hours of historical updates, then the largest incremental backup possible is 25 hours. Incremental backups should cover the following scenarios:
 * All changes as a result of DML statements such as INSERT, UPDATE, DELETE
 * DDL statements, such as creation of new tables and dropping of existing tables
@@ -74,12 +77,18 @@ What’s different from flashback database option:
 * Often run more frequently, since the data set size is reduced.
 * This handles a DR scenario (see Scenarios section C).
 
-There are two flavors of incremental backups, these are described below.
-#### Cumulative incremental backups
+There are two flavors of incremental backups, these are described below. Note that although YugayteDB will support both flavors, differential incremental backups are recommended.
+
+### Differential incremental backups
+In this case, each incremental backup only contains the updates that occurred after the previous incremental backup. All changes since last incremental. A point in time restore operation in this case would involve restoring the latest base backup followed by applying every differential incremental backup taken since that base backup.
+
+### Cumulative incremental backups
 Each of these incremental backups contain all changes since last base backup. The timestamp of the last base backup is specified by the operator. In this case, the point in time restore operation involves restoring the latest base backup followed by applying the latest cumulative incremental backup. 
 
-#### Differential incremental backups
-In this case, each incremental backup only contains the updates that occurred after the previous incremental backup. All changes since last incremental. A point in time restore operation in this case would involve restoring the latest base backup followed by applying every differential incremental backup taken since that base backup.
+
+# Intended usage
+
+The table below shows a quick comparison of the intended usage patterns. 
 
 |                       | In-cluster flashback DB | Off-cluster flashback DB | Incremental backup | 
 | --------------------- | ----------------------- | ------------------------ | ------------------ |
@@ -89,6 +98,52 @@ In this case, each incremental backup only contains the updates that occurred af
 | RTO                   | Very low                | High                     | High               |
 | Disaster Recovery     | No (replication in cluster) | Yes                  | Yes                |
 | Impact / Cost         | Very low                | High (snapshot and copy) | Medium             |
+
+
+### Step 1. Enable the flashback database feature
+This would require specifying the maximum historic timestamp up to which the database needs to retain updates, called the *history cutoff timestamp*. This ensures that all updates being performed to both the schema using DDL operations and data using DML operations are retained till the specified history cutoff timestamp.
+
+As an example, to enable recovery to the last 24 hours, set the history retention cutoff timestamp to 25 hours.
+
+**Input parameters:** 
+
+* The history retention cutoff timestamp. 
+* Future optimization: the granularity of recovery (examples: 1 second, 1 minute, etc)
+
+
+### Step 2. Perform a full backup
+
+All of the features above depend on a base backup. Hence, the first step is to perform a full backup, which would return an internal timestamp (the hybrid timestamp) of the backup.
+
+**Input parameters:** 
+
+* The database (namespace) that needs to be backed up
+
+**Return/persisted values:** 
+
+* Full backups should persist / return a hybrid timestamp (`ts-full-backup`) which represents the time up to which the data has been backed up.
+* A fixed list of immutable files that can be copied out of the cluster
+
+### Step 3. Perform incremental backups
+
+Perform incremental backups as needed, eithr on demand or to occur at a schedule (recommended). An incremental backup would need to specify the hybrid timestamp of the last successful backup (which can be either an incremental or a full backup). Incremental backups would return the hybrid timestamp up to which they contain data.
+
+**Input parameters:** 
+
+* The database (namespace) that needs to be incrementally backed up
+* The hybrid timestamp (`ts-incremental-backup-start`) of the previously successful backup (incremental or full backup) 
+
+**Return/persisted values:** 
+
+* Incremental backups should persist / return a hybrid timestamp (`ts-incremental-backup-finish`) which represents the time up to which the data has been backed up.
+* A fixed list of immutable WAL files that can be copied out of the cluster. These files will contain the data for the time interval (`ts-incremental-backup-start`, `ts-incremental-backup-finish`].
+
+
+### Step 4. In-cluster point in time recovery
+
+### Step 5. Off-cluster point in time recovery
+
+### Step 6. Restore from incremental backups
 
 
 # Design
