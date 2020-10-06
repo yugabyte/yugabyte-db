@@ -880,7 +880,7 @@ class BatchContextImpl : public BatchContext {
     retry_lookups_.store(false, std::memory_order_release);
     for (auto& operation : operations_) {
       impl_data_->client_->LookupTabletByKey(
-          table->get(), operation.partition_key(), deadline,
+          table.get(), operation.partition_key(), deadline,
           std::bind(
               &BatchContextImpl::LookupDone, scoped_refptr<BatchContextImpl>(this), &operation,
               retries, _1));

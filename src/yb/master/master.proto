@@ -844,12 +844,19 @@ message TSInfoPB {
 message GetTabletLocationsRequestPB {
   // The tablet IDs about which to fetch info.
   repeated bytes tablet_ids = 1;
+
+  // If table ID is specified, table's partitions_version will be included into response.
+  optional bytes table_id = 2;
 }
 
 message GetTabletLocationsResponsePB {
   optional MasterErrorPB error = 1;
 
   repeated TabletLocationsPB tablet_locations = 2;
+
+  // If GetTabletLocationsRequestPB::table_id is set we return table's partitions_version for this
+  // table (see SysTablesEntryPB::partitions_version).
+  optional uint32 partitions_version = 4;
 
   message Error {
     required bytes tablet_id = 1;
@@ -1018,7 +1025,7 @@ message GetTableLocationsResponsePB {
   repeated TabletLocationsPB tablet_locations = 2;
   optional TableType table_type = 3;
 
-  // See SysTabletsEntryPB for field with the same name.
+  // See SysTablesEntryPB for field with the same name.
   optional uint32 partitions_version = 4;
 }
 

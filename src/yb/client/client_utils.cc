@@ -27,7 +27,8 @@ DECLARE_bool(TEST_running_test);
 namespace yb {
 namespace client {
 
-std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(const YBTable* table) {
+std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
+    const std::shared_ptr<const YBTable>& table) {
   return table->client()->data_->meta_cache_->LookupTabletByKeyFuture(
       table, "" /* partition_key */, CoarseMonoClock::now() + std::chrono::seconds(60));
 }

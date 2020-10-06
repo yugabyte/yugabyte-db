@@ -451,6 +451,9 @@ class STATUS_NODISCARD_CLASS Status {
     // TODO: Move error codes into an error_code.proto or something similar.
   };
 
+  // Return a new Status object with the same state except status code.
+  Status CloneAndReplaceCode(Code code) const;
+
   Status(Code code,
          const char* file_name,
          int line_number,

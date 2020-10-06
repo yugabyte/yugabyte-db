@@ -691,7 +691,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   // We have to loop since some replicas may have been created slowly.
   scoped_refptr<internal::RemoteTablet> rt;
   while (true) {
-    rt = ASSERT_RESULT(LookupFirstTabletFuture(table.get()).get());
+    rt = ASSERT_RESULT(LookupFirstTabletFuture(table.table()).get());
     ASSERT_TRUE(rt.get() != nullptr);
     vector<internal::RemoteTabletServer*> tservers;
     rt->GetRemoteTabletServers(&tservers);
@@ -1488,7 +1488,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   ASSERT_NO_FATALS(InsertTestRows(table, kNumRowsToWrite));
 
   // Find the leader of the first tablet.
-  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(table.get()).get());
+  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(table.table()).get());
   internal::RemoteTabletServer *remote_tablet_server = remote_tablet->LeaderTServer();
 
   // Kill the leader of the first tablet.
@@ -1537,7 +1537,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
   SleepFor(MonoDelta::FromMilliseconds(1500));
 
   // Find the leader replica
-  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(table.get()).get());
+  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(table.table()).get());
   internal::RemoteTabletServer *remote_tablet_server;
   set<string> blacklist;
   vector<internal::RemoteTabletServer*> candidates;
@@ -2069,7 +2069,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
 TEST_F(ClientTest, Capability) {
   constexpr CapabilityId kFakeCapability = 0x9c40e9a7;
 
-  auto rt = ASSERT_RESULT(LookupFirstTabletFuture(client_table_.get()).get());
+  auto rt = ASSERT_RESULT(LookupFirstTabletFuture(client_table_.table()).get());
   ASSERT_TRUE(rt.get() != nullptr);
   auto tservers = rt->GetRemoteTabletServers();
   ASSERT_EQ(tservers.size(), 3);

@@ -273,6 +273,12 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
   server_->catalog_manager()->GetExpectedNumberOfReplicas(
       &expected_live_replicas, &expected_read_replicas);
 
+  if (req->has_table_id()) {
+    const auto table_lock =
+        server_->catalog_manager()->GetTableInfo(req->table_id())->LockForRead();
+    resp->set_partitions_version(table_lock->data().pb.partitions_version());
+  }
+
   for (const TabletId& tablet_id : req->tablet_ids()) {
     // TODO: once we have catalog data. ACL checks would also go here, probably.
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();

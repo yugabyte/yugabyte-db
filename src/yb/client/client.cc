@@ -1638,7 +1638,7 @@ void YBClient::MaybeUpdateMinRunningRequestId(
   }
 }
 
-void YBClient::LookupTabletByKey(const YBTable* table,
+void YBClient::LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
                                  const std::string& partition_key,
                                  CoarseTimePoint deadline,
                                  LookupTabletCallback callback) {
@@ -1646,11 +1646,12 @@ void YBClient::LookupTabletByKey(const YBTable* table,
 }
 
 void YBClient::LookupTabletById(const std::string& tablet_id,
+                                const std::shared_ptr<const YBTable>& table,
                                 CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
-      tablet_id, deadline, std::move(callback), use_cache);
+      tablet_id, table, deadline, std::move(callback), use_cache);
 }
 
 HostPort YBClient::GetMasterLeaderAddress() {

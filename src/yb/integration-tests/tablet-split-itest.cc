@@ -91,9 +91,7 @@ Result<size_t> SelectRowsCount(
         return true;
       }
       for (auto& error : session->GetPendingErrors()) {
-        // TODO(tsplit): tablet not found in case of tablet has been split and deleted should be
-        // handled in YBClient.
-        if (error->status().IsTryAgain() || error->status().IsNotFound()) {
+        if (error->status().IsTryAgain()) {
           return false;
         }
       }
@@ -725,9 +723,7 @@ void TabletSplitITest::SplitClientRequestsIds(int split_depth) {
   Status s;
   ASSERT_OK(WaitFor([&] {
     s = ResultToStatus(WriteRows(1));
-    // TODO(tsplit): tablet not found in case of tablet has been split and deleted should be
-    // handled in YBClient.
-    return !s.IsTryAgain() && !s.IsNotFound();
+    return !s.IsTryAgain();
   }, 60s, "Waiting for successful write"));
   ASSERT_OK(s);
 }

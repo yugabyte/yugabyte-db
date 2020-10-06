@@ -148,7 +148,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   struct VersionedPartitions {
     std::vector<std::string> keys;
-    // See SysTabletsEntryPB::partitions_version.
+    // See SysTablesEntryPB::partitions_version.
     int32_t version;
   };
 
