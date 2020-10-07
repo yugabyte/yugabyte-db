@@ -297,6 +297,12 @@ bool TabletInvoker::Done(Status* status) {
   assign_new_leader_ = false;
 
   if (status->IsAborted() || retrier_->finished()) {
+    if (status->ok()) {
+      *status = retrier_->controller().status();
+      if (status->ok()) {
+        *status = STATUS(Aborted, "Retrier finished");
+      }
+    }
     return true;
   }
 

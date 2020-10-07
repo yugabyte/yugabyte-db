@@ -210,6 +210,7 @@ Status TabletPeer::InitTabletPeer(
     log_atomic_ = log.get();
     service_thread_pool_ = &messenger->ThreadPool();
     strand_.reset(new rpc::Strand(&messenger->ThreadPool()));
+    messenger_ = messenger;
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto index = log->GetLatestEntryOpId().index;
@@ -636,10 +637,6 @@ HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
 void TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   consensus_->GetLastCommittedOpId().ToPB(&data->op_id);
   data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
-}
-
-HybridTime TabletPeer::Now() {
-  return clock_->Now();
 }
 
 void TabletPeer::UpdateClock(HybridTime hybrid_time) {
@@ -1261,6 +1258,10 @@ bool TabletPeer::CanBeDeleted() {
       tablet_id(), all_applied_op_id, split_op_id);
 
   return can_be_deleted_;
+}
+
+rpc::Scheduler& TabletPeer::scheduler() const {
+  return messenger_->scheduler();
 }
 
 }  // namespace tablet
