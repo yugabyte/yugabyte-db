@@ -222,8 +222,17 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   }
 
   // Retrieve the ysql catalog schema version.
-  uint64_t version = server_->catalog_manager()->GetYsqlCatalogVersion();
-  resp->set_ysql_catalog_version(version);
+  uint64_t last_breaking_version = 0;
+  uint64_t catalog_version = 0;
+  s = server_->catalog_manager()->GetYsqlCatalogVersion(&catalog_version,
+                                                        &last_breaking_version);
+  if (s.ok()) {
+    resp->set_ysql_catalog_version(catalog_version);
+    resp->set_ysql_last_breaking_catalog_version(last_breaking_version);
+  } else {
+    LOG(WARNING) << "Could not get YSQL catalog version for heartbeat response: "
+                 << s.ToUserMessage();
+  }
 
   if (FLAGS_tablet_split_size_threshold_bytes > 0) {
     resp->set_tablet_split_size_threshold_bytes(FLAGS_tablet_split_size_threshold_bytes);

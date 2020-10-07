@@ -66,6 +66,7 @@
 #include "pg_trace.h"
 
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
  *	User-tweakable parameters
@@ -194,6 +195,9 @@ typedef struct TransactionStateData
 				             * frontend as part of this execution */
 	bool		isYBTxnWithPostgresRel; /* does the current transaction
 				                         * operate on a postgres table? */
+	List		*YBPostponedDdlOps; /* We postpone execution of non-revertable
+				                     * DocDB operations (e.g. drop table/index)
+				                     * until the rest of the txn succeeds */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -226,7 +230,8 @@ static TransactionStateData TopTransactionStateData = {
 	0,							/* parallelModeLevel */
 	NULL,						/* link to parent state block */
 	false,						/* ybDataSent */
-	false						/* isYBTxnWithPostgresRel */
+	false,						/* isYBTxnWithPostgresRel */
+	NULL,						/* YBPostponedDdlOps */
 };
 
 /*
@@ -1851,6 +1856,7 @@ YBStartTransaction(TransactionState s)
 {
 	s->isYBTxnWithPostgresRel = !IsYugaByteEnabled();
 	s->ybDataSent             = false;
+	s->YBPostponedDdlOps      = NULL;
 
 	YBInitializeTransaction();
 }
@@ -5997,4 +6003,16 @@ xact_redo(XLogReaderState *record)
 	}
 	else
 		elog(PANIC, "xact_redo: unknown op code %u", info);
+}
+
+void YBSaveDdlHandle(YBCPgStatement handle) {
+	CurrentTransactionState->YBPostponedDdlOps = lappend(CurrentTransactionState->YBPostponedDdlOps, handle);
+}
+
+List* YBGetDdlHandles() {
+	return CurrentTransactionState->YBPostponedDdlOps;
+}
+
+void YBClearDdlHandles() {
+	CurrentTransactionState->YBPostponedDdlOps = NULL;
 }

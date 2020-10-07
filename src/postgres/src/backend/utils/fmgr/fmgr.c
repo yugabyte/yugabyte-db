@@ -551,7 +551,7 @@ lookup_C_func(HeapTuple procedureTuple)
 	if (entry == NULL)
 		return NULL;			/* no such entry */
 
-	if (IsYugaByteEnabled() ? entry->yb_catalog_version == yb_catalog_cache_version :
+	if (IsYugaByteEnabled() ? entry->yb_catalog_version == YBGetActiveCatalogCacheVersion() :
 		entry->fn_xmin == HeapTupleHeaderGetRawXmin(procedureTuple->t_data) &&
 		ItemPointerEquals(&entry->fn_tid, &procedureTuple->t_self))
 		return entry;			/* OK */
@@ -593,7 +593,7 @@ record_C_func(HeapTuple procedureTuple,
 	entry->fn_tid = procedureTuple->t_self;
 	entry->user_fn = user_fn;
 	entry->inforec = inforec;
-	entry->yb_catalog_version = yb_catalog_cache_version;
+	entry->yb_catalog_version = YBGetActiveCatalogCacheVersion();
 }
 
 /*

@@ -137,6 +137,7 @@ YBCStatus YBCPgReserveOids(YBCPgOid database_oid,
                            YBCPgOid *begin_oid,
                            YBCPgOid *end_oid);
 
+// Retrieve the protobuf-based catalog version (now deprecated for new clusters).
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version);
 
 void YBCPgInvalidateTableCache(
@@ -208,8 +209,6 @@ YBCStatus YBCPgNewDropTable(YBCPgOid database_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
-YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
-
 YBCStatus YBCPgNewTruncateTable(YBCPgOid database_oid,
                                 YBCPgOid table_oid,
                                 YBCPgStatement *handle);
@@ -275,8 +274,6 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
-YBCStatus YBCPgExecDropIndex(YBCPgStatement handle);
-
 YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
     const YBCPgOid database_oid,
     const YBCPgOid table_oid,
@@ -287,6 +284,8 @@ YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
 YBCStatus YBCPgAsyncUpdateIndexPermissions(
     const YBCPgOid database_oid,
     const YBCPgOid indexed_table_oid);
+
+YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
 
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)

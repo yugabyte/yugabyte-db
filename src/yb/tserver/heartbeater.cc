@@ -449,7 +449,14 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
   if (last_hb_response_.has_ysql_catalog_version()) {
-    server_->SetYSQLCatalogVersion(last_hb_response_.ysql_catalog_version());
+    if (last_hb_response_.has_ysql_last_breaking_catalog_version()) {
+      server_->SetYSQLCatalogVersion(last_hb_response_.ysql_catalog_version(),
+                                     last_hb_response_.ysql_last_breaking_catalog_version());
+    } else {
+      /* Assuming all changes are breaking if last breaking version not explicitly set. */
+      server_->SetYSQLCatalogVersion(last_hb_response_.ysql_catalog_version(),
+                                     last_hb_response_.ysql_catalog_version());
+    }
   }
 
   // Update the live tserver list.

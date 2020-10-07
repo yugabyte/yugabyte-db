@@ -32,6 +32,12 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
+typedef struct YBExprParamDesc {
+	int32_t attno;
+	int32_t typid;
+	int32_t typmod;
+} YBExprParamDesc;
+
 // Construct column reference expression.
 extern YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num, int attr_typid,
 																 const YBCPgTypeAttrs *type_attrs);
@@ -40,6 +46,15 @@ extern YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num, int 
 extern YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool is_null);
 
 // Construct a generic eval_expr call for given a PG Expr and its expected type and attno.
-extern YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt, Expr *expr, int32_t attno, int32_t type_id, int32_t type_mod);
+extern YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt, 
+                                               Expr *expr, 
+                                               int32_t attno, 
+                                               int32_t type_id, 
+                                               int32_t type_mod);
+
+YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
+                             Expr *pg_expr,
+                             YBExprParamDesc *params,
+                             int num_params);
 
 #endif							/* YBCEXPR_H */
