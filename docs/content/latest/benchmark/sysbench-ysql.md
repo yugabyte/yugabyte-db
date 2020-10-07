@@ -75,7 +75,7 @@ This section outlines instructions in case you need to run workloads individuall
 
 ```sh
 $ sysbench oltp_point_select        \
-      --num-tables=10               \
+      --tables=10                   \
       --table-size=100000           \
       --range_key_partitioning=true \
       --db-driver=pgsql             \
@@ -90,7 +90,7 @@ Then you can run the workload as follows
 
 ```sh
 $ sysbench oltp_point_select        \
-      --num-tables=10               \
+      --tables=10                   \
       --table-size=100000           \
       --range_key_partitioning=true \
       --db-driver=pgsql             \
