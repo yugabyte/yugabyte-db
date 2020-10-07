@@ -5,8 +5,6 @@ linkTitle: What's new
 description: Enhancements, changes, and resolved issues in the latest and stable release series.
 headcontent: Features, enhancements, and resolved issues in the latest and stable release series.
 image: /images/section_icons/quick_start/install.png
-aliases:
-  - /latest/releases/
 section: RELEASES
 menu:
   latest:
@@ -32,7 +30,7 @@ menu:
       <a class="section-link icon-offset" href="stable-releases/">
           <div class="head">
               <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-              <div class="title">What's new in the v2.2 stable release series</div>
+              <div class="title">What's new in the v2.2 current stable release series</div>
           </div>
           <div class="body">
               Features, enhancements, and fixes in the recommended stable release series v2.2 (Updated August 19, 2020).

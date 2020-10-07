@@ -5,24 +5,21 @@ linkTitle: v2.2 (stable)
 description: Enhancements, changes, and resolved issues in the current stable release series, recommended for production deployments.
 headcontent: Features, enhancements, and resolved issues in the current stable release series, recommended for production deployments.
 image: /images/section_icons/quick_start/install.png
-aliases:
-  - /latest/releases/
-section: RELEASES
 menu:
   latest:
     parent: whats-new
     identifier: stable-releases
     weight: 2586 
 isTocNested: true
-showAsideToc: true
+showAsideToc: false
 ---
 
 Included here are the notable new features and enhancements and the release notes for all releases in the current v2.2 stable release series.
 
 {{< note title="New release versioning" >}}
 
-Starting with v0, Yugabyte release versions follow a [new release versioning convention](../../versioning). Stable release series are denoted by `MAJOR.EVEN`, introduce new features and changes added since the previous stable release series and are supported for production deployments. Patch releases, denoted by `MAJOR.EVEN.PATCH`, include bug fixes and revisions that do not break backwards compatibility.
-For more information, see [Supported and planned releases](../../releases-overview).
+Starting with v2.2.0, Yugabyte follows a [new release versioning convention](../../versioning). Stable release series are denoted by `MAJOR.EVEN`, introduce new features and changes added since the previous stable release series, and are supported for production deployments. Patch releases, denoted by `MAJOR.EVEN.PATCH`, include bug fixes and revisions that do not break backwards compatibility.
+For more information, see [Releases overview](../../releases-overview).
 
 {{< /note >}}
 
