@@ -2,7 +2,7 @@ name: Create Repository Dispatch
 on:
   release:
     types:
-      published
+      released
 jobs:
   createRepositoryDispatch:
     runs-on: ubuntu-latest
