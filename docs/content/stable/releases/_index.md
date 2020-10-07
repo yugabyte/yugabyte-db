@@ -7,7 +7,7 @@ image: /images/section_icons/quick_start/sample_apps.png
 section: RELEASES
 headcontent:
 menu:
-  latest:
+  stable:
     identifier: releases
     weight: 900
 ---
@@ -45,7 +45,7 @@ menu:
         <div class="title">What's new</div>
       </div>
       <div class="body">
-          Learn what's new in the latest and current stable release series.
+          What's new in the latest and current stable release series.
       </div>
     </a>
   </div>
