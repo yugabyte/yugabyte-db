@@ -328,6 +328,8 @@ Status PgWrapper::InitDb(bool yb_enabled) {
   }
 
   vector<string> initdb_args { initdb_program_path, "-D", conf_.data_dir, "-U", "postgres" };
+  LOG(INFO) << "Launching initdb: " << AsString(initdb_args);
+
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   SetCommonEnv(&initdb_subprocess, yb_enabled);
   int exit_code = 0;

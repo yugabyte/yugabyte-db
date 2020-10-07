@@ -124,5 +124,12 @@ MonoDelta RpcController::timeout() const {
   return timeout_;
 }
 
+int32_t RpcController::call_id() const {
+  if (call_) {
+    return call_->call_id();
+  }
+  return -1;
+}
+
 } // namespace rpc
 } // namespace yb

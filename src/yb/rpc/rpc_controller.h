@@ -155,6 +155,8 @@ class RpcController {
   // May fail if index is invalid.
   Result<Slice> GetSidecar(int idx) const;
 
+  int32_t call_id() const;
+
  private:
   friend class OutboundCall;
   friend class Proxy;

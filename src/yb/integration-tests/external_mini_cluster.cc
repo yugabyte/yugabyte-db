@@ -1766,13 +1766,13 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   RETURN_NOT_OK_PREPEND(p->Start(),
                         Substitute("Failed to start subprocess $0", exe_));
 
-  stdout_tailer_thread_ = unique_ptr<LogTailerThread>(new LogTailerThread(
-      Substitute("[$0 stdout]", daemon_id_), p->ReleaseChildStdoutFd(), &std::cout));
+  stdout_tailer_thread_ = std::make_unique<LogTailerThread>(
+      Substitute("[$0 stdout]", daemon_id_), p->ReleaseChildStdoutFd(), &std::cout);
 
   // We will mostly see stderr output from the child process (because of --logtostderr), so we'll
   // assume that by default in the output prefix.
-  stderr_tailer_thread_ = unique_ptr<LogTailerThread>(new LogTailerThread(
-      default_output_prefix, p->ReleaseChildStderrFd(), &std::cerr));
+  stderr_tailer_thread_ = std::make_unique<LogTailerThread>(
+      default_output_prefix, p->ReleaseChildStderrFd(), &std::cerr);
 
   // The process is now starting -- wait for the bound port info to show up.
   Stopwatch sw;

@@ -53,7 +53,7 @@ DECLARE_bool(TEST_transaction_allow_rerequest_status);
 DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
-DECLARE_bool(transaction_disable_proactive_cleanup_in_tests);
+DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_bool(TEST_master_fail_transactional_tablet_lookups);
@@ -821,7 +821,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
 
 TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
-  FLAGS_transaction_disable_proactive_cleanup_in_tests = true;
+  FLAGS_TEST_disable_proactive_txn_cleanup_on_abort = true;
   FLAGS_aborted_intent_cleanup_ms = 1000; // 1 sec
 
   // Write { 1 -> 1, 2 -> 2 }.
@@ -874,7 +874,7 @@ class QLTransactionTestWithDisabledCompactions : public QLTransactionTest {
 
 TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDisabledCompactions) {
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
-  FLAGS_transaction_disable_proactive_cleanup_in_tests = true;
+  FLAGS_TEST_disable_proactive_txn_cleanup_on_abort = true;
   FLAGS_aborted_intent_cleanup_ms = 1000; // 1 sec
   FLAGS_delete_intents_sst_files = false;
 

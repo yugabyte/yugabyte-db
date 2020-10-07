@@ -50,6 +50,7 @@ set(TABLET_SRCS
   tablet_peer_mm_ops.cc
   tablet_peer.cc
   transaction_coordinator.cc
+  transaction_loader.cc
   transaction_participant.cc
   transaction_status_resolver.cc
   operation_order_verifier.cc
