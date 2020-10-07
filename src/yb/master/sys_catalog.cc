@@ -733,6 +733,56 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   return Status::OK();
 }
 
+Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
+                                               uint64_t *catalog_version,
+                                               uint64_t *last_breaking_version) {
+  TRACE_EVENT0("master", "ReadYsqlCatalogVersion");
+  const auto* tablet = tablet_peer()->tablet();
+  const auto* meta = tablet->metadata();
+  const std::shared_ptr<tablet::TableInfo> ysql_catalog_table_info =
+      VERIFY_RESULT(meta->GetTableInfo(ysql_catalog_table_id));
+  const Schema& schema = ysql_catalog_table_info->schema;
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
+                                                   boost::none /* transaction_id */,
+                                                   {} /* read_hybrid_time */,
+                                                   ysql_catalog_table_id));
+  QLTableRow source_row;
+  ColumnId version_col_id = VERIFY_RESULT(schema.ColumnIdByName("current_version"));
+  ColumnId last_breaking_version_col_id =
+      VERIFY_RESULT(schema.ColumnIdByName("last_breaking_version"));
+
+  if (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&source_row));
+    if (catalog_version) {
+      auto version_col_value = source_row.GetValue(version_col_id);
+      if (version_col_value) {
+        *catalog_version = version_col_value->int64_value();
+      } else {
+        return STATUS(Corruption, "Could not read syscatalog version");
+      }
+    }
+    // last_breaking_version is the last version (change) that invalidated ongoing transactions.
+    if (last_breaking_version) {
+      auto last_breaking_version_col_value = source_row.GetValue(last_breaking_version_col_id);
+      if (last_breaking_version_col_value) {
+        *last_breaking_version = last_breaking_version_col_value->int64_value();
+      } else {
+        return STATUS(Corruption, "Could not read syscatalog version");
+      }
+    }
+  } else {
+    // If no row it means version is 0 (not initialized yet).
+    if (catalog_version) {
+      *catalog_version = 0;
+    }
+    if (last_breaking_version) {
+      *last_breaking_version = 0;
+    }
+  }
+
+  return Status::OK();
+}
+
 Status SysCatalogTable::CopyPgsqlTables(
     const vector<TableId>& source_table_ids, const vector<TableId>& target_table_ids,
     const int64_t leader_term) {

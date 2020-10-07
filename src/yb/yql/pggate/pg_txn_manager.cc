@@ -258,6 +258,13 @@ Status PgTxnManager::CommitTransaction() {
 }
 
 Status PgTxnManager::AbortTransaction() {
+  // If a DDL operation during a DDL txn fails the txn will be aborted before we get here.
+  // However if there are failures afterwards (i.e. during COMMIT or catalog version increment),
+  // then we might get here with a ddl_txn_. Clean it up in that case.
+  if (ddl_txn_) {
+    RETURN_NOT_OK(ExitSeparateDdlTxnMode(false));
+  }
+
   if (!txn_in_progress_) {
     return Status::OK();
   }
@@ -314,7 +321,6 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   RSTATUS_DCHECK(!ddl_txn_,
           IllegalState, "EnterSeparateDdlTxnMode called when already in a DDL transaction");
   VLOG(2) << __PRETTY_FUNCTION__;
-
   ddl_session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
   ddl_session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
   ddl_txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());

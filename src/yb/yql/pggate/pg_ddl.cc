@@ -510,12 +510,12 @@ PgDropIndex::~PgDropIndex() {
 Status PgDropIndex::Exec() {
   client::YBTableName indexed_table_name;
   Status s = pg_session_->DropIndex(table_id_, &indexed_table_name);
-  RSTATUS_DCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
-  PgObjectId indexed_table_id(indexed_table_name.table_id());
-
-  pg_session_->InvalidateTableCache(table_id_);
-  pg_session_->InvalidateTableCache(indexed_table_id);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
+    RSTATUS_DCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
+    PgObjectId indexed_table_id(indexed_table_name.table_id());
+
+    pg_session_->InvalidateTableCache(table_id_);
+    pg_session_->InvalidateTableCache(indexed_table_id);
     return Status::OK();
   }
   return s;

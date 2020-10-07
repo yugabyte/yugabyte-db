@@ -414,7 +414,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // to wait for the cluster to be fully initialized, e.g. minicluster, YugaWare, etc.
   CHECKED_STATUS IsInitDbDone(const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp);
 
-  uint64_t GetYsqlCatalogVersion();
+  CHECKED_STATUS GetYsqlCatalogVersion(uint64_t* catalog_version, uint64_t* last_breaking_version);
 
   virtual CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                                TSHeartbeatResponsePB* resp);

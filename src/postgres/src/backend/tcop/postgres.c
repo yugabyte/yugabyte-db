@@ -40,6 +40,7 @@
 #include "access/printtup.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
+#include "catalog/ybc_catalog_version.h"
 #include "commands/async.h"
 #include "commands/portalcmds.h"
 #include "commands/prepare.h"
@@ -3701,7 +3702,7 @@ static void YBRefreshCache()
 
 	/* Get the latest syscatalog version from the master */
 	uint64_t catalog_master_version = 0;
-	YBCPgGetCatalogMasterVersion(&catalog_master_version);
+	YBCGetMasterCatalogVersion(&catalog_master_version);
 
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
@@ -3766,7 +3767,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	 * to refresh the cache.
 	 */
 	uint64_t catalog_master_version = 0;
-	YBCPgGetCatalogMasterVersion(&catalog_master_version);
+	YBCGetMasterCatalogVersion(&catalog_master_version);
 	need_global_cache_refresh =
 		yb_catalog_cache_version != catalog_master_version;
 	if (!(need_global_cache_refresh || need_table_cache_refresh))
@@ -3843,7 +3844,8 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
 						 errmsg("Catalog Version Mismatch: A DDL occurred "
-								"while processing this query. Try Again.")));
+								"while processing this query. Try again."),
+						 errdetail("Internal error: %s", edata->message)));
 			else
 			{
 				Assert(need_table_cache_refresh);
@@ -3934,7 +3936,7 @@ static void YBCheckSharedCatalogCacheVersion() {
 	 * We cannot refresh the cache if we are already inside a transaction, so don't
 	 * bother checking shared memory.
 	 */
-	if (xact_started)
+	if (IsTransactionOrTransactionBlock())
 		return;
 
 	/*
@@ -3947,7 +3949,8 @@ static void YBCheckSharedCatalogCacheVersion() {
 	uint64_t shared_catalog_version;
 	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
 
-	if (yb_catalog_cache_version < shared_catalog_version) {
+	if (yb_catalog_cache_version < shared_catalog_version)
+	{
 		YBRefreshCache();
 	}
 }

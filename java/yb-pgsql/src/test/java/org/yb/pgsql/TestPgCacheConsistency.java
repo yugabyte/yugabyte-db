@@ -200,7 +200,7 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
          Statement statement2 = connection2.createStatement()) {
       // Create a table with connection 1.
       statement1.execute("CREATE TABLE a(id int primary key)");
-
+      statement1.execute("ALTER TABLE a ADD b int");
       // Create a table with connection 2 (should fail)
       runInvalidQuery(statement2, "CREATE TABLE b(id int primary key)",
           "Catalog Version Mismatch");
@@ -353,16 +353,20 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Perform a DDL operation, which cannot (as of 07/01/2019) be rolled back.
       statement2.execute("CREATE TABLE other_table(id int)");
 
+      statement2.execute("SELECT * FROM test_table");
+
       // Modify table from connection 2.
       statement1.execute("ALTER TABLE test_table ADD COLUMN c int");
 
       waitForTServerHeartbeat();
 
-      // Select does not fail, so rollback is not needed.
-      statement2.execute("SELECT * FROM test_table");
+      // Select should fail because the alter modified the table (catalog version mismatch).
+      runInvalidQuery(statement2,"SELECT * FROM test_table", "Catalog Version Mismatch");
+
+      // COMMIT will succeed as a command but will rollback the transaction due to the error above.
       statement2.execute("COMMIT");
 
-      // Check that the table was created.
+      // Check that the other table was created.
       statement2.execute("SELECT * FROM other_table");
     }
   }

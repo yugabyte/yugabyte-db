@@ -284,7 +284,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ListCell   *l;
 	foreach(l, estate->es_rowMarks) {
 		ExecRowMark *erm = (ExecRowMark *) lfirst(l);
-		// Do not propogate non-row-locking row marks.
+		// Do not propagate non-row-locking row marks.
 		if (erm->markType != ROW_MARK_REFERENCE &&
 			erm->markType != ROW_MARK_COPY)
 			ybc_state->exec_params->rowmark = erm->markType;

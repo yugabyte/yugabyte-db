@@ -41,10 +41,10 @@
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_database.h"
+#include "catalog/ybc_catalog_version.h"
 #include "utils/catcache.h"
 #include "utils/inval.h"
 #include "utils/relcache.h"
-#include "utils/rel.h"
 #include "executor/tuptable.h"
 #include "executor/ybcExpr.h"
 #include "optimizer/ybcplan.h"
@@ -183,15 +183,6 @@ static void YBCBindTupleId(YBCPgStatement pg_stmt, Datum tuple_id) {
 }
 
 /*
- * Check if operation changes a system table, ignore changes during
- * initialization (bootstrap mode).
- */
-static bool IsSystemCatalogChange(Relation rel)
-{
-	return IsSystemRelation(rel) && !IsBootstrapProcessingMode();
-}
-
-/*
  * Utility method to execute a prepared write statement and clean it up.
  * Will handle the case if the write changes the system catalogs meaning
  * we need to increment the catalog versions accordingly.
@@ -200,27 +191,9 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
                              Relation rel,
                              int *rows_affected_count)
 {
-	bool is_syscatalog_change = IsSystemCatalogChange(rel);
-	bool modifies_row = false;
-	HandleYBStatus(YBCPgDmlModifiesRow(ybc_stmt, &modifies_row));
-
-	/*
-	 * If this write may invalidate catalog cache tuples (i.e. UPDATE or DELETE),
-	 * or this write may insert into a cached list, we must increment the
-	 * cache version so other sessions can invalidate their caches.
-	 * NOTE: If this relation caches lists, an INSERT could effectively be
-	 * UPDATINGing the list object.
-	 */
-	bool is_syscatalog_version_change = is_syscatalog_change
-			&& (modifies_row || RelationHasCachedLists(rel));
-
-	/* Let the master know if this should increment the catalog version. */
-	if (is_syscatalog_version_change)
-	{
-		HandleYBStatus(YBCPgSetIsSysCatalogVersionChange(ybc_stmt));
-	}
-
 	HandleYBStatus(YBCPgSetCatalogCacheVersion(ybc_stmt, yb_catalog_cache_version));
+
+	bool is_syscatalog_version_inc = YBCMarkStatementIfCatalogVersionIncrement(ybc_stmt, rel);
 
 	/* Execute the insert. */
 	HandleYBStatus(YBCPgDmlExecWriteOp(ybc_stmt, rows_affected_count));
@@ -235,7 +208,7 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 	 * other backends).
 	 * If changes occurred, then a cache refresh will be needed as usual.
 	 */
-	if (is_syscatalog_version_change)
+	if (is_syscatalog_version_inc)
 	{
 		// TODO(shane) also update the shared memory catalog version here.
 		yb_catalog_cache_version += 1;
@@ -648,7 +621,11 @@ bool YBCExecuteUpdate(Relation rel,
 			Expr *expr = copyObject(tle->expr);
 			YBCExprInstantiateParams(expr, estate->es_param_list_info);
 
-			YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, expr, attnum, type_id, type_mod);
+			YBCPgExpr ybc_expr = YBCNewEvalSingleParamExprCall(update_stmt,
+			                                                   expr,
+			                                                   attnum,
+			                                                   type_id,
+			                                                   type_mod);
 
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 

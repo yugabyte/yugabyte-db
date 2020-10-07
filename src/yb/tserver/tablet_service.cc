@@ -1398,14 +1398,21 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   // For postgres requests check that the syscatalog version matches.
   if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
+    uint64_t last_breaking_catalog_version = 0; // unset.
     for (const auto& pg_req : req->pgsql_write_batch()) {
-      if (pg_req.has_ysql_catalog_version() &&
-          pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
-        SetupErrorAndRespond(resp->mutable_error(),
-            STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while processing "
-                                       "this query. Try Again."),
-            TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-        return;
+      if (pg_req.has_ysql_catalog_version()) {
+        if (last_breaking_catalog_version == 0) {
+          // Initialize last breaking version if not yet set.
+          server_->get_ysql_catalog_version(nullptr /* current_version */,
+                                            &last_breaking_catalog_version);
+        }
+        if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
+          SetupErrorAndRespond(resp->mutable_error(),
+              STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
+                                        "processing this query. Try again."),
+              TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+          return;
+        }
       }
     }
   }
@@ -1739,15 +1746,22 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
   RowMarkType batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
   if (!req->pgsql_batch().empty()) {
+    uint64_t last_breaking_catalog_version = 0; // unset.
     for (const auto& pg_req : req->pgsql_batch()) {
       // For postgres requests check that the syscatalog version matches.
-      if (pg_req.has_ysql_catalog_version() &&
-          pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
-        SetupErrorAndRespond(resp->mutable_error(),
-            STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while processing "
-                                       "this query. Try Again."),
-            TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+      if (pg_req.has_ysql_catalog_version()) {
+        if (last_breaking_catalog_version == 0) {
+          // Initialize last breaking version if not yet set.
+          server_->get_ysql_catalog_version(nullptr /* current_version */,
+                                            &last_breaking_catalog_version);
+        }
+        if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
+          SetupErrorAndRespond(resp->mutable_error(),
+              STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
+                                        "processing this query. Try again."),
+              TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
         return;
+        }
       }
       RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
       if (IsValidRowMarkType(current_row_mark)) {

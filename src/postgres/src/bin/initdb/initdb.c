@@ -3174,10 +3174,10 @@ initialize_data_directory(void)
 	setup_config();
 
 	/* Bootstrap template1 */
-  bootstrap_template1();
-
-  if (IsYugaByteLocalNodeInitdb())
-    return;
+	bootstrap_template1();
+	
+	if (IsYugaByteLocalNodeInitdb())
+		return;
 
 	/*
 	 * Make the per-database PG_VERSION for template1 only after init'ing it

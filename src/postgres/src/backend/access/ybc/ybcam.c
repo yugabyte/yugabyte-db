@@ -1120,9 +1120,9 @@ ybcBeginScan(Relation relation, Relation index, bool xs_want_itup, int nkeys, Sc
 	if (!IsSystemRelation(relation))
 	{
 		HandleYBStatusWithOwner(YBCPgSetCatalogCacheVersion(ybScan->handle,
-		                                                        yb_catalog_cache_version),
-		                            ybScan->handle,
-		                            ybScan->stmt_owner);
+		                                                    yb_catalog_cache_version),
+		                        ybScan->handle,
+		                        ybScan->stmt_owner);
 	}
 
 	bms_free(scan_plan.hash_key);

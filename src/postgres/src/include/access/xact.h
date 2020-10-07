@@ -21,6 +21,8 @@
 #include "storage/sinval.h"
 #include "utils/datetime.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 /*
  * Maximum size of Global Transaction ID (including '\0').
  *
@@ -442,5 +444,24 @@ extern bool IsInParallelMode(void);
 
 extern void YBMarkDataSent(void);
 extern bool YBIsDataSent(void);
+
+/*
+ * Utilities for postponed pggate DDL statement handles, that should be
+ * executed after the YSQL DDL transaction has commited. To qualify for this
+ * the DDL must have the following properties:
+ *   1. It cannot be rolled back by abort (so we wait for commit to succeed).
+ *   2. It does not cause inconsistencies if it fails (i.e. after txn commit).
+ * Currently the main example is dropping DocDB objects (e.g. table/indexes)
+ * which we cannot roll back, and also does not cause inconsistency if it fails
+ * after YSQL-layer deleted the metadata entry for that object (because we do
+ * not reuse oids/uuids -- so objects remain simply orphaned/unused).
+ * Note: The expectation is that orphaned DocDB objects will be cleaned
+ *       up by a DocDB (catalog manager) background-cleanup job. This would
+ *       eventually also roll back failed (online) alter operations. Though as
+ *       of 08/2020 this is not yet done (#3979).
+ */
+extern void YBSaveDdlHandle(YBCPgStatement handle);
+extern List* YBGetDdlHandles(void);
+extern void YBClearDdlHandles(void);
 
 #endif							/* XACT_H */
