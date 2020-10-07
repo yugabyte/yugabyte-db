@@ -595,10 +595,5 @@ void RetryableRequests::SetMetricEntity(const scoped_refptr<MetricEntity>& metri
   impl_->SetMetricEntity(metric_entity);
 }
 
-const std::string kMinRunningRequestIdCategoryName = "min running request ID";
-
-StatusCategoryRegisterer min_running_request_id_category_registerer(
-    StatusCategoryDescription::Make<MinRunningRequestIdTag>(&kMinRunningRequestIdCategoryName));
-
 } // namespace consensus
 } // namespace yb
