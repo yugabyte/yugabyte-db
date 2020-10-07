@@ -765,6 +765,8 @@ message TSHeartbeatResponsePB {
   // Used by tservers and postgres backends to decide if a cache refresh is needed.
   optional uint64 ysql_catalog_version = 10;
 
+  optional uint64 ysql_last_breaking_catalog_version = 15;
+
   optional UniverseKeyRegistryPB universe_key_registry = 11;
 
   optional cdc.ConsumerRegistryPB consumer_registry = 12;

@@ -484,11 +484,13 @@ int TabletServer::GetSharedMemoryFd() {
   return shared_object_.GetFd();
 }
 
-void TabletServer::SetYSQLCatalogVersion(uint64_t new_version) {
+void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   std::lock_guard<simple_spinlock> l(lock_);
+
   if (new_version > ysql_catalog_version_) {
     ysql_catalog_version_ = new_version;
     shared_object_->SetYSQLCatalogVersion(new_version);
+    ysql_last_breaking_catalog_version_ = new_breaking_version;
   } else if (new_version < ysql_catalog_version_) {
     LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;

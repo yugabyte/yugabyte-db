@@ -1273,12 +1273,16 @@ DefineIndex(Oid relationId,
 	 */
 
 	elog(LOG, "committing pg_index tuple with indislive=true");
-	CommitTransactionCommand();
 	/* TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 	 * level 1). */
-	YBDecrementDdlNestingLevel(true /* success */);
-	YBIncrementDdlNestingLevel();
+	/* No need to break (abort) ongoing txns since this is an online schema change */
+	YBDecrementDdlNestingLevel(true /* success */, 
+	                           true /* is_catalog_version_increment */,
+	                           false /* is_breaking_catalog_change */);
+	CommitTransactionCommand();
+
 	StartTransactionCommand();
+	YBIncrementDdlNestingLevel();
 
 	/*
 	 * TODO(jason): retry backfill or revert schema changes instead of failing
@@ -1306,12 +1310,16 @@ DefineIndex(Oid relationId,
 	 * Commit this transaction to make the indisready update visible.
 	 */
 	elog(LOG, "committing pg_index tuple with indisready=true");
-	CommitTransactionCommand();
 	/* TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 	 * level 1). */
-	YBDecrementDdlNestingLevel(true /* success */);
-	YBIncrementDdlNestingLevel();
+	/* No need to break (abort) ongoing txns since this is an online schema change */
+	YBDecrementDdlNestingLevel(true /* success */, 
+	                           true /* is_catalog_version_increment */,
+	                           false /* is_breaking_catalog_change */);
+	CommitTransactionCommand();
+	
 	StartTransactionCommand();
+	YBIncrementDdlNestingLevel();
 
 	/* TODO(jason): handle exclusion constraints, possibly not here. */
 

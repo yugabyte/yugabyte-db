@@ -58,6 +58,7 @@ static const uint32_t kPgSequencesDataDatabaseOid = 0xFFFF;
 static const uint32_t kPgIndexTableOid = 2610;  // Hardcoded for pg_index. (in pg_index.h)
 
 extern const TableId kPgProcTableId;
+extern const TableId kPgYbCatalogVersionTableId;
 
 // Get YB namespace id for a Postgres database.
 NamespaceId GetPgsqlNamespaceId(uint32_t database_oid);

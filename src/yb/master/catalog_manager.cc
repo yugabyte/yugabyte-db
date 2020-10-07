@@ -6249,9 +6249,28 @@ CHECKED_STATUS CatalogManager::IsInitDbDone(
   return Status::OK();
 }
 
-uint64_t CatalogManager::GetYsqlCatalogVersion() {
+Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
+                                             uint64_t* last_breaking_version) {
+  RETURN_NOT_OK(CheckOnline());
+
+  auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
+  if (table_info != nullptr) {
+    return sys_catalog_->ReadYsqlCatalogVersion(kPgYbCatalogVersionTableId,
+                                                catalog_version,
+                                                last_breaking_version);
+  }
+
   auto l = ysql_catalog_config_->LockForRead();
-  return l->data().pb.ysql_catalog_config().version();
+  // last_breaking_version is the last version (change) that invalidated ongoing transactions.
+  // If using the old (protobuf-based) version method, we do not have any information about
+  // breaking changes so assuming every change is a breaking change.
+  if (catalog_version) {
+    *catalog_version = l->data().pb.ysql_catalog_config().version();
+  }
+  if (last_breaking_version) {
+    *last_breaking_version = l->data().pb.ysql_catalog_config().version();
+  }
+  return Status::OK();
 }
 
 Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer) {

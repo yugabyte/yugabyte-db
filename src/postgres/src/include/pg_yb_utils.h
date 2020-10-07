@@ -58,6 +58,17 @@ extern uint64_t yb_catalog_cache_version;
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
 /*
+ * Utility to get the current cache version that accounts for the fact that
+ * during a DDL we automatically apply the pending syscatalog changes to
+ * the local cache (of the current session).
+ * Therefore, if we are within a DDL we return yb_catalog_cache_version + 1.
+ * Currently, this is only used during procedure/function compilation so that
+ * compilation during CREATE FUNCTION/PROCEDURE is cached correctly.
+ * TODO Is there a simpler way to handle this?
+ */
+extern uint64_t YBGetActiveCatalogCacheVersion();
+
+/*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
  * This relies on pgapi being non-NULL, so probably should not be used
  * in postmaster (which does not need to talk to YB backend) or early
@@ -140,10 +151,16 @@ extern bool YBRelHasSecondaryIndices(Relation relation);
 extern bool YBTransactionsEnabled();
 
 /*
- * Given a status returned by YB C++ code, reports that status using ereport if
- * it is not OK.
+ * Given a status returned by YB C++ code, reports that status as a PG/YSQL
+ * ERROR using ereport if it is not OK.
  */
 extern void	HandleYBStatus(YBCStatus status);
+
+/*
+ * Generic version of HandleYBStatus that reports the YBCStatus at the
+ * specified PG/YSQL error level (e.g. ERROR or WARNING or NOTICE).
+ */
+void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level);
 
 /*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
@@ -349,7 +366,9 @@ bool YBIsInitDbAlreadyDone();
 
 int YBGetDdlNestingLevel();
 void YBIncrementDdlNestingLevel();
-void YBDecrementDdlNestingLevel(bool success);
+void YBDecrementDdlNestingLevel(bool success,
+                                bool is_catalog_version_increment,
+                                bool is_breaking_catalog_change);
 
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();

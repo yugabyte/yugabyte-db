@@ -25,6 +25,7 @@
 
 #include "miscadmin.h"
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
 #include "catalog/pg_am.h"
@@ -568,7 +569,11 @@ YBCDropTable(Oid relationId)
 		const bool valid_handle = !not_found;
 		if (valid_handle)
 		{
-			HandleYBStatusIgnoreNotFound(YBCPgExecDropTable(handle), &not_found);
+			/*
+			 * We cannot abort drop in DocDB so postpone the execution until
+			 * the rest of the statement/txn is finished executing.
+			 */
+			YBSaveDdlHandle(handle);
 		}
 	}
 }
@@ -1090,7 +1095,11 @@ YBCDropIndex(Oid relationId)
 																 &not_found);
 		const bool valid_handle = !not_found;
 		if (valid_handle) {
-			HandleYBStatusIgnoreNotFound(YBCPgExecDropIndex(handle), &not_found);
+			/*
+			 * We cannot abort drop in DocDB so postpone the execution until
+			 * the rest of the statement/txn is finished executing.
+			 */
+			YBSaveDdlHandle(handle);
 		}
 	}
 }

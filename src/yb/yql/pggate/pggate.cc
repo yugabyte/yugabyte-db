@@ -571,14 +571,6 @@ Status PgApiImpl::NewDropTable(const PgObjectId& table_id,
   return Status::OK();
 }
 
-Status PgApiImpl::ExecDropTable(PgStatement *handle) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_TABLE)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  return down_cast<PgDropTable*>(handle)->Exec();
-}
-
 Status PgApiImpl::NewTruncateTable(const PgObjectId& table_id,
                                    PgStatement **handle) {
   auto stmt = std::make_unique<PgTruncateTable>(pg_session_, table_id);
@@ -739,14 +731,6 @@ Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
   return Status::OK();
 }
 
-Status PgApiImpl::ExecDropIndex(PgStatement *handle) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_INDEX)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  return down_cast<PgDropIndex*>(handle)->Exec();
-}
-
 Result<IndexPermissions> PgApiImpl::WaitUntilIndexPermissionsAtLeast(
     const PgObjectId& table_id,
     const PgObjectId& index_id,
@@ -759,6 +743,23 @@ Result<IndexPermissions> PgApiImpl::WaitUntilIndexPermissionsAtLeast(
 
 Status PgApiImpl::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
   return pg_session_->AsyncUpdateIndexPermissions(indexed_table_id);
+}
+
+Status PgApiImpl::ExecPostponedDdlStmt(PgStatement *handle) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  switch (handle->stmt_op()) {
+    case StmtOp::STMT_DROP_TABLE:
+      return down_cast<PgDropTable*>(handle)->Exec();
+    case StmtOp::STMT_DROP_INDEX:
+      return down_cast<PgDropIndex*>(handle)->Exec();
+
+    default:
+      break;
+  }
+  return STATUS(InvalidArgument, "Invalid statement handle");
 }
 
 //--------------------------------------------------------------------------------------------------
