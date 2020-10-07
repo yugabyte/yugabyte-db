@@ -64,6 +64,10 @@ class TransactionStatusResolver::Impl {
     return result_promise_.get_future();
   }
 
+  bool Running() {
+    return run_latch_.count() != 0;
+  }
+
   void Add(const TabletId& status_tablet, const TransactionId& transaction_id) {
     LOG_IF(DFATAL, run_latch_.count()) << "Add while running";
     queues_[status_tablet].push_back(transaction_id);
@@ -152,7 +156,7 @@ class TransactionStatusResolver::Impl {
       // Node with old software version would always return 1 status.
       LOG_WITH_PREFIX(DFATAL)
           << "Bad response size, expected " << request_size << " entries, but found: "
-          << response.ShortDebugString();
+          << response.ShortDebugString() << ", queue: " << AsString(queues_);
       Execute();
       return;
     }
@@ -236,6 +240,10 @@ void TransactionStatusResolver::Start(CoarseTimePoint deadline) {
 
 std::future<Status> TransactionStatusResolver::ResultFuture() {
   return impl_->ResultFuture();
+}
+
+bool TransactionStatusResolver::Running() const {
+  return impl_->Running();
 }
 
 } // namespace tablet

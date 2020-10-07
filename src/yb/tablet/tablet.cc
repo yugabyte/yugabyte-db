@@ -1092,7 +1092,7 @@ Status Tablet::PrepareTransactionWriteBatch(
       put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level,
       UsePartialRangeKeyIntents(*metadata_),
       Slice(encoded_replicated_batch_idx_set.data(), encoded_replicated_batch_idx_set.size()),
-      &last_batch_data.write_id);
+      &last_batch_data.next_write_id);
   last_batch_data.hybrid_time = hybrid_time;
   transaction_participant()->BatchReplicated(transaction_id, last_batch_data);
 
@@ -2391,7 +2391,7 @@ Status Tablet::FlushWithRetries(
 
 ScopedRWOperationPause Tablet::PauseReadWriteOperations(Stop stop) {
   LOG_SLOW_EXECUTION(WARNING, 1000,
-                     Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
+                     Substitute("$0Waiting for pending ops to complete", LogPrefix())) {
     return ScopedRWOperationPause(
         &pending_op_counter_,
         CoarseMonoClock::Now() +

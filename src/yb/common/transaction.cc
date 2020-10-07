@@ -76,7 +76,7 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
 }
 
 MonoDelta TransactionRpcTimeout() {
-  return FLAGS_transaction_rpc_timeout_ms * 1ms;
+  return FLAGS_transaction_rpc_timeout_ms * 1ms * kTimeMultiplier;
 }
 
 // TODO(dtxn) correct deadline should be calculated and propagated.

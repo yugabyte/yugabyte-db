@@ -37,8 +37,9 @@ size_t CountRunningTransactions(MiniCluster* cluster) {
   return result;
 }
 
-void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster, size_t limit_per_tablet) {
-  MonoTime deadline = MonoTime::Now() + 7s * kTimeMultiplier;
+void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster,
+                                                 size_t max_remaining_txns_per_tablet) {
+  MonoTime deadline = MonoTime::Now() + 15s * kTimeMultiplier;
   bool has_bad = false;
   for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
     auto server = cluster->mini_tablet_server(i)->server();
@@ -67,8 +68,8 @@ void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster, size_t li
     for (const auto& peer : tablets) {
       auto participant = peer->tablet()->transaction_participant();
       if (participant) {
-        auto status = Wait([participant, limit_per_tablet] {
-              return participant->TEST_GetNumRunningTransactions() <= limit_per_tablet;
+        auto status = Wait([participant, max_remaining_txns_per_tablet] {
+              return participant->TEST_GetNumRunningTransactions() <= max_remaining_txns_per_tablet;
             },
             deadline,
             "Wait until no transactions are running");

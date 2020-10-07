@@ -200,8 +200,6 @@ class TabletPeer : public consensus::ConsensusContext,
 
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
 
-  HybridTime Now() override;
-
   void UpdateClock(HybridTime hybrid_time) override;
 
   std::unique_ptr<UpdateTxnOperationState> CreateUpdateTransactionState(
@@ -491,6 +489,7 @@ class TabletPeer : public consensus::ConsensusContext,
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;
   uint64_t NumSSTFiles() override;
   void ListenNumSSTFilesChanged(std::function<void()> listener) override;
+  rpc::Scheduler& scheduler() const override;
 
   MetricRegistry* metric_registry_;
 
@@ -506,6 +505,8 @@ class TabletPeer : public consensus::ConsensusContext,
   std::atomic<bool> can_be_deleted_ = {false};
 
   std::shared_future<client::YBClient*> client_future_;
+
+  rpc::Messenger* messenger_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };
