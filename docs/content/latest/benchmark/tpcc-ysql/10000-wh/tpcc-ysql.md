@@ -30,7 +30,7 @@ Once the database and tables are created, we can load the data from all the 10 c
 10 |  ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=9001 --total-warehouses=10000 --loaderthreads 48
 
 
-Tune the --loaderthreads parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The value specified here, 48 threads, is optimal for a 30-node cluster of type c5d.4xlarge (16 vCPUs). iFor machines with more vCPUs, increase this value accordingly.
+Tune the --loaderthreads parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The value specified here, 48 threads, is optimal for a 3-node cluster of type c5d.4xlarge (16 vCPUs). For larger clusters, or machines with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
 Once the loading is done we need to enable the foreign keys that were disabled to aid the loading times:
 
 ```sh
