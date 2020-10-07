@@ -377,6 +377,9 @@ public class NodeManager extends DevopsBase {
           Map<String, String> gflags = new HashMap<>(taskParam.gflags);
 
           if (taskParam.updateMasterAddrsOnly) {
+            if (taskParam.isMasterInShellMode) {
+              masterAddresses = "";
+            }
             if (processType.equals(ServerType.MASTER.name())) {
               gflags.put("master_addresses", masterAddresses);
             } else {

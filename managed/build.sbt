@@ -39,7 +39,8 @@ libraryDependencies ++= Seq(
   "com.typesafe.play" %% "play-json" % "2.6.14",
   "org.asynchttpclient" % "async-http-client" % "2.2.1",
   "com.h2database" % "h2" % "1.4.193" % Test,
-  "org.hamcrest" % "hamcrest-core" % "2.2" % Test
+  "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
+  "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test
 )
 // Default to true if nothing passed on the env, so we can pick up YB jars from local java itest.
 lazy val mavenLocal = Option(System.getenv("USE_MAVEN_LOCAL")).getOrElse("false")
