@@ -43,11 +43,15 @@ Use Yugabyte Platform to perform a regularly scheduled backup of a full Yugabyte
 
 ![Create Backup form](/images/yp/create-backup.png)
 
-4. Enter the **Backup frequency** (an interval in in milliseconds) or enter a `cron` expression.
-5. Select the **Storage** option.
-6. Select the **Table keyspace**.
-7. In the **Tables to backup** field, select specific tables or the **Full Universe Backup** option.
-8. Click **OK** to create the schedule. The first backup will begin immediately and then subsequent backups will be created based on the backup frequency.
+4. Enter the **Backup frequency** (interval in milliseconds) or a **Cron expression (UTC)***. For details on the cron expression format, hover over the question mark (?) icon.
+5. Select the **YSQL** tab and enter values for the following fields:
+
+- **Storage**: Select `GCS Storage`, `S3 Storage`, or `NFS Storage`.
+- **Namespace**: Select the namespace from the drop-down list of available namespaces.
+- **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
+- **Number of Days to Retain Backup**: Default is unspecified which means to retain indefinitely.
+
+6. Click **OK**. The first backup will begin immediately and then subsequent backups will be created based on the value you specified for **Backup frequency** or **Cron expression**.
 
 ## Disable a scheduled backup
 

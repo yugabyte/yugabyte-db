@@ -1,7 +1,7 @@
 ---
 title: Back up data universe YCQL data
 headerTitle: Back up universe YCQL data
-linkTitle: Back up data
+linkTitle: Back up universe data
 description: Use Yugabyte Platform to back up data in YCQL tables.
 menu:
   latest:
@@ -35,6 +35,6 @@ Follow the steps here to use the Yugabyte Platform to back up YugabyteDB univers
 1. Go to the **Backups** tab and then click **Create Backup**. A modal should appear where you can
 enter the table and select your backup options. 
 
-![Create Backup - YCQL](/images/ee/create-backup-ycql.png)
+![Create Backup - YCQL](/images/yp/create-backup-ycql.png)
 
 Click **OK**. If you refresh the page, you'll eventually see a completed task.

@@ -39,6 +39,6 @@ Follow the steps here to use the Yugabyte Platform to back up YugabyteDB univers
 1. Go to the **Backups** tab and then click **Create Backup**. A modal should appear where you can
 enter the table and select your backup options. 
 
-![Create Backup - YSQL](/images/ee/create-backup-ysql.png)
+![Create Backup - YSQL](/images/yp/create-backup-ysql.png)
 
 Click **OK**. If you refresh the page, you'll eventually see a completed task.
