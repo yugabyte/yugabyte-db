@@ -350,10 +350,9 @@ class PgApiImpl {
   CHECKED_STATUS DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
                                        bool is_null, const YBCPgTypeEntity *type_entity);
 
-
-  // This function returns the tuple id (ybctid) of a Postgres tuple.
-  CHECKED_STATUS DmlBuildYBTupleId(PgStatement *handle, const PgAttrValueDescriptor *attrs,
-                                   int32_t nattrs, uint64_t *ybctid);
+  using YBTupleIdProcessor = std::function<Status(const Slice&)>;
+  CHECKED_STATUS ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
+                                  const YBTupleIdProcessor& processor);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.
@@ -468,10 +467,9 @@ class PgApiImpl {
   CHECKED_STATUS OperatorAppendArg(PgExpr *op_handle, PgExpr *arg);
 
   // Foreign key reference caching.
-  bool ForeignKeyReferenceExists(YBCPgOid table_id, std::string&& ybctid);
-  CHECKED_STATUS CacheForeignKeyReference(YBCPgOid table_id, std::string&& ybctid);
-  CHECKED_STATUS DeleteForeignKeyReference(YBCPgOid table_id, std::string&& ybctid);
-  void ClearForeignKeyReferenceCache();
+  void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
+  Result<bool> ForeignKeyReferenceExists(PgOid table_id, const Slice& ybctid, PgOid database_id);
+  void AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid);
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);

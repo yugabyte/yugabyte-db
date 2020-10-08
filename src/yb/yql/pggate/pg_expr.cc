@@ -20,6 +20,7 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/util/string_util.h"
+#include "yb/util/decimal.h"
 
 #include "postgres/src/include/pg_config_manual.h"
 

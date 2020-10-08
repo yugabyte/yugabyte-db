@@ -136,17 +136,14 @@ Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot)
  * meaning the ybctid will be unique. Therefore you should only use this if the relation has
  * a primary key or you're doing an insert.
  */
-Datum YBCGetYBTupleIdFromTuple(YBCPgStatement pg_stmt,
-							   Relation rel,
+Datum YBCGetYBTupleIdFromTuple(Relation rel,
 							   HeapTuple tuple,
 							   TupleDesc tupleDesc) {
 	Bitmapset *pkey    = YBGetTableFullPrimaryKeyBms(rel);
 	AttrNumber minattr = YBSystemFirstLowInvalidAttributeNumber + 1;
-	const int nattrs = bms_num_members(pkey);
-	YBCPgAttrValueDescriptor *attrs =
-			(YBCPgAttrValueDescriptor*)palloc(nattrs * sizeof(YBCPgAttrValueDescriptor));
-	uint64_t tuple_id = 0;
-	YBCPgAttrValueDescriptor *next_attr = attrs;
+	YBCPgYBTupleIdDescriptor *descr = YBCCreateYBTupleIdDescriptor(
+		YBCGetDatabaseOid(rel), RelationGetRelid(rel), bms_num_members(pkey));
+	YBCPgAttrValueDescriptor *next_attr = descr->attrs;
 	int col = -1;
 	while ((col = bms_next_member(pkey, col)) >= 0) {
 		AttrNumber attnum = col + minattr;
@@ -168,8 +165,10 @@ Datum YBCGetYBTupleIdFromTuple(YBCPgStatement pg_stmt,
 		}
 		++next_attr;
 	}
-	HandleYBStatus(YBCPgDmlBuildYBTupleId(pg_stmt, attrs, nattrs, &tuple_id));
-	pfree(attrs);
+	bms_free(pkey);
+	uint64_t tuple_id = 0;
+	HandleYBStatus(YBCPgBuildYBTupleId(descr, &tuple_id));
+	pfree(descr);
 	return (Datum)tuple_id;
 }
 
@@ -246,7 +245,7 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	                              &insert_stmt));
 
 	/* Get the ybctid for the tuple and bind to statement */
-	tuple->t_ybctid = YBCGetYBTupleIdFromTuple(insert_stmt, rel, tuple, tupleDesc);
+	tuple->t_ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, tupleDesc);
 	YBCBindTupleId(insert_stmt, tuple->t_ybctid);
 
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
@@ -283,6 +282,9 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 		MarkCurrentCommandUsed();
 		CacheInvalidateHeapTuple(rel, tuple, NULL);
 	}
+
+	/* Delete row from foreign key cache */
+	YBCPgDeleteFromForeignKeyReferenceCache(relid, tuple->t_ybctid);
 
 	/* Execute the insert */
 	YBCExecWriteStmt(insert_stmt, rel, NULL /* rows_affected_count */);
@@ -406,6 +408,49 @@ Oid YBCHeapInsert(TupleTableSlot *slot,
 	}
 }
 
+static YBCPgYBTupleIdDescriptor*
+YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
+{
+	TupleDesc tupdesc = RelationGetDescr(unique_index);
+	const int nattrs = IndexRelationGetNumberOfKeyAttributes(unique_index);
+	YBCPgYBTupleIdDescriptor* result = YBCCreateYBTupleIdDescriptor(
+		YBCGetDatabaseOid(unique_index), RelationGetRelid(unique_index), nattrs + 1);
+	YBCPgAttrValueDescriptor *next_attr = result->attrs;
+	for (AttrNumber attnum = 1; attnum <= nattrs; ++attnum)
+	{
+		Oid type_id = GetTypeId(attnum, tupdesc);
+		next_attr->type_entity = YBCDataTypeFromOidMod(attnum, type_id);
+		next_attr->attr_num = attnum;
+		next_attr->datum = values[attnum - 1];
+		next_attr->is_null = false;
+		++next_attr;
+	}
+	YBCFillUniqueIndexNullAttribute(result);
+	return result;
+}
+
+static void
+YBCForeignKeyReferenceCacheDeleteIndex(Relation index, Datum *values, bool *isnulls)
+{
+	Assert(index->rd_rel->relkind == RELKIND_INDEX);
+	/* Only unique index can be used in foreign key constraints */
+	if (!index->rd_index->indisprimary && index->rd_index->indisunique)
+	{
+		const int nattrs = IndexRelationGetNumberOfKeyAttributes(index);
+		/*
+		 * Index with at least one NULL value can't be referenced by foreign key constraint,
+		 * and can't be stored in cache, so ignore it.
+		 */
+		for (int i = 0; i < nattrs; ++i)
+			if (isnulls[i])
+				return;
+
+		YBCPgYBTupleIdDescriptor* descr = YBCBuildNonNullUniqueIndexYBTupleId(index, values);
+		HandleYBStatus(YBCPgForeignKeyReferenceCacheDelete(descr));
+		pfree(descr);
+	}
+}
+
 void YBCExecuteInsertIndex(Relation index,
 						   Datum *values,
 						   bool *isnull,
@@ -475,10 +520,7 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate, Modify
 	if (isSingleRow)
 	{
 		HeapTuple tuple = ExecMaterializeSlot(slot);
-		ybctid = YBCGetYBTupleIdFromTuple(delete_stmt,
-										  rel,
-										  tuple,
-										  slot->tts_tupleDescriptor);
+		ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, slot->tts_tupleDescriptor);
 	}
 	else
 	{
@@ -498,7 +540,7 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate, Modify
 	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 
 	/* Delete row from foreign key cache */
-	HandleYBStatus(YBCPgDeleteFromForeignKeyReferenceCache(relid, ybctid));
+	YBCPgDeleteFromForeignKeyReferenceCache(relid, ybctid);
 
 	/* Execute the statement. */
 	int rows_affected_count = 0;
@@ -528,8 +570,7 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	                      IndexRelationGetNumberOfKeyAttributes(index),
 	                      ybctid, false /* ybctid_as_value */);
 
-	/* Delete row from foreign key cache */
-	HandleYBStatus(YBCPgDeleteFromForeignKeyReferenceCache(relid, ybctid));
+	YBCForeignKeyReferenceCacheDeleteIndex(index, values, isnull);
 
 	YBCExecWriteStmt(delete_stmt, index, NULL /* rows_affected_count */);
 }
@@ -562,10 +603,7 @@ bool YBCExecuteUpdate(Relation rel,
 	 */
 	if (isSingleRow)
 	{
-		ybctid = YBCGetYBTupleIdFromTuple(update_stmt,
-										  rel,
-										  tuple,
-										  slot->tts_tupleDescriptor);
+		ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, slot->tts_tupleDescriptor);
 	}
 	else
 	{
@@ -703,7 +741,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 										   false /* is_null */);
 
 	/* Delete row from foreign key cache */
-	HandleYBStatus(YBCPgDeleteFromForeignKeyReferenceCache(relid, tuple->t_ybctid));
+	YBCPgDeleteFromForeignKeyReferenceCache(relid, tuple->t_ybctid);
 
 	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 

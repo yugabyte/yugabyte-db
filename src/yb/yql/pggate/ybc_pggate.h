@@ -344,8 +344,7 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count);
 
 // This function returns the tuple id (ybctid) of a Postgres tuple.
-YBCStatus YBCPgDmlBuildYBTupleId(YBCPgStatement handle, const YBCPgAttrValueDescriptor *attrs,
-                                 int32_t nattrs, uint64_t *ybctid);
+YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor* data, uint64_t *ybctid);
 
 // DB Operations: WHERE, ORDER_BY, GROUP_BY, etc.
 // + The following operations are run by DocDB.
@@ -457,16 +456,10 @@ YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
 // Referential Integrity Check Caching.
-// Check if foreign key reference exists in cache.
-bool YBCForeignKeyReferenceExists(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size);
-
-// Add an entry to foreign key reference cache.
-YBCStatus YBCCacheForeignKeyReference(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size);
-
-// Delete an entry from foreign key reference cache.
-YBCStatus YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_id, uint64_t ybctid);
-
-void ClearForeignKeyReferenceCache();
+void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
+YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor* descr);
+YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor* descr, bool* res);
+YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor* descr);
 
 bool YBCIsInitDbModeEnvVarSet();
 

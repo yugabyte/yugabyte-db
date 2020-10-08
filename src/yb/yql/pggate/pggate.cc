@@ -16,6 +16,11 @@
 
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/pg_system_attr.h"
+
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/primitive_value.h"
+
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -31,6 +36,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
+#include "yb/client/table.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
@@ -43,6 +49,9 @@ DECLARE_string(certs_dir);
 
 namespace yb {
 namespace pggate {
+
+using docdb::PrimitiveValue;
+using docdb::ValueType;
 
 namespace {
 
@@ -85,6 +94,40 @@ std::unique_ptr<tserver::TServerSharedObject> InitTServerSharedObject() {
   }
   return std::make_unique<tserver::TServerSharedObject>(CHECK_RESULT(
       tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd)));
+}
+
+Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr session,
+                                                      PgOid database_id,
+                                                      PgOid table_id,
+                                                      const std::vector<Slice>& ybctids) {
+  auto desc  = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
+  auto read_op = desc->NewPgsqlSelect();
+  auto read_req = read_op->mutable_request();
+  read_req->set_unknown_ybctid_allowed(true);
+  PgsqlExpressionPB* expr_pb = read_req->add_targets();
+  expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
+  auto doc_op = std::make_shared<PgDocReadOp>(session, desc, std::move(read_op));
+  RETURN_NOT_OK(static_cast<PgDocOp*>(doc_op.get())->PopulateDmlByYbctidOps(&ybctids));
+  // Postgres uses SELECT FOR KEY SHARE query for FK check.
+  // Use same lock level.
+  PgExecParameters exec_params = doc_op->ExecParameters();
+  exec_params.rowmark = ROW_MARK_KEYSHARE;
+  doc_op->ExecuteInit(&exec_params);
+  RETURN_NOT_OK(doc_op->Execute());
+  std::vector<std::string> result;
+  result.reserve(ybctids.size());
+  std::list<PgDocResult> rowsets;
+  do {
+    rowsets.clear();
+    RETURN_NOT_OK(doc_op->GetResult(&rowsets));
+    for (auto& row : rowsets) {
+      RETURN_NOT_OK(row.ProcessSystemColumns());
+      for (const auto& ybctid : row.ybctids()) {
+        result.push_back(ybctid.ToBuffer());
+      }
+    }
+  } while (!rowsets.empty());
+  return std::move(result);
 }
 
 } // namespace
@@ -803,12 +846,78 @@ Status PgApiImpl::DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values,
   return down_cast<PgDml*>(handle)->Fetch(natts, values, isnulls, syscols, has_data);
 }
 
-Status PgApiImpl::DmlBuildYBTupleId(PgStatement *handle, const PgAttrValueDescriptor *attrs,
-                                    int32_t nattrs, uint64_t *ybctid) {
-  const string id = VERIFY_RESULT(down_cast<PgDml*>(handle)->BuildYBTupleId(attrs, nattrs));
-  const YBCPgTypeEntity *type_entity = FindTypeEntity(kPgByteArrayOid);
-  *ybctid = type_entity->yb_to_datum(id.data(), id.size(), nullptr /* type_attrs */);
-  return Status::OK();
+Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
+                                   const YBTupleIdProcessor& processor) {
+  auto target_desc = VERIFY_RESULT(pg_session_->LoadTable(
+      PgObjectId(descr.database_oid, descr.table_oid)));
+  SCHECK_EQ(descr.nattrs, target_desc->num_key_columns(), Corruption,
+            "Number of key components does not match column description");
+  vector<PrimitiveValue> *values = nullptr;
+  PgsqlExpressionPB *expr_pb;
+  PgsqlExpressionPB temp_expr_pb;
+  google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values;
+  vector<docdb::PrimitiveValue> hashed_components, range_components;
+  hashed_components.reserve(target_desc->num_hash_key_columns());
+  range_components.reserve(
+      target_desc->num_hash_key_columns() - target_desc->num_hash_key_columns());
+  size_t remain_attr = descr.nattrs;
+  // DocDB API requires that partition columns must be listed in their created-order.
+  // Order from target_desc should be used as attributes sequence may have different order.
+  for (const auto& c : target_desc->columns()) {
+    for (auto attr = descr.attrs, end = descr.attrs + descr.nattrs; attr != end; ++attr) {
+      if (attr->attr_num == c.attr_num()) {
+        if (!c.desc()->is_primary()) {
+          return STATUS_SUBSTITUTE(
+              InvalidArgument, "Attribute number $0 not a primary attribute", attr->attr_num);
+        }
+        if (c.desc()->is_partition()) {
+          // Hashed component.
+          values = &hashed_components;
+          expr_pb = hashed_values.Add();
+        } else {
+          // Range component.
+          values = &range_components;
+          expr_pb = &temp_expr_pb;
+        }
+
+        if (attr->is_null) {
+          values->emplace_back(ValueType::kNullLow);
+        } else {
+          if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
+            expr_pb->mutable_value()->set_binary_value(pg_session_->GenerateNewRowid());
+          } else {
+            PgConstant value(attr->type_entity, attr->datum, false);
+            SCHECK_EQ(c.internal_type(), value.internal_type(), Corruption,
+                      "Attribute value type does not match column type");
+            RETURN_NOT_OK(value.Eval(expr_pb->mutable_value()));
+          }
+          values->push_back(PrimitiveValue::FromQLValuePB(expr_pb->value(),
+                                                          c.desc()->sorting_type()));
+        }
+
+        if (--remain_attr == 0) {
+          SCHECK_EQ(hashed_components.size(), target_desc->num_hash_key_columns(), Corruption,
+                    "Number of hashed components does not match column description");
+          SCHECK_EQ(range_components.size(),
+                    target_desc->num_key_columns() - target_desc->num_hash_key_columns(),
+                    Corruption, "Number of range components does not match column description");
+          if (hashed_values.empty()) {
+            return processor(docdb::DocKey(move(range_components)).Encode());
+          }
+          string partition_key;
+          const PartitionSchema& partition_schema = target_desc->table()->partition_schema();
+          RETURN_NOT_OK(partition_schema.EncodeKey(hashed_values, &partition_key));
+          const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+
+          return processor(
+              docdb::DocKey(hash, move(hashed_components), move(range_components)).Encode());
+        }
+        break;
+      }
+    }
+  }
+
+  return STATUS_FORMAT(Corruption, "Not all attributes ($0) were resolved", remain_attr);
 }
 
 void PgApiImpl::StartOperationsBuffering() {
@@ -1154,20 +1263,22 @@ Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
   return pg_txn_manager_->ExitSeparateDdlTxnMode(success);
 }
 
-bool PgApiImpl::ForeignKeyReferenceExists(YBCPgOid table_id, std::string&& ybctid) {
-  return pg_session_->ForeignKeyReferenceExists(table_id, std::move(ybctid));
+Result<bool> PgApiImpl::ForeignKeyReferenceExists(
+    PgOid table_id, const Slice& ybctid, PgOid database_id) {
+  return pg_session_->ForeignKeyReferenceExists(
+      table_id, ybctid, std::bind(FetchExistingYbctids,
+                                  pg_session_,
+                                  database_id,
+                                  std::placeholders::_1,
+                                  std::placeholders::_2));
 }
 
-Status PgApiImpl::CacheForeignKeyReference(YBCPgOid table_id, std::string&& ybctid) {
-  return pg_session_->CacheForeignKeyReference(table_id, std::move(ybctid));
+void PgApiImpl::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
+  pg_session_->AddForeignKeyReferenceIntent(table_id, ybctid);
 }
 
-Status PgApiImpl::DeleteForeignKeyReference(YBCPgOid table_id, std::string&& ybctid) {
-  return pg_session_->DeleteForeignKeyReference(table_id, std::move(ybctid));
-}
-
-void PgApiImpl::ClearForeignKeyReferenceCache() {
-  pg_session_->InvalidateForeignKeyReferenceCache();
+void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
+  pg_session_->DeleteForeignKeyReference(table_id, ybctid);
 }
 
 void PgApiImpl::SetTimeout(const int timeout_ms) {
