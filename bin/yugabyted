@@ -489,6 +489,13 @@ class ControlScript(object):
                 ["--{}".format(flag) for flag in \
                     self.configs.saved_data.get("tserver_flags").split(",")])
 
+        # Add authentication flags in tserver
+        if self.configs.saved_data.get("ysql_enable_auth"):
+            yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
+
+        if self.configs.saved_data.get("use_cassandra_authentication"):
+            yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
+
         yw_cmd = [
             os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
             "-Dplay.evolutions.db.default.autoApply=true",
@@ -545,30 +552,6 @@ class ControlScript(object):
                     " Removing...").format(data_dir_files, data_dir))
                 rmcontents(data_dir, exclude_names=[pid_file_name])
 
-            # Add enforced authentication flags on the basis of command-line flag
-            if self.configs.saved_data.get("ysql_enable_auth"):
-                yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
-
-            if self.configs.saved_data.get("use_cassandra_authentication"):
-                yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
-
-            # Add enforced authentication flags on first installation
-            # Add ysql_enable_auth, if YSQL_PASSWORD env variable exists
-            # Add use_cassandra_authentication, if YCQL_USER or YCQL_PASSWORD env variables exists
-            # Add ysql_enable_auth flag to enforce authentication for YSQL
-            if is_first_install:
-                if self.setup_env_init.is_exists('YSQL_PASSWORD'):
-                    yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
-                    self.configs.saved_data["ysql_enable_auth"] = True
-                    self.configs.save_configs()
-
-                # Add use_cassandra_authentication flag to enforce authentication for YCQL
-                if self.setup_env_init.is_exists('YCQL_USER') or \
-                        self.setup_env_init.is_exists('YCQL_PASSWORD'):
-                    yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
-                    self.configs.saved_data["use_cassandra_authentication"] = True
-                    self.configs.save_configs()
-
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
                 Output.init_animation("Running system checks...")
@@ -600,7 +583,7 @@ class ControlScript(object):
                 should_callhome = should_callhome or was_started
 
             if is_first_install and not join_ip:
-                self.first_install_init()
+                self.first_install_init_auth()
 
             if is_first_run:
                 status = self.get_status_string() + \
@@ -1172,11 +1155,24 @@ class ControlScript(object):
             args.ui = self.parse_bool(args.ui)
             args.daemon = self.parse_bool(args.daemon)
             args.callhome = self.parse_bool(args.callhome)
+
+            # Set authentication flags same as provided in the command-line flags.
             if args.ysql_enable_auth:
                 args.ysql_enable_auth = self.parse_bool(args.ysql_enable_auth)
 
             if args.use_cassandra_authentication:
                 args.use_cassandra_authentication = self.parse_bool(args.use_cassandra_authentication)
+
+            # Set authentication flags to True, if it is first-run and
+            # have required environment variables to enforce the authentication.
+            if not self.is_yb_initialized():
+                if self.setup_env_init.is_exists('YSQL_PASSWORD'):
+                    args.ysql_enable_auth = True
+
+                # Add use_cassandra_authentication flag to enforce authentication for YCQL
+                if self.setup_env_init.is_exists('YCQL_USER') or \
+                        self.setup_env_init.is_exists('YCQL_PASSWORD'):
+                    args.use_cassandra_authentication = True
 
             if args.ui and not self.java_installed():
                 Output.print_out('WARNING: UI disabled - Java 1.8 or higher is required.')
@@ -1307,10 +1303,10 @@ class ControlScript(object):
                 help="Toggle enabling or disabling webserver UI. Default false.")
             cur_parser.add_argument(
                 "--ysql_enable_auth", choices=BOOL_CHOICES, metavar="BOOL",
-                help="Toggle enabling or disabling YSQL Authentication. Default false.")
+                help=argparse.SUPPRESS)
             cur_parser.add_argument(
                 "--use_cassandra_authentication", choices=BOOL_CHOICES, metavar="BOOL",
-                help="Toggle enabling or disabling YCQL Authentication. Default false.")
+                help=argparse.SUPPRESS)
             cur_parser.add_argument(
                 "--initial_scripts_dir", help="Directory from where yugabyted reads initialization scripts")
 
@@ -1360,7 +1356,7 @@ class ControlScript(object):
     def master_port(self):
        self.configs.saved_data.get("master_rpc_port")
 
-    def first_install_init(self):
+    def first_install_init_auth(self):
         if self.get_failed_node_processes():
             Output.log_error_and_exit(
                 "{} is not running.".format(SCRIPT_NAME))
