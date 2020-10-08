@@ -900,9 +900,6 @@ check_bounds:
 	 */
 	if (IsYugaByteEnabled())
 	{
-		if (last == seq->last_value && seq->is_called == true) {
-		  YBC_DEBUG_LOG_FATAL("Invalid sequence value %ld", last);
-		}
 		bool skipped = false;
 		/*
 		 * We do a conditional update here to detect write conflicts with other sessions. If the
@@ -1821,7 +1818,6 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	Datum cacheOptionOrLastCache = Int64GetDatumFast(seqform->seqcache);
 	Datum cacheFlag = Int64GetDatumFast(YBCGetSequenceCacheMinval());
 	Datum computedCacheValue = (cacheOptionOrLastCache > cacheFlag) ? cacheOptionOrLastCache : cacheFlag;
-	Datum totalElements = labs((seqform->seqmax-seqform->seqmin) / seqform->seqincrement);
 
 	if (cache_value != NULL && cacheOptionOrLastCache < cacheFlag)
 		ereport(INFO,
@@ -1830,20 +1826,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				 errhint("Cache option cannot be set lower than "
 						 "cache flag or previous cache value.")));
 
-	if (totalElements < computedCacheValue)
-		ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Overriding cache size to be less than total sequence elements."),
-				 errhint("Cache size cannot be set equal or larger than "
-				 		 "total sequence elements.")));
-
-	/*
-	 * Today, nextval() query aborts once cached value is reached
-	 * in cyclic sequence where cache size >= total elements in the sequence (#5869).
-	 * Until long term solution is found, computed cache value will only be used
-	 * when its value is less than the total sequence elements available.
-	 */
-	seqform->seqcache = (totalElements >= computedCacheValue) ? computedCacheValue : totalElements;
+	seqform->seqcache = computedCacheValue;
 }
 
 /*
