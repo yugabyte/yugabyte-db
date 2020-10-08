@@ -1799,7 +1799,7 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 	if (!(jb = getScalar(jb, jbvString)))
 		RETURN_ERROR(ereport(ERROR,
-							 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
+							 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_SQL_JSON_DATETIME_FUNCTION),
 							  errmsg("jsonpath item method .%s() can only be applied to a string",
 									 jspOperationName(jsp->type)))));
 
@@ -1880,7 +1880,7 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 		if (res == jperNotFound)
 			RETURN_ERROR(ereport(ERROR,
-								 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
+								 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_SQL_JSON_DATETIME_FUNCTION),
 								  errmsg("datetime format is not unrecognized"),
 								  errhint("use datetime template argument for explicit format specification"))));
 	}
