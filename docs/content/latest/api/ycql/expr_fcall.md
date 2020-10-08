@@ -133,6 +133,7 @@ and so on, till the last segment/range of `512` in the partition space:
 .. where partition_hash(h1, h2) >= 65024;
 ```
 
+Here is a full implementation of a [parallel table scan](/files/ycql_table_scan.py) using `partition_hash` in Python 3.
 
 ## WriteTime function
 
