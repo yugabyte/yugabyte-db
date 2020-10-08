@@ -291,6 +291,10 @@ message PgsqlReadRequestPB {
   // If this attribute is present, this request is a batch request.
   repeated PgsqlBatchArgumentPB batch_arguments = 24;
 
+  // Indicates ybctids in batch_arguments may not exist.
+  // If flag is false read operation will fail in case any of ybctids in batch will not be found.
+  optional bool unknown_ybctid_allowed = 26;
+
   //------------------------------------------------------------------------------------------------
   // Output Argument Specification (Tuple descriptor).
   //

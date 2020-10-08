@@ -212,6 +212,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Initialize doc operator.
   virtual void ExecuteInit(const PgExecParameters *exec_params);
 
+  const PgExecParameters& ExecParameters() const;
+
   // Execute the op. Return true if the request has been sent and is awaiting the result.
   virtual Result<RequestSent> Execute(bool force_non_bufferable = false);
 

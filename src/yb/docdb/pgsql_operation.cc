@@ -439,7 +439,8 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
   if (request_.batch_arguments_size() > 0) {
     if (request_.has_ybctid_column_value()) {
       fetched_rows = VERIFY_RESULT(ExecuteBatchYbctid(
-          ql_storage, deadline, read_time, schema, result_buffer, restart_read_ht));
+          ql_storage, deadline, read_time, schema,
+          request_.unknown_ybctid_allowed(), result_buffer, restart_read_ht));
     } else {
       fetched_rows = VERIFY_RESULT(ExecuteBatch(ql_storage, deadline, read_time, schema,
                                                 index_schema, result_buffer, restart_read_ht,
@@ -607,6 +608,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf
                                                       CoarseTimePoint deadline,
                                                       const ReadHybridTime& read_time,
                                                       const Schema& schema,
+                                                      bool unknown_ybctid_allowed,
                                                       faststring *result_buffer,
                                                       HybridTime *restart_read_ht) {
   Schema projection;
@@ -621,8 +623,13 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf
                                          &table_iter_));
     row.Clear();
 
-    SCHECK(VERIFY_RESULT(table_iter_->HasNext()), Corruption,
-           "Given ybctid is not associated with any row in table");
+    if (!VERIFY_RESULT(table_iter_->HasNext())) {
+      if (unknown_ybctid_allowed) {
+        continue;
+      } else {
+        return STATUS(Corruption, "Given ybctid is not associated with any row in table");
+      }
+    }
     RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
 
     // Populate result set.
@@ -631,7 +638,8 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf
   }
 
   // Set status for this batch.
-  response_.set_batch_arg_count(row_count);
+  // Mark all rows were processed even in case some of the ybctids were not found.
+  response_.set_batch_arg_count(request_.batch_arguments_size());
 
   return row_count;
 }

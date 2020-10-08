@@ -1195,5 +1195,22 @@ void YBResetOperationsBuffering() {
 }
 
 bool YBReadFromFollowersEnabled() {
-	return yb_read_from_followers;
+  return yb_read_from_followers;
+}
+
+YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs) {
+	void* mem = palloc(sizeof(YBCPgYBTupleIdDescriptor) + nattrs * sizeof(YBCPgAttrValueDescriptor));
+	YBCPgYBTupleIdDescriptor* result = mem;
+	result->nattrs = nattrs;
+	result->attrs = mem + sizeof(YBCPgYBTupleIdDescriptor);
+	result->database_oid = db_oid;
+	result->table_oid = table_oid;
+	return result;
+}
+
+void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr) {
+	YBCPgAttrValueDescriptor* last_attr = descr->attrs + descr->nattrs - 1;
+	last_attr->attr_num = YBUniqueIdxKeySuffixAttributeNumber;
+	last_attr->type_entity = YBCDataTypeFromOidMod(YBUniqueIdxKeySuffixAttributeNumber, BYTEAOID);
+	last_attr->is_null = true;
 }

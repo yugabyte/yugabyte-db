@@ -59,6 +59,14 @@ YBCStatus ExtractValueFromResult(const Result<T>& result, T* value) {
   return ToYBCStatus(result.status());
 }
 
+YBCStatus ProcessYbctid(
+    const YBCPgYBTupleIdDescriptor& source,
+    const std::function<Status(PgOid, const Slice&)>& processor) {
+  return ToYBCStatus(pgapi->ProcessYBTupleId(
+      source,
+      std::bind(processor, source.table_oid, std::placeholders::_1)));
+}
+
 } // anonymous namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -606,9 +614,12 @@ YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_coun
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
 }
 
-YBCStatus YBCPgDmlBuildYBTupleId(YBCPgStatement handle, const YBCPgAttrValueDescriptor *attrs,
-                                 int32_t nattrs, uint64_t *ybctid) {
-  return ToYBCStatus(pgapi->DmlBuildYBTupleId(handle, attrs, nattrs, ybctid));
+YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *ybctid) {
+  return ProcessYbctid(*source, [ybctid](const auto&, const auto& yid) {
+    const auto* type_entity = pgapi->FindTypeEntity(kPgByteArrayOid);
+    *ybctid = type_entity->yb_to_datum(yid.cdata(), yid.size(), nullptr /* type_attrs */);
+    return Status::OK();
+  });
 }
 
 // INSERT Operations -------------------------------------------------------------------------------
@@ -803,25 +814,34 @@ YBCStatus YBCPgExitSeparateDdlTxnMode(bool success) {
 }
 
 // Referential Integrity Caching
-bool YBCForeignKeyReferenceExists(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size) {
-  return pgapi->ForeignKeyReferenceExists(table_id, std::string(ybctid, ybctid_size));
+YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor *source) {
+  return ProcessYbctid(*source, [](auto table_id, const auto& ybctid){
+    pgapi->DeleteForeignKeyReference(table_id, ybctid);
+    return Status::OK();
+  });
 }
 
-YBCStatus YBCCacheForeignKeyReference(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size) {
-  return ToYBCStatus(pgapi->CacheForeignKeyReference(table_id, std::string(ybctid, ybctid_size)));
-}
-
-YBCStatus YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_id, uint64_t ybctid) {
+void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid) {
   char *value;
   int64_t bytes;
 
   const YBCPgTypeEntity *type_entity = pgapi->FindTypeEntity(kPgByteArrayOid);
   type_entity->datum_to_yb(ybctid, &value, &bytes);
-  return ToYBCStatus(pgapi->DeleteForeignKeyReference(table_id, std::string(value, bytes)));
+  pgapi->DeleteForeignKeyReference(table_oid, Slice(value, bytes));
 }
 
-void ClearForeignKeyReferenceCache() {
-  pgapi->ClearForeignKeyReferenceCache();
+YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor *source, bool* res) {
+  return ProcessYbctid(*source, [res, source](auto table_id, const auto& ybctid) -> Status {
+    *res = VERIFY_RESULT(pgapi->ForeignKeyReferenceExists(table_id, ybctid, source->database_oid));
+    return Status::OK();
+  });
+}
+
+YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor *source) {
+  return ProcessYbctid(*source, [](auto table_id, const auto& ybctid) {
+    pgapi->AddForeignKeyReferenceIntent(table_id, ybctid);
+    return Status::OK();
+  });
 }
 
 bool YBCIsInitDbModeEnvVarSet() {

@@ -378,4 +378,11 @@ extern void YBResetOperationsBuffering();
 
 bool YBReadFromFollowersEnabled();
 
+/*
+ * Allocates YBCPgYBTupleIdDescriptor with nattrs arguments by using palloc.
+ * Resulted object can be released with pfree.
+ */
+YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs);
+void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
+
 #endif /* PG_YB_UTILS_H */
