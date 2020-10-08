@@ -212,7 +212,6 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
     try (Connection connection2 = getConnectionBuilder().connect();
         Statement statement = connection2.createStatement()) {
-      statement.executeQuery("SELECT nextval('s1')");
       // Since the previous client already got all the available sequence numbers in its cache,
       // we should get an error when we request another sequence number from another client.
       thrown.expect(org.postgresql.util.PSQLException.class);
@@ -586,6 +585,38 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(1, rs.getInt("nextval"));
+    }
+  }
+
+  @Test
+  public void testCycleOnDifferentConnection() throws Exception {
+    try (Statement statement = connection.createStatement();
+        Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+        Statement statement2 = connection2.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1 CYCLE MAXVALUE 4");
+
+      // Caches up to MAXVALUE in current connection.
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getInt("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", 4);
+
+      // In another connection, caches from MINVALUE up to MAXVALUE.
+      rs = statement2.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getInt("nextval"));
+      assertOneRow(statement2, "SELECT last_value from s1", 4);
+
+      for (int i = 2; i <= 4; i++) {
+        rs = statement.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("nextval"));
+      }
+      // Goes back to MINVALUE of 1.
+      rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getInt("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1", 4);
     }
   }
 
@@ -1023,8 +1054,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       // -------------------------------------------------------------------------------------------
       statement.execute("CREATE SEQUENCE s1");
 
-      // Cache size is initialized to 100 by selecting maximum of
-      // cache option (default 1) and cache flag (default 100).
+      // Cache size is initialized to maximum cache size (100).
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(1, rs.getLong("nextval"));
@@ -1042,7 +1072,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       // -------------------------------------------------------------------------------------------
       statement.execute("CREATE SEQUENCE s2");
 
-      // Cache size is initialized to 100.
+      // Cache size is initialized to maximum cache size (100).
       rs = statement.executeQuery("SELECT nextval('s2')");
       assertTrue(rs.next());
       assertEquals(1, rs.getLong("nextval"));
@@ -1050,6 +1080,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
       statement.execute("ALTER SEQUENCE s2 CACHE 10");
 
+      // Cache size remain at maximum cache size (100) since it is larger than cache option (10).
       rs = statement.executeQuery("SELECT nextval('s2')");
       assertTrue(rs.next());
       assertEquals(DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 1, rs.getLong("nextval"));
@@ -1075,33 +1106,32 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
       statement.execute("ALTER SEQUENCE s1 RESTART MAXVALUE 50");
 
-      // Total elements is less than maximum cache size (100)
-      // and defaults to last cache size (100) which is the previously persisted value.
+      // Even if total elements decreases less than cache size (100)
+      // it caches up to maximum possible elements (50).
       rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(1, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s1", 49);
+      assertOneRow(statement, "SELECT last_value from s1", 50);
 
       // -------------------------------------------------------------------------------------------
       // Test increase in maxvalue.
       // -------------------------------------------------------------------------------------------
       statement.execute("CREATE SEQUENCE s2 MAXVALUE 10");
 
-      // Cache size is intialized to cache option (default 1)
-      // since total elements (10) is less than maximum cache size (100).
+      // Cache size is intialized to maximum cache size (100)
+      // so it caches up to total elements (10).
       rs = statement.executeQuery("SELECT nextval('s2')");
       assertTrue(rs.next());
       assertEquals(1, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s2", 9);
+      assertOneRow(statement, "SELECT last_value from s2", 10);
 
       statement.execute("ALTER SEQUENCE s2 MAXVALUE 1000");
 
-      // Resetting maxvalue triggers recalculation of cache size
-      // by taking max of cache option (1) and cache flag (100).
+      // Since total size increases, caches up to maximum cache size.
       rs = statement.executeQuery("SELECT nextval('s2')");
       assertTrue(rs.next());
-      assertEquals(10, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s2", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 9);
+      assertEquals(11, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s2", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 10);
     }
   }
 
@@ -1113,30 +1143,26 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       // -------------------------------------------------------------------------------------------
       statement.execute("CREATE SEQUENCE s1 MINVALUE 950 MAXVALUE 1000");
 
-      // Cache size is set to less than total elements
-      // since total elements (1000-950=50) is less than maximum cache size (100).
+      // Cache size is set to total elements.
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(950, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s1", 999);
+      assertOneRow(statement, "SELECT last_value from s1", 1000);
 
       statement.execute("ALTER SEQUENCE s1 MINVALUE 0 INCREMENT BY -1");
 
-      // Caches between 949 to 850.
-      // Cache size resets to maximum cache size (100)
-      // since total elements (1000) increased greater than maximum cache size (100).
+      // Caches between 1000 to 900.
       rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
-      assertEquals(998, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s1", 999 - DEFAULT_SEQUENCE_CACHE_FLAG_VALUE);
+      assertEquals(999, rs.getLong("nextval"));
+      assertOneRow(statement, "SELECT last_value from s1",
+                   1000 - DEFAULT_SEQUENCE_CACHE_FLAG_VALUE);
 
       // -------------------------------------------------------------------------------------------
       // Test increase in minvalue.
       // -------------------------------------------------------------------------------------------
       statement.execute("CREATE SEQUENCE s2 MAXVALUE 1000");
 
-      // Cache size is intialized to maximum cache size (100)
-      // since total elements (1000) is greater than maximum cache size (100).
       rs = statement.executeQuery("SELECT nextval('s2')");
       assertTrue(rs.next());
       assertEquals(1, rs.getLong("nextval"));
@@ -1155,20 +1181,18 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       // -------------------------------------------------------------------------------------------
       statement.execute("CREATE SEQUENCE s1 MAXVALUE 1000 INCREMENT BY 50");
 
-      // Cache size is intialized to less than total elements
-      // since total elements (1000/50=20) is less than maximum cache size (100).
+      // Cache size is intialized up to maximum possible element.
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(1, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s1", 901);
+      assertOneRow(statement, "SELECT last_value from s1", 951);
 
       statement.execute("ALTER SEQUENCE s1 INCREMENT BY 1");
 
-      // Cache size is reset to maximum cache size (100)
-      // since total elements (1000) is greater than maximum cache size (100).
+      // Cache size is set to maximum possible element with changed increment.
       rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
-      assertEquals(902, rs.getLong("nextval"));
+      assertEquals(952, rs.getLong("nextval"));
       assertOneRow(statement, "SELECT last_value from s1", 1000);
     }
   }
