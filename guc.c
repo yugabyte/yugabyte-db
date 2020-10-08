@@ -98,7 +98,7 @@ init_guc(void)
 	
 	conf[i++] = (GucVariable) { 
 		.guc_name = "pg_stat_monitor.pgsm_respose_time_step",
-		.guc_desc = "Sets the respose time steps in millisecond.",
+		.guc_desc = "Sets the response time steps in millisecond.",
 		.guc_default = 1,
 		.guc_min = 1,
 		.guc_max = INT_MAX,
@@ -237,7 +237,7 @@ init_guc(void)
 							NULL);
 
 	DefineCustomIntVariable("pg_stat_monitor.pgsm_respose_time_step",
-							"Sets the respose time steps in millisecond.",
+							"Sets the response time steps in millisecond.",
 							NULL,
 							&PGSM_RESPOSE_TIME_STEP,
 							1,
