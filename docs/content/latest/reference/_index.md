@@ -15,7 +15,7 @@ menu:
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="architecture/">
+    <a class="section-link icon-offset" href="../architecture/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/architecture.png" aria-hidden="true" />
         <div class="articles">6 chapters</div>
@@ -28,7 +28,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="api/">
+    <a class="section-link icon-offset" href="../api/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/api.png" aria-hidden="true" />
         <div class="articles">2 chapters</div>
@@ -41,7 +41,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="admin/">
+    <a class="section-link icon-offset" href="../admin/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/admin.png" aria-hidden="true" />
         <div class="articles">8 chapters</div>
@@ -54,7 +54,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="/reference/configuration">
+    <a class="section-link icon-offset" href="../reference/configuration">
       <div class="head">
         <img class="icon" src="/images/section_icons/reference/configuration/sample_apps.png" aria-hidden="true" />
         <div class="articles">3 chapters</div>
@@ -67,7 +67,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="reference/drivers/">
+    <a class="section-link icon-offset" href="../reference/drivers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/reference/connectors/ecosystem-integrations.png" aria-hidden="true" />
         <div class="title">Drivers</div>
@@ -79,7 +79,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="reference/connectors/">
+    <a class="section-link icon-offset" href="../reference/connectors/">
       <div class="head">
         <img class="icon" src="/images/section_icons/reference/connectors/ecosystem-integrations.png" aria-hidden="true" />
         <div class="title">Connectors</div>
@@ -91,7 +91,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="tools/">
+    <a class="section-link icon-offset" href="../tools/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
         <div class="articles">6 chapters</div>
@@ -104,7 +104,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="sample-data/">
+    <a class="section-link icon-offset" href="../sample-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/sample-data/s_s1-sampledata-3x.png" aria-hidden="true" />
         <div class="articles">4 chapters</div>
