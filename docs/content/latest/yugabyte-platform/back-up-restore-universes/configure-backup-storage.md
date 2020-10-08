@@ -1,3 +1,4 @@
+---
 headerTitle: Configure backup storage
 linkTitle: Configure backup storage
 description: Configure backup storage
@@ -9,14 +10,14 @@ menu:
   latest:
     parent: back-up-restore-universes
     identifier: configure-backup-storage
-    weight: 20
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---
 
 Depending on your cloud or on-premises environment, YugabyteDB universe data can be saved to the following storage options.
 
-### Local storage
+## Local storage
 
 To create a local directory on a tserver to back up to, follow these steps:
 
@@ -51,7 +52,7 @@ To configure Amazon S3 as the backup target, follow these steps:
 
 The **Access Key** and **Access Secret** values can be added for the IAM of the user.
 
-### NFS
+## NFS
 
 To configure NFS as the backup target, follow these steps:
 
@@ -62,7 +63,7 @@ To configure NFS as the backup target, follow these steps:
 
 ![NFS Cloud Provider Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
 
-### Google Cloud Storage (GCS)
+## Google Cloud Storage (GCS)
 
 To configure NFS as the backup target, follow these steps:
 
@@ -73,7 +74,7 @@ To configure NFS as the backup target, follow these steps:
 
 ![GCS Backup](/images/yp/cloud-provider-configuration-backup-gcs.png)
 
-### Microsoft Azure
+## Microsoft Azure
 
 To configure NFS as the backup target, follow these steps:
 

@@ -1,7 +1,7 @@
 ---
 title: Back up data universe YSQL data
 headerTitle: Back up universe YSQL data
-linkTitle: Back up data
+linkTitle: Back up universe data
 description: Use Yugabyte Platform to back up data in YSQL tables.
 aliases:
   - /latest/manage/enterprise-edition/backup-restore

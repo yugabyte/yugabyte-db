@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     parent: back-up-restore-universes
-    identifier: restore-universe-data-2-ycql
+    identifier: restore-universe-data-1-ysql
     weight: 30
 isTocNested: true
 showAsideToc: true

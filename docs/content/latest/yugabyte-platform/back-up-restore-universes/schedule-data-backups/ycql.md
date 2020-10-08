@@ -1,19 +1,37 @@
 ---
-title: Schedule a data backup
-headerTitle: Schedule a data backup
+title: Schedule universe YCQL data backups
+headerTitle: Schedule universe YCQL data backups
 linkTitle: Schedule data backups
-description: Use Yugabyte Platform to create a scheduled backup of a universe or cluster.
+description: Use Yugabyte Platform to create a scheduled backup of universe YCQL data.
 aliases:
   - /latest/manage/enterprise-edition/schedule-backups/
   - /latest/manage/enterprise-edition/schedule-data-backup/
 menu:
   latest:
-    identifier: schedule-data-backup
+    identifier: schedule-data-backups-2-ycql
     parent: back-up-restore-universes
     weight: 40
 isTocNested: true
 showAsideToc: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="{{< relref "./ysql.md" >}}" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="{{< relref "./ycql.md" >}}" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
 
 Use Yugabyte Platform to perform a regularly scheduled backup of a full YugabyteDB universe or selected tables.
 

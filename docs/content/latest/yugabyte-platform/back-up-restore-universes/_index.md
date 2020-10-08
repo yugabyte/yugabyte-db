@@ -53,13 +53,13 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="schedule-data-backup/">
+    <a class="section-link icon-offset" href="schedule-data-backups/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Schedule backups</div>
+        <div class="title">Schedule universe data backups</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to run scheduled backups of universe data.
+        Use Yugabyte Platform to schedule backups of universe data.
       </div>
     </a>
   </div>
