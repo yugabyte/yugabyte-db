@@ -242,10 +242,6 @@ import static org.mockito.Mockito.when;
         cmd.add(backupTableParams.tableUUID.toString().replace("-", ""));
       }
       cmd.add("--no_auto_name");
-      if (userIntent.enableNodeToNodeEncrypt) {
-        cmd.add("--certs_dir");
-        cmd.add(testProvider.code.equals("kubernetes") ? K8S_CERT_PATH : VM_CERT_PATH);
-      }
       if (backupTableParams.sse) {
         cmd.add("--sse");
       }
@@ -267,6 +263,10 @@ import static org.mockito.Mockito.when;
     cmd.add(backupTableParams.storageLocation);
     cmd.add("--storage_type");
     cmd.add(storageType);
+    if (userIntent.enableNodeToNodeEncrypt) {
+      cmd.add("--certs_dir");
+      cmd.add(testProvider.code.equals("kubernetes") ? K8S_CERT_PATH : VM_CERT_PATH);
+    }
     cmd.add(backupTableParams.actionType.name().toLowerCase());
     if (backupTableParams.enableVerboseLogs) {
       cmd.add("--verbose");
