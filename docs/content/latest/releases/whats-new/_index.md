@@ -14,7 +14,7 @@ menu:
 
 <div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-12 col-md-6 col-lg-12">
       <a class="section-link icon-offset" href="latest-releases/">
           <div class="head">
               <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
@@ -26,7 +26,7 @@ menu:
       </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-12 col-md-6 col-lg-12">
       <a class="section-link icon-offset" href="stable-releases/">
           <div class="head">
               <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
