@@ -137,6 +137,10 @@ void PgDocOp::ExecuteInit(const PgExecParameters *exec_params) {
   }
 }
 
+const PgExecParameters& PgDocOp::ExecParameters() const {
+  return exec_params_;
+}
+
 Result<RequestSent> PgDocOp::Execute(bool force_non_bufferable) {
   // As of 09/25/2018, DocDB doesn't cache or keep any execution state for a statement, so we
   // have to call query execution every time.
@@ -298,7 +302,7 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
     }
   }
 
-  return result;
+  return std::move(result);
 }
 
 void PgDocOp::SetReadTime() {
@@ -328,7 +332,7 @@ Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {
 
   // Process paging state and check status.
   RETURN_NOT_OK(ProcessResponsePagingState());
-  return result;
+  return std::move(result);
 }
 
 Status PgDocReadOp::CreateRequests() {
@@ -778,7 +782,7 @@ Result<std::list<PgDocResult>> PgDocWriteOp::ProcessResponseImpl() {
   // End execution and return result.
   end_of_data_ = true;
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
-  return result;
+  return std::move(result);
 }
 
 Status PgDocWriteOp::CreateRequests() {

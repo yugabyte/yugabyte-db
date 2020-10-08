@@ -175,6 +175,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                     CoarseTimePoint deadline,
                                     const ReadHybridTime& read_time,
                                     const Schema& schema,
+                                    bool unknown_ybctid_allowed,
                                     faststring *result_buffer,
                                     HybridTime *restart_read_ht);
 

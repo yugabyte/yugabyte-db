@@ -42,10 +42,14 @@
 
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/string_util.h"
 
 #include "yb/master/master.proxy.h"
+
+DEFINE_test_flag(bool, disable_fk_check_force_flush, false, "Disable workaround with the force "
+                 "flushing before the foreign key check. Remove after the fixing of #5954.");
 
 namespace yb {
 namespace pggate {
@@ -245,6 +249,37 @@ bool IsTableUsedByOperation(const client::YBPgsqlOp& op, const string& table_id)
   return false;
 }
 
+struct PgForeignKeyReferenceLightweight {
+  PgOid table_id;
+  Slice ybctid;
+};
+
+size_t ForeignKeyReferenceHash(PgOid table_id, const char* begin, const char* end) {
+  size_t hash = 0;
+  boost::hash_combine(hash, table_id);
+  boost::hash_range(hash, begin, end);
+  return hash;
+}
+
+template<class Container>
+auto Find(const Container& container, PgOid table_id, const Slice& ybctid) {
+  return container.find(PgForeignKeyReferenceLightweight{table_id, ybctid},
+      [](const auto& k) {
+        return ForeignKeyReferenceHash(k.table_id, k.ybctid.cdata(), k.ybctid.cend()); },
+      [](const auto& l, const auto& r) {
+        return l.table_id == r.table_id && l.ybctid == r.ybctid; });
+}
+
+template<class Container>
+bool Erase(Container* container, PgOid table_id, const Slice& ybctid) {
+  const auto it = Find(*container, table_id, ybctid);
+  if (it != container->end()) {
+    container->erase(it);
+    return true;
+  }
+  return false;
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -286,9 +321,6 @@ PgSession::RunHelper::RunHelper(const PgObjectId& relation_id,
       transactional_(transactional),
       buffer_(transactional_ ? pg_session_.buffered_txn_ops_
                              : pg_session_.buffered_ops_) {
-  if (!transactional_) {
-    pg_session_.InvalidateForeignKeyReferenceCache();
-  }
 }
 
 Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
@@ -396,6 +428,23 @@ Result<PgSessionAsyncRunResult> PgSession::RunHelper::Flush() {
 }
 
 //--------------------------------------------------------------------------------------------------
+// Class PgForeignKeyReference
+//--------------------------------------------------------------------------------------------------
+
+PgForeignKeyReference::PgForeignKeyReference(PgOid tid, std::string yid) :
+  table_id(tid), ybctid(std::move(yid)) {
+}
+
+bool operator==(const PgForeignKeyReference& k1, const PgForeignKeyReference& k2) {
+  return k1.table_id == k2.table_id && k1.ybctid == k2.ybctid;
+}
+
+size_t hash_value(const PgForeignKeyReference& key) {
+  return ForeignKeyReferenceHash(
+      key.table_id, key.ybctid.c_str(), key.ybctid.c_str() + key.ybctid.length());
+}
+
+//--------------------------------------------------------------------------------------------------
 // Class RowIdentifier
 //--------------------------------------------------------------------------------------------------
 
@@ -443,18 +492,6 @@ size_t hash_value(const RowIdentifier& key) {
   size_t hash = 0;
   boost::hash_combine(hash, key.table_id());
   boost::hash_combine(hash, key.ybctid());
-  return hash;
-}
-
-bool operator==(const PgForeignKeyReference& k1, const PgForeignKeyReference& k2) {
-  return k1.table_id == k2.table_id &&
-      k1.ybctid == k2.ybctid;
-}
-
-size_t hash_value(const PgForeignKeyReference& key) {
-  size_t hash = 0;
-  boost::hash_combine(hash, key.table_id);
-  boost::hash_combine(hash, key.ybctid);
   return hash;
 }
 
@@ -993,21 +1030,58 @@ Result<uint64_t> PgSession::GetSharedCatalogVersion() {
   }
 }
 
-bool PgSession::ForeignKeyReferenceExists(uint32_t table_id, std::string&& ybctid) {
-  PgForeignKeyReference reference = {table_id, std::move(ybctid)};
-  return fk_reference_cache_.find(reference) != fk_reference_cache_.end();
+Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
+                                                  const Slice& ybctid,
+                                                  const YbctidReader& reader) {
+  if (Find(fk_reference_cache_, table_id, ybctid) != fk_reference_cache_.end()) {
+    return true;
+  }
+
+  // Check existence of required FK intent.
+  // Absence means the key was checked by previous batched request and was not found.
+  if (!Erase(&fk_reference_intent_, table_id, ybctid)) {
+    return false;
+  }
+  std::vector<Slice> ybctids;
+  std::vector<decltype(fk_reference_intent_.begin())> to_remove;
+  const auto reserved_size = std::min(FLAGS_ysql_session_max_batch_size,
+                                      static_cast<int32_t>(fk_reference_intent_.size()));
+  ybctids.reserve(reserved_size);
+  to_remove.reserve(reserved_size);
+  ybctids.push_back(ybctid);
+  // TODO(dmitry): In case number of keys for same table > FLAGS_ysql_session_max_batch_size
+  // two strategy are possible:
+  // 1. select keys belonging to same tablet to reduce number of simultaneous RPC
+  // 2. select keys belonging to different tablets to distribute reads among different nodes
+  for (auto it = fk_reference_intent_.begin();
+       it != fk_reference_intent_.end() && ybctids.size() < FLAGS_ysql_session_max_batch_size;
+       ++it) {
+    if (it->table_id == table_id) {
+      ybctids.push_back(it->ybctid);
+      to_remove.push_back(it);
+    }
+  }
+
+  // TODO(dmitry): Flush is not necessary here. It is the temporary workaround for #5954.
+  if (!FLAGS_TEST_disable_fk_check_force_flush) {
+    RETURN_NOT_OK(FlushBufferedOperations());
+  }
+
+  for (auto& r : VERIFY_RESULT(reader(table_id, ybctids))) {
+    fk_reference_cache_.emplace(table_id, std::move(r));
+  }
+  std::for_each(to_remove.begin(),
+                to_remove.end(),
+                [this](const auto& it) { fk_reference_intent_.erase(it); });
+  return Find(fk_reference_cache_, table_id, ybctid) != fk_reference_cache_.end();
 }
 
-Status PgSession::CacheForeignKeyReference(uint32_t table_id, std::string&& ybctid) {
-  PgForeignKeyReference reference = {table_id, std::move(ybctid)};
-  fk_reference_cache_.emplace(reference);
-  return Status::OK();
+void PgSession::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
+  fk_reference_intent_.emplace(table_id, ybctid.ToBuffer());
 }
 
-Status PgSession::DeleteForeignKeyReference(uint32_t table_id, std::string&& ybctid) {
-  PgForeignKeyReference reference = {table_id, std::move(ybctid)};
-  fk_reference_cache_.erase(reference);
-  return Status::OK();
+void PgSession::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
+  Erase(&fk_reference_cache_, table_id, ybctid);
 }
 
 Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id) const {

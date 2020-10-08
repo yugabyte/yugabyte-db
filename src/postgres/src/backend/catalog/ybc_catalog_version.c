@@ -88,8 +88,7 @@ bool YBCIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	nulls[2] = true;
 	tuple = heap_form_tuple(RelationGetDescr(rel), values, nulls);
 
-	Datum ybctid = YBCGetYBTupleIdFromTuple(update_stmt,
-	                                  rel,
+	Datum ybctid = YBCGetYBTupleIdFromTuple(rel,
 	                                  tuple,
 	                                  RelationGetDescr(rel));
 

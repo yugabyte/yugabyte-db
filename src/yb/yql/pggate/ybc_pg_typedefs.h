@@ -248,6 +248,13 @@ typedef struct PgTableProperties {
   bool is_colocated;
 } YBCPgTableProperties;
 
+typedef struct PgYBTupleIdDescriptor {
+  YBCPgOid database_oid;
+  YBCPgOid table_oid;
+  int32_t nattrs;
+  YBCPgAttrValueDescriptor *attrs;
+} YBCPgYBTupleIdDescriptor;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
