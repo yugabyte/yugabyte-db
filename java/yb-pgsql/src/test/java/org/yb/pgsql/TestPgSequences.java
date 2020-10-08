@@ -198,7 +198,6 @@ public class TestPgSequences extends BasePgSQLTest {
 
     try (Connection connection2 = getConnectionBuilder().connect();
         Statement statement = connection2.createStatement()) {
-      statement.executeQuery("SELECT nextval('s1')");
       // Since the previous client already got all the available sequence numbers in its cache,
       // we should get an error when we request another sequence number from another client.
       thrown.expect(org.postgresql.util.PSQLException.class);
