@@ -17,13 +17,25 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="configure-backup-storage/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Configure backup storage</div>
+      </div>
+      <div class="body">
+        Use Yugabyte Platform to configure the storage location for your universe data.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="back-up-universe-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Back up data</div>
+        <div class="title">Back up universe data</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to back up universe data.
+        Use Yugabyte Platform to restore universe data.
       </div>
     </a>
   </div>
@@ -32,7 +44,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
     <a class="section-link icon-offset" href="restore-universe-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Restore data</div>
+        <div class="title">Restore universe data</div>
       </div>
       <div class="body">
         Use Yugabyte Platform to restore universe data.

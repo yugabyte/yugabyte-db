@@ -1,24 +1,18 @@
----
-title: Back up data universe data
-headerTitle: Back up universe data
-linkTitle: Back up data
-description: Use Yugabyte Platform to back up data in YCQL tables.
+headerTitle: Configure backup storage
+linkTitle: Configure backup storage
+description: Configure backup storage
 aliases:
   - /latest/manage/enterprise-edition/backup-restore
   - /latest/manage/enterprise-edition/back-up-restore-data
-  - /latest/yugabyte-platform/manage/backup-restore
+  - /latest/yugabyte-platform/manage/backup-restore-data
 menu:
   latest:
     parent: back-up-restore-universes
-    identifier: back-up-universe-data
+    identifier: configure-backup-storage
     weight: 20
 isTocNested: true
 showAsideToc: true
 ---
-
-Follow the steps here to use the Yugabyte Platform to configure storage for backups and to back up YugabyteDB universe data.
-
-## Configure storage for backup
 
 Depending on your cloud or on-premises environment, YugabyteDB universe data can be saved to the following storage options.
 
@@ -89,12 +83,3 @@ To configure NFS as the backup target, follow these steps:
 4. Click **Save**.
 
 ![Azure Backup](/images/ee/cloud-provider-configuration-backup-azure.png)
-
-## Back up universe data
-
-1. Go to the **Backups** tab and then click **Create Backup**. A modal should appear where you can
-enter the table and select your backup options. 
-
-![Backup Modal](/images/ee/create-backup-modal.png)
-
-Click **OK**. If you refresh the page, you'll eventually see a completed task.
