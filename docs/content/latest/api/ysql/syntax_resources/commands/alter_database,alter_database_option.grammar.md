@@ -5,7 +5,6 @@ alter_database ::= ALTER DATABASE name
                      | OWNER TO { new_owner
                                   | CURRENT_USER
                                   | SESSION_USER }
-                     | SET TABLESPACE new_tablespace
                      | SET configuration_parameter { TO | = } 
                        { value | DEFAULT }
                      | SET configuration_parameter FROM CURRENT
