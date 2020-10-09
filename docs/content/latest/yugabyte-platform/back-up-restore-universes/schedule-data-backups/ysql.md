@@ -6,6 +6,7 @@ description: Use Yugabyte Platform to create a scheduled backup of universe YSQL
 aliases:
   - /latest/manage/enterprise-edition/schedule-backups/
   - /latest/manage/enterprise-edition/schedule-data-backup/
+  - /latest/yugabyte-platform/back-up-restore-universes/schedule-data-backups/
 menu:
   latest:
     identifier: schedule-data-backups-1-ysql
@@ -33,30 +34,45 @@ showAsideToc: true
 
 </ul>
 
-Use Yugabyte Platform to perform a regularly scheduled backup of a full YugabyteDB universe or selected tables.
+Use Yugabyte Platform to perform regularly scheduled backups of YugabyteDB universe data for all YSQL tables in a namespace.
 
 ## Schedule a backup
 
-1. In the Yugabyte Platform console, click **Universes** in the navigation bar, then click the name of the universe you want to schedule backups for.
-2. Click the **Tables** tab and verify that backups are enabled. If disabled, click **Enable Backup**.
-3. Click the **Backups** tab and then click **Create Scheduled Backup**. The **Create Backup** form appears.
+To schedule a backup, follow these steps:
 
-![Create Backup form](/images/yp/create-backup.png)
+1. Open the Yugabyte Platform console and click **Universes** in the navigation bar.
+2. Click the name of the universe you want to schedule backups for.
+3. Click the **Tables** tab and verify that backups are enabled. If disabled, click **Enable Backup**.
+4. Click the **Backups** tab and then click **Create Scheduled Backup**. The **Create Backup** dialog appears.
+    <br/>
+    <br/>
 
-4. Enter the **Backup frequency** (interval in milliseconds) or a **Cron expression (UTC)***. For details on the cron expression format, hover over the question mark (?) icon.
-5. Select the **YSQL** tab and enter values for the following fields:
+    ![Create Backup form](/images/yp/create-scheduled-backup.png)
 
-- **Storage**: Select `GCS Storage`, `S3 Storage`, or `NFS Storage`.
-- **Namespace**: Select the namespace from the drop-down list of available namespaces.
-- **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
-- **Number of Days to Retain Backup**: Default is unspecified which means to retain indefinitely.
+5. Enter the **Backup frequency** (interval in milliseconds) or a **Cron expression (UTC)***. For details on valid `cron` expression formats, hover over the question mark (?) icon.
+6. Select the **YSQL** tab and enter values for the following fields:
 
-6. Click **OK**. The first backup will begin immediately and then subsequent backups will be created based on the value you specified for **Backup frequency** or **Cron expression**.
+    - **Storage**: Select the storage type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
+    - **Namespace**: Select the namespace from the drop-down list of available namespaces.
+    - **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
+    - **Number of Days to Retain Backup**: Default is unspecified which means to retain indefinitely.
 
-## Disable a scheduled backup
+7. Click **OK**. The initial backup will begin immediately.
 
-If required, you can temporarily disable scheduled backups by going to the **Tables** tab in a universe and click **Disable Backups**.
+Subsequent backups are created based on the value you specified for **Backup frequency** or **Cron expression**.
 
-## Delete a schedule
+## Disable scheduled backups
 
-If you need to remove a scheduled backup, go to the **Backups** tab for your universe and for the scheduled backup, click **Options** and then click **Delete schedule**. The scheduled backup is deleted.
+To temporarily disable all scheduled backups:
+
+1. Go to the **Tables** tab in the universe.
+2. Click **Disable Backups**.
+
+## Delete a scheduled backup
+
+To permanently remove a scheduled backup:
+
+1. Go to the **Backups** tab for the universe. 
+2. Find the scheduled backup and click **Options**.
+3. Click **Delete schedule**. The scheduled backup is deleted.
+
