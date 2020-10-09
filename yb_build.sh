@@ -466,7 +466,7 @@ run_ctest() {
   (
     cd "$BUILD_ROOT"
     set -x
-    ctest -j"$YB_NUM_CPUS" --verbose $ctest_args 2>&1 |
+    ctest -j"$YB_MAKE_PARALLELISM" --verbose $ctest_args 2>&1 |
       egrep -v "^[0-9]+: Test timeout computed to be: "
   )
 }
