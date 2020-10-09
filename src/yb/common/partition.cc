@@ -451,6 +451,31 @@ uint16_t PartitionSchema::DecodeMultiColumnHashValue(const string& partition_key
   return (bytes[0] << 8) | bytes[1];
 }
 
+Status PartitionSchema::IsValidHashPartitionRange(const string& partition_key_start,
+                                                  const string& partition_key_end) {
+  if (!IsValidHashPartitionKeyBound(partition_key_start) ||
+      !IsValidHashPartitionKeyBound(partition_key_end)) {
+    return STATUS(InvalidArgument, "Passed in partition keys are not hash partitions.");
+  }
+  if (partition_key_start.empty() || partition_key_end.empty()) {
+    // We consider the empty string an open bound (0 for start, 0xFFFF for end), so this is a valid
+    // range.
+    return Status::OK();
+  }
+  if (PartitionSchema::DecodeMultiColumnHashValue(partition_key_start) >=
+      PartitionSchema::DecodeMultiColumnHashValue(partition_key_end)) {
+    return STATUS(InvalidArgument,
+                  Format("Invalid arguments for partition_key_start: $0 and partition_key_end: $1",
+                  Slice(partition_key_start).ToDebugHexString(),
+                  Slice(partition_key_end).ToDebugHexString()));
+  }
+  return Status::OK();
+}
+
+bool PartitionSchema::IsValidHashPartitionKeyBound(const string& partition_key) {
+  return partition_key.empty() || partition_key.size() == kPartitionKeySize;
+}
+
 Status PartitionSchema::CreateRangePartitions(std::vector<Partition>* partitions) const {
   // Create the start range keys.
   // NOTE: When converting FromPB to partition schema, we already error-check, so we don't need
