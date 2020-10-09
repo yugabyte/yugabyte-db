@@ -111,6 +111,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       createConfigureServerTasks(node, true /* isShell */)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
+      // Set default gflags
+      addDefaultGFlags();
+
       // Bring up any masters, as needed.
       boolean masterAdded = false;
       if (areMastersUnderReplicated(currentNode, universe)) {
@@ -138,24 +141,6 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         createChangeConfigTask(currentNode, true, SubTaskGroupType.WaitForDataMigration);
 
         masterAdded = true;
-      }
-
-      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-
-      // Explicitly set webserver ports for each dql
-      cluster.userIntent.tserverGFlags.put(
-        "redis_proxy_webserver_port",
-        Integer.toString(universeDetails.communicationPorts.redisServerHttpPort)
-      );
-      cluster.userIntent.tserverGFlags.put(
-        "cql_proxy_webserver_port",
-        Integer.toString(universeDetails.communicationPorts.yqlServerHttpPort)
-      );
-      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {
-        cluster.userIntent.tserverGFlags.put(
-          "pgsql_proxy_webserver_port",
-          Integer.toString(universeDetails.communicationPorts.ysqlServerHttpPort)
-        );
       }
 
       // Set gflags for the tserver.

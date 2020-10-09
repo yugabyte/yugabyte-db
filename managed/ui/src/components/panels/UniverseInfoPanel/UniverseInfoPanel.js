@@ -36,7 +36,7 @@ export default class UniverseInfoPanel extends Component {
     const yedisServiceUrl = getUniverseEndpoint(universeId) + "/redisservers";
     const universeInfoItems = [
       {name: "DB Version", data: userIntent.ybSoftwareVersion || 'n/a'},
-      {name: "Service endpoints", data: <span>{userIntent.enableYSQL && this.renderEndpointUrl(ysqlServiceUrl,"YSQL")} { userIntent.enableYSQL && '\u00A0/\u00A0' } {this.renderEndpointUrl(ycqlServiceUrl,"YCQL")} &nbsp;/&nbsp; {this.renderEndpointUrl(yedisServiceUrl,"YEDIS")}</span>},
+      {name: "Service endpoints", data: <span>{userIntent.enableYSQL && this.renderEndpointUrl(ysqlServiceUrl,"YSQL")} { userIntent.enableYSQL && '\u00A0/\u00A0' } {this.renderEndpointUrl(ycqlServiceUrl,"YCQL")} &nbsp;/&nbsp; {userIntent.enableYEDIS && this.renderEndpointUrl(yedisServiceUrl,"YEDIS")}</span>},
       {name: "Universe ID", data: universeIdData},
       {name: "Launch Time", data: formattedCreationDate},
     ];
