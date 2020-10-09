@@ -20,7 +20,6 @@ import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -265,6 +264,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean enableYSQL = false;
 
+    public boolean enableYEDIS = true;
+
     public boolean enableNodeToNodeEncrypt = false;
 
     public boolean enableClientToNodeEncrypt = false;
@@ -317,6 +318,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.useTimeSync = useTimeSync;
       newUserIntent.enableYSQL = enableYSQL;
+      newUserIntent.enableYEDIS = enableYEDIS;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);

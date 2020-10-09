@@ -139,7 +139,8 @@ class UniverseForm extends Component {
           numVolumes: formValues[clusterType].numVolumes,
           diskIops: formValues[clusterType].diskIops,
           mountPoints: formValues[clusterType].mountPoints,
-          storageType: formValues[clusterType].storageType
+          storageType: formValues[clusterType].storageType,
+          storageClass: "standard"
         },
         accessKeyCode: formValues[clusterType].accessKeyCode,
         instanceTags: formValues[clusterType].instanceTags,
@@ -147,6 +148,7 @@ class UniverseForm extends Component {
         assignPublicIP: formValues[clusterType].assignPublicIP,
         enableYSQL: formValues[clusterType].enableYSQL,
         enableIPV6: formValues[clusterType].enableIPV6,
+        enableYEDIS: formValues[clusterType].enableYEDIS,
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
       };
@@ -260,6 +262,22 @@ class UniverseForm extends Component {
     return null;
   }
 
+  getYEDISstate = () => {
+    const { formValues, universe } = this.props;
+
+    if (isNonEmptyObject(formValues['primary'])) {
+      return formValues['primary'].enableYEDIS;
+    }
+
+    const { currentUniverse: { data: { universeDetails }}} = universe;
+    if (isNonEmptyObject(universeDetails)) {
+      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
+      return primaryCluster.userIntent.enableYEDIS;
+    }
+    // We shouldn't get here!!!
+    return null;
+  }
+
   getFormPayload = () => {
     const { formValues, universe, type } = this.props;
     const { universeConfigTemplate, currentUniverse: { data: { universeDetails }}} = universe;
@@ -281,6 +299,7 @@ class UniverseForm extends Component {
         assignPublicIP: formValues[clusterType].assignPublicIP,
         useTimeSync: formValues[clusterType].useTimeSync,
         enableYSQL: self.getYSQLstate(),
+        enableYEDIS: self.getYEDISstate(),
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
         enableIPV6: formValues[clusterType].enableIPV6,
@@ -704,7 +723,7 @@ class PrimaryClusterFields extends Component {
         'primary.instanceTags', 'primary.ybSoftwareVersion', 'primary.diskIops',
         'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
         'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.enableIPV6',
-        'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt',
+        'primary.enableYEDIS', 'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt',
         'primary.enableEncryptionAtRest', 'primary.selectEncryptionAtRestConfig'
       ]}
         component={ClusterFields} {...this.props} clusterType={"primary"} />
@@ -719,7 +738,7 @@ class ReadOnlyClusterFields extends Component {
         'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.diskIops',
         'async.numVolumes','async.volumeSize',
         'async.storageType', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL',
-        'async.enableIPV6', 'async.enableNodeToNodeEncrypt',
+        'async.enableIPV6', 'async.enableYEDIS', 'async.enableNodeToNodeEncrypt',
         'async.enableClientToNodeEncrypt']}
       component={ClusterFields} {...this.props} clusterType={"async"}/>
     );

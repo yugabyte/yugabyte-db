@@ -284,6 +284,7 @@ public class HealthChecker {
       clusterMetadata.put(cluster.uuid, info);
       info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
       info.enableYSQL = cluster.userIntent.enableYSQL;
+      info.enableYEDIS = cluster.userIntent.enableYEDIS;
       // Since health checker only uses CQLSH, we only care about the
       // client to node encryption flag.
       info.enableTlsClient = cluster.userIntent.enableClientToNodeEncrypt;
@@ -323,8 +324,16 @@ public class HealthChecker {
 
       for (NodeDetails nd : details.nodeDetailsSet) {
         info.ycqlPort = nd.yqlServerRpcPort;
-        info.redisPort = nd.redisServerRpcPort;
         break;
+      }
+
+      if (info.enableYEDIS) {
+        for (NodeDetails nd : details.nodeDetailsSet) {
+          if (nd.isRedisServer) {
+            info.redisPort = nd.redisServerRpcPort;
+            break;
+          }
+        }
       }
     }
     // If any clusters were invalid, abort for this universe.

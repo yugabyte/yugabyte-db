@@ -83,6 +83,7 @@ const initialState = {
   useTimeSync: false,
   enableYSQL: true,
   enableIPV6: false,
+  enableYEDIS: false,
   enableNodeToNodeEncrypt: false,
   enableClientToNodeEncrypt: false,
   enableEncryptionAtRest: false,
@@ -110,6 +111,7 @@ export default class ClusterFields extends Component {
     this.toggleUseTimeSync = this.toggleUseTimeSync.bind(this);
     this.toggleEnableYSQL = this.toggleEnableYSQL.bind(this);
     this.toggleEnableIPV6 = this.toggleEnableIPV6.bind(this);
+    this.toggleEnableYEDIS = this.toggleEnableYEDIS.bind(this);
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
@@ -229,6 +231,7 @@ export default class ClusterFields extends Component {
           useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
           enableIPV6: userIntent.enableIPV6,
+          enableYEDIS: userIntent.enableYEDIS,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
           enableEncryptionAtRest: encryptionAtRestEnabled,
@@ -278,6 +281,10 @@ export default class ClusterFields extends Component {
           if (formValues[clusterType].enableIPV6) {
             // We would also default to whatever primary cluster's state for this one.
             this.setState({enableIPV6: formValues['primary'].enableIPV6});
+          }
+          if (formValues[clusterType].enableYEDIS) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({enableYEDIS: formValues['primary'].enableYEDIS});
           }
           if (formValues[clusterType].enableNodeToNodeEncrypt) {
             // We would also default to whatever primary cluster's state for this one.
@@ -595,6 +602,17 @@ export default class ClusterFields extends Component {
       updateFormField('primary.enableIPV6', event.target.checked);
       updateFormField('async.enableIPV6', event.target.checked);
       this.setState({enableIPV6: event.target.checked});
+    }
+  }
+
+  toggleEnableYEDIS(event) {
+    const { updateFormField, clusterType } = this.props;
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === "primary") {
+      updateFormField('primary.enableYEDIS', event.target.checked);
+      updateFormField('async.enableYEDIS', event.target.checked);
+      this.setState({enableYEDIS: event.target.checked});
     }
   }
 
@@ -995,6 +1013,7 @@ export default class ClusterFields extends Component {
     let useTimeSync = <span />;
     let enableYSQL = <span />;
     let enableIPV6 = <span />;
+    let enableYEDIS = <span />;
     let enableNodeToNodeEncrypt = <span />;
     let enableClientToNodeEncrypt = <span />;
     let selectTlsCert = <span />;
@@ -1013,6 +1032,15 @@ export default class ClusterFields extends Component {
           onToggle={this.toggleEnableYSQL}
           label="Enable YSQL"
           subLabel="Whether or not to enable YSQL."/>
+      );
+      enableYEDIS = (
+        <Field name={`${clusterType}.enableYEDIS`}
+          component={YBToggle} isReadOnly={isFieldReadOnly}
+          disableOnChange={disableToggleOnChange}
+          checkedVal={this.state.enableYEDIS}
+          onToggle={this.toggleEnableYEDIS}
+          label="Enable YEDIS"
+          subLabel="Whether or not to enable YEDIS."/>
       );
       enableNodeToNodeEncrypt = (
         <Field name={`${clusterType}.enableNodeToNodeEncrypt`}
@@ -1317,6 +1345,7 @@ export default class ClusterFields extends Component {
                 {useTimeSync}
                 {enableYSQL}
                 {enableIPV6}
+                {enableYEDIS}
                 {enableNodeToNodeEncrypt}
                 {enableClientToNodeEncrypt}
                 {enableEncryptionAtRest}
@@ -1516,7 +1545,7 @@ export default class ClusterFields extends Component {
             </Col>
           </Row>
           }
-          {this.state.customizePorts &&
+          {this.state.customizePorts && this.state.enableYEDIS &&
           <Row>
             <Col sm={3}>
               <div className="form-right-aligned-labels">

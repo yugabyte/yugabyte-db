@@ -154,12 +154,12 @@ const formFieldNames =
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes',
     'primary.volumeSize', 'primary.storageType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL',
-    'primary.enableIPV6', 'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest',
-    'primary.selectEncryptionAtRestConfig', 'primary.mountPoints', 'primary.awsArnString',
+    'primary.enableIPV6', 'primary.enableYEDIS', 'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt',
+    'primary.enableEncryptionAtRest', 'primary.selectEncryptionAtRestConfig', 'primary.mountPoints', 'primary.awsArnString',
     'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.numNodes', 'async.instanceType',
     'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL',
-    'async.enableIPV6', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints', 'masterGFlags',
-    'tserverGFlags', 'instanceTags', 'asyncClusters'];
+    'async.enableIPV6', 'async.enableYEDIS', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt',
+    'async.mountPoints', 'masterGFlags', 'tserverGFlags', 'instanceTags', 'asyncClusters'];
 
 
 function getFormData(currentUniverse, formType, clusterType) {
@@ -176,6 +176,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].useTimeSync = userIntent.useTimeSync;
     data[clusterType].enableYSQL = userIntent.enableYSQL;
     data[clusterType].enableIPV6 = userIntent.enableIPV6;
+    data[clusterType].enableYEDIS = userIntent.enableYEDIS;
     data[clusterType].enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     data[clusterType].enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
     data[clusterType].provider = userIntent.provider;
@@ -228,6 +229,7 @@ function mapStateToProps(state, ownProps) {
       "useTimeSync": false,
       "enableYSQL": true,
       "enableIPV6": false,
+      "enableYEDIS": false,
       "enableNodeToNodeEncrypt": false,
       "enableClientToNodeEncrypt": false,
       "enableEncryptionAtRest": false,
@@ -242,6 +244,7 @@ function mapStateToProps(state, ownProps) {
       "useTimeSync": false,
       "enableYSQL": true,
       "enableIPV6": false,
+      "enableYEDIS": false,
       "enableNodeToNodeEncrypt": false,
       "enableClientToNodeEncrypt": false
     }
@@ -272,7 +275,7 @@ function mapStateToProps(state, ownProps) {
       'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes',
       'primary.volumeSize', 'primary.storageType', 'primary.diskIops', 'primary.assignPublicIP',
       'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.enableIPV6',
-      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt',
+      'primary.enableYEDIS', 'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt',
       'primary.enableEncryptionAtRest', 'primary.selectEncryptionAtRestConfig',
       'primary.tlsCertificateId', 'primary.awsArnString', 'primary.masterHttpPort',
       'primary.masterRpcPort', 'primary.tserverHttpPort', 'primary.tserverRpcPort',
@@ -282,9 +285,9 @@ function mapStateToProps(state, ownProps) {
       'async.replicationFactor', 'async.numNodes', 'async.instanceType', 'async.deviceInfo',
       'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.diskIops', 'async.numVolumes',
       'async.volumeSize',  'async.storageType', 'async.assignPublicIP', 'async.enableYSQL',
-      'async.enableIPV6', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt',
-      'async.mountPoints', 'async.useTimeSync', 'masterGFlags', 'tserverGFlags', 'instanceTags',
-      'primary.installNodeExporter'
+      'async.enableIPV6', 'async.enableYEDIS', 'async.enableNodeToNodeEncrypt',
+      'async.enableClientToNodeEncrypt', 'async.mountPoints', 'async.useTimeSync',
+      'masterGFlags', 'tserverGFlags', 'instanceTags', 'primary.installNodeExporter'
     )
   };
 }

@@ -35,6 +35,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean isMasterInShellMode = false;
     public boolean isMaster = false;
     public boolean enableYSQL = false;
+    public boolean enableYEDIS = false;
     public boolean enableNodeToNodeEncrypt = false;
     public boolean enableClientToNodeEncrypt = false;
     public boolean allowInsecure = true;

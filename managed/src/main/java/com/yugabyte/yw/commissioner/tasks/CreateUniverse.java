@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import java.util.Set;
 
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,7 +21,6 @@ import org.yb.client.YBClient;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.UniverseOpType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -73,22 +71,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Override master flags (on primary cluster) and tserver flags as necessary.
       createGFlagsOverrideTasks(primaryNodes, ServerType.MASTER);
 
-      // Explicitly set webserver ports for each dql
-      primaryCluster.userIntent.tserverGFlags.put(
-        "redis_proxy_webserver_port",
-        Integer.toString(taskParams().communicationPorts.redisServerHttpPort)
-      );
-      primaryCluster.userIntent.tserverGFlags.put(
-        "cql_proxy_webserver_port",
-        Integer.toString(taskParams().communicationPorts.yqlServerHttpPort)
-      );
-      if (primaryCluster.userIntent.enableYSQL) {
-        primaryCluster.userIntent.tserverGFlags.put(
-          "pgsql_proxy_webserver_port",
-          Integer.toString(taskParams().communicationPorts.ysqlServerHttpPort)
-        );
-      }
-
+      // Set default gflags
+      addDefaultGFlags();
       createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);
 
       // Get the new masters from the node list.
@@ -135,9 +119,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
 
-      // Create a simple redis table.
-      createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      if (primaryCluster.userIntent.enableYEDIS) {
+        // Create a simple redis table.
+        createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       // Update the DNS entry for all the nodes once, using the primary cluster type.
       createDnsManipulationTask(DnsManager.DnsCommandType.Create, false,
