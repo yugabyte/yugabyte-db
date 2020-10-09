@@ -2,7 +2,7 @@
 title: Schedule universe YCQL data backups
 headerTitle: Schedule universe YCQL data backups
 linkTitle: Schedule data backups
-description: Use Yugabyte Platform to create a scheduled backup of universe YCQL data.
+description: Use Yugabyte Platform to create scheduled backups of universe YCQL data.
 menu:
   latest:
     identifier: schedule-data-backups-2-ycql
