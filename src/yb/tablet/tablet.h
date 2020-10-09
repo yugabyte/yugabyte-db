@@ -511,7 +511,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return transaction_participant_.get();
   }
 
+  // Returns true if this tablet may have large contiguous ranges of data which are not relevant,
+  // e.g. in the case of a recent tablet split where no compaction has occurred yet.
+  bool MightHaveNonRelevantData();
+
   void ForceRocksDBCompactInTest();
+
+  CHECKED_STATUS ForceFullRocksDBCompactAsync();
 
   docdb::DocDB doc_db() const { return { regular_db_.get(), intents_db_.get(), &key_bounds_ }; }
 
