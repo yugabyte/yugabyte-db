@@ -1352,4 +1352,29 @@ public class NodeManagerTest extends FakeDBApplication {
           t.region.provider.getConfig());
     }
   }
+
+  @Test
+  public void testEnableYEDISNodeCommand() {
+    testYEDISNodeCommand(true);
+  }
+
+  @Test
+  public void testDisableYEDISNodeCommand() {
+    testYEDISNodeCommand(false);
+  }
+
+  private void testYEDISNodeCommand(boolean enableYEDIS) {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater(t.cloudType)));
+      params.type = Everything;
+      params.ybSoftwareVersion = "0.0.1";
+      params.enableYEDIS = enableYEDIS;
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+    }
+  }
 }

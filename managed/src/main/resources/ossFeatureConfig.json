@@ -2,7 +2,8 @@
   "universe": {
     "import": "disabled",
     "create": "disabled",
-    "defaultYSQL": "enabled"
+    "defaultYSQL": "enabled",
+    "defaultYEDIS": "disabled"
   },
   "config": {
     "infra": "hidden",

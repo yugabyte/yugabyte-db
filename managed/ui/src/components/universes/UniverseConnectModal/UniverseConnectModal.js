@@ -106,7 +106,8 @@ class UniverseConnectModal extends Component {
             {(userIntent.enableYSQL || isEnabled(currentCustomer.data.features, "universe.defaultYSQL")) &&
               <FlexShrink>{this.renderEndpointUrl(ysqlServiceUrl, "YSQL")}</FlexShrink>}
             <FlexShrink>{this.renderEndpointUrl(ycqlServiceUrl, "YCQL")}</FlexShrink>
-            <FlexShrink>{this.renderEndpointUrl(yedisServiceUrl, "YEDIS")}</FlexShrink>
+            {(userIntent.enableYEDIS || isEnabled(currentCustomer.data.features, "universe.defaultYEDIS", "disabled")) &&
+              <FlexShrink>{this.renderEndpointUrl(yedisServiceUrl, "YEDIS")}</FlexShrink>}
           </FlexContainer>
           <YBCodeBlock className={"endpoint-output" + (this.state.endpointPayload === "" ? " empty" : "")}>
             <YBCopyButton text={this.state.endpointPayload}/>
@@ -137,11 +138,13 @@ class UniverseConnectModal extends Component {
                 <td>:    </td>
                 <td>bin/ycqlsh</td>
               </tr>
-              <tr>
-                <td>YEDIS Shell</td>
-                <td>:    </td>
-                <td>bin/redis-cli</td>
-              </tr>
+              {(userIntent.enableYEDIS || isEnabled(currentCustomer.data.features, "universe.defaultYEDIS", "disabled")) &&
+                <tr>
+                  <td>YEDIS Shell</td>
+                  <td>:    </td>
+                  <td>bin/redis-cli</td>
+                </tr>
+              }
             </tbody>
           </table>
         </YBCodeBlock>

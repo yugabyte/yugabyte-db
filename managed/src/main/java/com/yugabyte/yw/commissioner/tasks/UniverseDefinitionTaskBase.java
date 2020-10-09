@@ -16,7 +16,6 @@ import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableSet;
 
-import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -39,7 +38,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -652,6 +650,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       params.allowInsecure = taskParams().allowInsecure;
       params.rootCA = taskParams().rootCA;
+      params.enableYEDIS = userIntent.enableYEDIS;
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
@@ -741,6 +740,26 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       }
       PlacementInfoUtil.verifyNodesAndRF(cluster.clusterType, cluster.userIntent.numNodes,
                                          cluster.userIntent.replicationFactor);
+    }
+  }
+
+  /**
+   * Adds default gflags depending on settings in UserIntent.
+   * Currently contains only flags for TServers.
+   */
+  protected void addDefaultGFlags() {
+    UserIntent userIntent = taskParams().getPrimaryCluster().userIntent;
+    if (userIntent.enableYEDIS) {
+      userIntent.tserverGFlags.put("redis_proxy_webserver_port",
+          Integer.toString(taskParams().communicationPorts.redisServerHttpPort));
+    } else {
+      userIntent.tserverGFlags.put("start_redis_proxy", "false");
+    }
+    userIntent.tserverGFlags.put("cql_proxy_webserver_port",
+        Integer.toString(taskParams().communicationPorts.yqlServerHttpPort));
+    if (userIntent.enableYSQL) {
+      userIntent.tserverGFlags.put("pgsql_proxy_webserver_port",
+          Integer.toString(taskParams().communicationPorts.ysqlServerHttpPort));
     }
   }
 }
