@@ -1700,7 +1700,7 @@ Status CatalogManager::DoSplitTablet(
     const std::string& split_partition_key) {
   if (source_tablet_info->colocated()) {
     return STATUS_FORMAT(
-        IllegalState, "Tablet splitting is not supported for colocated tables, tablet_id: $0",
+        NotSupported, "Tablet splitting is not supported for colocated tables, tablet_id: $0",
         source_tablet_info->tablet_id());
   }
 

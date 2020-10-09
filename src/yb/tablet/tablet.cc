@@ -2950,6 +2950,10 @@ ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
   return ScopedRWOperation(&write_ops_being_submitted_counter_);
 }
 
+bool Tablet::MightHaveNonRelevantData() {
+  return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
+}
+
 void Tablet::ForceRocksDBCompactInTest() {
   if (regular_db_) {
     docdb::ForceRocksDBCompact(regular_db_.get());
@@ -2958,6 +2962,18 @@ void Tablet::ForceRocksDBCompactInTest() {
     CHECK_OK(intents_db_->Flush(rocksdb::FlushOptions()));
     docdb::ForceRocksDBCompact(intents_db_.get());
   }
+}
+
+Status Tablet::ForceFullRocksDBCompactAsync() {
+  if (regular_db_) {
+    RETURN_NOT_OK(docdb::ForceFullRocksDBCompactAsync(regular_db_.get()));
+  }
+  if (intents_db_) {
+    RETURN_NOT_OK_PREPEND(
+        intents_db_->Flush(rocksdb::FlushOptions()), "Pre-compaction flush of intents db failed");
+    RETURN_NOT_OK(docdb::ForceFullRocksDBCompactAsync(intents_db_.get()));
+  }
+  return Status::OK();
 }
 
 std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {

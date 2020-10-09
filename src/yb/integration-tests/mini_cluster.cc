@@ -648,6 +648,37 @@ std::vector<tablet::TabletPeerPtr> ListTableTabletLeadersPeers(
   });
 }
 
+std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
+      MiniCluster* cluster, const TableId& table_id) {
+  return ListTabletPeers(cluster, [table_id](const std::shared_ptr<tablet::TabletPeer>& peer) {
+    return peer->tablet_metadata()->table_id() == table_id;
+  });
+}
+
+std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
+      MiniCluster* cluster, const TableId& table_id) {
+  std::vector<tablet::TabletPeerPtr> result;
+  for (auto peer : ListTableTabletPeers(cluster, table_id)) {
+    if (peer->tablet()->metadata()->tablet_data_state() !=
+        tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+      result.push_back(peer);
+    }
+  }
+  return result;
+}
+
+std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
+    MiniCluster* cluster, const TableId& table_id) {
+  std::vector<tablet::TabletPeerPtr> result;
+  for (auto peer : ListTableTabletPeers(cluster, table_id)) {
+    if (peer->tablet()->metadata()->tablet_data_state() ==
+        tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+      result.push_back(peer);
+    }
+  }
+  return result;
+}
+
 Status WaitUntilTabletHasLeader(
     MiniCluster* cluster, const string& tablet_id, MonoTime deadline) {
   return Wait([cluster, &tablet_id] {
