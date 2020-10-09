@@ -3226,8 +3226,8 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 		size_t		numInputs = pertrans->numTransInputs + 1;
 
 		/*
-		 * Set up infrastructure for calling the transfn.  Note that invtrans
-		 * is not needed here.
+		 * Set up infrastructure for calling the transfn.  Note that
+		 * invtransfn is not needed here.
 		 */
 		build_aggregate_transfn_expr(inputTypes,
 									 numArguments,
