@@ -452,7 +452,7 @@ Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
             paging_state_hash_code > ql_read_request_->max_hash_code())) {
       return STATUS_SUBSTITUTE(InternalError,
                                "Out of bounds partition key found in paging state:"
-                               "Query's partition bounds: [%d, %d], paging state partition: %d",
+                               "Query's partition bounds: [$0, $1], paging state partition: $2",
                                ql_read_request_->hash_code(),
                                ql_read_request_->max_hash_code() ,
                                paging_state_hash_code);

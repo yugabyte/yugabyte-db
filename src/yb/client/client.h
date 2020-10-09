@@ -706,6 +706,14 @@ class YBClient {
                         LookupTabletCallback callback,
                         UseCache use_cache);
 
+  void LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+                        CoarseTimePoint deadline,
+                        LookupTabletRangeCallback callback);
+
+  std::future<Result<std::vector<internal::RemoteTabletPtr>>> LookupAllTabletsFuture(
+      const std::shared_ptr<const YBTable>& table,
+      CoarseTimePoint deadline);
+
   rpc::Messenger* messenger() const;
 
   const scoped_refptr<MetricEntity>& metric_entity() const;

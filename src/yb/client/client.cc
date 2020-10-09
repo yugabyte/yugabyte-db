@@ -1603,7 +1603,7 @@ Status YBClient::GetTabletsAndUpdateCache(
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
 
   RETURN_NOT_OK(data_->meta_cache_->ProcessTabletLocations(
-      tablets, /* partition_group_start= */ nullptr, /* cleanup= */ nullptr));
+      tablets, /* partition_group_start= */ nullptr, /* lookup_rpc= */ nullptr));
 
   return Status::OK();
 }
@@ -1687,6 +1687,20 @@ void YBClient::LookupTabletById(const std::string& tablet_id,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
       tablet_id, table, deadline, std::move(callback), use_cache);
+}
+
+void YBClient::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+                                CoarseTimePoint deadline,
+                                LookupTabletRangeCallback callback) {
+  data_->meta_cache_->LookupAllTablets(table, deadline, std::move(callback));
+}
+
+std::future<Result<std::vector<internal::RemoteTabletPtr>>> YBClient::LookupAllTabletsFuture(
+    const std::shared_ptr<const YBTable>& table,
+    CoarseTimePoint deadline) {
+  return MakeFuture<Result<std::vector<internal::RemoteTabletPtr>>>([&](auto callback) {
+    this->LookupAllTablets(table, deadline, std::move(callback));
+  });
 }
 
 HostPort YBClient::GetMasterLeaderAddress() {
