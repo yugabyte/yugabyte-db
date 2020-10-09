@@ -102,8 +102,16 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr);
 
+
+// Return true if the DB has a currently pending compaction.
+bool HasPendingCompaction(rocksdb::DB* db);
+// Return true if the DB has a currently running compaction.
+bool HasRunningCompaction(rocksdb::DB* db);
+
 // Request RocksDB compaction and wait until it completes.
 void ForceRocksDBCompact(rocksdb::DB* db);
+// Request RocksDB compaction and return immediately.
+CHECKED_STATUS ForceFullRocksDBCompactAsync(rocksdb::DB* db);
 
 // Initialize the RocksDB 'options'.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for

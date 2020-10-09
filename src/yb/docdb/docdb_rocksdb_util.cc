@@ -37,6 +37,7 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 #include "yb/util/trace.h"
 #include "yb/gutil/sysinfo.h"
 
@@ -44,7 +45,7 @@ using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;
 
 DEFINE_int32(rocksdb_max_background_flushes, -1, "Number threads to do background flushes.");
-DEFINE_bool(rocksdb_disable_compactions, false, "Disable background compactions.");
+DEFINE_bool(rocksdb_disable_compactions, false, "Disable rocksdb compactions.");
 DEFINE_bool(rocksdb_compaction_measure_io_stats, false, "Measure stats for rocksdb compactions.");
 DEFINE_int32(rocksdb_base_background_compactions, -1,
              "Number threads to do background compactions.");
@@ -587,24 +588,34 @@ Status RocksDBPatcher::SetHybridTimeFilter(HybridTime value) {
   return impl_->SetHybridTimeFilter(value);
 }
 
-void ForceRocksDBCompact(rocksdb::DB* db) {
-  auto status = db->CompactRange(
-      rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr);
-  if (!status.ok()) {
-    LOG(WARNING) << "Compact range failed: " << status;
-    return;
-  }
-  while (true) {
-    uint64_t compaction_pending = 0;
-    uint64_t running_compactions = 0;
-    db->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
-    db->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
-    if (!compaction_pending && !running_compactions) {
-      return;
-    }
+bool HasPendingCompaction(rocksdb::DB* db) {
+  uint64_t compaction_pending = 0;
+  db->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
+  return compaction_pending > 0;
+}
 
-    std::this_thread::sleep_for(10ms);
+bool HasRunningCompaction(rocksdb::DB* db) {
+  uint64_t running_compactions = 0;
+  db->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
+  return running_compactions > 0;
+}
+
+void ForceRocksDBCompact(rocksdb::DB* db) {
+  auto s = ForceFullRocksDBCompactAsync(db);
+  if (s.ok()) {
+    while (HasPendingCompaction(db) || HasRunningCompaction(db)) {
+      std::this_thread::sleep_for(10ms);
+    }
+  } else {
+    LOG(WARNING) << s;
   }
+}
+
+Status ForceFullRocksDBCompactAsync(rocksdb::DB* db) {
+  RETURN_NOT_OK_PREPEND(
+      db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
+      "Compact range failed:");
+  return Status::OK();
 }
 
 }  // namespace docdb

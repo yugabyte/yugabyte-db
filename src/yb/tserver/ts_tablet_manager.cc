@@ -100,6 +100,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
@@ -547,14 +548,14 @@ Status TSTabletManager::Init() {
     }
     LOG_WITH_PREFIX(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
-  ThreadPoolMetrics metrics = {
+  ThreadPoolMetrics bootstrap_metrics = {
           NULL,
           NULL,
           METRIC_ts_bootstrap_time.Instantiate(server_->metric_entity())
   };
   RETURN_NOT_OK(ThreadPoolBuilder("tablet-bootstrap")
                 .set_max_threads(max_bootstrap_threads)
-                .set_metrics(std::move(metrics))
+                .set_metrics(std::move(bootstrap_metrics))
                 .Build(&open_tablet_pool_));
 
   CleanupCheckpoints();
@@ -1489,6 +1490,11 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       LOG(WARNING) << kLogPrefix << "Trace:" << std::endl
                    << Trace::CurrentTrace()->DumpToString(true);
     }
+  }
+
+  if (tablet->MightHaveNonRelevantData()) {
+    WARN_NOT_OK(
+        tablet->ForceFullRocksDBCompactAsync(), "Failed to submit compaction for split tablet");
   }
 }
 
