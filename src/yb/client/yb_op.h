@@ -541,12 +541,13 @@ class YBPgsqlReadOp : public YBPgsqlOp {
 
  protected:
   virtual Type type() const override { return PGSQL_READ; }
+  OpGroup group() override;
 
  private:
   friend class YBTable;
   explicit YBPgsqlReadOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<PgsqlReadRequestPB> read_request_;
-  YBConsistencyLevel yb_consistency_level_;
+  YBConsistencyLevel yb_consistency_level_ = YBConsistencyLevel::STRONG;
   ReadHybridTime read_time_;
 };
 

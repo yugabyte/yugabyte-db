@@ -1892,6 +1892,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_read_from_followers", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Allow any statement that generates a read request to go to any node."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_read_from_followers,
+		false,
+		check_follower_reads, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -4061,7 +4072,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&DefaultXactIsoLevel,
 		XACT_READ_COMMITTED, isolation_level_options,
-		NULL, NULL, NULL
+		check_default_XactIsoLevel, NULL, NULL
 	},
 
 	{

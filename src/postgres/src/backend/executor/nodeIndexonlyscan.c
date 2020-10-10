@@ -121,6 +121,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 
 		// TODO(hector) Add row marks for INDEX_ONLY_SCAN
 		scandesc->yb_exec_params->rowmark = -1;
+		scandesc->yb_exec_params->read_from_followers = YBReadFromFollowersEnabled();
 	}
 
 	/*

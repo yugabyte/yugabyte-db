@@ -1073,6 +1073,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
       QLPagingStatePB paging_state;
       paging_state.set_total_num_rows_read(total_row_count);
       paging_state.set_total_rows_skipped(total_rows_skipped);
+      paging_state.set_total_rows_skipped(total_rows_skipped);
       paging_state.set_table_id(tnode->table()->id());
 
       // Set the partition to resume from. Relevant for multi-partition selects, i.e. with IN

@@ -74,6 +74,8 @@ int ybc_disable_pg_locking = -1;
 /* Forward declarations */
 static void YBCInstallTxnDdlHook();
 
+bool yb_read_from_followers = false;
+
 bool
 IsYugaByteEnabled()
 {
@@ -1190,4 +1192,8 @@ void YBEndOperationsBuffering() {
 void YBResetOperationsBuffering() {
 	buffering_nesting_level = 0;
 	YBCPgResetOperationsBuffering();
+}
+
+bool YBReadFromFollowersEnabled() {
+	return yb_read_from_followers;
 }
