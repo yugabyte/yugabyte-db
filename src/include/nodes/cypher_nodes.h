@@ -280,7 +280,7 @@ typedef struct cypher_function
     ExtensibleNode extensible;
     /* we take an expr_list */
     List *exprs;
-    char *funcname;
+    List *funcname;
     int location;
 } cypher_function;
 

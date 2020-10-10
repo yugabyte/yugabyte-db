@@ -2046,7 +2046,7 @@ static Expr *cypher_create_id_access_function(cypher_parsestate *cpstate,
     FuncExpr *func_expr;
     col = scanRTEForColumn(pstate, rte, name, -1, 0, NULL);
 
-    func_oid = get_ag_func_oid("id", 1, AGTYPEOID);
+    func_oid = get_ag_func_oid(AG_ACCESS_FUNCTION_ID, 1, AGTYPEOID);
 
     func_expr = makeFuncExpr(func_oid, AGTYPEOID, list_make1(col), InvalidOid,
                              InvalidOid, COERCE_EXPLICIT_CALL);

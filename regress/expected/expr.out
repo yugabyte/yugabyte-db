@@ -1771,7 +1771,7 @@ $$) AS (toBoolean agtype);
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean(1)
 $$) AS (toBoolean agtype);
-ERROR:  toBoolean() unsuppoted argument agtype 3
+ERROR:  toBoolean() unsupported argument agtype 3
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean()
 $$) AS (toBoolean agtype);
@@ -1840,7 +1840,7 @@ $$) AS (toFloat agtype);
 SELECT * FROM cypher('expr', $$
     RETURN toFloat(true)
 $$) AS (toFloat agtype);
-ERROR:  toFloat() unsuppoted argument agtype 5
+ERROR:  toFloat() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toFloat()
 $$) AS (toFloat agtype);
@@ -1909,7 +1909,7 @@ $$) AS (toInteger agtype);
 SELECT * FROM cypher('expr', $$
     RETURN toInteger(true)
 $$) AS (toInteger agtype);
-ERROR:  toInteger() unsuppoted argument agtype 5
+ERROR:  toInteger() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toInteger()
 $$) AS (toInteger agtype);
@@ -1957,100 +1957,100 @@ LINE 1: SELECT * FROM cypher('expr', $$
 -- toString()
 --
 -- PG types
-SELECT * FROM toString(3);
- tostring 
-----------
+SELECT * FROM age_toString(3);
+ age_tostring 
+--------------
  "3"
 (1 row)
 
-SELECT * FROM toString(3.14);
- tostring 
-----------
+SELECT * FROM age_toString(3.14);
+ age_tostring 
+--------------
  "3.14"
 (1 row)
 
-SELECT * FROM toString(3.14::float);
- tostring 
-----------
+SELECT * FROM age_toString(3.14::float);
+ age_tostring 
+--------------
  "3.14"
 (1 row)
 
-SELECT * FROM toString(3.14::numeric);
- tostring 
-----------
+SELECT * FROM age_toString(3.14::numeric);
+ age_tostring 
+--------------
  "3.14"
 (1 row)
 
-SELECT * FROM toString(true);
- tostring 
-----------
+SELECT * FROM age_toString(true);
+ age_tostring 
+--------------
  "true"
 (1 row)
 
-SELECT * FROM toString(false);
- tostring 
-----------
+SELECT * FROM age_toString(false);
+ age_tostring 
+--------------
  "false"
 (1 row)
 
-SELECT * FROM toString('a string');
-  tostring  
-------------
+SELECT * FROM age_toString('a string');
+ age_tostring 
+--------------
  "a string"
 (1 row)
 
-SELECT * FROM toString('a cstring'::cstring);
-  tostring   
--------------
+SELECT * FROM age_toString('a cstring'::cstring);
+ age_tostring 
+--------------
  "a cstring"
 (1 row)
 
-SELECT * FROM toString('a text string'::text);
-    tostring     
+SELECT * FROM age_toString('a text string'::text);
+  age_tostring   
 -----------------
  "a text string"
 (1 row)
 
 -- agtypes
-SELECT * FROM toString(agtype_in('3'));
- tostring 
-----------
+SELECT * FROM age_toString(agtype_in('3'));
+ age_tostring 
+--------------
  "3"
 (1 row)
 
-SELECT * FROM toString(agtype_in('3.14'));
- tostring 
-----------
+SELECT * FROM age_toString(agtype_in('3.14'));
+ age_tostring 
+--------------
  "3.14"
 (1 row)
 
-SELECT * FROM toString(agtype_in('3.14::float'));
- tostring 
-----------
+SELECT * FROM age_toString(agtype_in('3.14::float'));
+ age_tostring 
+--------------
  "3.14"
 (1 row)
 
-SELECT * FROM toString(agtype_in('3.14::numeric'));
- tostring 
-----------
+SELECT * FROM age_toString(agtype_in('3.14::numeric'));
+ age_tostring 
+--------------
  "3.14"
 (1 row)
 
-SELECT * FROM toString(agtype_in('true'));
- tostring 
-----------
+SELECT * FROM age_toString(agtype_in('true'));
+ age_tostring 
+--------------
  "true"
 (1 row)
 
-SELECT * FROM toString(agtype_in('false'));
- tostring 
-----------
+SELECT * FROM age_toString(agtype_in('false'));
+ age_tostring 
+--------------
  "false"
 (1 row)
 
-SELECT * FROM toString(agtype_in('"a string"'));
-  tostring  
-------------
+SELECT * FROM age_toString(agtype_in('"a string"'));
+ age_tostring 
+--------------
  "a string"
 (1 row)
 
@@ -2061,22 +2061,22 @@ SELECT * FROM cypher('expr', $$ RETURN toString(3.14::numeric) $$) AS (results a
 (1 row)
 
 -- should return null
-SELECT * FROM toString(NULL);
- tostring 
-----------
+SELECT * FROM age_toString(NULL);
+ age_tostring 
+--------------
  
 (1 row)
 
-SELECT * FROM toString(agtype_in(null));
- tostring 
-----------
+SELECT * FROM age_toString(agtype_in(null));
+ age_tostring 
+--------------
  
 (1 row)
 
 -- should fail
-SELECT * FROM toString();
-ERROR:  function tostring() does not exist
-LINE 1: SELECT * FROM toString();
+SELECT * FROM age_toString();
+ERROR:  function age_tostring() does not exist
+LINE 1: SELECT * FROM age_toString();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (results agtype);
@@ -2094,20 +2094,20 @@ $$) AS (results agtype);
  "this is a string"
 (1 row)
 
-SELECT * FROM reverse('gnirts a si siht');
-     reverse      
-------------------
- this is a string
+SELECT * FROM age_reverse('gnirts a si siht');
+    age_reverse     
+--------------------
+ "this is a string"
 (1 row)
 
-SELECT * FROM reverse('gnirts a si siht'::text);
-     reverse      
-------------------
- this is a string
+SELECT * FROM age_reverse('gnirts a si siht'::text);
+    age_reverse     
+--------------------
+ "this is a string"
 (1 row)
 
-SELECT * FROM reverse('gnirts a si siht'::cstring);
-      reverse       
+SELECT * FROM age_reverse('gnirts a si siht'::cstring);
+    age_reverse     
 --------------------
  "this is a string"
 (1 row)
@@ -2121,9 +2121,9 @@ $$) AS (results agtype);
  
 (1 row)
 
-SELECT * FROM reverse(null);
- reverse 
----------
+SELECT * FROM age_reverse(null);
+ age_reverse 
+-------------
  
 (1 row)
 
@@ -2131,24 +2131,24 @@ SELECT * FROM reverse(null);
 SELECT * FROM cypher('expr', $$
     RETURN reverse(true)
 $$) AS (results agtype);
-ERROR:  reverse() unsuppoted argument agtype 5
-SELECT * FROM reverse(true);
-ERROR:  reverse() unsuppoted argument type 16
+ERROR:  reverse() unsupported argument agtype 5
+SELECT * FROM age_reverse(true);
+ERROR:  reverse() unsupported argument type 16
 SELECT * FROM cypher('expr', $$
     RETURN reverse(3.14)
 $$) AS (results agtype);
-ERROR:  reverse() unsuppoted argument agtype 4
-SELECT * FROM reverse(3.14);
-ERROR:  reverse() unsuppoted argument type 1700
+ERROR:  reverse() unsupported argument agtype 4
+SELECT * FROM age_reverse(3.14);
+ERROR:  reverse() unsupported argument type 1700
 SELECT * FROM cypher('expr', $$
     RETURN reverse()
 $$) AS (results agtype);
 ERROR:  invalid number of input parameters for reverse()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
-SELECT * FROM reverse();
-ERROR:  function reverse() does not exist
-LINE 1: SELECT * FROM reverse();
+SELECT * FROM age_reverse();
+ERROR:  function age_reverse() does not exist
+LINE 1: SELECT * FROM age_reverse();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
@@ -2170,26 +2170,26 @@ $$) AS (toLower agtype);
  "to lowercase"
 (1 row)
 
-SELECT * FROM touppercase('text'::text);
- touppercase 
+SELECT * FROM age_toupper('text'::text);
+ age_toupper 
 -------------
  "TEXT"
 (1 row)
 
-SELECT * FROM touppercase('cstring'::cstring);
- touppercase 
+SELECT * FROM age_toupper('cstring'::cstring);
+ age_toupper 
 -------------
  "CSTRING"
 (1 row)
 
-SELECT * FROM tolowercase('TEXT'::text);
- tolowercase 
+SELECT * FROM age_tolower('TEXT'::text);
+ age_tolower 
 -------------
  "text"
 (1 row)
 
-SELECT * FROM tolowercase('CSTRING'::cstring);
- tolowercase 
+SELECT * FROM age_tolower('CSTRING'::cstring);
+ age_tolower 
 -------------
  "cstring"
 (1 row)
@@ -2211,14 +2211,14 @@ $$) AS (toLower agtype);
  
 (1 row)
 
-SELECT * FROM touppercase(null);
- touppercase 
+SELECT * FROM age_toupper(null);
+ age_toupper 
 -------------
  
 (1 row)
 
-SELECT * FROM tolowercase(null);
- tolowercase 
+SELECT * FROM age_tolower(null);
+ age_tolower 
 -------------
  
 (1 row)
@@ -2227,7 +2227,7 @@ SELECT * FROM tolowercase(null);
 SELECT * FROM cypher('expr', $$
     RETURN toUpper(true)
 $$) AS (toUpper agtype);
-ERROR:  touppercase() unsuppoted argument agtype 5
+ERROR:  toUpper() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toUpper()
 $$) AS (toUpper agtype);
@@ -2237,21 +2237,21 @@ LINE 1: SELECT * FROM cypher('expr', $$
 SELECT * FROM cypher('expr', $$
     RETURN toLower(true)
 $$) AS (toLower agtype);
-ERROR:  tolowercase() unsuppoted argument agtype 5
+ERROR:  toLower() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toLower()
 $$) AS (toLower agtype);
 ERROR:  invalid number of input parameters for toLower()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
-SELECT * FROM touppercase();
-ERROR:  function touppercase() does not exist
-LINE 1: SELECT * FROM touppercase();
+SELECT * FROM age_toupper();
+ERROR:  function age_toupper() does not exist
+LINE 1: SELECT * FROM age_toupper();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM tolowercase();
-ERROR:  function tolowercase() does not exist
-LINE 1: SELECT * FROM tolowercase();
+SELECT * FROM age_tolower();
+ERROR:  function age_tolower() does not exist
+LINE 1: SELECT * FROM age_tolower();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
@@ -2281,20 +2281,20 @@ $$) AS (results agtype);
  "string"
 (1 row)
 
-SELECT * FROM l_trim('  string   ');
-   l_trim    
+SELECT * FROM age_ltrim('  string   ');
+  age_ltrim  
 -------------
  "string   "
 (1 row)
 
-SELECT * FROM r_trim('  string   ');
-   r_trim   
+SELECT * FROM age_rtrim('  string   ');
+ age_rtrim  
 ------------
  "  string"
 (1 row)
 
-SELECT * FROM b_trim('  string   ');
-  b_trim  
+SELECT * FROM age_trim('  string   ');
+ age_trim 
 ----------
  "string"
 (1 row)
@@ -2324,21 +2324,21 @@ $$) AS (results agtype);
  
 (1 row)
 
-SELECT * FROM l_trim(null);
- l_trim 
---------
+SELECT * FROM age_ltrim(null);
+ age_ltrim 
+-----------
  
 (1 row)
 
-SELECT * FROM r_trim(null);
- r_trim 
---------
+SELECT * FROM age_rtrim(null);
+ age_rtrim 
+-----------
  
 (1 row)
 
-SELECT * FROM b_trim(null);
- b_trim 
---------
+SELECT * FROM age_trim(null);
+ age_trim 
+----------
  
 (1 row)
 
@@ -2346,15 +2346,15 @@ SELECT * FROM b_trim(null);
 SELECT * FROM cypher('expr', $$
     RETURN lTrim(true)
 $$) AS (results agtype);
-ERROR:  lTrim() unsuppoted argument agtype 5
+ERROR:  lTrim() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN rTrim(true)
 $$) AS (results agtype);
-ERROR:  rTrim() unsuppoted argument agtype 5
+ERROR:  rTrim() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN trim(true)
 $$) AS (results agtype);
-ERROR:  trim() unsuppoted argument agtype 5
+ERROR:  trim() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN lTrim()
 $$) AS (results agtype);
@@ -2373,19 +2373,19 @@ $$) AS (results agtype);
 ERROR:  invalid number of input parameters for trim()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
-SELECT * FROM l_trim();
-ERROR:  function l_trim() does not exist
-LINE 1: SELECT * FROM l_trim();
+SELECT * FROM age_ltrim();
+ERROR:  function age_ltrim() does not exist
+LINE 1: SELECT * FROM age_ltrim();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM r_trim();
-ERROR:  function r_trim() does not exist
-LINE 1: SELECT * FROM r_trim();
+SELECT * FROM age_rtrim();
+ERROR:  function age_rtrim() does not exist
+LINE 1: SELECT * FROM age_rtrim();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM b_trim();
-ERROR:  function b_trim() does not exist
-LINE 1: SELECT * FROM b_trim();
+SELECT * FROM age_trim();
+ERROR:  function age_trim() does not exist
+LINE 1: SELECT * FROM age_trim();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
@@ -2432,14 +2432,14 @@ $$) AS (results agtype);
  
 (1 row)
 
-SELECT * FROM l_substr(null, 1);
- l_substr 
+SELECT * FROM age_left(null, 1);
+ age_left 
 ----------
  
 (1 row)
 
-SELECT * FROM l_substr(null, null);
- l_substr 
+SELECT * FROM age_left(null, null);
+ age_left 
 ----------
  
 (1 row)
@@ -2459,13 +2459,13 @@ $$) AS (results agtype);
 ERROR:  invalid number of input parameters for left()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
-SELECT * FROM l_substr('123456789', null);
+SELECT * FROM age_left('123456789', null);
 ERROR:  left() length parameter cannot be null
-SELECT * FROM l_substr('123456789', -1);
+SELECT * FROM age_left('123456789', -1);
 ERROR:  left() negative values are not supported for length
-SELECT * FROM l_substr();
-ERROR:  function l_substr() does not exist
-LINE 1: SELECT * FROM l_substr();
+SELECT * FROM age_left();
+ERROR:  function age_left() does not exist
+LINE 1: SELECT * FROM age_left();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --right()
@@ -2510,15 +2510,15 @@ $$) AS (results agtype);
  
 (1 row)
 
-SELECT * FROM r_substr(null, 1);
- r_substr 
-----------
+SELECT * FROM age_right(null, 1);
+ age_right 
+-----------
  
 (1 row)
 
-SELECT * FROM r_substr(null, null);
- r_substr 
-----------
+SELECT * FROM age_right(null, null);
+ age_right 
+-----------
  
 (1 row)
 
@@ -2537,13 +2537,13 @@ $$) AS (results agtype);
 ERROR:  invalid number of input parameters for right()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
-SELECT * FROM r_substr('123456789', null);
+SELECT * FROM age_right('123456789', null);
 ERROR:  right() length parameter cannot be null
-SELECT * FROM r_substr('123456789', -1);
+SELECT * FROM age_right('123456789', -1);
 ERROR:  right() negative values are not supported for length
-SELECT * FROM r_substr();
-ERROR:  function r_substr() does not exist
-LINE 1: SELECT * FROM r_substr();
+SELECT * FROM age_right();
+ERROR:  function age_right() does not exist
+LINE 1: SELECT * FROM age_right();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- substring()
@@ -2579,15 +2579,15 @@ $$) AS (results agtype);
  "0123456789"
 (1 row)
 
-SELECT * FROM b_substr('0123456789', 3, 2);
- b_substr 
-----------
+SELECT * FROM age_substring('0123456789', 3, 2);
+ age_substring 
+---------------
  "34"
 (1 row)
 
-SELECT * FROM b_substr('0123456789', 1);
-  b_substr   
--------------
+SELECT * FROM age_substring('0123456789', 1);
+ age_substring 
+---------------
  "123456789"
 (1 row)
 
@@ -2616,21 +2616,21 @@ $$) AS (results agtype);
  
 (1 row)
 
-SELECT * FROM b_substr(null, null, null);
- b_substr 
-----------
+SELECT * FROM age_substring(null, null, null);
+ age_substring 
+---------------
  
 (1 row)
 
-SELECT * FROM b_substr(null, null);
- b_substr 
-----------
+SELECT * FROM age_substring(null, null);
+ age_substring 
+---------------
  
 (1 row)
 
-SELECT * FROM b_substr(null, 1);
- b_substr 
-----------
+SELECT * FROM age_substring(null, 1);
+ age_substring 
+---------------
  
 (1 row)
 
@@ -2651,15 +2651,15 @@ SELECT * FROM cypher('expr', $$
     RETURN substring("123456789")
 $$) AS (results agtype);
 ERROR:  substring() invalid number of arguments
-SELECT * FROM b_substr('123456789', null);
+SELECT * FROM age_substring('123456789', null);
 ERROR:  substring() offset or length cannot be null
-SELECT * FROM b_substr('123456789', 0, -1);
+SELECT * FROM age_substring('123456789', 0, -1);
 ERROR:  substring() negative values are not supported for offset or length
-SELECT * FROM b_substr('123456789', -1);
+SELECT * FROM age_substring('123456789', -1);
 ERROR:  substring() negative values are not supported for offset or length
-SELECT * FROM b_substr();
-ERROR:  function b_substr() does not exist
-LINE 1: SELECT * FROM b_substr();
+SELECT * FROM age_substring();
+ERROR:  function age_substring() does not exist
+LINE 1: SELECT * FROM age_substring();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
@@ -2738,21 +2738,21 @@ $$) AS (results agtype);
  
 (1 row)
 
-SELECT * FROM split(null, null);
- split 
--------
+SELECT * FROM age_split(null, null);
+ age_split 
+-----------
  
 (1 row)
 
-SELECT * FROM split('a,b,c,d,e,f', null);
- split 
--------
+SELECT * FROM age_split('a,b,c,d,e,f', null);
+ age_split 
+-----------
  
 (1 row)
 
-SELECT * FROM split(null, ',');
- split 
--------
+SELECT * FROM age_split(null, ',');
+ age_split 
+-----------
  
 (1 row)
 
@@ -2760,11 +2760,11 @@ SELECT * FROM split(null, ',');
 SELECT * FROM cypher('expr', $$
     RETURN split(123456789, ",")
 $$) AS (results agtype);
-ERROR:  split() unsuppoted argument agtype 3
+ERROR:  split() unsupported argument agtype 3
 SELECT * FROM cypher('expr', $$
     RETURN split("a,b,c,d,e,f", -1)
 $$) AS (results agtype);
-ERROR:  split() unsuppoted argument agtype 3
+ERROR:  split() unsupported argument agtype 3
 SELECT * FROM cypher('expr', $$
     RETURN split("a,b,c,d,e,f")
 $$) AS (results agtype);
@@ -2777,15 +2777,15 @@ $$) AS (results agtype);
 ERROR:  invalid number of input parameters for split()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
-SELECT * FROM split(123456789, ',');
-ERROR:  split() unsuppoted argument type 23
-SELECT * FROM split('a,b,c,d,e,f', -1);
-ERROR:  split() unsuppoted argument type 23
-SELECT * FROM split('a,b,c,d,e,f');
+SELECT * FROM age_split(123456789, ',');
+ERROR:  split() unsupported argument type 23
+SELECT * FROM age_split('a,b,c,d,e,f', -1);
+ERROR:  split() unsupported argument type 23
+SELECT * FROM age_split('a,b,c,d,e,f');
 ERROR:  split() invalid number of arguments
-SELECT * FROM split();
-ERROR:  function split() does not exist
-LINE 1: SELECT * FROM split();
+SELECT * FROM age_split();
+ERROR:  function age_split() does not exist
+LINE 1: SELECT * FROM age_split();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
@@ -2880,39 +2880,39 @@ $$) AS (results agtype);
  
 (1 row)
 
-SELECT * FROM replace(null, null, null);
- replace 
----------
+SELECT * FROM age_replace(null, null, null);
+ age_replace 
+-------------
  
 (1 row)
 
-SELECT * FROM replace('Hello', null, null);
- replace 
----------
+SELECT * FROM age_replace('Hello', null, null);
+ age_replace 
+-------------
  
 (1 row)
 
-SELECT * FROM replace('Hello', '', null);
- replace 
----------
+SELECT * FROM age_replace('Hello', '', null);
+ age_replace 
+-------------
  
 (1 row)
 
-SELECT * FROM replace('', '', '');
- replace 
----------
+SELECT * FROM age_replace('', '', '');
+ age_replace 
+-------------
  
 (1 row)
 
-SELECT * FROM replace('Hello', 'Hello', '');
- replace 
----------
+SELECT * FROM age_replace('Hello', 'Hello', '');
+ age_replace 
+-------------
  
 (1 row)
 
-SELECT * FROM replace('', 'Hello', 'Mellow');
- replace 
----------
+SELECT * FROM age_replace('', 'Hello', 'Mellow');
+ age_replace 
+-------------
  
 (1 row)
 
@@ -2938,24 +2938,24 @@ LINE 1: SELECT * FROM cypher('expr', $$
 SELECT * FROM cypher('expr', $$
     RETURN replace("Hello", "e", 1)
 $$) AS (results agtype);
-ERROR:  replace() unsuppoted argument agtype 3
+ERROR:  replace() unsupported argument agtype 3
 SELECT * FROM cypher('expr', $$
     RETURN replace("Hello", 1, "e")
 $$) AS (results agtype);
-ERROR:  replace() unsuppoted argument agtype 3
-SELECT * FROM replace();
-ERROR:  function replace() does not exist
-LINE 1: SELECT * FROM replace();
+ERROR:  replace() unsupported argument agtype 3
+SELECT * FROM age_replace();
+ERROR:  function age_replace() does not exist
+LINE 1: SELECT * FROM age_replace();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM replace(null);
+SELECT * FROM age_replace(null);
 ERROR:  replace() invalid number of arguments
-SELECT * FROM replace(null, null);
+SELECT * FROM age_replace(null, null);
 ERROR:  replace() invalid number of arguments
-SELECT * FROM replace('Hello', 'e', 1);
-ERROR:  replace() unsuppoted argument type 23
-SELECT * FROM replace('Hello', 1, 'E');
-ERROR:  replace() unsuppoted argument type 23
+SELECT * FROM age_replace('Hello', 'e', 1);
+ERROR:  replace() unsupported argument type 23
+SELECT * FROM age_replace('Hello', 1, 'E');
+ERROR:  replace() unsupported argument type 23
 --
 -- sin, cos, tan, cot
 --
@@ -2991,26 +2991,26 @@ $$) AS (results agtype), cot(3.1415);
  -10792.8899395258 | -10792.8899395258
 (1 row)
 
-SELECT * FROM sin(3.1415), r_sin(3.1415);
-         sin          |        r_sin         
+SELECT * FROM sin(3.1415), age_sin(3.1415);
+         sin          |       age_sin        
 ----------------------+----------------------
  9.26535896604903e-05 | 9.26535896604903e-05
 (1 row)
 
-SELECT * FROM cos(3.1415), r_cos(3.1415);
-        cos         |       r_cos        
+SELECT * FROM cos(3.1415), age_cos(3.1415);
+        cos         |      age_cos       
 --------------------+--------------------
  -0.999999995707656 | -0.999999995707656
 (1 row)
 
-SELECT * FROM tan(3.1415), r_tan(3.1415);
-          tan          |         r_tan         
+SELECT * FROM tan(3.1415), age_tan(3.1415);
+          tan          |        age_tan        
 -----------------------+-----------------------
  -9.26535900581913e-05 | -9.26535900581913e-05
 (1 row)
 
-SELECT * FROM cot(3.1415), r_cot(3.1415);
-        cot        |       r_cot       
+SELECT * FROM cot(3.1415), age_cot(3.1415);
+        cot        |      age_cot      
 -------------------+-------------------
  -10792.8899395258 | -10792.8899395258
 (1 row)
@@ -3048,27 +3048,27 @@ $$) AS (results agtype);
  
 (1 row)
 
-SELECT * FROM r_sin(null);
- r_sin 
--------
+SELECT * FROM age_sin(null);
+ age_sin 
+---------
  
 (1 row)
 
-SELECT * FROM r_cos(null);
- r_cos 
--------
+SELECT * FROM age_cos(null);
+ age_cos 
+---------
  
 (1 row)
 
-SELECT * FROM r_tan(null);
- r_tan 
--------
+SELECT * FROM age_tan(null);
+ age_tan 
+---------
  
 (1 row)
 
-SELECT * FROM r_cot(null);
- r_cot 
--------
+SELECT * FROM age_cot(null);
+ age_cot 
+---------
  
 (1 row)
 
@@ -3076,19 +3076,19 @@ SELECT * FROM r_cot(null);
 SELECT * FROM cypher('expr', $$
     RETURN sin("0")
 $$) AS (results agtype);
-ERROR:  sin() unsuppoted argument agtype 1
+ERROR:  sin() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN cos("0")
 $$) AS (results agtype);
-ERROR:  cos() unsuppoted argument agtype 1
+ERROR:  cos() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN tan("0")
 $$) AS (results agtype);
-ERROR:  tan() unsuppoted argument agtype 1
+ERROR:  tan() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN cot("0")
 $$) AS (results agtype);
-ERROR:  cot() unsuppoted argument agtype 1
+ERROR:  cot() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN sin()
 $$) AS (results agtype);
@@ -3113,32 +3113,32 @@ $$) AS (results agtype);
 ERROR:  invalid number of input parameters for cot()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
-SELECT * FROM r_sin('0');
-ERROR:  sin() unsuppoted argument type 25
-SELECT * FROM r_cos('0');
-ERROR:  cos() unsuppoted argument type 25
-SELECT * FROM r_tan('0');
-ERROR:  tan() unsuppoted argument type 25
-SELECT * FROM r_cot('0');
-ERROR:  cot() unsuppoted argument type 25
-SELECT * FROM r_sin();
-ERROR:  function r_sin() does not exist
-LINE 1: SELECT * FROM r_sin();
+SELECT * FROM age_sin('0');
+ERROR:  sin() unsupported argument type 25
+SELECT * FROM age_cos('0');
+ERROR:  cos() unsupported argument type 25
+SELECT * FROM age_tan('0');
+ERROR:  tan() unsupported argument type 25
+SELECT * FROM age_cot('0');
+ERROR:  cot() unsupported argument type 25
+SELECT * FROM age_sin();
+ERROR:  function age_sin() does not exist
+LINE 1: SELECT * FROM age_sin();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM r_cos();
-ERROR:  function r_cos() does not exist
-LINE 1: SELECT * FROM r_cos();
+SELECT * FROM age_cos();
+ERROR:  function age_cos() does not exist
+LINE 1: SELECT * FROM age_cos();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM r_tan();
-ERROR:  function r_tan() does not exist
-LINE 1: SELECT * FROM r_tan();
+SELECT * FROM age_tan();
+ERROR:  function age_tan() does not exist
+LINE 1: SELECT * FROM age_tan();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM r_cot();
-ERROR:  function r_cot() does not exist
-LINE 1: SELECT * FROM r_cot();
+SELECT * FROM age_cot();
+ERROR:  function age_cot() does not exist
+LINE 1: SELECT * FROM age_cot();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
@@ -3176,26 +3176,26 @@ $$) AS (results agtype);
  3.14159265358979
 (1 row)
 
-SELECT * FROM asin(1), r_asin(1);
-      asin       |     r_asin      
+SELECT * FROM asin(1), age_asin(1);
+      asin       |    age_asin     
 -----------------+-----------------
  1.5707963267949 | 1.5707963267949
 (1 row)
 
-SELECT * FROM acos(0), r_acos(0);
-      acos       |     r_acos      
+SELECT * FROM acos(0), age_acos(0);
+      acos       |    age_acos     
 -----------------+-----------------
  1.5707963267949 | 1.5707963267949
 (1 row)
 
-SELECT * FROM atan(1), r_atan(1);
-       atan        |      r_atan       
+SELECT * FROM atan(1), age_atan(1);
+       atan        |     age_atan      
 -------------------+-------------------
  0.785398163397448 | 0.785398163397448
 (1 row)
 
-SELECT * FROM atan2(1, 1), r_atan2(1, 1);
-       atan2       |      r_atan2      
+SELECT * FROM atan2(1, 1), age_atan2(1, 1);
+       atan2       |     age_atan2     
 -------------------+-------------------
  0.785398163397448 | 0.785398163397448
 (1 row)
@@ -3281,39 +3281,39 @@ $$) AS (results agtype);
  
 (1 row)
 
-SELECT * FROM r_asin(null);
- r_asin 
---------
+SELECT * FROM age_asin(null);
+ age_asin 
+----------
  
 (1 row)
 
-SELECT * FROM r_acos(null);
- r_acos 
---------
+SELECT * FROM age_acos(null);
+ age_acos 
+----------
  
 (1 row)
 
-SELECT * FROM r_atan(null);
- r_atan 
---------
+SELECT * FROM age_atan(null);
+ age_atan 
+----------
  
 (1 row)
 
-SELECT * FROM r_atan2(null, null);
- r_atan2 
----------
+SELECT * FROM age_atan2(null, null);
+ age_atan2 
+-----------
  
 (1 row)
 
-SELECT * FROM r_atan2(1, null);
- r_atan2 
----------
+SELECT * FROM age_atan2(1, null);
+ age_atan2 
+-----------
  
 (1 row)
 
-SELECT * FROM r_atan2(null, 1);
- r_atan2 
----------
+SELECT * FROM age_atan2(null, 1);
+ age_atan2 
+-----------
  
 (1 row)
 
@@ -3321,23 +3321,23 @@ SELECT * FROM r_atan2(null, 1);
 SELECT * FROM cypher('expr', $$
     RETURN asin("0")
 $$) AS (results agtype);
-ERROR:  asin() unsuppoted argument agtype 1
+ERROR:  asin() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN acos("0")
 $$) AS (results agtype);
-ERROR:  acos() unsuppoted argument agtype 1
+ERROR:  acos() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN atan("0")
 $$) AS (results agtype);
-ERROR:  atan() unsuppoted argument agtype 1
+ERROR:  atan() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN atan2("0", 1)
 $$) AS (results agtype);
-ERROR:  atan2() unsuppoted argument agtype 1
+ERROR:  atan2() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN atan2(0, "1")
 $$) AS (results agtype);
-ERROR:  atan2() unsuppoted argument agtype 1
+ERROR:  atan2() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN asin()
 $$) AS (results agtype);
@@ -3368,37 +3368,37 @@ $$) AS (results agtype);
 ERROR:  invalid number of input parameters for atan2()
 LINE 1: SELECT * FROM cypher('expr', $$
                                       ^
-SELECT * FROM r_asin('0');
-ERROR:  asin() unsuppoted argument type 25
-SELECT * FROM r_acos('0');
-ERROR:  acos() unsuppoted argument type 25
-SELECT * FROM r_atan('0');
-ERROR:  atan() unsuppoted argument type 25
-SELECT * FROM r_atan2('0', 1);
-ERROR:  atan2() unsuppoted argument type 25
-SELECT * FROM r_atan2(1, '0');
-ERROR:  atan2() unsuppoted argument type 25
-SELECT * FROM r_asin();
-ERROR:  function r_asin() does not exist
-LINE 1: SELECT * FROM r_asin();
+SELECT * FROM age_asin('0');
+ERROR:  asin() unsupported argument type 25
+SELECT * FROM age_acos('0');
+ERROR:  acos() unsupported argument type 25
+SELECT * FROM age_atan('0');
+ERROR:  atan() unsupported argument type 25
+SELECT * FROM age_atan2('0', 1);
+ERROR:  atan2() unsupported argument type 25
+SELECT * FROM age_atan2(1, '0');
+ERROR:  atan2() unsupported argument type 25
+SELECT * FROM age_asin();
+ERROR:  function age_asin() does not exist
+LINE 1: SELECT * FROM age_asin();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM r_acos();
-ERROR:  function r_acos() does not exist
-LINE 1: SELECT * FROM r_acos();
+SELECT * FROM age_acos();
+ERROR:  function age_acos() does not exist
+LINE 1: SELECT * FROM age_acos();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM r_atan();
-ERROR:  function r_atan() does not exist
-LINE 1: SELECT * FROM r_atan();
+SELECT * FROM age_atan();
+ERROR:  function age_atan() does not exist
+LINE 1: SELECT * FROM age_atan();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM r_atan2();
-ERROR:  function r_atan2() does not exist
-LINE 1: SELECT * FROM r_atan2();
+SELECT * FROM age_atan2();
+ERROR:  function age_atan2() does not exist
+LINE 1: SELECT * FROM age_atan2();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM r_atan2(1);
+SELECT * FROM age_atan2(1);
 ERROR:  atan2() invalid number of arguments
 --
 -- pi
@@ -3564,11 +3564,11 @@ LINE 1: SELECT * FROM cypher('expr', $$
 SELECT * FROM cypher('expr', $$
     RETURN radians("1")
 $$) AS (results agtype);
-ERROR:  radians() unsuppoted argument agtype 1
+ERROR:  radians() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN degrees("1")
 $$) AS (results agtype);
-ERROR:  degrees() unsuppoted argument agtype 1
+ERROR:  degrees() unsupported argument agtype 1
 --
 -- abs(), ceil(), floor(), & round()
 --
@@ -3815,23 +3815,23 @@ LINE 1: SELECT * FROM cypher('expr', $$
 SELECT * FROM cypher('expr', $$
     RETURN abs("1")
 $$) AS (results agtype);
-ERROR:  abs() unsuppoted argument agtype 1
+ERROR:  abs() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN ceil("1")
 $$) AS (results agtype);
-ERROR:  ceil() unsuppoted argument agtype 1
+ERROR:  ceil() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN floor("1")
 $$) AS (results agtype);
-ERROR:  floor() unsuppoted argument agtype 1
+ERROR:  floor() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN round("1")
 $$) AS (results agtype);
-ERROR:  round() unsuppoted argument agtype 1
+ERROR:  round() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN sign("1")
 $$) AS (results agtype);
-ERROR:  sign() unsuppoted argument agtype 1
+ERROR:  sign() unsupported argument agtype 1
 --
 -- rand()
 --
@@ -3994,7 +3994,7 @@ LINE 1: SELECT * from cypher('expr', $$
 SELECT * from cypher('expr', $$
     RETURN exp("1")
 $$) as (result agtype);
-ERROR:  exp() unsuppoted argument agtype 1
+ERROR:  exp() unsupported argument agtype 1
 --
 -- sqrt()
 --
@@ -4049,7 +4049,7 @@ LINE 1: SELECT * from cypher('expr', $$
 SELECT * from cypher('expr', $$
     RETURN sqrt("1")
 $$) as (result agtype);
-ERROR:  sqrt() unsuppoted argument agtype 1
+ERROR:  sqrt() unsupported argument agtype 1
 --
 -- Cleanup
 --

@@ -233,7 +233,7 @@ void out_cypher_function(StringInfo str, const ExtensibleNode *node)
     DEFINE_AG_NODE(cypher_function);
 
     write_node_field(exprs);
-    write_string_field(funcname);
+    write_node_field(funcname);
     write_location_field(location);
 }
 

@@ -1308,75 +1308,75 @@ HINT:  argument 3 must be an vertex
 --
 -- id, startid, endid
 --
-SELECT id(_agtype_build_vertex('1'::graphid, $$label_name$$, agtype_build_map()));
- id 
-----
+SELECT age_id(_agtype_build_vertex('1'::graphid, $$label_name$$, agtype_build_map()));
+ age_id 
+--------
  1
 (1 row)
 
-SELECT id(_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+SELECT age_id(_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
 			  $$label_name$$, agtype_build_map('id', 2)));
- id 
-----
+ age_id 
+--------
  1
 (1 row)
 
-SELECT start_id(_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+SELECT age_start_id(_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
 			  $$label_name$$, agtype_build_map('id', 2)));
- start_id 
-----------
+ age_start_id 
+--------------
  2
 (1 row)
 
-SELECT end_id(_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+SELECT age_end_id(_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
 			  $$label_name$$, agtype_build_map('id', 2)));
- end_id 
---------
+ age_end_id 
+------------
  3
 (1 row)
 
-SELECT id(_agtype_build_path(
+SELECT age_id(_agtype_build_path(
 	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
 	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
 			  $$label$$, agtype_build_map('id', 2)),
 	_agtype_build_vertex('3'::graphid, $$label$$, agtype_build_map('id', 2))
 ));
 ERROR:  id() argument must be a vertex, an edge or null
-SELECT id(agtype_in('1'));
+SELECT age_id(agtype_in('1'));
 ERROR:  id() argument must be a vertex, an edge or null
-SELECT id(NULL);
- id 
-----
- 
-(1 row)
-
-SELECT start_id(NULL);
- start_id 
-----------
- 
-(1 row)
-
-SELECT end_id(NULL);
- end_id 
+SELECT age_id(NULL);
+ age_id 
 --------
  
 (1 row)
 
-SELECT id(agtype_in('null'));
- id 
-----
+SELECT age_start_id(NULL);
+ age_start_id 
+--------------
  
 (1 row)
 
-SELECT start_id(agtype_in('null'));
- start_id 
-----------
+SELECT age_end_id(NULL);
+ age_end_id 
+------------
  
 (1 row)
 
-SELECT end_id(agtype_in('null'));
- end_id 
+SELECT age_id(agtype_in('null'));
+ age_id 
 --------
+ 
+(1 row)
+
+SELECT age_start_id(agtype_in('null'));
+ age_start_id 
+--------------
+ 
+(1 row)
+
+SELECT age_end_id(agtype_in('null'));
+ age_end_id 
+------------
  
 (1 row)
 

@@ -3265,9 +3265,9 @@ Datum _property_constraint_check(PG_FUNCTION_ARGS)
 }
 
 
-PG_FUNCTION_INFO_V1(id);
+PG_FUNCTION_INFO_V1(age_id);
 
-Datum id(PG_FUNCTION_ARGS)
+Datum age_id(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
     agtype_value *agtv_object = NULL;
@@ -3303,9 +3303,9 @@ Datum id(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(start_id);
+PG_FUNCTION_INFO_V1(age_start_id);
 
-Datum start_id(PG_FUNCTION_ARGS)
+Datum age_start_id(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
     agtype_value *agtv_object = NULL;
@@ -3341,9 +3341,9 @@ Datum start_id(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(end_id);
+PG_FUNCTION_INFO_V1(age_end_id);
 
-Datum end_id(PG_FUNCTION_ARGS)
+Datum age_end_id(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
     agtype_value *agtv_object = NULL;
@@ -3544,9 +3544,9 @@ static Datum get_vertex(const char *graph, const char *vertex_label,
     return result;
 }
 
-PG_FUNCTION_INFO_V1(startnode);
+PG_FUNCTION_INFO_V1(age_startnode);
 
-Datum startnode(PG_FUNCTION_ARGS)
+Datum age_startnode(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
     agtype_value *agtv_object = NULL;
@@ -3609,9 +3609,9 @@ Datum startnode(PG_FUNCTION_ARGS)
     return result;
 }
 
-PG_FUNCTION_INFO_V1(endnode);
+PG_FUNCTION_INFO_V1(age_endnode);
 
-Datum endnode(PG_FUNCTION_ARGS)
+Datum age_endnode(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
     agtype_value *agtv_object = NULL;
@@ -3674,9 +3674,9 @@ Datum endnode(PG_FUNCTION_ARGS)
     return result;
 }
 
-PG_FUNCTION_INFO_V1(head);
+PG_FUNCTION_INFO_V1(age_head);
 
-Datum head(PG_FUNCTION_ARGS)
+Datum age_head(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
     agtype_value *agtv_result = NULL;
@@ -3708,9 +3708,9 @@ Datum head(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(last);
+PG_FUNCTION_INFO_V1(age_last);
 
-Datum last(PG_FUNCTION_ARGS)
+Datum age_last(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
     agtype_value *agtv_result = NULL;
@@ -3742,9 +3742,9 @@ Datum last(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(properties);
+PG_FUNCTION_INFO_V1(age_properties);
 
-Datum properties(PG_FUNCTION_ARGS)
+Datum age_properties(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
     agtype_value *agtv_object = NULL;
@@ -3780,9 +3780,9 @@ Datum properties(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(length);
+PG_FUNCTION_INFO_V1(age_length);
 
-Datum length(PG_FUNCTION_ARGS)
+Datum age_length(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
     agtype_value *agtv_path = NULL;
@@ -3816,9 +3816,9 @@ Datum length(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(toboolean);
+PG_FUNCTION_INFO_V1(age_toboolean);
 
-Datum toboolean(PG_FUNCTION_ARGS)
+Datum age_toboolean(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -3869,7 +3869,7 @@ Datum toboolean(PG_FUNCTION_ARGS)
         }
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("toBoolean() unsuppoted argument type %d",
+                            errmsg("toBoolean() unsupported argument type %d",
                                    type)));
     }
     else
@@ -3903,7 +3903,7 @@ Datum toboolean(PG_FUNCTION_ARGS)
         }
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("toBoolean() unsuppoted argument agtype %d",
+                            errmsg("toBoolean() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -3914,9 +3914,9 @@ Datum toboolean(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(tofloat);
+PG_FUNCTION_INFO_V1(age_tofloat);
 
-Datum tofloat(PG_FUNCTION_ARGS)
+Datum age_tofloat(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -3990,7 +3990,7 @@ Datum tofloat(PG_FUNCTION_ARGS)
         }
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("toFloat() unsuppoted argument type %d",
+                            errmsg("toFloat() unsupported argument type %d",
                                    type)));
     }
     else
@@ -4037,7 +4037,7 @@ Datum tofloat(PG_FUNCTION_ARGS)
         }
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("toFloat() unsuppoted argument agtype %d",
+                            errmsg("toFloat() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -4048,9 +4048,9 @@ Datum tofloat(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(tointeger);
+PG_FUNCTION_INFO_V1(age_tointeger);
 
-Datum tointeger(PG_FUNCTION_ARGS)
+Datum age_tointeger(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -4155,7 +4155,7 @@ Datum tointeger(PG_FUNCTION_ARGS)
         }
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("toInteger() unsuppoted argument type %d",
+                            errmsg("toInteger() unsupported argument type %d",
                                    type)));
     }
     else
@@ -4231,7 +4231,7 @@ Datum tointeger(PG_FUNCTION_ARGS)
         }
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("toInteger() unsuppoted argument agtype %d",
+                            errmsg("toInteger() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -4242,9 +4242,9 @@ Datum tointeger(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(size);
+PG_FUNCTION_INFO_V1(age_size);
 
-Datum size(PG_FUNCTION_ARGS)
+Datum age_size(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -4327,9 +4327,9 @@ Datum graphid_to_agtype(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(integer_to_agtype(AG_GETARG_GRAPHID(0)));
 }
 
-PG_FUNCTION_INFO_V1(type);
+PG_FUNCTION_INFO_V1(age_type);
 
-Datum type(PG_FUNCTION_ARGS)
+Datum age_type(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
     agtype_value *agtv_object = NULL;
@@ -4365,14 +4365,14 @@ Datum type(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(exists_property);
+PG_FUNCTION_INFO_V1(age_exists);
 /*
  * Executor function for EXISTS(property).
  *
  * Note: For most executor functions we want to return SQL NULL for NULL input.
  *       However, in this case, NULL means false - it was not found.
  */
-Datum exists_property(PG_FUNCTION_ARGS)
+Datum age_exists(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
     agtype_value *agtv_value = NULL;
@@ -4398,9 +4398,9 @@ Datum exists_property(PG_FUNCTION_ARGS)
     PG_RETURN_BOOL(true);
 }
 
-PG_FUNCTION_INFO_V1(tostring);
+PG_FUNCTION_INFO_V1(age_tostring);
 
-Datum tostring(PG_FUNCTION_ARGS)
+Datum age_tostring(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -4453,7 +4453,7 @@ Datum tostring(PG_FUNCTION_ARGS)
             string = DatumGetBool(arg) ? "true" : "false";
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("toString() unsuppoted argument type %d",
+                            errmsg("toString() unsupported argument type %d",
                                    type)));
     }
     else
@@ -4488,7 +4488,7 @@ Datum tostring(PG_FUNCTION_ARGS)
             string = (agtv_value->val.boolean) ? "true" : "false";
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("toString() unsuppoted argument agtype %d",
+                            errmsg("toString() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -4500,9 +4500,9 @@ Datum tostring(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(reverse);
+PG_FUNCTION_INFO_V1(age_reverse);
 
-Datum reverse(PG_FUNCTION_ARGS)
+Datum age_reverse(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -4539,7 +4539,7 @@ Datum reverse(PG_FUNCTION_ARGS)
             text_string = DatumGetTextPP(arg);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("reverse() unsuppoted argument type %d",
+                            errmsg("reverse() unsupported argument type %d",
                                    type)));
     }
     else
@@ -4564,7 +4564,7 @@ Datum reverse(PG_FUNCTION_ARGS)
                                                    agtv_value->val.string.len);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("reverse() unsuppoted argument agtype %d",
+                            errmsg("reverse() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -4591,9 +4591,9 @@ Datum reverse(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(touppercase);
+PG_FUNCTION_INFO_V1(age_toupper);
 
-Datum touppercase(PG_FUNCTION_ARGS)
+Datum age_toupper(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -4613,13 +4613,13 @@ Datum touppercase(PG_FUNCTION_ARGS)
     /* check number of args */
     if (nargs > 1)
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("touppercase() only supports one argument")));
+                        errmsg("toUpper() only supports one argument")));
 
     /* check for null */
     if (nargs < 0 || nulls[0])
         PG_RETURN_NULL();
 
-    /* touppercase() supports text, cstring, or the agtype string input */
+    /* toUpper() supports text, cstring, or the agtype string input */
     arg = args[0];
     type = types[0];
     if (type != AGTYPEOID)
@@ -4630,7 +4630,7 @@ Datum touppercase(PG_FUNCTION_ARGS)
             string = text_to_cstring(DatumGetTextPP(arg));
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("touppercase() unsuppoted argument type %d",
+                            errmsg("toUpper() unsupported argument type %d",
                                    type)));
         string_len = strlen(string);
     }
@@ -4644,7 +4644,7 @@ Datum touppercase(PG_FUNCTION_ARGS)
 
         if (!AGT_ROOT_IS_SCALAR(agt_arg))
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("touppercase() only supports scalar arguments")));
+                            errmsg("toUpper() only supports scalar arguments")));
 
         agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
 
@@ -4658,7 +4658,7 @@ Datum touppercase(PG_FUNCTION_ARGS)
         }
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("touppercase() unsuppoted argument agtype %d",
+                            errmsg("toUpper() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -4681,9 +4681,9 @@ Datum touppercase(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(tolowercase);
+PG_FUNCTION_INFO_V1(age_tolower);
 
-Datum tolowercase(PG_FUNCTION_ARGS)
+Datum age_tolower(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -4703,13 +4703,13 @@ Datum tolowercase(PG_FUNCTION_ARGS)
     /* check number of args */
     if (nargs > 1)
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("tolowercase() only supports one argument")));
+                        errmsg("toLower() only supports one argument")));
 
     /* check for null */
     if (nargs < 0 || nulls[0])
         PG_RETURN_NULL();
 
-    /* tolowercase() supports text, cstring, or the agtype string input */
+    /* toLower() supports text, cstring, or the agtype string input */
     arg = args[0];
     type = types[0];
     if (type != AGTYPEOID)
@@ -4720,7 +4720,7 @@ Datum tolowercase(PG_FUNCTION_ARGS)
             string = text_to_cstring(DatumGetTextPP(arg));
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("tolowercase() unsuppoted argument type %d",
+                            errmsg("toLower() unsupported argument type %d",
                                    type)));
         string_len = strlen(string);
     }
@@ -4734,7 +4734,7 @@ Datum tolowercase(PG_FUNCTION_ARGS)
 
         if (!AGT_ROOT_IS_SCALAR(agt_arg))
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("tolowercase() only supports scalar arguments")));
+                            errmsg("toLower() only supports scalar arguments")));
 
         agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
 
@@ -4748,7 +4748,7 @@ Datum tolowercase(PG_FUNCTION_ARGS)
         }
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("tolowercase() unsuppoted argument agtype %d",
+                            errmsg("toLower() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -4771,9 +4771,9 @@ Datum tolowercase(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(r_trim);
+PG_FUNCTION_INFO_V1(age_rtrim);
 
-Datum r_trim(PG_FUNCTION_ARGS)
+Datum age_rtrim(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -4810,7 +4810,7 @@ Datum r_trim(PG_FUNCTION_ARGS)
             text_string = DatumGetTextPP(arg);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("rTrim() unsuppoted argument type %d",
+                            errmsg("rTrim() unsupported argument type %d",
                                    type)));
     }
     else
@@ -4835,7 +4835,7 @@ Datum r_trim(PG_FUNCTION_ARGS)
                                                    agtv_value->val.string.len);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("rTrim() unsuppoted argument agtype %d",
+                            errmsg("rTrim() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -4862,9 +4862,9 @@ Datum r_trim(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(l_trim);
+PG_FUNCTION_INFO_V1(age_ltrim);
 
-Datum l_trim(PG_FUNCTION_ARGS)
+Datum age_ltrim(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -4901,7 +4901,7 @@ Datum l_trim(PG_FUNCTION_ARGS)
             text_string = DatumGetTextPP(arg);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("lTrim() unsuppoted argument type %d",
+                            errmsg("lTrim() unsupported argument type %d",
                                    type)));
     }
     else
@@ -4926,7 +4926,7 @@ Datum l_trim(PG_FUNCTION_ARGS)
                                                    agtv_value->val.string.len);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("lTrim() unsuppoted argument agtype %d",
+                            errmsg("lTrim() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -4953,9 +4953,9 @@ Datum l_trim(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(b_trim);
+PG_FUNCTION_INFO_V1(age_trim);
 
-Datum b_trim(PG_FUNCTION_ARGS)
+Datum age_trim(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -4992,7 +4992,7 @@ Datum b_trim(PG_FUNCTION_ARGS)
             text_string = DatumGetTextPP(arg);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("trim() unsuppoted argument type %d",
+                            errmsg("trim() unsupported argument type %d",
                                    type)));
     }
     else
@@ -5017,7 +5017,7 @@ Datum b_trim(PG_FUNCTION_ARGS)
                                                    agtv_value->val.string.len);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("trim() unsuppoted argument agtype %d",
+                            errmsg("trim() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -5044,9 +5044,9 @@ Datum b_trim(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(r_substr);
+PG_FUNCTION_INFO_V1(age_right);
 
-Datum r_substr(PG_FUNCTION_ARGS)
+Datum age_right(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -5088,7 +5088,7 @@ Datum r_substr(PG_FUNCTION_ARGS)
             text_string = DatumGetTextPP(arg);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("right() unsuppoted argument type %d",
+                            errmsg("right() unsupported argument type %d",
                                    type)));
     }
     else
@@ -5113,7 +5113,7 @@ Datum r_substr(PG_FUNCTION_ARGS)
                                                    agtv_value->val.string.len);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("right() unsuppoted argument agtype %d",
+                            errmsg("right() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -5131,7 +5131,7 @@ Datum r_substr(PG_FUNCTION_ARGS)
             string_len = (int64) DatumGetInt64(arg);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("right() unsuppoted argument type %d", type)));
+                            errmsg("right() unsupported argument type %d", type)));
     }
     else
     {
@@ -5150,7 +5150,7 @@ Datum r_substr(PG_FUNCTION_ARGS)
         /* no need to check for agtype null because it is an error if found */
         if (agtv_value->type != AGTV_INTEGER)
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("right() unsuppoted argument agtype %d",
+                            errmsg("right() unsupported argument agtype %d",
                                    agtv_value->type)));
 
         string_len = agtv_value->val.int_value;
@@ -5185,9 +5185,9 @@ Datum r_substr(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(l_substr);
+PG_FUNCTION_INFO_V1(age_left);
 
-Datum l_substr(PG_FUNCTION_ARGS)
+Datum age_left(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -5229,7 +5229,7 @@ Datum l_substr(PG_FUNCTION_ARGS)
             text_string = DatumGetTextPP(arg);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("left() unsuppoted argument type %d",
+                            errmsg("left() unsupported argument type %d",
                                    type)));
     }
     else
@@ -5254,7 +5254,7 @@ Datum l_substr(PG_FUNCTION_ARGS)
                                                    agtv_value->val.string.len);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("left() unsuppoted argument agtype %d",
+                            errmsg("left() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -5272,7 +5272,7 @@ Datum l_substr(PG_FUNCTION_ARGS)
             string_len = (int64) DatumGetInt64(arg);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("left() unsuppoted argument type %d", type)));
+                            errmsg("left() unsupported argument type %d", type)));
     }
     else
     {
@@ -5291,7 +5291,7 @@ Datum l_substr(PG_FUNCTION_ARGS)
         /* no need to check for agtype null because it is an error if found */
         if (agtv_value->type != AGTV_INTEGER)
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("left() unsuppoted argument agtype %d",
+                            errmsg("left() unsupported argument agtype %d",
                                    agtv_value->type)));
 
         string_len = agtv_value->val.int_value;
@@ -5326,9 +5326,9 @@ Datum l_substr(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(b_substr);
+PG_FUNCTION_INFO_V1(age_substring);
 
-Datum b_substr(PG_FUNCTION_ARGS)
+Datum age_substring(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -5374,7 +5374,7 @@ Datum b_substr(PG_FUNCTION_ARGS)
             text_string = DatumGetTextPP(arg);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("substring() unsuppoted argument type %d",
+                            errmsg("substring() unsupported argument type %d",
                                    type)));
     }
     else
@@ -5399,7 +5399,7 @@ Datum b_substr(PG_FUNCTION_ARGS)
                                                    agtv_value->val.string.len);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("substring() unsuppoted argument agtype %d",
+                            errmsg("substring() unsupported argument agtype %d",
                                    agtv_value->type)));
     }
 
@@ -5422,7 +5422,7 @@ Datum b_substr(PG_FUNCTION_ARGS)
                 param = (int64) DatumGetInt64(arg);
             else
                 ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                errmsg("substring() unsuppoted argument type %d",
+                                errmsg("substring() unsupported argument type %d",
                                        type)));
         }
         else
@@ -5442,7 +5442,7 @@ Datum b_substr(PG_FUNCTION_ARGS)
             /* no need to check for agtype null because it is an error if found */
             if (agtv_value->type != AGTV_INTEGER)
                 ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                errmsg("substring() unsuppoted argument agtype %d",
+                                errmsg("substring() unsupported argument agtype %d",
                                        agtv_value->type)));
 
             param = agtv_value->val.int_value;
@@ -5495,9 +5495,9 @@ Datum b_substr(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(split);
+PG_FUNCTION_INFO_V1(age_split);
 
-Datum split(PG_FUNCTION_ARGS)
+Datum age_split(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -5542,7 +5542,7 @@ Datum split(PG_FUNCTION_ARGS)
                 param = DatumGetTextPP(arg);
             else
                 ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                errmsg("split() unsuppoted argument type %d",
+                                errmsg("split() unsupported argument type %d",
                                        type)));
         }
         else
@@ -5567,7 +5567,7 @@ Datum split(PG_FUNCTION_ARGS)
                                                  agtv_value->val.string.len);
             else
                 ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                errmsg("split() unsuppoted argument agtype %d",
+                                errmsg("split() unsupported argument agtype %d",
                                        agtv_value->type)));
         }
         if (i == 0)
@@ -5641,9 +5641,9 @@ Datum split(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(replace);
+PG_FUNCTION_INFO_V1(age_replace);
 
-Datum replace(PG_FUNCTION_ARGS)
+Datum age_replace(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -5691,7 +5691,7 @@ Datum replace(PG_FUNCTION_ARGS)
                 param = DatumGetTextPP(arg);
             else
                 ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                errmsg("replace() unsuppoted argument type %d",
+                                errmsg("replace() unsupported argument type %d",
                                        type)));
         }
         else
@@ -5716,7 +5716,7 @@ Datum replace(PG_FUNCTION_ARGS)
                                                  agtv_value->val.string.len);
             else
                 ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                errmsg("replace() unsuppoted argument agtype %d",
+                                errmsg("replace() unsupported argument agtype %d",
                                        agtv_value->type)));
         }
         if (i == 0)
@@ -5800,7 +5800,7 @@ static float8 get_float_compatible_arg(Datum arg, Oid type, char *funcname,
                 numeric_float8_no_overflow, arg));
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("%s() unsuppoted argument type %d", funcname,
+                            errmsg("%s() unsupported argument type %d", funcname,
                                    type)));
     }
     else
@@ -5848,7 +5848,7 @@ static float8 get_float_compatible_arg(Datum arg, Oid type, char *funcname,
                 NumericGetDatum(agtv_value->val.numeric)));
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("%s() unsuppoted argument agtype %d",
+                            errmsg("%s() unsupported argument agtype %d",
                                    funcname, agtv_value->type)));
     }
 
@@ -5894,7 +5894,7 @@ static Numeric get_numeric_compatible_arg(Datum arg, Oid type, char *funcname,
             result = DatumGetNumeric(arg);
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("%s() unsuppoted argument type %d", funcname,
+                            errmsg("%s() unsupported argument type %d", funcname,
                                    type)));
     }
     else
@@ -5938,7 +5938,7 @@ static Numeric get_numeric_compatible_arg(Datum arg, Oid type, char *funcname,
         }
         else
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("%s() unsuppoted argument agtype %d",
+                            errmsg("%s() unsupported argument agtype %d",
                                    funcname, agtv_value->type)));
     }
 
@@ -5948,9 +5948,9 @@ static Numeric get_numeric_compatible_arg(Datum arg, Oid type, char *funcname,
     return result;
 }
 
-PG_FUNCTION_INFO_V1(r_sin);
+PG_FUNCTION_INFO_V1(age_sin);
 
-Datum r_sin(PG_FUNCTION_ARGS)
+Datum age_sin(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -5995,9 +5995,9 @@ Datum r_sin(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(r_cos);
+PG_FUNCTION_INFO_V1(age_cos);
 
-Datum r_cos(PG_FUNCTION_ARGS)
+Datum age_cos(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6042,9 +6042,9 @@ Datum r_cos(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(r_tan);
+PG_FUNCTION_INFO_V1(age_tan);
 
-Datum r_tan(PG_FUNCTION_ARGS)
+Datum age_tan(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6089,9 +6089,9 @@ Datum r_tan(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(r_cot);
+PG_FUNCTION_INFO_V1(age_cot);
 
-Datum r_cot(PG_FUNCTION_ARGS)
+Datum age_cot(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6136,9 +6136,9 @@ Datum r_cot(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(r_asin);
+PG_FUNCTION_INFO_V1(age_asin);
 
-Datum r_asin(PG_FUNCTION_ARGS)
+Datum age_asin(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6187,9 +6187,9 @@ Datum r_asin(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(r_acos);
+PG_FUNCTION_INFO_V1(age_acos);
 
-Datum r_acos(PG_FUNCTION_ARGS)
+Datum age_acos(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6238,9 +6238,9 @@ Datum r_acos(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(r_atan);
+PG_FUNCTION_INFO_V1(age_atan);
 
-Datum r_atan(PG_FUNCTION_ARGS)
+Datum age_atan(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6285,9 +6285,9 @@ Datum r_atan(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(r_atan2);
+PG_FUNCTION_INFO_V1(age_atan2);
 
-Datum r_atan2(PG_FUNCTION_ARGS)
+Datum age_atan2(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6339,9 +6339,9 @@ Datum r_atan2(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(degrees_from_radians);
+PG_FUNCTION_INFO_V1(age_degrees);
 
-Datum degrees_from_radians(PG_FUNCTION_ARGS)
+Datum age_degrees(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6386,9 +6386,9 @@ Datum degrees_from_radians(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(radians_from_degrees);
+PG_FUNCTION_INFO_V1(age_radians);
 
-Datum radians_from_degrees(PG_FUNCTION_ARGS)
+Datum age_radians(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6434,9 +6434,9 @@ Datum radians_from_degrees(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(ag_round);
+PG_FUNCTION_INFO_V1(age_round);
 
-Datum ag_round(PG_FUNCTION_ARGS)
+Datum age_round(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6485,9 +6485,9 @@ Datum ag_round(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(ag_ceil);
+PG_FUNCTION_INFO_V1(age_ceil);
 
-Datum ag_ceil(PG_FUNCTION_ARGS)
+Datum age_ceil(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6534,9 +6534,9 @@ Datum ag_ceil(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(ag_floor);
+PG_FUNCTION_INFO_V1(age_floor);
 
-Datum ag_floor(PG_FUNCTION_ARGS)
+Datum age_floor(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6584,9 +6584,9 @@ Datum ag_floor(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(ag_abs);
+PG_FUNCTION_INFO_V1(age_abs);
 
-Datum ag_abs(PG_FUNCTION_ARGS)
+Datum age_abs(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6657,9 +6657,9 @@ Datum ag_abs(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(ag_sign);
+PG_FUNCTION_INFO_V1(age_sign);
 
-Datum ag_sign(PG_FUNCTION_ARGS)
+Datum age_sign(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6707,9 +6707,9 @@ Datum ag_sign(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(ag_log);
+PG_FUNCTION_INFO_V1(age_log);
 
-Datum ag_log(PG_FUNCTION_ARGS)
+Datum age_log(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6768,9 +6768,9 @@ Datum ag_log(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(ag_log10);
+PG_FUNCTION_INFO_V1(age_log10);
 
-Datum ag_log10(PG_FUNCTION_ARGS)
+Datum age_log10(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6834,9 +6834,9 @@ Datum ag_log10(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(ag_e);
+PG_FUNCTION_INFO_V1(age_e);
 
-Datum ag_e(PG_FUNCTION_ARGS)
+Datum age_e(PG_FUNCTION_ARGS)
 {
     agtype_value agtv_result;
     float8 float_result;
@@ -6851,9 +6851,9 @@ Datum ag_e(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(ag_exp);
+PG_FUNCTION_INFO_V1(age_exp);
 
-Datum ag_exp(PG_FUNCTION_ARGS)
+Datum age_exp(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6900,9 +6900,9 @@ Datum ag_exp(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-PG_FUNCTION_INFO_V1(ag_sqrt);
+PG_FUNCTION_INFO_V1(age_sqrt);
 
-Datum ag_sqrt(PG_FUNCTION_ARGS)
+Datum age_sqrt(PG_FUNCTION_ARGS)
 {
     int nargs;
     Datum *args;
@@ -6957,6 +6957,25 @@ Datum ag_sqrt(PG_FUNCTION_ARGS)
     /* build the result */
     agtv_result.type = AGTV_FLOAT;
     agtv_result.val.float_value = float_result;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(age_timestamp);
+
+Datum age_timestamp(PG_FUNCTION_ARGS)
+{
+    agtype_value agtv_result;
+    struct timespec ts;
+    long ms = 0;
+
+    /* get the system time and convert it to milliseconds */
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ms += (ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
+
+    /* build the result */
+    agtv_result.type = AGTV_INTEGER;
+    agtv_result.val.int_value = ms;
 
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }

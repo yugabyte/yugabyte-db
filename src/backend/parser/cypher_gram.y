@@ -135,6 +135,7 @@
 %type <string> property_key_name var_name var_name_opt label_name
 %type <string> symbolic_name schema_name
 %type <keyword> reserved_keyword
+%type <list> func_name
 
 /* precedence: lowest to highest */
 %left OR
@@ -175,8 +176,7 @@ static Node *make_null_const(int location);
 static Node *make_typecast_expr(Node *expr, char *typecast, int location);
 
 // functions
-static Node *make_function_expr(char *funcname, List *exprs, int location);
-static Node *make_immediate_no_arg_function_expr(char *funcname, int location);
+static Node *make_function_expr(List *func_name, List *exprs, int location);
 %}
 
 %%
@@ -1005,11 +1005,11 @@ expr_func:
     ;
 
 expr_func_norm:
-    symbolic_name '(' ')'
+    func_name '(' ')'
         {
-            $$ = make_immediate_no_arg_function_expr($1, @1);
+            $$ = make_function_expr($1, NIL, @1);
         }
-    | symbolic_name '(' expr_list ')'
+    | func_name '(' expr_list ')'
         {
             $$ = make_function_expr($1, $3, @2);
         }
@@ -1045,7 +1045,8 @@ expr_func_subexpr:
         }
     | EXISTS '(' property_value ')'
         {
-            $$ = make_function_expr("exists", list_make1($3), @2);
+            $$ = make_function_expr(list_make1(makeString("exists")),
+                                    list_make1($3), @2);
         }
     ;
 
@@ -1164,7 +1165,12 @@ expr_var:
 /*
  * names
  */
-
+func_name:
+    symbolic_name
+        {
+            $$ = list_make1(makeString($1));
+        }
+    ;
 property_key_name:
     schema_name
     ;
@@ -1422,37 +1428,25 @@ static Node *make_typecast_expr(Node *expr, char *typecast, int location)
 /*
  * functions
  */
-static Node *make_function_expr(char *funcname, List *exprs, int location)
+static Node *make_function_expr(List *func_name, List *exprs, int location)
 {
     cypher_function *node;
 
+    /* check for AGE functions that are mapped to another function */
+    if (list_length(func_name) == 1)
+    {
+        /* get the name of the function */
+        char *name = ((Value*)linitial(func_name))->val.str;
+
+        /* currently we only map rand (cypher) -> random (PG) */
+        if (pg_strcasecmp(name, "rand") == 0)
+            func_name = list_make1(makeString("random"));
+    }
+
     node = make_ag_node(cypher_function);
     node->exprs = exprs;
-    node->funcname = funcname;
+    node->funcname = func_name;
     node->location = location;
 
     return (Node *)node;
-}
-
-static Node *make_immediate_no_arg_function_expr(char *funcname, int location)
-{
-    if (pg_strcasecmp(funcname, "timestamp") == 0)
-    {
-        cypher_integer_const *node;
-        struct timespec ts;
-        long ms = 0;
-
-        /* get the system time and convert it to milliseconds */
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ms += (ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
-
-        /* build the node */
-        node = make_ag_node(cypher_integer_const);
-        node->integer = ms;
-        node->location = location;
-
-        return (Node *)node;
-    }
-
-    return make_function_expr(funcname, NIL, location);
 }

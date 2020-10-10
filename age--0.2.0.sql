@@ -63,7 +63,7 @@ CREATE UNIQUE INDEX ag_label_relation_index ON ag_label USING btree (relation);
 -- catalog lookup functions
 --
 
-CREATE FUNCTION _label_id(graph_name name, label_name name)
+CREATE FUNCTION ag_catalog._label_id(graph_name name, label_name name)
 RETURNS label_id
 LANGUAGE c
 STABLE
@@ -74,22 +74,22 @@ AS 'MODULE_PATHNAME';
 -- utility functions
 --
 
-CREATE FUNCTION create_graph(graph_name name)
+CREATE FUNCTION ag_catalog.create_graph(graph_name name)
 RETURNS void
 LANGUAGE c
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION drop_graph(graph_name name, cascade boolean = false)
+CREATE FUNCTION ag_catalog.drop_graph(graph_name name, cascade boolean = false)
 RETURNS void
 LANGUAGE c
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION alter_graph(graph_name name, operation cstring, new_value name)
+CREATE FUNCTION ag_catalog.alter_graph(graph_name name, operation cstring, new_value name)
 RETURNS void
 LANGUAGE c
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION drop_label(graph_name name, label_name name,
+CREATE FUNCTION ag_catalog.drop_label(graph_name name, label_name name,
                            force boolean = false)
 RETURNS void
 LANGUAGE c
@@ -102,7 +102,7 @@ AS 'MODULE_PATHNAME';
 -- define graphid as a shell type first
 CREATE TYPE graphid;
 
-CREATE FUNCTION graphid_in(cstring)
+CREATE FUNCTION ag_catalog.graphid_in(cstring)
 RETURNS graphid
 LANGUAGE c
 STABLE
@@ -110,7 +110,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION graphid_out(graphid)
+CREATE FUNCTION ag_catalog.graphid_out(graphid)
 RETURNS cstring
 LANGUAGE c
 STABLE
@@ -119,8 +119,8 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE TYPE graphid (
-  INPUT = graphid_in,
-  OUTPUT = graphid_out,
+  INPUT = ag_catalog.graphid_in,
+  OUTPUT = ag_catalog.graphid_out,
   INTERNALLENGTH = 8,
   PASSEDBYVALUE,
   ALIGNMENT = float8,
@@ -131,7 +131,7 @@ CREATE TYPE graphid (
 -- graphid - comparison operators (=, <>, <, >, <=, >=)
 --
 
-CREATE FUNCTION graphid_eq(graphid, graphid)
+CREATE FUNCTION ag_catalog.graphid_eq(graphid, graphid)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -140,7 +140,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR = (
-  FUNCTION = graphid_eq,
+  FUNCTION = ag_catalog.graphid_eq,
   LEFTARG = graphid,
   RIGHTARG = graphid,
   COMMUTATOR = =,
@@ -149,7 +149,7 @@ CREATE OPERATOR = (
   JOIN = eqjoinsel
 );
 
-CREATE FUNCTION graphid_ne(graphid, graphid)
+CREATE FUNCTION ag_catalog.graphid_ne(graphid, graphid)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -158,7 +158,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR <> (
-  FUNCTION = graphid_ne,
+  FUNCTION = ag_catalog.graphid_ne,
   LEFTARG = graphid,
   RIGHTARG = graphid,
   COMMUTATOR = <>,
@@ -167,7 +167,7 @@ CREATE OPERATOR <> (
   JOIN = neqjoinsel
 );
 
-CREATE FUNCTION graphid_lt(graphid, graphid)
+CREATE FUNCTION ag_catalog.graphid_lt(graphid, graphid)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -176,7 +176,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR < (
-  FUNCTION = graphid_lt,
+  FUNCTION = ag_catalog.graphid_lt,
   LEFTARG = graphid,
   RIGHTARG = graphid,
   COMMUTATOR = >,
@@ -185,7 +185,7 @@ CREATE OPERATOR < (
   JOIN = scalarltjoinsel
 );
 
-CREATE FUNCTION graphid_gt(graphid, graphid)
+CREATE FUNCTION ag_catalog.graphid_gt(graphid, graphid)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -194,7 +194,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR > (
-  FUNCTION = graphid_gt,
+  FUNCTION = ag_catalog.graphid_gt,
   LEFTARG = graphid,
   RIGHTARG = graphid,
   COMMUTATOR = <,
@@ -203,7 +203,7 @@ CREATE OPERATOR > (
   JOIN = scalargtjoinsel
 );
 
-CREATE FUNCTION graphid_le(graphid, graphid)
+CREATE FUNCTION ag_catalog.graphid_le(graphid, graphid)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -212,7 +212,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR <= (
-  FUNCTION = graphid_le,
+  FUNCTION = ag_catalog.graphid_le,
   LEFTARG = graphid,
   RIGHTARG = graphid,
   COMMUTATOR = >=,
@@ -221,7 +221,7 @@ CREATE OPERATOR <= (
   JOIN = scalarlejoinsel
 );
 
-CREATE FUNCTION graphid_ge(graphid, graphid)
+CREATE FUNCTION ag_catalog.graphid_ge(graphid, graphid)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -230,7 +230,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR >= (
-  FUNCTION = graphid_ge,
+  FUNCTION = ag_catalog.graphid_ge,
   LEFTARG = graphid,
   RIGHTARG = graphid,
   COMMUTATOR = <=,
@@ -244,7 +244,7 @@ CREATE OPERATOR >= (
 --
 
 -- comparison support
-CREATE FUNCTION graphid_btree_cmp(graphid, graphid)
+CREATE FUNCTION ag_catalog.graphid_btree_cmp(graphid, graphid)
 RETURNS int
 LANGUAGE c
 STABLE
@@ -253,7 +253,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 -- sort support
-CREATE FUNCTION graphid_btree_sort(internal)
+CREATE FUNCTION ag_catalog.graphid_btree_sort(internal)
 RETURNS void
 LANGUAGE c
 STABLE
@@ -285,28 +285,28 @@ CREATE OPERATOR CLASS graphid_ops DEFAULT FOR TYPE graphid USING btree AS
   OPERATOR 3 =,
   OPERATOR 4 >=,
   OPERATOR 5 >,
-  FUNCTION 1 graphid_btree_cmp (graphid, graphid),
-  FUNCTION 2 graphid_btree_sort (internal);
+  FUNCTION 1 ag_catalog.graphid_btree_cmp (graphid, graphid),
+  FUNCTION 2 ag_catalog.graphid_btree_sort (internal);
 
 --
 -- graphid functions
 --
 
-CREATE FUNCTION _graphid(label_id int, entry_id bigint)
+CREATE FUNCTION ag_catalog._graphid(label_id int, entry_id bigint)
 RETURNS graphid
 LANGUAGE c
 IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION _label_name(graph_oid oid, graphid)
+CREATE FUNCTION ag_catalog._label_name(graph_oid oid, graphid)
 RETURNS cstring
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION _extract_label_id(graphid)
+CREATE FUNCTION ag_catalog._extract_label_id(graphid)
 RETURNS label_id
 LANGUAGE c
 STABLE
@@ -320,7 +320,7 @@ AS 'MODULE_PATHNAME';
 -- define agtype as a shell type first
 CREATE TYPE agtype;
 
-CREATE FUNCTION agtype_in(cstring)
+CREATE FUNCTION ag_catalog.agtype_in(cstring)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -328,7 +328,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION agtype_out(agtype)
+CREATE FUNCTION ag_catalog.agtype_out(agtype)
 RETURNS cstring
 LANGUAGE c
 STABLE
@@ -337,8 +337,8 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE TYPE agtype (
-  INPUT = agtype_in,
-  OUTPUT = agtype_out,
+  INPUT = ag_catalog.agtype_in,
+  OUTPUT = ag_catalog.agtype_out,
   LIKE = jsonb
 );
 
@@ -346,7 +346,7 @@ CREATE TYPE agtype (
 -- agtype - mathematical operators (+, -, *, /, %, ^)
 --
 
-CREATE FUNCTION agtype_add(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_add(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -355,13 +355,13 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR + (
-  FUNCTION = agtype_add,
+  FUNCTION = ag_catalog.agtype_add,
   LEFTARG = agtype,
   RIGHTARG = agtype,
   COMMUTATOR = +
 );
 
-CREATE FUNCTION agtype_sub(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_sub(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -370,12 +370,12 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR - (
-  FUNCTION = agtype_sub,
+  FUNCTION = ag_catalog.agtype_sub,
   LEFTARG = agtype,
   RIGHTARG = agtype
 );
 
-CREATE FUNCTION agtype_neg(agtype)
+CREATE FUNCTION ag_catalog.agtype_neg(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -384,11 +384,11 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR - (
-  FUNCTION = agtype_neg,
+  FUNCTION = ag_catalog.agtype_neg,
   RIGHTARG = agtype
 );
 
-CREATE FUNCTION agtype_mul(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_mul(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -397,13 +397,13 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR * (
-  FUNCTION = agtype_mul,
+  FUNCTION = ag_catalog.agtype_mul,
   LEFTARG = agtype,
   RIGHTARG = agtype,
   COMMUTATOR = *
 );
 
-CREATE FUNCTION agtype_div(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_div(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -412,12 +412,12 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR / (
-  FUNCTION = agtype_div,
+  FUNCTION = ag_catalog.agtype_div,
   LEFTARG = agtype,
   RIGHTARG = agtype
 );
 
-CREATE FUNCTION agtype_mod(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_mod(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -426,12 +426,12 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR % (
-  FUNCTION = agtype_mod,
+  FUNCTION = ag_catalog.agtype_mod,
   LEFTARG = agtype,
   RIGHTARG = agtype
 );
 
-CREATE FUNCTION agtype_pow(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_pow(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -440,7 +440,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR ^ (
-  FUNCTION = agtype_pow,
+  FUNCTION = ag_catalog.agtype_pow,
   LEFTARG = agtype,
   RIGHTARG = agtype
 );
@@ -449,7 +449,7 @@ CREATE OPERATOR ^ (
 -- agtype - comparison operators (=, <>, <, >, <=, >=)
 --
 
-CREATE FUNCTION agtype_eq(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_eq(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -458,7 +458,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR = (
-  FUNCTION = agtype_eq,
+  FUNCTION = ag_catalog.agtype_eq,
   LEFTARG = agtype,
   RIGHTARG = agtype,
   COMMUTATOR = =,
@@ -467,7 +467,7 @@ CREATE OPERATOR = (
   JOIN = eqjoinsel
 );
 
-CREATE FUNCTION agtype_ne(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_ne(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -476,7 +476,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR <> (
-  FUNCTION = agtype_ne,
+  FUNCTION = ag_catalog.agtype_ne,
   LEFTARG = agtype,
   RIGHTARG = agtype,
   COMMUTATOR = <>,
@@ -485,7 +485,7 @@ CREATE OPERATOR <> (
   JOIN = neqjoinsel
 );
 
-CREATE FUNCTION agtype_lt(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_lt(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -494,7 +494,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR < (
-  FUNCTION = agtype_lt,
+  FUNCTION = ag_catalog.agtype_lt,
   LEFTARG = agtype,
   RIGHTARG = agtype,
   COMMUTATOR = >,
@@ -503,7 +503,7 @@ CREATE OPERATOR < (
   JOIN = scalarltjoinsel
 );
 
-CREATE FUNCTION agtype_gt(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_gt(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -512,7 +512,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR > (
-  FUNCTION = agtype_gt,
+  FUNCTION = ag_catalog.agtype_gt,
   LEFTARG = agtype,
   RIGHTARG = agtype,
   COMMUTATOR = <,
@@ -521,7 +521,7 @@ CREATE OPERATOR > (
   JOIN = scalargtjoinsel
 );
 
-CREATE FUNCTION agtype_le(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_le(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -530,7 +530,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR <= (
-  FUNCTION = agtype_le,
+  FUNCTION = ag_catalog.agtype_le,
   LEFTARG = agtype,
   RIGHTARG = agtype,
   COMMUTATOR = >=,
@@ -539,7 +539,7 @@ CREATE OPERATOR <= (
   JOIN = scalarlejoinsel
 );
 
-CREATE FUNCTION agtype_ge(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_ge(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -548,7 +548,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR >= (
-  FUNCTION = agtype_ge,
+  FUNCTION = ag_catalog.agtype_ge,
   LEFTARG = agtype,
   RIGHTARG = agtype,
   COMMUTATOR = <=,
@@ -557,7 +557,7 @@ CREATE OPERATOR >= (
   JOIN = scalargejoinsel
 );
 
-CREATE FUNCTION agtype_btree_cmp(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_btree_cmp(agtype, agtype)
 RETURNS INTEGER
 LANGUAGE c
 STABLE
@@ -573,9 +573,9 @@ CREATE OPERATOR CLASS agtype_ops_btree
   OPERATOR 3 =,
   OPERATOR 4 >,
   OPERATOR 5 >=,
-  FUNCTION 1 agtype_btree_cmp(agtype, agtype);
+  FUNCTION 1 ag_catalog.agtype_btree_cmp(agtype, agtype);
 
-CREATE FUNCTION agtype_hash_cmp(agtype)
+CREATE FUNCTION ag_catalog.agtype_hash_cmp(agtype)
 RETURNS INTEGER
 LANGUAGE c
 STABLE
@@ -587,12 +587,12 @@ CREATE OPERATOR CLASS agtype_ops_hash
   FOR TYPE agtype
   USING hash AS
   OPERATOR 1 =,
-  FUNCTION 1 agtype_hash_cmp(agtype);
+  FUNCTION 1 ag_catalog.agtype_hash_cmp(agtype);
 
 --
 -- graph id conversion function
 --
-CREATE FUNCTION graphid_to_agtype(graphid)
+CREATE FUNCTION ag_catalog.graphid_to_agtype(graphid)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -603,7 +603,7 @@ AS 'MODULE_PATHNAME';
 --
 -- agtype - path
 --
-CREATE FUNCTION _agtype_build_path(VARIADIC "any")
+CREATE FUNCTION ag_catalog._agtype_build_path(VARIADIC "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -614,7 +614,7 @@ AS 'MODULE_PATHNAME';
 --
 -- agtype - vertex
 --
-CREATE FUNCTION _agtype_build_vertex(graphid, cstring, agtype)
+CREATE FUNCTION ag_catalog._agtype_build_vertex(graphid, cstring, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -625,7 +625,7 @@ AS 'MODULE_PATHNAME';
 --
 -- agtype - edge
 --
-CREATE FUNCTION _agtype_build_edge(graphid, graphid, graphid, cstring, agtype)
+CREATE FUNCTION ag_catalog._agtype_build_edge(graphid, graphid, graphid, cstring, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -633,7 +633,7 @@ CALLED ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION _ag_enforce_edge_uniqueness(VARIADIC "any")
+CREATE FUNCTION ag_catalog._ag_enforce_edge_uniqueness(VARIADIC "any")
 RETURNS bool
 LANGUAGE c
 STABLE
@@ -644,7 +644,7 @@ as 'MODULE_PATHNAME';
 -- agtype - map literal (`{key: expr, ...}`)
 --
 
-CREATE FUNCTION agtype_build_map(VARIADIC "any")
+CREATE FUNCTION ag_catalog.agtype_build_map(VARIADIC "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -652,7 +652,7 @@ CALLED ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION agtype_build_map()
+CREATE FUNCTION ag_catalog.agtype_build_map()
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -665,7 +665,7 @@ AS 'MODULE_PATHNAME', 'agtype_build_map_noargs';
 -- functions we need. Wrap the function with this to
 -- prevent that from happening
 --
-CREATE FUNCTION agtype_volatile_wrapper(agt agtype)
+CREATE FUNCTION ag_catalog.agtype_volatile_wrapper(agt agtype)
 RETURNS agtype AS $return_value$
 BEGIN
 	RETURN agt;
@@ -679,7 +679,7 @@ PARALLEL SAFE;
 -- agtype - list literal (`[expr, ...]`)
 --
 
-CREATE FUNCTION agtype_build_list(VARIADIC "any")
+CREATE FUNCTION ag_catalog.agtype_build_list(VARIADIC "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -687,7 +687,7 @@ CALLED ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION agtype_build_list()
+CREATE FUNCTION ag_catalog.agtype_build_list()
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -701,7 +701,7 @@ AS 'MODULE_PATHNAME', 'agtype_build_list_noargs';
 
 -- agtype -> boolean (implicit)
 
-CREATE FUNCTION agtype_to_bool(agtype)
+CREATE FUNCTION ag_catalog.agtype_to_bool(agtype)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -710,12 +710,12 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE CAST (agtype AS boolean)
-WITH FUNCTION agtype_to_bool(agtype)
+WITH FUNCTION ag_catalog.agtype_to_bool(agtype)
 AS IMPLICIT;
 
 -- boolean -> agtype (explicit)
 
-CREATE FUNCTION bool_to_agtype(boolean)
+CREATE FUNCTION ag_catalog.bool_to_agtype(boolean)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -724,11 +724,11 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE CAST (boolean AS agtype)
-WITH FUNCTION bool_to_agtype(boolean);
+WITH FUNCTION ag_catalog.bool_to_agtype(boolean);
 
 -- float8 -> agtype (explicit)
 
-CREATE FUNCTION float8_to_agtype(float8)
+CREATE FUNCTION ag_catalog.float8_to_agtype(float8)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -737,11 +737,11 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE CAST (float8 AS agtype)
-WITH FUNCTION float8_to_agtype(float8);
+WITH FUNCTION ag_catalog.float8_to_agtype(float8);
 
 -- agtype -> float8 (implicit)
 
-CREATE FUNCTION agtype_to_float8(agtype)
+CREATE FUNCTION ag_catalog.agtype_to_float8(agtype)
 RETURNS float8
 LANGUAGE c
 STABLE
@@ -750,7 +750,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE CAST (agtype AS float8)
-WITH FUNCTION agtype_to_float8(agtype)
+WITH FUNCTION ag_catalog.agtype_to_float8(agtype)
 AS IMPLICIT;
 
 --
@@ -758,7 +758,7 @@ AS IMPLICIT;
 --
 
 -- for series of `map.key` and `container[expr]`
-CREATE FUNCTION agtype_access_operator(VARIADIC agtype[])
+CREATE FUNCTION ag_catalog.agtype_access_operator(VARIADIC agtype[])
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -766,14 +766,14 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION agtype_access_slice(agtype, agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_access_slice(agtype, agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION agtype_in_operator(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_in_operator(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -784,7 +784,7 @@ AS 'MODULE_PATHNAME';
 -- agtype - string matching (`STARTS WITH`, `ENDS WITH`, `CONTAINS`)
 --
 
-CREATE FUNCTION agtype_string_match_starts_with(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_string_match_starts_with(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -792,7 +792,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION agtype_string_match_ends_with(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_string_match_ends_with(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -800,7 +800,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION agtype_string_match_contains(agtype, agtype)
+CREATE FUNCTION ag_catalog.agtype_string_match_contains(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -814,7 +814,7 @@ AS 'MODULE_PATHNAME';
 
 -- This function is defined as a VOLATILE function to prevent the optimizer
 -- from pulling up Query's for CREATE clauses.
-CREATE FUNCTION _cypher_create_clause(internal)
+CREATE FUNCTION ag_catalog._cypher_create_clause(internal)
 RETURNS void
 LANGUAGE c
 AS 'MODULE_PATHNAME';
@@ -822,13 +822,13 @@ AS 'MODULE_PATHNAME';
 --
 -- query functions
 --
-CREATE FUNCTION cypher(graph_name name, query_string cstring,
+CREATE FUNCTION ag_catalog.cypher(graph_name name, query_string cstring,
                        params agtype = NULL)
 RETURNS SETOF record
 LANGUAGE c
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION get_cypher_keywords(OUT word text, OUT catcode "char",
+CREATE FUNCTION ag_catalog.get_cypher_keywords(OUT word text, OUT catcode "char",
                                     OUT catdesc text)
 RETURNS SETOF record
 LANGUAGE c
@@ -842,7 +842,7 @@ AS 'MODULE_PATHNAME';
 --
 -- Scalar Functions
 --
-CREATE FUNCTION id(agtype)
+CREATE FUNCTION ag_catalog.age_id(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -850,7 +850,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION start_id(agtype)
+CREATE FUNCTION ag_catalog.age_start_id(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -858,7 +858,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION end_id(agtype)
+CREATE FUNCTION ag_catalog.age_end_id(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -866,7 +866,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION head(agtype)
+CREATE FUNCTION ag_catalog.age_head(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -874,7 +874,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION last(agtype)
+CREATE FUNCTION ag_catalog.age_last(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -882,7 +882,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION properties(agtype)
+CREATE FUNCTION ag_catalog.age_properties(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -890,7 +890,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION startnode(agtype, agtype)
+CREATE FUNCTION ag_catalog.age_startnode(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -898,7 +898,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION endnode(agtype, agtype)
+CREATE FUNCTION ag_catalog.age_endnode(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -906,7 +906,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION length(agtype)
+CREATE FUNCTION ag_catalog.age_length(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -914,7 +914,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION toboolean(variadic "any")
+CREATE FUNCTION ag_catalog.age_toboolean(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -922,7 +922,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION tofloat(variadic "any")
+CREATE FUNCTION ag_catalog.age_tofloat(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -930,7 +930,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION tointeger(variadic "any")
+CREATE FUNCTION ag_catalog.age_tointeger(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -938,7 +938,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION tostring(variadic "any")
+CREATE FUNCTION ag_catalog.age_tostring(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -946,7 +946,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION size(variadic "any")
+CREATE FUNCTION ag_catalog.age_size(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -954,7 +954,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION type(agtype)
+CREATE FUNCTION ag_catalog.age_type(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -962,14 +962,14 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION exists_property(agtype)
+CREATE FUNCTION ag_catalog.age_exists(agtype)
 RETURNS boolean
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION _property_constraint_check(agtype, agtype)
+CREATE FUNCTION ag_catalog._property_constraint_check(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
 STABLE
@@ -979,7 +979,7 @@ AS 'MODULE_PATHNAME';
 --
 -- String functions
 --
-CREATE FUNCTION reverse(variadic "any")
+CREATE FUNCTION ag_catalog.age_reverse(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -987,7 +987,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION touppercase(variadic "any")
+CREATE FUNCTION ag_catalog.age_toupper(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -995,7 +995,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION tolowercase(variadic "any")
+CREATE FUNCTION ag_catalog.age_tolower(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -1003,7 +1003,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION l_trim(variadic "any")
+CREATE FUNCTION ag_catalog.age_ltrim(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -1011,7 +1011,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION r_trim(variadic "any")
+CREATE FUNCTION ag_catalog.age_rtrim(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -1019,7 +1019,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION b_trim(variadic "any")
+CREATE FUNCTION ag_catalog.age_trim(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -1027,35 +1027,35 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION r_substr(variadic "any")
+CREATE FUNCTION ag_catalog.age_right(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION l_substr(variadic "any")
+CREATE FUNCTION ag_catalog.age_left(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION b_substr(variadic "any")
+CREATE FUNCTION ag_catalog.age_substring(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION split(variadic "any")
+CREATE FUNCTION ag_catalog.age_split(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION replace(variadic "any")
+CREATE FUNCTION ag_catalog.age_replace(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -1065,140 +1065,147 @@ AS 'MODULE_PATHNAME';
 --
 -- Trig functions - radian input
 --
-CREATE FUNCTION r_sin(variadic "any")
+CREATE FUNCTION ag_catalog.age_sin(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION r_cos(variadic "any")
+CREATE FUNCTION ag_catalog.age_cos(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION r_tan(variadic "any")
+CREATE FUNCTION ag_catalog.age_tan(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION r_cot(variadic "any")
+CREATE FUNCTION ag_catalog.age_cot(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION r_asin(variadic "any")
+CREATE FUNCTION ag_catalog.age_asin(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION r_acos(variadic "any")
+CREATE FUNCTION ag_catalog.age_acos(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION r_atan(variadic "any")
+CREATE FUNCTION ag_catalog.age_atan(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION r_atan2(variadic "any")
+CREATE FUNCTION ag_catalog.age_atan2(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION degrees_from_radians(variadic "any")
+CREATE FUNCTION ag_catalog.age_degrees(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION radians_from_degrees(variadic "any")
+CREATE FUNCTION ag_catalog.age_radians(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_round(variadic "any")
+CREATE FUNCTION ag_catalog.age_round(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_ceil(variadic "any")
+CREATE FUNCTION ag_catalog.age_ceil(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_floor(variadic "any")
+CREATE FUNCTION ag_catalog.age_floor(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_abs(variadic "any")
+CREATE FUNCTION ag_catalog.age_abs(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_sign(variadic "any")
+CREATE FUNCTION ag_catalog.age_sign(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_log(variadic "any")
+CREATE FUNCTION ag_catalog.age_log(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_log10(variadic "any")
+CREATE FUNCTION ag_catalog.age_log10(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_e()
+CREATE FUNCTION ag_catalog.age_e()
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_exp(variadic "any")
+CREATE FUNCTION ag_catalog.age_exp(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_sqrt(variadic "any")
+CREATE FUNCTION ag_catalog.age_sqrt(variadic "any")
+RETURNS agtype
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION ag_catalog.age_timestamp()
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -1208,35 +1215,35 @@ AS 'MODULE_PATHNAME';
 --
 -- function for typecasting an agtype value to another agtype value
 --
-CREATE FUNCTION agtype_typecast_numeric(agtype)
+CREATE FUNCTION ag_catalog.agtype_typecast_numeric(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION agtype_typecast_float(agtype)
+CREATE FUNCTION ag_catalog.agtype_typecast_float(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION agtype_typecast_vertex(agtype)
+CREATE FUNCTION ag_catalog.agtype_typecast_vertex(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION agtype_typecast_edge(agtype)
+CREATE FUNCTION ag_catalog.agtype_typecast_edge(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION agtype_typecast_path(agtype)
+CREATE FUNCTION ag_catalog.agtype_typecast_path(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
