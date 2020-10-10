@@ -515,6 +515,29 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return value;
   }
 
+  protected Long getTserverMetricCountForTable(String metricName, String tableName)
+      throws Exception {
+    long count = 0;
+    for (JsonArray rawMetric : getRawTSMetric()) {
+      for (JsonElement elem : rawMetric.getAsJsonArray()) {
+        JsonObject obj = elem.getAsJsonObject();
+        if (obj.get("type").getAsString().equals("tablet") &&
+            obj.getAsJsonObject("attributes").get("table_name").getAsString().equals(tableName)) {
+          for (JsonElement subelem : obj.getAsJsonArray("metrics")) {
+            if (!subelem.isJsonObject()) {
+              continue;
+            }
+            JsonObject metric = subelem.getAsJsonObject();
+            if (metric.has("name") && metric.get("name").getAsString().equals(metricName)) {
+              count += metric.get("value").getAsLong();
+            }
+          }
+        }
+      }
+    }
+    return count;
+  }
+
   protected long getMetricCounter(String metricName) throws Exception {
     return getMetric(metricName).count;
   }

@@ -448,14 +448,6 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
       &output));
   ASSERT_NE(output.find(extra_table.table_name()), string::npos);
   ASSERT_NE(output.find(kTableName.table_name()), string::npos);
-
-  // Create snapshot does not support incoming system table names.
-  ASSERT_NOK(Subprocess::Call(
-      ToStringVector(
-          GetAdminToolPath(), "-master_addresses", master_address, "create_snapshot", "system",
-          "peers"),
-      &output, /* read_stderr */ true));
-  ASSERT_NE(output.find("Unexpected system table name"), std::string::npos);
 }
 
 TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {

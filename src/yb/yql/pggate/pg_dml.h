@@ -149,10 +149,10 @@ class PgDml : public PgStatement {
   PgTableDesc::ScopedRefPtr bind_desc_;
 
   // Prepare control parameters.
-  PgPrepareParameters prepare_params_ = { kInvalidOid /* index_oid */,
-                                          false /* index_only_scan */,
-                                          false /* use_secondary_index */,
-                                          false /* querying_colocated_table */ };
+  PgPrepareParameters prepare_params_ = { .index_oid = kInvalidOid,
+                                          .index_only_scan = false,
+                                          .use_secondary_index = false,
+                                          .querying_colocated_table = false };
 
   // -----------------------------------------------------------------------------------------------
   // Data members for nested query: This is used for an optimization in PgGate.

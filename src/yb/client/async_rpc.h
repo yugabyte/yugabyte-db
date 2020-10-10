@@ -44,6 +44,8 @@ struct AsyncRpcMetrics {
   scoped_refptr<Histogram> local_write_rpc_time;
   scoped_refptr<Histogram> local_read_rpc_time;
   scoped_refptr<Histogram> time_to_send;
+  scoped_refptr<Counter> consistent_prefix_successful_reads;
+  scoped_refptr<Counter> consistent_prefix_failed_reads;
 };
 
 struct AsyncRpcData {

@@ -101,7 +101,8 @@ class AbstractTablet {
       const ReadHybridTime& read_time,
       const PgsqlReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
-      PgsqlReadRequestResult* result) = 0;
+      PgsqlReadRequestResult* result,
+      size_t* number_rows_read) = 0;
 
   virtual Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) = 0;
 
@@ -124,7 +125,8 @@ class AbstractTablet {
                                         const ReadHybridTime& read_time,
                                         const PgsqlReadRequestPB& pgsql_read_request,
                                         const TransactionOperationContextOpt& txn_op_context,
-                                        PgsqlReadRequestResult* result);
+                                        PgsqlReadRequestResult* result,
+                                        size_t* num_rows_read);
 
   virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;
 

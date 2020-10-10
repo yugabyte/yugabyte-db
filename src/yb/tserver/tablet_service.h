@@ -180,6 +180,8 @@ class TabletServiceImpl : public TabletServerServiceIf {
   // Sends response, etc.
   void CompleteRead(ReadContext* read_context);
 
+  void UpdateConsistentPrefixMetrics(ReadContext* read_context);
+
   TabletServerIf *const server_;
 };
 

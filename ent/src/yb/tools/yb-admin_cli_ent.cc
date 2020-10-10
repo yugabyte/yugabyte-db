@@ -82,12 +82,6 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
               }
               return ClusterAdminCli::kInvalidArguments;
             }));
-
-        for (auto table : tables) {
-          if (table.relation_type() == master::SYSTEM_TABLE_RELATION) {
-            return STATUS(InvalidArgument, "Unexpected system table name", table.table_name());
-          }
-        }
         RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables, true, timeout_secs),
                               Substitute("Unable to create snapshot of tables: $0",
                                          yb::ToString(tables)));

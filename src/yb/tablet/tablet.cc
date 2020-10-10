@@ -1567,7 +1567,8 @@ Status Tablet::HandlePgsqlReadRequest(
     const ReadHybridTime& read_time,
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
-    PgsqlReadRequestResult* result) {
+    PgsqlReadRequestResult* result,
+    size_t* num_rows_read) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter_, deadline);
   RETURN_NOT_OK(scoped_read_operation);
   // TODO(neil) Work on metrics for PGSQL.
@@ -1593,7 +1594,7 @@ Status Tablet::HandlePgsqlReadRequest(
           table_info->schema.table_properties().is_ysql_catalog_table());
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandlePgsqlReadRequest(
-      deadline, read_time, pgsql_read_request, *txn_op_ctx, result);
+      deadline, read_time, pgsql_read_request, *txn_op_ctx, result, num_rows_read);
 }
 
 // Returns true if the query can be satisfied by rows present in current tablet.

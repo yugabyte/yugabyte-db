@@ -111,7 +111,7 @@ enum TableType {
   DEFAULT_TABLE_TYPE = 2;
 }
 
-enum YBConsistencyLevel {
+    enum YBConsistencyLevel {
   // This consistency level provides Linearizability guarantees and is the default for our system.
   STRONG = 1;
 
