@@ -686,8 +686,7 @@ bool YBPgsqlWriteOp::IsTransactional() const {
 YBPgsqlReadOp::YBPgsqlReadOp(const shared_ptr<YBTable>& table)
     : YBPgsqlOp(table),
       read_request_(new PgsqlReadRequestPB()),
-      yb_consistency_level_(YBConsistencyLevel::STRONG) {
-}
+      yb_consistency_level_(YBConsistencyLevel::STRONG) {}
 
 std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
   std::unique_ptr<YBPgsqlReadOp> op(new YBPgsqlReadOp(table));
@@ -822,6 +821,11 @@ Result<QLRowBlock> YBPgsqlReadOp::MakeRowBlock() const {
     RETURN_NOT_OK(result.Deserialize(request().client(), &data));
   }
   return result;
+}
+
+OpGroup YBPgsqlReadOp::group() {
+  return yb_consistency_level_ == YBConsistencyLevel::CONSISTENT_PREFIX
+      ? OpGroup::kConsistentPrefixRead : OpGroup::kLeaderRead;
 }
 
 ////////////////////////////////////////////////////////////

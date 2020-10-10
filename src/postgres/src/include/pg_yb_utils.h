@@ -77,6 +77,8 @@ extern uint64_t YBGetActiveCatalogCacheVersion();
  */
 extern bool IsYugaByteEnabled();
 
+extern bool yb_read_from_followers;
+
 /*
  * Given a relation, checks whether the relation is supported in YugaByte mode.
  */
@@ -373,5 +375,7 @@ void YBDecrementDdlNestingLevel(bool success,
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
+
+bool YBReadFromFollowersEnabled();
 
 #endif /* PG_YB_UTILS_H */

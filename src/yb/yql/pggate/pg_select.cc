@@ -29,8 +29,7 @@ using std::make_shared;
 
 PgSelect::PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
                    const PgObjectId& index_id, const PgPrepareParameters *prepare_params)
-    : PgDmlRead(pg_session, table_id, index_id, prepare_params) {
-}
+    : PgDmlRead(pg_session, table_id, index_id, prepare_params) {}
 
 PgSelect::~PgSelect() {
 }

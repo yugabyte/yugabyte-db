@@ -336,6 +336,10 @@ Status PgDocReadOp::CreateRequests() {
     return Status::OK();
   }
 
+  if (exec_params_.read_from_followers) {
+    template_op_->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+  }
+
   // All information from the SQL request has been collected and setup. This code populate
   // Protobuf requests before sending them to DocDB. For performance reasons, requests are
   // constructed differently for different statement.

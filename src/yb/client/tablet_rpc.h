@@ -85,6 +85,8 @@ class TabletInvoker {
   const RemoteTabletServer& current_ts() { return *current_ts_; }
   bool local_tserver_only() const { return local_tserver_only_; }
 
+  bool is_consistent_prefix() const { return consistent_prefix_; }
+
  private:
   friend class TabletRpcTest;
   FRIEND_TEST(TabletRpcTest, TabletInvokerSelectTabletServerRace);

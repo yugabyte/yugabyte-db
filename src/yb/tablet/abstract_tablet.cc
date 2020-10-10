@@ -75,7 +75,8 @@ Status AbstractTablet::HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                               const ReadHybridTime& read_time,
                                               const PgsqlReadRequestPB& pgsql_read_request,
                                               const TransactionOperationContextOpt& txn_op_context,
-                                              PgsqlReadRequestResult* result) {
+                                              PgsqlReadRequestResult* result,
+                                              size_t* num_rows_read) {
 
   docdb::PgsqlReadOperation doc_op(pgsql_read_request, txn_op_context);
 
@@ -95,6 +96,10 @@ Status AbstractTablet::HandlePgsqlReadRequest(CoarseTimePoint deadline,
     return Status::OK();
   }
   result->response.Swap(&doc_op.response());
+
+  if (num_rows_read) {
+    *num_rows_read = *fetched_rows;
+  }
 
   RETURN_NOT_OK(CreatePagingStateForRead(
       pgsql_read_request, *fetched_rows, &result->response));
