@@ -73,8 +73,12 @@ pgss_shmem_startup(void)
 	pgss->query_buf_size_bucket = PGSM_QUERY_BUF_SIZE / PGSM_MAX_BUCKETS;
 
 	for (i = 0; i < PGSM_MAX_BUCKETS; i++)
+	{
+		unsigned char *buf;
 		pgss_qbuf[i] = (unsigned char *) ShmemAlloc(pgss->query_buf_size_bucket);
-
+		buf = pgss_qbuf[i];
+		memset(buf, 0, sizeof (uint64));
+	}
 	pgss_hash = hash_init("pg_stat_monitor: Queries hashtable", sizeof(pgssHashKey), sizeof(pgssEntry),PGSM_MAX);
 
 	pgss_buckethash = hash_init("pg_stat_monitor: Bucket hashtable", sizeof(pgssBucketHashKey), sizeof(pgssBucketEntry), PGSM_MAX_BUCKETS);

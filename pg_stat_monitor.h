@@ -152,9 +152,9 @@ typedef struct pgssHashKey
 {
 	uint64		bucket_id;		/* bucket number */
 	uint64		queryid;		/* query identifier */
-	Oid			userid;			/* user OID */
-	Oid			dbid;			/* database OID */
-	uint32		ip;				/* client ip address */
+	uint64		userid;			/* user OID */
+	uint64		dbid;			/* database OID */
+	uint64		ip;				/* client ip address */
 } pgssHashKey;
 
 typedef struct QueryInfo
