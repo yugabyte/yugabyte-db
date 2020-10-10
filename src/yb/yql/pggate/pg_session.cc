@@ -1011,7 +1011,7 @@ Status PgSession::DeleteForeignKeyReference(uint32_t table_id, std::string&& ybc
 }
 
 Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id) const {
-  if (op.succeeded()) {
+    if (op.succeeded()) {
     return Status::OK();
   }
   const auto& response = op.response();

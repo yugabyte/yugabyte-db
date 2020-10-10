@@ -1887,6 +1887,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
+  if (req->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX) {
+    auto tablet = down_cast<Tablet*>(read_context.tablet.get());
+    if (tablet) {
+      tablet->metrics()->consistent_prefix_read_requests->Increment();
+    }
+  }
+
   CompleteRead(&read_context);
 }
 
@@ -2074,12 +2081,17 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
 
   if (!read_context->req->pgsql_batch().empty()) {
     ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(read_context->req);
+    size_t total_num_rows_read = 0;
     for (PgsqlReadRequestPB& pgsql_read_req : *mutable_req->mutable_pgsql_batch()) {
       tablet::PgsqlReadRequestResult result;
       TRACE("Start HandlePgsqlReadRequest");
+      size_t num_rows_read;
       RETURN_NOT_OK(read_context->tablet->HandlePgsqlReadRequest(
           read_context->context->GetClientDeadline(), read_tx.read_time(), pgsql_read_req,
-          read_context->req->transaction(), &result));
+          read_context->req->transaction(), &result, &num_rows_read));
+
+      total_num_rows_read += num_rows_read;
+
       TRACE("Done HandlePgsqlReadRequest");
       if (result.restart_read_ht.is_valid()) {
         VLOG(1) << "Restart read required at: " << result.restart_read_ht;
@@ -2089,6 +2101,12 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
       }
       result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_pgsql_batch()->Swap(&result.response);
+    }
+
+    if (read_context->req->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX &&
+        total_num_rows_read > 0) {
+      auto tablet = down_cast<Tablet*>(read_context->tablet.get());
+      tablet->metrics()->pgsql_consistent_prefix_read_rows->IncrementBy(total_num_rows_read);
     }
     return ReadHybridTime();
   }

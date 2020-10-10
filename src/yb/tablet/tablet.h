@@ -341,7 +341,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const ReadHybridTime& read_time,
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,
-      PgsqlReadRequestResult* result) override;
+      PgsqlReadRequestResult* result,
+      size_t* num_rows_read) override;
 
   CHECKED_STATUS CreatePagingStateForRead(
       const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,

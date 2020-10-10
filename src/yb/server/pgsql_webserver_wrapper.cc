@@ -36,9 +36,8 @@ static void (*resetYsqlStatementStats)();
 static rpczEntry **rpczResultPointer;
 
 static postgresCallbacks pgCallbacks;
-
 static void PgMetricsHandler(const Webserver::WebRequest& req,
-                                    Webserver::WebResponse* resp) {
+                             Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");

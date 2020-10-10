@@ -218,6 +218,7 @@ typedef struct PgExecParameters {
   int rowmark = -1;
   uint64_t read_time = 0;
   char *partition_key = NULL;
+  bool read_from_followers = false;
 #else
   uint64_t limit_count;
   uint64_t limit_offset;
@@ -225,6 +226,7 @@ typedef struct PgExecParameters {
   int rowmark;
   uint64_t read_time;
   char *partition_key;
+  bool read_from_followers;
 #endif
 } YBCPgExecParameters;
 
