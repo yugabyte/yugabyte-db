@@ -102,4 +102,6 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [Adm28](https://github.com/Adm28)
 * [vikramrajsitpal](https://github.com/vikramrajsitpal)
 * [haron](https://github.com/haron)
+* [robertsami](https://github.com/robertsami)
+* [tedyu](https://github.com/tedyu)
 * [idnaninitesh] (https://github.com/idnaninitesh)

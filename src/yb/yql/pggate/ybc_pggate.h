@@ -485,6 +485,9 @@ bool YBCShouldSleepBeforeRetryOnTxnConflict();
 // Retrieves value of ysql_output_buffer_size gflag
 int32_t YBCGetOutputBufferSize();
 
+// Retrieves value of ysql_sequence_cache_minval gflag
+int32_t YBCGetSequenceCacheMinval();
+
 // Retrieve value of ysql_disable_index_backfill gflag.
 bool YBCGetDisableIndexBackfill();
 

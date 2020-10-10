@@ -7523,6 +7523,10 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
+  if (table->IsCreateInProgress()) {
+    resp->set_creating(true);
+  }
+
   auto l = table->LockForRead();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 

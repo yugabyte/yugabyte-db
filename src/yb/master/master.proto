@@ -1029,6 +1029,8 @@ message GetTableLocationsResponsePB {
 
   // See SysTablesEntryPB for field with the same name.
   optional uint32 partitions_version = 4;
+
+  optional bool creating = 5;
 }
 
 message AlterTableRequestPB {
