@@ -71,17 +71,6 @@ class RetryableRequests {
   std::unique_ptr<Impl> impl_;
 };
 
-struct MinRunningRequestIdTag : yb::IntegralErrorTag<int64_t> {
-  // It is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 13;
-
-  static std::string ToMessage(Value value) {
-    return Format("Min running request ID: $0", value);
-  }
-};
-
-typedef yb::StatusErrorCodeImpl<MinRunningRequestIdTag> MinRunningRequestIdStatusData;
-
 } // namespace consensus
 } // namespace yb
 

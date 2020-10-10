@@ -879,6 +879,10 @@ int32_t YBCGetOutputBufferSize() {
   return FLAGS_ysql_output_buffer_size;
 }
 
+int32_t YBCGetSequenceCacheMinval() {
+  return FLAGS_ysql_sequence_cache_minval;
+}
+
 bool YBCGetDisableIndexBackfill() {
   return FLAGS_ysql_disable_index_backfill;
 }
