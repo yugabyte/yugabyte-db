@@ -35,11 +35,17 @@ showAsideToc: true
 
 </ul>
 
-Follow the steps here to use the Yugabyte Platform to back up YugabyteDB universe data.
+To immediately back up your YugabyteDB universe YSQL data, follow these steps.
 
-1. Go to the **Backups** tab and then click **Create Backup**. A modal should appear where you can
-enter the table and select your backup options. 
+1. Open the **Universe Overview** and then click the **Backups** tab. The **Backups** page appears.
+2. Click **Create Backup** to open the **Create Backup** dialog.
 
-![Create Backup - YSQL](/images/yp/create-backup-ysql.png)
+    ![Create Backup - YSQL](/images/yp/create-backup-ysql.png)
 
-Click **OK**. If you refresh the page, you'll eventually see a completed task.
+3. Click the **YSQL** tab and enter the following:
+
+    - **Storage**: Select the storage type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
+    - **Namespace**: Select the namespace from the drop-down list of available namespaces.
+    - **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
+
+Click **OK**. The backup begins immediately.
