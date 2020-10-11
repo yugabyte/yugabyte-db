@@ -252,6 +252,19 @@ void Schema::swap(Schema& other) {
   DCHECK(cotable_id_.IsNil() || pgtable_id_ == 0);
 }
 
+void Schema::ResetColumnIds(const vector<ColumnId>& ids) {
+  // Initialize IDs mapping.
+  col_ids_ = ids;
+  id_to_index_.clear();
+  max_col_id_ = 0;
+  for (int i = 0; i < ids.size(); ++i) {
+    if (ids[i] > max_col_id_) {
+      max_col_id_ = ids[i];
+    }
+    id_to_index_.set(ids[i], i);
+  }
+}
+
 Status Schema::Reset(const vector<ColumnSchema>& cols,
                      const vector<ColumnId>& ids,
                      int key_columns,
@@ -339,15 +352,7 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   col_offsets_.push_back(off);
 
   // Initialize IDs mapping
-  col_ids_ = ids;
-  id_to_index_.clear();
-  max_col_id_ = 0;
-  for (int i = 0; i < ids.size(); ++i) {
-    if (ids[i] > max_col_id_) {
-      max_col_id_ = ids[i];
-    }
-    id_to_index_.set(ids[i], i);
-  }
+  ResetColumnIds(ids);
 
   // Ensure clustering columns have a default sorting type of 'ASC' if not specified.
   for (int i = num_hash_key_columns_; i < num_key_columns(); i++) {
@@ -392,13 +397,25 @@ Status Schema::CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& c
   return out->Reset(cols, filtered_col_ids, 0, TableProperties(), cotable_id_, pgtable_id_);
 }
 
-Schema Schema::CopyWithColumnIds() const {
-  CHECK(!has_column_ids());
+namespace {
+vector<ColumnId> DefaultColumnIds(size_t num_columns) {
   vector<ColumnId> ids;
-  for (int32_t i = 0; i < num_columns(); i++) {
+  for (int32_t i = 0; i < num_columns; ++i) {
     ids.push_back(ColumnId(kFirstColumnId + i));
   }
-  return Schema(cols_, ids, num_key_columns_, table_properties_, cotable_id_, pgtable_id_);
+  return ids;
+}
+}  // namespace
+
+Schema Schema::CopyWithColumnIds() const {
+  CHECK(!has_column_ids());
+  return Schema(cols_, DefaultColumnIds(num_columns()),
+      num_key_columns_, table_properties_, cotable_id_, pgtable_id_);
+}
+
+void Schema::InitColumnIdsByDefault() {
+  CHECK(!has_column_ids());
+  ResetColumnIds(DefaultColumnIds(cols_.size()));
 }
 
 Schema Schema::CopyWithoutColumnIds() const {
