@@ -69,6 +69,7 @@ class TransactionLoader {
   }
 
   void WaitLoaded(const TransactionId& id);
+  void WaitAllLoaded();
 
   void Shutdown();
 

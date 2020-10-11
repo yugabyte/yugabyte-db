@@ -466,6 +466,12 @@ class TransactionParticipant::Impl
 
     loader_.WaitLoaded(data.transaction_id);
 
+    ScopedRWOperation operation(pending_op_counter_);
+    if (!operation.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Process apply rejected";
+      return Status::OK();
+    }
+
     bool was_applied = false;
 
     {
@@ -601,11 +607,20 @@ class TransactionParticipant::Impl
     bool had_db = db_.intents != nullptr;
     db_ = db;
     key_bounds_ = key_bounds;
+    pending_op_counter_ = pending_op_counter;
 
-    // In case of truncate we should not reload transactions.
+    // We should only load transactions on the initial call to SetDB (when opening the tablet), not
+    // in case of truncate/restore.
     if (!had_db) {
       loader_.Start(pending_op_counter, db_);
+      return;
     }
+
+    loader_.WaitAllLoaded();
+    MinRunningNotifier min_running_notifier(&applier_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    transactions_.clear();
+    TransactionsModifiedUnlocked(&min_running_notifier);
   }
 
   void GetStatus(
@@ -1339,6 +1354,8 @@ class TransactionParticipant::Impl
 
   docdb::DocDB db_;
   const docdb::KeyBounds* key_bounds_;
+  // Owned externally, should be guaranteed that would not be destroyed before this.
+  RWOperationCounter* pending_op_counter_ = nullptr;
 
   Transactions transactions_;
   // Ids of running requests, stored in increasing order.
