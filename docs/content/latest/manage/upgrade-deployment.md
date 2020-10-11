@@ -37,6 +37,14 @@ For CentOS, this would be something like:
 4. ./bin/post_install.sh
 ```
 
+
+{{< note title="Note" >}}
+
+If you are using PostgreSQL extensions, make sure to install them in the new version before upgrading. You can follow
+ the [same guide](../../api/ysql/extensions) that you installed the extensions in the first place. 
+
+{{< /note >}}
+
 ## Upgrade YB-Masters
 
 ```
