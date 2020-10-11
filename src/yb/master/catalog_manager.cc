@@ -1701,10 +1701,6 @@ Status CatalogManager::SplitTablet(
 namespace {
 
 CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableResponsePB* resp) {
-  if (schema.has_column_ids()) {
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
-                      STATUS(InvalidArgument, "User requests should not have Column IDs"));
-  }
   if (schema.num_key_columns() <= 0) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
                       STATUS(InvalidArgument, "Must specify at least one key column"));
@@ -1729,16 +1725,14 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
   RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
   NamespaceId namespace_id = ns->id();
 
-  Schema schema;
   Schema client_schema;
   RETURN_NOT_OK(SchemaFromPB(req->schema(), &client_schema));
   // If the schema contains column ids, we are copying a Postgres table from one namespace to
-  // another. In that case, just use the schema as-is. Otherwise, validate the schema.
-  if (client_schema.has_column_ids()) {
-    schema = std::move(client_schema);
-  } else {
-    RETURN_NOT_OK(ValidateCreateTableSchema(client_schema, resp));
-    schema = client_schema.CopyWithColumnIds();
+  // another. Anyway, validate the schema.
+  RETURN_NOT_OK(ValidateCreateTableSchema(client_schema, resp));
+  Schema schema = std::move(client_schema);
+  if (!schema.has_column_ids()) {
+    schema.InitColumnIdsByDefault();
   }
   schema.mutable_table_properties()->set_is_ysql_catalog_table(true);
 
@@ -2068,7 +2062,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   // TODO (ENG-1860) The referenced namespace and types retrieved/checked above could be deleted
   // some time between this point and table creation below.
-  Schema schema = client_schema.CopyWithColumnIds();
+  Schema schema = std::move(client_schema);
+  // Usually the column ids are available if it's called on the backup-restoring code path
+  // (from CatalogManager::RecreateTable). Else the column ids must be empty in the client schema.
+  if (!schema.has_column_ids()) {
+    schema.InitColumnIdsByDefault();
+  }
+
   if (schema.table_properties().HasCopartitionTableId()) {
     return CreateCopartitionedTable(req, resp, rpc, schema, ns);
   }

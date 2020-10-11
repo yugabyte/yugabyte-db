@@ -973,13 +973,9 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   *req.mutable_partition_schema() = meta.partition_schema();
   *req.mutable_replication_info() = meta.replication_info();
 
-  // Clear column IDs.
   SchemaPB* const schema = req.mutable_schema();
-  schema->mutable_table_properties()->set_num_tablets(table_data->num_tablets);
   *schema = meta.schema();
-  for (int i = 0; i < schema->columns_size(); ++i) {
-    DCHECK_NOTNULL(schema->mutable_columns(i))->clear_id();
-  }
+  schema->mutable_table_properties()->set_num_tablets(table_data->num_tablets);
 
   // Setup Index info.
   if (table_data->is_index()) {

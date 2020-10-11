@@ -944,6 +944,10 @@ class Schema {
   // Requires that this schema has no column IDs.
   Schema CopyWithColumnIds() const;
 
+  // Initialize column IDs by default values.
+  // Requires that this schema has no column IDs.
+  void InitColumnIdsByDefault();
+
   // Return a new Schema which is the same as this one, but without any column
   // IDs assigned.
   //
@@ -1126,6 +1130,8 @@ class Schema {
   static ColumnId first_column_id();
 
  private:
+
+  void ResetColumnIds(const vector<ColumnId>& ids);
 
   // Return a stringified version of the first 'num_columns' columns of the
   // row.
