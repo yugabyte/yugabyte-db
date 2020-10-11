@@ -136,6 +136,9 @@ class RocksDBPatcher {
   // Set hybrid time filter for DB.
   CHECKED_STATUS SetHybridTimeFilter(HybridTime value);
 
+  // Modify flushed frontier and clean up smallest/largest op id in per-SST file metadata.
+  CHECKED_STATUS ModifyFlushedFrontier(const ConsensusFrontier& frontier);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

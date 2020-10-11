@@ -562,8 +562,9 @@ TEST_F(BackupTxnTest, Consistency) {
           TransactionError txn_error(status);
           ASSERT_TRUE(txn_error == TransactionErrorCode::kConflict ||
                       txn_error == TransactionErrorCode::kAborted) << status;
+        } else {
+          LOG(INFO) << "Committed: " << txn->id() << ", written: " << v;
         }
-        LOG(INFO) << "Committed: " << txn->id();
       }
     });
   }

@@ -336,6 +336,17 @@ void TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_ANA
   }
 }
 
+// Disable thread safety analysis because std::unique_lock is used.
+void TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
+  if (all_loaded_.load(std::memory_order_acquire)) {
+    return;
+  }
+  std::unique_lock<std::mutex> lock(mutex_);
+  load_cond_.wait(lock, [this] {
+    return all_loaded_.load(std::memory_order_acquire);
+  });
+}
+
 void TransactionLoader::Shutdown() {
   if (load_thread_.joinable()) {
     load_thread_.join();

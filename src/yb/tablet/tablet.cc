@@ -1069,9 +1069,10 @@ Status Tablet::PrepareTransactionWriteBatch(
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
     if (!transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch)) {
-      return STATUS(TryAgain,
-                    Format("Transaction was recently aborted: $0", transaction_id), Slice(),
-                    PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+      auto status = STATUS_EC_FORMAT(
+          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+          "Transaction was recently aborted: $0", transaction_id);
+      return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
     }
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
@@ -1887,6 +1888,8 @@ void InitFrontiers(const Data& data, docdb::ConsensusFrontiers* frontiers) {
 // Using value of reverse index record we find original intent record and apply it.
 // After that we delete both intent record and reverse index record.
 Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApplyData& data) {
+  VLOG_WITH_PREFIX(4) << __func__ << ": " << data.transaction_id;
+
   rocksdb::WriteBatch regular_write_batch;
   auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
       data.transaction_id, data.commit_ht, &key_bounds_, data.apply_state,
