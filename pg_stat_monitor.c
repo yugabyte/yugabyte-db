@@ -206,9 +206,6 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 	if (prev_post_parse_analyze_hook)
 		prev_post_parse_analyze_hook(pstate, query);
 
-	/* Assert we didn't do this already */
-	Assert(query->queryId == UINT64CONST(0));
-
 	/* Safety check... */
 	if (!IsHashInitialize())
 		return;
