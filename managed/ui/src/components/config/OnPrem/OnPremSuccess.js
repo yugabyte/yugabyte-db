@@ -82,12 +82,12 @@ class OnPremSuccess extends Component {
           privateKeyContent: keyInfo.privateKey,
           sshUser: keyInfo.sshUser,
           sshPort: keyInfo.sshPort,
-          passwordlessSudoAccess: keyInfo.passwordlessSudoAccess,
           airGapInstall: keyInfo.airGapInstall,
           installNodeExporter: keyInfo.installNodeExporter,
           nodeExporterUser: keyInfo.nodeExporterUser,
           nodeExporterPort: keyInfo.nodeExporterPort,
-          preProvisionScript: keyInfo.provisionInstanceScript
+          preProvisionScript: keyInfo.provisionInstanceScript,
+          skipProvisioning: keyInfo.skipProvisioning
         };
       }
 

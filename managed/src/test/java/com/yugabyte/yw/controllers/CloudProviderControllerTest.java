@@ -43,7 +43,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;

@@ -303,7 +303,8 @@ export function createAccessKey(providerUUID, regionUUID, keyInfo) {
     airGapInstall: keyInfo.airGapInstall,
     installNodeExporter: keyInfo.installNodeExporter,
     nodeExporterUser: keyInfo.nodeExporterUser,
-    nodeExporterPort: keyInfo.nodeExporterPort
+    nodeExporterPort: keyInfo.nodeExporterPort,
+    skipProvisioning: keyInfo.skipProvisioning
   };
   const url = getProviderEndpoint(providerUUID) + '/access_keys';
   const request = axios.post(url, formValues);

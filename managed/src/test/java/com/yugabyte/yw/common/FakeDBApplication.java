@@ -36,6 +36,7 @@ public class FakeDBApplication extends WithApplication {
   public PlayCacheSessionStore mockSessionStore;
   public AccessManager mockAccessManager;
   public TemplateManager mockTemplateManager;
+  public ExtraMigrationManager mockExtraMigrationManager;
   public MetricQueryHelper mockMetricQueryHelper;
   public CloudQueryHelper mockCloudQueryHelper;
   public ReleaseManager mockReleaseManager;
@@ -56,6 +57,7 @@ public class FakeDBApplication extends WithApplication {
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockAccessManager = mock(AccessManager.class);
     mockTemplateManager = mock(TemplateManager.class);
+    mockExtraMigrationManager = mock(ExtraMigrationManager.class);
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
     mockCloudQueryHelper = mock(CloudQueryHelper.class);
     mockReleaseManager = mock(ReleaseManager.class);

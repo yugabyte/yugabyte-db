@@ -88,6 +88,7 @@ public class AccessKeyController extends AuthenticatedController {
     String sshUser =  formData.get().sshUser;
     Integer sshPort =  formData.get().sshPort;
     boolean airGapInstall = formData.get().airGapInstall;
+    boolean skipProvisioning = formData.get().skipProvisioning;
     AccessKey accessKey;
     // Check if a public/private key was uploaded as part of the request
     Http.MultipartFormData multiPartBody = request().body().asMultipartFormData();
@@ -99,7 +100,8 @@ public class AccessKeyController extends AuthenticatedController {
           return ApiResponse.error(BAD_REQUEST, "keyType and keyFile params required.");
         }
         accessKey = accessManager.uploadKeyFile(
-            region.uuid, uploadedFile, keyCode, keyType, sshUser, sshPort, airGapInstall);
+            region.uuid, uploadedFile, keyCode, keyType, sshUser, sshPort, airGapInstall,
+            skipProvisioning);
       } else if (keyContent != null && !keyContent.isEmpty()) {
         if (keyType == null) {
           return ApiResponse.error(BAD_REQUEST, "keyType params required.");
@@ -110,9 +112,11 @@ public class AccessKeyController extends AuthenticatedController {
 
         // Upload temp file to create the access key and return success/failure
         accessKey = accessManager.uploadKeyFile(
-            regionUUID, tempFile.toFile(), keyCode, keyType, sshUser, sshPort, airGapInstall);
+            regionUUID, tempFile.toFile(), keyCode, keyType, sshUser, sshPort, airGapInstall,
+            skipProvisioning);
       } else {
-        accessKey = accessManager.addKey(regionUUID, keyCode, sshPort, airGapInstall);
+        accessKey = accessManager.addKey(
+            regionUUID, keyCode, sshPort, airGapInstall, skipProvisioning);
       }
 
       // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
