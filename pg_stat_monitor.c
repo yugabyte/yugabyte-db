@@ -16,6 +16,8 @@
 
 PG_MODULE_MAGIC;
 
+#define BUILD_VERSION "0.6.0"
+
 /*---- Initicalization Function Declarations ----*/
 void _PG_init(void);
 void _PG_fini(void);
@@ -45,6 +47,7 @@ static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 
 
+PG_FUNCTION_INFO_V1(pg_stat_monitor_version);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_reset);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_1_2);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_1_3);
@@ -193,6 +196,17 @@ _PG_fini(void)
 	ProcessUtility_hook 	= prev_ProcessUtility;
 	hash_entry_reset();
 }
+
+/*
+ * Select the version of pg_stat_monitor.
+ */
+Datum
+pg_stat_monitor_version(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(cstring_to_text(BUILD_VERSION));
+}
+
+#define PG_STAT_STATEMENTS_COLS         38  /* maximum of above */
 
 /*
  * Post-parse-analysis hook: mark query with a queryId

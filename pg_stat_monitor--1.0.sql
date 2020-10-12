@@ -9,17 +9,21 @@ RETURNS void
 AS 'MODULE_PATHNAME'
 LANGUAGE C PARALLEL SAFE;
 
+CREATE FUNCTION pg_stat_monitor_version()
+RETURNS text
+AS 'MODULE_PATHNAME'
+LANGUAGE C PARALLEL SAFE;
+
 CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
     OUT bucket              int,
     OUT userid              oid,
     OUT dbid                oid,
     OUT client_ip           bigint,
-	
+
     OUT queryid             text,
     OUT query               text,
     OUT bucket_start_time   timestamptz,
 
-	
 	OUT plan_calls          int8,
     OUT plan_total_time     float8,
     OUT plan_min_time       float8,
@@ -27,7 +31,7 @@ CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
     OUT plan_mean_time      float8,
     OUT plan_stddev_time    float8,
     OUT plan_rows           int8,
-	
+
 	OUT total_calls         int8,
     OUT total_time          float8,
     OUT min_time            float8,
@@ -35,7 +39,7 @@ CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
     OUT mean_time           float8,
     OUT stddev_time         float8,
     OUT affected_rows       int8,
-    
+
 	OUT shared_blks_hit     int8,
     OUT shared_blks_read    int8,
     OUT shared_blks_dirtied int8,
