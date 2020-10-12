@@ -248,24 +248,15 @@ hash_entry_dealloc(int bucket)
 {
 	HASH_SEQ_STATUS hash_seq;
 	pgssEntry		*entry;
-	pgssEntry		**entries;
-	int				i;
-	int				nvictims = 0;
 
 	pgss->bucket_entry[bucket] = 0;
 
-	entries = palloc(hash_get_num_entries(pgss_hash) * sizeof(pgssEntry *));
 	hash_seq_init(&hash_seq, pgss_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
 		if (entry->key.bucket_id == bucket || bucket < 0)
-			entries[nvictims++] = entry;
+			entry = hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
 	}
-
-	for (i = 0; i < nvictims; i++)
-		entry = hash_search(pgss_hash, &entries[i]->key, HASH_REMOVE, NULL);
-
-	pfree(entries);
 }
 
 /*
@@ -332,7 +323,7 @@ hash_dealloc_object_entry(uint64 queryid, char *objects)
 
     key.queryid = queryid;
 
-    LWLockAcquire(pgss->lock, LW_SHARED);
+	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
     entry = (pgssObjectEntry *) hash_search(pgss_object_hash, &key, HASH_FIND, NULL);
     if (entry != NULL)
     {

@@ -875,12 +875,15 @@ exit:
 Datum
 pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 {
+	pgssSharedState     *pgss = pgsm_get_ss();
 	/* Safety check... */
 	if (!IsHashInitialize())
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
+	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 	hash_entry_dealloc(-1);
+	LWLockRelease(pgss->lock);
 	PG_RETURN_VOID();
 }
 
