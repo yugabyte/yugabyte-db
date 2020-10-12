@@ -97,26 +97,6 @@ typedef enum AGG_KEY
 	AGG_KEY_HOST
 } AGG_KEY;
 
-/* Bucket shared_memory storage */
-typedef struct pgssBucketHashKey
-{
-	uint64		bucket_id;			/* bucket number */
-} pgssBucketHashKey;
-
-typedef struct pgssBucketCounters
-{
-	Timestamp			current_time;   /* start time of the bucket */
-	int					resp_calls[MAX_RESPONSE_BUCKET];	/* execution time's in msec */
-}pgssBucketCounters;
-
-typedef struct pgssBucketEntry
-{
-	pgssBucketHashKey	key;			/* hash key of entry - MUST BE FIRST */
-	pgssBucketCounters  counters;
-	slock_t				mutex;			/* protects the counters only */
-}pgssBucketEntry;
-
-/* Objects shared memory storage */
 typedef struct pgssObjectHashKey
 {
 	uint64		queryid;		/* query id */
@@ -215,6 +195,7 @@ typedef struct Counters
 	CallTime	time[PGSS_NUMKIND];
 	Blocks		blocks;
 	SysInfo		sysinfo;
+	int			resp_calls[MAX_RESPONSE_BUCKET];	/* execution time's in msec */
 } Counters;
 
 /* Some global structure to get the cpu usage, really don't like the idea of global variable */
@@ -252,6 +233,7 @@ typedef struct pgssSharedState
 	uint64			bucket_entry[MAX_BUCKETS];
 	QueryFifo		query_fifo[MAX_BUCKETS];
 	int				query_buf_size_bucket;
+	Timestamp		bucket_start_time[MAX_BUCKETS];   	/* start time of the bucket */
 } pgssSharedState;
 
 #define ResetSharedState(x) \
@@ -318,9 +300,7 @@ void pgss_shmem_shutdown(int code, Datum arg);
 shmem_startup_hook_type prev_shmem_startup_hook;
 int pgsm_get_bucket_size(void);
 pgssSharedState* pgsm_get_ss(void);
-pgssBucketEntry** pgsm_get_bucket_entries(void);
 HTAB* pgsm_get_wait_event_hash(void);
-pgssBucketEntry** pgsm_get_bucket(void);
 HTAB* pgsm_get_hash(void);
 pgssWaitEventEntry** pgsm_get_wait_event_entry(void);
 void hash_entry_reset(void);

@@ -20,7 +20,6 @@ static HTAB *pgss_object_hash;
 static HTAB *pgss_buckethash = NULL;
 static HTAB *pgss_waiteventshash = NULL;
 
-static pgssBucketEntry **pgssBucketEntries = NULL;
 static pgssWaitEventEntry **pgssWaitEventEntries = NULL;
 static HTAB* hash_init(const char *hash_name, int key_size, int entry_size, int hash_size);
 
@@ -81,8 +80,6 @@ pgss_shmem_startup(void)
 	}
 	pgss_hash = hash_init("pg_stat_monitor: Queries hashtable", sizeof(pgssHashKey), sizeof(pgssEntry),PGSM_MAX);
 
-	pgss_buckethash = hash_init("pg_stat_monitor: Bucket hashtable", sizeof(pgssBucketHashKey), sizeof(pgssBucketEntry), PGSM_MAX_BUCKETS);
-
 	pgss_waiteventshash = hash_init("pg_stat_monitor: Wait Event hashtable", sizeof(pgssWaitEventKey), sizeof(pgssWaitEventEntry), 100);
 
 	pgss_object_hash = hash_init("pg_stat_monitor: Object hashtable", sizeof(pgssObjectHashKey), sizeof(pgssObjectEntry), PGSM_OBJECT_CACHE);
@@ -102,24 +99,6 @@ pgss_shmem_startup(void)
 		{
 			SpinLockInit(&entry->mutex);
 			pgssWaitEventEntries[i] = entry;
-		}
-	}
-
-	pgssBucketEntries = malloc(sizeof (pgssBucketEntry) * PGSM_MAX_BUCKETS);
-	for (i = 0; i < PGSM_MAX_BUCKETS; i++)
-	{
-		pgssBucketHashKey	key;
-		pgssBucketEntry		*entry = NULL;
-		bool				found = false;
-
-		key.bucket_id = i;
-		/* Find or create an entry with desired hash code */
-		entry = (pgssBucketEntry *) hash_search(pgss_buckethash, &key, HASH_ENTER, &found);
-		if (!found)
-		{
-			memset(&entry->counters, 0, sizeof(pgssBucketCounters));
-			SpinLockInit(&entry->mutex);
-			pgssBucketEntries[i] = entry;
 		}
 	}
 
@@ -151,22 +130,10 @@ HTAB* pgsm_get_hash(void)
 	return pgss_hash;
 }
 
-pgssBucketEntry** pgsm_get_bucket_entries(void)
-{
-	Assert(pgssBucketEntries);
-	return pgssBucketEntries;
-}
-
 HTAB* pgsm_get_wait_event_hash(void)
 {
 	Assert(pgss_waiteventshash);
 	return pgss_waiteventshash;
-}
-
-pgssBucketEntry** pgsm_get_bucket(void)
-{
-	Assert(pgssBucketEntries);
-	return pgssBucketEntries;
 }
 
 pgssWaitEventEntry** pgsm_get_wait_event_entry(void)
@@ -291,7 +258,6 @@ hash_entry_reset()
     }
 	pgss->current_wbucket = 0;
 	free(pgssWaitEventEntries);
-    free(pgssBucketEntries);
 	LWLockRelease(pgss->lock);
 }
 

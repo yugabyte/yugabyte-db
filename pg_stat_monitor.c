@@ -675,7 +675,6 @@ static void pgss_store(const char *query, uint64 queryId,
 	char			tables_name[MAX_REL_LEN] = {0};
 	int             len;
 	pgssSharedState *pgss = pgsm_get_ss();
-	pgssBucketEntry	**pgssBucketEntries = pgsm_get_bucket();
 	HTAB            *pgss_hash = pgsm_get_hash();
 
 	Assert(query != NULL);
@@ -831,12 +830,12 @@ static void pgss_store(const char *query, uint64 queryId,
 		{
 			if (total_time < PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * i))
 			{
-				pgssBucketEntries[entry->key.bucket_id]->counters.resp_calls[i]++;
+				e->counters.resp_calls[i]++;
 				break;
 			}
 		}
 		if (total_time > PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * MAX_RESPONSE_BUCKET))
-			pgssBucketEntries[entry->key.bucket_id]->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
+				e->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
 
 		e->counters.calls[kind].rows += rows;
 		e->counters.blocks.shared_blks_hit += bufusage->shared_blks_hit;
@@ -1012,7 +1011,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	char			     queryid_txt[64];
 	pgssSharedState      *pgss = pgsm_get_ss();
 	HTAB                 *pgss_hash = pgsm_get_hash();
-	pgssBucketEntry      **pgssBucketEntries = pgsm_get_bucket_entries();
 
 	query_txt = (char*) malloc(PGSM_QUERY_MAX_LEN);
 
@@ -1112,7 +1110,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 				nulls[i++] = true;
 		}
 
-		values[i++] = TimestampGetDatum(pgssBucketEntries[entry->key.bucket_id]->counters.current_time);
+		values[i++] = TimestampGetDatum(pgss->bucket_start_time[entry->key.bucket_id]);
 
 		for (kind = 0; kind < PGSS_NUMKIND; kind++)
 		{
@@ -1140,7 +1138,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Int64GetDatumFast(tmp.blocks.temp_blks_written);
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_read_time);
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_write_time);
-		values[i++] = ArrayGetTextDatum(pgssBucketEntries[entry->key.bucket_id]->counters.resp_calls);
+		values[i++] = ArrayGetTextDatum(tmp.resp_calls);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.utime);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.stime);
 		if (strlen(tmp.info.tables_name) == 0)
@@ -1163,7 +1161,6 @@ get_next_wbucket(pgssSharedState *pgss)
 	struct timeval	tv;
 	uint64	current_usec;
 	uint64			bucket_id;
-	pgssBucketEntry	**pgssBucketEntries = pgsm_get_bucket();
 
 	gettimeofday(&tv,NULL);
 	current_usec = tv.tv_sec;
@@ -1182,7 +1179,7 @@ get_next_wbucket(pgssSharedState *pgss)
 		memset(buf, 0, sizeof (uint64));
 		LWLockRelease(pgss->lock);
 		pgss->prev_bucket_usec = current_usec;
-		pgssBucketEntries[bucket_id]->counters.current_time = GetCurrentTimestamp();
+		pgss->bucket_start_time[bucket_id] = GetCurrentTimestamp();
 		return bucket_id;
 	}
 	return pgss->current_wbucket;
