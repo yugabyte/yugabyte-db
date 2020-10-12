@@ -313,8 +313,10 @@ void Master::Shutdown() {
     // before shutting down catalog manager. This is needed to prevent async calls callbacks
     // (running on reactor threads) from trying to use catalog manager thread pool which would be
     // already shutdown.
+    auto started = catalog_manager_->StartShutdown();
+    LOG_IF(DFATAL, !started) << name << " catalog manager shutdown already in progress";
     RpcAndWebServerBase::Shutdown();
-    catalog_manager_->Shutdown();
+    catalog_manager_->CompleteShutdown();
     LOG(INFO) << name << " shutdown complete.";
   } else {
     LOG(INFO) << ToString() << " did not start, shutting down all that started...";

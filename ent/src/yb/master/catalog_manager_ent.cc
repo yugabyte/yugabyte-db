@@ -233,17 +233,19 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
 ////////////////////////////////////////////////////////////
 
 CatalogManager::~CatalogManager() {
-  Shutdown();
+  if (StartShutdown()) {
+    CompleteShutdown();
+  }
 }
 
-void CatalogManager::Shutdown() {
+void CatalogManager::CompleteShutdown() {
   snapshot_coordinator_.Shutdown();
   if (cdc_ybclient_) {
     cdc_ybclient_->Shutdown();
   }
   // Call shutdown on base class before exiting derived class destructor
   // because BgTasks is part of base & uses this derived class on Shutdown.
-  super::Shutdown();
+  super::CompleteShutdown();
 }
 
 Status CatalogManager::RunLoaders(int64_t term) {

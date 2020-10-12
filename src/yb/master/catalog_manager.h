@@ -172,7 +172,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS Init();
 
-  void Shutdown();
+  bool StartShutdown();
+  void CompleteShutdown();
   CHECKED_STATUS CheckOnline() const;
 
   // Create Postgres sys catalog table.
