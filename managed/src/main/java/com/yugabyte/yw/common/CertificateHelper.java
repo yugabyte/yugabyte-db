@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
@@ -263,14 +264,11 @@ public class CertificateHelper {
   public static UUID uploadRootCA(
     String label, UUID customerUUID, String storagePath,
     String certContent, String keyContent, Date certStart,
-    Date certExpiry, CertificateInfo.Type certType) throws IOException {
+    Date certExpiry, CertificateInfo.Type certType,
+    CertificateParams.CustomCertInfo customCertInfo) throws IOException {
 
-      if (certContent == null) {
+    if (certContent == null) {
       throw new RuntimeException("Certfile can't be null");
-    }
-
-    if (certType == CertificateInfo.Type.SelfSigned && keyContent == null) {
-      throw new RuntimeException("Key content can't be null for self signed certs");
     }
     UUID rootCA_UUID = UUID.randomUUID();
     String keyPath = null;
@@ -289,14 +287,19 @@ public class CertificateHelper {
       File keyfile = new File(keyPath);
       Files.write(keyfile.toPath(), keyContent.getBytes());
     }
-
     LOG.info(
       "Uploaded cert label {} (uuid {}) of type {} at paths {}, {}",
       label, rootCA_UUID, certType,
       certPath, ((keyPath == null) ? "no private key" : keyPath)
     );
-    CertificateInfo cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
+    CertificateInfo cert;
+    if (certType == CertificateInfo.Type.SelfSigned) {
+      cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
         certExpiry, keyPath, certPath, certType);
+    } else {
+      cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
+        certExpiry, certPath, customCertInfo);
+    }
 
     return cert.uuid;
 

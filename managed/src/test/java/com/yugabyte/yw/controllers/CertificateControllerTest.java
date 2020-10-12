@@ -168,6 +168,11 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certType", "CustomCertHostPath");
+    ObjectNode certJson = Json.newObject();
+    certJson.put("rootCertPath", "/tmp/rootCertPath");
+    certJson.put("nodeCertPath", "/tmp/nodeCertPath");
+    certJson.put("nodeKeyPath", "/tmp/nodeKeyPath");
+    bodyJson.put("customCertInfo", certJson);
 
     Result result = uploadCertificate(customer.uuid, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));

@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -213,17 +214,21 @@ public class NodeManagerTest extends FakeDBApplication {
     cal.add(Calendar.YEAR, 1); // to get previous year add -1
     Date nextYear = cal.getTime();
     UUID rootCAuuid = UUID.randomUUID();
-    CertificateInfo cert = CertificateInfo.create(rootCAuuid,
-      t.provider.customerUUID,
-      params.nodePrefix,
-      today,
-      nextYear,
-      t.privateKey,
-      "/path/to/cert.crt",
-      (t.privateKey == null) ?
-        CertificateInfo.Type.SelfSigned :
-        CertificateInfo.Type.CustomCertHostPath
-    );
+    CertificateInfo cert;
+    CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
+    customCertInfo.rootCertPath = "/path/to/cert.crt";
+    customCertInfo.nodeCertPath = "/path/to/rootcert.crt";
+    customCertInfo.nodeKeyPath = "/path/to/nodecert.crt";
+    if (t.privateKey == null) {
+      cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID, params.nodePrefix,
+                                    today, nextYear, "/path/to/cert.crt", customCertInfo);
+    } else {
+      cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID,
+                                    params.nodePrefix, today, nextYear, t.privateKey,
+                                    "/path/to/cert.crt",
+                                    CertificateInfo.Type.SelfSigned);
+    }
+
     Universe u = createUniverse();
     u.getUniverseDetails().rootCA = cert.uuid;
     buildValidParams(t, params, Universe.saveDetails(u.universeUUID,
@@ -403,6 +408,15 @@ public class NodeManagerTest extends FakeDBApplication {
                 expectedCommand.add("--client_key");
                 expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
               }
+            } else {
+              CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+              expectedCommand.add("--use_custom_certs");
+              expectedCommand.add("--root_cert_path");
+              expectedCommand.add(customCertInfo.rootCertPath);
+              expectedCommand.add("--node_cert_path");
+              expectedCommand.add(customCertInfo.nodeCertPath);
+              expectedCommand.add("--node_key_path");
+              expectedCommand.add(customCertInfo.nodeKeyPath);
             }
           }
           expectedCommand.add("--extra_gflags");

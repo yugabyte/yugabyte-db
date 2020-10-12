@@ -160,7 +160,7 @@ public class CertificateHelperTest extends FakeDBApplication{
     CertificateInfo.Type type = CertificateInfo.Type.SelfSigned;
     try {
       rootCA = CertificateHelper.uploadRootCA("test", c.uuid, "/tmp", "test_cert", "test_key",
-          certStart, certExpiry, type);
+          certStart, certExpiry, type, null);
     } catch (Exception e) {
       fail(e.getMessage());
     }
