@@ -24,6 +24,8 @@ public class AccessKeyFormData {
     // providers.
     public Integer sshPort = 22;
 
+    // Not used anymore. This field should be passed directly to the pre-provision script.
+    @Deprecated
     public boolean passwordlessSudoAccess = true;
 
     public boolean airGapInstall = false;
@@ -33,4 +35,6 @@ public class AccessKeyFormData {
     public String nodeExporterUser = "prometheus";
 
     public Integer nodeExporterPort = 9300;
+
+    public boolean skipProvisioning = false;
 }

@@ -91,7 +91,7 @@ import static org.mockito.Mockito.when;
       response.code = 99;
       return Json.toJson(accessManager.uploadKeyFile(regionUUID,
           new File("foo"), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE, "some-user",
-          SSH_PORT, false));
+          SSH_PORT, false, false));
     } else {
       response.code = 0;
       response.message = "{\"vault_file\": \"/path/to/vault_file\"," +
@@ -100,7 +100,7 @@ import static org.mockito.Mockito.when;
       String tmpFile = createTempFile("SOME DATA");
       return Json.toJson(accessManager.uploadKeyFile(regionUUID,
           new File(tmpFile), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE, "some-user",
-          SSH_PORT, false));
+          SSH_PORT, false, false));
     }
   }
 
@@ -137,7 +137,7 @@ import static org.mockito.Mockito.when;
     }
 
     if (commandType.equals("add-key")) {
-      return Json.toJson(accessManager.addKey(regionUUID, "foo", SSH_PORT, false));
+      return Json.toJson(accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false));
     } else if (commandType.equals("list-keys")) {
       return accessManager.listKeys(regionUUID);
     } else if (commandType.equals("create-vault")) {

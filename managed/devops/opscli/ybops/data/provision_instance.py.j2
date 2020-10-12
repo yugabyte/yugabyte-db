@@ -14,6 +14,7 @@ import subprocess
 
 
 def construct_command(args):
+    ask_sudo_pass = '--ask_sudo_pass ' if not {{ passwordless_sudo }} or args.ask_password else ''
     return '{{devops_home}}/bin/ybcloud.sh {{cloud}} '\
         '--node_metadata '\
         '\'{"ip":"%s","sshPort":{{custom_ssh_port}},"sshUser":"{{ssh_user}}","nodeName":"@@DEFAULT_NODE_NAME@@"}\' '\
@@ -23,9 +24,7 @@ def construct_command(args):
         '--private_key_file {{private_key_file}} '\
         '--ssh_user {{ssh_user}} '\
         '--mount_points %s '\
-        {%- if not passwordless_sudo %}
-        '--ask_sudo_pass ' \
-        {%- endif %}
+        '%s' \
         {%- if air_gap %}
         '--air_gap ' \
         {%- endif %}
@@ -37,7 +36,7 @@ def construct_command(args):
         '{{ node_exporter_port }} ' \
         {%- endif %}
         '--local_package_path {{local_package_path}} '\
-        '@@DEFAULT_NODE_NAME@@' % (args.ip, args.mount_points)
+        '@@DEFAULT_NODE_NAME@@' % (args.ip, args.mount_points, ask_sudo_pass)
 
 
 def execute_command(cmd):
@@ -56,6 +55,8 @@ if __name__ == '__main__':
                         help='Private IP of the instance to provision.')
     parser.add_argument('-m', '--mount_points', required=True,
                         help='The comma-separated locations of each mounted hard drive.')
+    parser.add_argument('--ask_password', action='store_true',
+                        help='Specify this flag if a password is required for sudo access.')
     args = parser.parse_args()
     print 'Executing provision now for instance with IP %s...' % (args.ip)
     execute_command(construct_command(args))
