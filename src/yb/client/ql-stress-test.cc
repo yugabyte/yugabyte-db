@@ -811,7 +811,7 @@ void QLStressTest::AddWriter(
 }
 
 void QLStressTest::TestWriteRejection() {
-  constexpr int kWriters = 10;
+  constexpr int kWriters = IsDebug() ? 10 : 20;
   constexpr int kKeyBase = 10000;
 
   std::array<std::atomic<int>, kWriters> keys;
@@ -884,6 +884,8 @@ void QLStressTest::TestWriteRejection() {
       break;
     }
   }
+
+  thread_holder.Stop();
 
   ASSERT_OK(WaitFor([cluster = cluster_.get()] {
     auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
