@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.CertificateParams;
 
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -320,6 +321,21 @@ public class NodeManager extends DevopsBase {
               subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
               subcommand.add("--client_key");
               subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+            }
+          } else {
+            CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+            subcommand.add("--use_custom_certs");
+            subcommand.add("--root_cert_path");
+            subcommand.add(customCertInfo.rootCertPath);
+            subcommand.add("--node_cert_path");
+            subcommand.add(customCertInfo.nodeCertPath);
+            subcommand.add("--node_key_path");
+            subcommand.add(customCertInfo.nodeKeyPath);
+            if (customCertInfo.clientCertPath != null) {
+              subcommand.add("--client_cert_path");
+              subcommand.add(customCertInfo.clientCertPath);
+              subcommand.add("--client_key_path");
+              subcommand.add(customCertInfo.clientKeyPath);
             }
           }
         }

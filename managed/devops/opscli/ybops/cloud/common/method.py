@@ -486,6 +486,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--rootCA_key')
         self.parser.add_argument('--client_key')
         self.parser.add_argument('--client_cert')
+        self.parser.add_argument('--use_custom_certs', action="store_true")
+        self.parser.add_argument('--root_cert_path')
+        self.parser.add_argument('--node_cert_path')
+        self.parser.add_argument('--node_key_path')
+        self.parser.add_argument('--client_cert_path')
+        self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
         self.parser.add_argument('--certs_node_dir', default="yugabyte-tls-config")
@@ -559,16 +565,31 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.extra_vars["gflags_to_remove"] = json.loads(args.gflags_to_remove)
 
         if args.rootCA_cert is not None:
-            self.extra_vars["rootCA_cert"] = args.rootCA_cert
+            self.extra_vars["rootCA_cert"] = args.rootCA_cert.strip()
 
         if args.rootCA_key is not None:
-            self.extra_vars["rootCA_key"] = args.rootCA_key
+            self.extra_vars["rootCA_key"] = args.rootCA_key.strip()
 
         if args.client_cert is not None:
-            self.extra_vars["client_cert"] = args.client_cert
+            self.extra_vars["client_cert"] = args.client_cert.strip()
 
         if args.client_key is not None:
-            self.extra_vars["client_key"] = args.client_key
+            self.extra_vars["client_key"] = args.client_key.strip()
+
+        if args.root_cert_path is not None:
+            self.extra_vars["root_cert_path"] = args.root_cert_path.strip()
+
+        if args.node_cert_path is not None:
+            self.extra_vars["node_cert_path"] = args.node_cert_path.strip()
+
+        if args.node_key_path is not None:
+            self.extra_vars["node_key_path"] = args.node_key_path.strip()
+
+        if args.client_cert_path is not None:
+            self.extra_vars["client_cert_path"] = args.client_cert_path.strip()
+
+        if args.client_key_path is not None:
+            self.extra_vars["client_key_path"] = args.client_key_path.strip()
 
         host_info = None
         if args.search_pattern != 'localhost':
@@ -615,9 +636,14 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
-        if args.rootCA_cert and args.rootCA_key is not None:
-            logging.info("Creating and copying over client TLS certificate")
-            self.cloud.generate_client_cert(self.extra_vars, ssh_options)
+        if args.use_custom_certs:
+            logging.info("Copying custom certificates to {}.".format(args.search_pattern))
+            self.cloud.copy_certs(self.extra_vars, ssh_options)
+        else:
+            if args.rootCA_cert and args.rootCA_key is not None:
+                logging.info("Creating and copying over client TLS certificate to {}".format(
+                    args.search_pattern))
+                self.cloud.generate_client_cert(self.extra_vars, ssh_options)
         if args.encryption_key_source_file is not None:
             self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
             logging.info("Copying over encryption-at-rest certificate from {} to {}".format(
