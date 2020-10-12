@@ -534,9 +534,13 @@ void TabletPeer::Shutdown(IsDropTable is_drop_table) {
 }
 
 Status TabletPeer::CheckRunning() const {
-  if (state_.load(std::memory_order_acquire) != RaftGroupStatePB::RUNNING) {
-    return STATUS(IllegalState, Substitute("The tablet is not in a running state: $0",
-                                           RaftGroupStatePB_Name(state_)));
+  auto state = state_.load(std::memory_order_acquire);
+  if (state != RaftGroupStatePB::RUNNING) {
+    if (state == RaftGroupStatePB::QUIESCING) {
+      return STATUS(ShutdownInProgress, "The tablet is shutting down");
+    }
+    return STATUS_FORMAT(IllegalState, "The tablet is not in a running state: $0",
+                         RaftGroupStatePB_Name(state));
   }
 
   return Status::OK();

@@ -130,6 +130,7 @@
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
 
@@ -142,6 +143,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/rw_mutex.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
@@ -558,7 +560,9 @@ CatalogManager::CatalogManager(Master* master)
 }
 
 CatalogManager::~CatalogManager() {
-  Shutdown();
+  if (StartShutdown()) {
+    CompleteShutdown();
+  }
 }
 
 Status CatalogManager::Init() {
@@ -579,7 +583,7 @@ Status CatalogManager::Init() {
                         "Failed to initialize sys tables async");
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_system_tablet_bootstrap_secs > 0)) {
-    LOG(INFO) << "Simulating slow system tablet bootstrap";
+    LOG_WITH_PREFIX(INFO) << "Simulating slow system tablet bootstrap";
     SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_simulate_slow_system_tablet_bootstrap_secs));
   }
 
@@ -638,7 +642,10 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
 
   // Wait for all transactions to be committed.
   const CoarseTimePoint deadline = CoarseMonoClock::now() + timeout;
-  RETURN_NOT_OK(tablet_peer()->operation_tracker()->WaitForAllToFinish(timeout));
+  {
+    tablet::HistoryCutoffPropagationDisabler disabler(tablet_peer()->tablet()->RetentionPolicy());
+    RETURN_NOT_OK(tablet_peer()->operation_tracker()->WaitForAllToFinish(timeout));
+  }
 
   RETURN_NOT_OK(tablet_peer()->consensus()->WaitForLeaderLeaseImprecise(deadline));
   return Status::OK();
@@ -657,9 +664,10 @@ void CatalogManager::LoadSysCatalogDataTask() {
     //
     // If we failed when waiting, i.e. could not acquire a leader lease, this could be due to us
     // becoming a follower. If we're not partitioned away, we'll know about a new term soon.
-    LOG(INFO) << "Term change from " << term << " to " << term_after_wait
-              << " while waiting for master leader catchup. Not loading sys catalog metadata. "
-              << "Status of waiting: " << s;
+    LOG_WITH_PREFIX(INFO)
+        << "Term change from " << term << " to " << term_after_wait
+        << " while waiting for master leader catchup. Not loading sys catalog metadata. "
+        << "Status of waiting: " << s;
     return;
   }
 
@@ -668,37 +676,39 @@ void CatalogManager::LoadSysCatalogDataTask() {
     // lease.
     //
     // TODO: handle this cleanly by transitioning to a follower without crashing.
-    WARN_NOT_OK(s, "Failed waiting for node to catch up after master election");
+    LOG_WITH_PREFIX(WARNING) << "Failed waiting for node to catch up after master election: " << s;
 
     if (s.IsTimedOut()) {
-      LOG(FATAL) << "Shutting down due to unavailability of other masters after"
-                 << " election. TODO: Abdicate instead.";
+      LOG_WITH_PREFIX(FATAL) << "Shutting down due to unavailability of other masters after"
+                             << " election. TODO: Abdicate instead.";
     }
     return;
   }
 
-  LOG(INFO) << "Loading table and tablet metadata into memory for term " << term;
+  LOG_WITH_PREFIX(INFO) << "Loading table and tablet metadata into memory for term " << term;
   LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
     Status status = VisitSysCatalog(term);
     if (!status.ok()) {
       if (status.IsShutdownInProgress()) {
-        LOG(INFO) << "Error loading sys catalog; because shutdown is in progress. term " << term
-                  << " status : " << status;
+        LOG_WITH_PREFIX(INFO)
+            << "Error loading sys catalog; because shutdown is in progress. term " << term
+            << " status : " << status;
         return;
       }
       auto new_term = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
       if (new_term != term) {
-        LOG(INFO) << "Error loading sys catalog; but that's OK as term was changed from " << term
-                  << " to " << new_term << ": " << status;
+        LOG_WITH_PREFIX(INFO)
+            << "Error loading sys catalog; but that's OK as term was changed from " << term
+            << " to " << new_term << ": " << status;
         return;
       }
-      LOG(FATAL) << "Failed to load sys catalog: " << status;
+      LOG_WITH_PREFIX(FATAL) << "Failed to load sys catalog: " << status;
     }
   }
 
   std::lock_guard<simple_spinlock> l(state_lock_);
   leader_ready_term_ = term;
-  LOG(INFO) << "Completed load of sys catalog in term " << term;
+  LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
 }
 
 CHECKED_STATUS CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) const {
@@ -710,17 +720,19 @@ CHECKED_STATUS CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) 
 
 Status CatalogManager::VisitSysCatalog(int64_t term) {
   // Block new catalog operations, and wait for existing operations to finish.
-  LOG(INFO) << __func__ << ": Wait on leader_lock_ for any existing operations to finish.";
+  LOG_WITH_PREFIX(INFO)
+      << __func__ << ": Wait on leader_lock_ for any existing operations to finish.";
   auto start = std::chrono::steady_clock::now();
   std::lock_guard<RWMutex> leader_lock_guard(leader_lock_);
   auto finish = std::chrono::steady_clock::now();
 
   static const auto kLongLockAcquisitionLimit = RegularBuildVsSanitizers(100ms, 750ms);
   if (finish > start + kLongLockAcquisitionLimit) {
-    LOG(WARNING) << "Long wait on leader_lock_: " << yb::ToString(finish - start);
+    LOG_WITH_PREFIX(WARNING) << "Long wait on leader_lock_: " << yb::ToString(finish - start);
   }
 
-  LOG(INFO) << __func__ << ": Acquire catalog manager lock_ before loading sys catalog..";
+  LOG_WITH_PREFIX(INFO)
+      << __func__ << ": Acquire catalog manager lock_ before loading sys catalog.";
   std::lock_guard<LockType> lock(lock_);
   VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
 
@@ -741,7 +753,8 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
       !FLAGS_initial_sys_catalog_snapshot_path.empty() &&
       !FLAGS_create_initial_sys_catalog_snapshot) {
     if (!namespace_ids_map_.empty() || !system_tablets_.empty()) {
-      LOG(INFO) << "This is an existing cluster, not initializing from a sys catalog snapshot.";
+      LOG_WITH_PREFIX(INFO)
+          << "This is an existing cluster, not initializing from a sys catalog snapshot.";
     } else {
       Result<bool> dir_exists =
           Env::Default()->DoesDirectoryExist(FLAGS_initial_sys_catalog_snapshot_path);
@@ -752,31 +765,33 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
           initdb_was_already_done = l->data().pb.ysql_catalog_config().initdb_done();
         }
         if (initdb_was_already_done) {
-          LOG(INFO) << "initdb has been run before, no need to restore sys catalog from "
-                    << "the initial snapshot";
+          LOG_WITH_PREFIX(INFO)
+              << "initdb has been run before, no need to restore sys catalog from "
+              << "the initial snapshot";
         } else {
-          LOG(INFO) << "Restoring snapshot in sys catalog";
+          LOG_WITH_PREFIX(INFO) << "Restoring snapshot in sys catalog";
           Status restore_status = RestoreInitialSysCatalogSnapshot(
               FLAGS_initial_sys_catalog_snapshot_path,
               sys_catalog_->tablet_peer().get(),
               term);
           if (!restore_status.ok()) {
-            LOG(ERROR) << "Failed restoring snapshot in sys catalog";
+            LOG_WITH_PREFIX(ERROR) << "Failed restoring snapshot in sys catalog";
             return restore_status;
           }
 
-          LOG(INFO) << "Re-initializing cluster config";
+          LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
           cluster_config_.reset();
           RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
-          LOG(INFO) << "Restoring snapshot completed, considering initdb finished";
+          LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
           RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
           RETURN_NOT_OK(RunLoaders(term));
         }
       } else {
-        LOG(WARNING) << "Initial sys catalog snapshot directory does not exist: "
-                     << FLAGS_initial_sys_catalog_snapshot_path
-                     << (dir_exists.ok() ? "" : ", status: " + dir_exists.status().ToString());
+        LOG_WITH_PREFIX(WARNING)
+            << "Initial sys catalog snapshot directory does not exist: "
+            << FLAGS_initial_sys_catalog_snapshot_path
+            << (dir_exists.ok() ? "" : ", status: " + dir_exists.status().ToString());
       }
     }
   }
@@ -797,11 +812,13 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   permissions_manager_->BuildRecursiveRolesUnlocked();
 
   if (FLAGS_enable_ysql) {
-    LOG(INFO) << "YSQL is enabled, will create the transaction status table when "
-              << FLAGS_replication_factor << " tablet servers are online";
-    master_->ts_manager()->SetTSCountCallback(FLAGS_replication_factor, [this]{
-      LOG(INFO) << FLAGS_replication_factor
-                << " tablet servers registered, creating the transaction status table";
+    LOG_WITH_PREFIX(INFO)
+        << "YSQL is enabled, will create the transaction status table when "
+        << FLAGS_replication_factor << " tablet servers are online";
+    master_->ts_manager()->SetTSCountCallback(FLAGS_replication_factor, [this] {
+      LOG_WITH_PREFIX(INFO)
+          << FLAGS_replication_factor
+          << " tablet servers registered, creating the transaction status table";
       // Retry table creation until it succeedes. It might fail initially because placement UUID
       // of live replicas is set through an RPC from YugaWare, and we won't be able to calculate
       // the number of primary (non-read-replica) tablet servers until that happens.
@@ -810,10 +827,13 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
         if (s.ok()) {
           break;
         }
-        LOG(WARNING) << "Failed creating transaction status table, waiting: " << s;
+        LOG_WITH_PREFIX(WARNING) << "Failed creating transaction status table, waiting: " << s;
+        if (s.IsShutdownInProgress()) {
+          return;
+        }
         SleepFor(MonoDelta::FromSeconds(1));
       }
-      LOG(INFO) << "Finished creating transaction status table asynchronously";
+      LOG_WITH_PREFIX(INFO) << "Finished creating transaction status table asynchronously";
     });
   }
 
@@ -829,7 +849,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
 
 template <class Loader>
 Status CatalogManager::Load(const std::string& title, const int64_t term) {
-  LOG(INFO) << __func__ << ": Loading " << title << " into memory.";
+  LOG_WITH_PREFIX(INFO) << __func__ << ": Loading " << title << " into memory.";
   std::unique_ptr<Loader> loader = std::make_unique<Loader>(this, term);
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(loader.get()),
@@ -892,7 +912,8 @@ Status CatalogManager::RunLoaders(int64_t term) {
 
 Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   if (cluster_config_) {
-    LOG(INFO) << "Cluster configuration has already been set up, skipping re-initialization.";
+    LOG_WITH_PREFIX(INFO)
+        << "Cluster configuration has already been set up, skipping re-initialization.";
     return Status::OK();
   }
 
@@ -911,7 +932,8 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
     config.set_cluster_uuid(to_string(uuid));
     cluster_uuid_source = "(randomly generated)";
   }
-  LOG(INFO) << "Setting cluster UUID to " << config.cluster_uuid() << " " << cluster_uuid_source;
+  LOG_WITH_PREFIX(INFO)
+      << "Setting cluster UUID to " << config.cluster_uuid() << " " << cluster_uuid_source;
 
   // Create in memory object.
   cluster_config_ = new ClusterConfigInfo();
@@ -977,7 +999,8 @@ bool CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
       if (status.ok()) {
         status = finish_status;
       }
-      LOG(WARNING) << "Failed to set initdb as finished in sys catalog: " << finish_status;
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to set initdb as finished in sys catalog: " << finish_status;
     }
     return status;
   });
@@ -1126,12 +1149,13 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
                                                  std::make_pair(namespace_id, table_name));
   bool create_table = true;
   if (table != nullptr) {
-    LOG(INFO) << "Table " << namespace_name << "." << table_name << " already created";
+    LOG_WITH_PREFIX(INFO) << "Table " << namespace_name << "." << table_name << " already created";
 
     Schema persisted_schema;
     RETURN_NOT_OK(table->GetSchema(&persisted_schema));
     if (!persisted_schema.Equals(schema)) {
-      LOG(INFO) << "Updating schema of " << namespace_name << "." << table_name << " ...";
+      LOG_WITH_PREFIX(INFO)
+          << "Updating schema of " << namespace_name << "." << table_name << " ...";
       auto l = table->LockForWrite();
       SchemaToPB(schema, l->mutable_data()->pb.mutable_schema());
       l->mutable_data()->pb.set_version(l->data().pb.version() + 1);
@@ -1153,7 +1177,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
       return Status::OK();
     } else {
       // Table is already created, only need to create tablets now.
-      LOG(INFO) << "Creating tablets for " << namespace_name << "." << table_name << " ...";
+      LOG_WITH_PREFIX(INFO)
+          << "Creating tablets for " << namespace_name << "." << table_name << " ...";
       create_table = false;
     }
   }
@@ -1177,13 +1202,13 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     RETURN_NOT_OK(CreateTableInMemory(
         req, schema, partition_schema, true /* create_tablets */, namespace_id, namespace_name,
         partitions, nullptr, &tablets, nullptr, &table));
-    LOG(INFO) << "Inserted new " << namespace_name << "." << table_name
-              << " table info into CatalogManager maps";
+    LOG_WITH_PREFIX(INFO) << "Inserted new " << namespace_name << "." << table_name
+                          << " table info into CatalogManager maps";
     // Update the on-disk table state to "running".
     table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
     RETURN_NOT_OK(sys_catalog_->AddItem(table.get(), term));
-    LOG(INFO) << "Wrote table to system catalog: " << ToString(table) << ", tablets: "
-              << ToString(tablets);
+    LOG_WITH_PREFIX(INFO) << "Wrote table to system catalog: " << ToString(table) << ", tablets: "
+                          << ToString(tablets);
   } else {
     // Still need to create the tablets.
     RETURN_NOT_OK(CreateTabletsFromTable(partitions, table, &tablets));
@@ -1199,7 +1224,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     tablet->mutable_metadata()->mutable_dirty()->pb.set_state(SysTabletsEntryPB::RUNNING);
   }
   RETURN_NOT_OK(sys_catalog_->AddItems(tablets, term));
-  LOG(INFO) << "Wrote tablets to system catalog: " << ToString(tablets);
+  LOG_WITH_PREFIX(INFO) << "Wrote tablets to system catalog: " << ToString(tablets);
 
   // Commit the in-memory state.
   if (create_table) {
@@ -1229,7 +1254,8 @@ Status CatalogManager::PrepareNamespace(
 
   scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, id);
   if (ns != nullptr) {
-    LOG(INFO) << "Keyspace " << ns->ToString() << " already created, skipping initialization";
+    LOG_WITH_PREFIX(INFO)
+        << "Keyspace " << ns->ToString() << " already created, skipping initialization";
     return Status::OK();
   }
 
@@ -1253,7 +1279,7 @@ Status CatalogManager::PrepareNamespace(
   RETURN_NOT_OK(sys_catalog_->AddItem(ns.get(), term));
   l->Commit();
 
-  LOG(INFO) << "Created default keyspace: " << ns->ToString();
+  LOG_WITH_PREFIX(INFO) << "Created default keyspace: " << ns->ToString();
   return Status::OK();
 }
 
@@ -1356,24 +1382,31 @@ const std::shared_ptr<tablet::TabletPeer> CatalogManager::tablet_peer() const {
 }
 
 RaftPeerPB::Role CatalogManager::Role() const {
-  CHECK(IsInitialized());
-  if (master_->opts().IsShellMode()) {
+  if (!IsInitialized() || master_->opts().IsShellMode()) {
     return RaftPeerPB::NON_PARTICIPANT;
   }
 
   return tablet_peer()->consensus()->role();
 }
 
-void CatalogManager::Shutdown() {
+bool CatalogManager::StartShutdown() {
   {
     std::lock_guard<simple_spinlock> l(state_lock_);
     if (state_ == kClosing) {
       VLOG(2) << "CatalogManager already shut down";
-      return;
+      return false;
     }
     state_ = kClosing;
   }
 
+  if (sys_catalog_) {
+    sys_catalog_->StartShutdown();
+  }
+
+  return true;
+}
+
+void CatalogManager::CompleteShutdown() {
   // Shutdown the Catalog Manager background thread (load balancing).
   if (background_tasks_) {
     background_tasks_->Shutdown();
@@ -1402,7 +1435,7 @@ void CatalogManager::Shutdown() {
 
   // Shut down the underlying storage for tables and tablets.
   if (sys_catalog_) {
-    sys_catalog_->Shutdown();
+    sys_catalog_->CompleteShutdown();
   }
 
   // Reset the jobs/tasks tracker.
@@ -1417,7 +1450,16 @@ void CatalogManager::Shutdown() {
 }
 
 Status CatalogManager::CheckOnline() const {
-  if (PREDICT_FALSE(!IsInitialized())) {
+  State state;
+  {
+    std::lock_guard<simple_spinlock> l(state_lock_);
+    state = state_;
+  }
+
+  if (PREDICT_FALSE(state == State::kClosing)) {
+    return STATUS(ShutdownInProgress, "CatalogManager is shutting down");
+  }
+  if (PREDICT_FALSE(state != State::kRunning)) {
     return STATUS(ServiceUnavailable, "CatalogManager is not running");
   }
   return Status::OK();

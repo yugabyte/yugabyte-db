@@ -343,6 +343,9 @@ void Peer::ProcessResponse() {
   CleanRequestOps();
 
   Status status = controller_.status();
+  if (status.ok()) {
+    status = controller_.thread_pool_failure();
+  }
   controller_.Reset();
 
   auto performing_lock = LockPerforming(std::adopt_lock);
