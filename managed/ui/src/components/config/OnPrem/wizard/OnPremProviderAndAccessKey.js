@@ -38,7 +38,7 @@ export default class OnPremProviderAndAccessKey extends Component {
   render() {
     const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;
     const {nameHelpContent, userHelpContent, pkHelpContent,
-      passwordlessSudoHelp, airGapInstallHelp, homeDirHelp,
+      skipProvisioningHelp, airGapInstallHelp, homeDirHelp,
       portHelpContent, useHostnameHelp} = constants;
     const isReadOnly = this.props.isEditProvider;
 
@@ -57,9 +57,9 @@ export default class OnPremProviderAndAccessKey extends Component {
                 <Field name="sshPort" component={YBNumericInput} label="SSH Port" insetError={true}
                   readOnly={isReadOnly} infoContent={portHelpContent}
                   infoTitle="SSH Port" />
-                <Field name="passwordlessSudoAccess" component={YBToggle}
-                  label="Passwordless Sudo" defaultChecked={true} isReadOnly={isReadOnly}
-                  infoContent={passwordlessSudoHelp} infoTitle="Passwordless Sudo"/>
+                <Field name="skipProvisioning" component={YBToggle}
+                  label="Skip Provisioning" defaultChecked={false} isReadOnly={isReadOnly}
+                  infoContent={skipProvisioningHelp} infoTitle="Skip Provisioning"/>
                 <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" insetError={true}
                   className="ssh-key-container" isReadOnly={isReadOnly} infoContent={pkHelpContent}
                   infoTitle="SSH Key" />
