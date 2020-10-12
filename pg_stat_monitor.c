@@ -826,16 +826,20 @@ static void pgss_store(const char *query, uint64 queryId,
 				e->counters.time[kind].max_time = total_time;
 		}
 
-		for (i = 0; i < MAX_RESPONSE_BUCKET - 1; i++)
+		/* increment only in case of PGSS_EXEC */
+		if (kind == PGSS_EXEC)
 		{
-			if (total_time < PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * i))
+			for (i = 0; i < MAX_RESPONSE_BUCKET - 1; i++)
 			{
-				e->counters.resp_calls[i]++;
-				break;
+				if (total_time < PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * i))
+				{
+					e->counters.resp_calls[i]++;
+					break;
+				}
 			}
-		}
-		if (total_time > PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * MAX_RESPONSE_BUCKET))
+			if (total_time > PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * MAX_RESPONSE_BUCKET))
 				e->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
+		}
 
 		e->counters.calls[kind].rows += rows;
 		e->counters.blocks.shared_blks_hit += bufusage->shared_blks_hit;
