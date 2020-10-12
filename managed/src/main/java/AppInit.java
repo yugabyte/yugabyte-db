@@ -1,5 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
+import java.lang.ReflectiveOperationException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,8 +15,10 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
@@ -41,8 +44,9 @@ public class AppInit {
   @Inject
   public AppInit(Environment environment, Application application,
                  ConfigHelper configHelper, ReleaseManager releaseManager,
-                 AWSInitializer awsInitializer, CustomerTaskManager taskManager, YamlWrapper yaml) {
-    Logger.info("Yugabyte Platform has started");
+                 AWSInitializer awsInitializer, CustomerTaskManager taskManager, YamlWrapper yaml,
+                 ExtraMigrationManager extraMigrationManager) throws ReflectiveOperationException {
+    Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
 
@@ -109,6 +113,11 @@ public class AppInit {
       // Enter all the configuration data. This is the first thing that should be
       // done as the other init steps may depend on this data.
       configHelper.loadConfigsToDB(application);
+
+      // Run and delete any extra migrations.
+      for (ExtraMigration m: ExtraMigration.getAll()) {
+        m.run(extraMigrationManager);
+      }
 
       // Import new local releases into release metadata
       releaseManager.importLocalReleases();

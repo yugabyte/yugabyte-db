@@ -31,6 +31,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
             sshPort: formData.sshPort,
             passwordlessSudoAccess: formData.passwordlessSudoAccess,
             airGapInstall: formData.airGapInstall,
+            skipProvisioning: formData.skipProvisioning,
             installNodeExporter: installNodeExporter,
             nodeExporterPort: _.get(formData, "nodeExporterPort", DEFAULT_NODE_EXPORTER_PORT),
             nodeExporterUser: _.get(formData, "nodeExporterUser", DEFAULT_NODE_EXPORTER_USER)
@@ -47,12 +48,12 @@ const mapDispatchToProps = (dispatch, ownProps) => {
 const mapStateToProps = (state, ownProps) => {
   let initialFormValues = {
     sshPort: 54422,
-    passwordlessSudoAccess: true,
     airGapInstall: false,
     useHostnames: false,
     installNodeExporter: true,
     nodeExporterUser: DEFAULT_NODE_EXPORTER_USER,
-    nodeExporterPort: DEFAULT_NODE_EXPORTER_PORT
+    nodeExporterPort: DEFAULT_NODE_EXPORTER_PORT,
+    skipProvisioning: false
   };
   const {cloud: {onPremJsonFormData}} = state;
   if (ownProps.isEditProvider && isNonEmptyObject(onPremJsonFormData)) {
@@ -62,8 +63,8 @@ const mapStateToProps = (state, ownProps) => {
       privateKeyContent: onPremJsonFormData.key.privateKeyContent,
       sshUser: onPremJsonFormData.key.sshUser,
       sshPort: onPremJsonFormData.key.sshPort,
-      passwordlessSudoAccess: onPremJsonFormData.key.passwordlessSudoAccess,
       airGapInstall: onPremJsonFormData.key.airGapInstall,
+      skipProvisioning: onPremJsonFormData.key.skipProvisioning,
       useHostnames: _.get(onPremJsonFormData, "provider.config.USE_HOSTNAME", "false") === "true",
       installNodeExporter: onPremJsonFormData.key.installNodeExporter,
       nodeExporterUser: onPremJsonFormData.key.nodeExporterUser,
@@ -113,7 +114,7 @@ const validate = values => {
 const onPremProviderConfigForm = reduxForm({
   form: 'onPremConfigForm',
   fields: [
-    'name', 'sshUser', 'sshPort', 'privateKeyContent', 'passwordlessSudoAccess', 'airGapInstall',
+    'name', 'sshUser', 'sshPort', 'privateKeyContent', 'airGapInstall', 'skipProvisioning',
     'useHostnames', 'homeDir', 'installNodeExporter', 'nodeExporterUser', 'nodeExporterPort'
   ],
   validate,

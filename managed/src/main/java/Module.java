@@ -66,6 +66,7 @@ public class Module extends AbstractModule {
       bind(AccessManager.class).asEagerSingleton();
       bind(ReleaseManager.class).asEagerSingleton();
       bind(TemplateManager.class).asEagerSingleton();
+      bind(ExtraMigrationManager.class).asEagerSingleton();
       bind(AWSInitializer.class).asEagerSingleton();
       bind(KubernetesManager.class).asEagerSingleton();
       bind(CallHome.class).asEagerSingleton();

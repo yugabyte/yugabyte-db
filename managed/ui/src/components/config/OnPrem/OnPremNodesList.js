@@ -191,7 +191,7 @@ class OnPremNodesList extends Component {
     if (isDefinedNotNull(onPremProvider)) {
       useHostname = _.get(onPremProvider, 'config.USE_HOSTNAME', false) === 'true';
       const onPremKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid);
-      if (isDefinedNotNull(onPremKey) && (onPremKey.keyInfo.airGapInstall || !onPremKey.keyInfo.passwordlessSudoAccess)) {
+      if (isDefinedNotNull(onPremKey) && onPremKey.keyInfo.skipProvisioning) {
         provisionMessage = (
           <Alert bsStyle="warning" className="pre-provision-message">
             You need to pre-provision your nodes, Please execute the following script

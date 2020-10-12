@@ -1947,7 +1947,7 @@ class YsqlProxy(object):
         env['PGUSER'] = username
         env['PGPASSWORD'] = password
         run_process_checked(cmd=cmd, env_vars=env)
-    
+
     # Update specified user's password
     def update_password(self, new_password, user_to_update=DEFAULT_YSQL_USER):
         cmd = self.cmd + ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
@@ -2008,7 +2008,7 @@ class YcqlProxy(object):
         cmd = self.cmd + ["-u", username, "-p", password, "-e",
                 "DROP ROLE IF EXISTS {};".format(user_to_delete)]
         run_process_checked(cmd)
-    
+
     # Update specified user's password
     def update_password(self, new_password, user_to_update=DEFAULT_YCQL_USER):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
