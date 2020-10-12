@@ -31,8 +31,7 @@ sysbench is a popular tool for benchmarking databases like Postgres and MySQL, a
 The [YugabyteDB version of sysbench](https://github.com/yugabyte/sysbench) is forked from the [official](https://github.com/akopytov/sysbench) version with a few modifications to better reflect YugabyteDB's distributed nature.
 
 {{< note title="Note" >}}
-Consult the [deployment checklist](../../deploy/checklist/) so the recommended hardware requirements are met and the
- database is correctly configured before benchmarking. 
+To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/)  
 {{< /note >}}
 
 ## Running the benchmark
