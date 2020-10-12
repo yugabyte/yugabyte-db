@@ -2541,16 +2541,27 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg
 }
 
 Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
-  CoarseTimePoint now;
-  while ((now = CoarseMonoClock::Now()) < deadline) {
+  CoarseTimePoint start = CoarseMonoClock::now();
+  for (;;) {
     MonoDelta remaining_old_leader_lease;
     LeaderLeaseStatus leader_lease_status;
+    ReplicaState::State state;
     {
       auto lock = state_->LockForRead();
+      state = state_->state();
+      if (state != ReplicaState::kRunning) {
+        return STATUS_FORMAT(IllegalState, "Consensus is not running: $0", state);
+      }
       if (state_->GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
         return STATUS_FORMAT(IllegalState, "Not the leader: $0", state_->GetActiveRoleUnlocked());
       }
       leader_lease_status = state_->GetLeaderLeaseStatusUnlocked(&remaining_old_leader_lease);
+    }
+    CoarseTimePoint now = CoarseMonoClock::now();
+    if (now > deadline) {
+      return STATUS_FORMAT(
+          TimedOut, "Waited for $0 to acquire a leader lease, state $1, lease status: $2",
+          now - start, state, LeaderLeaseStatus_Name(leader_lease_status));
     }
     switch (leader_lease_status) {
       case LeaderLeaseStatus::HAS_LEASE:
@@ -2575,7 +2586,6 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
     }
     FATAL_INVALID_ENUM_VALUE(LeaderLeaseStatus, leader_lease_status);
   }
-  return STATUS_FORMAT(TimedOut, "Waited for $0 to acquire a leader lease", deadline);
 }
 
 Status RaftConsensus::CheckIsActiveLeaderAndHasLease() const {

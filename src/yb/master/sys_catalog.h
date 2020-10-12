@@ -88,7 +88,8 @@ class SysCatalogTable {
   ~SysCatalogTable();
 
   // Allow for orderly shutdown of tablet peer, etc.
-  void Shutdown();
+  void StartShutdown();
+  void CompleteShutdown();
 
   // Load the Metadata from disk, and initialize the TabletPeer for the sys-table
   CHECKED_STATUS Load(FsManager *fs_manager);

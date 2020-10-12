@@ -153,9 +153,15 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
 SysCatalogTable::~SysCatalogTable() {
 }
 
-void SysCatalogTable::Shutdown() {
+void SysCatalogTable::StartShutdown() {
   if (tablet_peer()) {
-    std::atomic_load(&tablet_peer_)->Shutdown();
+    CHECK(std::atomic_load(&tablet_peer_)->StartShutdown());
+  }
+}
+
+void SysCatalogTable::CompleteShutdown() {
+  if (tablet_peer()) {
+    std::atomic_load(&tablet_peer_)->CompleteShutdown();
   }
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
@@ -457,7 +463,8 @@ void SysCatalogTable::SysCatalogStateChanged(
 
 Status SysCatalogTable::GoIntoShellMode() {
   CHECK(tablet_peer());
-  Shutdown();
+  StartShutdown();
+  CompleteShutdown();
 
   // Remove on-disk log, cmeta and tablet superblocks.
   RETURN_NOT_OK(tserver::DeleteTabletData(tablet_peer()->tablet_metadata(),

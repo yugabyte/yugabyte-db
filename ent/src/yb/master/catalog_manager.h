@@ -35,7 +35,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       : super(master), snapshot_coordinator_(this) {}
 
   virtual ~CatalogManager();
-  void Shutdown();
+  void CompleteShutdown();
 
   CHECKED_STATUS RunLoaders(int64_t term) override REQUIRES(lock_);
 

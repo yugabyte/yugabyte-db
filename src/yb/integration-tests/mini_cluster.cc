@@ -497,6 +497,8 @@ Status MiniCluster::WaitForTabletServerCount(int count,
           return Status::OK();
         }
       }
+
+      YB_LOG_EVERY_N_SECS(INFO, 5) << "Registered: " << AsString(*descs);
     }
 
     SleepFor(MonoDelta::FromMilliseconds(1));
