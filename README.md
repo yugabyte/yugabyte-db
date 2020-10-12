@@ -334,20 +334,19 @@ postgres=# \d pg_stat_monitor;
  client_ip           | inet                     |           |          | 
  queryid             | text                     |           |          | 
  query               | text                     |           |          | 
- plan_calls          | bigint                   |           |          | 
+ plans               | bigint                   |           |          | 
  plan_total_time     | double precision         |           |          | 
  plan_min_timei      | double precision         |           |          | 
  plan_max_time       | double precision         |           |          | 
  plan_mean_time      | double precision         |           |          | 
- plan_stddev_time    | double precision         |           |          | 
- plan_rows           | bigint                   |           |          | 
- total_calls         | bigint                   |           |          | 
+ plan_stddev_time    | double precision         |           |          |  
+ calls               | bigint                   |           |          | 
  total_time          | double precision         |           |          | 
  min_time            | double precision         |           |          | 
  max_time            | double precision         |           |          | 
  mean_time           | double precision         |           |          | 
  stddev_time         | double precision         |           |          | 
- effected_rows       | bigint                   |           |          | 
+ rows                | bigint                   |           |          | 
  shared_blks_hit     | bigint                   |           |          | 
  shared_blks_read    | bigint                   |           |          | 
  shared_blks_dirtied | bigint                   |           |          | 
@@ -438,7 +437,8 @@ postgres=# select client_ip, query from pg_stat_monitor;
 ```
 postgres=# select resp_calls, query from pg_stat_monitor;
                     resp_calls                    |                 query                                         
---------------------------------------------------+---------------------------------------------- {1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"} | select client_ip, query from pg_stat_monitor
+--------------------------------------------------+---------------------------------------------- 
+{1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"} | select client_ip, query from pg_stat_monitor
 {3," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 1"} | select * from pg_stat_monitor_reset()
 {3," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 1"} | SELECT * FROM foo
 ```
