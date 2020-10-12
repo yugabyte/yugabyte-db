@@ -26,11 +26,11 @@ Assuming we have a cluster where:
 
 These are the steps to follow in such scenario:
 
-- stop the bad TS, say `NODE_BAD1`, as we will be changing file system data underneath
-
 - on the `NODE_GOOD` TS, create an archive of the wals (raft data) and rocksdb (regular rocksdb) directories
 
 - copy these archives over to `NODE_BAD1`, on the same drive that `TABLET1` currently has its raft and rocksdb data
+
+- stop the bad TS, say `NODE_BAD1`, as we will be changing file system data underneath
 
 - remove the old wals and rocksdb data for `TABLET1` from `NODE_BAD1`
 
