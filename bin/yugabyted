@@ -2576,7 +2576,7 @@ class EnvBasedCredentials(object):
             proxy_class.create_db(self.get_ysql_db())
 
         # Update password for default user
-        if self.get_ysql_user() == DEFAULT_YSQL_USER:
+        if self.get_ysql_user() == DEFAULT_YSQL_USER and self.get_ysql_password() != DEFAULT_YSQL_PASSWORD:
             proxy_class.update_password(self.get_ysql_password())
 
         # Create User
@@ -2596,7 +2596,7 @@ class EnvBasedCredentials(object):
             proxy_class.create_keyspace(self.get_ycql_keyspace())
 
         # Update password for default user
-        if self.get_ycql_user() == DEFAULT_YCQL_USER:
+        if self.get_ycql_user() == DEFAULT_YCQL_USER and self.get_ycql_password() != DEFAULT_YCQL_PASSWORD:
             proxy_class.update_password(self.get_ycql_password())
 
         # Create user
