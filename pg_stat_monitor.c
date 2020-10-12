@@ -2329,14 +2329,15 @@ wait_event_main(Datum main_arg)
     BackgroundWorkerUnblockSignals();
 	while (1)
 	{
-        if (sigterm)
-            break;
+		sleep(1);
+		if (sigterm)
+			break;
 		rc = WaitLatch(&MyProc->procLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH, 1, PG_WAIT_EXTENSION);
 
 		if (rc & WL_POSTMASTER_DEATH)
-            proc_exit(1);
+			proc_exit(1);
 
-        ResetLatch(&MyProc->procLatch);
+		ResetLatch(&MyProc->procLatch);
 
 		update_wait_event();
 	}
