@@ -89,7 +89,7 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static uint64 pgss_hash_string(const char *str, int len);
 static void pgss_store(const char *query, uint64 queryId,
 				int query_location, int query_len,
-				bool kind,
+				pgssStoreKind kind,
 				double total_time, uint64 rows,
 				const BufferUsage *bufusage,
 #if PG_VERSION_NUM >= 130000
@@ -656,7 +656,7 @@ pg_get_client_addr(void)
  */
 static void pgss_store(const char *query, uint64 queryId,
 				int query_location, int query_len,
-				bool kind,
+				pgssStoreKind kind,
 				double total_time, uint64 rows,
 				const BufferUsage *bufusage,
 #if PG_VERSION_NUM >= 130000

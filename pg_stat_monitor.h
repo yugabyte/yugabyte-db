@@ -71,6 +71,7 @@ typedef struct GucVariables
 	int		guc_max;
 	bool 	guc_restart;
 } GucVariable;
+
 typedef enum pgssStoreKind
 {
 	PGSS_INVALID = -1,
@@ -195,6 +196,7 @@ typedef struct Counters
 	CallTime	time[PGSS_NUMKIND];
 	Blocks		blocks;
 	SysInfo		sysinfo;
+	int			plans;
 	int			resp_calls[MAX_RESPONSE_BUCKET];	/* execution time's in msec */
 } Counters;
 
