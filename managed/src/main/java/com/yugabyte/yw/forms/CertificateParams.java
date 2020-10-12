@@ -28,4 +28,13 @@ public class CertificateParams {
 
   public CertificateInfo.Type certType = CertificateInfo.Type.SelfSigned;
 
+  static public class CustomCertInfo {
+    public String nodeCertPath;
+    public String nodeKeyPath;
+    public String rootCertPath;
+    public String clientCertPath;
+    public String clientKeyPath;
+  }
+
+  public CustomCertInfo customCertInfo;
 }

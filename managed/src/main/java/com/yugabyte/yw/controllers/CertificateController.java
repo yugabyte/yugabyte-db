@@ -47,14 +47,28 @@ public class CertificateController extends AuthenticatedController {
     Date certStart = new Date(formData.get().certStart);
     Date certExpiry = new Date(formData.get().certExpiry);
     String label = formData.get().label;
+    CertificateInfo.Type certType = formData.get().certType;
     String certContent = formData.get().certContent;
     String keyContent = formData.get().keyContent;
-    CertificateInfo.Type certType = formData.get().certType;
+    CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
+    if (certType == CertificateInfo.Type.SelfSigned) {
+      if (certContent == null || keyContent == null) {
+        return ApiResponse.error(BAD_REQUEST, "Certificate or Keyfile can't be null.");
+      }
+    } else {
+      if (customCertInfo == null) {
+        return ApiResponse.error(BAD_REQUEST, "Custom Cert Info must be provided.");
+      } else if (customCertInfo.nodeCertPath == null || customCertInfo.nodeKeyPath == null ||
+                 customCertInfo.rootCertPath == null) {
+        return ApiResponse.error(BAD_REQUEST, "Custom Cert Paths can't be empty.");
+      }
+    }
     LOG.info("CertificateController: upload cert label {}, type {}", label, certType);
     try {
       UUID certUUID = CertificateHelper.uploadRootCA(
                         label, customerUUID, appConfig.getString("yb.storage.path"),
-                        certContent, keyContent, certStart, certExpiry, certType
+                        certContent, keyContent, certStart, certExpiry, certType,
+                        customCertInfo
                       );
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(certUUID);
