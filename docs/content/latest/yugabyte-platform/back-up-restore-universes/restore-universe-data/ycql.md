@@ -45,7 +45,7 @@ To restore YugabyteDB universe YCQL data from a backup, follow these steps.
 
     - **Storage** Select the storage configuration type: `GCS Storage', 'S3 Storage', or 'NFS Storage'.
     - **Storage Location**: Specify the storage location.
-    - **Universe**: Select the universe to restore.
+    - **Universe**: Select the YCQL universe to restore.
     - **Keyspace**: Specify the keyspace.
     - **Table**: Specify the table to be restored. Note: The table name must be different than the backed up table name.
     - **Parallel Threads**: Default is `8`. This value can be change to a value between `1` and `100`.
