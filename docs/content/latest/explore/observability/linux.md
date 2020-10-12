@@ -46,10 +46,9 @@ showAsideToc: true
 -->
 </ul>
 
-You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Monitoring with Prometheus](../../../reference/configuration/default-ports/#monitoring-with-prometheus).
+You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../reference/configuration/default-ports/#prometheus-monitoring).
 
 This tutorial uses the [yb-ctl](../../../admin/yb-ctl) local cluster management utility.
-
 
 ## Prerequisite
 
@@ -66,10 +65,10 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local YugabyteDB cluster - by default, this will create a three-node universe with a replication factor of `3`.
+Start a new local YugabyteDB cluster - this will create a three-node universe with a replication factor of `3`.
 
 ```sh
-$ ./bin/yb-ctl create
+$ ./bin/yb-ctl create --rf 3
 ```
 
 ## 2. Run the YugabyteDB workload generator
@@ -80,7 +79,7 @@ Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-samp
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.3.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
-Run the `CassandraKeyValue` workload in a separate shell.
+Run the `CassandraKeyValue` workload application in a separate shell.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar \
@@ -94,7 +93,7 @@ $ java -jar ./yb-sample-apps.jar \
 
 Copy the following into a file called `yugabytedb.yml`.
 
-```sh
+```yaml
 global:
   scrape_interval:     5s # Set the scrape interval to every 5 seconds. Default is every 1 minute.
   evaluation_interval: 5s # Evaluate rules every 5 seconds. The default is every 1 minute.
@@ -102,29 +101,55 @@ global:
 
 # YugabyteDB configuration to scrape Prometheus time-series metrics
 scrape_configs:
-  - job_name: 'yugabytedb'
+  - job_name: "yugabytedb"
     metrics_path: /prometheus-metrics
+    relabel_configs:
+      - target_label: "node_prefix"
+        replacement: "cluster-1"
+    metric_relabel_configs:
+      # Save the name of the metric so we can group_by since we cannot by __name__ directly...
+      - source_labels: ["__name__"]
+        regex: "(.*)"
+        target_label: "saved_name"
+        replacement: "$1"
+      # The following basically retrofit the handler_latency_* metrics to label format.
+      - source_labels: ["__name__"]
+        regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)"
+        target_label: "server_type"
+        replacement: "$1"
+      - source_labels: ["__name__"]
+        regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)"
+        target_label: "service_type"
+        replacement: "$2"
+      - source_labels: ["__name__"]
+        regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?"
+        target_label: "service_method"
+        replacement: "$3"
+      - source_labels: ["__name__"]
+        regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?"
+        target_label: "__name__"
+        replacement: "rpc_latency$4"
 
     static_configs:
-      - targets: ['127.0.0.1:7000', '127.0.0.2:7000', '127.0.0.3:7000']
+      - targets: ["127.0.0.1:7000", "127.0.0.2:7000", "127.0.0.3:7000"]
         labels:
-          group: 'yb-master'
+          export_type: "master_export"
 
-      - targets: ['127.0.0.1:9000', '127.0.0.2:9000', '127.0.0.3:9000']
+      - targets: ["127.0.0.1:9000", "127.0.0.2:9000", "127.0.0.3:9000"]
         labels:
-          group: 'yb-tserver'
+          export_type: "tserver_export"
 
-      - targets: ['127.0.0.1:11000', '127.0.0.2:11000', '127.0.0.3:11000']
+      - targets: ["127.0.0.1:12000", "127.0.0.2:12000", "127.0.0.3:12000"]
         labels:
-          group: 'yedis'
+          export_type: "cql_export"
 
-      - targets: ['127.0.0.1:12000', '127.0.0.2:12000', '127.0.0.3:12000']
+      - targets: ["127.0.0.1:13000", "127.0.0.2:13000", "127.0.0.3:13000"]
         labels:
-          group: 'ycql'
+          export_type: "ysql_export"
 
-      - targets: ['127.0.0.1:13000', '127.0.0.2:13000', '127.0.0.3:13000']
+      - targets: ["127.0.0.1:11000", "127.0.0.2:11000", "127.0.0.3:11000"]
         labels:
-          group: 'ysql'
+          export_type: "redis_export"
 ```
 
 ## 4. Start Prometheus server
@@ -141,7 +166,7 @@ Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets
 
 ## 5. Analyze key metrics
 
-On the Prometheus Graph UI, you can now plot the read IOPS and write IOPS for the `CassandraKeyValue` sample app. As you can see from the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the app, it uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means you can measure throughput and latency by simply using the metrics corresponding to the SELECT and INSERT statements.
+On the Prometheus Graph UI, you can now plot the read/write throughput and latency for the `CassandraKeyValue` sample app. As you can see from the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the app, it uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means you can measure throughput and latency by simply using the metrics corresponding to the SELECT and INSERT statements.
 
 Paste the following expressions into the **Expression** box and click **Execute** followed by **Add Graph**.
 
@@ -150,7 +175,7 @@ Paste the following expressions into the **Expression** box and click **Execute*
 > Read IOPS
 
 ```sh
-sum(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
+sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="SelectStmt"}[1m]))
 ```
 
 ![Prometheus Read IOPS](/images/ce/prom-read-iops.png)
@@ -158,17 +183,18 @@ sum(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 >  Write IOPS
 
 ```sh
-sum(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
+sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m]))
 ```
 
 ![Prometheus Read IOPS](/images/ce/prom-write-iops.png)
 
 ### Latency
 
->  Read Latency (in microseconds)
+> Read Latency (in microseconds)
 
 ```sh
-avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_sum[1m])) / avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
+avg(irate(rpc_latency_sum{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="SelectStmt"}[1m])) /
+avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="SelectStmt"}[1m]))
 ```
 
 ![Prometheus Read IOPS](/images/ce/prom-read-latency.png)
@@ -176,15 +202,19 @@ avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_sum[1m])) / avg(i
 > Write Latency (in microseconds)
 
 ```sh
-avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_sum[1m])) / avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
+avg(irate(rpc_latency_sum{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m])) /
+avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m]))
 ```
 
 ![Prometheus Read IOPS](/images/ce/prom-write-latency.png)
 
-## 6. [Optional] Clean up
+## 6. Clean up (optional)
 
 Optionally, you can shut down the local cluster created in Step 1.
 
 ```sh
 $ ./bin/yb-ctl destroy
 ```
+
+## What's next?
+You can [setup Grafana](https://prometheus.io/docs/visualization/grafana/) and import the [YugabyteDB dashboard](https://grafana.com/grafana/dashboards/12620 "YugabyteDB dashboard on grafana.com") for better visualization of the metrics being collected by Prometheus.
