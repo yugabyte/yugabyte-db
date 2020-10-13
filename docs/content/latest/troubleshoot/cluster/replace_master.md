@@ -39,7 +39,7 @@ To start `yb-master` in standby mode, set the `--master_addresses` flag to an em
  to this master process]
 ```
 
-## Add the new YB-Master server into the existing cluster.
+## Add the replacement YB-Master server into the existing cluster.
 
 To add the new YB-Master server, run the [`yb-admin change_master_config ADD_SERVER`](../../admin/cli/yb-admin/#change-master-config) command.
 
