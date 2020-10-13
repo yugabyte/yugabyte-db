@@ -180,7 +180,7 @@ Enable or disable YCQL Authentication. Default is `false`.
 If the `YCQL_USER` or `YCQL_PASSWORD` environment variables exist then, authentication mode is automatically changed to enforced.
 
 **Note**
-- Environment variables have more priority than the command-line flag.
+- The corresponding environment variables have higher priority than the command-line flags.
 
 ##### --initial_scripts_dir *initial-scripts-dir*
 
