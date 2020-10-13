@@ -446,7 +446,7 @@ Combinations of environment variables and their uses.
 
 **Note**
 - In the case of multi-node deployment, all nodes should have similar environment variables. 
-- Environment variables can change the configuration only on the first run.
+- Changing the values of the environment variables after the first run has no effect.
 -----
 
 ## Examples
