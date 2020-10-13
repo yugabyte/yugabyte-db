@@ -5150,6 +5150,7 @@ PostgresMain(int argc, char *argv[],
 								stmt_name = pstrdup(portal_name);
 							else
 								stmt_name = NULL;
+							query_string = pstrdup(query_string);
 
 							/* TODO params are none for now (see above) */
 							ParamListInfo params = NULL;
