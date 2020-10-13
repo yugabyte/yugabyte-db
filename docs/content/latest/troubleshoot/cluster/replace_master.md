@@ -47,7 +47,7 @@ To add the new YB-Master server, run the [`yb-admin change_master_config ADD_SER
 ./bin/yb-admin -master_addresses M1:7100,M2:7100,M3:7100 change_master_config ADD_SERVER M4 7100
 ```
 
-## Remove the old YB-Master server from the cluster.
+## Remove the failed YB-Master server from the cluster.
 
 To remove the failed YB-Master server from the cluster, use the [`yb-admin change_master_config REMOVE_SERVER`](../../admin/yb-admin/#change-master-config`) command.
 
