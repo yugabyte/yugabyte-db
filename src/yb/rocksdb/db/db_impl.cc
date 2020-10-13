@@ -6439,12 +6439,18 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
     }
 
     // ignore case where no archival directory is present.
-    WARN_NOT_OK(env->DeleteDir(archivedir), "Failed to cleanup dir " + archivedir);
-
+    if (env->FileExists(archivedir).ok()) {
+      WARN_NOT_OK(env->DeleteDir(archivedir), "Failed to cleanup dir " + archivedir);
+    }
     WARN_NOT_OK(env->UnlockFile(lock), "Unlock file failed");
     env->CleanupFile(lockname);
-    WARN_NOT_OK(env->DeleteDir(dbname), "Failed to cleanup dir " + dbname);
-    WARN_NOT_OK(env->DeleteDir(soptions.wal_dir), "Failed to cleanup wal dir " + soptions.wal_dir);
+    if (env->FileExists(dbname).ok()) {
+      WARN_NOT_OK(env->DeleteDir(dbname), "Failed to cleanup dir " + dbname);
+    }
+    if (env->FileExists(soptions.wal_dir).ok()) {
+      WARN_NOT_OK(env->DeleteDir(soptions.wal_dir),
+                  "Failed to cleanup wal dir " + soptions.wal_dir);
+    }
   }
   return result;
 }
