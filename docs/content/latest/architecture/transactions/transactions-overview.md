@@ -32,7 +32,7 @@ Getting the different nodes of a cluster to agree on time requires all nodes to 
 
 ### Hybrid Logical Clocks
 
-YugabyteDB uses **Hybrid Logical Clocks**. HLC’s solve the problem by combining physical time clocks that are coarsely synchronized using NTP with Lamport clocks that track causal relationships.
+YugabyteDB uses **Hybrid Logical Clocks (HLCs)**. HLCs solve the problem by combining physical time clocks that are coarsely synchronized using NTP with Lamport clocks that track causal relationships.
 
 Each node in a YugabyteDB cluster first computes its HLC. HLC is represented as a (physical time component, logical component) tuple. HLCs generated on any node are strictly monotonic, and are compared as a tuple. When comparing two HLCs, the physical time component takes precedence over the logical component.
 
@@ -151,5 +151,4 @@ DELETE FROM table WHERE <all primary key values are specified>;
 YugabyteDB's distributed ACID transaction architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
 
 {{</note >}}
-
 
