@@ -27,4 +27,10 @@ public class AccessKeyFormData {
     public boolean passwordlessSudoAccess = true;
 
     public boolean airGapInstall = false;
+
+    public boolean installNodeExporter = true;
+
+    public String nodeExporterUser = "prometheus";
+
+    public Integer nodeExporterPort = 9300;
 }

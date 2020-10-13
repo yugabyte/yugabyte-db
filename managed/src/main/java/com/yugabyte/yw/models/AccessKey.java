@@ -27,6 +27,9 @@ public class AccessKey extends Model {
     public boolean airGapInstall = false;
     public boolean passwordlessSudoAccess = true;
     public String provisionInstanceScript = "";
+    public boolean installNodeExporter = true;
+    public Integer nodeExporterPort = 9300;
+    public String nodeExporterUser = "prometheus";
   }
 
   @EmbeddedId

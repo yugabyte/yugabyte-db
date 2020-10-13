@@ -161,9 +161,18 @@ public class NodeManager extends DevopsBase {
         subCommand.add(keyInfo.sshUser);
       }
 
-      if (params instanceof AnsibleSetupServer.Params &&
-          accessKey.getKeyInfo().airGapInstall) {
-        subCommand.add("--air_gap");
+      if (params instanceof AnsibleSetupServer.Params) {
+        if (keyInfo.airGapInstall) {
+          subCommand.add("--air_gap");
+        }
+
+        if (keyInfo.installNodeExporter) {
+          subCommand.add("--install_node_exporter");
+          subCommand.add("--node_exporter_port");
+          subCommand.add(Integer.toString(keyInfo.nodeExporterPort));
+          subCommand.add("--node_exporter_user");
+          subCommand.add(keyInfo.nodeExporterUser);
+        }
       }
     }
 
@@ -436,12 +445,6 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--assign_public_ip");
           }
         }
-
-        commandArgs.add("--node_exporter_port");
-        commandArgs.add(Integer.toString(taskParam.communicationPorts.nodeExporterPort));
-
-        commandArgs.add("--install_node_exporter");
-        commandArgs.add(Boolean.toString(taskParam.extraDependencies.installNodeExporter));
 
         if (cloudType.equals(Common.CloudType.aws)) {
           if (taskParam.useTimeSync) {

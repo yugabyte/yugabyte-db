@@ -57,10 +57,12 @@ import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -109,8 +111,6 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
-
-import com.yugabyte.yw.models.KmsConfig;
 
 @RunWith(MockitoJUnitRunner.class)
 public class UniverseControllerTest extends WithApplication {
@@ -452,6 +452,8 @@ public class UniverseControllerTest extends WithApplication {
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
@@ -463,11 +465,13 @@ public class UniverseControllerTest extends WithApplication {
       .put("instanceType", i.getInstanceTypeCode())
       .put("replicationFactor", 3)
       .put("numNodes", 3)
-      .put("provider", p.uuid.toString());
+      .put("provider", p.uuid.toString())
+      .put("accessKeyCode", accessKeyCode);
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -492,6 +496,8 @@ public class UniverseControllerTest extends WithApplication {
       .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
@@ -504,14 +510,16 @@ public class UniverseControllerTest extends WithApplication {
       .put("enableClientToNodeEncrypt", true)
       .put("replicationFactor", 3)
       .put("numNodes", 3)
-      .put("provider", p.uuid.toString());
+      .put("provider", p.uuid.toString())
+      .put("accessKeyCode", accessKeyCode);
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-    JsonNode bodyJson = Json.newObject()
-      .put("nodePrefix", "demo-node")
-      .set("clusters", clustersJsonArray);
+    ObjectNode bodyJson = Json.newObject()
+      .put("nodePrefix", "demo-node");
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -532,6 +540,8 @@ public class UniverseControllerTest extends WithApplication {
       .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
@@ -545,12 +555,14 @@ public class UniverseControllerTest extends WithApplication {
       .put("enableClientToNodeEncrypt", false)
       .put("replicationFactor", 3)
       .put("numNodes", 3)
-      .put("provider", p.uuid.toString());
+      .put("provider", p.uuid.toString())
+      .put("accessKeyCode", accessKeyCode);
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -580,6 +592,8 @@ public class UniverseControllerTest extends WithApplication {
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
@@ -593,11 +607,13 @@ public class UniverseControllerTest extends WithApplication {
       .put("instanceType", i.getInstanceTypeCode())
       .put("replicationFactor", 3)
       .put("numNodes", 3)
-      .put("provider", p.uuid.toString());
+      .put("provider", p.uuid.toString())
+      .put("accessKeyCode", accessKeyCode);
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
@@ -622,6 +638,8 @@ public class UniverseControllerTest extends WithApplication {
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
@@ -636,11 +654,13 @@ public class UniverseControllerTest extends WithApplication {
       .put("instanceType", i.getInstanceTypeCode())
       .put("replicationFactor", 3)
       .put("numNodes", 3)
-      .put("provider", p.uuid.toString());
+      .put("provider", p.uuid.toString())
+      .put("accessKeyCode", accessKeyCode);
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
@@ -666,6 +686,8 @@ public class UniverseControllerTest extends WithApplication {
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
@@ -679,11 +701,13 @@ public class UniverseControllerTest extends WithApplication {
       .put("numNodes", 5)
       .put("instanceType", i.getInstanceTypeCode())
       .put("replicationFactor", 3)
-      .put("provider", p.uuid.toString());
+      .put("provider", p.uuid.toString())
+      .put("accessKeyCode", accessKeyCode);
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
@@ -1622,6 +1646,8 @@ public class UniverseControllerTest extends WithApplication {
             Matchers.any(UniverseDefinitionTaskParams.class)))
             .thenReturn(fakeTaskUUID);
     Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
 
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
@@ -1633,13 +1659,14 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
 
     ObjectNode userIntentJson = Json.newObject()
-            .put("universeName", "encryptionAtRestUniverse")
-            .put("instanceType", i.getInstanceTypeCode())
-            .put("enableNodeToNodeEncrypt", true)
-            .put("enableClientToNodeEncrypt", true)
-            .put("replicationFactor", 3)
-            .put("numNodes", 3)
-            .put("provider", p.uuid.toString());
+      .put("universeName", "encryptionAtRestUniverse")
+      .put("instanceType", i.getInstanceTypeCode())
+      .put("enableNodeToNodeEncrypt", true)
+      .put("enableClientToNodeEncrypt", true)
+      .put("replicationFactor", 3)
+      .put("numNodes", 3)
+      .put("provider", p.uuid.toString())
+      .put("accessKeyCode", accessKeyCode);
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
@@ -1683,7 +1710,8 @@ public class UniverseControllerTest extends WithApplication {
             Matchers.any(UniverseDefinitionTaskParams.class)))
             .thenReturn(fakeTaskUUID);
     Provider p = ModelFactory.awsProvider(customer);
-
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
@@ -1694,13 +1722,14 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
 
     ObjectNode userIntentJson = Json.newObject()
-            .put("universeName", "encryptionAtRestUniverse")
-            .put("instanceType", i.getInstanceTypeCode())
-            .put("enableNodeToNodeEncrypt", true)
-            .put("enableClientToNodeEncrypt", true)
-            .put("replicationFactor", 3)
-            .put("numNodes", 3)
-            .put("provider", p.uuid.toString());
+      .put("universeName", "encryptionAtRestUniverse")
+      .put("instanceType", i.getInstanceTypeCode())
+      .put("enableNodeToNodeEncrypt", true)
+      .put("enableClientToNodeEncrypt", true)
+      .put("replicationFactor", 3)
+      .put("numNodes", 3)
+      .put("provider", p.uuid.toString())
+      .put("accessKeyCode", accessKeyCode);
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
@@ -1737,6 +1766,8 @@ public class UniverseControllerTest extends WithApplication {
 
     // Create the universe with encryption enabled through SMARTKEY KMS provider
     Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
@@ -1748,13 +1779,14 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode createBodyJson = (ObjectNode) Json.toJson(createTaskParams);
 
     ObjectNode userIntentJson = Json.newObject()
-            .put("universeName", "encryptionAtRestUniverse")
-            .put("instanceType", i.getInstanceTypeCode())
-            .put("enableNodeToNodeEncrypt", true)
-            .put("enableClientToNodeEncrypt", true)
-            .put("replicationFactor", 3)
-            .put("numNodes", 3)
-            .put("provider", p.uuid.toString());
+      .put("universeName", "encryptionAtRestUniverse")
+      .put("instanceType", i.getInstanceTypeCode())
+      .put("enableNodeToNodeEncrypt", true)
+      .put("enableClientToNodeEncrypt", true)
+      .put("replicationFactor", 3)
+      .put("numNodes", 3)
+      .put("provider", p.uuid.toString())
+      .put("accessKeyCode", accessKeyCode);
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
@@ -2163,6 +2195,8 @@ public class UniverseControllerTest extends WithApplication {
         Matchers.any(UniverseDefinitionTaskParams.class))).thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5,
@@ -2174,9 +2208,11 @@ public class UniverseControllerTest extends WithApplication {
         .put("enableYEDIS", "false").put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
+    userIntentJson.put("accessKeyCode", accessKeyCode);
     ArrayNode clustersJsonArray = Json.newArray()
         .add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
