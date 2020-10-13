@@ -32,8 +32,7 @@ If the master you wish to replace is already dead (eg: VM was terminated), you m
 ## Start the replacement YB-Master server in standby mode. 
 
 To start `yb-master` in standby mode, set the `--master_addresses` flag to an empty string (`""`). When the
- `--master_addresses` is `""`, this master server starts running without joining any existing master
-  quorum. The node will be added to the master quorum in a later step.
+ `--master_addresses` is `""`, this master server starts without joining any existing master quorum. The node will be added to the master quorum in a later step.
 
 ```sh
 ./bin/yb-master --master_addresses="" --fs_data_dirs=<your data directories> [any other flags you would normally pass
