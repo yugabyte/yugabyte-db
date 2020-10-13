@@ -25,7 +25,9 @@ For the steps below, the examples use the following scenario:
 - The default master RPC port is `7100`
 
 {{< note title="Note" >}}
-If the master you wish to replace is already dead (eg: VM was terminated), you might want to first do the `REMOVE` step, then do the `ADD` step.
+
+If the master to be replaced is already dead (for example, the VM was terminated), perform the `REMOVE` step first, and then the `ADD` step.
+
 {{< /note >}}
 
 
