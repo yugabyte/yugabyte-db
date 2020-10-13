@@ -1,8 +1,8 @@
 ---
 title: Back up and restore universes
 headerTitle: Back up and restore universes
-linkTitle: Back up and restore
-description: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
+linkTitle: Back up and restore universes
+description: Use Yugabyte Platform to back up and restore YugabyteDB universe data.
 image: /images/section_icons/manage/backup.png
 headcontent: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
 menu:
@@ -17,22 +17,22 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="back-up-universe-data/">
+    <a class="section-link icon-offset" href="configure-backup-storage/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Back up data</div>
+        <div class="title">Configure backup storage</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to back up universe data.
+        Use Yugabyte Platform to configure the storage location for your universe data.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="restore-universe-data/">
+    <a class="section-link icon-offset" href="back-up-universe-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Restore data</div>
+        <div class="title">Back up universe data</div>
       </div>
       <div class="body">
         Use Yugabyte Platform to restore universe data.
@@ -41,13 +41,25 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="schedule-data-backup/">
+    <a class="section-link icon-offset" href="restore-universe-data/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Schedule backups</div>
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Restore universe data</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to run scheduled backups of universe data.
+        Use Yugabyte Platform to restore universe data.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="schedule-data-backups/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">Schedule universe data backups</div>
+      </div>
+      <div class="body">
+        Use Yugabyte Platform to schedule backups of universe data.
       </div>
     </a>
   </div>
