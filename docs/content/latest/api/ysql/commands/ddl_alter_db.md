@@ -55,10 +55,6 @@ Some options in DATABASE are under development.
 
 Specify the name of the database to be altered.
 
-### *tablespace_name*
-
-Specify the new tablespace that is associated with the database.
-
 ### ALLOW_CONNECTIONS
 
 Specify `false` to disallow connections to this database. Default is `true`, which allows this database to be cloned by any user with `CREATEDB` privileges.

@@ -73,10 +73,6 @@ Specify the collation order (`LC_COLLATE`).
 
 Specify the character classification (`LC_CTYPE`).
 
-### TABLESPACE *tablespace_name*
-
-Specify the new tablespace that is associated with the database.
-
 ### ALLOW_CONNECTIONS *allowconn*
 
 Specify `false` to disallow connections to the database. Default is `true`, which allows connections to the database.
