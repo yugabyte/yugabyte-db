@@ -55,8 +55,9 @@ Note: we use two new tablet IDs vs old tablet ID + one new tablet ID for the fol
 
 When leader tablet server receives `SplitTablet` RPC it adds a special Raft record containing:
 - 2 new tablet IDs.
-- Split key (chosen as the approximate mid-key). Should be encoded DocKey (or its part), so we don’t split in the middle 
-of DocDB row. In case hash partitioning is used for the table - we should split by hash.
+- Split key chosen as:
+  - For range-based partitions: DocKey part of the approximate mid-key (we don’t want to split in the middle of the row).
+  - For hash-based partitions: Hash code part of the approximate mid-key (hash-based partitions couldn’t be split in the middle of keys having the same hash code).
 - We disallow processing any writes on the old tablet after split record is added to Raft log.
 
 Tablet splitting happens at the moment of applying a Raft split-record and includes following steps:
