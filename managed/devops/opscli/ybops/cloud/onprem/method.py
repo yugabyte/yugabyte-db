@@ -138,6 +138,10 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
                                  help='If the ssh_user has passwordless sudo access or not.')
         self.parser.add_argument("--air_gap", action="store_true",
                                  help='If instances are air gapped or not.')
+        self.parser.add_argument("--node_exporter_port", type=int, default=9300,
+                                 help="The port for node_exporter to bind to")
+        self.parser.add_argument("--node_exporter_user", default="prometheus")
+        self.parser.add_argument("--install_node_exporter", action="store_true")
 
     def callback(self, args):
         config = {'devops_home': ybutils.YB_DEVOPS_HOME, 'cloud': self.cloud.name}

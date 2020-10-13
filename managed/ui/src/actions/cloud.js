@@ -300,7 +300,10 @@ export function createAccessKey(providerUUID, regionUUID, keyInfo) {
     sshUser: keyInfo.sshUser,
     sshPort: keyInfo.sshPort,
     passwordlessSudoAccess: keyInfo.passwordlessSudoAccess,
-    airGapInstall: keyInfo.airGapInstall
+    airGapInstall: keyInfo.airGapInstall,
+    installNodeExporter: keyInfo.installNodeExporter,
+    nodeExporterUser: keyInfo.nodeExporterUser,
+    nodeExporterPort: keyInfo.nodeExporterPort
   };
   const url = getProviderEndpoint(providerUUID) + '/access_keys';
   const request = axios.post(url, formValues);

@@ -275,11 +275,6 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         }
 
-        expectedCommand.add("--node_exporter_port");
-        expectedCommand.add("9300");
-        expectedCommand.add("--install_node_exporter");
-        expectedCommand.add("true");
-
         break;
       case Configure:
         AnsibleConfigureServers.Params configureParams = (AnsibleConfigureServers.Params) params;
@@ -577,17 +572,6 @@ public class NodeManagerTest extends FakeDBApplication {
         t
       ));
 
-      if (t.cloudType.equals(Common.CloudType.aws)) {
-        expectedCommandArrayList.add(15, "--node_exporter_port");
-        expectedCommandArrayList.add(16, "9300");
-        expectedCommandArrayList.add(17, "--install_node_exporter");
-        expectedCommandArrayList.add(18, "true");
-        expectedCommandArrayList.remove(24);
-        expectedCommandArrayList.remove(23);
-        expectedCommandArrayList.remove(22);
-        expectedCommandArrayList.remove(21);
-      }
-
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1))
         .run(expectedCommandArrayList, t.region.provider.getConfig());
@@ -652,6 +636,11 @@ public class NodeManagerTest extends FakeDBApplication {
       accessKeyCommands.add("--custom_ssh_port");
       accessKeyCommands.add("3333");
       accessKeyCommands.add("--air_gap");
+      accessKeyCommands.add("--install_node_exporter");
+      accessKeyCommands.add("--node_exporter_port");
+      accessKeyCommands.add("9300");
+      accessKeyCommands.add("--node_exporter_user");
+      accessKeyCommands.add("prometheus");
       expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommands);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);

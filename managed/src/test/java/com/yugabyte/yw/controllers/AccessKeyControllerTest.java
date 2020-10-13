@@ -338,7 +338,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     Result result = createAccessKey(onpremProvider.uuid, "key-code-1", false, false, onpremRegion, true, false);
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.uuid);
-    verify(mockTemplateManager, times(1)).createProvisionTemplate(accessKey, true, false);
+    verify(mockTemplateManager, times(1))
+      .createProvisionTemplate(accessKey, true, false, true, 9300, "prometheus");
   }
 
   @Test
@@ -348,7 +349,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     AccessKey accessKey = AccessKey.create(onpremProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
     when(mockAccessManager.addKey(onpremRegion.uuid, "key-code-1", SSH_PORT, false))
         .thenReturn(accessKey);
-    doThrow(new RuntimeException("foobar")).when(mockTemplateManager).createProvisionTemplate(accessKey, false, false);
+    doThrow(new RuntimeException("foobar")).when(mockTemplateManager)
+      .createProvisionTemplate(accessKey, false, false, true, 9300, "prometheus");
     Result result = createAccessKey(onpremProvider.uuid, "key-code-1", false, false, onpremRegion, false, false);
     assertErrorResponse(result, "Unable to create access key: key-code-1");
     assertAuditEntry(0, defaultCustomer.uuid);

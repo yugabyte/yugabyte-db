@@ -274,14 +274,13 @@ function mapStateToProps(state, ownProps) {
       'primary.tlsCertificateId', 'primary.awsArnString', 'primary.masterHttpPort',
       'primary.masterRpcPort', 'primary.tserverHttpPort', 'primary.tserverRpcPort',
       'primary.redisHttpPort', 'primary.redisRpcPort', 'primary.yqlHttpPort', 'primary.yqlRpcPort',
-      'primary.ysqlHttpPort', 'primary.ysqlRpcPort', 'primary.nodeExporterPort',
+      'primary.ysqlHttpPort', 'primary.ysqlRpcPort',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList',
       'async.replicationFactor', 'async.numNodes', 'async.instanceType', 'async.deviceInfo',
       'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.diskIops', 'async.numVolumes',
       'async.volumeSize',  'async.storageType', 'async.assignPublicIP', 'async.enableYSQL',
       'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints',
-      'async.useTimeSync', 'masterGFlags', 'tserverGFlags', 'instanceTags',
-      'primary.installNodeExporter'
+      'async.useTimeSync', 'masterGFlags', 'tserverGFlags', 'instanceTags'
     )
   };
 }

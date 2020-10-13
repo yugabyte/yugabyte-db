@@ -10,7 +10,13 @@ import YBToggle from "../../../common/forms/fields/YBToggle";
 export default class OnPremProviderAndAccessKey extends Component {
   constructor(props) {
     super(props);
-    this.state  = {privateKeyFile: {}};
+    this.state  = {
+      privateKeyFile: {},
+      installNodeExporter: props.initialValues.installNodeExporter,
+      showAdvanced: false
+    };
+    this.toggleInstallNodeExporter = this.toggleInstallNodeExporter.bind(this);
+    this.toggleShowAdvanced = this.toggleShowAdvanced.bind(this);
   }
 
   submitProviderKeyForm = vals => {
@@ -20,6 +26,14 @@ export default class OnPremProviderAndAccessKey extends Component {
   privateKeyUpload = val => {
     this.setState({privateKeyFile: val[0]});
   };
+
+  toggleInstallNodeExporter() {
+    this.setState({installNodeExporter: !this.state.installNodeExporter});
+  }
+
+  toggleShowAdvanced() {
+    this.setState({showAdvanced: !this.state.showAdvanced});
+  }
 
   render() {
     const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;
@@ -41,11 +55,8 @@ export default class OnPremProviderAndAccessKey extends Component {
                        isReadOnly={isReadOnly} infoContent={userHelpContent}
                        infoTitle="SSH User" />
                 <Field name="sshPort" component={YBNumericInput} label="SSH Port" insetError={true}
-                       isReadOnly={isReadOnly} infoContent={portHelpContent}
-                       infoTitle="SSH Port" />
-                <Field name="useHostnames" component={YBToggle}
-                       label="Use Hostnames" defaultChecked={false} isReadOnly={isReadOnly}
-                       infoContent={useHostnameHelp} infoTitle="Use Hostnames"/>
+                  readOnly={isReadOnly} infoContent={portHelpContent}
+                  infoTitle="SSH Port" />
                 <Field name="passwordlessSudoAccess" component={YBToggle}
                        label="Passwordless Sudo" defaultChecked={true} isReadOnly={isReadOnly}
                        infoContent={passwordlessSudoHelp} infoTitle="Passwordless Sudo"/>
@@ -53,11 +64,30 @@ export default class OnPremProviderAndAccessKey extends Component {
                        className="ssh-key-container" isReadOnly={isReadOnly} infoContent={pkHelpContent}
                        infoTitle="SSH Key" />
                 <Field name="airGapInstall" component={YBToggle} isReadOnly={isReadOnly}
-                       label="Air Gap Installation" defaultChecked={false}
-                       infoContent={airGapInstallHelp} infoTitle="Air Gap Installation"/>
+                  label="Air Gap Install" defaultChecked={false}
+                  infoContent={airGapInstallHelp} infoTitle="Air Gap Installation"/>
+                <Field name="advanced" component={YBToggle}
+                  label="Advanced" defaultChecked={false} isReadOnly={false}
+                  onToggle={this.toggleShowAdvanced} checkedVal={this.state.showAdvanced}/>
+                {this.state.showAdvanced &&
+                <Field name="useHostnames" component={YBToggle}
+                       label="Use Hostnames" defaultChecked={false} isReadOnly={isReadOnly}
+                       infoContent={useHostnameHelp} infoTitle="Use Hostnames"/>}
+                {this.state.showAdvanced &&
                 <Field name="homeDir" component={YBTextArea} isReadOnly={isReadOnly}
-                       label="Desired Home Directory (Optional)" insetError={true}
-                       infoContent={homeDirHelp} infoTitle="Home Directory" />
+                  label="Desired Home Directory" insetError={true}
+                  subLabel="Enter the desired home directory for YB nodes (optional)."/>}
+                {this.state.showAdvanced &&
+                <Field name="nodeExporterPort" component={YBNumericInput}
+                  label="Node Exporter Port" readOnly={isReadOnly} insetError={true}/>}
+                {this.state.showAdvanced &&
+                <Field name="installNodeExporter" component={YBToggle}
+                  label="Install Node Exporter" defaultChecked={true} isReadOnly={isReadOnly}
+                  onToggle={this.toggleInstallNodeExporter} checkedVal={this.state.installNodeExporter}
+                  subLabel="Whether to install or skip installing Node Exporter."/>}
+                {this.state.showAdvanced && this.state.installNodeExporter &&
+                <Field name="nodeExporterUser" component={YBTextArea}
+                  label="Node Exporter User" isReadOnly={isReadOnly} insetError={true}/>}
               </div>
             </Col>
           </Row>

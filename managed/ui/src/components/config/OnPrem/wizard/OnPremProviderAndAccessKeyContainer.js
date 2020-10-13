@@ -7,15 +7,22 @@ import {setOnPremConfigData} from '../../../../actions/cloud';
 import {isDefinedNotNull, isNonEmptyObject, isNonEmptyArray} from '../../../../utils/ObjectUtils';
 import _ from 'lodash';
 
+const DEFAULT_NODE_EXPORTER_PORT = 9300;
+const DEFAULT_NODE_EXPORTER_USER = "prometheus";
+
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {
     setOnPremProviderAndAccessKey: (formData) => {
       Object.keys(formData).forEach((key) => { if (typeof formData[key] === 'string' || formData[key] instanceof String) formData[key] = formData[key].trim(); });
       if (!ownProps.isEditProvider) {
+        const installNodeExporter = _.get(formData, "installNodeExporter", true);
         const formSubmitVals = {
           provider: {
             name: formData.name,
-            config: { YB_HOME_DIR: formData.homeDir, USE_HOSTNAME: _.get(formData, "useHostnames", false).toString() }
+            config: {
+              YB_HOME_DIR: formData.homeDir,
+              USE_HOSTNAME: _.get(formData, "useHostnames", false).toString()
+            }
           },
           key: {
             code: formData.name.toLowerCase().replace(/ /g, "-") + "-key",
@@ -23,9 +30,13 @@ const mapDispatchToProps = (dispatch, ownProps) => {
             sshUser: formData.sshUser,
             sshPort: formData.sshPort,
             passwordlessSudoAccess: formData.passwordlessSudoAccess,
-            airGapInstall: formData.airGapInstall
+            airGapInstall: formData.airGapInstall,
+            installNodeExporter: installNodeExporter,
+            nodeExporterPort: _.get(formData, "nodeExporterPort", DEFAULT_NODE_EXPORTER_PORT),
+            nodeExporterUser: _.get(formData, "nodeExporterUser", DEFAULT_NODE_EXPORTER_USER)
           }
         };
+
         dispatch(setOnPremConfigData(formSubmitVals));
       }
       ownProps.nextPage();
@@ -37,7 +48,11 @@ const mapStateToProps = (state, ownProps) => {
   let initialFormValues = {
     sshPort: 54422,
     passwordlessSudoAccess: true,
-    airGapInstall: false
+    airGapInstall: false,
+    useHostnames: false,
+    installNodeExporter: true,
+    nodeExporterUser: DEFAULT_NODE_EXPORTER_USER,
+    nodeExporterPort: DEFAULT_NODE_EXPORTER_PORT
   };
   const {cloud: {onPremJsonFormData}} = state;
   if (ownProps.isEditProvider && isNonEmptyObject(onPremJsonFormData)) {
@@ -49,6 +64,11 @@ const mapStateToProps = (state, ownProps) => {
       sshPort: onPremJsonFormData.key.sshPort,
       passwordlessSudoAccess: onPremJsonFormData.key.passwordlessSudoAccess,
       airGapInstall: onPremJsonFormData.key.airGapInstall,
+      useHostnames: _.get(onPremJsonFormData, "provider.config.USE_HOSTNAME", "false") === "true",
+      installNodeExporter: onPremJsonFormData.key.installNodeExporter,
+      nodeExporterUser: onPremJsonFormData.key.nodeExporterUser,
+      nodeExporterPort: onPremJsonFormData.key.nodeExporterPort,
+      homeDir: _.get(onPremJsonFormData, "provider.config.YB_HOME_DIR", ""),
       machineTypeList : onPremJsonFormData.instanceTypes.map(function (item) {
         return {
           code: item.instanceTypeCode,
@@ -92,7 +112,10 @@ const validate = values => {
 
 const onPremProviderConfigForm = reduxForm({
   form: 'onPremConfigForm',
-  fields: ['name', 'sshUser', 'sshPort', 'privateKeyContent', 'passwordlessSudoAccess', 'airGapInstall'],
+  fields: [
+    'name', 'sshUser', 'sshPort', 'privateKeyContent', 'passwordlessSudoAccess', 'airGapInstall',
+    'useHostnames', 'homeDir', 'installNodeExporter', 'nodeExporterUser', 'nodeExporterPort'
+  ],
   validate,
   destroyOnUnmount: false,
   enableReinitialize: true,
