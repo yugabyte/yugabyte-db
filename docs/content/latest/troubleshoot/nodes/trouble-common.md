@@ -24,3 +24,16 @@ This message is harmless. It means that the maximum number of concurrent tablets
  cluster by the yb-master load balancer has reached it's limit. 
  This limit is configured in `--load_balancer_max_concurrent_tablet_remote_bootstraps` in 
  [yb-master config](../../../reference/configuration/yb-master#load-balancer-max-concurrent-tablet-remote-bootstraps).
+
+## SST files limit exceeded
+
+When you encounter the error below:
+```
+Service unavailable (yb/tserver/tablet_service.cc:257): SST files limit exceeded 58 against (24, 48), score: 0.35422774182913203: 3.854s (tablet server delay 3.854s)
+```
+
+This message is emitted when the number of SST files has exceeded it's limit. Usually the client is running a high insert/update/delete workload 
+and compactions are falling behind. 
+
+It might be worth figuring out why this error is happening. Maybe disk bandwidth, or network bandwidth, or not enough CPU in the server. 
+The limits are controlled by these flags in yb-tserver: `--sst_files_hard_limit=48` and `--sst_files_soft_limit=24`.
