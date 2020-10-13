@@ -29,7 +29,7 @@ If the master you wish to replace is already dead (eg: VM was terminated), you m
 {{< /note >}}
 
 
-## Start the new (standby) YB-Master server in standby mode. 
+## Start the replacement YB-Master server in standby mode. 
 
 To start `yb-master` in standby mode, set the `--master_addresses` flag to an empty string (`""`). When the
  `--master_addresses` is `""`, this master server starts running without joining any existing master
