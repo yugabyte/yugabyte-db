@@ -72,9 +72,6 @@ fi
 
 # half for tserver and half for master.
 logs_disk_percent_max=$(($logs_disk_percent_max / 2))
-# Get total size of disk in kb and then compute permitted usage for the log files.
-disk_size_kb=$(df -k | awk 'NR==2{print $2}')
-permitted_disk_usage_kb=$(($disk_size_kb * $logs_disk_percent_max / 100))
 
 delete_gz_files() {
   set -f
@@ -110,7 +107,7 @@ delete_gz_files() {
 server_types="master tserver"
 daemon_types=""
 for server_type in $server_types; do
-  if [[ -d "$YB_HOME_DIR/$server_type/" ]]; then
+  if [[ -d "$YB_HOME_DIR/$server_type/logs" ]]; then
     daemon_types="${daemon_types} $server_type"
   fi
 done
@@ -143,6 +140,10 @@ for daemon_type in $daemon_types; do
   if [ "$gzip_only" == false ]; then
     server_log="yb-$daemon_type*log.*"
     postgres_log="postgres*log*"
+    # Get total size of disk in kb and then compute permitted usage for the log files.
+    # We get the size of the target link of $YB_LOG_DIR
+    disk_size_kb=$(df -k $YB_LOG_DIR | awk 'NR==2{print $2}')
+    permitted_disk_usage_kb=$(($disk_size_kb * $logs_disk_percent_max / 100))
     delete_gz_files $YB_LOG_DIR $server_log $permitted_disk_usage_kb
     delete_gz_files $YB_LOG_DIR $postgres_log $postgres_max_log_size_kb
   fi
