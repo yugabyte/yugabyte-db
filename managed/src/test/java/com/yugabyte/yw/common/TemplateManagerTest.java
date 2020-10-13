@@ -106,9 +106,15 @@ public class TemplateManagerTest extends FakeDBApplication {
     FileUtils.deleteDirectory(new File(YB_STORAGE_PATH_VALUE));
   }
 
-  private void assertAccessKeyInfo(AccessKey accessKey, boolean airGapInstall, boolean passwordlessSudo) {
+  private void assertAccessKeyInfo(
+    AccessKey accessKey,
+    boolean airGapInstall,
+    boolean passwordlessSudo,
+    boolean installNodeExporter
+  ) {
     assertEquals(airGapInstall, accessKey.getKeyInfo().airGapInstall);
     assertEquals(passwordlessSudo, accessKey.getKeyInfo().passwordlessSudoAccess);
+    assertEquals(installNodeExporter, accessKey.getKeyInfo().installNodeExporter);
     if (airGapInstall || passwordlessSudo) {
       String expectedProvisionScript = String.format("%s/provision/%s/%s",
           YB_STORAGE_PATH_VALUE, accessKey.getProviderUUID(), PROVISION_SCRIPT
@@ -124,10 +130,15 @@ public class TemplateManagerTest extends FakeDBApplication {
     AccessKey accessKey = setupTestAccessKey();
     List<String> expectedCommand = getExpectedCommmand(accessKey.getKeyInfo());
     expectedCommand.add("--air_gap");
+    expectedCommand.add("--install_node_exporter");
+    expectedCommand.add("--node_exporter_port");
+    expectedCommand.add("9300");
+    expectedCommand.add("--node_exporter_user");
+    expectedCommand.add("prometheus");
     when(shellProcessHandler.run(expectedCommand, new HashMap<>())).thenReturn(ShellResponse.create(0, "{}"));
-    templateManager.createProvisionTemplate(accessKey, true, false);
+    templateManager.createProvisionTemplate(accessKey, true, false, true, 9300, "prometheus");
     verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
-    assertAccessKeyInfo(accessKey, true, false);
+    assertAccessKeyInfo(accessKey, true, false, true);
   }
 
   @Test
@@ -136,10 +147,15 @@ public class TemplateManagerTest extends FakeDBApplication {
     List<String> expectedCommand = getExpectedCommmand(accessKey.getKeyInfo());
     expectedCommand.add("--air_gap");
     expectedCommand.add("--passwordless_sudo");
+    expectedCommand.add("--install_node_exporter");
+    expectedCommand.add("--node_exporter_port");
+    expectedCommand.add("9300");
+    expectedCommand.add("--node_exporter_user");
+    expectedCommand.add("prometheus");
     when(shellProcessHandler.run(expectedCommand, new HashMap<>())).thenReturn(ShellResponse.create(0, "{}"));
-    templateManager.createProvisionTemplate(accessKey, true, true);
+    templateManager.createProvisionTemplate(accessKey, true, true, true, 9300, "prometheus");
     verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
-    assertAccessKeyInfo(accessKey, true, true);
+    assertAccessKeyInfo(accessKey, true, true, true);
   }
 
   @Test
@@ -147,10 +163,27 @@ public class TemplateManagerTest extends FakeDBApplication {
     AccessKey accessKey = setupTestAccessKey();
     List<String> expectedCommand = getExpectedCommmand(accessKey.getKeyInfo());
     expectedCommand.add("--passwordless_sudo");
+    expectedCommand.add("--install_node_exporter");
+    expectedCommand.add("--node_exporter_port");
+    expectedCommand.add("9300");
+    expectedCommand.add("--node_exporter_user");
+    expectedCommand.add("prometheus");
     when(shellProcessHandler.run(expectedCommand, new HashMap<>())).thenReturn(ShellResponse.create(0, "{}"));
-    templateManager.createProvisionTemplate(accessKey, false, true);
+    templateManager.createProvisionTemplate(accessKey, false, true, true, 9300, "prometheus");
     verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
-    assertAccessKeyInfo(accessKey, false, true);
+    assertAccessKeyInfo(accessKey, false, true, true);
+  }
+
+  @Test
+  public void testTemplateCommandWithInstallNodeExporterDisabled() {
+    AccessKey accessKey = setupTestAccessKey();
+    List<String> expectedCommand = getExpectedCommmand(accessKey.getKeyInfo());
+    expectedCommand.add("--passwordless_sudo");
+    when(shellProcessHandler.run(expectedCommand, new HashMap<>()))
+      .thenReturn(ShellResponse.create(0, "{}"));
+    templateManager.createProvisionTemplate(accessKey, false, true, false, 9300, "prometheus");
+    verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
+    assertAccessKeyInfo(accessKey, false, true, false);
   }
 
   @Test
@@ -159,10 +192,15 @@ public class TemplateManagerTest extends FakeDBApplication {
     List<String> expectedCommand = getExpectedCommmand(accessKey.getKeyInfo());
     expectedCommand.add("--air_gap");
     expectedCommand.add("--passwordless_sudo");
+    expectedCommand.add("--install_node_exporter");
+    expectedCommand.add("--node_exporter_port");
+    expectedCommand.add("9300");
+    expectedCommand.add("--node_exporter_user");
+    expectedCommand.add("prometheus");
     when(shellProcessHandler.run(expectedCommand, new HashMap<>())).thenReturn(ShellResponse.create(1, "foobar"));
     expectedException.expect(RuntimeException.class);
     expectedException.expectMessage("YBCloud command instance (template) failed to execute.");
-    templateManager.createProvisionTemplate(accessKey, true, true);
-    assertAccessKeyInfo(accessKey, false, false);
+    templateManager.createProvisionTemplate(accessKey, true, true, true, 9300, "prometheus");
+    assertAccessKeyInfo(accessKey, false, false, true);
   }
 }

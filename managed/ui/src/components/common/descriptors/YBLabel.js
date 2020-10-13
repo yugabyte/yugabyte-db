@@ -34,7 +34,7 @@ export default class YBLabel extends Component {
       // In case for Formik field, touched might be undefined but when
       // form validation happens it can have errors.
       // Using lodash to get in case of nested arrays and objects
-      errorMsg = _.get(form.errors, field.name); 
+      errorMsg = _.get(form.errors, field.name);
       touched = (_.get(form.touched, field.name) || form.submitCount > 0);
       hasError = touched && isNonEmptyString(errorMsg);
     }
@@ -49,6 +49,7 @@ export default class YBLabel extends Component {
             {label}
           </label>
         }
+        {infoTip}
         <div className="yb-field-group">
           {this.props.children}
           {hasError &&
@@ -57,7 +58,6 @@ export default class YBLabel extends Component {
             </div>
           }
         </div>
-        {infoTip}
       </div>
     );
   }

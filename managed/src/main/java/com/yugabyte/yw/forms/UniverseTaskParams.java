@@ -119,6 +119,9 @@ public class UniverseTaskParams extends AbstractTaskParams {
     public boolean installNodeExporter = true;
   }
 
+  // Which user to run the node exporter service on nodes with
+  public String nodeExporterUser = "prometheus";
+
   // The primary device info.
   public DeviceInfo deviceInfo;
 

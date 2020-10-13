@@ -50,6 +50,7 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -450,12 +451,32 @@ public class UniverseController extends AuthenticatedController {
       for (Cluster c : taskParams.clusters) {
         Provider provider = Provider.find.byId(UUID.fromString(c.userIntent.provider));
         c.userIntent.providerType = CloudType.valueOf(provider.code);
-        if (
-          c.userIntent.providerType.equals(CloudType.onprem) &&
-            provider.getConfig().containsKey("USE_HOSTNAME")
-        ) {
-          c.userIntent.useHostname = Boolean.parseBoolean(provider.getConfig().get("USE_HOSTNAME"));
+        if (c.userIntent.providerType.equals(CloudType.onprem)) {
+          if (provider.getConfig().containsKey("USE_HOSTNAME")) {
+            c.userIntent.useHostname =
+              Boolean.parseBoolean(provider.getConfig().get("USE_HOSTNAME"));
+          }
         }
+
+        // Set the node exporter config based on the provider
+        if (!c.userIntent.providerType.equals(CloudType.kubernetes)) {
+          AccessKey accessKey = AccessKey.get(provider.uuid, c.userIntent.accessKeyCode);
+          AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+          boolean installNodeExporter = keyInfo.installNodeExporter;
+          int nodeExporterPort = keyInfo.nodeExporterPort;
+          String nodeExporterUser = keyInfo.nodeExporterUser;
+          taskParams.extraDependencies.installNodeExporter = installNodeExporter;
+          taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
+
+          for (NodeDetails node : taskParams.nodeDetailsSet) {
+            node.nodeExporterPort = nodeExporterPort;
+          }
+
+          if (installNodeExporter) {
+            taskParams.nodeExporterUser = nodeExporterUser;
+          }
+        }
+
         updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       }
 
@@ -651,7 +672,7 @@ public class UniverseController extends AuthenticatedController {
     Customer customer = Customer.get(customerUUID);
 
     UniverseDefinitionTaskParams taskParams;
-    ObjectNode formData = null;
+    ObjectNode formData;
     try {
       LOG.info("Update {} for {}.", customerUUID, universeUUID);
       // Get the user submitted form data.
@@ -676,8 +697,8 @@ public class UniverseController extends AuthenticatedController {
 
     try {
       Cluster primaryCluster = taskParams.getPrimaryCluster();
-      UUID uuid = null;
-      PlacementInfo placementInfo = null;
+      UUID uuid;
+      PlacementInfo placementInfo;
       TaskType taskType = TaskType.EditUniverse;
       if (primaryCluster == null) {
         // Update of a read only cluster.
@@ -703,6 +724,22 @@ public class UniverseController extends AuthenticatedController {
                                      universeUUID + " as it is not helm 3 compatible. " +
                                      "Manually migrate the deployment to helm3 " +
                                      "and then mark the universe as helm 3 compatible.");
+          }
+        } else {
+          // Set the node exporter config based on the provider
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          boolean installNodeExporter = universeDetails.extraDependencies.installNodeExporter;
+          int nodeExporterPort = universeDetails.communicationPorts.nodeExporterPort;
+          String nodeExporterUser = universeDetails.nodeExporterUser;
+          taskParams.extraDependencies.installNodeExporter = installNodeExporter;
+          taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
+
+          for (NodeDetails node : taskParams.nodeDetailsSet) {
+            node.nodeExporterPort = nodeExporterPort;
+          }
+
+          if (installNodeExporter) {
+            taskParams.nodeExporterUser = nodeExporterUser;
           }
         }
       }

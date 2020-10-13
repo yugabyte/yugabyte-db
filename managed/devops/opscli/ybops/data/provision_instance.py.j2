@@ -29,6 +29,13 @@ def construct_command(args):
         {%- if air_gap %}
         '--air_gap ' \
         {%- endif %}
+        {%- if install_node_exporter %}
+        '--install_node_exporter ' \
+        '--node_exporter_user ' \
+        '{{ node_exporter_user }} ' \
+        '--node_exporter_port ' \
+        '{{ node_exporter_port }} ' \
+        {%- endif %}
         '--local_package_path {{local_package_path}} '\
         '@@DEFAULT_NODE_NAME@@' % (args.ip, args.mount_points)
 
