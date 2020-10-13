@@ -84,6 +84,9 @@ class OnPremSuccess extends Component {
           sshPort: keyInfo.sshPort,
           passwordlessSudoAccess: keyInfo.passwordlessSudoAccess,
           airGapInstall: keyInfo.airGapInstall,
+          installNodeExporter: keyInfo.installNodeExporter,
+          nodeExporterUser: keyInfo.nodeExporterUser,
+          nodeExporterPort: keyInfo.nodeExporterPort,
           preProvisionScript: keyInfo.provisionInstanceScript
         };
       }

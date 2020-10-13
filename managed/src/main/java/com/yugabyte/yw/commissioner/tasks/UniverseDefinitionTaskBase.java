@@ -586,6 +586,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Whether to install node_exporter on nodes or not.
       params.extraDependencies.installNodeExporter =
         taskParams().extraDependencies.installNodeExporter;
+      // Which user the node exporter service will run as
+      params.nodeExporterUser = taskParams().nodeExporterUser;
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();

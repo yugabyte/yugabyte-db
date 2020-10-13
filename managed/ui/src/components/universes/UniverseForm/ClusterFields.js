@@ -50,8 +50,7 @@ const DEFAULT_PORTS = {
   YQL_HTTP_PORT: 12000,
   YQL_RPC_PORT: 9042,
   YSQL_HTTP_PORT: 13000,
-  YSQL_RPC_PORT: 5433,
-  NODE_EXPORTER_PORT: 9300
+  YSQL_RPC_PORT: 5433
 }
 
 const DEFAULT_STORAGE_TYPES = {
@@ -87,8 +86,7 @@ const initialState = {
   enableNodeToNodeEncrypt: false,
   enableClientToNodeEncrypt: false,
   enableEncryptionAtRest: false,
-  customizePorts: false,
-  installNodeExporter: true
+  customizePorts: false
 };
 
 export default class ClusterFields extends Component {
@@ -123,7 +121,6 @@ export default class ClusterFields extends Component {
     this.accessKeyChanged = this.accessKeyChanged.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.toggleCustomizePorts = this.toggleCustomizePorts.bind(this);
-    this.toggleInstallNodeExporter = this.toggleInstallNodeExporter.bind(this);
 
     this.currentInstanceType = _.get(this.props.universe,
       'currentUniverse.data.universeDetails.clusters[0].userIntent.instanceType');
@@ -153,8 +150,7 @@ export default class ClusterFields extends Component {
       communicationPorts.yqlServerHttpPort !== DEFAULT_PORTS.YQL_HTTP_PORT ||
       communicationPorts.yqlServerRpcPort !== DEFAULT_PORTS.YQL_RPC_PORT ||
       communicationPorts.ysqlServerHttpPort !== DEFAULT_PORTS.YSQL_HTTP_PORT ||
-      communicationPorts.ysqlServerRpcPort !== DEFAULT_PORTS.YSQL_RPC_PORT ||
-      communicationPorts.nodeExporterPort !== DEFAULT_PORTS.NODE_EXPORTER_PORT;
+      communicationPorts.ysqlServerRpcPort !== DEFAULT_PORTS.YSQL_RPC_PORT;
   }
 
   UNSAFE_componentWillMount() {
@@ -167,7 +163,6 @@ export default class ClusterFields extends Component {
     }
 
     if (type === "Create") {
-      updateFormField("primary.installNodeExporter", this.state.installNodeExporter);
       updateFormField("primary.masterHttpPort", DEFAULT_PORTS.MASTER_HTTP_PORT);
       updateFormField("primary.masterRpcPort", DEFAULT_PORTS.MASTER_RPC_PORT);
       updateFormField("primary.tserverHttpPort", DEFAULT_PORTS.TSERVER_HTTP_PORT);
@@ -178,12 +173,9 @@ export default class ClusterFields extends Component {
       updateFormField("primary.yqlRpcPort", DEFAULT_PORTS.YQL_RPC_PORT);
       updateFormField("primary.ysqlHttpPort", DEFAULT_PORTS.YSQL_HTTP_PORT);
       updateFormField("primary.ysqlRpcPort", DEFAULT_PORTS.YSQL_RPC_PORT);
-      updateFormField("primary.nodeExporterPort", DEFAULT_PORTS.NODE_EXPORTER_PORT);
     } else if (type === "Edit") {
       const { communicationPorts, extraDependencies } = universeDetails;
       const customPorts = this.portsCustomized(communicationPorts);
-      const installNodeExporter = _.get(extraDependencies, "installNodeExporter", true);
-      updateFormField("primary.installNodeExporter", installNodeExporter);
       updateFormField("primary.customizePorts", customPorts);
       this.setState({customizePorts: customPorts});
       updateFormField("primary.masterHttpPort", communicationPorts.masterHttpPort);
@@ -196,7 +188,6 @@ export default class ClusterFields extends Component {
       updateFormField("primary.yqlRpcPort", communicationPorts.yqlServerRpcPort);
       updateFormField("primary.ysqlHttpPort", communicationPorts.ysqlServerHttpPort);
       updateFormField("primary.ysqlRpcPort", communicationPorts.ysqlServerRpcPort);
-      updateFormField("primary.nodeExporterPort", communicationPorts.nodeExporterPort);
     }
 
     if (isNonEmptyObject(formValues['primary']) && clusterType !== 'primary') {
@@ -648,12 +639,6 @@ export default class ClusterFields extends Component {
 
   toggleCustomizePorts(event) {
     this.setState({customizePorts: event.target.checked});
-  }
-
-  toggleInstallNodeExporter(event) {
-    const { updateFormField, clusterType } = this.props;
-    updateFormField(`${clusterType}.installNodeExporter`, event.target.checked);
-    this.setState({installNodeExporter: event.target.checked});
   }
 
   handleAwsArnChange(event) {
@@ -1412,23 +1397,6 @@ export default class ClusterFields extends Component {
               <Col md={12}>
                 <div className="form-right-aligned-labels">
                   <Field
-                    name={`${clusterType}.installNodeExporter`}
-                    component={YBToggle}
-                    defaultChecked={true}
-                    disableOnChange={disableToggleOnChange}
-                    checkedVal={this.state.installNodeExporter}
-                    onToggle={this.toggleInstallNodeExporter}
-                    label="Install Node Exporter" isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-            </Row>
-          }
-          {isDefinedNotNull(currentProvider) && currentProvider.code !== "kubernetes" &&
-            <Row>
-              <Col md={12}>
-                <div className="form-right-aligned-labels">
-                  <Field
                     name={`${clusterType}.customizePorts`}
                     component={YBToggle}
                     defaultChecked={false}
@@ -1566,21 +1534,6 @@ export default class ClusterFields extends Component {
                   normalize={normalizeToValidPort}
                   validate={portValidation}
                   label="Yedis RPC Port" isReadOnly={isFieldReadOnly}
-                />
-              </div>
-            </Col>
-          </Row>
-          }
-          {this.state.customizePorts &&
-          <Row>
-            <Col sm={3}>
-              <div className="form-right-aligned-labels">
-                <Field
-                  name={`${clusterType}.nodeExporterPort`}
-                  type="text" component={YBTextInputWithLabel}
-                  normalize={normalizeToValidPort}
-                  validate={portValidation}
-                  label="Node Exporter Port" isReadOnly={isFieldReadOnly}
                 />
               </div>
             </Col>

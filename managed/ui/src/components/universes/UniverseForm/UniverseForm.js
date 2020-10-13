@@ -385,12 +385,7 @@ class UniverseForm extends Component {
             "yqlServerHttpPort": formValues['primary'].yqlHttpPort,
             "yqlServerRpcPort": formValues['primary'].yqlRpcPort,
             "ysqlServerHttpPort": formValues['primary'].ysqlHttpPort,
-            "ysqlServerRpcPort": formValues['primary'].ysqlRpcPort,
-            "nodeExporterPort": formValues['primary'].nodeExporterPort
-          };
-
-          submitPayload.extraDependencies = {
-            "installNodeExporter": formValues['primary'].installNodeExporter
+            "ysqlServerRpcPort": formValues['primary'].ysqlRpcPort
           };
 
           // Ensure a configuration was actually selected

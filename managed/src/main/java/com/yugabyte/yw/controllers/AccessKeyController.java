@@ -119,9 +119,13 @@ public class AccessKeyController extends AuthenticatedController {
       // and create a preprovision script
       if (region.provider.code.equals(onprem.name())) {
         templateManager.createProvisionTemplate(
-            accessKey,
-            airGapInstall,
-            formData.get().passwordlessSudoAccess);
+          accessKey,
+          airGapInstall,
+          formData.get().passwordlessSudoAccess,
+          formData.get().installNodeExporter,
+          formData.get().nodeExporterPort,
+          formData.get().nodeExporterUser
+        );
       }
     } catch(RuntimeException | IOException e) {
       LOG.error(e.getMessage());
