@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     identifier: back-up-restore-yp
-    parent: administer-yp
+    parent: administer-yugabyte-platform
     weight: 10
 isTocNested: true
 showAsideToc: true
