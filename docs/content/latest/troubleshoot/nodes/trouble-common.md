@@ -32,7 +32,7 @@ When you encounter the error below:
 Service unavailable (yb/tserver/tablet_service.cc:257): SST files limit exceeded 58 against (24, 48), score: 0.35422774182913203: 3.854s (tablet server delay 3.854s)
 ```
 
-This message is emitted when the number of SST files has exceeded it's limit. Usually the client is running a high insert/update/delete workload 
+This message is emitted when the number of SST files has exceeded its limit. Usually, the client is running a high INSERT/UPDATE/DELETE workload 
 and compactions are falling behind. 
 
 It might be worth figuring out why this error is happening. Maybe disk bandwidth, or network bandwidth, or not enough CPU in the server. 
