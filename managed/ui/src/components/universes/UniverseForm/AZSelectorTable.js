@@ -68,11 +68,27 @@ export default class AZSelectorTable extends Component {
   };
 
   handleAZNodeCountChange(listKey, value) {
-    const {universe: {universeConfigTemplate}} = this.props;
+    const {universe: {currentPlacementStatus, universeConfigTemplate}} = this.props;
     const universeTemplate = _.clone(universeConfigTemplate.data);
     const currentAZState = this.state.azItemState;
-    currentAZState[listKey].count = value;
-    this.updatePlacementInfo(currentAZState, universeTemplate);
+    const replicationFactor = currentPlacementStatus.replicationFactor;
+    const originalValue = currentAZState[listKey].count;
+    let totalNumNodes = 0;
+    currentAZState.forEach((az, index) => {
+      if (index !== listKey) {
+        totalNumNodes += az.count;
+      } else {
+        totalNumNodes += value;
+      }
+    });
+
+    if (totalNumNodes >= replicationFactor) {
+      currentAZState[listKey].count = value;
+      this.updatePlacementInfo(currentAZState, universeTemplate);
+    } else {
+      currentAZState[listKey].count = originalValue;
+      this.setState({azItemState: currentAZState});
+    }
   };
 
   handleAffinitizedZoneChange(idx) {
@@ -124,13 +140,29 @@ export default class AZSelectorTable extends Component {
       cloud.regions.data.forEach(function (regionItem) {
         const newAzList = [];
         let zoneFoundInRegion = false;
+        let newRegion = null;
+        newPlacementInfo.cloudList[0].regionList.forEach(function (region) {
+          if (region.uuid === regionItem.uuid) {
+            newRegion = region;
+          }
+        });
+
         regionItem.zones.forEach(function (zoneItem) {
+          let replicationFactor = 1;
+          if (newRegion !== null) {
+            newRegion.azList.forEach(function (az) {
+              if (az.uuid === zoneItem.uuid) {
+                replicationFactor = az.replicationFactor;
+              }
+            });
+          }
+
           currentAZState.forEach(function (azItem) {
             if (zoneItem.uuid === azItem.value) {
               zoneFoundInRegion = true;
               newAzList.push({
                 uuid: zoneItem.uuid,
-                replicationFactor: 1,
+                replicationFactor: replicationFactor,
                 subnet: zoneItem.subnet,
                 name: zoneItem.name,
                 numNodesInAZ: azItem.count,
@@ -342,6 +374,11 @@ export default class AZSelectorTable extends Component {
     const { universe: { universeConfigTemplate }, cloud: { regions }, clusterType } = this.props;
     const self = this;
     const isReadOnlyTab = clusterType === "async";
+    const clusters = _.get(universeConfigTemplate, "data.clusters", []);
+    const activeCluster = clusterType === "primary" ?
+      getPrimaryCluster(clusters) :
+      getReadOnlyCluster(clusters);
+    const replicationFactor = _.get(activeCluster, "userIntent.replicationFactor", 3);
     let azListForSelectedRegions = [];
 
     let currentCluster = null;
@@ -371,9 +408,10 @@ export default class AZSelectorTable extends Component {
           }
         }
       });
+
       if (unusedAZList.length) {
         const newAZState = [...this.state.azItemState, {
-          count: 1,
+          count: 0,
           value: unusedAZList[0].uuid,
           isAffinitized: true,
         }];
@@ -431,7 +469,7 @@ export default class AZSelectorTable extends Component {
           </FlexContainer>
           {azList}
           {isNonEmptyArray(azListForSelectedRegions) &&
-            azList.length < 3 &&
+            azList.length < replicationFactor &&
             azList.length < azListForSelectedRegions.length &&
               <Row>
                 <Col xs={4}>

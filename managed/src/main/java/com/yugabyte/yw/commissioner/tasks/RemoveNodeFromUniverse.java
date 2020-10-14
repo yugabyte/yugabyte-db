@@ -126,7 +126,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         int rfInZone = PlacementInfoUtil.getZoneRF(pi, currentNode.cloudInfo.cloud,
                                                    currentNode.cloudInfo.region,
                                                    currentNode.cloudInfo.az);
-        int nodesInZone = PlacementInfoUtil.getNumActiveTserversInZone(
+        long nodesInZone = PlacementInfoUtil.getNumActiveTserversInZone(
             universe.getNodes(), currentNode.cloudInfo.cloud,
             currentNode.cloudInfo.region, currentNode.cloudInfo.az);
 

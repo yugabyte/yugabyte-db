@@ -134,7 +134,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     Region r = Region.create(kubernetesProvider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone az = AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZoneHelper(az.uuid, pi);
+    PlacementInfoUtil.addPlacementZone(az.uuid, pi);
     Map<String, String> config = new HashMap<>();
     config.put("KUBECONFIG", "foo");
     kubernetesProvider.setConfig(config);
