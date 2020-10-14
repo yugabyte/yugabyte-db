@@ -13,14 +13,22 @@
 
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.fail;
+
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.sql.SQLException;
 import java.sql.Statement;
 
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.postgresql.copy.CopyManager;
+import org.postgresql.core.BaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
@@ -194,7 +202,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
   }
 
   @Test
-  public void testBatchTransactionInNestedTransaction() throws Exception {
+  public void testInNestedTransaction() throws Exception {
     String absFilePath = getAbsFilePath("batchSize5-copyfrom.txt");
     String copyFromTableName = "batchedTable";
     int totalLines = 20;
@@ -219,6 +227,121 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
 
       assertOneRow(statement, "SELECT COUNT(*) FROM " + copyFromTableName, 0L);
       assertOneRow(statement, "SELECT COUNT(*) FROM " + dummyTableName, 0L);
+    }
+  }
+
+  @Test
+  public void testStdinCopy() throws Exception {
+    String absFilePath = getAbsFilePath("batch-copyfrom-stdin.txt");
+    String tableName = "stdinBatchSizeTable";
+    int totalLines = 5;
+    int batchSize = 1;
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(String.format("CREATE TABLE %s (a int, b int, c int, d int)", tableName));
+      CopyManager copyManager = new CopyManager((BaseConnection) connection);
+      copyManager.copyIn(
+          String.format(
+              "COPY %s FROM STDIN WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION %s)",
+              tableName, batchSize),
+          new BufferedReader(new FileReader(absFilePath))
+      );
+
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, (long) totalLines);
+    }
+  }
+
+  @Test
+  public void tesStdinCopyInNestedTransactionWithPreviousTransaction() throws Exception {
+    String absFilePath = getAbsFilePath("batch-copyfrom-stdin-nested.txt");
+    String tableName = "stdinNestedBatchSizeTable";
+    String dummyTableName = "dummyTable";
+    int totalLines = 5;
+    int batchSize = 1;
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(String.format("CREATE TABLE %s (a int, b int, c int, d int)", tableName));
+      statement.execute(String.format("CREATE TABLE %s (a int)", dummyTableName));
+      statement.execute("BEGIN TRANSACTION");
+      statement.execute(String.format("INSERT INTO %s (a) VALUES (1)", dummyTableName));
+      try {
+        CopyManager copyManager = new CopyManager((BaseConnection) connection);
+        copyManager.copyIn(
+            String.format(
+                "COPY %s FROM STDIN WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION %s)",
+                tableName, batchSize),
+            new BufferedReader(new FileReader(absFilePath)));
+        fail(String.format("Statement did not fail: %s", INVALID_USAGE_ERROR_MSSG));
+      } catch (SQLException e) {
+          if (StringUtils.containsIgnoreCase(e.getMessage(), INVALID_USAGE_ERROR_MSSG)) {
+            LOG.info("Expected exception", e);
+          } else {
+            fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+                               e.getMessage(), INVALID_USAGE_ERROR_MSSG));
+        }
+      }
+      statement.execute("COMMIT TRANSACTION");
+
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, 0L);
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + dummyTableName, 0L);
+    }
+  }
+
+  @Test
+  public void tesStdinCopyInNestedTransactionWithProceedingTransaction() throws Exception {
+    String absFilePath = getAbsFilePath("batch-copyfrom-stdin-nested.txt");
+    String tableName = "stdinNestedBatchSizeTable";
+    String dummyTableName = "dummyTable";
+    int totalLines = 5;
+    int batchSize = 2;
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(String.format("CREATE TABLE %s (a int, b int, c int, d int)", tableName));
+      statement.execute(String.format("CREATE TABLE %s (a int)", dummyTableName));
+      statement.execute("BEGIN TRANSACTION");
+      CopyManager copyManager = new CopyManager((BaseConnection) connection);
+      copyManager.copyIn(
+          String.format(
+              "COPY %s FROM STDIN WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION %s)",
+              tableName, batchSize),
+          new BufferedReader(new FileReader(absFilePath))
+      );
+      statement.execute(String.format("INSERT INTO %s (a) VALUES (1)", dummyTableName));
+      statement.execute("COMMIT TRANSACTION");
+
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, (long) totalLines);
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + dummyTableName, 1L);
+    }
+  }
+
+  @Test
+  public void tesStdinCopyInNestedTransactionWithoutOtherTransaction() throws Exception {
+    String absFilePath = getAbsFilePath("batch-copyfrom-stdin.txt");
+    String tableName = "stdinNestedBatchSizeTable";
+    int totalLines = 5;
+    int batchSize = 1;
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(String.format("CREATE TABLE %s (a int, b int, c int, d int)", tableName));
+      statement.execute("BEGIN TRANSACTION");
+      CopyManager copyManager = new CopyManager((BaseConnection) connection);
+      copyManager.copyIn(
+          String.format(
+              "COPY %s FROM STDIN WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION %s)",
+              tableName, batchSize),
+          new BufferedReader(new FileReader(absFilePath))
+      );
+      statement.execute("COMMIT TRANSACTION");
+
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, (long) totalLines);
     }
   }
 }

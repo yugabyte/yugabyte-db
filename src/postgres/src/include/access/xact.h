@@ -440,6 +440,7 @@ extern void ExitParallelMode(void);
 extern bool IsInParallelMode(void);
 
 extern void YBMarkDataSent(void);
+extern void YBMarkDataNotSent(void);
 extern bool YBIsDataSent(void);
 
 #endif							/* XACT_H */

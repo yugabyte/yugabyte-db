@@ -1004,6 +1004,15 @@ void YBMarkDataSent(void)
 }
 
 /*
+ * Mark current transaction as having no data sent to the client.
+ */
+void YBMarkDataNotSent(void)
+{
+	TransactionState s = CurrentTransactionState;
+	s->ybDataSent = false;
+}
+
+/*
  * Whether some data has been transmitted to frontend as part of this transaction.
  */
 bool YBIsDataSent(void)
