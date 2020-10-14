@@ -621,8 +621,11 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   }
   if (wait && resp.has_indexed_table()) {
     auto res = WaitUntilIndexPermissionsAtLeast(
-        client, resp.indexed_table().table_id(), resp.table_id(), deadline,
-        IndexPermissions::INDEX_PERM_NOT_USED);
+        client,
+        resp.indexed_table().table_id(),
+        resp.table_id(),
+        IndexPermissions::INDEX_PERM_NOT_USED,
+        deadline);
     if (!res && !res.status().IsNotFound()) {
       LOG(WARNING) << "Waiting for the index to be deleted from the indexed table, got " << res;
       return res.status();
@@ -1657,21 +1660,37 @@ Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
     const TableId& table_id,
     const TableId& index_id,
     const CoarseTimePoint deadline) {
-  std::shared_ptr<YBTableInfo> yb_table_info = std::make_shared<YBTableInfo>();
-  Synchronizer sync;
+  YBTableInfo yb_table_info;
 
-  RETURN_NOT_OK(GetTableSchemaById(client,
-                                   table_id,
-                                   deadline,
-                                   yb_table_info,
-                                   sync.AsStatusCallback()));
-  Status s = sync.Wait();
-  if (!s.ok()) {
-    return s;
-  }
+  RETURN_NOT_OK(GetTableSchema(client,
+                               table_id,
+                               deadline,
+                               &yb_table_info));
 
   const IndexInfo* index_info =
-      VERIFY_RESULT(yb_table_info->index_map.FindIndex(index_id));
+      VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+  return index_info->index_permissions();
+}
+
+Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
+    YBClient* client,
+    const YBTableName& table_name,
+    const YBTableName& index_name,
+    const CoarseTimePoint deadline) {
+  YBTableInfo yb_table_info;
+  YBTableInfo yb_index_info;
+
+  RETURN_NOT_OK(GetTableSchema(client,
+                               table_name,
+                               deadline,
+                               &yb_table_info));
+  RETURN_NOT_OK(GetTableSchema(client,
+                               index_name,
+                               deadline,
+                               &yb_index_info));
+
+  const IndexInfo* index_info =
+      VERIFY_RESULT(yb_table_info.index_map.FindIndex(yb_index_info.table_id));
   return index_info->index_permissions();
 }
 
@@ -1679,34 +1698,60 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
     YBClient* client,
     const TableId& table_id,
     const TableId& index_id,
+    const IndexPermissions& target_index_permissions,
     const CoarseTimePoint deadline,
-    const IndexPermissions& target_index_permissions) {
+    const CoarseDuration max_wait) {
+  const bool retry_on_not_found = (target_index_permissions != INDEX_PERM_NOT_USED);
+  IndexPermissions actual_index_permissions = INDEX_PERM_NOT_USED;
   RETURN_NOT_OK(RetryFunc(
       deadline,
       "Waiting for index to have desired permissions",
       "Timed out waiting for proper index permissions",
       [&](CoarseTimePoint deadline, bool* retry) -> Status {
         Result<IndexPermissions> result = GetIndexPermissions(client, table_id, index_id, deadline);
-        // Treat NotFound as success if we are looking for INDEX_PERM_NOT_USED.
-        if (!result && result.status().IsNotFound() &&
-            target_index_permissions == IndexPermissions::INDEX_PERM_NOT_USED) {
-          LOG(INFO) << "Waiting to delete index " << index_id << " from table " << table_id
-                    << " got " << result.ToString();
-          *retry = false;
-          return Status::OK();
+        if (!result) {
+          *retry = retry_on_not_found;
+          return result.status();
         }
-        IndexPermissions actual_index_permissions = VERIFY_RESULT(result);
+        actual_index_permissions = VERIFY_RESULT(result);
         *retry = actual_index_permissions < target_index_permissions;
         return Status::OK();
       },
-      50ms /* max_wait */));
-  // Now, the index permissions are guaranteed to be at (or beyond) the target.  Query again to
-  // return it.
-  return GetIndexPermissions(
-      client,
-      table_id,
-      index_id,
-      deadline);
+      max_wait));
+  // Now, the index permissions are guaranteed to be at (or beyond) the target.
+  return actual_index_permissions;
+}
+
+Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
+    YBClient* client,
+    const YBTableName& table_name,
+    const YBTableName& index_name,
+    const IndexPermissions& target_index_permissions,
+    const CoarseTimePoint deadline,
+    const CoarseDuration max_wait) {
+  const bool retry_on_not_found = (target_index_permissions != INDEX_PERM_NOT_USED);
+  IndexPermissions actual_index_permissions = INDEX_PERM_NOT_USED;
+  RETURN_NOT_OK(RetryFunc(
+      deadline,
+      "Waiting for index to have desired permissions",
+      "Timed out waiting for proper index permissions",
+      [&](CoarseTimePoint deadline, bool* retry) -> Status {
+        Result<IndexPermissions> result = GetIndexPermissions(
+            client,
+            table_name,
+            index_name,
+            deadline);
+        if (!result) {
+          *retry = retry_on_not_found;
+          return result.status();
+        }
+        actual_index_permissions = VERIFY_RESULT(result);
+        *retry = actual_index_permissions < target_index_permissions;
+        return Status::OK();
+      },
+      max_wait));
+  // Now, the index permissions are guaranteed to be at (or beyond) the target.
+  return actual_index_permissions;
 }
 
 void YBClient::Data::CreateCDCStream(YBClient* client,
