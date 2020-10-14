@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import { Alert, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import * as moment from 'moment';
 import { sortBy, values } from 'lodash';
@@ -9,7 +10,7 @@ import { YBLoading } from '../../../../components/common/indicators';
 import TreeNode from '../../../../components/common/TreeNode';
 import { YBPanelItem } from '../../../../components/panels';
 import { Panel } from 'react-bootstrap';
-import { isNonEmptyArray, isEmptyArray } from '../../../../utils/ObjectUtils';
+import { isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { UniverseAction } from '../../../universes';
 import { isDisabled } from '../../../../utils/LayoutUtils';
@@ -18,6 +19,16 @@ import './UniverseHealthCheckList.scss';
 
 const UniverseHealthCheckList = props => {
   const {universe: {healthCheck, currentUniverse}, currentCustomer} = props;
+  let nodesCronStatus = <span/>;
+  const inactiveCronNodes = getNodesWithInactiveCrons(currentUniverse.data).join(", ");
+  if (isNonEmptyString(inactiveCronNodes)) {
+    nodesCronStatus = (
+      <Alert bsStyle="warning" className="pre-provision-message">
+        Warning: cronjobs are not active on some nodes ({inactiveCronNodes})
+      </Alert>
+    );
+  }
+
   let content = <span/>;
   if (getPromiseState(healthCheck).isLoading()) {
     content = <YBLoading />;
@@ -42,15 +53,20 @@ const UniverseHealthCheckList = props => {
       className=" UniverseHealthCheckList"
       header={
         <div className="clearfix">
-          <div className="pull-left">
-            <h2>Health Checks</h2>
-          </div>
-          <div className="pull-right">
-            <div className="backup-action-btn-group">
-              <UniverseAction className="table-action" universe={currentUniverse.data}
-                actionType="alert-config" btnClass={"btn-orange"} disabled={actions_disabled} />
+          <Row>
+            <div className="pull-left">
+              <h2>Health Checks</h2>
             </div>
-          </div>
+            <div className="pull-right">
+              <div className="backup-action-btn-group">
+                <UniverseAction className="table-action" universe={currentUniverse.data}
+                  actionType="alert-config" btnClass={"btn-orange"} disabled={actions_disabled} />
+              </div>
+            </div>
+          </Row>
+          <Row>
+            {nodesCronStatus}
+          </Row>
         </div>
       }
       body={
@@ -205,6 +221,16 @@ function prepareData(data) {
     });
     return {timestampMoment, nodes, healthyNodes, errorNodes};
   });
+}
+
+const getNodesWithInactiveCrons = (universe) => {
+  let nodes = [];
+  universe.universeDetails.nodeDetailsSet.forEach(function(nodeDetails){
+    if (!nodeDetails.cronsActive) {
+      nodes.push(nodeDetails.nodeName);
+    }
+  })
+  return nodes;
 }
 
 const getKeyForCheck = check => `${check.node}-${check.process}-${check.message}`;

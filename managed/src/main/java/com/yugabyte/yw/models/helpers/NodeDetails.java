@@ -103,6 +103,9 @@ public class NodeDetails {
   // Which port node_exporter is running on.
   public int nodeExporterPort = 9300;
 
+  // True if cronjobs were properly configured for this node.
+  public boolean cronsActive = true;
+
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
   public static final Set<NodeState> IN_TRANSIT_STATES =
       ImmutableSet.of(NodeState.Removed, NodeState.Stopped, NodeState.Decommissioned);

@@ -22,7 +22,7 @@ from texttable import Texttable
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
-    generate_random_password, validated_key_file, format_rsa_key
+    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status
 from ansible_vault import Vault
 from ybops.utils import generate_rsa_keypair, scp_package_to_tmp
 
@@ -440,6 +440,26 @@ class UpdateDiskMethod(AbstractInstancesMethod):
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         self.cloud.expand_file_system(args, ssh_options)
+
+
+class CronCheckMethod(AbstractInstancesMethod):
+    """Superclass for checking cronjob status on specified node.
+    """
+    def __init__(self, base_command):
+        super(CronCheckMethod, self).__init__(base_command, "croncheck")
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args)
+        ssh_options = {
+            "ssh_user": args.ssh_user,
+            "private_key_file": args.private_key_file
+        }
+        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        if not validate_cron_status(
+                ssh_options['ssh_host'], ssh_options['ssh_port'], ssh_options['ssh_user'],
+                ssh_options['private_key_file']):
+            raise YBOpsRuntimeError(
+                'Failed to find cronjobs on host {}'.format(ssh_options['ssh_host']))
 
 
 class ConfigureInstancesMethod(AbstractInstancesMethod):
