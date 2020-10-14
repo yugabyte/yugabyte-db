@@ -254,6 +254,8 @@ void HandleConsensusStatusPage(
     *output << "Tablet " << EscapeForHtmlToString(tablet_id) << " not running";
     return;
   }
+
+  *output << "<h1>Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>\n";
   consensus->DumpStatusHtml(*output);
 }
 
