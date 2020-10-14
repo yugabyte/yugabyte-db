@@ -15,14 +15,24 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.stream.Collectors;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class AnsibleConfigureServers extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleConfigureServers.class);
@@ -61,6 +71,48 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     if (taskParams().type == UpgradeUniverse.UpgradeTaskType.Everything &&
         !taskParams().updateMasterAddrsOnly) {
+      // Check cronjob status if installing software.
+      response = getNodeManager().nodeCommand(
+          NodeManager.NodeCommandType.CronCheck, taskParams());
+
+      // Create an alert if the cronjobs failed to be created on this node.
+      if (response.code != 0) {
+        Universe universe = Universe.get(taskParams().universeUUID);
+        Customer cust = Customer.get(universe.customerId);
+        String alertErrCode = "CRON_CREATION_FAILURE";
+        String nodeName = taskParams().nodeName;
+        String alertMsg = "Universe %s was successfully created but failed to " +
+                          "create cronjobs on some nodes (%s)";
+
+        // Persist node cronjob status into the DB.
+        UniverseUpdater updater = new UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            NodeDetails node = universe.getNode(nodeName);
+            node.cronsActive = false;
+            LOG.info(
+              "Updated " + nodeName + " cronjob status to inactive from universe "
+                + taskParams().universeUUID);
+          }
+        };
+        Universe.saveDetails(taskParams().universeUUID, updater);
+
+        // Create new alert or update existing alert with current node name if alert already exists.
+        if (Alert.exists(alertErrCode, universe.universeUUID)) {
+          Alert cronAlert = Alert.get(cust.uuid, alertErrCode, universe.universeUUID);
+          List<String> failedNodesList = universe.getNodes().stream()
+              .map(nodeDetail -> nodeDetail.nodeName)
+              .collect(Collectors.toList());
+          String failedNodesString = String.join(", ", failedNodesList);
+          cronAlert.update(String.format(alertMsg, universe.name, failedNodesString));
+        } else {
+          Alert.create(
+            cust.uuid, universe.universeUUID, Alert.TargetType.UniverseType, alertErrCode,
+            "Warning", String.format(alertMsg, universe.name, nodeName));
+        }
+      }
+
       // We set the node state to SoftwareInstalled when configuration type is Everything.
       // TODO: Why is upgrade task type used to map to node state update?
       setNodeState(NodeDetails.NodeState.SoftwareInstalled);

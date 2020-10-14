@@ -63,4 +63,17 @@ public class AlertTest extends FakeDBApplication {
     assertThat(cust2Alerts, not(hasItem(alert1)));
     assertThat(cust2Alerts, hasItem(alert2));
   }
+
+  @Test
+  public void testAlertsUniverseType() {
+    Universe u = ModelFactory.createUniverse();
+    Alert alert = Alert.create(cust1.uuid, u.universeUUID, Alert.TargetType.UniverseType,
+                               "TEST_ALERT_1", "Warning", "Testing alert.");
+    assertNotNull(alert.uuid);
+    assertEquals(cust1.uuid, alert.customerUUID);
+    assertEquals(u.universeUUID, alert.targetUUID);
+    assertEquals(Universe.class, alert.targetType.getType());
+    assertEquals("Warning", alert.type);
+    assertEquals("Testing alert.", alert.message);
+}
 }

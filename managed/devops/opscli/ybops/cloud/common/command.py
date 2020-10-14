@@ -13,7 +13,7 @@ from ybops.cloud.common.base import AbstractPerCloudCommand
 from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesMethod, \
     DestroyInstancesMethod, ListInstancesMethod, ConfigureInstancesMethod, \
     ControlInstanceMethod, AbstractMethod, AccessCreateVaultMethod, InitYSQLMethod, \
-    UpdateDiskMethod
+    UpdateDiskMethod, CronCheckMethod
 
 
 class InstanceCommand(AbstractPerCloudCommand):
@@ -35,6 +35,7 @@ class InstanceCommand(AbstractPerCloudCommand):
         self.add_method(ConfigureInstancesMethod(self))
         self.add_method(InitYSQLMethod(self))
         self.add_method(UpdateDiskMethod(self))
+        self.add_method(CronCheckMethod(self))
 
 
 class NetworkCommand(AbstractPerCloudCommand):

@@ -240,7 +240,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   @Test
   public void testAddNodeSuccess() {
     TaskInfo taskInfo = submitTask(DEFAULT_NODE_NAME, 3);
-    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -266,8 +266,8 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID, updater);
 
     TaskInfo taskInfo = submitTask(DEFAULT_NODE_NAME, 4);
-    // 5 calls for setting up the server and then 6 calls for setting the conf files.
-    verify(mockNodeManager, times(11)).nodeCommand(any(), any());
+    // 5 calls for setting up the server, 6 calls for setting the conf files, 1 to check cronjobs.
+    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
