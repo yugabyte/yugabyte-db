@@ -9,7 +9,7 @@ Build-Depends:
 Package: percona-pg-stat-monitor@@PG_REL@@
 Architecture: any
 Depends:
- percona-postgresql-@@PG_REL@@,
+ percona-postgresql-@@PG_REL@@ | postgresql-@@PG_REL@@,
  ${misc:Depends},
  ${shlibs:Depends},
 Description: The pg_stat_monitor is statistics collector tool
