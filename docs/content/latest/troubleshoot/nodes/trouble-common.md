@@ -20,7 +20,7 @@ W1001 10:23:00.969424 22338 cluster_balance.cc:232] Skipping add replicas for 21
 Operation failed. Try again. Cannot add replicas. Currently have a total overreplication of 1, when max allowed is 1
 ```
 
-This message is harmless. It means that the maximum number of concurrent tablets being remote bootstrapped across the
+This message is harmless and can be ignored. It means that the maximum number of concurrent tablets being remote bootstrapped across the
  cluster by the YB-Master load balancer has reached its limit. 
  This limit is configured in `--load_balancer_max_concurrent_tablet_remote_bootstraps` in 
  [yb-master config](../../../reference/configuration/yb-master#load-balancer-max-concurrent-tablet-remote-bootstraps).
