@@ -21,7 +21,7 @@ Operation failed. Try again. Cannot add replicas. Currently have a total overrep
 ```
 
 This message is harmless. It means that the maximum number of concurrent tablets being remote bootstrapped across the
- cluster by the yb-master load balancer has reached it's limit. 
+ cluster by the YB-Master load balancer has reached its limit. 
  This limit is configured in `--load_balancer_max_concurrent_tablet_remote_bootstraps` in 
  [yb-master config](../../../reference/configuration/yb-master#load-balancer-max-concurrent-tablet-remote-bootstraps).
 
@@ -51,4 +51,3 @@ When a DDL runs in the middle of the DML query, the Catalog Version is changed a
 
 In these cases, the database aborts the query and returns a `40001` PostgreSQL error code. Errors with this code can be safely
 retried from the client side. 
-
