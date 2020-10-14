@@ -3309,9 +3309,21 @@ BeginCopyFrom(ParseState *pstate,
 	{
 		Assert(!is_program);	/* the grammar does not allow this */
 		if (whereToSendOutput == DestRemote)
+		{
+			bool isDataSent = YBIsDataSent();
 			ReceiveCopyBegin(cstate);
-		else
+			/*
+			 * ReceiveCopyBegin sends a message back to the client
+			 * with the expected format of the copy data.
+			 * This implicitly causes YB data to be marked as sent
+			 * although the message does not contain any data from YB.
+			 * So we can safely roll back YBIsDataSent to its previous value.
+			 */
+			if (!isDataSent) YBMarkDataNotSent();
+		}
+		else {
 			cstate->copy_file = stdin;
+		}
 	}
 	else
 	{
