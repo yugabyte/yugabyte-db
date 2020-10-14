@@ -7,7 +7,7 @@ Summary:        Statistics collector for PostgreSQL
 Name:           %{sname}%{pgrel}
 Version:        @@VERSION@@
 Release:        %{rpm_release}%{?dist}
-License:        Apache 2.0
+License:        PostgreSQL
 Source0:        %{sname}%{pgrel}-%{version}.tar.gz
 URL:            https://github.com/Percona-Lab/pg_stat_monitor
 BuildRequires:  percona-postgresql%{pgrel}-devel
