@@ -441,7 +441,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    assertInternalServerError(result, "No AZ found for region: " + r.uuid);
+    assertInternalServerError(result, "No AZ found across regions: [" + r.uuid + "]");
     assertAuditEntry(0, customer.uuid);
   }
 

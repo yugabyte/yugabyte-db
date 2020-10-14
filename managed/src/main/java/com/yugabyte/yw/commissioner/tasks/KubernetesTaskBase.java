@@ -97,7 +97,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<String, String> config = entry.getValue();
 
       PlacementInfo tempPI = new PlacementInfo();
-      PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
+      PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
 
       int currNumTservers = 0, currNumMasters = 0;
       int newNumMasters = newPlacement.masters.getOrDefault(azUUID, 0);
@@ -152,7 +152,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             masterAddresses, config));
 
         // Add zone to active configs.
-        PlacementInfoUtil.addPlacementZoneHelper(azUUID, activeZones);
+        PlacementInfoUtil.addPlacementZone(azUUID, activeZones);
       }
     }
 
@@ -178,7 +178,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
 
       PlacementInfo tempPI = new PlacementInfo();
-      PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
+      PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
 
       int currNumMasters = 0, currNumTservers = 0;
       int newNumMasters = newPlacement.masters.getOrDefault(azUUID, 0);
@@ -264,7 +264,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       }
       if (keepDeployment) {
         PlacementInfo tempPI = new PlacementInfo();
-        PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
+        PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
         tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
             newPlacement.tservers.get(azUUID);
         tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =

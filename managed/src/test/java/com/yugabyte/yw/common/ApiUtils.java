@@ -100,8 +100,11 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-        PlacementInfo placementInfo = PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY,
-                                                                         userIntent);
+        PlacementInfo placementInfo = PlacementInfoUtil.getPlacementInfo(
+          ClusterType.PRIMARY,
+          userIntent,
+          userIntent.replicationFactor
+        );
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
@@ -236,7 +239,7 @@ public class ApiUtils {
         universe.setUniverseDetails(universeDetails);
       }
     };
-  }  
+  }
 
   public static UserIntent getDefaultUserIntent(Customer customer) {
     Provider p = ModelFactory.awsProvider(customer);
