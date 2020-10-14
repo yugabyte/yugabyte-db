@@ -120,11 +120,31 @@
   color: $YB_ORANGE;
 }
 
-.pre-provision-message .yb-code-block {
-  margin-top: 5px;
-  margin-bottom: -5px;
-}
+.UniverseHealthCheckList {
+  .header .row {
+    margin-right: 0px;
+    margin-left: 0px;
+  }
 
+  .pre-provision-message .yb-code-block {
+    margin-top: 5px;
+    margin-bottom: -5px;
+  }
+  .alert.pre-provision-message {
+    position: relative;
+    z-index: 980;
+    width: fit-content;
+    margin: 0 auto;
+    left: unset;
+
+    @media screen and (min-width: 1440px) {
+      position: absolute;
+      top: 10px;
+      width: 600px;
+      left: calc(50% - 300px);
+    }
+  }
+}
 
 .onprem-nodes-table.react-bs-table-container {
   margin-top: 90px;
@@ -142,5 +162,5 @@
       }
     }
   }
- 
+
 }

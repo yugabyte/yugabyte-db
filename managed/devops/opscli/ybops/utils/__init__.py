@@ -574,6 +574,42 @@ def validate_instance(host_name, port, username, ssh_key_file, mount_paths):
         ssh_client.close()
 
 
+def validate_cron_status(host_name, port, username, ssh_key_file):
+    """This method tries to ssh to the host with the username provided on the port, checks if
+    our expected cronjobs are present, and returns true if they are. Any failure, including SSH
+    issues will cause it to return false.
+    Args:
+        host_name (str): SSH host IP address
+        port (int): SSH port
+        username (str): SSH username
+        ssh_key_file (str): SSH key file
+    Returns:
+        bool: true if all cronjobs are present, false otherwise (or if errored)
+    """
+    ssh_key = paramiko.RSAKey.from_private_key_file(ssh_key_file)
+    ssh_client = get_ssh_client()
+
+    try:
+        # Try to connect via SSH
+        ssh_client.connect(hostname=host_name,
+                           username=username,
+                           pkey=ssh_key,
+                           port=port,
+                           timeout=SSH_TIMEOUT,
+                           banner_timeout=SSH_TIMEOUT)
+
+        _, stdout, stderr = ssh_client.exec_command("crontab -l")
+        cronjobs = ["clean_cores.sh", "zip_purge_yb_logs.sh", "yb-server-ctl.sh tserver"]
+        return len(stderr.readlines()) == 0 and all(cron in stdout for cron in cronjobs)
+    except (paramiko.ssh_exception.NoValidConnectionsError,
+            paramiko.ssh_exception.AuthenticationException,
+            paramiko.ssh_exception.SSHException,
+            socket.timeout, socket.error):
+        return False
+    finally:
+        ssh_client.close()
+
+
 def scp_package_to_tmp(package, host, user, port, private_key):
     dest_path = os.path.join("/tmp", os.path.basename(package))
     logging.info("Copying package from local '{}' to remote '{}'".format(

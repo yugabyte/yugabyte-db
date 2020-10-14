@@ -62,6 +62,7 @@ public class NodeManager extends DevopsBase {
   public enum NodeCommandType {
     Provision,
     Configure,
+    CronCheck,
     Destroy,
     List,
     Control,
@@ -550,6 +551,12 @@ public class NodeManager extends DevopsBase {
           commandArgs.addAll(getDeviceArgs(taskParam));
         }
         break;
+      }
+      case CronCheck: {
+        if (!(nodeTaskParam instanceof AnsibleConfigureServers.Params)) {
+          throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
+        }
+        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
       }
     }
     commandArgs.add(nodeTaskParam.nodeName);
