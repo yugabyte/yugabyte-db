@@ -47,7 +47,7 @@ org.postgresql.util.PSQLException: ERROR: Catalog Version Mismatch: A DDL occurr
 ```
 
 A DML query in YSQL may touch multiple servers, and each server has a Catalog Version which is used to track schema changes.
-When a DDL runs in the middle of the DML query, the Catalog Version is changed and the query has a mismatch, causing it to fail.
+When a DDL statement runs in the middle of the DML query, the Catalog Version is changed and the query has a mismatch, causing it to fail.
 
 In these cases, the database aborts the query and returns a `40001` PostgreSQL error code. Errors with this code can be safely
 retried from the client side. 
