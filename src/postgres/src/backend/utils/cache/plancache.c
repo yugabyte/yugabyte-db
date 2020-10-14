@@ -1552,6 +1552,8 @@ AcquireExecutorLocks(List *stmt_list, bool acquire)
 			else
 				lockmode = AccessShareLock;
 
+			Assert(lockmode == rte->rellockmode);
+
 			if (acquire)
 				LockRelationOid(rte->relid, lockmode);
 			else
@@ -1622,6 +1624,8 @@ ScanQueryForLocks(Query *parsetree, bool acquire)
 					lockmode = RowShareLock;
 				else
 					lockmode = AccessShareLock;
+				Assert(lockmode == rte->rellockmode ||
+					   (lockmode == AccessShareLock && rte->rellockmode == RowExclusiveLock));
 				if (acquire)
 					LockRelationOid(rte->relid, lockmode);
 				else
