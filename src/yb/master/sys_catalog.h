@@ -157,10 +157,19 @@ class SysCatalogTable {
 
   CHECKED_STATUS Visit(VisitorBase* visitor);
 
-  // Read the ysql catalog version info from the pg_yb_catalog_verison catalog table.
+  // Read the ysql catalog version info from the pg_yb_catalog_version catalog table.
   Status ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
                                 uint64_t *catalog_version,
                                 uint64_t *last_breaking_version);
+
+  // Read the pg_tablespace catalog table and populate 'tablespace_map' with
+  // placement information pertaining to the tablespace.
+  Status ReadYsqlTablespaceInfo(
+    TableId ysql_tablespace_table_id,
+    unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>> *tablespace_map);
+
+  // Parse the binary value present in ql_value into ReplicationInfoPB.
+  Result<boost::optional<ReplicationInfoPB>> ParseReplicationInfo(const QLValuePB& ql_value);
 
   // Copy the content of co-located tables in sys catalog as a batch.
   CHECKED_STATUS CopyPgsqlTables(const std::vector<TableId>& source_table_ids,

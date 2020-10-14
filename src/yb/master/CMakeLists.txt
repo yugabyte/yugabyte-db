@@ -56,6 +56,12 @@ set(MASTER_PROTO_LIBS
   master_proto
   ${MASTER_PROTO_LIBS_EXTENSIONS})
 
+include_directories(${YB_BUILD_ROOT}/postgres/include/server)
+
+# TODO: find a way to add this only to the top-level CMakeLists.txt file.
+# See https://github.com/yugabyte/yugabyte-db/issues/5853 for more details.
+allow_using_postgres_libraries()
+
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
@@ -124,7 +130,9 @@ target_link_libraries(master
   rpc_header_proto
   master_util
   version_info_proto
-  yb_pggate_flags)
+  yb_pggate_flags
+  yb_pggate
+)
 
 set(MASTER_RPC_SRCS
   master_rpc.cc)

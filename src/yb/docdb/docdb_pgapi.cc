@@ -151,6 +151,37 @@ Status DocPgEvalExpr(const std::string& expr_str,
   return s;
 }
 
+// TODO: Investigate if we can make this generic, i.e. extract an
+// array of any type from binary value of any type.
+Status ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value,
+                                         vector<string> *const options) {
+  PG_RETURN_NOT_OK(YbgPrepareMemoryContext());
+  auto size = ql_value.binary_value().size();
+  auto val = const_cast<char *>(ql_value.binary_value().c_str());
+
+  // TODO (deepthi.srinivasan): Typmod is assumed to be -1,
+  // Typmod should ideally be passed down to this function,
+  // investigate how to get this value.
+  // Find the appropriate .h file for TEXTARRAYOID=1009 constant.
+  YbgTypeDesc pg_arg_type = {1009, -1 /* typmod */};
+  const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
+
+  YBCPgTypeAttrs type_attrs = {-1};
+  uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8_t *>(val), size, &type_attrs);
+
+  // Now datum contains a char array pointer. We need to deconstruct this into elements.
+  char  **result_array;
+  const int num_results = YbgDecodeTextArrayToCString(datum, &result_array);
+  for (int ii = 0; ii < num_results; ++ii) {
+    // TODO: Argh! String copy being incurred here. This might be okay for tablespaces which will be
+    // small in number, but investigate making this efficient. Or maybe this function returns a
+    // char array but tablespaces processing function alone can convert to string to take advantage
+    // of fancy string splits.
+    options->emplace_back(string(result_array[ii]));
+  }
+  PG_RETURN_NOT_OK(YbgResetMemoryContext());
+  return Status::OK();
+}
 
 }  // namespace docdb
 }  // namespace yb

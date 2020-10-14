@@ -917,6 +917,7 @@ stmt :
 			| CreatePolicyStmt
 			| CreateRoleStmt
 			| CreateSchemaStmt
+			| CreateTableSpaceStmt
 			| CreateTrigStmt
 			| CreateUserStmt
 			| CreatedbStmt
@@ -1001,7 +1002,6 @@ stmt :
 			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateTableSpaceStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DeclareCursorStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -4314,14 +4314,13 @@ OptTableGroup:
 		;
 
 OptTableSpace:
-			TABLESPACE name { parser_ybc_signal_unsupported(@1, "TABLESPACE", 1129); $$ = $2; }
+			TABLESPACE name { $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
 OptConsTableSpace:
 			USING INDEX TABLESPACE name
 				{
-					parser_ybc_signal_unsupported(@1, "USING INDEX TABLESPACE", 1129);
 					$$ = $4;
 				}
 			| /*EMPTY*/								{ $$ = NULL; }
@@ -4832,19 +4831,26 @@ DropTableGroupStmt: DROP TABLEGROUP name
 /*****************************************************************************
  *
  *		QUERY:
- *             CREATE TABLESPACE tablespace LOCATION '/path/to/tablespace/'
+ *             CREATE TABLESPACE tablespace
  *
  *****************************************************************************/
 
-CreateTableSpaceStmt: CREATE TABLESPACE name OptTableSpaceOwner LOCATION Sconst opt_reloptions
+/* Should a separate YBCreateTableSpaceStmt be created to keep the old grammar
+ * around or can it be safely discarded as we may never store files in
+ * directories?
+ * How will specifying an owner affect the tables in the tablespace with
+ * regards to placement? Should this be removed?
+ * Will specifying a tablespace for parent partition trickle down to child
+ * partitions? Is that what we want?
+*/
+CreateTableSpaceStmt: CREATE TABLESPACE name OptTableSpaceOwner opt_reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE TABLESPACE", 1153);
 					CreateTableSpaceStmt *n = makeNode(CreateTableSpaceStmt);
 					n->tablespacename = $3;
 					n->owner = $4;
-					n->location = $6;
-					n->options = $7;
+					n->options = $5;
 					$$ = (Node *) n;
+
 				}
 		;
 

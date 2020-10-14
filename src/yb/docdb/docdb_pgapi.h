@@ -58,6 +58,9 @@ Status DocPgEvalExpr(const std::string& expr_str,
                      const Schema *schema,
                      QLValue* result);
 
+Status ExtractTextArrayFromQLBinaryValue(const QLValuePB& input,
+                                         std::vector<string> *options);
+
 } // namespace docdb
 } // namespace yb
 

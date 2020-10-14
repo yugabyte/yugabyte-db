@@ -55,7 +55,8 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   TupleDesc desc,
 						   Oid relationId,
 						   Oid namespaceId,
-						   Oid tablegroupId);
+						   Oid tablegroupId,
+						   Oid tablespaceId);
 
 extern void YBCDropTable(Oid relationId);
 
@@ -70,7 +71,8 @@ extern void YBCCreateIndex(const char *indexName,
 						   Relation rel,
 						   OptSplit *split_options,
 						   const bool skip_index_backfill,
-						   Oid tablegroupId);
+						   Oid tablegroupId,
+						   Oid tablespaceId);
 
 extern void YBCDropIndex(Oid relationId);
 

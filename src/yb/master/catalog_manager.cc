@@ -1514,7 +1514,8 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
 }
 
 Result<ReplicationInfoPB> CatalogManager::ResolveReplicationInfo(
-  const ReplicationInfoPB& table_replication_info) {
+  const ReplicationInfoPB& table_replication_info,
+  const string& tablespace_id) {
 
   if (IsReplicationInfoSet(table_replication_info)) {
       // The table has custom replication info set for it, return it if valid.
@@ -1522,10 +1523,58 @@ Result<ReplicationInfoPB> CatalogManager::ResolveReplicationInfo(
       return table_replication_info;
   }
 
-  // Table level replication info not set. Return cluster level
+  // Table level replication info not set. Check whether the table is
+  // associated with a tablespace and if so, return the tablespace
   // replication info.
+  boost::optional<ReplicationInfoPB> tablespace_replication_info =
+    VERIFY_RESULT(GetTablespaceReplicationInfo(tablespace_id));
+  if (tablespace_replication_info) {
+    // The tablespace did have placement information associated with it.
+    // Return tablespace replication info.
+    return tablespace_replication_info.value();
+  }
+
+  // Neither table nor tablespace info set. Return cluster level replication info.
   auto l = cluster_config_->LockForRead();
   return l->data().pb.replication_info();
+}
+
+Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfo(
+  const string& tablespace_id) {
+
+  if (tablespace_id.empty()) {
+    // No tablespace id passed in. Return.
+    return boost::none;
+  }
+
+  // Lookup tablespace placement info in tablespace_placement_map_.
+  {
+    SharedLock<LockType> l(tablespace_lock_);
+    auto iter = tablespace_placement_map_.find(tablespace_id);
+    if (iter != tablespace_placement_map_.end()) {
+      return iter->second;
+    }
+  }
+
+  // Given tablespace id was not found in the map.
+  // Read pg_tablespace table to see if this is a new tablespace.
+  auto table_info = GetTableInfo(kPgTablespaceTableId);
+  if (table_info == nullptr) {
+    // Should this be UninitializedError?
+    return STATUS(InternalError, "pg_tablespace table info not found");
+  }
+  {
+    std::lock_guard<LockType> l(tablespace_lock_);
+    tablespace_placement_map_.clear();
+    sys_catalog_->ReadYsqlTablespaceInfo(kPgTablespaceTableId,
+      &tablespace_placement_map_);
+    auto iter = tablespace_placement_map_.find(tablespace_id);
+    if (iter != tablespace_placement_map_.end()) {
+      return iter->second;
+    }
+  }
+  return STATUS(InternalError, "pg_tablespace info for tablespace " +
+    tablespace_id + " not found");
 }
 
 bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
@@ -2249,7 +2298,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Get placement info.
   const ReplicationInfoPB& replication_info = VERIFY_RESULT(
-  ResolveReplicationInfo(req.replication_info()));
+    ResolveReplicationInfo(req.replication_info(), req.tablespace_id()));
 
   // Calculate number of tablets to be used.
   int num_tablets = req.schema().table_properties().num_tablets();
@@ -3002,6 +3051,9 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
   if (req.has_replication_info()) {
     metadata->mutable_replication_info()->CopyFrom(req.replication_info());
+  }
+  if (req.has_tablespace_id()) {
+    metadata->set_tablespace_id(req.tablespace_id());
   }
   // Use the Schema object passed in, since it has the column IDs already assigned,
   // whereas the user request PB does not.
@@ -7146,7 +7198,7 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   }
 
   const ReplicationInfoPB& replication_info = VERIFY_RESULT(ResolveReplicationInfo(
-    table_guard->data().pb.replication_info()));
+    table_guard->data().pb.replication_info(), table_guard->data().pb.tablespace_id()));
 
   // Select the set of replicas for the tablet.
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()

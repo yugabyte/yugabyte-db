@@ -120,18 +120,14 @@ Status ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
   const auto& table_id = tablet->table()->id();
   // Set the placement information on a per-table basis, only once.
   if (!state_->placement_by_table_.count(table_id)) {
-    PlacementInfoPB pb;
+    ReplicationInfoPB pb;
     {
       auto l = tablet->table()->LockForRead();
-      // If we have a custom per-table placement policy, use that.
-      if (l->data().pb.replication_info().has_live_replicas()) {
-        pb.CopyFrom(l->data().pb.replication_info().live_replicas());
-      } else {
-        // Otherwise, default to cluster policy.
-        pb.CopyFrom(GetClusterPlacementInfo());
-      }
+      pb = VERIFY_RESULT(catalog_manager_->ResolveReplicationInfo(
+          l->data().pb.replication_info(),
+          l->data().pb.tablespace_id()));
     }
-    state_->placement_by_table_[table_id] = std::move(pb);
+    state_->placement_by_table_[table_id] = std::move(pb.live_replicas());
   }
 
   return state_->UpdateTablet(tablet);

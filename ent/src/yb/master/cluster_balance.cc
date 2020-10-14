@@ -97,10 +97,10 @@ Result<bool> ClusterLoadBalancer::HandleLeaderLoadIfNonAffinitized(TabletId* mov
 void ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb) {
   auto l = tablet->table()->LockForRead();
   const Options* options_ent = GetEntState()->GetEntOptions();
-  if (options_ent->type == LIVE &&
-      l->data().pb.has_replication_info() &&
-      l->data().pb.replication_info().has_live_replicas()) {
-    pb->CopyFrom(l->data().pb.replication_info().live_replicas());
+  if (options_ent->type == LIVE) {
+    ReplicationInfoPB replication_info = CHECK_RESULT(catalog_manager_->ResolveReplicationInfo(
+      l->data().pb.replication_info(), l->data().pb.tablespace_id()));
+    pb->CopyFrom(replication_info.live_replicas());
   } else if (options_ent->type == READ_ONLY &&
       l->data().pb.has_replication_info() &&
       !l->data().pb.replication_info().read_replicas().empty()) {

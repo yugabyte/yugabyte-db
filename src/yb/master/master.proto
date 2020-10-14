@@ -398,6 +398,9 @@ message SysTablesEntryPB {
 
   optional bool colocated = 25 [ default = false ]; // Is this a colocated table?
 
+  // Denotes the tablespace to which this table belongs.
+  optional bytes tablespace_id = 31;
+
   // For index backfill/schema related changes.
   // When a schema change is going on, we want to make sure that the master returns the "older"
   // fully applied version until all the tablets have moved on to the newer version.
@@ -904,6 +907,9 @@ message CreateTableRequestPB {
 
   // This is only applicable for tablegroups. Eventually colocated will be deprecated.
   optional bytes tablegroup_id = 19;
+
+  // For YSQL tables, this denotes the tablespace that this table is associated with.
+  optional bytes tablespace_id = 20;
 }
 
 message CreateTableResponsePB {

@@ -698,6 +698,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, bool add_indexes);
 
+  // Returns 'table_replication_info' itself if set. Else looks up placement info for its
+  // associated tablespace. If neither is set, returns the cluster level replication info.
+  Result<ReplicationInfoPB> ResolveReplicationInfo(const ReplicationInfoPB& table_replication_info,
+                                                   const string& tablespace_id);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1074,9 +1079,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
-  // Returns 'table_replication_info' itself if set. Otherwise returns the cluster level
-  // replication info.
-  Result<ReplicationInfoPB> ResolveReplicationInfo(const ReplicationInfoPB& table_replication_info);
+  // Given 'tablespace_id' return the replication info associated with it.
+  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfo(
+      const string& tablespace_id);
 
   // Returns whether 'replication_info' has any relevant fields set.
   bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
@@ -1315,6 +1320,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   std::unique_ptr<EncryptionManager> encryption_manager_;
 
   MonoTime time_elected_leader_;
+
+  mutable LockType tablespace_lock_;
+
+  // Map to store tablespace information.
+  // TODO: This map should ideally store a struct TablespaceInfo, one of whose fields is
+  // replication info.
+  // NOTE: Not going to work when Alter Tablespace is supported.
+  std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>> tablespace_placement_map_
+      GUARDED_BY(tablespace_lock_);
 
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(lock_);

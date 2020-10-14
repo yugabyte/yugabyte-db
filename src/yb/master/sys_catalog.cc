@@ -54,6 +54,7 @@
 #include "yb/consensus/quorum_util.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/docdb_pgapi.h"
 
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/numbers.h"
@@ -76,6 +77,12 @@
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/threadpool.h"
+
+#include "yb/util/string_util.h"
+#include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/stol_utils.h"
 
 using namespace std::literals; // NOLINT
 using namespace yb::size_literals;
@@ -788,6 +795,132 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
   }
 
   return Status::OK();
+}
+
+Status SysCatalogTable::ReadYsqlTablespaceInfo(
+    TableId ysql_tablespace_table_id,
+    unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>> *const tablespace_map) {
+
+  TRACE_EVENT0("master", "ReadYsqlTablespaceInfo");
+  const auto* tablet = tablet_peer()->tablet();
+  const auto* meta = tablet->metadata();
+  const std::shared_ptr<tablet::TableInfo> ysql_tablespace_info =
+      VERIFY_RESULT(meta->GetTableInfo(ysql_tablespace_table_id));
+  const Schema& schema = ysql_tablespace_info->schema;
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
+                                                   boost::none /* transaction_id */,
+                                                   {} /* read_hybrid_time */,
+                                                   ysql_tablespace_table_id));
+  QLTableRow source_row;
+  ColumnId oid = VERIFY_RESULT(schema.ColumnIdByName("oid"));
+  ColumnId options =
+      VERIFY_RESULT(schema.ColumnIdByName("spcoptions"));
+
+  while (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&source_row));
+    // Fetch the oid.
+    auto oid_col_value = source_row.GetValue(oid);
+    if (!oid_col_value) {
+      return STATUS(Corruption, "Could not read oid column from pg_tablespace");
+    }
+    const TablespaceId yb_tablespace_id = GetPgsqlTablespaceId(oid_col_value->uint32_value());
+
+    // Fetch the placement options.
+    auto options_col_value = source_row.GetValue(options);
+    if (!options_col_value) {
+      return STATUS(Corruption, "Could not read spcoptions column from pg_tablespace");
+    }
+    const string& placement_info = options_col_value->binary_value();
+    // If no spcoptions found, then this tablespace has no placement info
+    // associated with it.
+    if (placement_info.empty()) {
+      (*tablespace_map)[yb_tablespace_id] = boost::none;
+      continue;
+    }
+    VLOG(1) << "Tablespace " << yb_tablespace_id << " -> "
+	    << options_col_value.value().DebugString();
+    boost::optional<ReplicationInfoPB> replication_info =
+      VERIFY_RESULT(ParseReplicationInfo(options_col_value.value()));
+    (*tablespace_map)[yb_tablespace_id] = replication_info;
+  }
+
+  return Status::OK();
+}
+
+Result<boost::optional<ReplicationInfoPB>> SysCatalogTable::ParseReplicationInfo(
+  const QLValuePB& ql_value) {
+
+  // First parse the QLValue into array of strings.
+  vector<string> options;
+  RETURN_NOT_OK(yb::docdb::ExtractTextArrayFromQLBinaryValue(ql_value, &options));
+
+  // Now from the options, get the total replication factor and then
+  // the placement info itself.
+  string placement, total_replication_factor_str;
+  for (const string& option : options) {
+    std::vector<std::string> split;
+    if (option.find("replication_factor") != string::npos) {
+      split = strings::Split(option, "replication_factor=", strings::SkipEmpty());
+      total_replication_factor_str = (split.size() == 1) ? split[0] : "";
+    } else if (option.find("placement=") != string::npos) {
+      split = strings::Split(option, "placement=", strings::SkipEmpty());
+      placement = (split.size() == 1) ? split[0] : "";
+    } else {
+      return STATUS(Corruption, "Unknown option found in spcoptions in pg_tablespace "
+          + ql_value.DebugString());
+    }
+  }
+  if (total_replication_factor_str.empty() || placement.empty()) {
+    return STATUS(Corruption, "Spcoptions in pg_tablespace should have both replication "
+        "factor and placement option. Actual value : " + ql_value.DebugString());
+  }
+
+  int total_replication_factor = 0;
+  if (!safe_strto32(total_replication_factor_str, &total_replication_factor) ||
+      total_replication_factor <= 0) {
+    return STATUS(Corruption, "Invalid replication factor found in spcoptions in pg_tablespace "
+        + ql_value.DebugString());
+  }
+
+  std::vector<std::string> placement_info_split = strings::Split(
+      placement, ",", strings::SkipEmpty());
+  if (placement_info_split.size() < 1) {
+    return STATUS(Corruption, "Table replication config in pg_tablespace must be a list of "
+    "placement infos seperated by commas. "
+    "Format: 'cloud1.region1.zone1=3,cloud2.region2.zone2=1,cloud3.region3.zone3=2...");
+  }
+
+  ReplicationInfoPB replication_info_pb;
+  master::PlacementInfoPB* live_replicas = new PlacementInfoPB;
+  // Iterate over the placement blocks of the placementInfo structure.
+  for (int iter = 0; iter < placement_info_split.size(); iter++) {
+    // First separate the placement info from the replication info.
+    std::vector<std::string> placement_with_rf = strings::Split(placement_info_split[iter], "=",
+                                                    strings::SkipEmpty());
+    if (placement_with_rf.size() != 2) {
+      return STATUS(Corruption, "Each placement info must have 2 values separated"
+          "by = that denotes placement info followed by replication factor. Block: " +
+          placement_info_split[iter]);
+    }
+    int block_replication_factor = VERIFY_RESULT(CheckedStoi(placement_with_rf[1]));
+    // Now find the cloud, region, zone for each block.
+    std::vector<std::string> block = strings::Split(placement_with_rf[0], ".",
+                                                    strings::SkipEmpty());
+    if (block.size() != 3) {
+      // Please create a new error code cos this aint corruption.
+      return STATUS(Corruption, "Each placement info must have exactly 3 values seperated"
+          "by dots that denote cloud, region and zone. Block: " + placement_info_split[iter]
+          + " is invalid");
+    }
+    auto pb = live_replicas->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(block[0]);
+    pb->mutable_cloud_info()->set_placement_region(block[1]);
+    pb->mutable_cloud_info()->set_placement_zone(block[2]);
+    pb->set_min_num_replicas(block_replication_factor);
+  }
+  live_replicas->set_num_replicas(total_replication_factor);
+  replication_info_pb.set_allocated_live_replicas(live_replicas);
+  return replication_info_pb;
 }
 
 Status SysCatalogTable::CopyPgsqlTables(

@@ -34,6 +34,9 @@
  * default tablespace.  Without this, CREATE DATABASE would have to go in
  * and munge the system catalogs of the new database.
  *
+ * If Yugabyte is enabled, tablespaces are not used to specify their
+ * location on disk, rather the tablespace options specify the replication
+ * factor and the location of the data as cloud, region, zone blocks.
  *
  * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -48,11 +51,12 @@
 
 #include <unistd.h>
 #include <dirent.h>
+#include <string.h>
 #include <sys/stat.h>
 
 #include "access/heapam.h"
-#include "access/reloptions.h"
 #include "access/htup_details.h"
+#include "access/reloptions.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "access/xlog.h"
@@ -70,6 +74,7 @@
 #include "commands/tablespace.h"
 #include "common/file_perm.h"
 #include "miscadmin.h"
+#include "pg_yb_utils.h"
 #include "postmaster/bgwriter.h"
 #include "storage/fd.h"
 #include "storage/lmgr.h"
@@ -84,7 +89,6 @@
 #include "utils/tqual.h"
 #include "utils/varlena.h"
 
-
 /* GUC variables */
 char	   *default_tablespace = NULL;
 char	   *temp_tablespaces = NULL;
@@ -94,6 +98,128 @@ static void create_tablespace_directories(const char *location,
 							  const Oid tablespaceoid);
 static bool destroy_tablespace_directories(Oid tablespaceoid, bool redo);
 
+/*
+ * A valid placement configuration is a comma separated list of placement blocks
+ * of the following form:
+ * <cloud1>.<region1>.<zone1>=<rf1>,<cloud2>.<region2>.<zone2>=<rf2>
+ */
+void
+validatePlacementConfiguration(const char *value)
+{
+	char *err_detail = "Valid values are a comma separated list of placement blocks"
+                "of the form: <cloud1>.<region1>.<zone1>=<min_replicas_for_block1>,"
+                "<cloud2>.<region2>.<zone2>=<min_replicas_for_block2>";
+
+	if (value == NULL) {
+		ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                         errmsg("Invalid value for \"placement\" option"),
+                         errdetail("%s", err_detail)));
+                return;
+        }
+
+	char* value_copy = strdup(value);
+	if (value_copy == NULL) {
+		ereport(ERROR, (errmsg("Failed to allocate memory")));
+		return;
+	}
+
+	char *end_placement_list;
+	// TODO: Is there a better way to do all this? Should this
+	// be part of the grammar rather than a relopt instead?
+	// Is strtok_r portable on all platforms supported by Yugabyte?
+	char *placement = strtok_r(value_copy, ",", &end_placement_list);
+	if (placement == NULL) {
+		ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                         errmsg("Invalid value for \"placement\" option"),
+                         errdetail("%s", err_detail)));
+                return;
+        }
+
+	while (placement != NULL) {
+		validatePlacement(placement);
+		placement = strtok_r(NULL, ",", &end_placement_list);
+	}
+}
+
+/*
+ * A valid placement string contains a string of the form
+ * <cloud>.<region>.<zone>=<min_replicas_per_block>
+ */
+void validatePlacement(char *placement) {
+	char *err_detail = "Valid values are a comma separated list of placement blocks"
+		"of the form: <cloud1>.<region1>.<zone1>=<min_replicas_for_block1>,"
+		"<cloud2>.<region2>.<zone2>=<min_replicas_for_block2>";
+	if (placement == NULL) {
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("Invalid value for \"placement\" option"),
+			 errdetail("%s", err_detail)));
+		return;
+	}
+
+	char *end_placement;
+	char *placement_block = strtok_r(placement, "=", &end_placement);
+	if (placement_block == NULL) {
+		ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                         errmsg("invalid value for \"placement\" option"),
+                         errdetail("%s", err_detail)));
+                return;
+        }
+	// The first token after splitting on "=" is the placement block.
+	validatePlacementBlock(placement_block);
+
+	// The second token should be replication factor.
+	char *rf_str = strtok_r(NULL, "=", &end_placement);
+	if (rf_str == NULL) {
+		ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                         errmsg("invalid value for \"placement\" option"),
+                         errdetail("%s", err_detail)));
+                return;
+        }
+
+	int replication_factor = atoi(rf_str);
+	if (replication_factor <= 0) {
+		ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                         errmsg("Invalid value for \"placement\" option"),
+                         errdetail("%s where min_replicas_for_block > 0", err_detail)));
+                return;
+        }
+
+	// There should be no third token.
+	if (strtok_r(NULL, "=", &end_placement) != NULL)
+		ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                         errmsg("Invalid value for \"placement\" option"),
+                         errdetail("%s", err_detail)));
+}
+
+/*
+ * A valid placement block is a string of the form <cloud>.<region>.<zone>
+ */
+void validatePlacementBlock(char *placement_block) {
+	// Rudimentary check that it contains 3 tokens.
+	// TODO: Can we perform more checks on each token?
+	char *end_token;
+	char *token = strtok_r(placement_block, ".", &end_token);
+	int num_tokens = 0;
+	while (token != NULL) {
+		++num_tokens;
+		token = strtok_r(NULL, ".", &end_token);
+	}
+	if (num_tokens != 3)
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("Invalid value for \"placement\" option"),
+                         errdetail("Valid values are a comma separated list of placement blocks"
+                		   "of the form: <cloud1>.<region1>.<zone1>="
+				   "<min_replicas_for_block1>,"
+                		   "<cloud2>.<region2>.<zone2>=<min_replicas_for_block2>")));
+}
 
 /*
  * Each database using a table space is isolated into its own name space
@@ -115,6 +241,9 @@ static bool destroy_tablespace_directories(Oid tablespaceoid, bool redo);
 void
 TablespaceCreateDbspace(Oid spcNode, Oid dbNode, bool isRedo)
 {
+
+  // TODO(deepthi.srinivasan) : Investigate this function's callers
+  // and if it should be invoked only if not in Yugabyte mode.
 	struct stat st;
 	char	   *dir;
 
@@ -257,44 +386,46 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	else
 		ownerId = GetUserId();
 
-	/* Unix-ify the offered path, and strip any trailing slashes */
-	location = pstrdup(stmt->location);
-	canonicalize_path(location);
+  if (!IsYugaByteEnabled()) {
+	  /* Unix-ify the offered path, and strip any trailing slashes */
+	  location = pstrdup(stmt->location);
+	  canonicalize_path(location);
 
-	/* disallow quotes, else CREATE DATABASE would be at risk */
-	if (strchr(location, '\''))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_NAME),
-				 errmsg("tablespace location cannot contain single quotes")));
+	  /* disallow quotes, else CREATE DATABASE would be at risk */
+	  if (strchr(location, '\''))
+		  ereport(ERROR,
+			  	(errcode(ERRCODE_INVALID_NAME),
+				   errmsg("tablespace location cannot contain single quotes")));
 
-	/*
-	 * Allowing relative paths seems risky
-	 *
-	 * this also helps us ensure that location is not empty or whitespace
-	 */
-	if (!is_absolute_path(location))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("tablespace location must be an absolute path")));
+	  /*
+	    * Allowing relative paths seems risky
+	    *
+	    * this also helps us ensure that location is not empty or whitespace
+	  */
+	  if (!is_absolute_path(location))
+		  ereport(ERROR,
+			  	(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				   errmsg("tablespace location must be an absolute path")));
 
-	/*
-	 * Check that location isn't too long. Remember that we're going to append
-	 * 'PG_XXX/<dboid>/<relid>_<fork>.<nnn>'.  FYI, we never actually
-	 * reference the whole path here, but MakePGDirectory() uses the first two
-	 * parts.
-	 */
-	if (strlen(location) + 1 + strlen(TABLESPACE_VERSION_DIRECTORY) + 1 +
-		OIDCHARS + 1 + OIDCHARS + 1 + FORKNAMECHARS + 1 + OIDCHARS > MAXPGPATH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("tablespace location \"%s\" is too long",
-						location)));
+	  /*
+	  * Check that location isn't too long. Remember that we're going to append
+	  * 'PG_XXX/<dboid>/<relid>_<fork>.<nnn>'.  FYI, we never actually
+	  * reference the whole path here, but MakePGDirectory() uses the first two
+	  * parts.
+	  */
+	  if (strlen(location) + 1 + strlen(TABLESPACE_VERSION_DIRECTORY) + 1 +
+		  OIDCHARS + 1 + OIDCHARS + 1 + FORKNAMECHARS + 1 + OIDCHARS > MAXPGPATH)
+		  ereport(ERROR,
+			  	(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				   errmsg("tablespace location \"%s\" is too long",
+					  	location)));
 
-	/* Warn if the tablespace is in the data directory. */
-	if (path_is_prefix_of_path(DataDir, location))
-		ereport(WARNING,
-				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("tablespace location should not be inside the data directory")));
+	  /* Warn if the tablespace is in the data directory. */
+	  if (path_is_prefix_of_path(DataDir, location))
+		  ereport(WARNING,
+			  	(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				   errmsg("tablespace location should not be inside the data directory")));
+  }
 
 	/*
 	 * Disallow creation of tablespaces named "pg_xxx"; we reserve this
@@ -337,7 +468,11 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	newOptions = transformRelOptions((Datum) 0,
 									 stmt->options,
 									 NULL, NULL, false, false);
-	(void) tablespace_reloptions(newOptions, true);
+  if (IsYugaByteEnabled()) {
+    (void) yb_tablespace_reloptions(newOptions, true);
+  } else {
+    (void) tablespace_reloptions(newOptions, true);
+  }
 	if (newOptions != (Datum) 0)
 		values[Anum_pg_tablespace_spcoptions - 1] = newOptions;
 	else
@@ -355,32 +490,33 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	/* Post creation hook for new tablespace */
 	InvokeObjectPostCreateHook(TableSpaceRelationId, tablespaceoid, 0);
 
-	create_tablespace_directories(location, tablespaceoid);
+  if (!IsYugaByteEnabled()) {
+    create_tablespace_directories(location, tablespaceoid);
 
-	/* Record the filesystem change in XLOG */
-	{
-		xl_tblspc_create_rec xlrec;
+    /* Record the filesystem change in XLOG */
+    {
+      xl_tblspc_create_rec xlrec;
 
-		xlrec.ts_id = tablespaceoid;
+      xlrec.ts_id = tablespaceoid;
 
-		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec,
-						 offsetof(xl_tblspc_create_rec, ts_path));
-		XLogRegisterData((char *) location, strlen(location) + 1);
+      XLogBeginInsert();
+      XLogRegisterData((char *) &xlrec,
+        offsetof(xl_tblspc_create_rec, ts_path));
+      XLogRegisterData((char *) location, strlen(location) + 1);
 
-		(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_CREATE);
-	}
+      (void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_CREATE);
+    }
 
-	/*
-	 * Force synchronous commit, to minimize the window between creating the
-	 * symlink on-disk and marking the transaction committed.  It's not great
-	 * that there is any window at all, but definitely we don't want to make
-	 * it larger than necessary.
-	 */
-	ForceSyncCommit();
+    /*
+     * Force synchronous commit, to minimize the window between creating the
+     * symlink on-disk and marking the transaction committed.  It's not great
+     * that there is any window at all, but definitely we don't want to make
+     * it larger than necessary.
+     */
+    ForceSyncCommit();
 
-	pfree(location);
-
+    pfree(location);
+  }
 	/* We keep the lock on pg_tablespace until commit */
 	heap_close(rel, NoLock);
 
@@ -401,6 +537,10 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 void
 DropTableSpace(DropTableSpaceStmt *stmt)
 {
+	// TODO: For YB enabled cluster, we cannot use the following check
+	// to ensure there are no tables associated with the tablespace.
+	// Instead we have to go through the pg_table to ensure there are
+	// no tables associated with this tablespace.
 #ifdef HAVE_SYMLINK
 	char	   *tablespacename = stmt->tablespacename;
 	HeapScanDesc scandesc;
@@ -1028,7 +1168,12 @@ AlterTableSpaceOptions(AlterTableSpaceOptionsStmt *stmt)
 	newOptions = transformRelOptions(isnull ? (Datum) 0 : datum,
 									 stmt->options, NULL, NULL, false,
 									 stmt->isReset);
-	(void) tablespace_reloptions(newOptions, true);
+
+  if (IsYugaByteEnabled()) {
+    (void) yb_tablespace_reloptions(newOptions, true);
+  } else {
+	  (void) tablespace_reloptions(newOptions, true);
+  }
 
 	/* Build new tuple. */
 	memset(repl_null, false, sizeof(repl_null));
