@@ -42,7 +42,7 @@ public class AppInit {
   public AppInit(Environment environment, Application application,
                  ConfigHelper configHelper, ReleaseManager releaseManager,
                  AWSInitializer awsInitializer, CustomerTaskManager taskManager, YamlWrapper yaml) {
-    Logger.info("Yugaware Application has started");
+    Logger.info("Yugabyte Platform has started");
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
 

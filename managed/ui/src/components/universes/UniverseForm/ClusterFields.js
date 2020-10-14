@@ -19,8 +19,9 @@ import AZSelectorTable from './AZSelectorTable';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
-import { getPrimaryCluster, getReadOnlyCluster,
-  getClusterByType, isKubernetesUniverse } from "../../../utils/UniverseUtils";
+import {
+  getPrimaryCluster, getReadOnlyCluster, getClusterByType, isKubernetesUniverse, getPlacementCloud
+} from "../../../utils/UniverseUtils";
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -330,7 +331,7 @@ export default class ClusterFields extends Component {
         this.props.updateFormField(`${clusterType}.instanceType`, instanceTypeSelected);
         this.setState({instanceTypeSelected: instanceTypeSelected});
         this.setDeviceInfo(instanceTypeSelected, instanceTypes.data);
-      };
+      }
     }
 
     const currentProvider = this.getCurrentProvider(providerSelected);
@@ -1180,11 +1181,19 @@ export default class ClusterFields extends Component {
     }
 
     let placementStatus = <span/>;
-    if (self.props.universe.currentPlacementStatus) {
-      placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>;
+    const cluster = clusterType === "primary" ?
+      getPrimaryCluster(_.get(self.props, "universe.universeConfigTemplate.data.clusters", []))
+      : getReadOnlyCluster(_.get(self.props, "universe.universeConfigTemplate.data.clusters", []));
+    const placementCloud = getPlacementCloud(cluster);
+    if (self.props.universe.currentPlacementStatus && placementCloud) {
+      placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus} placementCloud={placementCloud}/>;
     }
+
     const configTemplate = self.props.universe.universeConfigTemplate;
-    const showPlacementStatus = configTemplate && !!getPrimaryCluster(configTemplate);
+    const clusters = _.get(configTemplate, "data.clusters", []);
+    const showPlacementStatus = configTemplate && clusterType === "primary" ?
+      !!getPrimaryCluster(clusters) : clusterType === "async" ?
+        !!getReadOnlyCluster(clusters) : false;
     const azSelectorTable = (
       <div>
         <AZSelectorTable {...this.props} clusterType={clusterType}

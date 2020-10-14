@@ -363,15 +363,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void selectMasters() {
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
-    if (primaryCluster == null) {
-      return;
-    }
-    Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
-    LOG.info("Current active master count = " + PlacementInfoUtil.getNumActiveMasters(primaryNodes));
-    int numMastersToChoose = primaryCluster.userIntent.replicationFactor -
-                             PlacementInfoUtil.getNumActiveMasters(primaryNodes);
-    if (numMastersToChoose > 0) {
-      PlacementInfoUtil.selectMasters(primaryNodes, numMastersToChoose);
+    if (primaryCluster != null) {
+      Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
+      long numActiveMasters = PlacementInfoUtil.getNumActiveMasters(primaryNodes);
+      LOG.info("Current active master count = " + numActiveMasters);
+      long numMastersToChoose = primaryCluster.userIntent.replicationFactor - numActiveMasters;
+      if (numMastersToChoose > 0) {
+        PlacementInfoUtil.selectMasters(primaryNodes, numMastersToChoose);
+      }
     }
   }
 

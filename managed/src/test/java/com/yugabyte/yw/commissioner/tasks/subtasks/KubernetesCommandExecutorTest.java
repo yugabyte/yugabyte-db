@@ -447,11 +447,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, Object> overrides = yaml.loadAs(is, Map.class);
     Map<String, Object> resourceOverrides = (Map<String, Object>) overrides.get("resource");
     if (instanceType.equals("dev")) {
-      assertTrue(resourceOverrides.containsKey("master"));  
+      assertTrue(resourceOverrides.containsKey("master"));
     } else {
-      assertFalse(resourceOverrides.containsKey("master"));  
+      assertFalse(resourceOverrides.containsKey("master"));
     }
-    
+
     assertTrue(resourceOverrides.containsKey("tserver"));
     assertEquals(getExpectedOverrides(true), overrides);
   }
@@ -704,9 +704,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     AvailabilityZone az2 = AvailabilityZone.create(r1, "az-" + 2, "az-" + 2, "subnet-" + 2);
     AvailabilityZone az3 = AvailabilityZone.create(r2, "az-" + 3, "az-" + 3, "subnet-" + 3);
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZoneHelper(az1.uuid, pi);
-    PlacementInfoUtil.addPlacementZoneHelper(az2.uuid, pi);
-    PlacementInfoUtil.addPlacementZoneHelper(az3.uuid, pi);
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
+    PlacementInfoUtil.addPlacementZone(az2.uuid, pi);
+    PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
 
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.POD_INFO, pi);
@@ -735,9 +735,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       NodeDetails node = defaultUniverse.getNode(podName);
       assertNotNull(node);
       String serviceName = podName.contains("master") ? "yb-masters" : "yb-tservers";
-      
+
       assertTrue(podName.contains("master") ? node.isMaster: node.isTserver);
-      
+
       String az = podName.split("_")[1];
       String podK8sName = podName.split("_")[0];
       assertEquals(node.cloudInfo.private_ip, String.format("%s.%s.%s.%s", podK8sName, serviceName,

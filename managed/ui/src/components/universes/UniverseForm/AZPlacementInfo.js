@@ -23,22 +23,60 @@ export default class AZPlacementInfo extends Component {
     placementInfo: PropTypes.object.isRequired
   };
   render() {
-    const {placementInfo} = this.props;
-    if (!isNonEmptyObject(placementInfo)) {
+    const {placementInfo, placementCloud} = this.props;
+    if (!isNonEmptyObject(placementInfo) || !isNonEmptyObject(placementCloud)) {
       return <span/>;
     }
-    let currentStatusType = "";
+
+    const replicationFactor = placementInfo.replicationFactor;
+    const regionList = placementCloud.regionList;
+    let multiRegion = true;
+    let multiAz = true;
+
+    // This logic is to help determine whether any AZ or region in the current universe config
+    // contains a majority of tablet replicas. This determines whether the current config will
+    // result in a cluster that is resilient to AZ or Region level failures while still maintaining
+    // quorum.
+    regionList.forEach((region) => {
+      const azList = region.azList;
+      let regionNumReplicas = 0;
+      azList.forEach((az) => {
+        regionNumReplicas += az.replicationFactor;
+        if (replicationFactor % 2 === 0) {
+          if ((replicationFactor / 2) < az.replicationFactor) {
+            multiAz = false;
+          }
+        } else {
+          if (((replicationFactor - 1) / 2) < az.replicationFactor) {
+            multiAz = false;
+          }
+        }
+      });
+
+      if (replicationFactor % 2 === 0) {
+        if ((replicationFactor / 2) < regionNumReplicas) {
+          multiRegion = false;
+        }
+      } else {
+        if (((replicationFactor - 1) / 2) < regionNumReplicas) {
+          multiRegion = false;
+        }
+      }
+    });
+
+    let currentStatusType;
     if (placementInfo.error) {
       currentStatusType = placementInfo.error.type;
-    } else if (placementInfo.replicationFactor === 1) {
+    } else if (replicationFactor === 1) {
       currentStatusType = "singleRF";
-    } else if (placementInfo.numUniqueAzs < 2) {
-      currentStatusType = "azWarning";
-    } else if (placementInfo.numUniqueRegions < 2) {
+    } else if (multiRegion) {
+      currentStatusType = "multiRegion";
+    } else if (multiAz) {
       currentStatusType = "regionWarning";
     } else {
-      currentStatusType = "multiRegion";
+      currentStatusType = "azWarning";
     }
+
     return (
       <div>
         <span className={statusTypes[currentStatusType].currentStatusClass}>&nbsp;<i className={statusTypes[currentStatusType].currentStatusIcon}/>&nbsp;{statusTypes[currentStatusType].currentStatusString}</span>
