@@ -105,3 +105,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [hitesh](https://github.com/jainhitesh9998)
 * [robertsami](https://github.com/robertsami)
 * [tedyu](https://github.com/tedyu)
+* [idnaninitesh](https://github.com/idnaninitesh)
