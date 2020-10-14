@@ -219,6 +219,7 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	 * Now build an RTE.
 	 */
 	rte = addRangeTableEntryForRelation(pstate, pstate->p_target_relation,
+										RowExclusiveLock,
 										relation->alias, inh, false);
 	pstate->p_target_rangetblentry = rte;
 
