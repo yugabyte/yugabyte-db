@@ -51,11 +51,13 @@ Use the `CREATE SEQUENCE` statement to create a new sequence in the current sche
 
 Specify the name of the sequence (*sequence_name*). An error is raised if a sequence with that name already exists in the current schema and `IF NOT EXISTS` is not specified.
 
+The sequence name must be distinct from any other sequences, tables, indexes, views, or foreign tables in the same schema.
+
 ### *sequence_options*
 
 #### INCREMENT BY *increment*
 
-Specify the difference between consecutive values in the sequence. Default is `1`.
+Specify the *increment* value to add to the current sequence value to create a new value. The default value is `1`. A positive number 
 
 #### MINVALUE *minvalue* | NO MINVALUE
 

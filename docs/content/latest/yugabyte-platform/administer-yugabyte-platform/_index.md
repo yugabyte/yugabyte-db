@@ -7,7 +7,7 @@ image: /images/section_icons/manage/enterprise.png
 headcontent: Administer Yugabyte Platform.
 menu:
   latest:
-    identifier: administer-yp
+    identifier: administer-yugabyte-platform
     parent: yugabyte-platform
     weight: 649
 ---
