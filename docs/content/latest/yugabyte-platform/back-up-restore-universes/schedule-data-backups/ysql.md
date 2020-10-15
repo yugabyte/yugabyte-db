@@ -47,7 +47,7 @@ To schedule a backup, follow these steps:
     <br/>
     <br/>
 
-    ![Create Backup form](/images/yp/create-scheduled-backup.png)
+    ![Create Backup form](/images/yp/create-scheduled-backup-ysql.png)
 
 5. Enter the **Backup frequency** (interval in milliseconds) or a **Cron expression (UTC)***. For details on valid `cron` expression formats, hover over the question mark (?) icon.
 6. Select the **YSQL** tab and enter values for the following fields:
