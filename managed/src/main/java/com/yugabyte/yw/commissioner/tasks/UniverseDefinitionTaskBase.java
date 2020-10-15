@@ -763,4 +763,27 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           Integer.toString(taskParams().communicationPorts.ysqlServerHttpPort));
     }
   }
+
+  // Setup a configure task to update the new master list in the conf files of all servers.
+  protected void createMasterInfoUpdateTask(Universe universe, NodeDetails addedNode) {
+    Set<NodeDetails> tserverNodes = new HashSet<NodeDetails>(universe.getTServers());
+    Set<NodeDetails> masterNodes = new HashSet<NodeDetails>(universe.getMasters());
+    // We need to add the node explicitly since the node wasn't marked as a master
+    // or tserver
+    // before the task is completed.
+    tserverNodes.add(addedNode);
+    masterNodes.add(addedNode);
+    // Configure all tservers to pick the new master node ip as well.
+    createConfigureServerTasks(tserverNodes, false /* isShell */, true /* updateMasterAddr */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    // Update the master addresses in memory.
+    createSetFlagInMemoryTasks(tserverNodes, ServerType.TSERVER, true /* force flag update */,
+        null /* no gflag to update */, true /* updateMasterAddr */);
+    // Change the master addresses in the conf file for the all masters to reflect
+    // the changes.
+    createConfigureServerTasks(masterNodes, false /* isShell */, true /* updateMasterAddrs */,
+        true /* isMaster */).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    createSetFlagInMemoryTasks(masterNodes, ServerType.MASTER, true /* force flag update */,
+        null /* no gflag to update */, true /* updateMasterAddr */);
+  }
 }
