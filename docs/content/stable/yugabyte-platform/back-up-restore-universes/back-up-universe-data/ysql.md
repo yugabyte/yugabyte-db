@@ -9,7 +9,7 @@ aliases:
   - /latest/yugabyte-platform/manage/backup-restore-data
   - /latest/yugabyte-platform/back-up-restore-universes/back-up-universe-data/
 menu:
-  latest:
+  stable:
     parent: back-up-restore-universes
     identifier: back-up-universe-data-1-ysql
     weight: 20
