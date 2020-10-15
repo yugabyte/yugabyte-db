@@ -42,30 +42,47 @@ export default class NodeAction extends Component {
     });
   }
 
+  static getCaption(actionType) {
+    let caption = null;
+    if (actionType === "STOP") {
+      caption = "Stop Processes";
+    } else if (actionType === "REMOVE") {
+      caption = "Remove Node";
+    } else if (actionType === "DELETE") {
+      caption = "Delete Node";
+    } else if (actionType === "RELEASE") {
+      caption = "Release Instance";
+    } else if (actionType === "START") {
+      caption = "Start Processes";
+    } else if (actionType === "ADD") {
+      caption = "Add Node";
+    } else if (actionType === "CONNECT") {
+      caption = "Connect";
+    } else if (actionType === "START_MASTER") {
+      caption = "Start Master";
+    }
+    return caption;
+  }
+
   getLabel(actionType) {
-    let btnLabel = null;
+    const btnLabel = NodeAction.getCaption(actionType);
     let btnIcon = null;
     if (actionType === "STOP") {
-      btnLabel = "Stop Processes";
       btnIcon = "fa fa-stop-circle";
     } else if (actionType === "REMOVE") {
-      btnLabel = "Remove Node";
       btnIcon = "fa fa-minus-circle";
     } else if (actionType === "DELETE") {
-      btnLabel = "Delete Node";
       btnIcon = "fa fa-minus-circle";
     } else if (actionType === "RELEASE") {
-      btnLabel = "Release Instance";
       btnIcon = "fa fa-trash";
     } else if (actionType === "START") {
-      btnLabel = "Start Processes";
       btnIcon = "fa fa-play-circle";
     } else if (actionType === "ADD") {
-      btnLabel = "Add Node";
       btnIcon = "fa fa-plus-circle";
     } else if (actionType === "CONNECT") {
-      btnLabel = "Connect";
       btnIcon = "fa fa-link";
+    } else if (actionType === "START_MASTER") {
+      btnIcon = "fa fa-play-circle";
     }
 
     return (
