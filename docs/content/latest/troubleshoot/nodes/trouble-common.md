@@ -35,8 +35,8 @@ Service unavailable (yb/tserver/tablet_service.cc:257): SST files limit exceeded
 This message is emitted when the number of SST files has exceeded its limit. Usually, the client is running a high INSERT/UPDATE/DELETE workload 
 and compactions are falling behind. 
 
-It might be worth figuring out why this error is happening. Maybe disk bandwidth, or network bandwidth, or not enough CPU in the server. 
-The limits are controlled by these flags in yb-tserver: `--sst_files_hard_limit=48` and `--sst_files_soft_limit=24`.
+To determine why this error is happening, you can check the disk bandwidth, network bandwidth, and find out if enough CPU is available in the server. 
+The limits are controlled by the following YB-TServer configuration flags: `--sst_files_hard_limit=48` and `--sst_files_soft_limit=24`.
 
 ## Catalog Version Mismatch: A DDL occurred while processing this query. Try Again.
 
