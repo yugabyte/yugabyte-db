@@ -216,7 +216,7 @@ public class Util {
     int numStoppedMasters = 0;
     for (UUID azUUID : azToNumStoppedNodesMap.keySet()) {
       if (azUUID != currentNode.azUuid &&
-          (mastersToAZMap.containsKey(azUUID) || mastersToAZMap.get(azUUID) == 0)) {
+          (!mastersToAZMap.containsKey(azUUID) || mastersToAZMap.get(azUUID) == 0)) {
         numStoppedMasters++;
       }
     }

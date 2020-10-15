@@ -137,6 +137,9 @@ public class UserTaskDetails {
 
     // Run the initdb script in a tserver pod. (Deprecated)
     KubernetesInitYSQL,
+
+    // Start master process on a node
+    StartingMasterProcess,
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -225,7 +228,7 @@ public class UserTaskDetails {
         break;
       case StartingNodeProcesses:
         title = "Starting Node processes";
-        description = "Waiting for node to start either tserver of master process.";
+        description = "Waiting for node to start either tserver or master process.";
         break;
      case AddingNode:
         title = "Adding a node";
@@ -282,7 +285,7 @@ public class UserTaskDetails {
       case KubernetesNamespaceDelete:
         title = "Delete Kubernetes Namespace";
         description = "Delete Kubernetes Namespace";
-        break;  
+        break;
       case KubernetesWaitForPod:
         title = "Wait for Kubernetes pod to run";
         description = "Wait for Kubernetes pod to run";
@@ -294,6 +297,22 @@ public class UserTaskDetails {
       case KubernetesInitYSQL:
         title = "Initialize YSQL in Kubernetes Universe";
         description = "Initialize YSQL in Kubernetes Universe";
+        break;
+      case StartingMasterProcess:
+        title = "Starting Master Process";
+        description = "Waiting for node to start the master process.";
+        break;
+      case CreateNamespace:
+        title = "Creating Namespace";
+        description = "Create namespace for Kubectl.";
+        break;
+      case ApplySecret:
+        title = "Applying Pull Secret";
+        description = "Apply Pull Secret.";
+        break;
+      case UpdateNumNodes:
+        title = "Updating number of nodes";
+        description = "Update number of nodes.";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

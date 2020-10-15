@@ -16,7 +16,6 @@ import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableSet;
 
-import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -39,7 +38,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -744,5 +742,43 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       PlacementInfoUtil.verifyNodesAndRF(cluster.clusterType, cluster.userIntent.numNodes,
                                          cluster.userIntent.replicationFactor);
     }
+  }
+
+  /**
+   * Adds default gflags depending on settings in UserIntent.
+   * Currently contains only flags for TServers.
+   */
+  protected void addDefaultGFlags() {
+    UserIntent userIntent = taskParams().getPrimaryCluster().userIntent;
+    userIntent.tserverGFlags.put("redis_proxy_webserver_port",
+        Integer.toString(taskParams().communicationPorts.redisServerHttpPort));
+    userIntent.tserverGFlags.put("cql_proxy_webserver_port",
+        Integer.toString(taskParams().communicationPorts.yqlServerHttpPort));
+    if (userIntent.enableYSQL) {
+      userIntent.tserverGFlags.put("pgsql_proxy_webserver_port",
+          Integer.toString(taskParams().communicationPorts.ysqlServerHttpPort));
+    }
+  }
+
+  // Setup a configure task to update the new master list in the conf files of all servers.
+  protected void createMasterInfoUpdateTask(Universe universe, NodeDetails addedNode) {
+    Set<NodeDetails> tserverNodes = new HashSet<NodeDetails>(universe.getTServers());
+    Set<NodeDetails> masterNodes = new HashSet<NodeDetails>(universe.getMasters());
+    // We need to add the node explicitly since the node wasn't marked as a master
+    // or tserver before the task is completed.
+    tserverNodes.add(addedNode);
+    masterNodes.add(addedNode);
+    // Configure all tservers to pick the new master node ip as well.
+    createConfigureServerTasks(tserverNodes, false /* isShell */, true /* updateMasterAddr */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    // Update the master addresses in memory.
+    createSetFlagInMemoryTasks(tserverNodes, ServerType.TSERVER, true /* force flag update */,
+        null /* no gflag to update */, true /* updateMasterAddr */);
+    // Change the master addresses in the conf file for the all masters to reflect
+    // the changes.
+    createConfigureServerTasks(masterNodes, false /* isShell */, true /* updateMasterAddrs */,
+        true /* isMaster */).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    createSetFlagInMemoryTasks(masterNodes, ServerType.MASTER, true /* force flag update */,
+        null /* no gflag to update */, true /* updateMasterAddr */);
   }
 }

@@ -5,6 +5,7 @@ import { YBModal } from '../../common/forms/fields';
 import PropTypes from 'prop-types';
 import _ from 'lodash';
 import { browserHistory } from 'react-router';
+import { NodeAction } from '../../universes';
 
 export default class NodeActionModal extends Component {
   static propTypes = {
@@ -34,7 +35,7 @@ export default class NodeActionModal extends Component {
 
     return (
       <div className="universe-apps-modal">
-        <YBModal title={`Perform Node Action: ${_.capitalize(actionType.toLowerCase())} `}
+        <YBModal title={`Perform Node Action: ${NodeAction.getCaption(actionType)} `}
                  visible={visible}
                  onHide={onHide}
                  showCancelButton={true}

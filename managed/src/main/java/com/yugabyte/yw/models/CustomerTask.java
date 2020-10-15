@@ -101,7 +101,10 @@ public class CustomerTask extends Model {
     RotateEncryptionKey,
 
     @EnumValue("DisableEncryptionAtRest")
-    DisableEncryptionAtRest;
+    DisableEncryptionAtRest,
+
+    @EnumValue("StartMaster")
+    StartMaster;
 
     public String toString(boolean completed) {
       switch(this) {
@@ -130,6 +133,8 @@ public class CustomerTask extends Model {
                   "Rotating encryption at rest universe key";
         case DisableEncryptionAtRest:
           return completed ? "Disabled encryption at rest" : "Disabling encryption at rest";
+        case StartMaster:
+          return completed ? "Started Master process on " : "Starting Master process on ";
         default:
           return null;
       }
@@ -144,6 +149,15 @@ public class CustomerTask extends Model {
           return false;
         }
       }).collect(Collectors.toList());
+    }
+
+    public String getFriendlyName() {
+      switch (this) {
+      case StartMaster:
+        return "Start Master Process on";
+      default:
+        return name();
+      }
     }
   }
 

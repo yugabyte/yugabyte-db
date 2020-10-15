@@ -74,6 +74,8 @@ public enum TaskType {
 
   UpdateDiskSize("UpdateDiskSize"),
 
+  StartMasterOnNode("StartMasterOnNode"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
