@@ -683,7 +683,7 @@ h1, h2, h3, h4, h5, h6 {
       font-size: 16px;
       border-bottom: 2px solid #FF6E42;
       background: unset !important;
-      text-transform: uppercase;
+      font-variant-caps: all-small-caps;
     }
 
     tbody {
