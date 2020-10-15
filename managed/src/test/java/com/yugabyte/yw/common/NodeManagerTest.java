@@ -1,12 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
@@ -19,12 +21,23 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
+
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.mockito.runners.MockitoJUnitRunner;
 
 import play.libs.Json;
@@ -53,6 +66,8 @@ import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.fail;
 import org.mockito.ArgumentCaptor;
@@ -62,8 +77,11 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Matchers.any;
 
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class NodeManagerTest extends FakeDBApplication {
+
+  @Rule
+  public MockitoRule rule = MockitoJUnit.rule();
 
   @Mock
   play.Configuration mockAppConfig;
@@ -326,16 +344,18 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         Map<String, String> gflags = new HashMap<>(configureParams.gflags);
-        if (!configureParams.isMaster) {
+
+        if (configureParams.type == Everything || configureParams.type == Software) {
           gflags.put("placement_uuid", String.valueOf(params.placementUuid));
-        } else {
-          if (configureParams.enableYSQL) {
-            gflags.put("enable_ysql", "true");
-          } else {
-            gflags.put("enable_ysql", "false");
+        }
+
+        if (configureParams.type == Everything) {
+          gflags.put("metric_node_name", params.nodeName);
+          if (configureParams.isMaster) {
+            gflags.put("enable_ysql", Boolean.valueOf(configureParams.enableYSQL).toString());
           }
         }
-        gflags.put("metric_node_name", params.nodeName);
+
         if (configureParams.type == Everything) {
           if (configureParams.isMaster) {
             gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
@@ -391,6 +411,23 @@ public class NodeManagerTest extends FakeDBApplication {
           String processType = configureParams.getProperty("processType");
           expectedCommand.add("--yb_process_type");
           expectedCommand.add(processType.toLowerCase());
+
+          if (configureParams.updateMasterAddrsOnly) {
+            String masterAddresses = Universe.get(configureParams.universeUUID)
+                .getMasterAddresses(false);
+            if (configureParams.isMasterInShellMode) {
+              masterAddresses = "";
+            }
+            if (processType.equals(ServerType.MASTER.name())) {
+              gflags.put("master_addresses", masterAddresses);
+            } else {
+              gflags.put("tserver_master_addrs", masterAddresses);
+            }
+          } else {
+            gflags.put("placement_uuid", String.valueOf(configureParams.placementUuid));
+            gflags.put("metric_node_name", configureParams.nodeName);
+          }
+
           String gflagsJson =  Json.stringify(Json.toJson(gflags));
           expectedCommand.add("--replace_gflags");
           expectedCommand.add("--gflags");
@@ -1343,16 +1380,8 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEnableYEDISNodeCommand() {
-    testYEDISNodeCommand(true);
-  }
-
-  @Test
-  public void testDisableYEDISNodeCommand() {
-    testYEDISNodeCommand(false);
-  }
-
-  private void testYEDISNodeCommand(boolean enableYEDIS) {
+  @Parameters({ "true", "false" })
+  public void testYEDISNodeCommand(boolean enableYEDIS) {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
@@ -1365,5 +1394,53 @@ public class NodeManagerTest extends FakeDBApplication {
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
+  }
+
+  private static NodeDetails createNode(boolean isMaster) {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "testNode";
+    node.azUuid = UUID.randomUUID();
+    node.isMaster = isMaster;
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.private_ip = "192.168.0.1";
+    return node;
+  }
+
+  @Test
+  @Parameters({ "MASTER, true", "MASTER, false", "TSERVER, true", "TSERVER, false" })
+  @TestCaseName("testGFlagsEraseMastersWhenInShell_Type:{0}_InShell:{1}")
+  public void testGFlagsEraseMastersWhenInShell(String serverType, boolean isMasterInShellMode) {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+
+      Universe universe = createUniverse();
+      universe.getUniverseDetails().nodeDetailsSet.add(createNode(true));
+      assertFalse(StringUtils.isEmpty(universe.getMasterAddresses()));
+
+      buildValidParams(t, params,
+          Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.type = GFlags;
+      params.isMasterInShellMode = isMasterInShellMode;
+      params.updateMasterAddrsOnly = true;
+      params.isMaster = serverType.equals(MASTER.toString());
+      params.setProperty("processType", serverType);
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      testGFlagsInCommand(expectedCommand, params.isMaster, isMasterInShellMode);
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+    }
+  }
+
+  private void testGFlagsInCommand(List<String> command, boolean isMaster,
+      boolean isMasterInShellMode) {
+    int gflagsIndex = command.indexOf("--gflags");
+    assertNotEquals(-1, gflagsIndex);
+
+    JsonNode obj = Json.parse(command.get(gflagsIndex + 1));
+    assertEquals(isMasterInShellMode, StringUtils
+        .isEmpty(obj.get(isMaster ? "master_addresses" : "tserver_master_addrs").asText()));
   }
 }

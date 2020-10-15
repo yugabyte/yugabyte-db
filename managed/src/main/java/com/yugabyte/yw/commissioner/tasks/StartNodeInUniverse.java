@@ -76,6 +76,12 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       // Bring up any masters, as needed.
       boolean masterAdded = false;
       if (areMastersUnderReplicated(currentNode, universe)) {
+        // Clean the master addresses in the conf file for the current node so that
+        // the master comes up as a shell master.
+        createConfigureServerTasks(ImmutableList.of(currentNode), true /* isShell */,
+            true /* updateMasterAddrs */, true /* isMaster */)
+                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
         // Set gflags for master.
         createGFlagsOverrideTasks(ImmutableList.of(currentNode), ServerType.MASTER);
 

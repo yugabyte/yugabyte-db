@@ -104,6 +104,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
             TaskType.AnsibleClusterServerCtl,
             TaskType.UpdateNodeProcess,
             TaskType.AnsibleConfigureServers,
+            TaskType.AnsibleConfigureServers,
             TaskType.AnsibleClusterServerCtl,
             TaskType.UpdateNodeProcess,
             TaskType.WaitForServer,
@@ -123,6 +124,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
                     "command", "start")),
             Json.toJson(ImmutableMap.of("processType", "TSERVER",
                     "isAdd", true)),
+            Json.toJson(ImmutableMap.of()),
             Json.toJson(ImmutableMap.of()),
             Json.toJson(ImmutableMap.of("process", "master",
                     "command", "start")),
@@ -195,7 +197,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         NodeTaskParams taskParams = new NodeTaskParams();
         taskParams.universeUUID = universe.universeUUID;
         TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-        verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+        verify(mockNodeManager, times(5)).nodeCommand(any(), any());
         List<TaskInfo> subTasks = taskInfo.getSubTasks();
         Map<Integer, List<TaskInfo>> subTasksByPosition =
                 subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
