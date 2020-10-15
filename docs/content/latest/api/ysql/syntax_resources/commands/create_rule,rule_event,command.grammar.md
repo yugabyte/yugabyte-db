@@ -1,6 +1,6 @@
 ```
 create_rule ::= CREATE [ OR REPLACE ] RULE rule_name AS ON rule_event 
-                TO table_name [ WHERE condition ] DO 
+                TO table_name [ WHERE boolean_expression ] DO 
                 [ ALSO | INSTEAD ] { NOTHING
                                      | command
                                      | ( command [ ; ... ] ) }

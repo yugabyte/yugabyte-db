@@ -14,10 +14,10 @@ returning_clause ::= RETURNING { * | { output_expression
 column_values ::= { expression | DEFAULT } [ , ... ]
 
 conflict_target ::= ( { column_name | expression } [ , ... ] ) 
-                    [ WHERE condition ]
+                    [ WHERE boolean_expression ]
                     | ON CONSTRAINT constraint_name
 
 conflict_action ::= DO NOTHING
                     | DO UPDATE SET update_item [ , ... ] 
-                      [ WHERE condition ]
+                      [ WHERE boolean_expression ]
 ```

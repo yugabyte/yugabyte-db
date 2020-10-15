@@ -1,16 +1,21 @@
 ---
 title: Window function syntax and semantics
-linkTitle: Invocation SQL syntax and semantics
+linkTitle: Invocation syntax and semantics
 headerTitle: Window function invocation—SQL syntax and semantics
-description: This section specifies the syntax and semantics of the OVER clause and the WINDOW clause. You must use these to invoke window functions. You may use them to invoke aggregate functions as an alternative to invoking these in conjunction with the GROUP BY clause.
+description: This section specifies the syntax and semantics of the OVER clause and the WINDOW clause. You may also invoke aggregate functions t_is way.
 menu:
   latest:
-    identifier: sql-syntax-semantics
+    identifier: window-functions-aggregate-functions-syntax-semantics
     parent: window-functions
     weight: 20
 isTocNested: true
 showAsideToc: true
 ---
+
+{{< note title="The rules described in this section also govern the invocation of aggregate functions." >}}
+
+The dedicated [Aggregate functions](../../aggregate_functions/) section explains that one kind of aggregate function—so-called ordinary aggregate functions, exemplified by [`avg()`](../../aggregate_functions/function-syntax-semantics/avg-count-max-min-sum/#avg) and [`count()`](../../aggregate_functions/function-syntax-semantics/avg-count-max-min-sum/#count)—can optionally be invoked using the identical syntax that you use to invoke window functions. That dedicated section has many examples. See also the sections [Using the aggregate function avg() to compute a moving average](../functionality-overview/#using-the-aggregate-function-avg-to-compute-a-moving-average) and [Using the aggregate function sum() with the OVER clause](../functionality-overview/#using-the-aggregate-function-sum-with-the-over-clause) in the present Window functions main section.
+{{< /note >}}
 
 {{< note title="A note on orthography" >}}
 
@@ -54,12 +59,9 @@ The following three diagrams, [`select_start`](../../../syntax_resources/grammar
   </div>
 </div>
 
-### Definition of the fn_invocation rule and the window_definition rule
+### Definition of the window_definition rule
 
-As promised in the `SELECT` statement section, this section explains the remaining rules: 
-
-- the [`fn_invocation`](../../../syntax_resources/grammar_diagrams/#fn-invocation) rule and its use in conjunction with the `FILTER` keyword and the `OVER` keyword
-- the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) rule and its use as the argument of either the `OVER` keyword or the `WINDOW` keyword.
+As promised in the `SELECT` statement section, this section explains the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) rule and its use as the argument of either the `OVER` keyword or the `WINDOW` keyword.
 
 A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) can be used only at these two syntax spots, within the enclosing syntax of a subquery.
 
@@ -80,10 +82,10 @@ A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-defin
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/window_functions/fn_invocation,window_definition.grammar.md" /%}}
+    {{% includeMarkdown "../../syntax_resources/exprs/window_functions/window_definition.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/window_functions/fn_invocation,window_definition.diagram.md" /%}}
+    {{% includeMarkdown "../../syntax_resources/exprs/window_functions/window_definition.diagram.md" /%}}
   </div>
 </div>
 
@@ -115,9 +117,17 @@ A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-defin
 
 ## Semantics
 
-### The fn_invocation rule
+### The fn_over_window rule
 
-A window function can be invoked only at the syntax spot in a subquery that the diagram for the [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start) rule shows. An aggregate function _may_ be invoked in this way as an alternative to its more familiar invocation as a regular `SELECT` list item in conjunction with the `GROUP BY` clause. The number, data types, and meanings of a function's formal parameters are function-specific. YSQL's eleven window functions are classified into functional groups, and summarized, in the two tables at the end of the section [Signature and purpose of each window function](../function-syntax-semantics/). Each entry links to the formal account of the function which also provides runnable code examples.
+A window function can be invoked only at the syntax spot in a subquery that the diagram for the [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start) rule shows. An [aggregate function](../../aggregate_functions/) _may_ be invoked in this way as an alternative to its more familiar invocation as a regular `SELECT` list item in conjunction with the `GROUP BY` clause. (The invocation of an aggregate function in conjunction with the `GROUP BY` clause is governed by the `ordinary_aggregate_fn_invocation` rule or the `within_group_aggregate_fn_invocation` rule.)
+
+The number, data types, and meanings of a window function's formal parameters are function-specific. YSQL's eleven window functions are classified into functional groups, and summarized, in the two tables at the end of the section [Signature and purpose of each window function](../function-syntax-semantics/). Each entry links to the formal account of the function which also provides runnable code examples.
+
+Notice that, among the dedicated window functions (as opposed to aggreagte functions that may be invoked as window functions), only [`ntile()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#ntile) takes an argument. Every other dedicated window function is invoked with an empty parentheses pair. Some aggregate functions (like, for example, [`jsonb_object_agg()`](../../aggregate_functions/function-syntax-semantics/array-string-jsonb-jsonb-object-agg/#jsonb-object-agg)) take more than one argument. When an aggregate function is invoke as a window function, the keyword `DISTINCT` is not allowed within the parenthesized list of arguments. The attempt causes this error:
+
+```
+0A000: DISTINCT is not implemented for window functions
+```
 
 ### The window_definition rule
 
@@ -165,10 +175,6 @@ The window `ORDER BY` clause determines the order in which the rows of a [_windo
 
 The [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause) has many variants. Only one basic variant is needed in the `OVER` clause that you use to invoke a window function. The other variants are useful in the `OVER` clause that you use to invoke an aggregate function. For completeness, those variants are described on this page.
 
-{{< note title="A future documentation effort will add an 'Aggregate functions' major section." >}}
-The definitive description of the use of aggregate functions invoked using the `OVER` clause will be covered in a forthcoming _"Aggregate functions"_ major documentation section. The siting of the present section,  "_The syntax and semantics of the window definition"_, will be reconsidered as part of that effort.
-{{< /note >}}
-
 #### frame_clause semantics for window functions
 
 The [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause) specifies the set of rows constituting the so-called [_window frame_](./#frame-clause-semantics-for-window-functions). In general, this will be a subset of the rows in the current [_window_](./#the-window-definition-rule). Look at the two tables at the end of the section [Signature and purpose of each window function](../function-syntax-semantics/).
@@ -181,7 +187,7 @@ The [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause) s
   range between unbounded preceding and unbounded following
   ```
 
-Use cases where the [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause)'s many other variants are useful arise when an aggregate function is invoked using the `OVER` clause. This topic is outside the scope of the [Window functions](../../window_functions/) major section. One example is given in the section [Using the aggregate function `avg()` to compute a moving average](../#using-the-aggregate-function-avg-to-compute-a-moving-average). Another example, that uses `count(*)`, is given in the code that explains the meaning of the [`percent_rank()`](../percent-rank-cume-dist-ntile/#percent-rank) function.
+Use cases where the [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause)'s many other variants are useful arise when an aggregate function is invoked using the `OVER` clause. One example is given in the section [Using the aggregate function `avg()` to compute a moving average](../#using-the-aggregate-function-avg-to-compute-a-moving-average). Another example, that uses `count(*)`, is given in the code that explains the meaning of the [`percent_rank()`](../percent-rank-cume-dist-ntile/#percent-rank) function. Otherwise, see the main [Aggregate functions](../../aggregate_functions) section.
 
 #### frame_clause semantics for aggregate functions
 
@@ -191,7 +197,7 @@ A [`frame_start`](../../../syntax_resources/grammar_diagrams/#frame-start) of `U
 
 In `RANGE` or `GROUPS` mode, a [`frame_start`](../../../syntax_resources/grammar_diagrams/#frame-start) of `CURRENT ROW` means that the [_window frame_](./#frame-clause-semantics-for-window-functions) starts with the first member of the current row's _peer group_. A _peer group_ is a set of rows that the window `ORDER BY` clause sorts with the same rank as the current row. And a [`frame_end`](../../../syntax_resources/grammar_diagrams/#frame-end) of `CURRENT ROW` means that the [_window frame_](./#frame-clause-semantics-for-window-functions) ends with the last row in the current row's _peer group_. In `ROWS` mode, `CURRENT ROW` simply means the current row.
 
-For the [`offset`](../../../syntax_resources/grammar_diagrams/#offset) `PRECEDING` and [`offset`](../../../syntax_resources/grammar_diagrams/#offset) `FOLLOWING` modes of the [`frame_start`](../../../syntax_resources/grammar_diagrams/#frame-start) and [`frame_end`](../../../syntax_resources/grammar_diagrams/#frame-end) clauses, the [offset`](../../../syntax_resources/grammar_diagrams/#offset) argument must be an expression that doesn't include any variables, aggregate functions, or window functions. The meaning of the [`offset`](../../../syntax_resources/grammar_diagrams/#offset) value depends on the `RANGE | ROWS | GROUPS` mode:
+For the [`offset`](../../../syntax_resources/grammar_diagrams/#offset) `PRECEDING` and [`offset`](../../../syntax_resources/grammar_diagrams/#offset) `FOLLOWING` modes of the [`frame_start`](../../../syntax_resources/grammar_diagrams/#frame-start) and [`frame_end`](../../../syntax_resources/grammar_diagrams/#frame-end) clauses, the [`offset`](../../../syntax_resources/grammar_diagrams/#offset) argument must be an expression that doesn't include any variables, aggregate functions, or window functions. The meaning of the [`offset`](../../../syntax_resources/grammar_diagrams/#offset) value depends on the `RANGE | ROWS | GROUPS` mode:
 
 - In `ROWS` mode, the [`offset`](../../../syntax_resources/grammar_diagrams/#offset) value must be a `NOT NULL`, non-negative integer. This brings the meaning that the [_window frame_](./#frame-clause-semantics-for-window-functions) starts or ends the specified number of rows before or after the current row.
 
@@ -201,7 +207,7 @@ For the [`offset`](../../../syntax_resources/grammar_diagrams/#offset) `PRECEDIN
   42P20: GROUPS mode requires an ORDER BY clause
   ```
 
-- In `RANGE` mode, these options require that the window `ORDER BY` clause specify exactly one column. The [offset`](../../../syntax_resources/grammar_diagrams/#offset) value specifies the maximum difference between the value of that column in the current row and its value in the preceding or following rows of the [_window frame_](./#frame-clause-semantics-for-window-functions). The [offset`](../../../syntax_resources/grammar_diagrams/#offset) expression must yield a value whose data type depends upon that of the ordering column. For numeric ordering columns (like `int`, `double precision`, and so on), it is typically of the same data type as the ordering column; but for date-time ordering columns it is an `interval`. For example, if the ordering column is `date` or `timestamp`, you could specify `RANGE BETWEEN '1 day' PRECEDING AND '10 days' FOLLOWING`. Here too, the [offset`](../../../syntax_resources/grammar_diagrams/#offset) value must be `NOT NULL` and non-negative. The meaning of “non-negative” depends on the data type.
+- In `RANGE` mode, these options require that the window `ORDER BY` clause specify exactly one column. The [`offset`](../../../syntax_resources/grammar_diagrams/#offset) value specifies the maximum difference between the value of that column in the current row and its value in the preceding or following rows of the [_window frame_](./#frame-clause-semantics-for-window-functions). The [`offset`](../../../syntax_resources/grammar_diagrams/#offset) expression must yield a value whose data type depends upon that of the ordering column. For numeric ordering columns (like `int`, `double precision`, and so on), it is typically of the same data type as the ordering column; but for date-time ordering columns it is an `interval`. For example, if the ordering column is `date` or `timestamp`, you could specify `RANGE BETWEEN '1 day' PRECEDING AND '10 days' FOLLOWING`. Here too, the [`offset`](../../../syntax_resources/grammar_diagrams/#offset) value must be `NOT NULL` and non-negative. The meaning of “non-negative” depends on the data type.
 
 In all cases, the distance to the start and end of the [_window frame_](./#frame-clause-semantics-for-window-functions) is limited by the distance to the start and end of the [_window_](./#the-window-definition-rule), so that for rows near the [_window_](./#the-window-definition-rule) boundaries, the [_window frame_](./#frame-clause-semantics-for-window-functions) might contain fewer rows than elsewhere.
 
