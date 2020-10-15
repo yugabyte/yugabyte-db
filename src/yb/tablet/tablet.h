@@ -209,11 +209,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
                                       const HybridTime read_time);
 
   CHECKED_STATUS UpdateIndexInBatches(
-      const QLTableRow& row, const std::vector<IndexInfo>& indexes,
+      const QLTableRow& row,
+      const std::vector<IndexInfo>& indexes,
+      const HybridTime write_time,
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests);
 
   CHECKED_STATUS FlushIndexBatchIfRequired(
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      const HybridTime write_time,
       bool force_flush = false);
 
   CHECKED_STATUS
