@@ -17,3 +17,4 @@
 #### deferrable_mode
 
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="224" height="50" viewbox="0 0 224 50"><path class="connector" d="M0 22h35m45 0h20m-80 0q5 0 5 5v8q0 5 5 5h55q5 0 5-5v-8q0-5 5-5m5 0h10m99 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="35" y="5" width="45" height="25" rx="7"/><text class="text" x="45" y="22">NOT</text><rect class="literal" x="110" y="5" width="99" height="25" rx="7"/><text class="text" x="120" y="22">DEFERRABLE</text><polygon points="220,29 224,29 224,15 220,15" style="fill:black;stroke-width:0"/></svg>
+

@@ -1,7 +1,7 @@
 ```
 update ::= [ WITH [ RECURSIVE ] with_query [ , ... ] ]  UPDATE 
            [ ONLY ] table_name [ * ] [ [ AS ] alias ]  SET update_item 
-           [ , ... ] [ WHERE condition
+           [ , ... ] [ WHERE boolean_expression
                        | WHERE CURRENT OF cursor_name ]  
            [ returning_clause ]
 
