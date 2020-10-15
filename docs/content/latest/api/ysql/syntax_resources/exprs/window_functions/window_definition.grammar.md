@@ -1,6 +1,4 @@
 ```
-fn_invocation ::= name ( { expression [ , ... ] | * } )
-
 window_definition ::= ( [ name ]  
                       [ PARTITION BY order_expr [ , ... ] ]  
                       [ ORDER BY order_expr [ , ... ] ]  
