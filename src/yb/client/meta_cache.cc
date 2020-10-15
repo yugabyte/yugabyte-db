@@ -587,7 +587,7 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
 // may be handled locally.
 //
 // Keeps a reference on the owning metacache while alive.
-class LookupRpc : public Rpc {
+class LookupRpc : public Rpc, public RequestCleanup {
  public:
   LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
             const std::shared_ptr<const YBTable>& table,
@@ -787,7 +787,7 @@ void LookupRpc::DoFinished(
 
   if (new_status.ok()) {
     new_status = meta_cache_->ProcessTabletLocations(
-        resp.tablet_locations(), partition_group_start, request_no());
+        resp.tablet_locations(), partition_group_start, this);
   }
   if (!new_status.ok()) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1) << new_status;
@@ -847,8 +847,7 @@ class TablePartitionLookup : public ToStringable {
 
 Status MetaCache::ProcessTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-    const std::string* partition_group_start,
-    int64_t request_no) {
+    const std::string* partition_group_start, RequestCleanup* cleanup) {
   if (VLOG_IS_ON(2)) {
     auto group_start =
         partition_group_start ? Slice(*partition_group_start).ToDebugHexString() : "<NULL>";
@@ -940,9 +939,6 @@ Status MetaCache::ProcessTabletLocations(
           to_notify.emplace_back(std::move(lookup->callback), remote);
           delete lookup;
         }
-        if (!partition_group_start) {
-          it->second.Finished(request_no, TabletIdLookup(tablet_id));
-        }
       }
     }
 
@@ -962,11 +958,12 @@ Status MetaCache::ProcessTabletLocations(
                 remote_it != processed_table.second.end() ? remote_it->second : nullptr);
             delete lookup;
           }
-          lookups_group.Finished(
-              request_no, TablePartitionLookup(processed_table.first, *partition_group_start),
-              processed_tables.size() != 1);
         }
       }
+    }
+
+    if (cleanup) {
+      cleanup->CleanupRequest();
     }
   }
 
@@ -1152,6 +1149,17 @@ class LookupByIdRpc : public LookupRpc {
     DoFinished(status, resp_, nullptr /* partition_group_start */);
   }
 
+  void CleanupRequest() override NO_THREAD_SAFETY_ANALYSIS {
+    auto& lookups = meta_cache()->tablet_lookups_by_id_;
+    auto it = lookups.find(tablet_id_);
+    TabletIdLookup tablet_id_lookup(tablet_id_);
+    if (it != lookups.end()) {
+      it->second.Finished(request_no(), tablet_id_lookup);
+    } else {
+      LOG(INFO) << "Cleanup request for unknown tablet: " << tablet_id_lookup.ToString();
+    }
+  }
+
   void NotifyFailure(const Status& status) override {
     meta_cache()->LookupByIdFailed(tablet_id_, table(), request_no(), status);
   }
@@ -1207,6 +1215,19 @@ class LookupByKeyRpc : public LookupRpc {
  private:
   void Finished(const Status& status) override {
     DoFinished(status, resp_, &partition_group_start_);
+  }
+
+  void CleanupRequest() override NO_THREAD_SAFETY_ANALYSIS {
+    auto& table_data = meta_cache()->tables_[table()->id()];
+    const auto lookup_by_group_iter = table_data.tablet_lookups_by_group.find(
+        partition_group_start_);
+    TablePartitionLookup tablet_partition_lookup(table()->id(), partition_group_start_);
+    if (lookup_by_group_iter != table_data.tablet_lookups_by_group.end()) {
+      lookup_by_group_iter->second.Finished(request_no(), tablet_partition_lookup, false);
+    } else {
+      LOG(INFO) << "Cleanup request for unknown partition group: "
+                << tablet_partition_lookup.ToString();
+    }
   }
 
   void NotifyFailure(const Status& status) override {
@@ -1520,18 +1541,20 @@ void MetaCache::ReleaseMasterLookupPermit() {
 void MetaCache::LookupDataGroup::Finished(
     int64_t request_no, const ToStringable& id, bool allow_absence) {
   int64_t expected = request_no;
-  if (!running_request_number.compare_exchange_strong(expected, 0, std::memory_order_acq_rel)) {
-    if ((expected == 0 && max_completed_request_number <= request_no) && !allow_absence) {
-      LOG(DFATAL) << "Lookup was not running for " << id.ToString() << ", expected: " << request_no;
-    } else {
-      LOG(INFO)
-          << "Finished lookup for " << id.ToString() << ": " << request_no << ", while "
-          << expected << " was running, could happen during tablet split";
-    }
-  } else {
+  if (running_request_number.compare_exchange_strong(expected, 0, std::memory_order_acq_rel)) {
     max_completed_request_number = std::max(max_completed_request_number, request_no);
     VLOG_WITH_FUNC(2) << "Finished lookup for " << id.ToString() << ", no: " << request_no;
+    return;
   }
+
+  if ((expected == 0 && max_completed_request_number <= request_no) && !allow_absence) {
+    LOG(DFATAL) << "Lookup was not running for " << id.ToString() << ", expected: " << request_no;
+    return;
+  }
+
+  LOG(INFO)
+      << "Finished lookup for " << id.ToString() << ": " << request_no << ", while "
+      << expected << " was running, could happen during tablet split";
 }
 
 } // namespace internal
