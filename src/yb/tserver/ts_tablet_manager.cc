@@ -426,7 +426,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   // "number of CPUs" may cause blocking tasks to starve other "fast" tasks).
   // However, the effective upper bound is the number of replicas as each will
   // submit its own tasks via a dedicated token.
-  CHECK_OK(ThreadPoolBuilder("raft")
+  CHECK_OK(ThreadPoolBuilder("consensus")
                .set_min_threads(1)
                .unlimited_threads()
                .Build(&raft_pool_));
