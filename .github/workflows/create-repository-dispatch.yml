@@ -24,6 +24,7 @@ jobs:
               exit 1
             fi
           fi
+          echo "Release train determined: $train"
           echo "::set-output name=yb_train::${train}"
           
       - name: "Trigger Repository Dispatch - yugabyte/terraform-gcp-yugabyte"
