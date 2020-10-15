@@ -1516,6 +1516,7 @@ expand_inherited_tables(PlannerInfo *root)
 static void
 expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 {
+	Query	   *parse = root->parse;
 	Oid			parentOID;
 	PlanRowMark *oldrc;
 	Relation	oldrelation;
@@ -1546,9 +1547,21 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 	 * relation named in the query.  However, for each child relation we add
 	 * to the query, we must obtain an appropriate lock, because this will be
 	 * the first use of those relations in the parse/rewrite/plan pipeline.
-	 * Child rels should use the same lockmode as their parent.
+	 *
+	 * If the parent relation is the query's result relation, then we need
+	 * RowExclusiveLock.  Otherwise, if it's accessed FOR UPDATE/SHARE, we
+	 * need RowShareLock; otherwise AccessShareLock.  We can't just grab
+	 * AccessShareLock because then the executor would be trying to upgrade
+	 * the lock, leading to possible deadlocks.  (This code should match the
+	 * parser and rewriter.)
 	 */
-	lockmode = rte->rellockmode;
+	oldrc = get_plan_rowmark(root->rowMarks, rti);
+	if (rti == parse->resultRelation)
+		lockmode = RowExclusiveLock;
+	else if (oldrc && RowMarkRequiresRowShareLock(oldrc->markType))
+		lockmode = RowShareLock;
+	else
+		lockmode = AccessShareLock;
 
 	/* Scan for all members of inheritance set, acquire needed locks */
 	inhOIDs = find_all_inheritors(parentOID, lockmode, NULL);
@@ -1570,7 +1583,6 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 	 * PlanRowMark as isParent = true, and generate a new PlanRowMark for each
 	 * child.
 	 */
-	oldrc = get_plan_rowmark(root->rowMarks, rti);
 	if (oldrc)
 		oldrc->isParent = true;
 
