@@ -1057,7 +1057,6 @@ transformOnConflictClause(ParseState *pstate,
 		 */
 		exclRte = addRangeTableEntryForRelation(pstate,
 												targetrel,
-												RowExclusiveLock,
 												makeAlias("excluded", NIL),
 												false, false);
 		exclRte->relkind = RELKIND_COMPOSITE_TYPE;

@@ -795,8 +795,7 @@ copy_table(Relation rel)
 	copybuf = makeStringInfo();
 
 	pstate = make_parsestate(NULL);
-	addRangeTableEntryForRelation(pstate, rel, AccessShareLock,
-								  NULL, false, false);
+	addRangeTableEntryForRelation(pstate, rel, NULL, false, false);
 
 	attnamelist = make_copy_attnamelist(relmapentry);
 	cstate = BeginCopyFrom(pstate, rel, NULL, false, copy_read_data, attnamelist, NIL);

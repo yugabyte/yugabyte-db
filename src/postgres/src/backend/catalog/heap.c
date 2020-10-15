@@ -2527,7 +2527,6 @@ AddRelationNewConstraints(Relation rel,
 	pstate = make_parsestate(NULL);
 	rte = addRangeTableEntryForRelation(pstate,
 										rel,
-										AccessShareLock,
 										NULL,
 										false,
 										true);

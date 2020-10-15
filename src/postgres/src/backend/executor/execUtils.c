@@ -670,31 +670,19 @@ ExecOpenScanRelation(EState *estate, Index scanrelid, int eflags)
 	/*
 	 * Determine the lock type we need.  First, scan to see if target relation
 	 * is a result relation.  If not, check if it's a FOR UPDATE/FOR SHARE
-	 * relation.
-	 *
-	 * Note: we may have already gotten the desired lock type, but for now
-	 * don't try to optimize; this logic is going away soon anyhow.
+	 * relation.  In either of those cases, we got the lock already.
 	 */
 	lockmode = AccessShareLock;
 	if (ExecRelationIsTargetRelation(estate, scanrelid))
-		lockmode = RowExclusiveLock;
+		lockmode = NoLock;
 	else
 	{
 		/* Keep this check in sync with InitPlan! */
 		ExecRowMark *erm = ExecFindRowMark(estate, scanrelid, true);
 
-		if (erm != NULL)
-		{
-			if (erm->markType == ROW_MARK_REFERENCE ||
-				erm->markType == ROW_MARK_COPY)
-				lockmode = AccessShareLock;
-			else
-				lockmode = RowShareLock;
-		}
+		if (erm != NULL && erm->relation != NULL)
+			lockmode = NoLock;
 	}
-
-	/* lockmode per above logic must not be more than we previously acquired */
-	Assert(lockmode <= rt_fetch(scanrelid, estate->es_range_table)->rellockmode);
 
 	/* Open the relation and acquire lock as needed */
 	reloid = getrelid(scanrelid, estate->es_range_table);
