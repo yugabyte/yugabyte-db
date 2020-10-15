@@ -375,6 +375,12 @@ class ToStringable {
   virtual ~ToStringable() = default;
 };
 
+class RequestCleanup {
+ public:
+  virtual void CleanupRequest() = 0;
+  virtual ~RequestCleanup() = default;
+};
+
 // Manager of RemoteTablets and RemoteTabletServers. The client consults
 // this class to look up a given tablet or server.
 //
@@ -451,7 +457,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   CHECKED_STATUS ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
       const std::string* partition_group_start,
-      int64_t request_no);
+      RequestCleanup* cleanup);
 
   void InvalidateTableCache(const TableId& table_id);
 
