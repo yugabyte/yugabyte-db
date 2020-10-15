@@ -49,6 +49,7 @@
 
 #include "yb/server/metadata.h"
 #include "yb/server/rpc_server.h"
+#include "yb/server/server_base.h"
 #include "yb/server/webserver.h"
 
 #include "yb/tablet/maintenance_manager.h"
@@ -119,15 +120,28 @@ Status MiniTabletServer::Start() {
   gscoped_ptr<TabletServer> server(new enterprise::TabletServer(opts_));
   RETURN_NOT_OK(server->Init());
 
-  server::TEST_SetupConnectivity(server->messenger(), index_);
-
   RETURN_NOT_OK(server->Start());
 
   server_.swap(server);
 
+  RETURN_NOT_OK(Reconnect());
+
+  started_ = true;
+  return Status::OK();
+}
+
+void MiniTabletServer::Isolate() {
+  server::TEST_Isolate(server_->messenger());
+  tunnel_->Shutdown();
+}
+
+Status MiniTabletServer::Reconnect() {
+  server::TEST_SetupConnectivity(server_->messenger(), index_);
+
   tunnel_ = std::make_unique<Tunnel>(&server_->messenger()->io_service());
-  auto se = ScopeExit([this] {
-    if (!started_) {
+  auto started_tunnel = false;
+  auto se = ScopeExit([this, &started_tunnel] {
+    if (!started_tunnel) {
       tunnel_->Shutdown();
     }
   });
@@ -139,17 +153,8 @@ Status MiniTabletServer::Start() {
       local.front(), remote, [messenger = server_->messenger()](const IpAddress& address) {
     return !messenger->TEST_ShouldArtificiallyRejectIncomingCallsFrom(address);
   }));
-
-  started_ = true;
+  started_tunnel = true;
   return Status::OK();
-}
-
-void MiniTabletServer::SetIsolated(bool isolated) {
-  if (isolated) {
-    server::TEST_Isolate(server_->messenger());
-  } else {
-    server::TEST_SetupConnectivity(server_->messenger(), index_);
-  }
 }
 
 Status MiniTabletServer::WaitStarted() {

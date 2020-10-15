@@ -125,7 +125,10 @@ class MiniTabletServer {
 
   void FailHeartbeats();
 
-  void SetIsolated(bool isolated);
+  // Close and disable all connections from this server to any other servers in the cluster.
+  void Isolate();
+  // Re-enable connections from this server to other servers in the cluster.
+  CHECKED_STATUS Reconnect();
 
  private:
   bool started_;
