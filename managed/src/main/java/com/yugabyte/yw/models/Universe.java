@@ -27,8 +27,9 @@ import javax.persistence.UniqueConstraint;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.CertificateInfo;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -149,12 +150,16 @@ public class Universe extends Model {
       json.put("dnsName", dnsName);
     }
     UniverseDefinitionTaskParams params = getUniverseDetails();
+    Collection<NodeDetails> nodes = getNodes();
     try {
-      json.set("resources", Json.toJson(UniverseResourceDetails.create(getNodes(), params)));
+      json.set("resources", Json.toJson(UniverseResourceDetails.create(nodes, params)));
     } catch (Exception e) {
       json.set("resources", null);
     }
+
     ObjectNode universeDetailsJson = (ObjectNode) Json.toJson(params);
+    updateNodesDynamicActions(universeDetailsJson, nodes);
+
     ArrayNode clustersArrayJson = Json.newArray();
     for (Cluster cluster : params.clusters) {
       JsonNode clusterJson = cluster.toJson();
@@ -166,6 +171,46 @@ public class Universe extends Model {
     json.set("universeDetails", universeDetailsJson);
     json.set("universeConfig", this.config);
     return json;
+  }
+
+  /**
+   * Modifies lists of allowed for nodes actions depending on the universe state.
+   * Actions are added/removed directly into/from the json representation. Initial
+   * values of allowed actions are set by NodeDetails.getAllowedActions().
+   *
+   * @param universeDetailsJson
+   * @param nodes
+   */
+  void updateNodesDynamicActions(ObjectNode universeDetailsJson,
+      Collection<NodeDetails> nodes) {
+    JsonNode nodeDetailsSet = universeDetailsJson.get("nodeDetailsSet");
+    if (nodeDetailsSet == null || nodeDetailsSet.isNull() || !nodeDetailsSet.isArray()) {
+      return;
+    }
+
+    try {
+      // Preparing a node name -> allowed actions map.
+      Map<String, ArrayNode> nodeActions = new HashMap<>();
+      for (int i = 0; i < nodeDetailsSet.size(); i++) {
+        JsonNode jsonNode = nodeDetailsSet.get(i);
+        JsonNode allowedActions = jsonNode.get("allowedActions");
+        if (allowedActions != null && !allowedActions.isNull() && allowedActions.isArray()) {
+          nodeActions.put(jsonNode.get("nodeName").asText(), (ArrayNode) allowedActions);
+        }
+      }
+
+      for (NodeDetails node : nodes) {
+        if (node.state == NodeDetails.NodeState.Live && !node.isMaster
+            && Util.areMastersUnderReplicated(node, this)) {
+          ArrayNode actions = nodeActions.get(node.nodeName);
+          if (actions != null) {
+            actions.add(NodeActionType.START_MASTER.name());
+          }
+        }
+      }
+    } catch (Exception e) {
+      LOG.info("Unable to update allowed actions: " + e);
+    }
   }
 
   public static final Finder<UUID, Universe> find = new Finder<UUID, Universe>(Universe.class) {
@@ -676,6 +721,13 @@ public class Universe extends Model {
           .filter((n) -> n.isMaster && n.state == NodeDetails.NodeState.Live)
           .count();
       if (numMasterNodesUp <= (curCluster.userIntent.replicationFactor + 1) / 2) {
+        return false;
+      }
+    }
+
+    if (action == NodeActionType.START_MASTER) {
+      if (node.isMaster || (node.state != NodeDetails.NodeState.Live)
+          || !Util.areMastersUnderReplicated(node, this)) {
         return false;
       }
     }
