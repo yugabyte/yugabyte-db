@@ -43,7 +43,7 @@ To schedule a backup, follow these steps:
     <br/>
     <br/>
 
-    ![Create Backup form](/images/yp/create-scheduled-backup-ycql.png)
+    ![Create Backup form](/images/yp/scheduled-backup-ycql.png)
 
 5. Enter the **Backup frequency** (interval in milliseconds) or a **Cron expression (UTC)***. For details on valid `cron` expression formats, hover over the question mark (`?`) icon.
 
