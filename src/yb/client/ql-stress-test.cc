@@ -680,6 +680,8 @@ TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingl
 
     AddWriter("value_", &key, &thread_holder);
 
+    std::this_thread::sleep_for(5s * yb::kTimeMultiplier);
+
     tserver::MiniTabletServer* leader = nullptr;
     for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
       auto current = cluster_->mini_tablet_server(i);
@@ -694,21 +696,19 @@ TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingl
 
     ASSERT_NE(leader, nullptr);
 
-    std::this_thread::sleep_for(5s * yb::kTimeMultiplier);
-
     auto pre_isolate_op_id = leader_peer->GetLatestLogEntryOpId();
     LOG(INFO) << "Isolate, last op id: " << pre_isolate_op_id << ", key: " << key;
-    ASSERT_EQ(pre_isolate_op_id.term, 1);
+    ASSERT_GE(pre_isolate_op_id.term, 1);
     ASSERT_GT(pre_isolate_op_id.index, key);
-    leader->SetIsolated(true);
+    leader->Isolate();
     std::this_thread::sleep_for(10s * yb::kTimeMultiplier);
 
     auto pre_restore_op_id = leader_peer->GetLatestLogEntryOpId();
     LOG(INFO) << "Restore, last op id: " << pre_restore_op_id << ", key: " << key;
-    ASSERT_EQ(pre_restore_op_id.term, 1);
+    ASSERT_EQ(pre_restore_op_id.term, pre_isolate_op_id.term);
     ASSERT_GE(pre_restore_op_id.index, pre_isolate_op_id.index);
     ASSERT_LE(pre_restore_op_id.index, pre_isolate_op_id.index + 10);
-    leader->SetIsolated(false);
+    ASSERT_OK(leader->Reconnect());
 
     thread_holder.WaitAndStop(5s * yb::kTimeMultiplier);
   }
