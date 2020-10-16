@@ -51,7 +51,7 @@ dd {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
     margin: 26px 0 0;
-    font-size: 40px;
+    font-size: 36px;
     letter-spacing: -.02em;
     @media only screen and (max-width: 767px) {
       font-size: 28px;
@@ -183,7 +183,8 @@ dd {
     text-align: left;
 
     a {
-      border-bottom: none !important;
+      padding-bottom: 2px;
+      color: $YB_ORANGE;
     }
   }
 
@@ -218,12 +219,23 @@ dd {
 
   a {
     border-bottom: 1px dashed;
-    color: $YB_ORANGE;
+    color: $YB_DARK_ORANGE_2;
+
+    .link-external-icon {
+      display: none;
+      margin-left: 5px;
+      font-size: 11px;
+      margin-bottom: 2px;
+    }
 
     &:hover {
       color: $YB_ORANGE;
       border-bottom-style: solid;
       text-decoration: none !important;
+
+      .link-external-icon {
+        display: inline-block;
+      }
     }
 
     &.headerlink {
@@ -684,6 +696,7 @@ h1, h2, h3, h4, h5, h6 {
       border-bottom: 2px solid #FF6E42;
       background: unset !important;
       font-variant-caps: all-small-caps;
+      padding-bottom: 6px;
     }
 
     tbody {
@@ -699,7 +712,7 @@ h1, h2, h3, h4, h5, h6 {
 
   a > code {
     /* Prevent underscore from being hidden by codeblock */
-    margin-bottom: 2px;
+    margin: 0 0 2px;
   }
 
   pre code {
