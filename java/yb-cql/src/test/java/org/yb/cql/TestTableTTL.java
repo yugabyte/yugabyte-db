@@ -363,7 +363,7 @@ public class TestTableTTL extends BaseCQLTest {
     LOG.info("Insert rows.");
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3);", tableName));
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (4, 5, 6) " +
-          "USING TTL 6;", tableName));
+          "USING TTL 10;", tableName));
 
     LOG.info("Update Table TTL");
     session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=2;", tableName));
@@ -387,7 +387,7 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=20;", tableName));
 
     LOG.info("Wait for rows to expire.");
-    TestUtils.waitForTTL(4000L);
+    TestUtils.waitForTTL(8000L);
 
     LOG.info("Verify second row is gone.");
     assertNoRow(tableName, 4);
