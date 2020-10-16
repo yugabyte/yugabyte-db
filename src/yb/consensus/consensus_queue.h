@@ -517,7 +517,10 @@ class PeerMessageQueue {
   OpId OpIdWatermark();
   uint64_t NumSSTFilesWatermark();
 
-  Result<ReadOpsResult> ReadFromLogCache(int64_t from_index,
+  // Reads operations from the log cache in the range (after_index, to_index].
+  //
+  // If 'to_index' is 0, then all operations after 'after_index' will be included.
+  Result<ReadOpsResult> ReadFromLogCache(int64_t after_index,
                                          int64_t to_index,
                                          int max_batch_size,
                                          const std::string& peer_uuid);
