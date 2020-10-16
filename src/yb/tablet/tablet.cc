@@ -2006,7 +2006,7 @@ Status Tablet::MarkBackfillDone() {
                         << table_info->schema.ToString();
   const vector<DeletedColumn> empty_deleted_cols;
   Schema new_schema = Schema(table_info->schema);
-  new_schema.SetIsBackfilling(false);
+  new_schema.SetRetainDeleteMarkers(false);
   metadata_->SetSchema(
       new_schema, table_info->index_map, empty_deleted_cols, table_info->schema_version);
   return metadata_->Flush();

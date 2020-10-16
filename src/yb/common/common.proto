@@ -260,7 +260,7 @@ message TablePropertiesPB {
   optional bool use_mangled_column_name =  6 [ default = false ];
   optional int32 num_tablets = 7 [ default = 0 ];
   optional bool is_ysql_catalog_table = 8 [ default = false ];
-  optional bool is_backfilling = 9 [ default = false ];
+  optional bool retain_delete_markers = 9 [ default = false ];
   optional uint64 backfilling_timestamp = 10;
 }
 

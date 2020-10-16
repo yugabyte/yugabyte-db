@@ -96,7 +96,7 @@ void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
     pb->set_num_tablets(num_tablets_);
   }
   pb->set_is_ysql_catalog_table(is_ysql_catalog_table_);
-  pb->set_is_backfilling(is_backfilling_);
+  pb->set_retain_delete_markers(retain_delete_markers_);
 }
 
 TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& pb) {
@@ -125,8 +125,8 @@ TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& 
   if (pb.has_is_ysql_catalog_table()) {
     table_properties.set_is_ysql_catalog_table(pb.is_ysql_catalog_table());
   }
-  if (pb.has_is_backfilling()) {
-    table_properties.SetIsBackfilling(pb.is_backfilling());
+  if (pb.has_retain_delete_markers()) {
+    table_properties.SetRetainDeleteMarkers(pb.retain_delete_markers());
   }
   return table_properties;
 }
@@ -153,8 +153,8 @@ void TableProperties::AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
   if (pb.has_is_ysql_catalog_table()) {
     set_is_ysql_catalog_table(pb.is_ysql_catalog_table());
   }
-  if (pb.has_is_backfilling()) {
-    SetIsBackfilling(pb.is_backfilling());
+  if (pb.has_retain_delete_markers()) {
+    SetRetainDeleteMarkers(pb.retain_delete_markers());
   }
 }
 
@@ -167,7 +167,7 @@ void TableProperties::Reset() {
   use_mangled_column_name_ = false;
   num_tablets_ = 0;
   is_ysql_catalog_table_ = false;
-  is_backfilling_ = false;
+  retain_delete_markers_ = false;
 }
 
 string TableProperties::ToString() const {
