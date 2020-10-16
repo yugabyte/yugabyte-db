@@ -402,6 +402,8 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   // Tablet servers that have been manually Shutdown() are allowed.
   void AssertNoTabletServersCrashed();
 
+  Result<int64_t> GetNumLogCacheOpsReadFromDisk();
+
   // Ensure that a majority of servers is required for elections and writes.
   // This is done by pausing a majority and asserting that writes and elections fail,
   // then unpausing the majority and asserting that elections and writes succeed.
@@ -749,6 +751,16 @@ TEST_F(RaftConsensusITest, TestCatchupAfterOpsEvicted) {
   ASSERT_ALL_REPLICAS_AGREE(kNumWrites);
 }
 
+Result<int64_t> RaftConsensusITest::GetNumLogCacheOpsReadFromDisk() {
+  TServerDetails* leader = nullptr;
+  RETURN_NOT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
+  return cluster_->tablet_server_by_uuid(leader->uuid())->GetInt64Metric(
+      &METRIC_ENTITY_tablet,
+      nullptr,
+      &METRIC_log_cache_disk_reads,
+      "value");
+}
+
 // Test that when a follower is stopped for a long time, the log cache
 // reads few ops from disk due to exponential backoff on number of ops
 // to replicate to an unresponsive follower.
@@ -764,14 +776,21 @@ TEST_F(RaftConsensusITest, TestCatchupOpsReadFromDisk) {
 
   // Pause a replica.
   ASSERT_OK(replica_ets->Pause());
-  LOG(INFO)<< "Paused replica " << replica->uuid() << ", starting to write.";
+  LOG(INFO) << "Paused replica " << replica->uuid() << ", starting to write.";
 
   // Insert 3MB worth of data.
   const int kNumWrites = 1000;
   ASSERT_NO_FATALS(WriteOpsToLeader(kNumWrites, 3_KB));
 
   // Allow for unsuccessful replication attempts to lagging follower.
-  SleepFor(20s);
+  SleepFor(5s);
+
+  // Confirm that in the steady state the leader is not reading any new ops from disk since it has
+  // reached 0 and is sending only NOOP.
+  auto ops_before = ASSERT_RESULT(GetNumLogCacheOpsReadFromDisk());
+  SleepFor(10s);
+  auto ops_after = ASSERT_RESULT(GetNumLogCacheOpsReadFromDisk());
+  EXPECT_EQ(ops_before, ops_after);
 
   // Now unpause the replica, the lagging replica should eventually catch back up.
   ASSERT_OK(replica_ets->Resume());
@@ -780,22 +799,12 @@ TEST_F(RaftConsensusITest, TestCatchupOpsReadFromDisk) {
   ASSERT_OK(WaitForServersToAgree(30s, tablet_servers_, tablet_id_,
                                   kNumWrites));
 
-  // Find number of ops read from disk at leader - value from non-leaders will be zero,
-  // hence it is unncessary to omit values from followers.
-  int64_t ops_read_from_disk = 0;
-  for (const auto& tablet_replica : tablet_replicas_) {
-    ops_read_from_disk += ASSERT_RESULT(
-        cluster_->tablet_server_by_uuid(tablet_replica.second->uuid())->GetInt64Metric(
-            &METRIC_ENTITY_tablet,
-            nullptr,
-            &METRIC_log_cache_disk_reads,
-            "value"));
-  }
-  LOG(INFO)<< "Ops read from disk: " << ops_read_from_disk;
+  auto final_ops_read_from_disk = ASSERT_RESULT(GetNumLogCacheOpsReadFromDisk());
+  LOG(INFO)<< "Ops read from disk: " << final_ops_read_from_disk;
 
   // NOTE: empirically determined threshold.
   const int kOpsReadFromDiskThreshold = kNumWrites * 2;
-  ASSERT_LE(ops_read_from_disk, kOpsReadFromDiskThreshold);
+  ASSERT_LE(final_ops_read_from_disk, kOpsReadFromDiskThreshold);
 }
 
 // Test that when a follower is paused so that it misses several writes, is resumed
