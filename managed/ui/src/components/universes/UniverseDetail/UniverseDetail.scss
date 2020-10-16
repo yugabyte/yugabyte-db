@@ -521,6 +521,16 @@ h2 {
     }
     .dl-inline {
       text-align: left;
+
+      // fix for <DescriptionList> on small screen sizes at the universe overview page
+      & > span {
+        display: flex;
+        padding: 3px 0;
+
+        & > dd {
+          margin-left: 10px;
+        }
+      }
     }
   }
 
