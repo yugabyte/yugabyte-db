@@ -3407,13 +3407,16 @@ Status CatalogManager::DeleteTable(
       indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(l->data().pb);
     }
     scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
-    // We don't need to handle user enforced txns separately here because there
-    // is no additional wait.
-    // TODO(jason): use FLAGS_ysql_disable_index_backfill when closing issue #4936.
     const bool is_pg_table = indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
-    const bool disable_index_backfill =
-        (is_pg_table ? true : GetAtomicFlag(&FLAGS_disable_index_backfill));
-    if (!disable_index_backfill) {
+    bool is_transactional;
+    {
+      Schema index_schema;
+      RETURN_NOT_OK(table->GetSchema(&index_schema));
+      is_transactional = index_schema.table_properties().is_transactional();
+    }
+    const bool index_backfill_enabled =
+        IsIndexBackfillEnabled(table->GetTableType(), is_transactional);
+    if (!is_pg_table && index_backfill_enabled) {
       return MarkIndexInfoFromTableForDeletion(
           indexed_table_id, table_id, /* multi_stage */ true, resp);
     }
