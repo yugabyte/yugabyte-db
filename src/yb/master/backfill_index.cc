@@ -846,7 +846,8 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     VLOG(2) << __func__ << ": Trying to lock index table for Write";
     auto l = index_table_info->LockForWrite();
     VLOG(2) << __func__ << ": locked index table for Write";
-    l->mutable_data()->pb.mutable_schema()->mutable_table_properties()->set_is_backfilling(false);
+    l->mutable_data()->pb.mutable_schema()->mutable_table_properties()
+        ->set_retain_delete_markers(false);
 
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating index table metadata on disk");

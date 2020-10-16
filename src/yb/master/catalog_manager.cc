@@ -2341,10 +2341,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   if ((req.has_index_info() || req.has_indexed_table_id()) &&
       index_backfill_enabled &&
       !req.skip_index_backfill()) {
-    // Start off the index table with major compactions disabled. We need this to preserve
-    // the delete markers until the backfill process is completed.
-    // No need to set index_permissions in the index table.
-    schema.SetIsBackfilling(true);
+    // Start off the index table with major compactions disabled. We need this to retain the delete
+    // markers until the backfill process is completed.  No need to set index_permissions in the
+    // index table.
+    schema.SetRetainDeleteMarkers(true);
   }
 
   LOG(INFO) << "CreateTable with IndexInfo " << yb::ToString(index_info);
