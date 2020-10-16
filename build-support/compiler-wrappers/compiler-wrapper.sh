@@ -612,6 +612,11 @@ if command -v ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-}
   export CCACHE_SLOPPINESS="file_macro,pch_defines,time_macros"
   export CCACHE_BASEDIR=$YB_SRC_ROOT
 
+  if [ -z "${USER:-}" ] && whoami &> /dev/null; then
+    USER="$(whoami)"
+  else
+    fatal_error "No USER variable in env and no whoami to detect it"
+  fi
   # Ensure CCACHE puts temporary files on the local disk.
   export CCACHE_TEMPDIR=${CCACHE_TEMPDIR:-/tmp/ccache_tmp_$USER}
   if [[ -n ${YB_CCACHE_DIR:-} ]]; then
