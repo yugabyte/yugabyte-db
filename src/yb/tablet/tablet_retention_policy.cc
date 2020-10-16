@@ -108,7 +108,7 @@ void TabletRetentionPolicy::UnregisterReaderTimestamp(HybridTime timestamp) {
 bool TabletRetentionPolicy::ShouldRetainDeleteMarkersInMajorCompaction() const {
   // If the index table is in the process of being backfilled, then we
   // want to retain delete markers until the backfill process is complete.
-  return metadata_.schema()->table_properties().IsBackfilling();
+  return metadata_.schema()->table_properties().retain_delete_markers();
 }
 
 HybridTime TabletRetentionPolicy::HistoryCutoffToPropagate(HybridTime last_write_ht) {
