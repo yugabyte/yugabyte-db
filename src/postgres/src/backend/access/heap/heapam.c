@@ -4554,14 +4554,14 @@ ProjIndexIsUnchanged(Relation relation, HeapTuple oldtup, HeapTuple newtup)
 			int			i;
 
 			ResetExprContext(econtext);
-			ExecStoreTuple(oldtup, slot, InvalidBuffer, false);
+			ExecStoreHeapTuple(oldtup, slot, false);
 			FormIndexDatum(indexInfo,
 						   slot,
 						   estate,
 						   old_values,
 						   old_isnull);
 
-			ExecStoreTuple(newtup, slot, InvalidBuffer, false);
+			ExecStoreHeapTuple(newtup, slot, false);
 			FormIndexDatum(indexInfo,
 						   slot,
 						   estate,

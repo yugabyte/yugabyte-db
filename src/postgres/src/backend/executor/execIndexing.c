@@ -509,7 +509,7 @@ ExecDeleteIndexTuples(Datum ybctid, HeapTuple tuple, EState *estate)
 	 * a temporary slot.
 	 */
 	slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRelation));
-	slot = ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+	slot = ExecStoreHeapTuple(tuple, slot, false);
 	econtext->ecxt_scantuple = slot;
 
 	/*
@@ -895,7 +895,7 @@ retry:
 		 * Extract the index column values and isnull flags from the existing
 		 * tuple.
 		 */
-		ExecStoreTuple(tup, existing_slot, InvalidBuffer, false);
+		ExecStoreHeapTuple(tup, existing_slot, false);
 		FormIndexDatum(indexInfo, existing_slot, estate,
 					   existing_values, existing_isnull);
 
