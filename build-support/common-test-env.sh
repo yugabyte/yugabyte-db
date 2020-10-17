@@ -159,8 +159,7 @@ validate_abs_test_binary_path() {
 # The test name within the binary is what can be passed to Google Test as the --gtest_filter=...
 # argument. Some test binaries have to be run at once, e.g. non-gtest test binary or
 # test binaries with internal dependencies between tests. For those there is on
-# "$TEST_DESCRIPTOR_SEPARATOR" separator or the <test_name_within_binary> part (e.g.
-# bin/backupable_db_test above).
+# "$TEST_DESCRIPTOR_SEPARATOR" separator or the <test_name_within_binary> part.
 validate_test_descriptor() {
   expect_num_args 1 "$@"
   local test_descriptor=$1
