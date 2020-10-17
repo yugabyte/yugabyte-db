@@ -550,7 +550,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 				HeapTupleSetOid(tuple, syscols.oid);
 			}
 
-			slot = ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+			slot = ExecStoreHeapTuple(tuple, slot, false);
 
 			/* Setup special columns in the slot */
 			slot->tts_ybctid = PointerGetDatum(syscols.ybctid);
