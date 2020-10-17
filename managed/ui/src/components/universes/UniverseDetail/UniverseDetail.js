@@ -319,7 +319,7 @@ class UniverseDetail extends Component {
           </Tab.Pane>
         ),
 
-        
+
         isNotHidden(currentCustomer.data.features, 'universes.details.queries') && (
           <Tab.Pane
             eventKey={"queries"}
@@ -648,7 +648,8 @@ class UniverseTaskList extends Component {
       universeTaskHistory = (
         <TaskListTable
           taskList={universeTaskHistoryArray || []}
-          overrideContent={isCommunityEdition && errorPlatformMessage}
+          isCommunityEdition={isCommunityEdition}
+          overrideContent={errorPlatformMessage}
           title={'Task History'}
         />
       );

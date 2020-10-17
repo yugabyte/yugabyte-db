@@ -34,7 +34,7 @@ export default class AlertsList extends Component {
                 columnClassName="no-border"
                 className="no-border"
                 dataAlign="left"
-                width={'10%'}
+                width={'20%'}
               >
                 Time
               </TableHeaderColumn>
@@ -51,7 +51,7 @@ export default class AlertsList extends Component {
                 dataField="errCode"
                 columnClassName="no-border name-column"
                 className="no-border"
-                width={'10%'}
+                width={'20%'}
               >
                 Error Code
               </TableHeaderColumn>
@@ -59,7 +59,7 @@ export default class AlertsList extends Component {
                 dataField="message"
                 columnClassName="no-border name-column"
                 className="no-border"
-                width={'70%'}
+                width={'50%'}
                 tdStyle={{ whiteSpace: 'normal' }}
               >
                 Message

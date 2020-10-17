@@ -119,10 +119,9 @@ public class HealthChecker {
     );
 
     try {
-      healthMetric = Gauge.build(kUnivMetricName, "Boolean result of health checks").
-        labelNames(kUnivUUIDLabel, kUnivNameLabel, kNodeLabel, kCheckLabel).
-        register(this.promRegistry);
-
+      healthMetric = Gauge.build(kUnivMetricName, "Boolean result of health checks")
+        .labelNames(kUnivUUIDLabel, kUnivNameLabel, kNodeLabel, kCheckLabel)
+        .register(this.promRegistry);
     } catch (IllegalArgumentException e) {
       LOG.warn("Failed to build prometheus gauge for name: " + kUnivMetricName);
     }
