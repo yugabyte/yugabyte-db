@@ -988,7 +988,7 @@ ldelete:;
 
 			if (slot->tts_tupleDescriptor != RelationGetDescr(resultRelationDesc))
 				ExecSetSlotDescriptor(slot, RelationGetDescr(resultRelationDesc));
-			ExecStoreTuple(&deltuple, slot, InvalidBuffer, false);
+			ExecStoreHeapTuple(&deltuple, slot, false);
 		}
 
 		rslot = ExecProcessReturning(resultRelInfo, slot, planSlot);
@@ -1678,7 +1678,7 @@ yb_skip_transaction_control_check:
 	if (IsYugaByteEnabled())
 	{
 		oldtuple = ExecMaterializeSlot(estate->yb_conflict_slot);
-		ExecStoreTuple(oldtuple, mtstate->mt_existing, buffer, false);
+		ExecStoreBufferHeapTuple(oldtuple, mtstate->mt_existing, buffer);
 		planSlot->tts_tuple->t_ybctid = oldtuple->t_ybctid;
 	}
 	else
@@ -1699,7 +1699,7 @@ yb_skip_transaction_control_check:
 		ExecCheckHeapTupleVisible(estate, &tuple, buffer);
 
 		/* Store target's existing tuple in the state's dedicated slot */
-		ExecStoreTuple(&tuple, mtstate->mt_existing, buffer, false);
+		ExecStoreBufferHeapTuple(&tuple, mtstate->mt_existing, buffer);
 	}
 
 	/*
