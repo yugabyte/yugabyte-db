@@ -1,6 +1,7 @@
 hypopg (1.1.4-2) unstable; urgency=medium
 
   * Team upload for PostgreSQL 13.
+  * Use source format 3.0 (quilt).
   * Use dh --with pgxs_loop.
   * DH 13.
   * R³: no.
