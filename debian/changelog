@@ -1,3 +1,13 @@
+hypopg (1.1.4-2) unstable; urgency=medium
+
+  * Team upload for PostgreSQL 13.
+  * Use dh --with pgxs_loop.
+  * DH 13.
+  * R³: no.
+  * debian/tests: Use 'make' instead of postgresql-server-dev-all.
+
+ -- Christoph Berg <myon@debian.org>  Sun, 18 Oct 2020 22:16:44 +0200
+
 hypopg (1.1.4-1) unstable; urgency=medium
 
   * New upstream version with PG13 support.
