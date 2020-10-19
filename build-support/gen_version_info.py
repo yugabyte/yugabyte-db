@@ -41,6 +41,7 @@ import os
 import re
 import subprocess
 import sys
+import pwd
 import time
 import pipes
 import socket
@@ -92,7 +93,28 @@ def main():
 
     hostname = socket.gethostname()
     build_time = "%s %s" % (strftime("%d %b %Y %H:%M:%S", localtime()), time.tzname[0])
-    username = os.getenv("USER")
+    logging.info('Get user name')
+    try:
+        username = os.getlogin()
+    except OSError as ex:
+        logging.warning(("Got an OSError trying to get the current user name, " +
+                         "trying a workaround: {}").format(ex))
+        # https://github.com/gitpython-developers/gitpython/issues/39
+        try:
+            username = pwd.getpwuid(os.getuid()).pw_name
+        except KeyError:
+            username = os.getenv('USER')
+            if not username:
+                id_output = subprocess.check_output('id').strip()
+                ID_OUTPUT_RE = re.compile(r'^uid=\d+[(]([^)]+)[)]\s.*')
+                match = ID_OUTPUT_RE.match(id_output)
+                if match:
+                    username = match.group(1)
+                else:
+                    logging.warning(
+                        "Could not get user name from the environment, and could not parse 'id' output: %s",
+                        id_output)
+                    raise
 
     git_repo_dir = get_yb_src_root_from_build_root(os.getcwd(), must_succeed=False, verbose=True)
     clean_repo = bool(git_repo_dir) and is_git_repo_clean(git_repo_dir)
