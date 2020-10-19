@@ -51,6 +51,22 @@ public class MetricQueryHelper {
    * @return MetricQueryResponse Object
    */
   public JsonNode query(List<String> metricKeys, Map<String, String> params) {
+    HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
+    return query(metricKeys, params, filterOverrides);
+  }
+
+  /**
+   * Query prometheus for a given metricType and query params
+   * @param params, Query params like start, end timestamps, even filters
+   *                Ex: {"metricKey": "cpu_usage_user",
+   *                     "start": <start timestamp>,
+   *                     "end": <end timestamp>}
+   * @return MetricQueryResponse Object
+   */
+  public JsonNode query(
+    List<String> metricKeys,
+    Map<String, String> params,
+    Map<String, Map<String, String>> filterOverrides) {
     if (metricKeys.isEmpty()) {
       throw new RuntimeException("Empty metricKeys data provided.");
     }
@@ -93,6 +109,12 @@ public class MetricQueryHelper {
     for (String metricKey : metricKeys) {
       Map<String, String> queryParams = params;
       queryParams.put("queryKey", metricKey);
+
+      Map<String, String> specificFilters = filterOverrides.getOrDefault(metricKey, null);
+      if (specificFilters != null) {
+        additionalFilters.putAll(specificFilters);
+      }
+
       Callable<JsonNode> callable = new MetricQueryExecutor(appConfig, apiHelper,
                                                             queryParams, additionalFilters,
                                                             ybMetricQueryComponent);
