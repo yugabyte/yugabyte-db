@@ -89,7 +89,7 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Set default gflags.
-      addDefaultGFlags();
+      addDefaultGFlags(taskParams().getClusterByUuid(currentNode.placementUuid).userIntent);
 
       // Set gflags for master.
       createGFlagsOverrideTasks(ImmutableList.of(currentNode), ServerType.MASTER);

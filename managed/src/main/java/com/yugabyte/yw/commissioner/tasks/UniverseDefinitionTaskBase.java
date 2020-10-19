@@ -748,8 +748,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * Adds default gflags depending on settings in UserIntent.
    * Currently contains only flags for TServers.
    */
-  protected void addDefaultGFlags() {
-    UserIntent userIntent = taskParams().getPrimaryCluster().userIntent;
+  protected void addDefaultGFlags(UserIntent userIntent) {
     if (userIntent.enableYEDIS) {
       userIntent.tserverGFlags.put("redis_proxy_webserver_port",
           Integer.toString(taskParams().communicationPorts.redisServerHttpPort));
