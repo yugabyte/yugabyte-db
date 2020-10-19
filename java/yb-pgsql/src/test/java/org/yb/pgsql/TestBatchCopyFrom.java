@@ -13,7 +13,6 @@
 
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.fail;
 
 import java.io.BufferedReader;
@@ -43,19 +42,6 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       "ROWS_PER_TRANSACTION option is not supported";
   private static final String INVALID_ARGUMENT_ERROR_MSSG =
       "argument to option \"rows_per_transaction\" must be a positive integer";
-
-  private CopyManager copyManager = getCopyAPI();
-
-  private CopyManager getCopyAPI() {
-    if (copyManager == null) {
-      try {
-        copyManager = new CopyManager((BaseConnection) connection);
-      } catch (Exception e) {
-        LOG.info("CopyManager instance failed to get created.", e);
-      }
-    }
-    return copyManager;
-  }
 
   private String getAbsFilePath(String fileName) {
     return TestUtils.getBaseTmpDir() + "/" + fileName;
@@ -255,6 +241,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format("CREATE TABLE %s (a int, b int, c int, d int)", tableName));
+      CopyManager copyManager = new CopyManager((BaseConnection) connection);
       copyManager.copyIn(
           String.format(
               "COPY %s FROM STDIN WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION %s)",
@@ -282,6 +269,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       statement.execute("BEGIN TRANSACTION");
       statement.execute(String.format("INSERT INTO %s (a) VALUES (1)", dummyTableName));
       try {
+        CopyManager copyManager = new CopyManager((BaseConnection) connection);
         copyManager.copyIn(
             String.format(
                 "COPY %s FROM STDIN WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION %s)",
@@ -317,6 +305,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       statement.execute(String.format("CREATE TABLE %s (a int, b int, c int, d int)", tableName));
       statement.execute(String.format("CREATE TABLE %s (a int)", dummyTableName));
       statement.execute("BEGIN TRANSACTION");
+      CopyManager copyManager = new CopyManager((BaseConnection) connection);
       copyManager.copyIn(
           String.format(
               "COPY %s FROM STDIN WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION %s)",
@@ -343,6 +332,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format("CREATE TABLE %s (a int, b int, c int, d int)", tableName));
       statement.execute("BEGIN TRANSACTION");
+      CopyManager copyManager = new CopyManager((BaseConnection) connection);
       copyManager.copyIn(
           String.format(
               "COPY %s FROM STDIN WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION %s)",
