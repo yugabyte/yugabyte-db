@@ -304,8 +304,6 @@ ADD_YB_LIBRARY(yb_util
   SRCS ${UTIL_SRCS}
   DEPS ${UTIL_LIBS})
 
-cotire(yb_util)
-
 add_dependencies(yb_util gen_version_info)
 
 #######################################

@@ -117,9 +117,6 @@ add_dependencies(
         gen_src_yb_tserver_tserver_proto
 )
 
-cotire(yb_docdb_encoding)
-cotire(yb_docdb)
-
 # A library with common code shared between DocDB tests.
 set(DOCDB_TEST_COMMON_SRCS
         docdb_test_util.cc

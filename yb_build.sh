@@ -708,9 +708,6 @@ while [[ $# -gt 0 ]]; do
     --run-java-tests|--java-tests)
       run_java_tests=true
     ;;
-    --static)
-      YB_LINK=static
-    ;;
     --save-log)
       save_log=true
     ;;
