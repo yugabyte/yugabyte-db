@@ -86,6 +86,11 @@ class BackupException(Exception):
     pass
 
 
+class CompatibilityException(BackupException):
+    """Exception which can be ignored for compatibility."""
+    pass
+
+
 def split_by_tab(line):
     return [item.replace(' ', '') for item in line.split("\t")]
 
@@ -974,10 +979,13 @@ class YBBackup:
             raise BackupException('Timed out waiting for snapshot!')
 
         if update_table_list:
-            if len(snapshot_keyspaces) != len(snapshot_tables) or len(snapshot_tables) == 0:
+            if len(snapshot_tables) == 0:
+                raise CompatibilityException("Created snapshot does not have tables.")
+
+            if len(snapshot_keyspaces) != len(snapshot_tables):
                 raise BackupException(
-                    "In the snapshot found {} keyspaces and {} tables. The numbers must be equal "
-                    "and more than zero.".format(len(snapshot_keyspaces), len(snapshot_tables)))
+                    "In the snapshot found {} keyspaces and {} tables. The numbers must be equal.".
+                    format(len(snapshot_keyspaces), len(snapshot_tables)))
 
             self.args.keyspace = snapshot_keyspaces
             self.args.table = snapshot_tables
@@ -1672,7 +1680,21 @@ class YBBackup:
             if not self.args.snapshot_id:
                 snapshot_id = self.create_snapshot()
                 logging.info("Snapshot started with id: %s" % snapshot_id)
-                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC, True)
+                # TODO: Remove the following try-catch for compatibility to un-relax the code, after
+                #       we ensure nobody uses versions < v2.1.4 (after all move to >= v2.1.8).
+                try:
+                    # With 'update_table_list=True' it runs: 'yb-admin list_snapshots SHOW_DETAILS'
+                    # to get updated list of backed up namespaces and tables. Note that the last
+                    # argument 'SHOW_DETAILS' is not supported in old YB versions (< v2.1.4).
+                    self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
+                                           update_table_list=True)
+                except CompatibilityException as ex:
+                    logging.info("Ignoring the exception in the compatibility mode: {}".format(ex))
+                    # In the compatibility mode repeat the command in old style
+                    # (without the new command line argument 'SHOW_DETAILS').
+                    # With 'update_table_list=False' it runs: 'yb-admin list_snapshots'.
+                    self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
+                                           update_table_list=False)
 
                 if not self.args.no_snapshot_deleting:
                     logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
