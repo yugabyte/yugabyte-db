@@ -198,7 +198,7 @@ public class UniverseDefinitionTaskBaseTest {
     myCluster.userIntent.enableYSQL = enableYSQL;
 
     assertEquals(0, userIntent.tserverGFlags.size());
-    instance.addDefaultGFlags();
+    instance.addDefaultGFlags(userIntent);
     assertEquals(userIntent, instance.taskParams().getPrimaryCluster().userIntent);
     assertTrue(userIntent.tserverGFlags.containsKey("cql_proxy_webserver_port"));
     assertEquals(enableYSQL, userIntent.tserverGFlags.containsKey("pgsql_proxy_webserver_port"));

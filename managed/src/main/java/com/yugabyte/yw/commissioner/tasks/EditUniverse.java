@@ -65,6 +65,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       writeUserIntentToUniverse();
 
       for (Cluster cluster : taskParams().clusters) {
+        addDefaultGFlags(cluster.userIntent);
         editCluster(universe, cluster);
       }
 
@@ -131,9 +132,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Configures and deploys software on all the nodes (masters and tservers).
       createConfigureServerTasks(nodesToProvision, true /* isShell */)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-
-      // Set default gflags
-      addDefaultGFlags();
 
       // Override master (on primary cluster only) and tserver flags as necessary.
       if (cluster.clusterType == ClusterType.PRIMARY) {

@@ -72,7 +72,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createGFlagsOverrideTasks(primaryNodes, ServerType.MASTER);
 
       // Set default gflags
-      addDefaultGFlags();
+      addDefaultGFlags(primaryCluster.userIntent);
       createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);
 
       // Get the new masters from the node list.
