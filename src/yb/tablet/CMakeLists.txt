@@ -95,8 +95,6 @@ ADD_YB_LIBRARY(
   SRCS ${TABLET_SRCS}
   DEPS ${TABLET_DEPS})
 
-cotire(tablet)
-
 ADD_YB_LIBRARY(
   tablet_error
   SRCS tablet_error.cc

@@ -132,11 +132,6 @@ readonly -a VALID_BUILD_TYPES=(
   compilecmds
   debug
   fastdebug
-  idebug
-  irelease
-  ifastdebug
-  profile_build
-  profile_gen
   release
   tsan
   tsan_slow
@@ -149,8 +144,6 @@ make_regex_from_list VALID_BUILD_TYPES "${VALID_BUILD_TYPES[@]}"
 readonly -a VALID_CMAKE_BUILD_TYPES=(
   debug
   fastdebug
-  profile_build
-  profile_gen
   release
 )
 make_regex_from_list VALID_CMAKE_BUILD_TYPES "${VALID_CMAKE_BUILD_TYPES[@]}"
@@ -282,9 +275,11 @@ set_build_root() {
     fatal "YB_COMPILER_TYPE is not set"
   fi
   validate_compiler_type "$YB_COMPILER_TYPE"
-  determine_linking_type
 
-  BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE-$YB_LINK
+  # TODO: remove the "-dynamic" suffix. We only use dynamic linking and it would be very hard to
+  # produce any kind of a build that does not involve creation of shared libraries, although we
+  # might at some point want to produce a static build of yb-tserver with LTO enabled.
+  BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE-dynamic
 
   if using_ninja; then
     BUILD_ROOT+="-ninja"
@@ -338,17 +333,6 @@ normalize_build_root() {
   if [[ -d $BUILD_ROOT ]]; then
     BUILD_ROOT=$( cd "$BUILD_ROOT" && pwd )
   fi
-}
-
-determine_linking_type() {
-  if [[ -z "${YB_LINK:-}" ]]; then
-    YB_LINK=dynamic
-  fi
-  if [[ ! "${YB_LINK:-}" =~ ^$VALID_LINKING_TYPES_RE$ ]]; then
-    fatal "Expected YB_LINK to be set to \"static\" or \"dynamic\", got \"${YB_LINK:-}\""
-  fi
-  export YB_LINK
-  readonly YB_LINK
 }
 
 validate_build_type() {
@@ -546,10 +530,6 @@ set_cmake_build_type_and_compiler_type() {
       export YB_DO_NOT_BUILD_TESTS=1
       export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
       export YB_REMOTE_COMPILATION=0
-    ;;
-    idebug|ifastdebug|irelease)
-      cmake_build_type=${build_type:1}
-      cmake_opts+=( "-DYB_INSTRUMENT_FUNCTIONS=1" )
     ;;
     tsan)
       enable_tsan
