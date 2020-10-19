@@ -44,3 +44,10 @@ To immediately back up your YugabyteDB universe YSQL data, follow these steps.
     - **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
 
 Click **OK**. The backup begins immediately.
+
+
+## Back up data with encryption at rest enabled
+
+Data files from a universe encrypted at rest are backed up as-is. This reduces the computation cost of a backup and has the added benefit of the backups being encrypted too.
+A universe key metadata file gets backed up too. This file contains key references.
+
