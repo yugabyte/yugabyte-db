@@ -373,16 +373,6 @@ macro(YB_SETUP_CLANG BUILD_TYPE)
 
   ADD_CXX_FLAGS("-nostdinc++")
   ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
-
-  # Strictly speaking, TSAN doesn't require dynamic linking. But it does require all code to be
-  # position independent, and the easiest way to guarantee that is via dynamic linking (not all 3rd
-  # party archives are compiled with -fPIC e.g. boost).
-  if("${YB_LINK}" STREQUAL "a")
-    message("Using dynamic linking for ${BUILD_TYPE}")
-    set(YB_LINK "d")
-  elseif("${YB_LINK}" STREQUAL "s")
-    message(FATAL_ERROR "Cannot use ${BUILD_TYPE} with static linking")
-  endif()
 endmacro()
 
 macro(YB_SETUP_SANITIZER SANITIZER)
@@ -765,19 +755,6 @@ message("Configured for ${CMAKE_BUILD_TYPE} build "
         "(set with cmake -DCMAKE_BUILD_TYPE={release,debug,...})")
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
   ADD_CXX_FLAGS("${CXX_FLAGS_DEBUG}")
-  if(NOT APPLE AND EXISTS "/usr/bin/ld.gold")
-    if ("$ENV{YB_NO_LD_GOLD}")
-      message("YB_NO_LD_GOLD is defined, not using ld.gold")
-    else()
-      message("Not using ld.gold to stay compatible with Linuxbrew-based gcc toolchain")
-      if(FALSE)
-        set(LD_GOLD_FLAGS "-fuse-ld=gold")
-        # TODO: should we also add this to CMAKE_SHARED_LINKER_FLAGS?
-        message("Adding flags in front of CMAKE_EXE_LINKER_FLAGS to use ld.gold: ${LD_GOLD_FLAGS}")
-        set(CMAKE_EXE_LINKER_FLAGS "${LD_GOLD_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
-      endif()
-    endif()
-  endif()
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
   ADD_CXX_FLAGS("${CXX_FLAGS_FASTDEBUG}")
   # We specify RocksDB debug level that corresponds to the -O1 optimization level, the same as
@@ -822,16 +799,7 @@ if (IS_CLANG)
     message("Running without a controlling terminal or in a dumb terminal")
   endif()
 elseif("${COMPILER_FAMILY}" STREQUAL "gcc" OR "${COMPILER_FAMILY}" STREQUAL "gcc8")
-  # Blacklist gcc versions known to generate broken optimized code.
-  #
-  # See KUDU-1030 for more details.
-  if ("${COMPILER_VERSION}" MATCHES "^4.[67]")
-    message(FATAL_ERROR "Building with gcc version ${COMPILER_VERSION} is "
-      "forbidden as it is known to produce broken code in release mode. "
-      "Upgrade gcc, or build with clang from the thirdparty directory.")
-  endif()
-
-  # These flags are not understood by some versions of clang we are using.
+  # These flags are not understood by some versions of clang.
   ADD_CXX_FLAGS("-mno-abm -mno-movbe")
 else()
   message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
@@ -870,32 +838,6 @@ endif()
 
 if (NOT IS_CLANG)
   ADD_LINKER_FLAGS("-latomic")
-endif()
-
-if (NOT "$ENV{YB_LINK}" STREQUAL "" AND NOT "$ENV{YB_LINK}" STREQUAL "${YB_LINK}")
-  if (YB_LINK)
-    message(FATAL_ERROR "Conflicting values of YB_LINK CMake variable (\"${YB_LINK}\") and "
-      "environment variable (\"$ENV{YB_LINK}\").")
-  endif()
-  message("YB_LINK is not set as a CMake variable, using the YB_LINK environment variable: "
-          "\"$ENV{YB_LINK}\".")
-  set(YB_LINK "$ENV{YB_LINK}")
-endif()
-
-# Sanity check linking option.
-if (NOT YB_LINK)
-  message("YB_LINK not specified, determining linking type automatically")
-  set(YB_LINK "a")
-elseif(NOT ("${YB_LINK}" MATCHES "^[a-z]+$" AND (
-                "auto" MATCHES "^${YB_LINK}" OR
-                "dynamic" MATCHES "^${YB_LINK}" OR
-                "static" MATCHES "^${YB_LINK}"
-            )))
-  message(FATAL_ERROR "Unknown value \"${YB_LINK}\" for YB_LINK, must be auto|dynamic|static")
-else()
-  message("YB_LINK explicitly specified as \"${YB_LINK}\".")
-  # Remove all but the first letter.
-  string(SUBSTRING "${YB_LINK}" 0 1 YB_LINK)
 endif()
 
 # Clang does not support using ASAN and TSAN simultaneously.
@@ -939,103 +881,10 @@ if ("${YB_USE_UBSAN}" OR "${YB_USE_ASAN}" OR "${YB_USE_TSAN}")
   endif()
 endif()
 
-# Code coverage
-if ("${YB_GENERATE_COVERAGE}")
-  if("${CMAKE_CXX_COMPILER}" MATCHES ".*clang.*")
-    # There appears to be some bugs in clang 3.3 which cause code coverage
-    # to have link errors, not locating the llvm_gcda_* symbols.
-    # This should be fixed in llvm 3.4 with http://llvm.org/viewvc/llvm-project?view=revision&revision=184666
-    message(SEND_ERROR "Cannot currently generate coverage with clang")
-  endif()
-  ADD_CXX_FLAGS("--coverage -DCOVERAGE_BUILD")
+set(BUILD_SHARED_LIBS ON)
 
-  # For coverage to work properly, we need to use static linkage. Otherwise,
-  # __gcov_flush() doesn't properly flush coverage from every module.
-  # See http://stackoverflow.com/questions/28164543/using-gcov-flush-within-a-library-doesnt-force-the-other-modules-to-yield-gc
-  if("${YB_LINK}" STREQUAL "a")
-    message("Using static linking for coverage build")
-    set(YB_LINK "s")
-  elseif("${YB_LINK}" STREQUAL "d")
-    message(SEND_ERROR "Cannot use coverage with static linking")
-  endif()
-endif()
-
-if (YB_INSTRUMENT_FUNCTIONS)
-  # We parse this special-case preprocessor definition flag in compiler-wrapper and add
-  # -finstrument-functions if input files match this pattern. Another consequence of passing this
-  # to the compiler wrapper through the command line is that changing this causes all files to be
-  # recompiled, which is necessary in the common case to ensure proper instrumentation or lack
-  # thereof.
-  #
-  # Need to escape parentheses and pipe in the regex.
-  # add_cxx_flags("-DYB_INSTRUMENT_FUNCTIONS_REL_PATH_RE=src/\\(yb\\|postgres\\)/")
-  add_cxx_flags("-DYB_INSTRUMENT_FUNCTIONS_REL_PATH_RE=^postgres_build/")
-  # Some functions in PostgreSQL are detected as not returning anything in this mode.
-  add_cxx_flags("-Wno-error=return-type")
-endif()
-
-# If we still don't know what kind of linking to perform, choose based on
-# build type (developers like fast builds).
-if ("${YB_LINK}" STREQUAL "a")
-  if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG" OR
-      "${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG" OR
-      "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
-    # We use dynamic builds by default even in the release mode.
-    message("Using dynamic linking for ${CMAKE_BUILD_TYPE} builds")
-    set(YB_LINK "d")
-  else()
-    message("Using static linking for ${CMAKE_BUILD_TYPE} builds")
-    set(YB_LINK "s")
-  endif()
-endif()
-
-# Are we using the gold linker? It doesn't work with dynamic linking as
-# weak symbols aren't properly overridden, causing tcmalloc to be omitted.
-# Let's flag this as an error in RELEASE builds (we shouldn't release a
-# product like this).
-#
-# See https://sourceware.org/bugzilla/show_bug.cgi?id=16979 for details.
-#
-# The gold linker is only for ELF binaries, which OSX doesn't use. We can
-# just skip.
-if (NOT APPLE)
-  set(LINKER_DETECTION_COMMAND "${CMAKE_CXX_COMPILER} ${CMAKE_EXE_LINKER_FLAGS} -Wl,--version")
-  # TODO: how do we execute a command line stored in a variable without interpreting the entire
-  # string (including spaces) as the command name? Currently, just using "bash -c".
-  execute_process(COMMAND bash -c "${LINKER_DETECTION_COMMAND}"
-    OUTPUT_VARIABLE LINKER_OUTPUT
-    ERROR_VARIABLE LINKER_DETECTION_ERROR_OUTPUT
-    RESULT_VARIABLE LINKER_DETECTION_EXIT_CODE)
-  if(NOT ${LINKER_DETECTION_EXIT_CODE} EQUAL 0)
-    message(FATAL_ERROR
-      "Linker detection command '${LINKER_DETECTION_COMMAND}' failed with exit code\
- '${LINKER_DETECTION_EXIT_CODE}'. Error output: ${LINKER_DETECTION_ERROR_OUTPUT}")
-  endif()
-  message("LINKER_DETECTION_COMMAND=${LINKER_DETECTION_COMMAND}")
-  message("LINKER_OUTPUT=${LINKER_OUTPUT}")
-endif ()
-if (LINKER_OUTPUT MATCHES "gold")
-  if ("${YB_LINK}" STREQUAL "d" AND
-      "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
-    message(SEND_ERROR "Cannot use gold with dynamic linking in a RELEASE build "
-      "as it would cause tcmalloc symbols to get dropped")
-  else()
-    message("Using gold linker")
-  endif()
-  set(YB_USING_GOLD 1)
-else()
-  message("Using ld linker")
-endif()
-
-message("Linking type: ${YB_LINK} (d=dynamic, s=static)")
-# Having set YB_LINK due to build type and/or sanitizer, it's now safe to
-# act on its value.
-if ("${YB_LINK}" STREQUAL "d")
-  set(BUILD_SHARED_LIBS ON)
-
-  # Position independent code is only necessary when producing shared objects.
-  ADD_CXX_FLAGS(-fPIC)
-endif()
+# Position independent code is only necessary when producing shared objects.
+ADD_CXX_FLAGS(-fPIC)
 
 # where to put generated archives (.a files)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib")
@@ -1059,10 +908,6 @@ include_directories(src)
 ############################################################
 # For generate_export_header() and add_compiler_export_flags().
 include(GenerateExportHeader)
-
-# Compile TIme REducer
-# See https://github.com/sakra/cotire
-include(cotire)
 
 # add_library() wrapper that adds a second variant of the library for use in the
 # exported YB C++ client. This variant is suffixed with "_exported" and is
@@ -1314,7 +1159,7 @@ function(ADD_THIRDPARTY_LIB LIB_NAME)
     message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
   endif()
 
-  if(("${YB_LINK}" STREQUAL "s" AND ARG_STATIC_LIB) OR (NOT ARG_SHARED_LIB))
+  if(NOT ARG_SHARED_LIB)
     if(NOT ARG_STATIC_LIB)
       message(FATAL_ERROR "No static or shared library provided for ${LIB_NAME}")
     endif()
@@ -1517,12 +1362,10 @@ include_directories(SYSTEM ${HIREDIS_INCLUDE_DIR})
 ADD_THIRDPARTY_LIB(hiredis STATIC_LIB "${HIREDIS_STATIC_LIB}")
 
 if (NOT "${YB_USE_ASAN}" AND
-    NOT "${YB_USE_TSAN}" AND
-    NOT "${YB_USING_GOLD}")
+    NOT "${YB_USE_TSAN}")
   ## Google PerfTools
   ##
-  ## Disabled with TSAN/ASAN as well as with gold (see comment
-  ## near definition of YB_USING_GOLD).
+  ## Disabled with TSAN/ASAN as well.
   find_package(GPerf REQUIRED)
   message("Deciding whether to use tcmalloc based on:\
           YB_TCMALLOC_AVAILABLE=${YB_TCMALLOC_AVAILABLE}")
@@ -1655,69 +1498,6 @@ ADD_THIRDPARTY_LIB(cassandra SHARED_LIB "${LIBCASSANDRA_SHARED_LIB}")
 ############################################################
 set(YB_MIN_TEST_LIBS yb_test_main yb_test_util ${YB_BASE_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_MIN_TEST_LIBS})
-
-############################################################
-# "make ctags" target
-############################################################
-if (UNIX)
-  add_custom_target(ctags ctags --languages=c++,c -L
-    `find ${CMAKE_CURRENT_SOURCE_DIR}/src
-          ${CMAKE_CURRENT_BINARY_DIR}/src`)
-endif (UNIX)
-
-############################################################
-# "make etags" target
-#
-# Requires the exuberant-ctags system package.
-############################################################
-if (UNIX)
-  add_custom_target(etags etags --members --declarations
-    `find ${CMAKE_CURRENT_SOURCE_DIR}/src
-          ${CMAKE_CURRENT_BINARY_DIR}/src
-          -name \\*.cc -or -name \\*.hh -or -name \\*.cpp -or
-          -name \\*.h -or -name \\*.c`)
-endif (UNIX)
-
-############################################################
-# "make cscope" target
-############################################################
-if (UNIX)
-  add_custom_target(cscope
-    find ${CMAKE_CURRENT_SOURCE_DIR}/src
-         ${CMAKE_CURRENT_BINARY_DIR}/src
-         -name \\*.cc -or -name \\*.hh -or -name \\*.cpp -or
-         -name \\*.h -or -name \\*.c
-    > cscope.files && cscope -q -b)
-endif (UNIX)
-
-############################################################
-# "make lint" target
-############################################################
-if (UNIX)
-  # Full lint
-  add_custom_target(lint ${BUILD_SUPPORT_DIR}/lint.sh)
-  # Incremental lint - only checks files changed since the last
-  # merged upstream commit
-  add_custom_target(ilint ${BUILD_SUPPORT_DIR}/lint.sh -c)
-endif (UNIX)
-
-############################################################
-# "make docs" target
-############################################################
-if (UNIX)
-  add_custom_target(docs
-    # The docs output HTML will end up in a docs/ subdir.
-    ${CMAKE_CURRENT_SOURCE_DIR}/docs/support/scripts/make_docs.sh
-      --build_root ${CMAKE_CURRENT_BINARY_DIR})
-endif (UNIX)
-
-############################################################
-# "make site" target
-############################################################
-if (UNIX)
-  add_custom_target(site
-    ${CMAKE_CURRENT_SOURCE_DIR}/docs/support/scripts/make_site.sh)
-endif (UNIX)
 
 ############################################################
 # Subdirectories
