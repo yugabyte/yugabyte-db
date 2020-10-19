@@ -13,7 +13,8 @@
 
 package org.yb.pgsql;
 
-import static org.junit.Assert.fail;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.fail;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
