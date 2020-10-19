@@ -512,6 +512,12 @@ public class NodeManager extends DevopsBase {
         break;
       }
       case List: {
+        if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+        }
         commandArgs.add("--as_json");
         break;
       }
