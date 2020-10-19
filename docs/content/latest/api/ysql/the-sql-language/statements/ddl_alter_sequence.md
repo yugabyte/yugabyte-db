@@ -81,6 +81,8 @@ Change the current value of the sequence. If no value is specified, the current 
 
 Specify how many numbers from the sequence to cache in the client. Default is `1`.
 
+When YSQL yb-tserver flag [ysql_sequence_cache_minval](https://docs.yugabyte.com/latest/reference/configuration/yb-tserver/#ysql_sequence_cache_minval) is not explicitly turned off (ie. set to 0 or 1), the maximum value between the flag and the cache clause will be used.
+
 #### OWNED BY *table_name.table_column* | NONE
 
 It gives ownership of the sequence to the specified column (if any). This means that if the column (or the table to which it belongs to) is dropped, the sequence will be automatically dropped. If `NONE` is specified, any previous ownership will be deleted.

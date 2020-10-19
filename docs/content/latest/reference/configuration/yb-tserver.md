@@ -485,6 +485,16 @@ For details on how online index backfill works, see the [Online Index Backfill](
 
 Default: `true`
 
+##### --ysql_sequence_cache_minval
+
+Specify how many numbers from the sequence to cache in the client for every sequence object.
+
+To turn off the default size of cache flag, set the flag to 0 or 1.
+
+For details on the expected behaviour when used with the sequence cache clause, see the semantics under [Create Sequence](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_sequence/#cache-cache) and [Alter Sequence](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_alter_sequence/#cache-cache) pages.
+
+Default: 100
+
 ##### --ysql_log_statement
 
 Specifies the types of YSQL statements that should be logged. 
