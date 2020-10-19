@@ -37,6 +37,7 @@ from enum import Enum
 
 from ybops.common.colors import Colors
 from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.utils.remote_shell import RemoteShell
 
 if sys.version_info[0] == 2:
     from replicated import Replicated
@@ -702,3 +703,21 @@ def linux_get_ip_address(ifname):
     """Get the inet ip address of this machine (as shown by ifconfig). Assumes linux env.
     """
     return subprocess.check_output(["hostname", "--ip-address"]).strip()
+
+
+# Given a comma separated string of paths on a remote host
+# and ssh_options to connect to the remote host
+# returns a comma separated string of the root mount paths for those paths
+def get_mount_roots(ssh_options, paths):
+    remote_shell = RemoteShell(ssh_options)
+    remote_cmd = 'df --output=target {}'.format(" ".join(paths.split(",")))
+    # Example output of the df cmd
+    # $ df --output=target /bar/foo/rnd /storage/abc
+    # Mounted on
+    # /bar
+    # /storage
+
+    mount_roots = remote_shell.run_command(remote_cmd).stdout.split('\n')[1:]
+    return ",".join(
+        [mroot.strip() for mroot in mount_roots if mroot.strip()]
+    )
