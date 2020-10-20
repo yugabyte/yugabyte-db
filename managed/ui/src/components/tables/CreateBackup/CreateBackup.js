@@ -72,7 +72,7 @@ export default class CreateBackup extends Component {
         // AC: v2.1.8 No transactional backup for universe
         payload.transactionalBackup = false;
         createUniverseBackup(universeUUID, payload);
-      } else if (isDefinedNotNull(values.backupTableUUID) && values.backupTableUUID.length) {
+      } else if (isDefinedNotNull(values.backupTableUUID)) {
         values.backupTableUUID = Array.isArray(values.backupTableUUID) ?
           values.backupTableUUID.map(x => x.value) : [values.backupTableUUID.value];
         if (values.backupTableUUID[0] === "alltables") {
