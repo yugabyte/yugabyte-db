@@ -24,6 +24,8 @@ export default class TableAction extends Component {
     isMenuItem: PropTypes.bool,
     btnClass: PropTypes.string,
     onModalSubmit: PropTypes.func,
+    onSubmit: PropTypes.func,
+    onError: PropTypes.func,
     actionType: PropTypes.oneOf([
       'drop', 'import', 'create-backup',
       'create-scheduled-backup', 'restore-backup', 'import-release',
@@ -55,7 +57,7 @@ export default class TableAction extends Component {
   }
 
   render() {
-    const { actionType, isMenuItem, disabled } = this.props;
+    const { actionType, isMenuItem, disabled, onSubmit, onError } = this.props;
     let modalContainer = null;
     let btnLabel = null;
     let btnIcon = null;
@@ -82,6 +84,8 @@ export default class TableAction extends Component {
         visible={this.state.showModal}
         onHide={this.closeModal}
         tableInfo={this.state.selectedRow}
+        onSubmit={onSubmit}
+        onError={onError}
         isScheduled
       />);
     } else if (actionType === "create-backup") {
@@ -91,6 +95,8 @@ export default class TableAction extends Component {
         visible={this.state.showModal}
         onHide={this.closeModal}
         tableInfo={this.state.selectedRow}
+        onSubmit={onSubmit}
+        onError={onError}
       />);
     } else if (actionType === "restore-backup") {
       btnLabel = "Restore Backup";
@@ -99,6 +105,8 @@ export default class TableAction extends Component {
         visible={this.state.showModal}
         onHide={this.closeModal}
         backupInfo={this.state.selectedRow}
+        onSubmit={onSubmit}
+        onError={onError}
       />);
     } else if (actionType === "import-release") {
       btnLabel = "Import";
@@ -106,16 +114,18 @@ export default class TableAction extends Component {
       modalContainer = (<ImportReleaseContainer
         visible={this.state.showModal}
         onHide={this.closeModal}
-        onModalSubmit={this.props.onModalSubmit}
+        onModalSubmit={onSubmit}
       />);
     }
     else if (actionType === "delete-backup") {
       btnLabel = "Delete Backup";
       btnIcon = "fa fa-trash";
       modalContainer = (<DeleteBackupContainer
-        visible = {this.state.showModal}
-        onHide = { this.closeModal}
-        tableInfo = {this.state.selectedRow}
+        visible={this.state.showModal}
+        onHide={this.closeModal}
+        tableInfo={this.state.selectedRow}
+        onSubmit={onSubmit}
+        onError={onError}
       />);
     } else if (["disable-release", "delete-release", "active-release"].includes(actionType)) {
       let action;

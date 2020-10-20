@@ -2,6 +2,15 @@
 
 @import "../../../_style/colors.scss";
 
+#list-backups-content {
+  .alert {
+    z-index: 3000;
+    a {
+      color: inherit;
+      text-decoration: underline;
+    }
+  }
+}
 .backup-list-table {
   .storage-cell {
     overflow: visible;
