@@ -16,9 +16,11 @@ export default class RestoreBackup extends Component {
     backupInfo: PropTypes.object
   };
 
-  restoreBackup = values => {
+  restoreBackup = async values => {
     const {
       onHide,
+      onSubmit,
+      onError,
       restoreTableBackup,
       initialValues
     } = this.props;
@@ -46,8 +48,15 @@ export default class RestoreBackup extends Component {
         payload['kmsConfigUUID'] = values.kmsConfigUUID.value;
       }
 
+      try {
+        const response = await restoreTableBackup(restoreToUniverseUUID, payload);        
+        onSubmit(response.data);
+      } catch (err) {
+        if (onError) {
+          onError();
+        }
+      }
       onHide();
-      restoreTableBackup(restoreToUniverseUUID, payload);
       browserHistory.push('/universes/' + restoreToUniverseUUID + "/backups");
     }
   }
@@ -120,7 +129,7 @@ export default class RestoreBackup extends Component {
     const kmsConfigInfoContent = "This field is optional and should only be specified if backup was from universe encrypted at rest";
 
     return (
-      <div className="universe-apps-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="universe-apps-modal" onClick={(e) => e.stopPropagation()}>        
         <YBModalForm
           title={"Restore data to"}
           visible={visible}
