@@ -891,6 +891,7 @@ stmt :
 			| AlterDatabaseStmt
 			| AlterDefaultPrivilegesStmt
 			| AlterDomainStmt
+			| AlterEventTrigStmt
 			| AlterGroupStmt
 			| AlterObjectSchemaStmt
 			| AlterOperatorStmt
@@ -907,6 +908,7 @@ stmt :
 			| CopyStmt
 			| CreateCastStmt
 			| CreateDomainStmt
+			| CreateEventTrigStmt
 			| CreateExtensionStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
@@ -970,7 +972,6 @@ stmt :
 			| CreateStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
 
 			/* Not supported statements */
-			| AlterEventTrigStmt { parser_ybc_signal_unsupported(@1, "This statement", 1156); }
 			| AlterCollationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterEnumStmt { parser_ybc_signal_unsupported(@1, "This statement", 1893); }
 			| AlterFdwStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1002,7 +1003,6 @@ stmt :
 			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTableSpaceStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateEventTrigStmt { parser_ybc_signal_unsupported(@1, "This statement", 1156); }
 			| CreateUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DeclareCursorStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -6076,7 +6076,6 @@ CreateEventTrigStmt:
 			CREATE EVENT TRIGGER name ON ColLabel
 			EXECUTE FUNCTION_or_PROCEDURE func_name '(' ')'
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE EVENT TRIGGER", 1156);
 					CreateEventTrigStmt *n = makeNode(CreateEventTrigStmt);
 					n->trigname = $4;
 					n->eventname = $6;
@@ -6088,7 +6087,6 @@ CreateEventTrigStmt:
 			WHEN event_trigger_when_list
 			EXECUTE FUNCTION_or_PROCEDURE func_name '(' ')'
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE EVENT TRIGGER", 1156);
 					CreateEventTrigStmt *n = makeNode(CreateEventTrigStmt);
 					n->trigname = $4;
 					n->eventname = $6;
@@ -6120,7 +6118,6 @@ event_trigger_value_list:
 AlterEventTrigStmt:
 			ALTER EVENT TRIGGER name enable_trigger
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EVENT TRIGGER", 1156);
 					AlterEventTrigStmt *n = makeNode(AlterEventTrigStmt);
 					n->trigname = $4;
 					n->tgenabled = $5;
@@ -6897,7 +6894,6 @@ drop_type_name:
 			ACCESS METHOD	{ parser_ybc_not_support(@1, "DROP ACCESS METHOD"); $$ = OBJECT_ACCESS_METHOD; }
 			| EVENT TRIGGER
 				{
-					parser_ybc_signal_unsupported(@1, "DROP EVENT TRIGGER", 1156);
 					$$ = OBJECT_EVENT_TRIGGER;
 				}
 			| EXTENSION
@@ -9662,7 +9658,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER EVENT TRIGGER name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EVENT TRIGGER", 1156);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_EVENT_TRIGGER;
 					n->object = (Node *) makeString($4);

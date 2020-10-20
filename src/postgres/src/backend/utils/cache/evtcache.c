@@ -127,8 +127,6 @@ BuildEventTriggerCache(void)
 	cache = hash_create("Event Trigger Cache", 32, &ctl,
 						HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 
-	if (!IsYugaByteEnabled())
-	{
 		/*
 		 * Prepare to scan pg_event_trigger in name order.
 		 */
@@ -203,7 +201,7 @@ BuildEventTriggerCache(void)
 		systable_endscan_ordered(scan);
 		index_close(irel, AccessShareLock);
 		relation_close(rel, AccessShareLock);
-	}
+
 	/* Restore previous memory context. */
 	MemoryContextSwitchTo(oldcontext);
 
