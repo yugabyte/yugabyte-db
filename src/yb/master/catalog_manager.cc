@@ -8018,8 +8018,26 @@ Status CatalogManager::IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req
 
 Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
                                                  AreLeadersOnPreferredOnlyResponsePB* resp) {
+  // If we have cluster replication info, then only fetch live tservers (ignore read replicas).
   TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
+  string live_replicas_placement_uuid = "";
+  {
+    auto l = cluster_config_->LockForRead();
+    const ReplicationInfoPB& cluster_replication_info = l->data().pb.replication_info();
+    if (cluster_replication_info.has_live_replicas()) {
+      live_replicas_placement_uuid = cluster_replication_info.live_replicas().placement_uuid();
+    }
+  }
+
+  {
+    SharedLock<LockType> l(blacklist_lock_);
+    if (live_replicas_placement_uuid.empty()) {
+      master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklistState.tservers_);
+    } else {
+      master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+          &ts_descs, live_replicas_placement_uuid, blacklistState.tservers_);
+    }
+  }
 
   SysClusterConfigEntryPB config;
   RETURN_NOT_OK(GetClusterConfig(&config));
