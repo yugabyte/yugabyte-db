@@ -154,7 +154,7 @@ export default class ReleaseList extends Component {
                   disabled={!isAvailable(currentCustomer.data.features, "universes.actions")}/>
                 <TableAction className="table-action" btnClass={"btn-default"}
                   actionType="import-release" isMenuItem={false}
-                  onModalSubmit={self.onModalSubmit}
+                  onSubmit={self.onModalSubmit}
                   disabled={!isAvailable(currentCustomer.data.features, "universes.actions")}/>
               </div>
             </div>

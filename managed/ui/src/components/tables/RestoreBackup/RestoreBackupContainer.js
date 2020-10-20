@@ -9,8 +9,9 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 const mapDispatchToProps = (dispatch) => {
   return {
     restoreTableBackup: (universeUUID, payload) => {
-      dispatch(restoreTableBackup(universeUUID, payload)).then((response) => {
+      return dispatch(restoreTableBackup(universeUUID, payload)).then((response) => {
         dispatch(restoreTableBackupResponse(response.payload));
+        return response.payload;
       });
     }
   };
