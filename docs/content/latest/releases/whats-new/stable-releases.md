@@ -42,7 +42,7 @@ YugabyteDB now supports [distributed backup and restore of YSQL databases](../..
 
 #### Online index backfills
 
-* YugabyteDB can now build indexes on non-empty tables while online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can now use the YSQL [`CREATE INDEX`](../../../api/ysql/commands/ddl_create_index/#semantics) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+* YugabyteDB can now build indexes on non-empty tables while online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can now use the YSQL [`CREATE INDEX`](../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 * Backfilling an index while online is disable by default. To enable online index backfilling, set the `yb-tserver` [`--ysql_disable_index_backfill`](../../../reference/configuration/yb-tserver/#ysql-disable-index-backfill) flag to `false` when starting YB-TServers. Note: Do not use this flag in a production cluster yet. For details on how this works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)
 
 #### Colocated tables
@@ -53,7 +53,7 @@ What happens when the “colocation” tablet containing all the tables of a dat
 
 #### Deferred constraints on foreign keys
 
-Foreign keys in YSQL now support the [DEFERRABLE INITIALLY IMMEDIATE](../../../api/ysql/commands/ddl_create_table/#foreign-key) and [DEFERRABLE INITIALLY DEFERRED](../../../api/ysql/commands/ddl_create_table/#foreign-key) clauses. Work on deferring additional constraints, including those for primary keys, is in progress.
+Foreign keys in YSQL now support the [DEFERRABLE INITIALLY IMMEDIATE](../../../api/ysql/the-sql-language/statements/ddl_create_table/#foreign-key) and [DEFERRABLE INITIALLY DEFERRED](../../../api/ysql/the-sql-language/statements/ddl_create_table/#foreign-key) clauses. Work on deferring additional constraints, including those for primary keys, is in progress.
 
 Application developers often declare constraints that their data must obey, leaving it to relational databases to enforce the rules. The end result is simpler application logic, lower error probability, and higher developer productivity. Automatic constraint enforcement is a powerful feature that should be leveraged whenever possible. There are times, however, when you need to temporarily defer enforcement. An example is during the data load of a relational schema where there are cyclic foreign key dependencies. Data migration tools usually defer the enforcement of foreign key dependencies to the end of a transaction by which data for all foreign keys would ideally be present.  This should also allow YSQL to power Django apps.
 
@@ -309,12 +309,12 @@ docker pull yugabytedb/yugabyte:2.2.0.0-b80
 
 #### YSQL
 
-* Support presplitting using [CREATE INDEX...SPLIT INTO](../../../api/ysql/commands/ddl_create_index/#split-into) for range-partitioned table indexes. For details, see [Presplitting](../../../architecture/docdb-sharding/tablet-splitting/#presplitting). [#4235](https://github.com/yugabyte/yugabyte-db/issues/4235)
+* Support presplitting using [CREATE INDEX...SPLIT INTO](../../../api/ysql/the-sql-language/statements/ddl_create_index/#split-into) for range-partitioned table indexes. For details, see [Presplitting](../../../architecture/docdb-sharding/tablet-splitting/#presplitting). [#4235](https://github.com/yugabyte/yugabyte-db/issues/4235)
 * Fix crash for nested `SELECT` statements that involve null pushdown on system tables. [#4685](https://github.com/yugabyte/yugabyte-db/issues/4685)
 * Fix wrong sorting order in presplit tables. [#4651](https://github.com/yugabyte/yugabyte-db/issues/4651)
 * To help track down unoptimized (or "slow") queries, use the new `yb-tserver` [`--ysql_log_min_duration_statement`](../../../reference/configuration/yb-tserver/#ysql-log-min-duration-statement). [#4817](https://github.com/yugabyte/yugabyte-db/issues/4817)
 * Enhance the [`yb-admin list_tables`](../../../admin/yb-admin/#list-tables) command with optional flags for listing tables with database type (`include_db_type`), table ID (`include_table_id`), and table type (`include_table_type`). This command replaces the deprecated `yb-admin list_tables_with_db_types` command. [#4546](https://github.com/yugabyte/yugabyte-db/issues/4546)
-* Add support for [`ALTER TABLE`](../../../api/ysql/commands/ddl_alter_table/#) on colocated tables. [#4293](https://github.com/yugabyte/yugabyte-db/issues/4293)
+* Add support for [`ALTER TABLE`](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#) on colocated tables. [#4293](https://github.com/yugabyte/yugabyte-db/issues/4293)
 * Improve logic for index delete permissions. [#4980](https://github.com/yugabyte/yugabyte-db/issues/4980)
 * Add fast path option for index backfill when certain statements can create indexes without unnecessary overhead from online schema migration (for example, `CREATE TABLE` with unique column constraint). Skip index backfill for unsupported statements, including `DROP INDEX`, "CREATE UNIQUE INDEX ON`, and index create in postgres nested DDL). [#4918]
 * Suppress `incomplete startup packet` messages in YSQL logs. [#4813](https://github.com/yugabyte/yugabyte-db/issues/4813)

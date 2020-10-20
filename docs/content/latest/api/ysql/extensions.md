@@ -17,7 +17,7 @@ This page documents how to install and use PostgreSQL extensions that are tested
 
 ## Pre-bundled extensions
 
-These are extensions that are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [`CREATE EXTENSION`](../commands/ddl_create_extension) statement.
+These are extensions that are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [`CREATE EXTENSION`](../the-sql-language/statements/ddl_create_extension) statement.
 
 ### fuzzystrmatch
 
@@ -202,7 +202,7 @@ For more information see [`tablefunc`](https://www.postgresql.org/docs/11/tablef
 
 ## Extensions requiring installation
 
-Other extensions have to be installed manually before they can be enabled with the [`CREATE EXTENSION`](../commands/ddl_create_extension) statement.
+Other extensions have to be installed manually before they can be enabled with the [`CREATE EXTENSION`](../the-sql-language/statements/ddl_create_extension) statement.
 
 {{< note title="Note" >}}
 
