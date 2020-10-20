@@ -132,10 +132,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
   bool tablet_deleted = l->mutable_data()->is_deleted();
 
-  // true if we need to delete this tablet because the tables this tablets belongs to have been
-  // marked as DELETING. It will be set to false as soon as we find a table that is not in the
-  // DELETING or DELETED state.
-  bool should_delete_tablet = true;
+  // Assume we need to delete this tablet until we find an active table using this tablet.
+  bool should_delete_tablet = !tablet_deleted;
 
   for (auto table_id : table_ids) {
     scoped_refptr<TableInfo> table(FindPtrOrNull(*catalog_manager_->table_ids_map_, table_id));
@@ -144,16 +142,22 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       // If the table is missing and the tablet is in "preparing" state
       // may mean that the table was not created (maybe due to a failed write
       // for the sys-tablets). The cleaner will remove.
-      if (l->data().pb.state() == SysTabletsEntryPB::PREPARING) {
+      auto tablet_state = l->data().pb.state();
+      if (tablet_state == SysTabletsEntryPB::PREPARING) {
         LOG(WARNING) << "Missing table " << table_id << " required by tablet " << tablet_id
                       << " (probably a failed table creation: the tablet was not assigned)";
         return Status::OK();
       }
 
-      // if the tablet is not in a "preparing" state, something is wrong...
-      LOG(ERROR) << "Missing table " << table_id << " required by tablet " << tablet_id
-                  << ", metadata: " << metadata.DebugString()
-                  << ", tables: " << yb::ToString(*catalog_manager_->table_ids_map_);
+      // Otherwise, something is wrong...
+      LOG(WARNING) << "Missing table " << table_id << " required by tablet " << tablet_id
+                   << ", metadata: " << metadata.DebugString()
+                   << ", tables: " << yb::ToString(*catalog_manager_->table_ids_map_);
+      // If we ignore deleted tables, then a missing table can be expected and we continue.
+      if (PREDICT_TRUE(FLAGS_master_ignore_deleted_on_load)) {
+        continue;
+      }
+      // Otherwise, we need to surface the corruption.
       return STATUS(Corruption, "Missing table for tablet: ", tablet_id);
     }
 
@@ -163,12 +167,10 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     }
 
     auto tl = table->LockForRead();
-    if (tablet_deleted || !tl->data().started_deleting()) {
-      // The tablet is already deleted or the table hasn't been deleted. So we don't delete
-      // this tablet.
+    if (!tl->data().started_deleting()) {
+      // Found an active table.
       should_delete_tablet = false;
     }
-
   }
 
 
