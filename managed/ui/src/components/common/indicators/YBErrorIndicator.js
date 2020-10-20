@@ -14,7 +14,7 @@ export default class YBErrorIndicator extends Component {
     if (type === "universe") {
       errorDisplayMessage =
         (<div>
-          Seems like universe with UUID {uuid} does not exist.
+          Seems like universe with UUID {uuid} has issues or does not exist.
         </div>);
       errorRecoveryMessage =
         (<div>

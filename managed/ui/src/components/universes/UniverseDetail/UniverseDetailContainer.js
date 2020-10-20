@@ -81,13 +81,13 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 function mapStateToProps(state, ownProps) {
-  // Detect if software update is available for this universe  
+  // Detect if software update is available for this universe
   const isUpdateAvailable = (state) => {
     const isFirstVersionOlder = (first, second) => {
       for (let idx = 0; idx < first.length; idx++) {
         const first_ = parseInt(first[idx], 10);
         const second_ = parseInt(second[idx], 10);
-        if (first_ < second_) { 
+        if (first_ < second_) {
           return true;
         } else if (first_ > second_) {
           return false;
@@ -103,7 +103,7 @@ function mapStateToProps(state, ownProps) {
           for (let idx = 0; idx < state.customer.softwareVersions.length; idx++) {
             const current = currentversion.split("-");
             const iterator = state.customer.softwareVersions[idx].split("-");
-            
+
             const currentVersion = current[0];
             const iteratorVersion = iterator[0];
             const currentBuild = current[1] ? parseInt(current[1].substr(1), 10) : "";
