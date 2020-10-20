@@ -96,6 +96,13 @@ class PgMiniSingleTServerTest : public PgMiniTest {
   }
 };
 
+class PgMiniMasterFailoverTest : public PgMiniTest {
+ public:
+  int NumMasters() override {
+    return 3;
+  }
+};
+
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(Simple)) {
   auto conn = ASSERT_RESULT(Connect());
 
@@ -881,6 +888,34 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   }
   ASSERT_EQ(num_tables_before, num_tables_after);
 }
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropAllTablesInColocatedDB),
+          PgMiniMasterFailoverTest) {
+  const std::string kDatabaseName = "testdb";
+  // Create a colocated DB, create some tables, delete all of them.
+  {
+    PGConn conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+    {
+      PGConn conn_new = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+      ASSERT_OK(conn_new.Execute("CREATE TABLE foo (i int)"));
+      ASSERT_OK(conn_new.Execute("DROP TABLE foo"));
+    }
+  }
+  // Failover to a new master.
+  LOG(INFO) << "Failover to new Master";
+  auto old_master = cluster_->leader_mini_master();
+  cluster_->leader_mini_master()->Shutdown();
+  auto new_master = cluster_->leader_mini_master();
+  ASSERT_NE(nullptr, new_master);
+  ASSERT_NE(old_master, new_master);
+  // Ensure we can still access the colocated DB on restart.
+  {
+    PGConn conn_new = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(conn_new.Execute("CREATE TABLE foo (i int)"));
+  }
+}
+
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigSelect)) {
   auto conn = ASSERT_RESULT(Connect());
