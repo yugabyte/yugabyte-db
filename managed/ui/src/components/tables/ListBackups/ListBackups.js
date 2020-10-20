@@ -2,7 +2,8 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { DropdownButton } from 'react-bootstrap';
+import { Link } from 'react-router';
+import { DropdownButton, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import { YBPanelItem } from '../../panels';
@@ -36,7 +37,10 @@ const getTableType = (text) => {
 export default class ListBackups extends Component {
   state = {
     selectedRowList: null,
-    showModal: false
+    showModal: false,
+    showAlert: false,
+    taskUUID: null,
+    alertType: null
   }
 
   static defaultProps = {
@@ -207,6 +211,26 @@ export default class ListBackups extends Component {
     }
   }
 
+  handleModalSubmit = (type, data) => {
+    const taskUUID = data.taskUUID;
+    this.setState({
+      taskUUID,
+      showAlert: true,
+      alertType: type
+    });
+    setTimeout(() => {
+      this.setState({
+        showAlert: false
+      });
+    }, 4000);
+  }
+
+  handleDismissAlert = () => {
+    this.setState({
+      showAlert: false
+    });
+  }
+
   render() {
     const {
       currentCustomer,
@@ -214,7 +238,7 @@ export default class ListBackups extends Component {
       universeTableTypes,
       title,
     } = this.props;
-    const { showModal, selectedRowList } = this.state;
+    const { showModal, taskUUID, showAlert, alertType, selectedRowList } = this.state;
     if (getPromiseState(universeBackupList).isLoading() ||
         getPromiseState(universeBackupList).isInit()) {
       return <YBLoadingCircleIcon size="medium" />;
@@ -248,8 +272,12 @@ export default class ListBackups extends Component {
       if (row.showActions && isAvailable(currentCustomer.data.features, "universes.backup")) {
         return (
           <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-            <TableAction currentRow={row} actionType="restore-backup" />
-            <TableAction currentRow={row} actionType="delete-backup" />
+            <TableAction currentRow={row} actionType="restore-backup"
+              onSubmit={(data) => this.handleModalSubmit('Restore', data)}
+              onError={() => this.handleModalSubmit('Restore')} />
+            <TableAction currentRow={row} actionType="delete-backup"
+              onSubmit={(data) => this.handleModalSubmit('Delete', data)}
+              onError={() => this.handleModalSubmit('Delete')} />
           </DropdownButton>
         );
       }
@@ -285,7 +313,14 @@ export default class ListBackups extends Component {
       }
     }
     return (
-      <div>
+      <div id="list-backups-content">
+        {showAlert &&
+          <Alert bsStyle={taskUUID ? 'success' : 'danger'} onDismiss={this.handleDismissAlert}>
+            {taskUUID ? (
+              <div>{alertType} started successfully. See <Link to={`/tasks/${taskUUID}`}>task progress</Link></div>
+            ) : `${alertType} task failed to initialize.`}
+          </Alert>
+        }
         <SchedulesContainer />
         <YBPanelItem
           header={
@@ -297,9 +332,13 @@ export default class ListBackups extends Component {
                 {isAvailable(currentCustomer.data.features, "universes.backup") &&
                   <div className="backup-action-btn-group">
                     <TableAction className="table-action" btnClass={"btn-orange"}
-                                actionType="create-backup" isMenuItem={false} />
+                                actionType="create-backup" isMenuItem={false}
+                                onSubmit={(data) => this.handleModalSubmit('Backup', data)}
+                                onError={() => this.handleModalSubmit('Backup')} />
                     <TableAction className="table-action" btnClass={"btn-default"}
-                                actionType="restore-backup" isMenuItem={false} />
+                                actionType="restore-backup" isMenuItem={false}
+                                onSubmit={(data) => this.handleModalSubmit('Restore', data)}
+                                onError={() => this.handleModalSubmit('Restore')} />
                   </div>
                 }
               </div>

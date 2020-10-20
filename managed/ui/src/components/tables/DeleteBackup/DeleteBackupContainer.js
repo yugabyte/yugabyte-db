@@ -7,9 +7,13 @@ import { deleteBackup, deleteBackupResponse } from '../../../actions/tables';
 const mapDispatchToProps = (dispatch) => {
   return {
     deleteBackup: (backupUUID) => {
-      dispatch(deleteBackup(backupUUID)).then((response) => {
-        dispatch(deleteBackupResponse(response));
-      })
+      return dispatch(deleteBackup(backupUUID)).then((response) => {
+        if (!response.error) {
+          dispatch(deleteBackupResponse(response));
+          return response.payload
+        }
+        throw new Error(response.error);
+      });
     }
   };
 };

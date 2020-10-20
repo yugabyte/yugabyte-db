@@ -68,10 +68,12 @@ export default class CreateBackup extends Component {
     return state;
   }
 
-  createBackup = values => {
+  createBackup = async values => {
     const {
       universeDetails: { universeUUID },
       onHide,
+      onSubmit,
+      onError,
       createTableBackup,
       createUniverseBackup,
       universeTables
@@ -97,28 +99,36 @@ export default class CreateBackup extends Component {
         "timeBeforeDelete": values.timeBeforeDelete * 24 * 60 * 60 * 1000,
         "actionType": "CREATE"
       };
-      if (isDefinedNotNull(values.tableKeyspace) && values.tableKeyspace.value === "allkeyspaces") {
-        // Backup all tables in all keyspaces
-        createUniverseBackup(universeUUID, payload);
-      } else if (backupType === YSQL_TABLE_TYPE && isDefinedNotNull(values.tableKeyspace)) {
-        payload.keyspace = values.tableKeyspace.value;
-        createUniverseBackup(universeUUID, payload);
-      } else if (isDefinedNotNull(values.backupTableUUID)) {
-        values.backupTableUUID = Array.isArray(values.backupTableUUID) ?
-          values.backupTableUUID.map(x => x.value) : [values.backupTableUUID.value];
-        if (values.backupTableUUID[0] === "alltables") {
+      try {
+        let response = null;
+        if (isDefinedNotNull(values.tableKeyspace) && values.tableKeyspace.value === "allkeyspaces") {
+          // Backup all tables in all keyspaces
+          response = await createUniverseBackup(universeUUID, payload);
+        } else if (backupType === YSQL_TABLE_TYPE && isDefinedNotNull(values.tableKeyspace)) {
           payload.keyspace = values.tableKeyspace.value;
-          createUniverseBackup(universeUUID, payload);
-        } else if (values.backupTableUUID.length > 1) {
-          payload.keyspace = values.tableKeyspace.value;
-          payload.tableUUIDList = values.backupTableUUID;
-          createUniverseBackup(universeUUID, payload);
-        } else {
-          const backupTable = universeTables
-            .find((table) => table.tableUUID === values.backupTableUUID[0]);
-          payload.tableName = backupTable.tableName;
-          payload.keyspace = backupTable.keySpace;
-          createTableBackup(universeUUID, values.backupTableUUID[0], payload);
+          response = await createUniverseBackup(universeUUID, payload);
+        } else if (isDefinedNotNull(values.backupTableUUID)) {
+          values.backupTableUUID = Array.isArray(values.backupTableUUID) ?
+            values.backupTableUUID.map(x => x.value) : [values.backupTableUUID.value];
+          if (values.backupTableUUID[0] === "alltables") {
+            payload.keyspace = values.tableKeyspace.value;
+            response = await createUniverseBackup(universeUUID, payload);
+          } else if (values.backupTableUUID.length > 1) {
+            payload.keyspace = values.tableKeyspace.value;
+            payload.tableUUIDList = values.backupTableUUID;
+            response = await createUniverseBackup(universeUUID, payload);
+          } else {
+            const backupTable = universeTables
+              .find((table) => table.tableUUID === values.backupTableUUID[0]);
+            payload.tableName = backupTable.tableName;
+            payload.keyspace = backupTable.keySpace;
+            response = await createTableBackup(universeUUID, values.backupTableUUID[0], payload);
+          }
+        }
+        onSubmit(response.data);
+      } catch (err) {
+        if (onError) {
+          onError();
         }
       }
       onHide();

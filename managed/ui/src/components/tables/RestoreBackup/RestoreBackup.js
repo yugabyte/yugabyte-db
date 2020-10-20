@@ -15,9 +15,11 @@ export default class RestoreBackup extends Component {
     backupInfo: PropTypes.object
   };
 
-  restoreBackup = values => {
+  restoreBackup = async values => {
     const {
       onHide,
+      onSubmit,
+      onError,
       restoreTableBackup,
       initialValues
     } = this.props;
@@ -39,8 +41,16 @@ export default class RestoreBackup extends Component {
       } else if (values.restoreToKeyspace !== initialValues.restoreToKeyspace) {
         payload.keyspace = values.restoreToKeyspace;
       }
+
+      try {
+        const response = await restoreTableBackup(restoreToUniverseUUID, payload);        
+        onSubmit(response.data);
+      } catch (err) {
+        if (onError) {
+          onError();
+        }
+      }
       onHide();
-      restoreTableBackup(restoreToUniverseUUID, payload);
       browserHistory.push('/universes/' + restoreToUniverseUUID + "/backups");
     }
   }
