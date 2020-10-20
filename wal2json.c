@@ -284,9 +284,9 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	}
 
 	/* pretty print */
-	strcpy(data->ht, "");
-	strcpy(data->nl, "");
-	strcpy(data->sp, "");
+	data->ht[0] = '\0';
+	data->nl[0] = '\0';
+	data->sp[0] = '\0';
 
 	/* add all tables in all schemas by default */
 	t = palloc0(sizeof(SelectTable));
@@ -489,9 +489,9 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 
 			if (data->pretty_print)
 			{
-				strncpy(data->ht, "\t", 1);
-				strncpy(data->nl, "\n", 1);
-				strncpy(data->sp, " ", 1);
+				data->ht[0] = '\t';
+				data->nl[0] = '\n';
+				data->sp[0] = ' ';
 			}
 		}
 		else if (strcmp(elem->defname, "write-in-chunks") == 0)
