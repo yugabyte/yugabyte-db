@@ -29,10 +29,10 @@ class V52__Update_Access_Key_Create_Extra_Migrations extends JdbcMigration {
       connection.createStatement().execute(s"UPDATE access_key SET key_info = " +
         s"'$newKeyInfo' WHERE key_code = '$keyCode'")
 
-      connection.createStatement().execute(s"CREATE table extra_migration " +
-        s"(migration varchar(256) not null)")
-      connection.createStatement().execute(s"INSERT INTO extra_migration VALUES " +
-        s"('V52__Update_Access_Key_Create_Extra_Migration')")
     }
+    connection.createStatement().execute(s"CREATE table extra_migration " +
+      s"(migration varchar(256) not null)")
+    connection.createStatement().execute(s"INSERT INTO extra_migration VALUES " +
+      s"('V52__Update_Access_Key_Create_Extra_Migration')")
   }
 }
