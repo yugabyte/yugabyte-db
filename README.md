@@ -80,7 +80,7 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
 | Support loading large data sets into YSQL using `COPY` | PROGRESS  | v2.3  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5241)
 | Follower reads in YSQL | PROGRESS | v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5232) | Ability to perform follower reads for YSQL and transactional tables in YCQL. Note that this is currently supported for scenarios without distributed transactions.  |
-| Support `pgloader` to migrate from MySQL | PLANNING  | v2.5  | 
+| Support `pgloader` to migrate from MySQL | PLANNING  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3725) | 
 | YSQL cluster administration features | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/4194) | See currently active queries, find which queries are slow, slow query logging, etc. |
 | Database runtime activity monitoring | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1331) | Activity monitoring, audit logging, inactivity monitoring |
 | Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.5           |                 |               |
