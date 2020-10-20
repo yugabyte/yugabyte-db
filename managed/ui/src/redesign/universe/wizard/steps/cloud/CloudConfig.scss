@@ -1,0 +1,72 @@
+@import '../../../../uikit/common';
+
+.cloud-config {
+  position: relative;
+  background-color: $YB_FORM_BACKGROUND;
+  padding: 35px 50px;
+  min-height: 752px;
+
+  &__title {
+    font-size: 22px;
+    font-weight: 600;
+    color: $YB_TEXT_2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    white-space: nowrap;
+  }
+
+  &__line {
+    border-top: 1px solid $YB_BORDER_1;
+    width: 100%;
+    margin-left: 20px;
+    margin-right: 20px;
+  }
+
+  &__reset {
+    color: $YB_CTA;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 400;
+    user-select: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  &__row {
+    margin-top: 22px;
+    display: flex;
+    align-items: center;
+  }
+
+  &__label-col {
+    min-width: 180px;
+  }
+
+  &__footer-row {
+    margin-top: 25px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  &__footer-btn:not(:last-child) {
+    margin-right: 20px;
+  }
+
+  &__label {
+    display: block;
+    color: $YB_TEXT_2;
+    font-size: 16px;
+
+    &--right {
+      text-align: right;
+    }
+  }
+
+  &__number-input {
+    width: 120px;
+  }
+}

@@ -1,7 +1,16 @@
-@import "../common";
+@import '../common';
 
 .yb-uikit-input {
   $arrows-width: 26px;
+
+  &--disabled {
+    background-color: $YB_BORDER_1;
+  }
+
+  &--invalid {
+    border-color: $YB_ERROR;
+    box-shadow: 0 0 5px rgba($YB_ERROR, 0.2);
+  }
 
   @include input-wrapper();
 
@@ -12,7 +21,7 @@
       background-color: $YB_BORDER_1;
     }
 
-    &[type="number"] {
+    &[type='number'] {
       padding-right: $arrows-width + 10px;
       // hide arrows for firefox
       -moz-appearance: textfield;
