@@ -4,7 +4,7 @@ import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { Grid } from 'react-bootstrap';
 import { change, Fields } from 'redux-form';
-import {browserHistory, withRouter} from 'react-router';
+import {browserHistory, withRouter, Link} from 'react-router';
 import _ from 'lodash';
 import { isNonEmptyObject, isDefinedNotNull, isNonEmptyString, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { YBButton, YBModal } from '../../../components/common/forms/fields';
@@ -465,6 +465,7 @@ class UniverseForm extends Component {
           <FlexShrink className={this.state.currentView === "Primary" ? 'stepper-cell' : 'stepper-cell active-stepper-cell'}>
             2. Read Replica
           </FlexShrink>
+          <Link className="try-new-ui-link" to="/universe/create">Try New UI</Link>
         </FlexContainer>
       </h2>);
 
@@ -480,7 +481,16 @@ class UniverseForm extends Component {
         if (type === "Create") {
           return createUniverseTitle;
         } else {
-          return <h2 className="content-title">{primaryUniverseName}<span> <i className="fa fa-chevron-right"></i> {this.props.type} Universe </span></h2>;
+          return (
+            <h2 className="content-title">
+              {primaryUniverseName}
+              <span>
+                <i className="fa fa-chevron-right"></i>
+                {this.props.type} Universe
+              </span>
+              <Link className="try-new-ui-link" to={`/universe/${universe.currentUniverse.data.universeUUID}/edit/primary`}>Try New UI</Link>
+            </h2>
+          );
         }
       }
     })(this.props);

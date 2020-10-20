@@ -101,10 +101,10 @@
       padding: 0;
     }
   }
-  
+
   .volume-info-iops {
     margin-left: 20px;
-    
+
     .volume-info-field {
       width: 80px;
       padding-bottom: 6px;
@@ -262,7 +262,7 @@
   .Select-input input {
     width: 5px;
     box-sizing: content-box;
-    padding: 0; 
+    padding: 0;
     line-height: 40px;
   }
   .Select-value-label {
@@ -333,5 +333,17 @@
         margin-left: 15px;
       }
     }
+  }
+}
+
+.try-new-ui-link {
+  display: none; // temp
+  margin-left: 100px;
+  font-size: 21px;
+  line-height: 46px;
+  color: $YB_ORANGE;
+
+  &:hover {
+    color: $YB_ORANGE_HOVER;
   }
 }
