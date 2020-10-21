@@ -163,7 +163,7 @@ The output should look similar to below, where you see that the `engineering` ro
         |                   |       | engineering=r/yugabyte   +|                   |
 ```
 
-The access privileges "arwdDxt" include all privileges for the user `yugabyte` (superuser), while the role `engineering` has only "r" (read) privileges. For details on the `GRANT` statement and access privileges, see [GRANT](../../../api/ysql/commands/dcl_grant).
+The access privileges "arwdDxt" include all privileges for the user `yugabyte` (superuser), while the role `engineering` has only "r" (read) privileges. For details on the `GRANT` statement and access privileges, see [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant).
 
 Granting the role `engineering` to any other role will cause all those roles to inherit the specified privileges. Thus, `developer`, `qa` and `db_admin` will all inherit the `SELECT` and `USAGE` privileges, giving them read-access.
 
