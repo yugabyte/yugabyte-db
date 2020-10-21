@@ -93,7 +93,8 @@ ServerBaseOptions::ServerBaseOptions(int default_port)
       dump_info_path(FLAGS_server_dump_info_path),
       dump_info_format(FLAGS_server_dump_info_format),
       metrics_log_interval_ms(FLAGS_metrics_log_interval_ms),
-      placement_uuid(FLAGS_placement_uuid) {
+      placement_uuid(FLAGS_placement_uuid),
+      server_broadcast_addresses(FLAGS_server_broadcast_addresses) {
   rpc_opts.default_port = default_port;
   if (!FLAGS_server_broadcast_addresses.empty()) {
     auto status = HostPort::ParseStrings(FLAGS_server_broadcast_addresses, default_port,
@@ -114,6 +115,7 @@ ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
       metrics_log_interval_ms(options.metrics_log_interval_ms),
       placement_uuid(options.placement_uuid),
       master_addresses_flag(options.master_addresses_flag),
+      server_broadcast_addresses(options.server_broadcast_addresses),
       broadcast_addresses(options.broadcast_addresses),
       placement_cloud_(options.placement_cloud_),
       placement_region_(options.placement_region_),
