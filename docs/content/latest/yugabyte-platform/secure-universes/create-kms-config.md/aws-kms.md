@@ -1,14 +1,14 @@
 ---
-title: Configure KMS using AWS KMS
-headerTitle: Configure KMS using AWS KMS
-linkTitle: Configure KMS
-description: Use Yugabyte Platform to configure KMS using Amazon Web Services (AWS) KMS.
+title: Create a KMS configuration using AWS KMS
+headerTitle: Create a KMS configuration using AWS KMS
+linkTitle: Create a KMS configuration
+description: Use Yugabyte Platform to create a KMS configuration for Amazon Web Services (AWS) KMS.
 aliases:
-  - /latest/yugabyte-platform/secure-universes/configure-kms
+  - /latest/yugabyte-platform/secure-universes/create-kms-config
 menu:
   latest:
     parent: secure-universes
-    identifier: configure-kms-1-aws-kms
+    identifier: create-kms-config-1-aws-kms
     weight: 20
 isTocNested: true
 showAsideToc: true
@@ -32,13 +32,26 @@ showAsideToc: true
 
 </ul>
 
-Encryption at rest in Yugabyte Platform supports the use of [AWS Key Management Service (KMS)](https://aws.amazon.com/kms/), from Amazon Web Services (AWS), to create and control the keys used to encrypt and digitally sign your data.
+Encryption at rest uses universe keys to encrypt and decrypt universe data. You can use the Yugabyte Platform console to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in Yugabyte Platform supports the use of [AWS Key Management Service (KMS)](https://aws.amazon.com/kms/), from Amazon Web Services (AWS).
 
-To configure KMS with AWS Key Management Service (KMS) for use with encryption at rest, follow these steps:
+{{< note title="Note" >}}
+
+The AWS user associated with the a KMS configuration requires the following minimum IAM KMS-related permissions:
+
+- `kms:CreateKey`
+- `kms:ListAliases`
+- `kms:ListKeys`
+- `kms:CreateAlias`
+- `kms:DeleteAlias`
+- `kms:UpdateAlias`
+
+{{< /note >}}
+
+To create a KMS configuration that uses AWS Key Management Service (KMS), follow these steps:
 
 1. Open the Yugabyte Platform console and click **Configs**.
-2. Click the **Security** tab and then click the **Encryption At Rest** tab. A list of configurations appears.
-3. Click **Create New Config**. A new configuration form appears.
+2. Click the **Security** tab and then click the **Encryption At Rest** tab. A list of KMS configurations appears.
+3. Click **Create Config**. A new KMS configuration form appears.
 4. Enter the following configuration details:
 
     - **Configuration Name** Enter a meaningful name for your configuration.
@@ -84,3 +97,4 @@ To configure KMS with AWS Key Management Service (KMS) for use with encryption a
 6. Click **Save**. Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
 7. (Optional) To confirm the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+8. 

@@ -17,7 +17,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure-kms/">
+    <a class="section-link icon-offset" href="create-kms-config/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
         <div class="title">Configure key management system (KMS)</div>
