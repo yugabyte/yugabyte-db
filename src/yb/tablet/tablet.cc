@@ -2185,8 +2185,8 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
   // TODO(jason): more properly handle bad statuses
   if (status == PGRES_FATAL_ERROR) {
     return STATUS_FORMAT(
-        QLError,
-        "Got PQ status $0 with message \"$1\" when running \"$2\"",
+        IllegalState,
+        "BACKFILL request failed: PQ status $0 with message \"$1\" when running \"$2\"",
         status,
         PQresultErrorMessage(res),
         query_str);
