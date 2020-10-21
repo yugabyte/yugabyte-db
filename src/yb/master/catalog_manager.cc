@@ -2280,35 +2280,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     req.set_num_tablets(1);
   } else {
     s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
-    if (req.partition_schema().has_hash_schema()) {
-      switch (partition_schema.hash_schema()) {
-        case YBHashSchema::kPgsqlHash:
-          // TODO(neil) After a discussion, PGSQL hash should be done appropriately.
-          // For now, let's not doing anything. Just borrow the multi column hash.
-          FALLTHROUGH_INTENDED;
-        case YBHashSchema::kMultiColumnHash: {
-          // Use the given number of tablets to create partitions and ignore the other schema
-          // options in the request.
-          RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
-          break;
-        }
-        case YBHashSchema::kRedisHash: {
-          RETURN_NOT_OK(
-              partition_schema.CreatePartitions(num_tablets, &partitions, kRedisClusterSlots));
-          break;
-        }
-      }
-    } else if (req.partition_schema().has_range_schema()) {
-      vector<std::string> split_rows;
-      for (const auto& row : req.partition_schema().range_schema().split_rows()) {
-        split_rows.push_back(row);
-      }
-
-      RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
-      DCHECK_EQ(split_rows.size() + 1, partitions.size());
-    } else {
-      DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid partition method"));
-    }
+    RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
   }
 
   // For index table, populate the index info.

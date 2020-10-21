@@ -81,6 +81,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   const YBSchema& schema() const;
   const Schema& InternalSchema() const;
   const PartitionSchema& partition_schema() const;
+  bool IsHashPartitioned() const;
+  bool IsRangePartitioned() const;
 
   const std::vector<std::string>& GetPartitions() const;
 

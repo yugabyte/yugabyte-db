@@ -426,7 +426,7 @@ CREATE TABLE tbl6 (
 	b			text,
 	primary key (b asc)
 ) SPLIT AT VALUES (('a'), (2, 'aba'), ('ac'));
-ERROR:  Split points cannot be more than the number of primary key columns
+ERROR:  Number of SPLIT values cannot be greater than number of SPLIT columns
 CREATE TABLE tbl7 (
 	a			int4,
 	primary key (a asc)
@@ -436,12 +436,11 @@ CREATE TABLE tbl8 (
 	a			text,
 	primary key (a asc)
 ) SPLIT AT VALUES ((100), (1000), (10000));
-ERROR:  Type mismatch in split point
 CREATE TABLE tbl9 (
 	a			int4,
 	primary key (a hash)
 ) SPLIT AT VALUES ((100), (1000), (10000));
-ERROR:  HASH columns cannot be used for split points
+ERROR:  Invalid argument: SPLIT AT option is not yet supported for hash partitioned tables
 CREATE TEMPORARY TABLE tbl10 (
 	a			int4 primary key
 ) SPLIT INTO 20 TABLETS;
@@ -467,7 +466,6 @@ CREATE TABLE tbl14 (
 	a			int4,
 	primary key (a asc)
 ) SPLIT AT VALUES ((MINVALUE), (0), (MAXVALUE));
-ERROR:  Split points must specify finite values
 CREATE TABLE tbl15 (
 	a			int4,
 	b			int4,

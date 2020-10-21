@@ -222,8 +222,7 @@ class PgApiImpl {
 
   CHECKED_STATUS CreateTableSetNumTablets(PgStatement *handle, int32_t num_tablets);
 
-  CHECKED_STATUS CreateTableAddSplitRow(PgStatement *handle, int num_cols,
-                                        YBCPgTypeEntity **types, uint64_t *data);
+  CHECKED_STATUS AddSplitBoundary(PgStatement *handle, PgExpr **exprs, int expr_count);
 
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
 
@@ -443,6 +442,8 @@ class PgApiImpl {
   // Constant expressions.
   CHECKED_STATUS NewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
                              uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
+  CHECKED_STATUS NewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                                    YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
   CHECKED_STATUS NewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
                              uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt);
 

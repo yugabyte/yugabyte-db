@@ -1665,20 +1665,20 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
         next_hash_code > pgsql_read_request.max_hash_code()) {
       return true;
     }
-  } else if (pgsql_read_request.has_max_partition_key() &&
-             !pgsql_read_request.max_partition_key().empty()) {
+  } else if (pgsql_read_request.has_upper_bound()) {
     docdb::DocKey partition_doc_key(*metadata_->schema());
     VERIFY_RESULT(partition_doc_key.DecodeFrom(
         partition_key, docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
     docdb::DocKey max_partition_doc_key(*metadata_->schema());
     VERIFY_RESULT(max_partition_doc_key.DecodeFrom(
-        pgsql_read_request.max_partition_key(), docdb::DocKeyPart::kWholeDocKey,
+        pgsql_read_request.upper_bound().key(), docdb::DocKeyPart::kWholeDocKey,
         docdb::AllowSpecial::kTrue));
 
-    if (partition_doc_key.CompareTo(max_partition_doc_key) >= 0) {
-      return true;
-    }
+    return pgsql_read_request.upper_bound().is_inclusive() ?
+      partition_doc_key.CompareTo(max_partition_doc_key) > 0 :
+      partition_doc_key.CompareTo(max_partition_doc_key) >= 0;
   }
+
   return false;
 }
 

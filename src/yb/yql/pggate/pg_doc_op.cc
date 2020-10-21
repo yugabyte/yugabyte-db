@@ -398,10 +398,11 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
 
   // Assign ybctid values.
   for (const Slice& ybctid : *ybctids) {
-    // Find partition. The partition index is the boundary index minus 1.
+    // Find partition. The partition index is the boundary order minus 1.
+    // - For hash partitioning, we use hashcode to find the right index.
+    // - For range partitioning, we pass partition key to seek the index.
     SCHECK(ybctid.size() > 0, InternalError, "Invalid ybctid value");
-    uint16 hash_code;
-    int partition = VERIFY_RESULT(table_desc_->FindPartitionStartIndex(ybctid, &hash_code));
+    int partition = VERIFY_RESULT(table_desc_->FindPartitionIndex(ybctid));
     SCHECK(partition >= 0 || partition < table_desc_->GetPartitionCount(), InternalError,
            "Ybctid value is not within partition boundary");
 
@@ -576,16 +577,21 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
   for (int partition = 0; partition < partition_keys.size(); partition++) {
     // Construct a new YBPgsqlReadOp.
     pgsql_ops_[partition]->set_active(true);
-    auto req = GetReadOp(partition)->mutable_request();
 
-    // Set paging state.
-    req->mutable_paging_state()->set_next_partition_key(partition_keys[partition]);
-
-    // Set max_hash_code to end of tablet (next key - 1).
+    // Use partition index to setup the protobuf to identify the partition that this request
+    // is for. Batcher will use this information to send the request to correct tablet server, and
+    // server uses this information to operate on correct tablet.
+    // - Range partition uses range partition key to identify partition.
+    // - Hash partition uses "next_partition_key" and "max_hash_code" to identify partition.
+    string upper_bound;
     if (partition < partition_keys.size() - 1) {
-      req->set_max_hash_code(
-          PartitionSchema::DecodeMultiColumnHashValue(partition_keys[partition + 1]) - 1);
+      upper_bound = partition_keys[partition + 1];
     }
+    RETURN_NOT_OK(table_desc_->SetScanBoundary(GetReadOp(partition)->mutable_request(),
+                                               partition_keys[partition],
+                                               true /* lower_bound_is_inclusive */,
+                                               upper_bound,
+                                               false /* upper_bound_is_inclusive */));
   }
   active_op_count_ = partition_keys.size();
   request_population_completed_ = true;
@@ -595,8 +601,12 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
 
 // When postgres requests to scan a specific partition, set the partition parameter accordingly.
 Status PgDocReadOp::SetScanPartitionBoundary() {
+  // Boundary to scan from a given key to the end of its associated tablet.
+  // - Lower: The given partition key (inclusive).
+  // - Upper: Beginning of next tablet (not inclusive).
   SCHECK(exec_params_.partition_key != nullptr, Uninitialized, "expected non-null partition_key");
 
+  // Seek the tablet of the given key.
   const std::vector<std::string>& partition_keys = table_desc_->table()->GetPartitions();
   const auto& partition_key = std::find(
       partition_keys.begin(),
@@ -605,18 +615,17 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
   RSTATUS_DCHECK(
       partition_key != partition_keys.end(), InvalidArgument, "invalid partition key given");
 
-  // Set paging state.
-  PgsqlReadRequestPB *req = template_op_->mutable_request();
-  req->mutable_paging_state()->set_next_partition_key(*partition_key);
-
-  // Set max_hash_code to end of tablet (next key - 1).
-  // TODO(jason): this assumes hash partitioning; handle range partitioning (see issue #4768).
+  // Seek upper bound (Beginning of next tablet).
+  string upper_bound;
   const auto& next_partition_key = std::next(partition_key, 1);
   if (next_partition_key != partition_keys.end()) {
-    req->set_max_hash_code(
-        PartitionSchema::DecodeMultiColumnHashValue(std::string(*next_partition_key)) - 1);
+    upper_bound = *next_partition_key;
   }
-
+  RETURN_NOT_OK(table_desc_->SetScanBoundary(template_op_->mutable_request(),
+                                             *partition_key,
+                                             true /* lower_bound_is_inclusive */,
+                                             upper_bound,
+                                             false /* upper_bound_is_inclusive */));
   return Status::OK();
 }
 

@@ -138,6 +138,19 @@ typedef struct PgTypeEntity {
   YBCPgDatumFromData yb_to_datum;
 } YBCPgTypeEntity;
 
+// Kind of a datum.
+// In addition to datatype, a "datum" is also specified by "kind".
+// - Standard value.
+// - MIN limit value, which can be infinite, represents an absolute mininum value of a datatype.
+// - MAX limit value, which can be infinite, represents an absolute maximum value of a datatype.
+//
+// NOTE: Currently Postgres use a separate boolean flag for null instead of datum.
+typedef enum PgDatumKind {
+  YB_YQL_DATUM_STANDARD_VALUE = 0,
+  YB_YQL_DATUM_LIMIT_MAX,
+  YB_YQL_DATUM_LIMIT_MIN,
+} YBCPgDatumKind;
+
 // API to read type information.
 const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid);
 YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity);

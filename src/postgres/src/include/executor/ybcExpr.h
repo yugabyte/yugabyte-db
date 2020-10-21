@@ -45,6 +45,9 @@ extern YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num, int 
 // Construct constant expression using the given datatype "type_id" and value "datum".
 extern YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool is_null);
 
+// Construct virtual constant expression using the given datatype "type_id" and virtual "datum".
+extern YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatumKind kind);
+
 // Construct a generic eval_expr call for given a PG Expr and its expected type and attno.
 extern YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt, 
                                                Expr *expr, 
