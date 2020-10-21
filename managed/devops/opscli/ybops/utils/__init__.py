@@ -600,11 +600,13 @@ def validate_cron_status(host_name, port, username, ssh_key_file):
 
         _, stdout, stderr = ssh_client.exec_command("crontab -l")
         cronjobs = ["clean_cores.sh", "zip_purge_yb_logs.sh", "yb-server-ctl.sh tserver"]
-        return len(stderr.readlines()) == 0 and all(cron in stdout for cron in cronjobs)
+        stdout = stdout.read()
+        return len(stderr.readlines()) == 0 and all(c in stdout for c in cronjobs)
     except (paramiko.ssh_exception.NoValidConnectionsError,
             paramiko.ssh_exception.AuthenticationException,
             paramiko.ssh_exception.SSHException,
-            socket.timeout, socket.error):
+            socket.timeout, socket.error) as e:
+        logging.error("Failed to validate cronjobs: {}".format(e))
         return False
     finally:
         ssh_client.close()

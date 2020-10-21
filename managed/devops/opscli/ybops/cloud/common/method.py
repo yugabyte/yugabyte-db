@@ -446,10 +446,14 @@ class CronCheckMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(CronCheckMethod, self).__init__(base_command, "croncheck")
 
+    def get_ssh_user(self):
+        # Force croncheck to be done on yugabyte user.
+        return "yugabyte"
+
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
         ssh_options = {
-            "ssh_user": args.ssh_user,
+            "ssh_user": self.get_ssh_user(),
             "private_key_file": args.private_key_file
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
