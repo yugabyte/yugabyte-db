@@ -232,27 +232,16 @@ size_t PgCreateTable::PrimaryKeyRangeColumnCount() const {
   return range_columns_.size();
 }
 
-Status PgCreateTable::AddSplitRow(int num_cols, YBCPgTypeEntity **types, uint64_t *data) {
-  SCHECK(!hash_schema_.is_initialized(),
-      InvalidArgument,
-      "Hash columns cannot have split points");
-  const auto key_column_count = PrimaryKeyRangeColumnCount();
-  SCHECK(num_cols && num_cols <= key_column_count,
-      InvalidArgument,
-      "Split points cannot be more than number of primary key columns");
-
-  std::vector<QLValuePB> row;
-  row.reserve(key_column_count);
-  for (size_t i = 0; i < key_column_count; ++i) {
-    QLValuePB ql_value;
-    if (i < num_cols) {
-      PgConstant point(types[i], data[i], false);
-      RETURN_NOT_OK(point.Eval(&ql_value));
-    }
-    row.push_back(std::move(ql_value));
+Status PgCreateTable::AddSplitBoundary(PgExpr **exprs, int expr_count) {
+  if (hash_schema_.is_initialized()) {
+    return STATUS(InvalidArgument,
+                  "SPLIT AT option is not yet supported for hash partitioned tables");
   }
-
-  split_rows_.push_back(std::move(row));
+  std::vector<QLValuePB> bounds(expr_count);
+  for (int i = 0; i < expr_count; ++i) {
+    RETURN_NOT_OK(exprs[i]->Eval(&bounds[i]));
+  }
+  split_rows_.push_back(std::move(bounds));
   return Status::OK();
 }
 
