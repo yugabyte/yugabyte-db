@@ -35,6 +35,13 @@ DEFINE_string(certs_for_client_dir, "",
               "this server that should be used for client to server communications. "
               "When empty, the same dir as for server to server communications is used.");
 
+DEFINE_string(cert_node_filename, "",
+              "The file name that will be used in the names of the node "
+              "certificates and keys. These files will be named : "
+              "'node.{cert_node_filename}.{key|crt}'. "
+              "If this flag is not set, then --server_broadcast_addresses will be "
+              "used if it is set, and if not, --rpc_bind_addresses will be used.");
+
 namespace yb {
 namespace server {
 namespace {
@@ -43,11 +50,11 @@ string DefaultCertsDir(const string& root_dir) {
   return JoinPathSegments(root_dir, "certs");
 }
 
+} // namespace
+
 string DefaultRootDir(const FsManager& fs_manager) {
   return DirName(fs_manager.GetRaftGroupMetadataDir());
 }
-
-} // namespace
 
 string DefaultCertsDir(const FsManager& fs_manager) {
   return DefaultCertsDir(DefaultRootDir(fs_manager));
