@@ -1108,10 +1108,10 @@ void BackfillChunk::HandleResponse(int attempt) {
 
     // Do not retry on a fatal error
     switch (resp_.error().code()) {
-      case TabletServerErrorPB::TABLET_NOT_FOUND:
       case TabletServerErrorPB::MISMATCHED_SCHEMA:
-      case TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA:
       case TabletServerErrorPB::OPERATION_NOT_SUPPORTED:
+      case TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA:
+      case TabletServerErrorPB::TABLET_NOT_FOUND:
         LOG(WARNING) << "TS " << permanent_uuid() << ": backfill failed for tablet "
                      << backfill_tablet_->tablet()->ToString()
                      << " no further retry: " << status;
