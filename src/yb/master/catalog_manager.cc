@@ -689,11 +689,14 @@ void CatalogManager::LoadSysCatalogDataTask() {
   LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
     Status status = VisitSysCatalog(term);
     if (!status.ok()) {
-      if (status.IsShutdownInProgress()) {
-        LOG_WITH_PREFIX(INFO)
-            << "Error loading sys catalog; because shutdown is in progress. term " << term
-            << " status : " << status;
-        return;
+      {
+        std::lock_guard<simple_spinlock> l(state_lock_);
+        if (state_ == kClosing) {
+          LOG_WITH_PREFIX(INFO)
+              << "Error loading sys catalog; because shutdown is in progress. term " << term
+              << " status : " << status;
+          return;
+        }
       }
       auto new_term = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
       if (new_term != term) {
