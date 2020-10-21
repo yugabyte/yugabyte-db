@@ -76,7 +76,9 @@ To enable encryption at rest on an existing universe, follow these steps:
 
 ## Back up and restore data from an encrypted at rest universe
 
-When backing up a YugabyteDB universe with encryption at rest enabled, you are likely to need to restore the data to a different cluster with possibly a different universe key. As a result, all encrypted backups need to include the decrypted data keys for all files. When you use Yugabyte Platform to back up and restore encrypted data, you use a key management service (KMS) configuration to back up the master universe key registry, encrypted with a KMS key, as part of the backup with the encrypted data files. When you need to restore the data, the KMS key is used to decrypt the registry, the registry is populated into the master system catalog, and is used to read the data files from the backup.
+When backing up a YugabyteDB universe with encryption at rest enabled, you are likely to need to restore the data to a different cluster with possibly a different universe key. As a result, all encrypted backups need to include the data keys for all files and the metadata file that includes a list of key IDs for every universe key in the registry. This provides enough information to get the key values in the restore flow (as long as the user selected the correct KMS configuration in the Restore Backup form).
+
+When you use Yugabyte Platform to back up and restore encrypted data, you select a key management service (KMS) configuration to back up the master universe key registry, encrypted with a KMS key, as part of the backup with the encrypted data files. When you need to restore the data, the KMS key is used to decrypt the registry, the registry is populated into the master system catalog, and is used to read the data files from the backup.
 
 ## Rotate the universe keys used for encryption at rest
 
