@@ -80,4 +80,4 @@ The `ALTER TABLE` privilege on the base table is required in order to CREATE or 
 
 {{< /note >}}
 
-Read more about [YSQL privileges](../../../api/ysql/commands/dcl_grant/).
+Read more about [YSQL privileges](../../../api/ysql/the-sql-language/statements/dcl_grant/).
