@@ -529,13 +529,15 @@ Status PgApiImpl::CreateTableSetNumTablets(PgStatement *handle, int32_t num_tabl
   return down_cast<PgCreateTable*>(handle)->SetNumTablets(num_tablets);
 }
 
-Status PgApiImpl::CreateTableAddSplitRow(PgStatement *handle, int num_cols,
-                                           YBCPgTypeEntity **types, uint64_t *data) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
+Status PgApiImpl::AddSplitBoundary(PgStatement *handle, PgExpr **exprs, int expr_count) {
+  // Partitioning a TABLE or an INDEX.
+  if (PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE) ||
+      PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
+    return down_cast<PgCreateTable*>(handle)->AddSplitBoundary(exprs, expr_count);
   }
-  return down_cast<PgCreateTable*>(handle)->AddSplitRow(num_cols, types, data);
+
+  // Invalid handle.
+  return STATUS(InvalidArgument, "Invalid statement handle");
 }
 
 Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
@@ -748,14 +750,6 @@ Status PgApiImpl::CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tabl
          InvalidArgument,
          "Invalid statement handle");
   return down_cast<PgCreateIndex*>(handle)->SetNumTablets(num_tablets);
-}
-
-Status PgApiImpl::CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
-                                         YBCPgTypeEntity **types, uint64_t *data) {
-  SCHECK(PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX),
-      InvalidArgument,
-      "Invalid statement handle");
-  return down_cast<PgCreateIndex*>(handle)->AddSplitRow(num_cols, types, data);
 }
 
 Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
@@ -1138,8 +1132,21 @@ Status PgApiImpl::NewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_e
   return Status::OK();
 }
 
+Status PgApiImpl::NewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                                     YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle) {
+  if (!stmt) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgExpr::SharedPtr pg_const = make_shared<PgConstant>(type_entity, datum_kind);
+  stmt->AddExpr(pg_const);
+
+  *expr_handle = pg_const.get();
+  return Status::OK();
+}
+
 Status PgApiImpl::NewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                              uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt) {
+                                uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");

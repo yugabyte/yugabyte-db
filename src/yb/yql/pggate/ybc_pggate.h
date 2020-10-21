@@ -182,8 +182,7 @@ YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name
 
 YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_tablets);
 
-YBCStatus YBCPgCreateTableAddSplitRow(YBCPgStatement handle, int num_cols,
-                                        YBCPgTypeEntity **types, uint64_t *data);
+YBCStatus YBCPgAddSplitBoundary(YBCPgStatement handle, YBCPgExpr *exprs, int expr_count);
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
@@ -263,9 +262,6 @@ YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name
                                     bool is_desc, bool is_nulls_first);
 
 YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_tablets);
-
-YBCStatus YBCPgCreateIndexAddSplitRow(YBCPgStatement handle, int num_cols,
-                                      YBCPgTypeEntity **types, uint64_t *data);
 
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 
@@ -434,10 +430,15 @@ YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, const YBCPgTypeEn
                             const YBCPgTypeAttrs *type_attrs, YBCPgExpr *expr_handle);
 
 // Constant expressions.
+// Construct an actual constant value.
 YBCStatus YBCPgNewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
                            uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
+// Construct a virtual constant value.
+YBCStatus YBCPgNewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                                  YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
+// Construct an operator expression on a constant.
 YBCStatus YBCPgNewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                           uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt);
+                             uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt);
 
 // The following update functions only work for constants.
 // Overwriting the constant expression with new value.

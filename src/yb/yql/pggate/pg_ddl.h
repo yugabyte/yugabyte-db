@@ -177,7 +177,7 @@ class PgCreateTable : public PgDdl {
   // Specify the number of tablets explicitly.
   CHECKED_STATUS SetNumTablets(int32_t num_tablets);
 
-  CHECKED_STATUS AddSplitRow(int num_cols, YBCPgTypeEntity **types, uint64_t *data);
+  CHECKED_STATUS AddSplitBoundary(PgExpr **exprs, int expr_count);
 
   // Execute.
   virtual CHECKED_STATUS Exec();

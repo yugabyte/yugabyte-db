@@ -18,7 +18,7 @@
 #include "yb/client/table.h"
 
 #include "yb/common/pg_system_attr.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/common/ql_value.h"
 
 namespace yb {
 namespace pggate {
@@ -87,6 +87,14 @@ bool PgTableDesc::IsColocated() const {
   return table_->colocated();
 }
 
+bool PgTableDesc::IsHashPartitioned() const {
+  return table_->IsHashPartitioned();
+}
+
+bool PgTableDesc::IsRangePartitioned() const {
+  return table_->IsRangePartitioned();
+}
+
 const std::vector<std::string>& PgTableDesc::GetPartitions() const {
   return table_->GetPartitions();
 }
@@ -95,22 +103,51 @@ int PgTableDesc::GetPartitionCount() const {
   return table_->GetPartitionCount();
 }
 
-Result<int> PgTableDesc::FindPartitionStartIndex(const string& partition_key) const {
+Result<string> PgTableDesc::DecodeYbctid(const Slice& ybctid) const {
+  // TODO(neil) If a partition schema can have both hash and range partitioning, this function needs
+  // to be updated to return appropriate primary key.
+  RSTATUS_DCHECK(!IsHashPartitioned() || !IsRangePartitioned(), InvalidArgument,
+                 "Partitioning schema by both hash and range is not yet supported");
+
+  // Use range key if there's no hash columns.
+  // NOTE: Also see bug github #5832.
+  if (IsRangePartitioned()) {
+    // Decoding using range partitioning method.
+    return ybctid.ToBuffer();
+  }
+
+  // Decoding using hash partitioning method.
+  // Do not check with predicate IsHashPartitioning() for now to use existing behavior by default.
+  uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid));
+  return PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+}
+
+Result<int> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
+  // Find partition index based on ybctid value.
+  // - Hash Partition: ybctid -> hashcode -> key -> partition index.
+  // - Range Partition: ybctid == key -> partition index.
+  string partition_key = VERIFY_RESULT(DecodeYbctid(ybctid));
   return table_->FindPartitionStartIndex(partition_key);
 }
 
-Result<int> PgTableDesc::FindPartitionStartIndex(const Slice& ybctid, uint16 *hash_code) const {
-  *hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid));
-  string partition_key = PartitionSchema::EncodeMultiColumnHashValue(*hash_code);
-  return table_->FindPartitionStartIndex(partition_key);
-}
+Status PgTableDesc::SetScanBoundary(PgsqlReadRequestPB *req,
+                                    const string& partition_lower_bound,
+                                    bool lower_bound_is_inclusive,
+                                    const string& partition_upper_bound,
+                                    bool upper_bound_is_inclusive) {
+  // Setup lower boundary.
+  if (!partition_lower_bound.empty()) {
+    req->mutable_lower_bound()->set_key(partition_lower_bound);
+    req->mutable_lower_bound()->set_is_inclusive(lower_bound_is_inclusive);
+  }
 
-Result<int> PgTableDesc::FindPartitionStartIndex(
-    const RepeatedPtrField<PgsqlExpressionPB>& hash_col_values, uint16 *hash_code) const {
-  string partition_key;
-  RETURN_NOT_OK(table_->partition_schema().EncodeKey(hash_col_values, &partition_key));
-  *hash_code = table_->partition_schema().DecodeMultiColumnHashValue(partition_key);
-  return table_->FindPartitionStartIndex(partition_key);
+  // Setup upper boundary.
+  if (!partition_upper_bound.empty()) {
+    req->mutable_upper_bound()->set_key(partition_upper_bound);
+    req->mutable_upper_bound()->set_is_inclusive(upper_bound_is_inclusive);
+  }
+
+  return Status::OK();
 }
 
 const client::YBTableName& PgTableDesc::table_name() const {

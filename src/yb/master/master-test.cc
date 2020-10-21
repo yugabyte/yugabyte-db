@@ -1750,7 +1750,6 @@ TEST_F(MasterTest, TestGetTableSchema) {
     ASSERT_EQ(1, resp.schema().columns(0).sorting_type());
     // PartitionSchemaPB partition_schema.
     ASSERT_TRUE(resp.has_partition_schema());
-    ASSERT_TRUE(resp.partition_schema().has_range_schema());
     ASSERT_EQ(resp.partition_schema().hash_schema(), PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
     // TableIdentifierPB identifier.
     ASSERT_TRUE(resp.has_identifier());

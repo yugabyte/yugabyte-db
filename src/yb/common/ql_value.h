@@ -62,6 +62,24 @@ class QLValue {
   // Set the value to null by clearing all existing values.
   void SetNull() { pb_.Clear(); }
 
+  //-------------------------------- virtual value methods ----------------------------------
+  static bool IsVirtual(const QLValuePB& pb) {
+    return pb.value_case() == QLValuePB::kVirtualValue;
+  }
+  bool IsVirtual() const {
+    return type() == QLValuePB::kVirtualValue;
+  }
+  static bool IsMax(const QLValuePB& pb) {
+    return IsVirtual(pb) && pb.virtual_value() == QLVirtualValuePB::LIMIT_MAX;
+  }
+  static bool IsMin(const QLValuePB& pb) {
+    return IsVirtual(pb) && pb.virtual_value() == QLVirtualValuePB::LIMIT_MIN;
+  }
+  bool IsMax() const { return IsMax(pb_); }
+  bool IsMin() const { return IsMin(pb_); }
+  void SetMax() { pb_.set_virtual_value(QLVirtualValuePB::LIMIT_MAX); }
+  void SetMin() { pb_.set_virtual_value(QLVirtualValuePB::LIMIT_MIN); }
+
   //----------------------------------- get value methods -----------------------------------
   // Get different datatype values. CHECK failure will result if the value stored is not of the
   // expected datatype or the value is null.
@@ -365,7 +383,7 @@ class QLValue {
 
   //----------------------------------- comparison methods -----------------------------------
   virtual bool Comparable(const QLValue& other) const {
-    return type() == other.type() || EitherIsNull(other);
+    return type() == other.type() || EitherIsNull(other) || EitherIsVirtual(other);
   }
   virtual bool BothNotNull(const QLValue& other) const {
     return !IsNull() && !other.IsNull();
@@ -375,6 +393,9 @@ class QLValue {
   }
   virtual bool EitherIsNull(const QLValue& other) const {
     return IsNull() || other.IsNull();
+  }
+  virtual bool EitherIsVirtual(const QLValue& other) const {
+    return IsVirtual() || other.IsVirtual();
   }
 
   virtual int CompareTo(const QLValue& other) const;

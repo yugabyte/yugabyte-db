@@ -55,6 +55,13 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 	return expr;
 }
 
+YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatumKind kind) {
+	YBCPgExpr expr = NULL;
+	const YBCPgTypeEntity *type_entity = YBCDataTypeFromOidMod(InvalidAttrNumber, type_id);
+	HandleYBStatus(YBCPgNewConstantVirtual(ybc_stmt, type_entity, kind, &expr));
+	return expr;
+}
+
 YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt,
                                         Expr *pg_expr,
                                         int32_t attno,

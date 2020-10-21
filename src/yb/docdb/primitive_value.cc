@@ -1621,6 +1621,11 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
     case QLValuePB::kListValue:
       break;
 
+    case QLValuePB::kVirtualValue:
+      return PrimitiveValue(value.virtual_value() == QLVirtualValuePB::LIMIT_MAX ?
+                                docdb::ValueType::kHighest :
+                                docdb::ValueType::kLowest);
+
     // default: fall through
   }
 
