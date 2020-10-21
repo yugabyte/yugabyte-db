@@ -14,14 +14,13 @@ showAsideToc: true
 
 ## Encryption at rest overview
 
-Data at rest within a YugabyteDB universe should be protected from unauthorized users by encrypting it. Using the Yugabyte Platform console,
-you can:
+Data at rest within a YugabyteDB universe should be protected from unauthorized users by encrypting it. Using the Yugabyte Platform console, you can:
 
 - [Encryption at rest overview](#encryption-at-rest-overview)
 - [Enable encryption at rest during universe creation](#enable-encryption-at-rest-during-universe-creation)
 - [Enable encryption at rest on an existing universe](#enable-encryption-at-rest-on-an-existing-universe)
 - [Back up and restore data from an encrypted at rest universe](#back-up-and-restore-data-from-an-encrypted-at-rest-universe)
-- [Rotate the encryption at rest keys](#rotate-the-encryption-at-rest-keys)
+- [Rotate the universe keys used for encryption at rest](#rotate-the-universe-keys-used-for-encryption-at-rest)
 - [Disable encryption at rest](#disable-encryption-at-rest)
 
 Two types of keys are used to encrypt data in YugabyteDB:
@@ -61,13 +60,8 @@ To verify that encryption at rest has been successfully configured, follow these
 
 6. Go to the **Security Object** page for the Equinix SmartKey account that was used to create the KMS configuration. A security object should exist with a name matching the universe UUID that was configured to use encryption at rest with the SMARTKEY configuration (defaults to AES 256).
 
-**Equinix SmartKey**
-
-Once the universe has started being created, a security object will be created with SmartKey through REST API with the universe UUID as the name of the security object. This object will then be exported to Yugaware as the universe key. Once received, Yugaware will then send the key to all masters to persist. Yugaware does not persist any information about the security object beyond a reference to the object’s kId. At this point, data within the universe will be encrypted at rest using data keys encrypted with the aforementioned universe key generated through the chosen KMS configuration.
-
-**AWS KMS**
-
-Once the universe has been created with encryption at rest enabled, the platform will persist the ciphertext of the universe key (because AWS does not persist any CMK-generated data keys themselves) and will request the plaintext of the universe key from AWS KMS using the KMS configuration whenever it needs to provide the universe key to the master nodes.
+    - **Equinix SmartKey:** Once the universe has started being created, a security object will be created with SmartKey through REST API with the universe UUID as the name of the security object. This object will then be exported to the Yugabyte Platform as the universe key. Once received, the Yugabyte Platform sends the key to all masters to persist. Yugabyte Platform does not persist any information about the security object beyond a reference to the object `kId`. At this point, data within the universe will be encrypted at rest using data keys encrypted with the aforementioned universe key generated through the selected KMS configuration.
+    - **AWS KMS:** Once the universe has been created with encryption at rest enabled, the platform will persist the ciphertext of the universe key (because AWS does not persist any CMK-generated data keys themselves) and will request the plaintext of the universe key from AWS KMS using the KMS configuration whenever it needs to provide the universe key to the master nodes.
 
 ## Enable encryption at rest on an existing universe
 
@@ -84,7 +78,7 @@ To enable encryption at rest on an existing universe, follow these steps:
 
 When backing up a YugabyteDB universe with encryption at rest enabled, you are likely to need to restore the data to a different cluster with possibly a different universe key. As a result, all encrypted backups need to include the decrypted data keys for all files. When you use Yugabyte Platform to back up and restore encrypted data, you use a key management service (KMS) configuration to back up the master universe key registry, encrypted with a KMS key, as part of the backup with the encrypted data files. When you need to restore the data, the KMS key is used to decrypt the registry, the registry is populated into the master system catalog, and is used to read the data files from the backup.
 
-## Rotate the encryption at rest keys
+## Rotate the universe keys used for encryption at rest
 
 Enabling encryption and rotating a new key works in two steps:
 
