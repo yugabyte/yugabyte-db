@@ -20,7 +20,7 @@ you can:
 - [Encryption at rest overview](#encryption-at-rest-overview)
 - [Enable encryption at rest during universe creation](#enable-encryption-at-rest-during-universe-creation)
 - [Enable encryption at rest on an existing universe](#enable-encryption-at-rest-on-an-existing-universe)
-- [Back up and restore data from encrypted at rest universe](#back-up-and-restore-data-from-encrypted-at-rest-universe)
+- [Back up and restore data from an encrypted at rest universe](#back-up-and-restore-data-from-an-encrypted-at-rest-universe)
 - [Rotate the encryption at rest keys](#rotate-the-encryption-at-rest-keys)
 - [Disable encryption at rest](#disable-encryption-at-rest)
 
@@ -80,7 +80,14 @@ To enable encryption at rest on an existing universe, follow these steps:
 5. Select your KSM configuration from the **Key Management Service Config** drop-down list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration](../create-kms-configuration).
 6. Verify that the `EnableEncryptionAtRest` task completed successfully.
 
-## Back up and restore data from encrypted at rest universe
+## Back up and restore data from an encrypted at rest universe
+
+When backing up a cluster, you might restore the data to a different cluster with a different universe key or it might not have encryption enabled. As a result, a backup must include the decrypted data keys for all files.
+
+YugabyteDB uses two options to achieve this:
+
+- **If KMS integration is enabled**, back up the master universe key registry, encrypted with a KMS key, as part of the backup with the encrypted data files. On restore, decrypt the registry with the KMS key, and the registry is populated into the master system catalog and used to read the backed-up data files.
+- **If KMS is not used**, back up just the encrypted data files. On restore, use an out of band method to replay the universe key history to repopulate the registry. Once this is done, the cluster will be able to read the restored data files.
 
 ## Rotate the encryption at rest keys
 
