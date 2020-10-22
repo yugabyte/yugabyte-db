@@ -70,6 +70,7 @@
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
@@ -217,6 +218,12 @@ DEFINE_bool(
     stepdown_disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
+
+DEFINE_bool(
+    raft_disallow_concurrent_outstanding_report_failure_tasks, true,
+    "If true, only submit a new report failure task if there is not one outstanding.");
+TAG_FLAG(raft_disallow_concurrent_outstanding_report_failure_tasks, advanced);
+TAG_FLAG(raft_disallow_concurrent_outstanding_report_failure_tasks, hidden);
 
 DEFINE_int64(protege_synchronization_timeout_ms, 1000,
              "Timeout to synchronize protege before performing step down. "
@@ -938,6 +945,10 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
 }
 
 void RaftConsensus::ReportFailureDetectedTask() {
+  auto scope_exit = ScopeExit([this] {
+    outstanding_report_failure_task_.clear(std::memory_order_release);
+  });
+
   MonoTime now;
   for (;;) {
     // Do not start election for an extended period of time if we were recently stepped down.
@@ -973,10 +984,19 @@ void RaftConsensus::ReportFailureDetectedTask() {
 }
 
 void RaftConsensus::ReportFailureDetected() {
-  // We're running on a timer thread; start an election on a different thread pool.
-  WARN_NOT_OK(raft_pool_token_->SubmitFunc(std::bind(&RaftConsensus::ReportFailureDetectedTask,
-                                                     shared_from_this())),
-              "Failed to submit failure detected task");
+  if (FLAGS_raft_disallow_concurrent_outstanding_report_failure_tasks &&
+      outstanding_report_failure_task_.test_and_set(std::memory_order_acq_rel)) {
+    VLOG(4)
+        << "Returning from ReportFailureDetected as there is already an outstanding report task.";
+  } else {
+    // We're running on a timer thread; start an election on a different thread pool.
+    auto s = raft_pool_token_->SubmitFunc(
+        std::bind(&RaftConsensus::ReportFailureDetectedTask, shared_from_this()));
+    WARN_NOT_OK(s, "Failed to submit failure detected task");
+    if (!s.ok()) {
+      outstanding_report_failure_task_.clear(std::memory_order_release);
+    }
+  }
 }
 
 Status RaftConsensus::BecomeLeaderUnlocked() {
