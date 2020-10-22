@@ -32,7 +32,7 @@ showAsideToc: true
 
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data. You can use the Yugabyte Platform console to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in Yugabyte Platform supports the use of [AWS Key Management Service (KMS)](https://aws.amazon.com/kms/), from Amazon Web Services (AWS).
+Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the Yugabyte Platform console to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in Yugabyte Platform supports the use of [AWS Key Management Service (KMS)](https://aws.amazon.com/kms/), from Amazon Web Services (AWS).
 
 {{< note title="Note" >}}
 
