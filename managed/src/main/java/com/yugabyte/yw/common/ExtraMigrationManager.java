@@ -13,6 +13,9 @@ import java.util.UUID;
 
 import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Provider;
+
+import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 
 /*
  * This is a manager to hold injected resources needed for extra migrations.
@@ -29,10 +32,12 @@ public class ExtraMigrationManager extends DevopsBase {
 
   public void V52__Update_Access_Key_Create_Extra_Migration() {
     for (AccessKey accessKey: AccessKey.getAll()) {
-      AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
-      templateManager.createProvisionTemplate(
-        accessKey, keyInfo.airGapInstall, keyInfo.passwordlessSudoAccess,
-        keyInfo.installNodeExporter, keyInfo.nodeExporterPort, keyInfo.nodeExporterUser);
+      if (Provider.get(accessKey.getProviderUUID()).code.equals(onprem.name())) {
+        AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+        templateManager.createProvisionTemplate(
+          accessKey, keyInfo.airGapInstall, keyInfo.passwordlessSudoAccess,
+          keyInfo.installNodeExporter, keyInfo.nodeExporterPort, keyInfo.nodeExporterUser);
+      }
     }
   }
 }
