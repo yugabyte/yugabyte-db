@@ -201,11 +201,15 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     // This will be improved to handle split retries appropriately and then we won't need that
     // check.
     for (const auto& tablet : req->tablets_for_split()) {
-      LOG(INFO) << "Got tablet to split: " << AsString(tablet);
+      VLOG(1) << "Got tablet to split: " << AsString(tablet);
       const auto split_status = server_->catalog_manager()->SplitTablet(
           tablet.tablet_id(), tablet.split_encoded_key(), tablet.split_partition_key());
       if (!split_status.ok()) {
-        LOG(WARNING) << split_status;
+        if (MasterError(split_status) == MasterErrorPB::REACHED_SPLIT_LIMIT) {
+          YB_LOG_EVERY_N_SECS(WARNING, 60 * 60) << split_status;
+        } else {
+          LOG(WARNING) << split_status;
+        }
       }
     }
   }

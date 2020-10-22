@@ -328,6 +328,10 @@ DEFINE_test_flag(bool, create_table_leader_hint_min_lexicographic, false,
                  "Whether the Master should hint replica with smallest lexicographic rank for each "
                  "tablet as leader initially on tablet creation.");
 
+DEFINE_int32(tablet_split_limit_per_table, 256,
+             "Limit of the number of tablets per table for tablet splitting. Limitation is "
+             "disabled if this value is set to 0.");
+
 namespace yb {
 namespace master {
 
@@ -1773,6 +1777,16 @@ Status CatalogManager::DoSplitTablet(
         NotSupported, "Tablet splitting is not supported for colocated tables, tablet_id: $0",
         source_tablet_info->tablet_id());
   }
+  if (FLAGS_tablet_split_limit_per_table != 0 &&
+      source_tablet_info->table()->NumTablets() >= FLAGS_tablet_split_limit_per_table) {
+    // TODO(tsplit): Avoid tablet server of scanning tablets for the tables that already
+    //  reached the split limit of tablet #6220
+    return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::REACHED_SPLIT_LIMIT),
+                            "Too many tablets for the table, table_id: $0, limit: $1",
+                            source_tablet_info->table()->id(), FLAGS_tablet_split_limit_per_table);
+  }
+
+  LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
 
   constexpr auto kNumSplitParts = 2;
 
