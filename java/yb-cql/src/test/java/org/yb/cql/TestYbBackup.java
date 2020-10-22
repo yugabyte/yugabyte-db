@@ -14,23 +14,22 @@ package org.yb.cql;
 
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.json.JSONObject;
 
-import org.yb.client.TestUtils;
+import org.yb.util.YBBackupUtil;
 import org.yb.util.YBTestRunnerNonSanitizersOrMac;
 
 import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.fail;
 
 @RunWith(value=YBTestRunnerNonSanitizersOrMac.class)
 public class TestYbBackup extends BaseCQLTest {
-  private final static int defaultYbBackupTimeoutInSeconds = 180;
+  @Before
+  public void initYBBackupUtil() {
+    YBBackupUtil.setMasterAddresses(masterAddresses);
+  }
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -47,104 +46,6 @@ public class TestYbBackup extends BaseCQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("allow_index_table_read_write", "1");
     return flagMap;
-  }
-
-  protected String runProcess(List<String> args, int timeoutSeconds) throws Exception {
-    String processStr = "";
-    for (String arg: args) {
-      processStr += (processStr.isEmpty() ? "" : " ") + arg;
-    }
-    LOG.info("RUN:" + processStr);
-
-    ProcessBuilder processBuilder = new ProcessBuilder(args);
-    final Process process = processBuilder.start();
-    String line = null;
-
-    final BufferedReader stderrReader =
-        new BufferedReader(new InputStreamReader(process.getErrorStream()));
-    while ((line = stderrReader.readLine()) != null) {
-      LOG.info("STDERR: " + line);
-    }
-
-    final BufferedReader stdoutReader =
-        new BufferedReader(new InputStreamReader(process.getInputStream()));
-    StringBuilder stdout = new StringBuilder();
-    while ((line = stdoutReader.readLine()) != null) {
-      stdout.append(line + "\n");
-    }
-
-    if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-      fail("Timeout of process run (" + timeoutSeconds + " seconds): [" + processStr + "]");
-    }
-
-    final int exitCode = process.exitValue();
-    LOG.info("Process [" + processStr + "] exit code: " + exitCode);
-
-    if (exitCode != 0) {
-      LOG.info("STDOUT:\n" + stdout.toString());
-      fail("Failed process with exit code " + exitCode + ": [" + processStr + "]");
-    }
-
-    return stdout.toString();
-  }
-
-  protected String runYbBackup(List<String> args) throws Exception {
-    final String ybAdminPath = TestUtils.findBinary("yb-admin");
-    final String ybBackupPath = TestUtils.findBinary("../../../managed/devops/bin/yb_backup.py");
-
-    List<String> processCommand = new ArrayList<String>(Arrays.asList(
-        ybBackupPath,
-        "--masters", masterAddresses,
-        "--remote_yb_admin_binary=" + ybAdminPath,
-        "--storage_type", "nfs",
-        "--no_ssh",
-        "--no_auto_name"));
-    if (!TestUtils.IS_LINUX) {
-      processCommand.add("--mac");
-      // Temporary flag to get more detailed log while the tests are failing on MAC: issue #4924.
-      processCommand.add("--verbose");
-    }
-
-    processCommand.addAll(args);
-    assert(processCommand.contains("create") || processCommand.contains("restore"));
-    final String output = runProcess(processCommand, defaultYbBackupTimeoutInSeconds);
-    LOG.info("yb_backup output: " + output);
-
-    JSONObject json = new JSONObject(output);
-    if (json.has("error")) {
-      final String error = json.getString("error");
-      LOG.info("yb_backup failed with error: " + error);
-      fail("yb_backup failed with error: " + error);
-    }
-
-    return output;
-  }
-
-  public static String getTempBackupDir() {
-    return TestUtils.getBaseTmpDir() + "/backup";
-  }
-
-  protected void runYbBackupCreate(String... args) throws Exception {
-    List<String> processCommand = new ArrayList<String>(Arrays.asList(
-        "--backup_location", getTempBackupDir(),
-        "create"));
-    processCommand.addAll(Arrays.asList(args));
-    final String output = runYbBackup(processCommand);
-    JSONObject json = new JSONObject(output);
-    final String url = json.getString("snapshot_url");
-    LOG.info("SUCCESS. Backup-create operation result - snapshot url: " + url);
-  }
-
-  protected void runYbBackupRestore(String... args) throws Exception {
-    List<String> processCommand = new ArrayList<String>(Arrays.asList(
-        "--backup_location", getTempBackupDir(),
-        "restore"));
-    processCommand.addAll(Arrays.asList(args));
-    final String output = runYbBackup(processCommand);
-    JSONObject json = new JSONObject(output);
-    final boolean resultOk = json.getBoolean("success");
-    LOG.info("SUCCESS. Backup-restore operation result: " + resultOk);
-    assert(resultOk);
   }
 
   public enum TableProperty {
@@ -425,14 +326,14 @@ public class TestYbBackup extends BaseCQLTest {
                                           String... createBackupArgs) throws Exception {
     setupTablesBeforeBackup(tp);
     checkValuesInTables(DEFAULT_TEST_KEYSPACE, tp, ValuesUpdateState.SOURCE);
-    runYbBackupCreate(createBackupArgs);
+    YBBackupUtil.runYbBackupCreate(createBackupArgs);
     updateValuesInTables(DEFAULT_TEST_KEYSPACE, tp);
     checkValuesInTables(DEFAULT_TEST_KEYSPACE, tp, ValuesUpdateState.UPDATED);
 
     if (keyspace == DEFAULT_TEST_KEYSPACE) {
-      runYbBackupRestore();
+      YBBackupUtil.runYbBackupRestore();
     } else {
-      runYbBackupRestore("--keyspace", keyspace);
+      YBBackupUtil.runYbBackupRestore("--keyspace", keyspace);
       checkValuesInTables(DEFAULT_TEST_KEYSPACE, tp, ValuesUpdateState.UPDATED);
     }
 
@@ -523,9 +424,9 @@ public class TestYbBackup extends BaseCQLTest {
     runInvalidStmt("insert into test_tbl (i, j, k, l, m, n) values (1, 2, 1, 2, 2, 2);");
     runInvalidStmt("insert into test_tbl (i, j, k, l, m, n) values (1, 1, 2, 2, 2, 2);");
 
-    runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE);
+    YBBackupUtil.runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE);
     session.execute("insert into test_tbl (i, j, k, l, m, n) values (2, 2, 2, 1, 1, 1);");
-    runYbBackupRestore("--keyspace", "ks6");
+    YBBackupUtil.runYbBackupRestore("--keyspace", "ks6");
 
     assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".test_tbl;",
                 "Row[1, 1, 1, 1, 1, 1]" +
@@ -565,14 +466,14 @@ public class TestYbBackup extends BaseCQLTest {
                       "values (" + s + ", '{\"a\":{\"b\":\"b" + s + "\"},\"c\":" + s + "}');");
     }
 
-    runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE);
+    YBBackupUtil.runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE);
 
     assertQuery("select count(*) from " + DEFAULT_TEST_KEYSPACE + ".test_json_tbl;",
                 "Row[2000]");
     session.execute("insert into test_json_tbl (h, j) " +
                     "values (9999, '{\"a\":{\"b\":\"b9999\"},\"c\":9999}');");
 
-    runYbBackupRestore("--keyspace", "ks7");
+    YBBackupUtil.runYbBackupRestore("--keyspace", "ks7");
 
     assertQuery("select count(*) from " + DEFAULT_TEST_KEYSPACE + ".test_json_tbl;",
                 "Row[2001]");
@@ -605,10 +506,10 @@ public class TestYbBackup extends BaseCQLTest {
     }
 
     session.execute("alter table test_tbl drop a;");
-    runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl");
+    YBBackupUtil.runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl");
     session.execute("insert into test_tbl (h, b) values (9999, 8.9)");
 
-    runYbBackupRestore("--keyspace", "ks1");
+    YBBackupUtil.runYbBackupRestore("--keyspace", "ks1");
     assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".test_tbl where h=1", "Row[1, 3.14]");
     assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".test_tbl where h=2000",
                 "Row[2000, 2002.14]");
