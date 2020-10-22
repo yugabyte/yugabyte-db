@@ -9,6 +9,8 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -245,6 +247,11 @@ public class Util {
    */
   public static boolean areMastersUnderReplicated(NodeDetails currentNode,
                                                   Universe universe) {
+    Cluster cluster = universe.getCluster(currentNode.placementUuid);
+    if ((cluster == null) || (cluster.clusterType != ClusterType.PRIMARY)) {
+      return false;
+    }
+
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
     long numMasters = getNumMasters(nodes);
