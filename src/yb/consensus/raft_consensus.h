@@ -682,6 +682,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // taken, this lock must be taken first.
   mutable std::timed_mutex update_mutex_;
 
+  std::atomic_flag outstanding_report_failure_task_ = ATOMIC_FLAG_INIT;
+
   AtomicBool shutdown_;
 
   scoped_refptr<Counter> follower_memory_pressure_rejections_;
