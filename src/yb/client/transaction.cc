@@ -139,6 +139,8 @@ class YBTransaction::Impl final {
   }
 
   CHECKED_STATUS Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
+    VLOG_WITH_PREFIX(1) << __func__ << "(" << IsolationLevel_Name(isolation) << ", "
+                        << read_time << ")";
     if (read_point_.GetReadTime().read.is_valid()) {
       return STATUS_FORMAT(IllegalState, "Read point already specified: $0",
                            read_point_.GetReadTime());
@@ -152,6 +154,9 @@ class YBTransaction::Impl final {
   }
 
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point) {
+    VLOG_WITH_PREFIX(1) << __func__ << "(" << IsolationLevel_Name(isolation) << ", "
+                        << read_point.GetReadTime() << ")";
+
     read_point_ = std::move(read_point);
     CompleteInit(isolation);
   }
