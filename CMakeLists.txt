@@ -184,12 +184,24 @@ endif()
 INIT_COMPILER_TYPE()
 
 # This helps find the right third-party build directory.
+# TODO: this is complicated by the fact that we are trying to build third-party dependencies
+# here if necessary, and that the compiler is sometimes (e.g. Clang 7 with the Linuxbrew-based
+# setup) part of thoise third-party dependencies. Therefore, we don't yet know the exact compiler
+# version.
 if (YB_USE_TSAN)
   set(THIRDPARTY_INSTRUMENTATION_TYPE "tsan")
 elseif (YB_USE_ASAN)
   set(THIRDPARTY_INSTRUMENTATION_TYPE "asan")
 elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "clang") # Cannot use IS_CLANG before building 3rd party
-  set(THIRDPARTY_INSTRUMENTATION_TYPE "clang_uninstrumented")
+  if(NOT APPLE AND
+     NOT USING_LINUXBREW AND
+     NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
+    # This must be a Clang third-party build where we use "uninstrumented" instead of
+    # "clang_uninstrumented" because everything is built with Clang.
+    set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
+  else()
+    set(THIRDPARTY_INSTRUMENTATION_TYPE "clang_uninstrumented")
+  endif()
 elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "gcc8")
   set(THIRDPARTY_INSTRUMENTATION_TYPE "gcc8_uninstrumented")
   ADD_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}/gcc/8")
@@ -198,6 +210,7 @@ elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "gcc")
 else()
   message(FATAL_ERROR "Not handled compiler family: ${COMPILER_FAMILY}.")
 endif()
+message("THIRDPARTY_INSTRUMENTATION_TYPE=${THIRDPARTY_INSTRUMENTATION_TYPE}")
 
 # Make sure thirdparty stuff is up-to-date.
 if ("$ENV{NO_REBUILD_THIRDPARTY}" STREQUAL "")
@@ -432,8 +445,8 @@ if (IS_CLANG)
   # Clang generates ambiguous member template warnings when calling the ev++ api.
   ADD_CXX_FLAGS("-Wno-ambiguous-member-template")
 
-  # Emit warnings (that we then treat as errors in compiler-wrapper.sh) on unannotated fallthrough
-  # in switch statements. This applies to both YB and RocksDB parts of the code.
+  # Emit warnings on unannotated fallthrough in switch statements. This applies to both YB and
+  # RocksDB parts of the code.
   ADD_CXX_FLAGS("-Wimplicit-fallthrough")
 
   # Silence the "unused argument" warning.
@@ -481,8 +494,15 @@ elseif (${YB_USE_ASAN})
 
   # Compile and link against the thirdparty ASAN instrumented libstdcxx.
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
-elseif (USING_LINUXBREW AND IS_CLANG)
-  YB_SETUP_CLANG("clang_uninstrumented")
+elseif (NOT APPLE AND IS_CLANG)
+  # Special setup for Clang on Linux. This is not needed on macOS.
+  if (EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
+    YB_SETUP_CLANG("clang_uninstrumented")
+  else()
+    # Going forward, for third-party dependency builds where we are only using Clang to build
+   # everything, we will simply use the "uninstrumented" path instead.
+    YB_SETUP_CLANG("uninstrumented")
+  endif()
 endif()
 
 if (USING_LINUXBREW)

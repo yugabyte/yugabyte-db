@@ -74,10 +74,12 @@ function(ENFORCE_OUT_OF_SOURCE_BUILD)
 endfunction()
 
 function(DETECT_BREW)
-  # Detect Linuxbrew. The logic needs to be consistent with the detect_linuxbrew function in
-  # common-build-env.sh.
+  # Detect Linuxbrew.
+  #
+  # TODO: consolidate Linuxbrew detection logic between here and detect_brew in common-build-env.sh.
+  # As of 10/2020 we only check the compiler version here but not in detect_brew.
   set(USING_LINUXBREW FALSE)
-  if(NOT APPLE)
+  if(NOT APPLE AND (NOT IS_CLANG OR "${COMPILER_VERSION}" VERSION_LESS "10.0.0"))
     set(LINUXBREW_DIR "$ENV{YB_LINUXBREW_DIR}")
     if("${LINUXBREW_DIR}" STREQUAL "")
       if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt")
@@ -302,14 +304,15 @@ function(add_executable name)
   endif()
 endfunction()
 
-macro(YB_SETUP_CLANG BUILD_TYPE)
+macro(YB_SETUP_CLANG THIRDPARTY_BUILD_TYPE)
+  message("YB_SETUP_CLANG: THIRDPARTY_BUILD_TYPE=${THIRDPARTY_BUILD_TYPE}")
   ADD_CXX_FLAGS("-stdlib=libc++")
 
   # Disables using the precompiled template specializations for std::string, shared_ptr, etc
   # so that the annotations in the header actually take effect.
   ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
-  set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${BUILD_TYPE}/libcxx")
+  set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_BUILD_TYPE}/libcxx")
   set(LIBCXX_INCLUDE_DIR "${LIBCXX_DIR}/include/c++/v1")
   ADD_GLOBAL_RPATH_ENTRY("${LIBCXX_DIR}/lib")
 
