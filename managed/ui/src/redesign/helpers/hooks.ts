@@ -5,9 +5,12 @@ import { useDeepCompareEffect, useFirstMountState, useMountedState } from 'react
 export const useWhenMounted = () => {
   const isMounted = useMountedState();
 
-  return useCallback((callback: Function): void => {
-    if (isMounted()) callback();
-  }, [isMounted]);
+  return useCallback(
+    (callback: Function): void => {
+      if (isMounted()) callback();
+    },
+    [isMounted]
+  );
 };
 
 // same as original useEffect() but:

@@ -67,7 +67,8 @@ const getDeviceInfoFromInstance = (instance: InstanceType): DeviceInfo | null =>
       diskIops: null,
       storageClass: 'standard',
       storageType: DEFAULT_STORAGE_TYPES[instance.providerCode] ?? null,
-      mountPoints: // see original at ClusterFields.js:492
+      // see original at ClusterFields.js:492
+      mountPoints:
         instance.providerCode === CloudType.onprem
           ? volumeDetailsList.flatMap((item) => item.mountPath).join(',')
           : null
@@ -135,7 +136,10 @@ export const DeviceInfoField: FC = () => {
                     <Input
                       type="number"
                       // don't allow changing volume size for GCP or onprem providers
-                      disabled={formData.cloudConfig.provider?.code === CloudType.gcp || formData.cloudConfig.provider?.code === CloudType.onprem}
+                      disabled={
+                        formData.cloudConfig.provider?.code === CloudType.gcp ||
+                        formData.cloudConfig.provider?.code === CloudType.onprem
+                      }
                       min={1}
                       className="device-info-field__num-input"
                       onBlur={onBlur}

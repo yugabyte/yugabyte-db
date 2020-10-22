@@ -171,11 +171,14 @@ export const getFormData = (universe?: Universe, cluster?: Cluster): WizardSteps
     formData.securityConfig.enableAuthentication =
       cluster.userIntent.tserverGFlags[AUTH_GFLAG_YSQL] === 'true' ||
       cluster.userIntent.tserverGFlags[AUTH_GFLAG_YCQL] === 'true';
-    formData.securityConfig.enableClientToNodeEncrypt = cluster.userIntent.enableClientToNodeEncrypt;
+    formData.securityConfig.enableClientToNodeEncrypt =
+      cluster.userIntent.enableClientToNodeEncrypt;
     formData.securityConfig.enableNodeToNodeEncrypt = cluster.userIntent.enableNodeToNodeEncrypt;
     formData.securityConfig.rootCA = universe.universeDetails.rootCA;
-    formData.securityConfig.enableEncryptionAtRest = universe.universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled;
-    formData.securityConfig.kmsConfig = universe.universeDetails.encryptionAtRestConfig.kmsConfigUUID;
+    formData.securityConfig.enableEncryptionAtRest =
+      universe.universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled;
+    formData.securityConfig.kmsConfig =
+      universe.universeDetails.encryptionAtRestConfig.kmsConfigUUID;
 
     formData.hiddenConfig.accessKeyCode = cluster.userIntent.accessKeyCode;
     formData.hiddenConfig.enableYSQL = cluster.userIntent.enableYSQL;

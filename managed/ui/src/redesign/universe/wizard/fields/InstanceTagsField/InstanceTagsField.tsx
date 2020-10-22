@@ -13,13 +13,8 @@ export const InstanceTagsField: FC = () => {
       control={control}
       name="instanceTags"
       render={({ value, onChange }: ControllerRenderProps<FlagsObject>) => (
-        <KeyValueInput
-          value={value}
-          onChange={onChange}
-          disabled={false}
-        />
+        <KeyValueInput value={value} onChange={onChange} disabled={false} />
       )}
     />
   );
 };
-

@@ -29,9 +29,9 @@ const validationSchema = Yup.object().shape({
 const convertFormDataToPayload = (formData) => {
   const perRegionMetadata = {};
 
-  formData.forEach(regionItem => {
+  formData.forEach((regionItem) => {
     const azToSubnetIds = {};
-    regionItem.azToSubnetIds.forEach(zoneItem => {
+    regionItem.azToSubnetIds.forEach((zoneItem) => {
       if (zoneItem.zone?.value) {
         azToSubnetIds[zoneItem.zone?.value] = zoneItem.subnet;
       }
@@ -189,4 +189,3 @@ export const AzureProviderInitView = ({ createAzureProvider }) => {
     </div>
   );
 };
-

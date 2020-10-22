@@ -8,17 +8,21 @@ import KeyManagementConfigurationContainer from './KeyManagementConfigurationCon
 const securitySubgroups = ['Encryption At Rest'];
 
 class SecurityConfiguration extends Component {
-
   render() {
     const activeTab = this.props.activeTab || securitySubgroups[0].toLowerCase();
-    const tabHeader = (<div className="on-premise">
-      <i className="fa fa-lock"></i>Encryption <br /> At Rest
-    </div>);
+    const tabHeader = (
+      <div className="on-premise">
+        <i className="fa fa-lock"></i>Encryption <br /> At Rest
+      </div>
+    );
     return (
       <YBTabsPanel
-          defaultTab={securitySubgroups[0].toLowerCase()}
-          activeTab={activeTab} id="storage-config-tab-panel"
-          className="config-tabs" routePrefix="/config/backup/">
+        defaultTab={securitySubgroups[0].toLowerCase()}
+        activeTab={activeTab}
+        id="storage-config-tab-panel"
+        className="config-tabs"
+        routePrefix="/config/backup/"
+      >
         <Tab eventKey={'encryption at rest'} title={tabHeader} key={'encryption-at-rest-tab'}>
           <KeyManagementConfigurationContainer />
         </Tab>

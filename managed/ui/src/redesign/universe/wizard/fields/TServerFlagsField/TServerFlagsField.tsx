@@ -24,14 +24,9 @@ export const TServerFlagsField: FC<TServerFlagsFieldProps> = ({ disabled }) => {
         control={control}
         name="tserverGFlags"
         render={({ value, onChange }: ControllerRenderProps<FlagsObject>) => (
-          <KeyValueInput
-            value={value}
-            onChange={onChange}
-            disabled={disabled}
-          />
+          <KeyValueInput value={value} onChange={onChange} disabled={disabled} />
         )}
       />
     </div>
   );
 };
-
