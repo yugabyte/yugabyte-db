@@ -16,7 +16,7 @@ import { PlacementUI } from '../../fields/PlacementsField/PlacementsField';
 import { api, QUERY_KEY } from '../../../../helpers/api';
 import { useWhenMounted } from '../../../../helpers/hooks';
 
-const tagsToPayload = (tags?: FlagsObject): FlagsArray => {
+const tagsToArray = (tags?: FlagsObject): FlagsArray => {
   const result = [];
   if (tags) {
     for (const [name, value] of Object.entries(tags)) {
@@ -26,7 +26,7 @@ const tagsToPayload = (tags?: FlagsObject): FlagsArray => {
   return result;
 };
 
-const getPlacementRegion = (formData: WizardStepsFormData): PlacementRegion[] => {
+const getPlacements = (formData: WizardStepsFormData): PlacementRegion[] => {
   // remove gaps from placements list
   const placements: NonNullable<PlacementUI>[] = _.cloneDeep(
     _.compact(formData.cloudConfig.placements)
@@ -61,18 +61,19 @@ const getPlacementRegion = (formData: WizardStepsFormData): PlacementRegion[] =>
 
 // fix some skewed/missing fields in config response
 const patchConfigResponse = (
-  data: UniverseDetails,
-  operation: 'CREATE' | 'EDIT',
-  clusterType: ClusterType,
-  clusterIndex: number
+  response: UniverseDetails,
+  original: UniverseDetails
 ) => {
-  data.clusterOperation = operation;
-  data.currentClusterType = clusterType;
+  const clusterIndex = 0; // TODO: change to dynamic when support async clusters
 
-  const userIntent = data.clusters[clusterIndex].userIntent;
-  userIntent.instanceTags = tagsToPayload(userIntent.instanceTags as FlagsObject);
-  userIntent.masterGFlags = tagsToPayload(userIntent.masterGFlags as FlagsObject);
-  userIntent.tserverGFlags = tagsToPayload(userIntent.tserverGFlags as FlagsObject);
+  response.clusterOperation = original.clusterOperation;
+  response.currentClusterType = original.currentClusterType;
+  response.encryptionAtRestConfig = original.encryptionAtRestConfig;
+
+  const userIntent = response.clusters[clusterIndex].userIntent;
+  userIntent.instanceTags = original.clusters[clusterIndex].userIntent.instanceTags;
+  userIntent.masterGFlags = original.clusters[clusterIndex].userIntent.masterGFlags;
+  userIntent.tserverGFlags = original.clusters[clusterIndex].userIntent.tserverGFlags;
 };
 
 export const useLaunchUniverse = () => {
@@ -86,7 +87,7 @@ export const useLaunchUniverse = () => {
 
       switch (operation) {
         case ClusterOperation.NEW_PRIMARY: {
-          // TODO: check logic from ClusterFields.js:432
+          // convert form data into payload suitable for the configure api call
           const configurePayload: UniverseConfigure = {
             clusterOperation: 'CREATE',
             currentClusterType: ClusterType.PRIMARY,
@@ -94,7 +95,6 @@ export const useLaunchUniverse = () => {
             userAZSelected: false,
             communicationPorts: formData.dbConfig.communicationPorts,
             encryptionAtRestConfig: {
-              encryptionAtRestEnabled: formData.securityConfig.enableEncryptionAtRest,
               key_op: formData.securityConfig.enableEncryptionAtRest ? 'ENABLE' : 'UNDEFINED'
             },
             extraDependencies: {
@@ -112,12 +112,12 @@ export const useLaunchUniverse = () => {
                   replicationFactor: formData.cloudConfig.replicationFactor,
                   instanceType: formData.instanceConfig.instanceType as string,
                   deviceInfo: formData.instanceConfig.deviceInfo,
-                  instanceTags: tagsToPayload(formData.instanceConfig.instanceTags),
+                  instanceTags: tagsToArray(formData.instanceConfig.instanceTags),
                   assignPublicIP: formData.instanceConfig.assignPublicIP,
                   awsArnString: formData.instanceConfig.awsArnString || '',
                   ybSoftwareVersion: formData.dbConfig.ybSoftwareVersion,
-                  masterGFlags: tagsToPayload(formData.dbConfig.masterGFlags),
-                  tserverGFlags: tagsToPayload(formData.dbConfig.tserverGFlags),
+                  masterGFlags: tagsToArray(formData.dbConfig.masterGFlags),
+                  tserverGFlags: tagsToArray(formData.dbConfig.tserverGFlags),
                   enableNodeToNodeEncrypt: formData.securityConfig.enableNodeToNodeEncrypt,
                   enableClientToNodeEncrypt: formData.securityConfig.enableClientToNodeEncrypt,
                   accessKeyCode: formData.hiddenConfig.accessKeyCode,
@@ -133,24 +133,23 @@ export const useLaunchUniverse = () => {
             formData.securityConfig.kmsConfig &&
             configurePayload.encryptionAtRestConfig
           ) {
-            configurePayload.encryptionAtRestConfig.kmsConfigUUID =
-              formData.securityConfig.kmsConfig;
+            configurePayload.encryptionAtRestConfig.configUUID = formData.securityConfig.kmsConfig;
           }
 
-          // in create mode we don't have "nodeDetailsSet", thus make initial configure call without placements to generate it
-          const interimPayload = await api.universeConfigure(
+          // in create mode there's no "nodeDetailsSet" yet, so make a configure call without placements to generate it
+          const interimConfigure = await api.universeConfigure(
             QUERY_KEY.universeConfigure,
             configurePayload
           );
-          patchConfigResponse(interimPayload, 'CREATE', ClusterType.PRIMARY, 0);
+          patchConfigResponse(interimConfigure, configurePayload as UniverseDetails);
 
-          // replace placement from configure call with one provided by the user
-          interimPayload.clusters[0].placementInfo = {
+          // replace node placements returned by a configure call with one provided by the user
+          interimConfigure.clusters[0].placementInfo = {
             cloudList: [
               {
                 uuid: formData.cloudConfig.provider?.uuid as string,
                 code: formData.cloudConfig.provider?.code as CloudType,
-                regionList: getPlacementRegion(formData)
+                regionList: getPlacements(formData)
               }
             ]
           };
@@ -158,9 +157,9 @@ export const useLaunchUniverse = () => {
           // make one more configure call to validate payload before submitting
           const finalPayload = await api.universeConfigure(
             QUERY_KEY.universeConfigure,
-            interimPayload
+            interimConfigure
           );
-          patchConfigResponse(finalPayload, 'CREATE', ClusterType.PRIMARY, 0);
+          patchConfigResponse(finalPayload, configurePayload as UniverseDetails);
 
           // now everything is ready to create universe
           await api.universeCreate(finalPayload);
@@ -172,28 +171,26 @@ export const useLaunchUniverse = () => {
             const payload = universe.universeDetails;
             payload.clusterOperation = 'EDIT';
             payload.currentClusterType = ClusterType.PRIMARY;
-
-            // update props allowed to edit by form values
-            payload.clusters[0].userIntent.regionList = formData.cloudConfig.regionList;
-            payload.clusters[0].userIntent.numNodes = formData.cloudConfig.totalNodes;
-            payload.clusters[0].userIntent.instanceType = formData.instanceConfig
-              .instanceType as string;
-            payload.clusters[0].userIntent.instanceTags = tagsToPayload(
-              formData.instanceConfig.instanceTags
-            );
-            payload.clusters[0].userIntent.deviceInfo = formData.instanceConfig.deviceInfo;
             payload.userAZSelected = formData.hiddenConfig.userAZSelected;
 
-            // TODO: smth extra should happen here to update placements
+            // update props allowed to edit by form values
+            const userIntent = payload.clusters[0].userIntent;
+            userIntent.regionList = formData.cloudConfig.regionList;
+            userIntent.numNodes = formData.cloudConfig.totalNodes;
+            userIntent.instanceType = formData.instanceConfig.instanceType!;
+            userIntent.instanceTags = tagsToArray(formData.instanceConfig.instanceTags);
+            userIntent.deviceInfo = formData.instanceConfig.deviceInfo;
+
             if (payload.userAZSelected) {
-              payload.clusters[0].placementInfo.cloudList[0].regionList = getPlacementRegion(
-                formData
-              );
+              payload.clusters[0].placementInfo.cloudList[0].regionList = getPlacements(formData);
             }
 
             // submit configure call to validate the payload
             const finalPayload = await api.universeConfigure(QUERY_KEY.universeConfigure, payload);
-            patchConfigResponse(finalPayload, 'EDIT', ClusterType.PRIMARY, 0);
+            patchConfigResponse(finalPayload, payload);
+
+            // TODO: detect if full move is going to happen by analyzing finalPayload.nodeDetailsSet
+            // TODO: maybe consider universe.universeDetails.updateInProgress to avoid edits while it's true
 
             await api.universeEdit(payload, universe.universeUUID);
           } else {

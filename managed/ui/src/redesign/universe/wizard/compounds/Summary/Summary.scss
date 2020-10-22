@@ -5,6 +5,7 @@
   height: fit-content;
   position: sticky;
   top: 135px; // 60px header + 35px margin + 40px stepper
+  margin-left: -1px; // to overlap with step form border
   $padding: 15px 40px;
 
   font-family: $YB_FONT_FAMILY;
@@ -17,7 +18,7 @@
     background-color: $YB_WIZARD_SUMMARY_BACKGROUND;
     mix-blend-mode: multiply;
     padding: $padding;
-    color: $YB_WIZARD_TABS;
+    color: $YB_TEXT_2;
   }
 
   &__content {
