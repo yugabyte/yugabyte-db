@@ -141,7 +141,7 @@
       font-size: 14px;
 
       &:first-child {
-        
+
         div {
           padding-bottom: 10px;
         }
@@ -315,7 +315,7 @@
 
     img {
       height: 50px;
-      
+
       &.aws-logo {
         height: 42px;
         margin-top: 5px;
@@ -376,4 +376,17 @@
 
 .yb-hidden {
   display: none !important;
+}
+
+#cloud-config-tab-panel-tab-azure:before {
+  content: 'BETA';
+  position: absolute;
+  padding: 3px 7px;
+  top: 0;
+  right: 0;
+  background-color: $YB_ORANGE;
+  border-radius: 4px;
+  color: $YB_BACKGROUND;
+  font-weight: 700;
+  font-size: 14px;
 }
