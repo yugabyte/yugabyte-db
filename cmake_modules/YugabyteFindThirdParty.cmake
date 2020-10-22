@@ -68,19 +68,27 @@ ADD_THIRDPARTY_LIB(cds
   STATIC_LIB "${CDS_STATIC_LIB}"
   SHARED_LIB "${CDS_SHARED_LIB}")
 
-## libunwind (dependent of glog)
-## Doesn't build on OSX.
 if (NOT APPLE)
+  ## libunwind (dependent of glog)
+  ## Doesn't build on OSX.
+  if(IS_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0")
+    set(UNWIND_HAS_ARCH_SPECIFIC_LIB FALSE)
+  else()
+    set(UNWIND_HAS_ARCH_SPECIFIC_LIB TRUE)
+  endif()
   find_package(LibUnwind REQUIRED)
   include_directories(SYSTEM ${UNWIND_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(unwind
     STATIC_LIB "${UNWIND_STATIC_LIB}"
     SHARED_LIB "${UNWIND_SHARED_LIB}")
-  ADD_THIRDPARTY_LIB(unwind-arch
-    STATIC_LIB "${UNWIND_STATIC_ARCH_LIB}"
-    SHARED_LIB "${UNWIND_SHARED_ARCH_LIB}")
+  if(UNWIND_HAS_ARCH_SPECIFIC_LIB)
+    ADD_THIRDPARTY_LIB(unwind-arch
+        STATIC_LIB "${UNWIND_STATIC_ARCH_LIB}"
+        SHARED_LIB "${UNWIND_SHARED_ARCH_LIB}")
+  endif()
   list(APPEND YB_BASE_LIBS unwind)
 
+  ## libuuid -- also only needed on Linux as it is part of system libraries on macOS.
   find_package(LibUuid REQUIRED)
   include_directories(SYSTEM ${LIBUUID_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(libuuid

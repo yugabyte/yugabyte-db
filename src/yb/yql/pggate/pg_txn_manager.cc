@@ -45,7 +45,8 @@ uint64_t ConvertBound(double value) {
   if (value >= 1.0) {
     return txn_priority_highpri_lower_bound - 1;
   }
-  return value * (txn_priority_highpri_lower_bound - 1);
+  // Have to cast to double to avoid a warning on implicit cast that changes the value.
+  return value * (static_cast<double>(txn_priority_highpri_lower_bound) - 1);
 }
 
 } // namespace
