@@ -31,13 +31,15 @@
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master.pb.h"
+#include "yb/master/master_error.h"
 
 #include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 #include "yb/rpc/messenger.h"
 
-#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -64,6 +66,7 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_int32(replication_factor);
+DECLARE_int32(tablet_split_limit_per_table);
 
 namespace yb {
 
@@ -857,6 +860,63 @@ TEST_F(TabletSplitITest, SplitClientRequestsIdsDepth1) {
 // Client doesn't know about split parent for final tablets.
 TEST_F(TabletSplitITest, SplitClientRequestsIdsDepth2) {
   SplitClientRequestsIds(2);
+}
+
+TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
+  FLAGS_db_block_size_bytes = 1_KB;
+
+  const auto kSplitDepth = 3;
+  const auto kNumRows = 50 * (1 << kSplitDepth);
+  FLAGS_tablet_split_limit_per_table = (1 << kSplitDepth) - 1;
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRows(kNumRows));
+  ASSERT_OK(CheckRowsCount(kNumRows));
+
+  auto* catalog_mgr = catalog_manager();
+
+  master::TableIdentifierPB table_id_pb;
+  table_id_pb.set_table_id(table_->id());
+  bool reached_split_limit = false;
+
+  for (int i = 0; i < kSplitDepth; ++i) {
+    auto peers = ListTableTabletLeadersPeers(cluster_.get(), table_->id());
+    bool expect_split = false;
+    for (const auto& peer : peers) {
+      const auto tablet = peer->shared_tablet();
+      ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+      tablet->ForceRocksDBCompactInTest();
+      scoped_refptr<master::TableInfo> table_info;
+      ASSERT_OK(catalog_mgr->FindTable(table_id_pb, &table_info));
+
+      expect_split = table_info->NumTablets() < FLAGS_tablet_split_limit_per_table;
+
+      if (expect_split) {
+        ASSERT_OK(SplitTablet(catalog_mgr, *tablet));
+      } else {
+        const auto split_status = SplitTablet(catalog_mgr, *tablet);
+        ASSERT_EQ(master::MasterError(split_status),
+                  master::MasterErrorPB::REACHED_SPLIT_LIMIT);
+        reached_split_limit = true;
+      }
+    }
+    if (expect_split) {
+      ASSERT_NO_FATALS(WaitForTabletSplitCompletion(
+          /* expected_non_split_tablets =*/1 << (i + 1)));
+    }
+  }
+
+  ASSERT_TRUE(reached_split_limit);
+
+  Status s;
+  ASSERT_OK(WaitFor([&] {
+    s = ResultToStatus(WriteRows(1));
+    return !s.IsTryAgain();
+  }, 60s, "Waiting for successful write"));
+
+  scoped_refptr<master::TableInfo> table_info;
+  ASSERT_OK(catalog_mgr->FindTable(table_id_pb, &table_info));
+  ASSERT_EQ(table_info->NumTablets(), FLAGS_tablet_split_limit_per_table);
 }
 
 namespace {

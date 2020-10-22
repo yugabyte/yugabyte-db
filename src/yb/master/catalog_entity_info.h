@@ -381,6 +381,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
       TabletInfos* ret,
       int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const;
 
+  std::size_t NumTablets() const;
+
   // Get all tablets of the table.
   void GetAllTablets(TabletInfos *ret) const;
 

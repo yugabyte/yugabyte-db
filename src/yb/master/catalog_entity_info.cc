@@ -532,6 +532,11 @@ std::unordered_set<std::shared_ptr<MonitoredTask>> TableInfo::GetTasks() {
   return pending_tasks_;
 }
 
+std::size_t TableInfo::NumTablets() const {
+  shared_lock<decltype(lock_)> l(lock_);
+  return tablet_map_.size();
+}
+
 void TableInfo::GetAllTablets(TabletInfos *ret) const {
   ret->clear();
   shared_lock<decltype(lock_)> l(lock_);
