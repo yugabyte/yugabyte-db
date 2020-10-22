@@ -90,19 +90,25 @@ The following output should appear:
 
 ## Install Yugabyte Platform on a Kubernetes cluster
 
-1. Apply the Yugabyte Platform secret (obtained from [Yugabyte Support](mailto:support@yugabyte.com) by running the following `kubectl create` command:
+1. Create a namespace using the `kubectl create namespace` command:
+
+    ```sh
+    kubectl create namespace yb-platform
+    ```
+
+2. Apply the Yugabyte Platform secret (obtained from [Yugabyte Support](mailto:support@yugabyte.com) by running the following `kubectl create` command:
 
     ```sh
     $ kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
     ```
-    
+
     You should see output that the secret was created, like this:
-    
+
     ```
     secret/yugabyte-k8s-pull-secret created
     ```
 
-2. Run the following `helm repo add` command to clone the [YugabyteDB charts repository](https://charts.yugabyte.com/).
+3. Run the following `helm repo add` command to clone the [YugabyteDB charts repository](https://charts.yugabyte.com/).
 
     ```sh
     $ helm repo add yugabytedb https://charts.yugabyte.com
@@ -115,19 +121,19 @@ The following output should appear:
     ```
 
     To search for the available chart version, run this command:
-    
+
     ```sh
     $ helm search repo yugabytedb/yugaware -l
     ```
 
     The latest Helm Chart version and App version will be displayed.
-    
+
     ```
     NAME               	CHART VERSION	APP VERSION	DESRIPTION
     yugabytedb/yugabyte	2.3.0        	2.3.1.0	YugabyteDB is the high-performance distributed ..
     ```
 
-3. Run the following `helm install` command to install Yugabyte Platform (`yugaware`) Helm chart:
+4. Run the following `helm install` command to install Yugabyte Platform (`yugaware`) Helm chart:
 
 ```sh
 helm install yw-test yugabytedb/yugaware --version 2.3.2 -n yb-platform --wait
