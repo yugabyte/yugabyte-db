@@ -67,8 +67,6 @@ And this result shows the reporting paths, sorted in depth-first order:
  mary->susan
 ```
 
-
-
 {{< note title="Under construction." >}}
 
 A future version of this section will explain everything and provide working code examples.

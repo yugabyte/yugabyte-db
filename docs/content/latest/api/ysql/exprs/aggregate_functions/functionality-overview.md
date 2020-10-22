@@ -369,7 +369,7 @@ This is the result:
      2 |     10 | 5
 ```
 
-Now, simulate the hypothetical insert of two new rows, one in each class, and visualize the values that `rank()` produces for these. Do this within a transaction that you rollback.
+Now, simulate the hypothetical insert of two rows, one in each class, and visualize the values that `rank()` produces for these. Do this within a transaction that you rollback.
 
 ```plpgsql
 start transaction;

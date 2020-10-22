@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-If you are already familiar with aggregate functions, then you can skip straight to the [syntax and semantics](./invocation-syntax-semantics/) section or the section that lists all of [YSQL's aggregate functions](./function-syntax-semantics/) and that links, in turn, to the definitive account of each function.
+If you are already familiar with aggregate functions, then you can skip straight to the [syntax and semantics](./invocation-syntax-semantics/) section or the section that lists all of [the YSQL aggregate functions](./function-syntax-semantics/) and that links, in turn, to the definitive account of each function.
 
 This page has only the [Synopsis](./#synopsis) section and the section [Organization of the aggregate functions documentation](./#organization-of-the-aggregate-functions-documentation) section.
 
@@ -31,7 +31,7 @@ Notice these differences and similarities between aggregate functions and window
 - A window function produces, in general, a different output value for _each different input row_ in the [_window_](../window_functions/invocation-syntax-semantics/#the-window-definition-rule).
 - When an aggregate function is invoked using the regular `GROUP BY` clause, it produces a _single value_ for each entire subset that the `GROUP BY` clause defines.
 - When an aggregate function is invoked in the same way as a window function, it might, or might not, produce the _same value_ for _each different input row_ in the [_window_](./invocation-syntax-semantics/#the-window-definition-rule). The exact behavior depends on what the [frame clause](../window_functions/invocation-syntax-semantics/#the-frame-clause-1) specifies.
-- All of YSQL's thirty-seven aggregate functions are listed in the four tables in the section [Signature and purpose of each aggregate function](./function-syntax-semantics/).
+- All of the thirty-seven aggregate functions are listed in the four tables in the section [Signature and purpose of each aggregate function](./function-syntax-semantics/).
 
 ## Organization of the aggregate functions documentation
 
@@ -57,7 +57,7 @@ There are four variants of the `GROUP BY` invocation style: `GROUP BY <column li
 
 ### Signature and purpose of each aggregate function: [here](./function-syntax-semantics/)
 
-The following list groups YSQL's thirty-seven aggregate functions in the same way that the sidebar items group them. The rationale for the grouping is explained in the referenced sections.
+The following list groups the thirty-seven aggregate functions in the same way that the sidebar items group them. The rationale for the grouping is explained in the referenced sections.
 
 &#160;&#160;&#160;&#160;&#160;&#160;[`avg()`](./function-syntax-semantics/avg-count-max-min-sum/#avg)<br>
 &#160;&#160;&#160;&#160;&#160;&#160;[`max()`](./function-syntax-semantics/avg-count-max-min-sum/#max-min)<br>

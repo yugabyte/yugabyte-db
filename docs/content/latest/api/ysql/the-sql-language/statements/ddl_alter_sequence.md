@@ -2,7 +2,7 @@
 title: ALTER SEQUENCE statement [YSQL]
 headerTitle: ALTER SEQUENCE
 linkTitle: ALTER SEQUENCE
-description: Use the ALTER SEQUENCE statement to change the definition of an existing sequence in the current schema.
+description: Use the ALTER SEQUENCE statement to change the definition of a sequence in the current schema.
 menu:
   latest:
     identifier: ddl_alter_sequence
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `ALTER SEQUENCE` statement to change the definition of an existing sequence in the current schema.
+Use the `ALTER SEQUENCE` statement to change the definition of a sequence in the current schema.
 
 ## Syntax
 

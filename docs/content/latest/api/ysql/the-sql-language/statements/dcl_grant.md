@@ -60,11 +60,11 @@ Possible privileges are
 
 - SELECT
 
-  - This allows SELECT from any or specified columns of the specified table, view, or sequence. It also allows the use of COPY TO. This privilege is also needed to reference existing column values in UPDATE or DELETE.
+  - This allows SELECT from any or specified columns of the specified table, view, or sequence. It also allows the use of COPY TO. This privilege is also needed to reference column values in UPDATE or DELETE.
 
 - INSERT
 
-  - This allows INSERT of a new row into the specified table. If specific columns are listed, only those columns may be assigned to in the INSERT command (other columns will therefore receive default values). Also allows COPY FROM.
+  - This allows INSERT of a row into the specified table. If specific columns are listed, only those columns may be assigned to in the INSERT command (other columns will therefore receive default values). Also allows COPY FROM.
 
 - UPDATE
 
@@ -87,8 +87,8 @@ Possible privileges are
 
 - CREATE
 
-  - For databases, this allows new schemas to be created within the database.
-  - For schemas, this allows new objects to be created within the schema. To rename an existing object, you must own the object and have this privilege for the containing schema.
+  - For databases, this allows schemas to be created within the database.
+  - For schemas, this allows objects to be created within the schema. To rename an object, you must own the object and have this privilege for the containing schema.
 
 - CONNECT
 

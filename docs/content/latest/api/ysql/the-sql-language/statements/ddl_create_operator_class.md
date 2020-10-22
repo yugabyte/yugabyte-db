@@ -2,7 +2,7 @@
 title: CREATE OPERATOR CLASS statement [YSQL]
 headerTitle: CREATE OPERATOR CLASS
 linkTitle: CREATE OPERATOR CLASS
-description: Use the CREATE OPERATOR CLASS statement to create a new operator class.
+description: Use the CREATE OPERATOR CLASS statement to create an operator class.
 menu:
   latest:
     identifier: ddl_create_operator_class
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE OPERATOR CLASS` statement to create a new operator class.
+Use the `CREATE OPERATOR CLASS` statement to create an operator class.
 
 ## Syntax
 
