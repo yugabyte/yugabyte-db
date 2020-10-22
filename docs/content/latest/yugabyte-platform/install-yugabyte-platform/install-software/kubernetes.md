@@ -146,5 +146,5 @@ A message should appear showing that the deployment succeeded.
 To delete the Helm install, run the following `helm del` command:
 
 ```sh
-helm del --purge yb
+helm del --purge yw-test -n yb-platform
 ```
