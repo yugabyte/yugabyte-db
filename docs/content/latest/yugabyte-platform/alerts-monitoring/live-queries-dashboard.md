@@ -4,14 +4,15 @@ linkTitle: Live Queries dashboard
 description: Live Queries dashboard
 menu:
   latest:
-    parent: back-up-restore-universes
-    identifier: configure-backup-storage
+    parent: alerts-monitoring
+    identifier: live-queries-dashboard
     weight: 10
 isTocNested: true
 showAsideToc: true
 ---
 
 Use the Live Queries dashboard to monitor and display current running queries on your YugabyteDB universes. You can use this data to:
+
 - Visually identify relevant database operations
 - Evaluate query execution times
 - Discover any potential queries for performance optimization
