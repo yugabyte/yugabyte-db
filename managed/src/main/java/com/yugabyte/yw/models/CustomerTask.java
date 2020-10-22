@@ -123,7 +123,7 @@ public class CustomerTask extends Model {
         case Restore:
           return completed ? "Restored " : "Restoring ";
         case Backup:
-          return completed ? "Backed up" : "Backing up";
+          return completed ? "Backed up " : "Backing up ";
         case SetEncryptionKey:
           return completed ? "Set encryption key" : "Setting encryption key";
         case EnableEncryptionAtRest:
