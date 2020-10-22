@@ -198,7 +198,8 @@ class AbstractCloud(AbstractCommandParser):
         # Give write permission in case file exists. If the command fails, ignore.
         remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_node_dir))
         remote_shell.run_command('cp {} {}'.format(root_cert_path,
-                                                   os.path.join(certs_node_dir, ROOT_CERT_NAME)))
+                                                   os.path.join(certs_node_dir,
+                                                                self.ROOT_CERT_NAME)))
         remote_shell.run_command('cp {} {}'.format(node_cert_path,
                                                    os.path.join(certs_node_dir, cert_file)))
         remote_shell.run_command('cp {} {}'.format(node_key_path,
@@ -214,10 +215,10 @@ class AbstractCloud(AbstractCommandParser):
             remote_shell.run_command('chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
             remote_shell.run_command('cp {} {}'.format(client_cert_path,
                                                        os.path.join(self.YSQLSH_CERT_DIR,
-                                                                    CLIENT_CERT_NAME)))
+                                                                    self.CLIENT_CERT_NAME)))
             remote_shell.run_command('cp {} {}'.format(client_key_path,
                                                        os.path.join(self.YSQLSH_CERT_DIR,
-                                                                    CLIENT_KEY_NAME)))
+                                                                    self.CLIENT_KEY_NAME)))
             remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
     def generate_client_cert(self, extra_vars, ssh_options):
@@ -281,7 +282,7 @@ class AbstractCloud(AbstractCommandParser):
                               os.path.join(certs_node_dir, key_file))
         remote_shell.put_file(os.path.join(common_path, cert_file),
                               os.path.join(certs_node_dir, cert_file))
-        remote_shell.put_file(root_cert_path, os.path.join(certs_node_dir, ROOT_CERT_NAME))
+        remote_shell.put_file(root_cert_path, os.path.join(certs_node_dir, self.ROOT_CERT_NAME))
         remote_shell.run_command('chmod 400 {}/*'.format(certs_node_dir))
 
         if "client_cert" in extra_vars:
@@ -291,11 +292,11 @@ class AbstractCloud(AbstractCommandParser):
             # Give write permission in case file exists. If the command fails, ignore.
             remote_shell.run_command('chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
             remote_shell.put_file(root_cert_path, os.path.join(self.YSQLSH_CERT_DIR,
-                                                               CLIENT_ROOT_NAME))
+                                                               self.CLIENT_ROOT_NAME))
             remote_shell.put_file(client_cert_path, os.path.join(self.YSQLSH_CERT_DIR,
-                                                                 CLIENT_CERT_NAME))
+                                                                 self.CLIENT_CERT_NAME))
             remote_shell.put_file(client_key_path, os.path.join(self.YSQLSH_CERT_DIR,
-                                                                CLIENT_KEY_NAMEE))
+                                                                self.CLIENT_KEY_NAMEE))
             remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
         try:
