@@ -194,8 +194,8 @@ class CompileCommandProcessor:
             logging.warning(
                 "Unexpected compiler path: %s. Compile command: %s",
                 new_args[0], json.dumps(compile_command_item))
-            if new_compiler_path:
-                new_args[0] = new_compiler_path
+        if new_compiler_path:
+            new_args[0] = new_compiler_path
 
         new_file_path = file_path
         if not os.path.isabs(file_path):
