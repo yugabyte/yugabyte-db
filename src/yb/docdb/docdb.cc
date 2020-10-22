@@ -236,7 +236,7 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   if (!read_pairs.empty()) {
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
-        [&result](IntentStrength strength, Slice value, KeyBytes* key, LastKey) {
+        [&result](IntentStrength strength, FullDocKey, Slice value, KeyBytes* key, LastKey) {
           RefCntPrefix prefix(key->AsSlice());
           auto intent_types = strength == IntentStrength::kStrong
               ? IntentTypeSet({IntentType::kStrongRead})
@@ -498,7 +498,8 @@ Status EnumerateWeakIntents(
 
   // For any non-empty key we already know that the empty key intent is weak.
   RETURN_NOT_OK(functor(
-      IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
+      IntentStrength::kWeak, FullDocKey::kFalse, kEmptyIntentValue, encoded_key_buffer,
+      LastKey::kFalse));
 
   auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::kUpToHash));
 
@@ -524,7 +525,8 @@ Status EnumerateWeakIntents(
 
     // Generate a week intent that only includes the hash component.
     RETURN_NOT_OK(functor(
-        IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
+        IntentStrength::kWeak, FullDocKey(key[0] == ValueTypeAsChar::kGroupEnd), kEmptyIntentValue,
+        encoded_key_buffer, LastKey::kFalse));
 
     // Remove the kGroupEnd we added a bit earlier so we can append some range components.
     encoded_key_buffer->RemoveLastByte();
@@ -546,9 +548,11 @@ Status EnumerateWeakIntents(
       // This is the last range key and there are no subkeys.
       return Status::OK();
     }
-    if (partial_range_key_intents || *key.cdata() == ValueTypeAsChar::kGroupEnd) {
+    FullDocKey full_doc_key(key[0] == ValueTypeAsChar::kGroupEnd);
+    if (partial_range_key_intents || full_doc_key) {
       RETURN_NOT_OK(functor(
-          IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
+          IntentStrength::kWeak, full_doc_key, kEmptyIntentValue, encoded_key_buffer,
+          LastKey::kFalse));
     }
     encoded_key_buffer->RemoveLastByte();
     range_key_start = key.cdata();
@@ -567,7 +571,8 @@ Status EnumerateWeakIntents(
       return Status::OK();
     }
     RETURN_NOT_OK(functor(
-        IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
+        IntentStrength::kWeak, FullDocKey::kTrue, kEmptyIntentValue, encoded_key_buffer,
+        LastKey::kFalse));
     subkey_start = key.cdata();
   }
 
@@ -584,7 +589,8 @@ Status EnumerateIntents(
     LastKey last_key) {
   RETURN_NOT_OK(EnumerateWeakIntents(
       key, functor, encoded_key_buffer, partial_range_key_intents));
-  return functor(IntentStrength::kStrong, intent_value, encoded_key_buffer, last_key);
+  return functor(
+      IntentStrength::kStrong, FullDocKey::kTrue, intent_value, encoded_key_buffer, last_key);
 }
 
 Status EnumerateIntents(
@@ -632,8 +638,8 @@ class PrepareTransactionWriteBatchHelper {
   }
 
   // Using operator() to pass this object conveniently to EnumerateIntents.
-  CHECKED_STATUS operator()(IntentStrength intent_strength, Slice value_slice, KeyBytes* key,
-                            LastKey last_key) {
+  CHECKED_STATUS operator()(IntentStrength intent_strength, FullDocKey, Slice value_slice,
+                            KeyBytes* key, LastKey last_key) {
     if (intent_strength == IntentStrength::kWeak) {
       weak_intents_[key->data()] |= StrongToWeak(strong_intent_types_);
       return Status::OK();
