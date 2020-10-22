@@ -148,7 +148,7 @@ config_param ::= '<Text Literal>' ;
 config_value ::= '<Text Literal>' ;
 
 (* 'ALTER' 'SEQUENCE' *)
-alter_sequence ::= 'ALTER' 'SEQUENCE' [ 'IF' 'EXISTS' ] name alter_sequence_options ;
+alter_sequence ::= 'ALTER' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name alter_sequence_options ;
 
 alter_sequence_options ::= [ 'AS' seq_data_type ]
                            [ 'INCREMENT' [ 'BY' ] increment ]
@@ -582,7 +582,7 @@ schema_element ::= '<YSQL DDL statement>' ;
 (* 'CREATE' 'SEQUENCE' *)
 create_sequence ::= 'CREATE' 'SEQUENCE' [ 'IF' 'NOT' 'EXISTS' ] sequence_name  sequence_options ;
 
-sequence_name ::= '<Text Literal>' ;
+sequence_name ::= qualified_name ;
 
 sequence_options ::= [ 'INCREMENT' [ 'BY' ] increment ]
                      [ 'MINVALUE' minvalue | 'NO' 'MINVALUE' ]

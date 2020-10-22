@@ -2,7 +2,7 @@
 title: CREATE CAST statement [YSQL]
 headerTitle: CREATE CAST
 linkTitle: CREATE CAST
-description: Use the CREATE CAST statement to create a new cast.
+description: Use the CREATE CAST statement to create a cast.
 menu:
   latest:
     identifier: ddl_create_cast
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE CAST` statement to create a new cast.
+Use the `CREATE CAST` statement to create a cast.
 
 ## Syntax
 

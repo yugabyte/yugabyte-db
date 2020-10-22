@@ -2,7 +2,7 @@
 title: ALTER POLICY statement [YSQL]
 headerTitle: ALTER POLICY
 linkTitle: ALTER POLICY
-description: Use the ALTER POLICY statement to change the definition of an existing row level security policy.
+description: Use the ALTER POLICY statement to change the definition of a row level security policy.
 menu:
   latest:
     identifier: dcl_alter_policy
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use  the `ALTER POLICY` statement to change the definition of an existing row level security policy. It can be used to
+Use  the `ALTER POLICY` statement to change the definition of a row level security policy. It can be used to
 change the roles that the policy applies to and the `USING` and `CHECK` expressions of the policy.
 
 ## Syntax

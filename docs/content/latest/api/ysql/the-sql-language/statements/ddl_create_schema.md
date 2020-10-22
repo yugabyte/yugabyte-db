@@ -2,7 +2,7 @@
 title: CREATE SCHEMA statement [YSQL]
 headerTitle: CREATE SCHEMA
 linkTitle: CREATE SCHEMA
-description: Use the CREATE SCHEMA statement to create a new schema in the current database.
+description: Use the CREATE SCHEMA statement to create schema in the current database.
 menu:
   latest:
     identifier: ddl_create_schema
@@ -15,8 +15,8 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE SCHEMA` statement to create a new schema in the current database.
-A schema is essentially a namespace: it contains named objects (tables, data types, functions, and operators) whose names can duplicate those of other objects existing in other schemas.
+Use the `CREATE SCHEMA` statement to create a schema in the current database.
+A schema is essentially a namespace: it contains named objects (tables, data types, functions, and operators) whose names can duplicate those of objects in other schemas.
 Named objects in a schema can be accessed by using the schema name as prefix or by setting the schema name in the search path.
 
 ## Syntax
@@ -57,7 +57,7 @@ Other kinds of objects may be created in separate commands after the schema is c
 
 ## Examples
 
-- Create a new schema.
+- Create a schema.
 
 ```plpgsql
 yugabyte=# CREATE SCHEMA IF NOT EXIST branch;

@@ -2,7 +2,7 @@
 title: CREATE RULE statement [YSQL]
 headerTitle: CREATE RULE
 linkTitle: CREATE RULE
-description: Use the CREATE RULE statement to create a new rule.
+description: Use the CREATE RULE statement to create a rule.
 menu:
   latest:
     identifier: ddl_create_rule
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE RULE` statement to create a new rule.
+Use the `CREATE RULE` statement to create a rule.
 
 ## Syntax
 

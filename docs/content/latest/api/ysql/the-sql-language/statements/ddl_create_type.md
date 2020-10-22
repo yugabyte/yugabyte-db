@@ -2,7 +2,7 @@
 title: CREATE TYPE statement [YSQL]
 headerTitle: CREATE TYPE
 linkTitle: CREATE TYPE
-description: Use the CREATE TYPE statement to create a new user-defined type in a database.
+description: Use the CREATE TYPE statement to create a user-defined type in a database.
 menu:
   latest:
     identifier: ddl_create_type
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE TYPE` statement to create a new user-defined type in a database.  There are five types: composite, enumerated, range, base, and shell. Each has its own `CREATE TYPE` syntax.
+Use the `CREATE TYPE` statement to create a user-defined type in a database.  There are five types: composite, enumerated, range, base, and shell. Each has its own `CREATE TYPE` syntax.
 
 ## Syntax
 

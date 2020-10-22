@@ -2,7 +2,7 @@
 title: YSQL window functions signature and purpose
 linkTitle: Per function signature and purpose
 headerTitle: Signature and purpose of each window function
-description: This section summarizes the signature and purpose of each of YSQL's window functions and links to their individual accounts.
+description: This section summarizes the signature and purpose of each of the YSQL window functions and links to their individual accounts.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -20,7 +20,7 @@ showAsideToc: true
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;[Window functions that return an `int` or `double precision` value as a "classifier" of the position of the row within the window](./#window-functions-that-return-an-int-or-double-precision-value-as-a-classifier-of-the-rank-of-the-row-within-its-window)<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;[Window functions that return columns of another row within the window](./#window-functions-that-return-column-s-of-another-row-within-the-window)
 
-The two tables at the end classify YSQL's eleven built-in window functions into two groups according to their general common characteristics.
+The two tables at the end classify the eleven built-in window functions into two groups according to their general common characteristics.
 
 **Note:** The navigation bar lists these window functions in four functional groups. The members in each group bear a strong family resemblance to each other. The first two groups list functions from the [first table](./#window-functions-that-return-an-int-or-double-precision-value-as-a-classifier-of-the-rank-of-the-row-within-its-window) below. And the second two groups list functions from the [second table](./#window-functions-that-return-column-s-of-another-row-within-the-window).
 
