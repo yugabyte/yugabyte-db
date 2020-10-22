@@ -47,7 +47,7 @@ The AWS user associated with the a KMS configuration requires the following mini
 
 {{< /note >}}
 
-To create a KMS configuration that uses AWS Key Management Service (KMS), follow these steps:
+To create a KMS configuration that uses AWS Key Management Service (KMS):
 
 1. Open the Yugabyte Platform console and click **Configs**.
 2. Click the **Security** tab and then click the **Encryption At Rest** tab. A list of KMS configurations appears.
@@ -97,4 +97,3 @@ To create a KMS configuration that uses AWS Key Management Service (KMS), follow
 6. Click **Save**. Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
 7. (Optional) To confirm the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
-8. 

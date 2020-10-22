@@ -34,14 +34,14 @@ On that same completed task, click on the **Actions** dropdown and click **Resto
 You will see a modal where you can select the universe, keyspace, and table you want to restore to. Enter in
 values like this (making sure to change the table name you restore to) and click **OK**.
 
-To restore YugabyteDB universe YCQL data from a backup, follow these steps.
+To restore YugabyteDB universe YCQL data from a backup:
 
 1. Open the **Universe Overview** and then click the **Backups** tab. The **Backups** page appears.
 2. Click **Restore Backup** to open the **Restore data to** dialog.
 
     ![Restore backup - YCQL](/images/yp/restore-backup-ycql.png)
 
-3. Complete the following fields:
+3. Enter the following information:
 
     - **Storage** Select the storage configuration type: `GCS Storage', 'S3 Storage', or 'NFS Storage'.
     - **Storage Location**: Specify the storage location.
