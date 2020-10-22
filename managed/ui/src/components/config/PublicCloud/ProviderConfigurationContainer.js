@@ -164,8 +164,7 @@ const mapStateToProps = (state) => {
     hostInfo: state.customer.hostInfo,
     modal: state.modal,
     cloud: state.cloud,
-    tasks: state.tasks,
-    featureFlags: state.customer.currentCustomer?.data?.features,
+    tasks: state.tasks
   };
 };
 
