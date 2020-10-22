@@ -130,7 +130,7 @@ The following output should appear:
 3. Run the following `helm install` command to install Yugabyte Platform (`yugaware`) Helm chart:
 
 ```sh
-helm install yugabytedb/yugaware --version (version)
+helm install yw-test yugabytedb/yugaware --version 2.3.2 -n yb-platform --wait
 ```
 
 Or run the following `helm install` command to manually install the downloaded chart:
