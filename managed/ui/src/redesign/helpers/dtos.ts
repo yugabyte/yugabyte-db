@@ -111,11 +111,12 @@ export interface UniverseConfig {
 }
 
 export interface EncryptionAtRestConfig {
-  encryptionAtRestEnabled: boolean;
-  kmsConfigUUID: string | null;
-  opType: 'ENABLE' | 'DISABLE' | 'UNDEFINED';
-  key_op?: 'ENABLE' | 'DISABLE' | 'UNDEFINED'; // used in configure and create/edit calls
-  type: 'DATA_KEY' | 'CMK';
+  readonly encryptionAtRestEnabled: boolean;
+  readonly kmsConfigUUID: string | null; // KMS config Id in universe json
+  readonly opType: 'ENABLE' | 'DISABLE' | 'UNDEFINED';
+  configUUID?: string; // KMS config Id field for configure/create calls
+  key_op?: 'ENABLE' | 'DISABLE' | 'UNDEFINED'; // operation field for configure/create calls
+  type?: 'DATA_KEY' | 'CMK';
 }
 
 // PublicCloudConstants.java
@@ -139,11 +140,32 @@ export interface DeviceInfo {
 }
 
 // NodeDetails.java
+export enum NodeState {
+  ToBeAdded = 'ToBeAdded',
+  Provisioned = 'Provisioned',
+  SoftwareInstalled = 'SoftwareInstalled',
+  UpgradeSoftware = 'UpgradeSoftware',
+  UpdateGFlags = 'UpdateGFlags',
+  Live = 'Live',
+  Stopping = 'Stopping',
+  Starting = 'Starting',
+  Stopped = 'Stopped',
+  Unreachable = 'Unreachable',
+  ToBeRemoved = 'ToBeRemoved',
+  Removing = 'Removing',
+  Removed = 'Removed',
+  Adding = 'Adding',
+  BeingDecommissioned = 'BeingDecommissioned',
+  Decommissioned = 'Decommissioned'
+}
+
+// NodeDetails.java
 export interface NodeDetails {
   nodeIdx: number;
   nodeName: string | null;
   nodeUuid: string | null;
   placementUuid: string;
+  state: NodeState;
 }
 
 export interface UniverseDetails {

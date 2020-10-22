@@ -1,23 +1,24 @@
 $YB_PAGE_BACKGROUND: #fff;
-$YB_FORM_BACKGROUND: #eef1fa;
+$YB_UNIVERSE_WIZARD_FORM_BACKGROUND: #fff;
 $YB_WIZARD_SUMMARY_BACKGROUND: #f1f8f3;
 $YB_BORDER_1: #c5c6ce;
 $YB_BORDER_2: #707070; // button frame
 $YB_TEXT_1: #546371;
 $YB_TEXT_2: #35414c;
 $YB_TEXT_SUCCESS: #3f8a5a;
-$YB_WIZARD_TABS: #4979cc;
+$YB_WIZARD_STEPPER_ACTIVE: #4979cc;
 $YB_CTA: #ff6e42;
-$YB_INPUT_NUMBERS_BG: #dde4f4;
-$YB_ERROR: #fb3640;
-$YB_WARNING: #ff9300;
+$YB_INPUT_NUMBERS_BG: #fff;
+$YB_ERROR: #FB3640;
+$YB_WARNING: #FF9300;
 
+$INPUT_BORDER_RADIUS: 7px;
 $INPUT_HEIGHT: 44px;
 $YB_FONT_FAMILY: 'Source Sans Pro', sans-serif;
 
 @mixin input-wrapper() {
   border: 1px solid $YB_BORDER_1;
-  border-radius: 29px;
+  border-radius: $INPUT_BORDER_RADIUS;
   position: relative;
   overflow: hidden;
   height: $INPUT_HEIGHT;

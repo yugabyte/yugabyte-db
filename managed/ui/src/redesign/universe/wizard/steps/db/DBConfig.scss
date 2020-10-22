@@ -2,7 +2,8 @@
 
 .db-config {
   position: relative;
-  background-color: $YB_FORM_BACKGROUND;
+  background-color: $YB_UNIVERSE_WIZARD_FORM_BACKGROUND;
+  border: 1px solid $YB_BORDER_1;
   padding: 35px 50px;
   min-height: 752px;
 
