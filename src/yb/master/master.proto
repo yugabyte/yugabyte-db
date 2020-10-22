@@ -133,6 +133,8 @@ message MasterErrorPB {
 
     // Client set some fields in the table replication info incorrectly.
     INVALID_TABLE_REPLICATION_INFO = 35;
+
+    REACHED_SPLIT_LIMIT = 36;
   }
 
   // The error code.
