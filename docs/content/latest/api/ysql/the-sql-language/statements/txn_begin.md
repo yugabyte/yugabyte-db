@@ -2,7 +2,7 @@
 title: BEGIN statement [YSQL]
 headerTitle: BEGIN
 linkTitle: BEGIN
-description: Use the `BEGIN` statement to start a new transaction with the default (or given) isolation level.
+description: Use the `BEGIN` statement to start a transaction with the default (or given) isolation level.
 menu:
   latest:
     identifier: txn_begin
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `BEGIN` statement to start a new transaction with the default (or given) isolation level.
+Use the `BEGIN` statement to start a transaction with the default (or given) isolation level.
 
 ## Syntax
 

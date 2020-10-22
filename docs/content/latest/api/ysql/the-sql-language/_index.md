@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB's SQL language [YSQL]
-headerTitle: YugabyteDB's SQL language
+title: The YugabyteDB SQL language [YSQL]
+headerTitle: The YugabyteDB SQL language
 linkTitle: The SQL language
-description: YugabyteDB's SQL language—DDL; DML; DCL; TCL; session and system control; performance control
+description: The YugabyteDB SQL language—DDL; DML; DCL; TCL; session and system control; performance control
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -15,7 +15,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The sidebar lists all of the YSQL statements in alphabetical order. This page describes the categorization scheme for the statements and links to lists of the statements that fall into each category.
+This page describes the categorization scheme for the SQL statements and links to lists of the statements that fall into each category. It also describes notions, like the `WITH` clause, that need careful explanation and have applicability across two or more statement kinds.
+
+{{< note title="Under construction." >}}
+
+Future versions of the YSQL documentation will explain further such common notions.
+
+{{< /note >}}
 
 ## Classification of SQL statements
 
@@ -31,7 +37,7 @@ DML statements query and modify the contents of a database.
 
 DCL statements protect the definitions of database objects and the data the tables store using a regime of rules and privileges that control the scope and power of DDL and DML statements.
 
-### Transaction control language ([TCL](./statements/#transaction-control-language))
+### Transaction control language ([TCL](./statements/#transaction-control-language-tcl))
 
 TCL statements manage transactions of operations on the database.
 
@@ -45,6 +51,6 @@ Statements in this class support the preparation of SQL statements, and their su
 
 In the performance control class, the [`EXPLAIN`](./statements/perf_explain/) statement shows what access methods a DML statement will use and (for statements with joins) the join order and method.
 
-## The WITH clause
+## The WITH clause: [here](./with-clause)
 
 The `WITH` clause (sometimes known as the _common table expression_) can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in a dedicated section.

@@ -278,10 +278,10 @@ config_value ::= '<Text Literal>'
 
 ### alter_sequence
 ```
-alter_sequence ::= ALTER SEQUENCE [ IF EXISTS ] name 
+alter_sequence ::= ALTER SEQUENCE [ IF EXISTS ] sequence_name 
                    alter_sequence_options
 ```
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="577" height="50" viewbox="0 0 577 50"><path class="connector" d="M0 22h15m58 0h10m87 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h10m54 0h10m162 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="58" height="25" rx="7"/><text class="text" x="25" y="22">ALTER</text><rect class="literal" x="83" y="5" width="87" height="25" rx="7"/><text class="text" x="93" y="22">SEQUENCE</text><rect class="literal" x="200" y="5" width="32" height="25" rx="7"/><text class="text" x="210" y="22">IF</text><rect class="literal" x="242" y="5" width="64" height="25" rx="7"/><text class="text" x="252" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="336" y="5" width="54" height="25"/><text class="text" x="346" y="22">name</text></a><a xlink:href="../grammar_diagrams#alter-sequence-options"><rect class="rule" x="400" y="5" width="162" height="25"/><text class="text" x="410" y="22">alter_sequence_options</text></a><polygon points="573,29 577,29 577,15 573,15" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="641" height="50" viewbox="0 0 641 50"><path class="connector" d="M0 22h15m58 0h10m87 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h10m118 0h10m162 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="58" height="25" rx="7"/><text class="text" x="25" y="22">ALTER</text><rect class="literal" x="83" y="5" width="87" height="25" rx="7"/><text class="text" x="93" y="22">SEQUENCE</text><rect class="literal" x="200" y="5" width="32" height="25" rx="7"/><text class="text" x="210" y="22">IF</text><rect class="literal" x="242" y="5" width="64" height="25" rx="7"/><text class="text" x="252" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#sequence-name"><rect class="rule" x="336" y="5" width="118" height="25"/><text class="text" x="346" y="22">sequence_name</text></a><a xlink:href="../grammar_diagrams#alter-sequence-options"><rect class="rule" x="464" y="5" width="162" height="25"/><text class="text" x="474" y="22">alter_sequence_options</text></a><polygon points="637,29 641,29 641,15 637,15" style="fill:black;stroke-width:0"/></svg>
 
 ### alter_sequence_options
 ```
@@ -973,9 +973,9 @@ create_sequence ::= CREATE SEQUENCE [ IF NOT EXISTS ] sequence_name
 
 ### sequence_name
 ```
-sequence_name ::= '<Text Literal>'
+sequence_name ::= qualified_name
 ```
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="137" height="35" viewbox="0 0 137 35"><path class="connector" d="M0 22h15m107 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="107" height="25" rx="7"/><text class="text" x="25" y="22">&lt;Text Literal&gt;</text><polygon points="133,29 137,29 137,15 133,15" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#qualified-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">qualified_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
 
 ### sequence_options
 ```

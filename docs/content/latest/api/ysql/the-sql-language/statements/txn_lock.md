@@ -49,7 +49,7 @@ Use the `LOCK` statement to lock a table.
 
 #### *name*
 
-Specify an existing table to lock.
+Specify a table to lock.
 
 ### *lockmode*
 

@@ -2,7 +2,7 @@
 title: CREATE TABLE [YSQL]
 headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
-description: Use the CREATE TABLE statement to create a new table in a database.
+description: Use the CREATE TABLE statement to create a table in a database.
 menu:
   latest:
     identifier: ddl_create_table
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE TABLE` statement to create a new table in a database. It defines the table name, column names and types, primary key, and table properties.
+Use the `CREATE TABLE` statement to create a table in a database. It defines the table name, column names and types, primary key, and table properties.
 
 ## Syntax
 

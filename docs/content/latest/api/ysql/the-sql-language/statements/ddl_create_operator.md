@@ -2,7 +2,7 @@
 title: CREATE OPERATOR statement [YSQL]
 headerTitle: CREATE OPERATOR
 linkTitle: CREATE OPERATOR
-description: Use the CREATE OPERATOR statement to create a new operator.
+description: Use the CREATE OPERATOR statement to create an operator.
 menu:
   latest:
     identifier: ddl_create_operator
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE OPERATOR` statement to create a new operator.
+Use the `CREATE OPERATOR` statement to create an operator.
 
 ## Syntax
 

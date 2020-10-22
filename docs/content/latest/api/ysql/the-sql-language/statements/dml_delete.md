@@ -69,7 +69,7 @@ Specify the identifier of the target table within the DELETE statement. When an 
 
 #### RETURNING
 
-Specify the value to be returned. When the _output_expression_ references a column, the existing value of this column (deleted value) is used to evaluate.
+Specify the value to be returned. When the _output_expression_ references a column, the existing value of this column (deleted value) is used to returned.
 
 #### *output_name*
 

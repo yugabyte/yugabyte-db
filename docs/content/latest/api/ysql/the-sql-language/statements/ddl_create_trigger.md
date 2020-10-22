@@ -2,7 +2,7 @@
 title: CREATE TRIGGER statement [YSQL]
 headerTitle: CREATE TRIGGER
 linkTitle: CREATE TRIGGER
-description: Use the CREATE TRIGGER statement to define a new trigger.
+description: Use the CREATE TRIGGER statement to create a trigger.
 menu:
   latest:
     identifier: ddl_create_trigger
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE TRIGGER` statement to define a new trigger.
+Use the `CREATE TRIGGER` statement to create a trigger.
 
 ## Syntax
 

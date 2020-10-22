@@ -2,7 +2,7 @@
 title: CREATE PROCEDURE statement [YSQL]
 headerTitle: CREATE PROCEDURE
 linkTitle: CREATE PROCEDURE
-description: Use the CREATE PROCEDURE statement to define a new procedure in a database.
+description: Use the CREATE PROCEDURE statement to create a procedure in a database.
 menu:
   latest:
     identifier: ddl_create_procedure
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE PROCEDURE` statement to define a new procedure in a database.
+Use the `CREATE PROCEDURE` statement to to create a procedure in a database.
 
 ## Syntax
 
@@ -45,11 +45,9 @@ Use the `CREATE PROCEDURE` statement to define a new procedure in a database.
 
 ## Semantics
 
-- If a procedure with the given `name` and argument types already exists then `CREATE PROCEDURE` will throw an error unless the `CREATE OR REPLACE PROCEDURE` version is used. 
-    In that case it will replace any existing definition instead.
+- If a procedure with the given `name` and argument types already exists then `CREATE PROCEDURE` will throw an error unless the `CREATE OR REPLACE PROCEDURE` version is used. In that case it will replace the existing definition.
 
 - The languages supported by default are `sql`, `plpgsql` and `C`.
-
 
 ## Examples
 

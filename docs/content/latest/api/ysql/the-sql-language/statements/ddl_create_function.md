@@ -2,7 +2,7 @@
 title: CREATE FUNCTION statement [YSQL]
 headerTitle: CREATE FUNCTION
 linkTitle: CREATE FUNCTION
-description: Use the CREATE FUNCTION statement to define a new function in a database.
+description: Use the CREATE FUNCTION statement to create a function in a database.
 menu:
   latest:
     identifier: ddl_create_function
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE FUNCTION` statement to define a new function in a database.
+Use the `CREATE FUNCTION` statement to create a function in a database.
 
 ## Syntax
 
@@ -45,8 +45,7 @@ Use the `CREATE FUNCTION` statement to define a new function in a database.
 
 ## Semantics
 
-- If a function with the given `name` and argument types already exists then `CREATE FUNCTION` will throw an error unless the `CREATE OR REPLACE FUNCTION` version is used. 
-    In that case it will replace any existing definition instead.
+- If a function with the given `name` and argument types already exists then `CREATE FUNCTION` will throw an error unless the `CREATE OR REPLACE FUNCTION` version is used. In that case it will replace the existing definition instead.
 
 - The languages supported by default are `sql`, `plpgsql` and `C`.
 

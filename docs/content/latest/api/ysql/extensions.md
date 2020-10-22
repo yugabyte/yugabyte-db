@@ -376,7 +376,7 @@ YSQL does not yet support GiST indexes. This is tracked in [GitHub issue #1337](
 
 ### postgresql-hll (PostgreSQL extension for HyperLogLog)
 
-The [`postgresql-hll`](https://github.com/citusdata/postgresql-hll) module introduces a new data type `hll`, which is a HyperLogLog data structure.
+The [`postgresql-hll`](https://github.com/citusdata/postgresql-hll) module introduces the data type `hll`, which is a HyperLogLog data structure.
 HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision.
 
 The first step is to install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance.

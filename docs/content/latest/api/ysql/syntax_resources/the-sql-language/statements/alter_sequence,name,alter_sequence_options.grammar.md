@@ -1,5 +1,5 @@
 ```
-alter_sequence ::= ALTER SEQUENCE [ IF EXISTS ] name 
+alter_sequence ::= ALTER SEQUENCE [ IF EXISTS ] sequence_name 
                    alter_sequence_options
 
 name ::= '<Text Literal>'

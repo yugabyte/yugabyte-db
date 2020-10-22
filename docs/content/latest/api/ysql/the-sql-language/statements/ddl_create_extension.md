@@ -2,7 +2,7 @@
 title: CREATE EXTENSION statement [YSQL]
 headerTitle: CREATE EXTENSION
 linkTitle: CREATE EXTENSION
-summary: Create a new extension in a database
+summary: Load an extension into a database
 description: Use the CREATE EXTENSION statement to load an extension into a database.
 menu:
   latest:
