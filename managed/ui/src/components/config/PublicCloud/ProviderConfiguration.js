@@ -26,7 +26,7 @@ class ProviderConfiguration extends Component {
     switch (this.props.providerType) {
       case 'aws': return <AWSProviderInitView {...this.props} />;
       case 'gcp': return <GCPProviderInitView {...this.props} />;
-      case 'azu': return <AzureProviderInitView featureFlags={this.props.featureFlags} createAzureProvider={this.props.createAzureProvider} />;
+      case 'azu': return <AzureProviderInitView createAzureProvider={this.props.createAzureProvider} />;
       default: return <div>Unknown provider type <strong>{this.props.providerType}</strong></div>;
     }
   };

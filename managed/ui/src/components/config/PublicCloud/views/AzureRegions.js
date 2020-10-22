@@ -8,46 +8,57 @@ import { YBFormInput, YBFormSelect, YBModal } from '../../../common/forms/fields
 const AZURE_REGIONS = [
   {
     region: 'westus2',
+    name: 'US West 2 (Washington)',
     zones: ['westus2-1', 'westus2-2', 'westus2-3']
   },
   {
     region: 'centralus',
+    name: 'US Central (Iowa)',
     zones: ['centralus-1', 'centralus-2', 'centralus-3']
   },
   {
     region: 'eastus',
+    name: 'US East (Virginia)',
     zones: ['eastus-1', 'eastus-2', 'eastus-3']
   },
   {
     region: 'eastus2',
+    name: 'US East 2 (Virginia)',
     zones: ['eastus2-1', 'eastus2-2', 'eastus2-3']
   },
   {
     region: 'westeurope',
+    name: 'West Europe (Netherlands)',
     zones: ['westeurope-1', 'westeurope-2', 'westeurope-3']
   },
   {
     region: 'northeurope',
+    name: 'North Europe (Ireland)',
     zones: ['northeurope-1', 'northeurope-2', 'northeurope-3']
   },
   {
     region: 'japaneast',
+    name: 'Japan East (Tokyo)',
     zones: ['japaneast-1', 'japaneast-2', 'japaneast-3']
   },
   {
     region: 'southeastasia',
+    name: 'Southeast Asia (Singapore)',
     zones: ['southeastasia-1', 'southeastasia-2', 'southeastasia-3']
   },
   {
     region: 'australiaeast',
+    name: 'Australia East (New South Wales)',
     zones: ['australiaeast-1', 'australiaeast-2', 'australiaeast-3']
   },
   {
     region: 'uksouth',
+    name: 'UK South (London)',
     zones: ['uksouth-1', 'uksouth-2', 'uksouth-3']
   },
   {
     region: 'francecentral',
+    name: 'France Central (Paris)',
     zones: ['francecentral-1', 'francecentral-2', 'francecentral-3']
   }
 ];
@@ -99,7 +110,7 @@ export const AzureRegions = ({ regions, onChange }) => {
     const selectedRegions = _.map(regions, 'region.value');
     const result = AZURE_REGIONS
       .filter(item => !selectedRegions.includes(item.region))
-      .map((region) => ({ value: region.region, label: region.region }));
+      .map((region) => ({ value: region.region, label: region.name }));
 
     // when editing existing region - make sure to keep it in dropdown options
     if (currentRegion) {
@@ -132,7 +143,7 @@ export const AzureRegions = ({ regions, onChange }) => {
           {regions.map((item) => (
             <li key={item.region.value} onClick={() => editRegion(item)}>
               <div>
-                <strong>{item.region.value}</strong>
+                <strong>{item.region.label}</strong>
               </div>
               <div>
                 {item.vpcId}
