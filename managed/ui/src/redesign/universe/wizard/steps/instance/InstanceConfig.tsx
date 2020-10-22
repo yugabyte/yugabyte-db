@@ -53,11 +53,7 @@ export const InstanceConfig: FC<InstanceConfigProps> = ({ dispatch }) => {
   return (
     <div className="wizard-step-wrapper">
       <div className="wizard-step-wrapper__stepper">
-        <WizardStepper
-          activeStep={WizardStep.Instance}
-          clickableTabs={isEditMode}
-          onChange={submit}
-        />
+        <WizardStepper activeStep={WizardStep.Instance} clickableTabs onChange={submit} />
       </div>
       <div className="wizard-step-wrapper__container">
         <div className="wizard-step-wrapper__form">
@@ -137,6 +133,7 @@ export const InstanceConfig: FC<InstanceConfigProps> = ({ dispatch }) => {
                 <I18n>Review and Launch</I18n>
               </Button>
               <Button
+                isCTA
                 chevronRight
                 className="instance-config__footer-btn"
                 onClick={() => submit(WizardStep.Db)}

@@ -31,6 +31,26 @@ interface ReviewProps {
   dispatch: Dispatch<WizardAction>;
 }
 
+const renderValue = (value: unknown): ReactNode => {
+  if (_.isBoolean(value)) return value ? <I18n>Yes</I18n> : <I18n>No</I18n>;
+
+  if (_.isNumber(value) || (_.isString(value) && value !== '')) return value;
+
+  // take care of empty string, null, undefined, [] and {}
+  if (_.isEmpty(value)) return <I18n>(not set)</I18n>;
+
+  if (_.isObject(value)) {
+    return Object.keys(value).map((key) => (
+      <div key={key}>
+        {key}: {value[key]}
+      </div>
+    ));
+  }
+
+  // safety fallback, should never be here
+  return JSON.stringify(value);
+};
+
 export const Review: FC<ReviewProps> = ({ dispatch }) => {
   const { formData } = useContext(WizardContext);
   const { isLaunchingUniverse, launchUniverse } = useLaunchUniverse();
@@ -95,16 +115,6 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
   const cancel = () => dispatch({ type: 'exit_wizard', payload: true });
   const jumpToStep = (nextStep: WizardStep) => dispatch({ type: 'change_step', payload: nextStep });
 
-  const renderKeyValues = (data: Record<string, any>): ReactNode => (
-    <>
-      {Object.keys(data).map((tagName) => (
-        <div key={tagName}>
-          {tagName}: {data[tagName]}
-        </div>
-      ))}
-    </>
-  );
-
   const isLoading =
     isDBVersionLoading ||
     isAccessKeyLoading ||
@@ -131,35 +141,36 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
                     onEditClick={() => jumpToStep(WizardStep.Cloud)}
                   >
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Universe Name</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {formData.cloudConfig.universeName}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.cloudConfig.universeName)}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Provider</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(
                           providersList?.find(
                             (item) => item.uuid === formData.cloudConfig.provider?.uuid
                           )?.name
-                        }
+                        )}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Regions and Placements</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
+                      <Col xs={9} className="review-step__field-value">
                         {_.compact(formData.cloudConfig.placements).map((item) => (
                           <div key={item.uuid}>
-                            {item.parentRegionName}: {item.name} -{' '}
+                            {item.parentRegionName}: {item.name}
+                            &nbsp;—&nbsp;
                             {pluralize('node', item.numNodesInAZ, true)}
                           </div>
                         ))}
@@ -167,20 +178,20 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Replication Factor</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {formData.cloudConfig.replicationFactor}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.cloudConfig.replicationFactor)}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Total Nodes</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {formData.cloudConfig.totalNodes}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.cloudConfig.totalNodes)}
                       </Col>
                     </Row>
                   </ReviewSection>
@@ -191,20 +202,21 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
                     onEditClick={() => jumpToStep(WizardStep.Instance)}
                   >
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Instance Type</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {formData.instanceConfig.instanceType}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.instanceConfig.instanceType)}
                       </Col>
                     </Row>
                     {formData.instanceConfig.deviceInfo && (
                       <Row className="review-step__row">
-                        <Col xs={2} className="review-step__field-title">
+                        <Col xs={3} className="review-step__field-title">
                           <I18n>Volume Info</I18n>
                         </Col>
-                        <Col xs={10} className="review-step__field-value">
-                          {formData.instanceConfig.deviceInfo?.numVolumes} x{' '}
+                        <Col xs={9} className="review-step__field-value">
+                          {formData.instanceConfig.deviceInfo?.numVolumes}
+                          &nbsp;x&nbsp;
                           {formData.instanceConfig.deviceInfo?.volumeSize}
                           &nbsp;
                           {formData.instanceConfig.deviceInfo?.storageType}
@@ -216,31 +228,31 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
                     )}
                     {formData.cloudConfig.provider?.code === CloudType.aws && (
                       <Row className="review-step__row">
-                        <Col xs={2} className="review-step__field-title">
+                        <Col xs={3} className="review-step__field-title">
                           <I18n>Instance Tags</I18n>
                         </Col>
-                        <Col xs={10} className="review-step__field-value">
-                          {renderKeyValues(formData.instanceConfig.instanceTags)}
+                        <Col xs={9} className="review-step__field-value">
+                          {renderValue(formData.instanceConfig.instanceTags)}
                         </Col>
                       </Row>
                     )}
                     {cloudProviders.has(formData.cloudConfig.provider?.code as CloudType) && (
                       <Row className="review-step__row">
-                        <Col xs={2} className="review-step__field-title">
+                        <Col xs={3} className="review-step__field-title">
                           <I18n>Assign Public IP</I18n>
                         </Col>
-                        <Col xs={10} className="review-step__field-value">
-                          {JSON.stringify(formData.instanceConfig.assignPublicIP)}
+                        <Col xs={9} className="review-step__field-value">
+                          {renderValue(formData.instanceConfig.assignPublicIP)}
                         </Col>
                       </Row>
                     )}
                     {formData.cloudConfig.provider?.code === CloudType.aws && (
                       <Row className="review-step__row">
-                        <Col xs={2} className="review-step__field-title">
+                        <Col xs={3} className="review-step__field-title">
                           <I18n>Instance Profile ARN</I18n>
                         </Col>
-                        <Col xs={10} className="review-step__field-value">
-                          {formData.instanceConfig.awsArnString}
+                        <Col xs={9} className="review-step__field-value">
+                          {renderValue(formData.instanceConfig.awsArnString)}
                         </Col>
                       </Row>
                     )}
@@ -252,52 +264,52 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
                     onEditClick={() => jumpToStep(WizardStep.Db)}
                   >
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>DB Version</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {formData.dbConfig.ybSoftwareVersion}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.dbConfig.ybSoftwareVersion)}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Preferred Leaders</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
+                      <Col xs={9} className="review-step__field-value">
                         {formData.dbConfig.preferredLeaders.map((item) => (
                           <div key={item.uuid}>
                             {item.parentRegionName}: {item.name}
                           </div>
                         ))}
-                        {_.isEmpty(formData.dbConfig.preferredLeaders) && <I18n>None</I18n>}
+                        {_.isEmpty(formData.dbConfig.preferredLeaders) && renderValue(null)}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Communication Ports</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {renderKeyValues(formData.dbConfig.communicationPorts)}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.dbConfig.communicationPorts)}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>YB-Master Config Flags</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {renderKeyValues(formData.dbConfig.masterGFlags)}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.dbConfig.masterGFlags)}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>YB-TServer Config Flags</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {renderKeyValues(formData.dbConfig.tserverGFlags)}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.dbConfig.tserverGFlags)}
                       </Col>
                     </Row>
                   </ReviewSection>
@@ -308,64 +320,64 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
                     onEditClick={() => jumpToStep(WizardStep.Security)}
                   >
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Enable Authentication</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {JSON.stringify(formData.securityConfig.enableAuthentication)}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.securityConfig.enableAuthentication)}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Enable Node-to-Node TLS</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {JSON.stringify(formData.securityConfig.enableNodeToNodeEncrypt)}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.securityConfig.enableNodeToNodeEncrypt)}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Enable Client-to-Node TLS</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {JSON.stringify(formData.securityConfig.enableClientToNodeEncrypt)}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.securityConfig.enableClientToNodeEncrypt)}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Root Certificate</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(
                           certificatesList?.find(
                             (item) => item.uuid === formData.securityConfig.rootCA
                           )?.label
-                        }
+                        )}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>Enable Encryption at-rest</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {JSON.stringify(formData.securityConfig.enableEncryptionAtRest)}
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(formData.securityConfig.enableEncryptionAtRest)}
                       </Col>
                     </Row>
 
                     <Row className="review-step__row">
-                      <Col xs={2} className="review-step__field-title">
+                      <Col xs={3} className="review-step__field-title">
                         <I18n>KMS Config</I18n>
                       </Col>
-                      <Col xs={10} className="review-step__field-value">
-                        {
+                      <Col xs={9} className="review-step__field-value">
+                        {renderValue(
                           kmsConfigs?.find(
                             (item) => item.metadata.configUUID === formData.securityConfig.kmsConfig
                           )?.metadata.name
-                        }
+                        )}
                       </Col>
                     </Row>
                   </ReviewSection>

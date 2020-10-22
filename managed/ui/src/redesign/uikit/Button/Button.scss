@@ -10,11 +10,12 @@
   border: 1px solid $YB_BORDER_2;
   font-size: 20px;
   font-weight: 600;
-  border-radius: 23px;
+  border-radius: $INPUT_BORDER_RADIUS;
   user-select: none;
 
   &--cta:not([disabled]) {
     border-color: $YB_CTA;
+    border-width: 2px;
     color: $YB_CTA;
   }
 

@@ -29,7 +29,7 @@ export const PreferredLeadersField: FC = () => {
           <div>
             <Select<NonNullable<PlacementUI>>
               isSearchable={false}
-              isClearable={false}
+              isClearable
               isMulti
               getOptionLabel={getOptionLabel}
               getOptionValue={getOptionValue}
