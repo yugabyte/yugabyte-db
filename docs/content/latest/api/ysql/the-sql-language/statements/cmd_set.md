@@ -61,7 +61,7 @@ Specify the name of a mutable run-time parameter.
 
 ### value
 
-Specify the new value of parameter.
+Specify the value of parameter.
 
 ## See also
 

@@ -2,7 +2,7 @@
 title: CREATE AGGREGATE statement [YSQL]
 headerTitle: CREATE AGGREGATE
 linkTitle: CREATE AGGREGATE
-description: Use the CREATE AGGREGATE statement to create a new aggregate function.
+description: Use the CREATE AGGREGATE statement to create an aggregate function.
 menu:
   latest:
     identifier: ddl_create_aggregate
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE AGGREGATE` statement to create a new aggregate function.  There are three ways to
+Use the `CREATE AGGREGATE` statement to create an aggregate function.  There are three ways to
 create aggregates.
 
 ## Syntax

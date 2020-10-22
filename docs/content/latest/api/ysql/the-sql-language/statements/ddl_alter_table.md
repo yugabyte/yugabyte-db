@@ -2,7 +2,7 @@
 title: ALTER TABLE statement [YSQL]
 headerTitle: ALTER TABLE
 linkTitle: ALTER TABLE
-description: Use the `ALTER TABLE` statement to change the definition of an existing table.
+description: Use the `ALTER TABLE` statement to change the definition of a table.
 menu:
   latest:
     identifier: ddl_alter_table
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `ALTER TABLE` statement to change the definition of an existing table.
+Use the `ALTER TABLE` statement to change the definition of a table.
 
 ## Syntax
 

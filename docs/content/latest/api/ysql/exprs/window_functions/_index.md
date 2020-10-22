@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-If you are already familiar with window functions, then you can skip straight to the [syntax and semantics](./invocation-syntax-semantics/) section or the section that lists all of [YSQL's window functions](./function-syntax-semantics/) and that links, in turn, to the definitive account of each function.
+If you are already familiar with window functions, then you can skip straight to the [syntax and semantics](./invocation-syntax-semantics/) section or the section that lists all of [the YSQL window functions](./function-syntax-semantics/) and that links, in turn, to the definitive account of each function.
 
 This page has only the [Synopsis](./#synopsis) section and the section [Organization of the window functions documentation](./#organization-of-the-window-functions-documentation) section.
 
@@ -62,7 +62,7 @@ This section presents the formal treatment of the syntax and semantics of how a 
 
 ### Signature and purpose of each window function: [here](./function-syntax-semantics/)
 
-The following list groups YSQL's eleven window functions in the same way that the sidebar items group them. The rationale for the grouping is explained in the referenced sections.
+The following list groups the eleven window functions in the same way that the sidebar items group them. The rationale for the grouping is explained in the referenced sections.
 
 &#160;&#160;&#160;&#160;&#160;&#160;[`row_number()`](./function-syntax-semantics/row-number-rank-dense-rank/#row-number)<br>
 &#160;&#160;&#160;&#160;&#160;&#160;[`rank()`](./function-syntax-semantics/row-number-rank-dense-rank/#rank)<br>

@@ -2,7 +2,7 @@
 title: CREATE SEQUENCE statement [YSQL]
 headerTitle: CREATE SEQUENCE
 linkTitle: CREATE SEQUENCE
-description: Use the CREATE SEQUENCE statement to create a new sequence in the current schema.
+description: Use the CREATE SEQUENCE statement to create a sequence in the current schema.
 menu:
   latest:
     identifier: ddl_create_sequence
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE SEQUENCE` statement to create a new sequence in the current schema.
+Use the `CREATE SEQUENCE` statement to create a sequence in the current schema.
 
 ## Syntax
 

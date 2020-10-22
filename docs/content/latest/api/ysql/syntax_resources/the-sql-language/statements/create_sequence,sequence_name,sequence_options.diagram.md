@@ -4,7 +4,7 @@
 
 #### sequence_name
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="137" height="35" viewbox="0 0 137 35"><path class="connector" d="M0 22h15m107 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="107" height="25" rx="7"/><text class="text" x="25" y="22">&lt;Text Literal&gt;</text><polygon points="133,29 137,29 137,15 133,15" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../../../syntax_resources/grammar_diagrams#qualified-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">qualified_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
 
 #### sequence_options
 
