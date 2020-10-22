@@ -77,9 +77,7 @@ To enable encryption at rest on an existing universe:
 
 ## Back up and restore data from an encrypted at rest universe
 
-When using Yugabyte Platform to back up a YugabyteDB universe with encryption at rest enabled, you are likely to need to restore the data to a different cluster with possibly a different universe key. As a result, Yugabyte Platform ensures that all encrypted backups include decrypted data keys for all files and the metadata file (that includes a list of key IDs in the source's universe key registry). During restore, Yugabyte Platform uses the selected KMS configuration to consume the universe key ID and then retrieve the universe key value for each key ID in the metadata file. Each of these keys are then sent to the destination universe to augment or build the universe key registry there.
-
-When you use Yugabyte Platform to back up and restore encrypted data, you select a key management service (KMS) configuration to back up the master universe key registry, encrypted with a KMS key, as part of the backup with the encrypted data files. When you need to restore the data, the KMS key is used to decrypt the registry, the registry is populated into the master system catalog, and is used to read the data files from the backup.
+When you back up and restore universe data with encryption at rest enabled, Yugabyte Platform requires a key management service (KMS) configuration to manage backing up and restoring encrypted universe data. Because of the possibility that you will need to restore data to a different universe that might have a different universe key, Yugabyte Platform ensures that all encrypted backups include decrypted data keys for all files and the metadata file (that includes a list of key IDs in the source's universe key registry). When restoring your universe data, Yugabyte Platform uses the selected KMS configuration to consume the universe key ID and then retrieve the universe key value for each key ID in the metadata file. Each of these keys are then sent to the destination universe to augment or build the universe key registry there.
 
 ## Rotate the universe keys used for encryption at rest
 
