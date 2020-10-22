@@ -16,7 +16,8 @@ showAsideToc: true
 
 Data at rest within a YugabyteDB universe should be protected from unauthorized users by encrypting it. Using the Yugabyte Platform console, you can:
 
-- [Encryption at rest overview](#encryption-at-rest-overview)
+ <!-- no toc -->
+
 - [Enable encryption at rest during universe creation](#enable-encryption-at-rest-during-universe-creation)
 - [Enable encryption at rest on an existing universe](#enable-encryption-at-rest-on-an-existing-universe)
 - [Back up and restore data from an encrypted at rest universe](#back-up-and-restore-data-from-an-encrypted-at-rest-universe)
