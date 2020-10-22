@@ -93,7 +93,7 @@ The following output should appear:
 1. Apply the Yugabyte Platform secret (obtained from [Yugabyte Support](mailto:support@yugabyte.com) by running the following `kubectl create` command:
 
     ```sh
-    $ kubectl create -f yugabyte-k8s-secret.yml
+    $ kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
     ```
     
     You should see output that the secret was created, like this:
