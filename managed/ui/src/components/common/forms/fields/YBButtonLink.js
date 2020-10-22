@@ -18,27 +18,24 @@ export default class YBButtonLink extends PureComponent {
       loading,
       ...otherProps
     } = this.props;
-    const className = isDefinedNotNull(btnText)
-      ? btnIcon
-      : `${btnIcon} no-margin no-padding`;
+    const className = isDefinedNotNull(btnText) ? btnIcon : `${btnIcon} no-margin no-padding`;
     return (
-      <a href={link}
+      <a
+        href={link}
         className={btnClass}
         onClick={this.props.onClick}
         style={btnStyle}
         disabled={disabled}
         {...otherProps}
       >
-        {
-          loading
-          ?
-            <YBLoadingLinearIcon />
-          :
-            <Fragment>
-              <i className={className}></i>
-              {btnText}
-            </Fragment>
-        }
+        {loading ? (
+          <YBLoadingLinearIcon />
+        ) : (
+          <Fragment>
+            <i className={className}></i>
+            {btnText}
+          </Fragment>
+        )}
       </a>
     );
   }

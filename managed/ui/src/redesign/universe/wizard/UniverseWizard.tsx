@@ -102,7 +102,10 @@ const reducer = (state: WizardState, action: WizardAction): WizardState => {
       }
 
       // reset root certificate if both node-to-node and client-to-node toggles are off
-      if (!newFormData.securityConfig.enableNodeToNodeEncrypt && !newFormData.securityConfig.enableClientToNodeEncrypt) {
+      if (
+        !newFormData.securityConfig.enableNodeToNodeEncrypt &&
+        !newFormData.securityConfig.enableClientToNodeEncrypt
+      ) {
         newFormData.securityConfig.rootCA = null;
       }
 

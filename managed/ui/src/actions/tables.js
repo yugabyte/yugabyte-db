@@ -2,7 +2,7 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../config';
-import { getCustomerEndpoint, getTablesEndpoint, getUniverseEndpoint } from "./common";
+import { getCustomerEndpoint, getTablesEndpoint, getUniverseEndpoint } from './common';
 
 export const FETCH_TABLES_LIST = 'FETCH_TABLES_LIST';
 export const FETCH_TABLES_LIST_SUCCESS = 'FETCH_TABLES_LIST_SUCCESS';
@@ -26,11 +26,9 @@ export const RESTORE_TABLE_BACKUP_RESPONSE = 'RESTORE_TABLE_BACKUP_RESPONSE';
 export const DELETE_BACKUP = 'DELETE_BACKUP';
 export const DELETE_BACKUP_RESPONSE = 'DELETE_BACKUP_RESPONSE';
 
-
 export function fetchUniverseTables(universeUUID) {
-  const customerId = localStorage.getItem("customerId");
-  const request =
-    axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`);
+  const customerId = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`);
   return {
     type: FETCH_TABLES_LIST,
     payload: request
@@ -51,11 +49,11 @@ export function fetchUniverseTablesFailure(error) {
   };
 }
 
-
 export function fetchTableDetail(universeUUID, tableUUID) {
-  const customerId = localStorage.getItem("customerId");
-  const request =
-    axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables/${tableUUID}`);
+  const customerId = localStorage.getItem('customerId');
+  const request = axios.get(
+    `${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables/${tableUUID}`
+  );
   return {
     type: FETCH_TABLE_DETAIL,
     payload: request
@@ -67,7 +65,6 @@ export function resetTableDetail() {
     type: RESET_TABLE_DETAIL
   };
 }
-
 
 export function fetchTableDetailSuccess(result) {
   return {
@@ -82,7 +79,6 @@ export function fetchTableDetailFailure(error) {
     payload: error
   };
 }
-
 
 export function fetchColumnTypes() {
   const request = axios.get(`${ROOT_URL}/metadata/column_types`);
@@ -113,7 +109,7 @@ export function resetTablesList() {
 }
 
 export function bulkImport(universeUUID, tableUUID, formValues) {
-  const customerId = localStorage.getItem("customerId");
+  const customerId = localStorage.getItem('customerId');
   const request = axios.put(
     `${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables/${tableUUID}/bulk_import`,
     formValues
@@ -149,9 +145,7 @@ export function dropTableResponse(response) {
 
 export function createTableBackup(universeUUID, tableUUID, formValues) {
   const baseUrl = getTablesEndpoint(universeUUID, tableUUID);
-  const request = axios.put(
-    `${baseUrl}/create_backup`, formValues
-  );
+  const request = axios.put(`${baseUrl}/create_backup`, formValues);
   return {
     type: CREATE_BACKUP_TABLE,
     payload: request
@@ -167,9 +161,7 @@ export function createTableBackupResponse(response) {
 
 export function restoreTableBackup(universeUUID, formValues) {
   const baseUrl = getUniverseEndpoint(universeUUID);
-  const request = axios.post(
-    `${baseUrl}/backups/restore`, formValues
-  );
+  const request = axios.post(`${baseUrl}/backups/restore`, formValues);
   return {
     type: RESTORE_TABLE_BACKUP,
     payload: request
@@ -185,8 +177,7 @@ export function restoreTableBackupResponse(response) {
 
 export function deleteBackup(backupUUID) {
   const baseUrl = getCustomerEndpoint();
-  const request = axios.delete(
-    `${baseUrl}/backups/${backupUUID}`);
+  const request = axios.delete(`${baseUrl}/backups/${backupUUID}`);
   return {
     type: DELETE_BACKUP,
     payload: request

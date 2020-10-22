@@ -3,29 +3,59 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
-const statusTypes =
-  {
-    singleRF: {currentStatusIcon: "fa fa-exclamation", currentStatusString: "Primary data placement is not redundant," +
-             " universe cannot survive even 1 node failure", currentStatusClass: "yb-warn-color"},
-    azWarning: {currentStatusIcon: "fa fa-exclamation", currentStatusString: "Primary data placement is not geo-redundant," +
-             " universe cannot survive even 1 availability zone failure", currentStatusClass: "yb-warn-color"},
-    regionWarning: {currentStatusIcon: "fa fa-check", currentStatusString: "Primary data placement is geo-redundant," +
-                  " universe can survive at least 1 availability zone failure", currentStatusClass: "yb-success-color"},
-    multiRegion: {currentStatusIcon: "fa fa-check", currentStatusString: "Primary data placement is fully geo-redundant," +
-                " universe can survive at least 1 region failure", currentStatusClass: "yb-success-color"},
-    notEnoughNodesConfigured: {currentStatusIcon: "fa fa-times", currentStatusString: "Not Enough Nodes Configured", currentStatusClass: "yb-fail-color"},
-    notEnoughNodes: {currentStatusIcon: "fa fa-times", currentStatusString: "Not Enough Nodes", currentStatusClass: "yb-fail-color"},
-    noFieldsChanged: {currentStatusIcon: "fa fa-times", currentStatusString: "At Least One Field Must Be Modified", currentStatusClass: "yb-fail-color"}
-  };
+const statusTypes = {
+  singleRF: {
+    currentStatusIcon: 'fa fa-exclamation',
+    currentStatusString:
+      'Primary data placement is not redundant, universe cannot survive even 1 node failure',
+    currentStatusClass: 'yb-warn-color'
+  },
+  azWarning: {
+    currentStatusIcon: 'fa fa-exclamation',
+    currentStatusString:
+      'Primary data placement is not geo-redundant,' +
+      ' universe cannot survive even 1 availability zone failure',
+    currentStatusClass: 'yb-warn-color'
+  },
+  regionWarning: {
+    currentStatusIcon: 'fa fa-check',
+    currentStatusString:
+      'Primary data placement is geo-redundant,' +
+      ' universe can survive at least 1 availability zone failure',
+    currentStatusClass: 'yb-success-color'
+  },
+  multiRegion: {
+    currentStatusIcon: 'fa fa-check',
+    currentStatusString:
+      'Primary data placement is fully geo-redundant,' +
+      ' universe can survive at least 1 region failure',
+    currentStatusClass: 'yb-success-color'
+  },
+  notEnoughNodesConfigured: {
+    currentStatusIcon: 'fa fa-times',
+    currentStatusString: 'Not Enough Nodes Configured',
+    currentStatusClass: 'yb-fail-color'
+  },
+  notEnoughNodes: {
+    currentStatusIcon: 'fa fa-times',
+    currentStatusString: 'Not Enough Nodes',
+    currentStatusClass: 'yb-fail-color'
+  },
+  noFieldsChanged: {
+    currentStatusIcon: 'fa fa-times',
+    currentStatusString: 'At Least One Field Must Be Modified',
+    currentStatusClass: 'yb-fail-color'
+  }
+};
 
 export default class AZPlacementInfo extends Component {
   static propTypes = {
     placementInfo: PropTypes.object.isRequired
   };
   render() {
-    const {placementInfo, placementCloud} = this.props;
+    const { placementInfo, placementCloud } = this.props;
     if (!isNonEmptyObject(placementInfo) || !isNonEmptyObject(placementCloud)) {
-      return <span/>;
+      return <span />;
     }
 
     const replicationFactor = placementInfo.replicationFactor;
@@ -43,22 +73,22 @@ export default class AZPlacementInfo extends Component {
       azList.forEach((az) => {
         regionNumReplicas += az.replicationFactor;
         if (replicationFactor % 2 === 0) {
-          if ((replicationFactor / 2) < az.replicationFactor) {
+          if (replicationFactor / 2 < az.replicationFactor) {
             multiAz = false;
           }
         } else {
-          if (((replicationFactor - 1) / 2) < az.replicationFactor) {
+          if ((replicationFactor - 1) / 2 < az.replicationFactor) {
             multiAz = false;
           }
         }
       });
 
       if (replicationFactor % 2 === 0) {
-        if ((replicationFactor / 2) < regionNumReplicas) {
+        if (replicationFactor / 2 < regionNumReplicas) {
           multiRegion = false;
         }
       } else {
-        if (((replicationFactor - 1) / 2) < regionNumReplicas) {
+        if ((replicationFactor - 1) / 2 < regionNumReplicas) {
           multiRegion = false;
         }
       }
@@ -68,18 +98,22 @@ export default class AZPlacementInfo extends Component {
     if (placementInfo.error) {
       currentStatusType = placementInfo.error.type;
     } else if (replicationFactor === 1) {
-      currentStatusType = "singleRF";
+      currentStatusType = 'singleRF';
     } else if (multiRegion) {
-      currentStatusType = "multiRegion";
+      currentStatusType = 'multiRegion';
     } else if (multiAz) {
-      currentStatusType = "regionWarning";
+      currentStatusType = 'regionWarning';
     } else {
-      currentStatusType = "azWarning";
+      currentStatusType = 'azWarning';
     }
 
     return (
       <div>
-        <span className={statusTypes[currentStatusType].currentStatusClass}>&nbsp;<i className={statusTypes[currentStatusType].currentStatusIcon}/>&nbsp;{statusTypes[currentStatusType].currentStatusString}</span>
+        <span className={statusTypes[currentStatusType].currentStatusClass}>
+          &nbsp;
+          <i className={statusTypes[currentStatusType].currentStatusIcon} />
+          &nbsp;{statusTypes[currentStatusType].currentStatusString}
+        </span>
       </div>
     );
   }

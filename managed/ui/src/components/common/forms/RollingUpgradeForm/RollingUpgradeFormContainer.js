@@ -2,17 +2,29 @@
 
 import { formValueSelector, reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
-import { RollingUpgradeForm }  from '../../../common/forms';
-import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../../actions/tasks';
+import { RollingUpgradeForm } from '../../../common/forms';
+import {
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure
+} from '../../../../actions/tasks';
 import { closeDialog } from '../../../../actions/modal';
-import { rollingUpgrade, rollingUpgradeResponse, closeUniverseDialog, resetRollingUpgrade,
-  fetchUniverseTasks, fetchUniverseTasksResponse, fetchUniverseMetadata, fetchUniverseInfo,
-  fetchUniverseInfoResponse } from '../../../../actions/universe';
-import { isDefinedNotNull, isNonEmptyObject } from "../../../../utils/ObjectUtils";
-import { getPrimaryCluster } from "../../../../utils/UniverseUtils";
+import {
+  rollingUpgrade,
+  rollingUpgradeResponse,
+  closeUniverseDialog,
+  resetRollingUpgrade,
+  fetchUniverseTasks,
+  fetchUniverseTasksResponse,
+  fetchUniverseMetadata,
+  fetchUniverseInfo,
+  fetchUniverseInfoResponse
+} from '../../../../actions/universe';
+import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
+import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
 
-const FORM_NAME = "RollingUpgradeForm";
+const FORM_NAME = 'RollingUpgradeForm';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -61,12 +73,13 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(fetchUniverseInfoResponse(response.payload));
       });
     }
-
   };
 };
 
 function mapStateToProps(state, ownProps) {
-  const {universe: {currentUniverse}} = state;
+  const {
+    universe: { currentUniverse }
+  } = state;
   const initalGFlagValues = {};
   if (isNonEmptyObject(currentUniverse) && isNonEmptyObject(currentUniverse.data.universeDetails)) {
     const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
@@ -75,19 +88,19 @@ function mapStateToProps(state, ownProps) {
       const tserverGFlags = primaryCluster.userIntent.tserverGFlags;
       if (isNonEmptyObject(masterGFlags)) {
         initalGFlagValues.masterGFlags = Object.keys(masterGFlags).map(function (gFlagKey) {
-          return {name: gFlagKey, value: masterGFlags[gFlagKey]};
+          return { name: gFlagKey, value: masterGFlags[gFlagKey] };
         });
       }
       if (isNonEmptyObject(tserverGFlags)) {
         initalGFlagValues.tserverGFlags = Object.keys(tserverGFlags).map(function (gFlagKey) {
-          return {name: gFlagKey, value: tserverGFlags[gFlagKey]};
+          return { name: gFlagKey, value: tserverGFlags[gFlagKey] };
         });
       }
     }
   }
   initalGFlagValues.ybSoftwareVersion = state.customer.softwareVersions[0];
   initalGFlagValues.timeDelay = TASK_LONG_TIMEOUT / 1000;
-  initalGFlagValues.upgradeOption = "Rolling";
+  initalGFlagValues.upgradeOption = 'Rolling';
   initalGFlagValues.rollingUpgrade = true;
   const selector = formValueSelector(FORM_NAME);
   const upgradeOption = selector(state, 'upgradeOption');
@@ -96,7 +109,7 @@ function mapStateToProps(state, ownProps) {
     universe: state.universe,
     softwareVersions: state.customer.softwareVersions,
     initialValues: initalGFlagValues,
-    upgradeOption,
+    upgradeOption
   };
 }
 

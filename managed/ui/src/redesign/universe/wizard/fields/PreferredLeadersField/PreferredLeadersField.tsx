@@ -7,7 +7,8 @@ import { Select } from '../../../../uikit/Select/Select';
 import { WizardContext } from '../../UniverseWizard';
 import { PlacementUI } from '../PlacementsField/PlacementsField';
 
-const getOptionLabel = (option: NonNullable<PlacementUI>): string => `${option.parentRegionName}: ${option.name}`;
+const getOptionLabel = (option: NonNullable<PlacementUI>): string =>
+  `${option.parentRegionName}: ${option.name}`;
 const getOptionValue = (option: NonNullable<PlacementUI>): string => option.uuid;
 
 export const PreferredLeadersField: FC = () => {
