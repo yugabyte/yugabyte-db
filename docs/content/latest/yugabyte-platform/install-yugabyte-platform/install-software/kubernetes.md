@@ -133,13 +133,7 @@ The following output should appear:
 helm install yw-test yugabytedb/yugaware --version 2.3.2 -n yb-platform --wait
 ```
 
-Or run the following `helm install` command to manually install the downloaded chart:
-
-```sh
-$ helm install yw-test yugabytedb/yugaware --version 2.3.2 -n yb-platform --wait
-```
-
-A message should appear showing that the deployment succeeded.
+A message is output that the deployment succeeded.
 
 ## Delete the Helm installation of Yugabyte Platform
 
