@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
-@import "../../../_style/colors.scss";
-@import "../../../_style/mixins.scss";
+@import '../../../_style/colors.scss';
+@import '../../../_style/mixins.scss';
 
 .form-action-button-container {
   position: absolute;
@@ -78,19 +78,20 @@
   padding-left: 15px;
   padding-right: 15px;
   color: #444;
-  background-color: #DDD;
-  box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);
+  background-color: #ddd;
+  box-shadow: 0 0 5px -1px rgba(0, 0, 0, 0.2);
   vertical-align: middle;
   @include transition(0.125s);
 
   &:hover {
-    background-color: hsl(0,0%,80%);
+    background-color: hsl(0, 0%, 80%);
     @include transition(0.35s);
   }
 }
 
 .config-section-header .buttons {
-  .btn, button {
+  .btn,
+  button {
     margin-left: 8px;
   }
 }
@@ -162,5 +163,4 @@
       }
     }
   }
-
 }

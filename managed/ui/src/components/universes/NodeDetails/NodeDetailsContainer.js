@@ -2,13 +2,21 @@
 
 import { NodeDetails } from '../../universes';
 import { connect } from 'react-redux';
-import { getUniversePerNodeStatus, getUniversePerNodeStatusResponse,
-  getUniversePerNodeMetrics, getUniversePerNodeMetricsResponse,
-  getMasterLeader, getMasterLeaderResponse, resetMasterLeader } from '../../../actions/universe';
 import {
-  getNodeInstancesForProvider, getNodeInstancesForReadReplicaProvider,
-  getNodesInstancesForProviderResponse, getNodesInstancesForReadReplicaProviderResponse
-} from "../../../actions/cloud";
+  getUniversePerNodeStatus,
+  getUniversePerNodeStatusResponse,
+  getUniversePerNodeMetrics,
+  getUniversePerNodeMetricsResponse,
+  getMasterLeader,
+  getMasterLeaderResponse,
+  resetMasterLeader
+} from '../../../actions/universe';
+import {
+  getNodeInstancesForProvider,
+  getNodeInstancesForReadReplicaProvider,
+  getNodesInstancesForProviderResponse,
+  getNodesInstancesForReadReplicaProviderResponse
+} from '../../../actions/cloud';
 
 function mapStateToProps(state) {
   return {
@@ -40,7 +48,6 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-
     getUniversePerNodeMetrics: (uuid) => {
       dispatch(getUniversePerNodeMetrics(uuid)).then((perNodeResponse) => {
         dispatch(getUniversePerNodeMetricsResponse(perNodeResponse.payload));
@@ -57,7 +64,7 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(getNodeInstancesForReadReplicaProvider(pUUID)).then((response) => {
         dispatch(getNodesInstancesForReadReplicaProviderResponse(response.payload));
       });
-    },
+    }
   };
 };
 

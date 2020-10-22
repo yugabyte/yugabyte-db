@@ -24,14 +24,9 @@ export const MasterFlagsField: FC<MasterFlagsFieldProps> = ({ disabled }) => {
         control={control}
         name="masterGFlags"
         render={({ value, onChange }: ControllerRenderProps<FlagsObject>) => (
-          <KeyValueInput
-            value={value}
-            onChange={onChange}
-            disabled={disabled}
-          />
+          <KeyValueInput value={value} onChange={onChange} disabled={disabled} />
         )}
       />
     </div>
   );
 };
-

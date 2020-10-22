@@ -64,8 +64,8 @@ const AZURE_REGIONS = [
 ];
 
 const zonesMap = {};
-AZURE_REGIONS.forEach(item => {
-  zonesMap[item.region] = item.zones.map(zone => ({ value: zone, label: zone }));
+AZURE_REGIONS.forEach((item) => {
+  zonesMap[item.region] = item.zones.map((zone) => ({ value: zone, label: zone }));
 });
 
 const initialRegionForm = {
@@ -74,28 +74,32 @@ const initialRegionForm = {
   customSecurityGroupId: '',
   customImageId: '',
   azToSubnetIds: [
-    {zone: '', subnet: ''},
-    {zone: '', subnet: ''},
-    {zone: '', subnet: ''}
+    { zone: '', subnet: '' },
+    { zone: '', subnet: '' },
+    { zone: '', subnet: '' }
   ]
 };
 
 const validationSchema = Yup.object().shape({
   region: Yup.object().required('Region is a required field'),
   vpcId: Yup.string().required('Virtual Network Name is a required field'),
-  azToSubnetIds: Yup.lazy(value => {
-    const isAnyZoneSelected = value.some(item => !_.isEmpty(item.zone?.value));
+  azToSubnetIds: Yup.lazy((value) => {
+    const isAnyZoneSelected = value.some((item) => !_.isEmpty(item.zone?.value));
     if (isAnyZoneSelected) {
       return Yup.array().of(
         Yup.object().shape({
           subnet: Yup.string().when('zone', {
-            is: value => !_.isEmpty(value),
-            then: Yup.string().required('Subnet is a required field'),
+            is: (value) => !_.isEmpty(value),
+            then: Yup.string().required('Subnet is a required field')
           })
         })
       );
     } else {
-      return Yup.array().test('non-empty-test', 'At least one zone has to be selected', () => false);
+      return Yup.array().test(
+        'non-empty-test',
+        'At least one zone has to be selected',
+        () => false
+      );
     }
   })
 });
@@ -120,9 +124,9 @@ export const AzureRegions = ({ regions, onChange }) => {
     setAvailableRegions(result);
   }, [regions, currentRegion]);
 
-  const removeRegion = item => onChange(_.without(regions, item));
+  const removeRegion = (item) => onChange(_.without(regions, item));
 
-  const editRegion = item => {
+  const editRegion = (item) => {
     setCurrentRegion(item);
     setModalVisibility(true);
   };
@@ -145,17 +149,18 @@ export const AzureRegions = ({ regions, onChange }) => {
               <div>
                 <strong>{item.region.label}</strong>
               </div>
+              <div>{item.vpcId}</div>
+              <div>{item.customSecurityGroupId}</div>
+              <div>{item.azToSubnetIds.filter((item) => !_.isEmpty(item.zone.value)).length}</div>
               <div>
-                {item.vpcId}
-              </div>
-              <div>
-                {item.customSecurityGroupId}
-              </div>
-              <div>
-                {item.azToSubnetIds.filter(item => !_.isEmpty(item.zone.value)).length}
-              </div>
-              <div>
-                <button type="button" className="delete-provider" onClick={(event) => { event.stopPropagation(); removeRegion(item); }}>
+                <button
+                  type="button"
+                  className="delete-provider"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    removeRegion(item);
+                  }}
+                >
                   <i className="fa fa-times fa-fw delete-row-btn"></i>
                 </button>
               </div>
@@ -163,8 +168,15 @@ export const AzureRegions = ({ regions, onChange }) => {
           ))}
         </ul>
       )}
-      <button type="button" className="btn btn-default btn-add-region" onClick={() => editRegion(null)}>
-        <div className="btn-icon"><i className="fa fa-plus"></i></div> Add Region
+      <button
+        type="button"
+        className="btn btn-default btn-add-region"
+        onClick={() => editRegion(null)}
+      >
+        <div className="btn-icon">
+          <i className="fa fa-plus"></i>
+        </div>{' '}
+        Add Region
       </button>
 
       {isModalVisible && (
@@ -173,7 +185,8 @@ export const AzureRegions = ({ regions, onChange }) => {
           validationSchema={validationSchema}
         >
           {({ values, errors, isValid, setFieldValue }) => (
-            <YBModal formName="azureRegionsConfig"
+            <YBModal
+              formName="azureRegionsConfig"
               visible={true}
               submitLabel={currentRegion ? 'Edit Region' : 'Add Region'}
               showCancelButton={true}
@@ -183,7 +196,7 @@ export const AzureRegions = ({ regions, onChange }) => {
               onFormSubmit={() => {
                 let updatedRegions;
                 if (currentRegion) {
-                  const i = regions.findIndex(item => item === currentRegion);
+                  const i = regions.findIndex((item) => item === currentRegion);
                   regions[i] = values;
                   updatedRegions = regions;
                 } else {
@@ -230,15 +243,21 @@ export const AzureRegions = ({ regions, onChange }) => {
                       isClearable={true}
                       options={
                         // skip already selected zones from dropdown options
-                        (zonesMap[values.region.value] || []).filter(item => {
-                          const selectedZones = _.compact(_.map(values.azToSubnetIds, 'zone.value'));
+                        (zonesMap[values.region.value] || []).filter((item) => {
+                          const selectedZones = _.compact(
+                            _.map(values.azToSubnetIds, 'zone.value')
+                          );
                           return !selectedZones.includes(item.value);
                         })
                       }
                     />
                   </Col>
                   <Col lg={6}>
-                    <Field name={`azToSubnetIds[${index}].subnet`} component={YBFormInput} placeholder="Subnet" />
+                    <Field
+                      name={`azToSubnetIds[${index}].subnet`}
+                      component={YBFormInput}
+                      placeholder="Subnet"
+                    />
                   </Col>
                 </Row>
               ))}

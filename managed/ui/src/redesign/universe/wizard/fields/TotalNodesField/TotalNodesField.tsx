@@ -44,7 +44,7 @@ export const TotalNodesField: FC = () => {
             value={value}
             onChange={(event) => {
               // ensure totalNodes always greater or equal to replicationFactor
-              const totalNodes = Number(event.target.value.replace(/\D/g,''));
+              const totalNodes = Number(event.target.value.replace(/\D/g, ''));
               if (totalNodes >= replicationFactor) onChange(totalNodes);
             }}
             onBlur={onBlur}

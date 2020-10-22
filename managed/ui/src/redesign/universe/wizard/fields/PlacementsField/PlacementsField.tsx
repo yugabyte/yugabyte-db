@@ -25,7 +25,8 @@ interface RegionInfo {
 export type PlacementUI = (PlacementAZ & RegionInfo) | null;
 export type AvailabilityZoneUI = AvailabilityZone & RegionInfo;
 
-const getOptionLabel = (option: AvailabilityZoneUI): string => `${option.parentRegionName}: ${option.name}`;
+const getOptionLabel = (option: AvailabilityZoneUI): string =>
+  `${option.parentRegionName}: ${option.name}`;
 const getOptionValue = (option: AvailabilityZoneUI): string => option.uuid;
 
 const FIELD_NAME = 'placements';

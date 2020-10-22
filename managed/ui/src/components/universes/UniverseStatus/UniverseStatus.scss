@@ -1,4 +1,4 @@
-@import "../../../_style/colors.scss";
+@import '../../../_style/colors.scss';
 
 .universe-status {
   display: inline-block;
@@ -6,7 +6,6 @@
   font-weight: 500;
   margin-left: 24px;
   line-height: 42px;
-
 
   &.good {
     color: $YB_SUCCESS_COLOR;
@@ -83,7 +82,6 @@
   font-size: 15px;
   font-weight: 500;
   padding-left: 6px;
-
 }
 .status-pending-display-container {
   display: inline-block;

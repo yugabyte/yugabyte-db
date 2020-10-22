@@ -10,7 +10,7 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(deleteBackup(backupUUID)).then((response) => {
         if (!response.error) {
           dispatch(deleteBackupResponse(response));
-          return response.payload
+          return response.payload;
         }
         throw new Error(response.error);
       });

@@ -21,9 +21,7 @@ export const EnableEncryptionAtRestField: FC<EnableEncryptionAtRestFieldProps> =
           value={value}
           onChange={onChange}
           disabled={disabled}
-          description={
-            <I18n>Whether or not to enable encryption at-rest for database</I18n>
-          }
+          description={<I18n>Whether or not to enable encryption at-rest for database</I18n>}
         />
       )}
     />

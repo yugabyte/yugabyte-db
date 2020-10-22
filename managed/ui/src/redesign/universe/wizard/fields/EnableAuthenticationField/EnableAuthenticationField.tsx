@@ -18,11 +18,7 @@ export const EnableAuthenticationField: FC<EnableAuthenticationFieldProps> = ({ 
         control={control}
         name="enableAuthentication"
         render={({ value, onChange }: ControllerRenderProps<boolean>) => (
-          <Toggle
-            value={value}
-            onChange={onChange}
-            disabled={disabled}
-          />
+          <Toggle value={value} onChange={onChange} disabled={disabled} />
         )}
       />
     </div>

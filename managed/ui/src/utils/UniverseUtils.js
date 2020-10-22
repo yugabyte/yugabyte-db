@@ -1,10 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
-import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from "./ObjectUtils";
-import { PROVIDER_TYPES } from "../config";
+import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from './ObjectUtils';
+import { PROVIDER_TYPES } from '../config';
 
 export function isNodeRemovable(nodeState) {
-  return nodeState === "To Be Added";
+  return nodeState === 'To Be Added';
 }
 
 // Given a list of cluster objects, return the Primary cluster. If clusters is malformed or if no
@@ -31,7 +31,9 @@ export function getReadOnlyCluster(clusters) {
 
 export function getClusterByType(clusters, clusterType) {
   if (isNonEmptyArray(clusters)) {
-    const foundClusters = clusters.filter((cluster) => cluster.clusterType.toLowerCase() === clusterType.toLowerCase());
+    const foundClusters = clusters.filter(
+      (cluster) => cluster.clusterType.toLowerCase() === clusterType.toLowerCase()
+    );
     if (foundClusters.length === 1) {
       return foundClusters[0];
     }
@@ -48,9 +50,11 @@ export function getPlacementRegions(cluster) {
 }
 
 export function getPlacementCloud(cluster) {
-  if (isNonEmptyObject(cluster) &&
-      isNonEmptyObject(cluster.placementInfo) &&
-      isNonEmptyArray(cluster.placementInfo.cloudList)) {
+  if (
+    isNonEmptyObject(cluster) &&
+    isNonEmptyObject(cluster.placementInfo) &&
+    isNonEmptyArray(cluster.placementInfo.cloudList)
+  ) {
     return cluster.placementInfo.cloudList[0];
   }
   return null;
@@ -75,12 +79,18 @@ export function getUniverseNodes(clusters) {
   const primaryCluster = getPrimaryCluster(clusters);
   const readOnlyCluster = getReadOnlyCluster(clusters);
   let numNodes = 0;
-  if (isNonEmptyObject(primaryCluster) && isNonEmptyObject(primaryCluster.userIntent) &&
-      isDefinedNotNull(primaryCluster.userIntent.numNodes)) {
+  if (
+    isNonEmptyObject(primaryCluster) &&
+    isNonEmptyObject(primaryCluster.userIntent) &&
+    isDefinedNotNull(primaryCluster.userIntent.numNodes)
+  ) {
     numNodes += primaryCluster.userIntent.numNodes;
   }
-  if (isNonEmptyObject(readOnlyCluster) && isNonEmptyObject(readOnlyCluster.userIntent) &&
-      isDefinedNotNull(readOnlyCluster.userIntent.numNodes)) {
+  if (
+    isNonEmptyObject(readOnlyCluster) &&
+    isNonEmptyObject(readOnlyCluster.userIntent) &&
+    isDefinedNotNull(readOnlyCluster.userIntent.numNodes)
+  ) {
     numNodes += readOnlyCluster.userIntent.numNodes;
   }
 
@@ -107,7 +117,9 @@ export function nodeComparisonFunction(nodeDetailsA, nodeDetailsB, clusters) {
 
 export function hasLiveNodes(universe) {
   if (isNonEmptyObject(universe) && isNonEmptyObject(universe.universeDetails)) {
-    const { universeDetails: { nodeDetailsSet } } = universe;
+    const {
+      universeDetails: { nodeDetailsSet }
+    } = universe;
     if (isNonEmptyArray(nodeDetailsSet)) {
       return nodeDetailsSet.some((nodeDetail) => nodeDetail.state === 'Live');
     }
@@ -116,7 +128,12 @@ export function hasLiveNodes(universe) {
 }
 
 export function isKubernetesUniverse(currentUniverse) {
-  return isDefinedNotNull(currentUniverse.universeDetails) && isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) && getPrimaryCluster(currentUniverse.universeDetails.clusters).userIntent.providerType === "kubernetes";
+  return (
+    isDefinedNotNull(currentUniverse.universeDetails) &&
+    isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) &&
+    getPrimaryCluster(currentUniverse.universeDetails.clusters).userIntent.providerType ===
+      'kubernetes'
+  );
 }
 
 // Reads file and passes content into Promise.resolve

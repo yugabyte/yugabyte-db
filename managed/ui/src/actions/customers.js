@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
-import {IN_DEVELOPMENT_MODE, ROOT_URL, USE_SSO} from '../config';
+import { IN_DEVELOPMENT_MODE, ROOT_URL, USE_SSO } from '../config';
 import Cookies from 'js-cookie';
 import { getCustomerEndpoint } from './common';
 
@@ -103,23 +103,24 @@ export const CREATE_USER = 'CREATE_USER';
 export const CREATE_USER_RESPONSE = 'CREATE_USER_RESPONSE';
 
 export const DELETE_USER = 'DELETE_USER';
-export const DELETE_USER_RESPONSE  = 'DELETE_USER_RESPONSE';
+export const DELETE_USER_RESPONSE = 'DELETE_USER_RESPONSE';
 
 export const CHANGE_USER_ROLE = 'CHANGE_USER_ROLE';
 
 export function validateToken() {
-  let cUUID = Cookies.get("customerId");
+  let cUUID = Cookies.get('customerId');
   if (cUUID) {
-    localStorage.setItem("customerId", cUUID);
+    localStorage.setItem('customerId', cUUID);
   } else {
-    cUUID = localStorage.getItem("customerId");
+    cUUID = localStorage.getItem('customerId');
   }
 
   // in single sign-on mode authentication happens via PLAY_SESSION cookie and not via headers
   if (!USE_SSO) {
-    axios.defaults.headers.common['X-AUTH-TOKEN'] = Cookies.get("authToken") || localStorage.getItem("authToken");
+    axios.defaults.headers.common['X-AUTH-TOKEN'] =
+      Cookies.get('authToken') || localStorage.getItem('authToken');
   }
-  const apiToken = Cookies.get("apiToken") || localStorage.getItem("apiToken");
+  const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
   if (apiToken && apiToken !== '') {
     axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
   }
@@ -129,7 +130,7 @@ export function validateToken() {
     axios.defaults.withCredentials = true;
   }
   if (!IN_DEVELOPMENT_MODE || !process.env.REACT_APP_YUGAWARE_API_URL) {
-    axios.defaults.headers.common['Csrf-Token'] = Cookies.get("csrfCookie");
+    axios.defaults.headers.common['Csrf-Token'] = Cookies.get('csrfCookie');
   }
 
   const request = axios(`${ROOT_URL}/customers/${cUUID}`);
@@ -220,7 +221,7 @@ export function getApiTokenLoading() {
 }
 
 export function getApiToken(authToken) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/api_token`, {}, authToken);
   return {
     type: API_TOKEN,
@@ -254,7 +255,7 @@ export function resetCustomerError() {
 }
 
 export function updateProfile(values) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}`, values);
   return {
     type: UPDATE_PROFILE,
@@ -277,13 +278,16 @@ export function updateProfileFailure(error) {
 }
 
 export function updatePassword(user, values) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const userUUID = user.uuid;
   const data = {
     ...values,
     role: user.role
   };
-  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/users/${userUUID}/change_password`, data);
+  const request = axios.put(
+    `${ROOT_URL}/customers/${cUUID}/users/${userUUID}/change_password`,
+    data
+  );
   return {
     type: UPDATE_PROFILE,
     payload: request
@@ -305,7 +309,7 @@ export function updatePasswordFailure(error) {
 }
 
 export function fetchSoftwareVersions() {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases`);
   return {
     type: FETCH_SOFTWARE_VERSIONS,
@@ -384,7 +388,7 @@ export function fetchRootCertificate(certUUID) {
 }
 
 export function fetchHostInfo() {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/host_info`);
   return {
     type: FETCH_HOST_INFO,
@@ -415,7 +419,7 @@ export function fetchCustomerCount() {
 }
 
 export function getAlerts() {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alerts`);
   return {
     type: GET_ALERTS,
@@ -438,7 +442,7 @@ export function getAlertsFailure(error) {
 }
 
 export function getCustomerUsers() {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/users`);
   return {
     type: GET_CUSTOMER_USERS,
@@ -476,7 +480,7 @@ export function fetchYugaWareVersionResponse(response) {
 }
 
 export function addCustomerConfig(config) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/configs`, config);
   return {
     type: ADD_CUSTOMER_CONFIG,
@@ -492,7 +496,7 @@ export function addCustomerConfigResponse(response) {
 }
 
 export function deleteCustomerConfig(configUUID) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/configs/${configUUID}`);
   return {
     type: DELETE_CUSTOMER_CONFIG,
@@ -508,7 +512,7 @@ export function deleteCustomerConfigResponse(response) {
 }
 
 export function fetchCustomerConfigs() {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/configs`);
   return {
     type: FETCH_CUSTOMER_CONFIGS,
@@ -524,7 +528,7 @@ export function fetchCustomerConfigsResponse(response) {
 }
 
 export function getSchedules() {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/schedules`);
   return {
     type: GET_SCHEDULES,
@@ -540,7 +544,7 @@ export function getSchedulesResponse(response) {
 }
 
 export function deleteSchedule(scheduleUUID) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/schedules/${scheduleUUID}`);
   return {
     type: DELETE_SCHEDULE,
@@ -554,7 +558,6 @@ export function deleteScheduleResponse(response) {
     payload: response
   };
 }
-
 
 export function getLogs() {
   // TODO(bogdan): Maybe make this a URL param somehow?
@@ -580,7 +583,7 @@ export function getLogsFailure(error) {
 }
 
 export function getYugaByteReleases() {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases?includeMetadata=true`);
   return {
     type: GET_RELEASES,
@@ -596,7 +599,7 @@ export function getYugaByteReleasesResponse(response) {
 }
 
 export function refreshYugaByteReleases() {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/releases`);
   return {
     type: REFRESH_RELEASES,
@@ -612,7 +615,7 @@ export function refreshYugaByteReleasesResponse(response) {
 }
 
 export function importYugaByteRelease(payload) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/releases`, payload);
   return {
     type: IMPORT_RELEASE,
@@ -628,7 +631,7 @@ export function importYugaByteReleaseResponse(response) {
 }
 
 export function updateYugaByteRelease(version, payload) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/releases/${version}`, payload);
   return {
     type: UPDATE_RELEASE,
@@ -644,7 +647,7 @@ export function updateYugaByteReleaseResponse(response) {
 }
 
 export function createUser(formValues) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/users`, formValues);
   return {
     type: CREATE_USER,
@@ -669,7 +672,7 @@ export function changeUserRole(userUUID, newRole) {
 }
 
 export function deleteUser(userUUID) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/users/${userUUID}`);
   return {
     type: DELETE_USER,
