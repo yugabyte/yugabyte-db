@@ -946,10 +946,6 @@ class Schema {
     return Schema(key_cols, col_ids, num_key_columns_);
   }
 
-  // Return a new Schema which is the same as this one, but with IDs assigned.
-  // Requires that this schema has no column IDs.
-  Schema CopyWithColumnIds() const;
-
   // Initialize column IDs by default values.
   // Requires that this schema has no column IDs.
   void InitColumnIdsByDefault();

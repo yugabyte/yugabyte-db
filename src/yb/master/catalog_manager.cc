@@ -1891,12 +1891,11 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
   const NamespaceId& namespace_id = ns->id();
   const NamespaceName& namespace_name = ns->name();
 
-  Schema client_schema;
-  RETURN_NOT_OK(SchemaFromPB(req->schema(), &client_schema));
+  Schema schema;
+  RETURN_NOT_OK(SchemaFromPB(req->schema(), &schema));
   // If the schema contains column ids, we are copying a Postgres table from one namespace to
   // another. Anyway, validate the schema.
-  RETURN_NOT_OK(ValidateCreateTableSchema(client_schema, resp));
-  Schema schema = std::move(client_schema);
+  RETURN_NOT_OK(ValidateCreateTableSchema(schema, resp));
   if (!schema.has_column_ids()) {
     schema.InitColumnIdsByDefault();
   }
@@ -2202,9 +2201,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     colocated = false;
   }
 
-  // Validate schema.
-  Schema client_schema;
-
   // TODO: If this is a colocated index table in a colocated database, convert any hash partition
   // columns into range partition columns. This is because postgres does not know that this index
   // table is in a colocated database. When we get to the "tablespaces" step where we store this
@@ -2215,14 +2211,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  RETURN_NOT_OK(SchemaFromPB(req.schema(), &client_schema));
-  RETURN_NOT_OK(ValidateCreateTableSchema(client_schema, resp));
+  // Validate schema.
+  Schema schema;
+  RETURN_NOT_OK(SchemaFromPB(req.schema(), &schema));
+  RETURN_NOT_OK(ValidateCreateTableSchema(schema, resp));
 
   // checking that referenced user-defined types (if any) exist.
   {
     SharedLock<LockType> l(lock_);
-    for (int i = 0; i < client_schema.num_columns(); i++) {
-      for (const auto &udt_id : client_schema.column(i).type()->GetUserDefinedTypeIds()) {
+    for (int i = 0; i < schema.num_columns(); i++) {
+      for (const auto &udt_id : schema.column(i).type()->GetUserDefinedTypeIds()) {
         if (FindPtrOrNull(udtype_ids_map_, udt_id) == nullptr) {
           Status s = STATUS(InvalidArgument, "Referenced user-defined type not found");
           return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
@@ -2232,7 +2230,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   // TODO (ENG-1860) The referenced namespace and types retrieved/checked above could be deleted
   // some time between this point and table creation below.
-  Schema schema = std::move(client_schema);
+
   // Usually the column ids are available if it's called on the backup-restoring code path
   // (from CatalogManager::RecreateTable). Else the column ids must be empty in the client schema.
   if (!schema.has_column_ids()) {

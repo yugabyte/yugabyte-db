@@ -32,6 +32,12 @@
       <artifactId>postgresql</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.json</groupId>
+      <artifactId>json</artifactId>
+      <version>20180130</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>cassandra-driver-core</artifactId>
     </dependency>

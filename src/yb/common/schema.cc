@@ -407,12 +407,6 @@ vector<ColumnId> DefaultColumnIds(size_t num_columns) {
 }
 }  // namespace
 
-Schema Schema::CopyWithColumnIds() const {
-  CHECK(!has_column_ids());
-  return Schema(cols_, DefaultColumnIds(num_columns()),
-      num_key_columns_, table_properties_, cotable_id_, pgtable_id_);
-}
-
 void Schema::InitColumnIdsByDefault() {
   CHECK(!has_column_ids());
   ResetColumnIds(DefaultColumnIds(cols_.size()));
