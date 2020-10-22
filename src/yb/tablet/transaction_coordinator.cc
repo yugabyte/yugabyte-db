@@ -87,7 +87,8 @@ namespace tablet {
 std::chrono::microseconds GetTransactionTimeout() {
   const double timeout = GetAtomicFlag(&FLAGS_transaction_max_missed_heartbeat_periods) *
                          GetAtomicFlag(&FLAGS_transaction_heartbeat_usec);
-  return timeout >= std::chrono::microseconds::max().count()
+  // Cast to avoid -Wimplicit-int-float-conversion.
+  return timeout >= static_cast<double>(std::chrono::microseconds::max().count())
       ? std::chrono::microseconds::max()
       : std::chrono::microseconds(static_cast<int64_t>(timeout));
 }

@@ -881,6 +881,8 @@ find_compiler_by_type() {
         cc_executable=gcc
         cxx_executable=g++
       fi
+      cc_executable+=${YB_GCC_SUFFIX:-}
+      cxx_executable+=${YB_GCC_SUFFIX:-}
     ;;
     gcc8)
       if [[ -n ${YB_GCC8_PREFIX:-} ]]; then
@@ -928,6 +930,8 @@ find_compiler_by_type() {
       if [[ -z ${cxx_executable:-} ]]; then
         cxx_executable=$cc_executable++  # clang -> clang++
       fi
+      cc_executable+=${YB_CLANG_SUFFIX:-}
+      cxx_executable+=${YB_CLANG_SUFFIX:-}
     ;;
     zapcc)
       if [[ -n ${YB_ZAPCC_INSTALL_PATH:-} ]]; then
