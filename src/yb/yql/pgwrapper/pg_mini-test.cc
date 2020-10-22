@@ -75,6 +75,8 @@ class PgMiniTest : public PgMiniTestBase {
 
   void TestBigInsert(bool restart);
 
+  void TestConcurrentDeleteRowAndUpdateColumn(bool select_before_update);
+
   void FlushAndCompactTablets() {
     FLAGS_timestamp_history_retention_interval_sec = 0;
     FLAGS_history_cutoff_propagation_interval_ms = 1;
@@ -1273,6 +1275,43 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsert)) {
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithRestart)) {
   FLAGS_apply_intents_task_injected_delay_ms = 200;
   TestBigInsert(/* restart= */ true);
+}
+
+void PgMiniTest::TestConcurrentDeleteRowAndUpdateColumn(bool select_before_update) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE t (i INT PRIMARY KEY, j INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)"));
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  if (select_before_update) {
+    ASSERT_OK(conn1.Fetch("SELECT * FROM t"));
+  }
+  ASSERT_OK(conn2.Execute("DELETE FROM t WHERE i = 2"));
+  auto status = conn1.Execute("UPDATE t SET j = 21 WHERE i = 2");
+  if (select_before_update) {
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Value write after transaction start");
+    return;
+  }
+  ASSERT_OK(status);
+  ASSERT_OK(conn1.CommitTransaction());
+  auto result = ASSERT_RESULT(conn1.FetchMatrix("SELECT * FROM t ORDER BY i", 2, 2));
+  auto value = ASSERT_RESULT(GetInt32(result.get(), 0, 0));
+  ASSERT_EQ(value, 1);
+  value = ASSERT_RESULT(GetInt32(result.get(), 0, 1));
+  ASSERT_EQ(value, 10);
+  value = ASSERT_RESULT(GetInt32(result.get(), 1, 0));
+  ASSERT_EQ(value, 3);
+  value = ASSERT_RESULT(GetInt32(result.get(), 1, 1));
+  ASSERT_EQ(value, 30);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumn)) {
+  TestConcurrentDeleteRowAndUpdateColumn(/* select_before_update= */ false);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWithSelect)) {
+  TestConcurrentDeleteRowAndUpdateColumn(/* select_before_update= */ true);
 }
 
 } // namespace pgwrapper
