@@ -72,8 +72,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
-    taskParams.clusters
-        .add(Universe.get(taskParams.universeUUID).getUniverseDetails().getPrimaryCluster());
+    taskParams.clusters.addAll(Universe.get(taskParams.universeUUID).getUniverseDetails().clusters);
     taskParams.expectedUniverseVersion = 2;
     taskParams.nodeName = nodeName;
     try {
@@ -176,6 +175,22 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     taskParams.universeUUID = universe.universeUUID;
     // Node "host-n4" is in Removed state already.
     TaskInfo taskInfo = submitTask(taskParams, "host-n4");
+    // one nodeCommand invocation is made from instanceExists()
+    verify(mockNodeManager, times(1)).nodeCommand(any(), any());
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testStartMasterOnNodeIfNodeInReadOnlyCluster() {
+    Universe universe = createUniverse("DemoX");
+    universe = Universe.saveDetails(universe.universeUUID,
+        ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(false, 3));
+
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.universeUUID = universe.universeUUID;
+
+    // Node "yb-tserver-0" is in Read Only cluster.
+    TaskInfo taskInfo = submitTask(taskParams, "yb-tserver-0");
     // one nodeCommand invocation is made from instanceExists()
     verify(mockNodeManager, times(1)).nodeCommand(any(), any());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
