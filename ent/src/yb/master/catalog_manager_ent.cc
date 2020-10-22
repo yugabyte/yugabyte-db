@@ -1044,21 +1044,21 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   }
 
   if (table == nullptr) {
-    if (table_data->table_entry_pb.table_type() == TableType::PGSQL_TABLE_TYPE) {
+    if (meta.table_type() == TableType::PGSQL_TABLE_TYPE) {
       // YSQL table must be created via external call. Find it by name.
       // Expecting the table name is unique in the YSQL database.
       SharedLock<LockType> l(lock_);
       DCHECK(table_data->new_table_id.empty());
 
       for (const auto& entry : *table_ids_map_) {
-        const auto& table_info = *entry.second;
-        auto ltm = table_info.LockForRead();
+        table = entry.second;
+        auto ltm = table->LockForRead();
 
-        if (table_info.is_running() &&
-            new_namespace_id == table_info.namespace_id() &&
+        if (table->is_running() &&
+            new_namespace_id == table->namespace_id() &&
             meta.name() == ltm->data().name() &&
-            ((table_data->is_index() && IsUserIndexUnlocked(table_info)) ||
-                (!table_data->is_index() && IsUserTableUnlocked(table_info)))) {
+            ((table_data->is_index() && IsUserIndexUnlocked(*table)) ||
+                (!table_data->is_index() && IsUserTableUnlocked(*table)))) {
           // Found the new YSQL table by name.
           if (table_data->new_table_id.empty()) {
               table_data->new_table_id = entry.first;
@@ -1086,6 +1086,56 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     if (table == nullptr) {
       return STATUS(InternalError, Format("Created table not found: $0", table_data->new_table_id),
                     MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+    }
+
+    Schema schema, persisted_schema;
+    RETURN_NOT_OK(SchemaFromPB(meta.schema(), &schema));
+    RETURN_NOT_OK(table->GetSchema(&persisted_schema));
+    const auto& column_ids = schema.column_ids();
+
+    // Schema::Equals() compares only column names & types. It does not compare the column ids.
+    if (!persisted_schema.Equals(schema)
+        || persisted_schema.column_ids().size() != column_ids.size()) {
+      return STATUS(InternalError,
+                    Format("Invalid created table schema={$0}, expected={$1}",
+                           persisted_schema,
+                           schema),
+                    MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+    }
+
+    // Update the table column ids if it's not equal to the stored ids.
+    if (persisted_schema.column_ids() != column_ids) {
+      if (meta.table_type() != TableType::PGSQL_TABLE_TYPE) {
+        LOG(WARNING) << "Unexpected wrong column ids in " << TableType_Name(meta.table_type())
+                     << " table " << meta.name() << " in namespace id " << new_namespace_id;
+      }
+
+      LOG(INFO) << "Restoring column ids in " << TableType_Name(meta.table_type()) << " table "
+                << meta.name() << " in namespace id " << new_namespace_id;
+      auto l = table->LockForWrite();
+      size_t col_idx = 0;
+      for (auto& column : *l->mutable_data()->pb.mutable_schema()->mutable_columns()) {
+        // Expecting here correct schema (columns - order, names, types), but with only wrong
+        // column ids. Checking correct column order and column names below.
+        if (column.name() != schema.column(col_idx).name()) {
+            return STATUS(InternalError,
+                          Format("Unexpected column name for index=$0: name=$1, expected name=$2",
+                                 col_idx,
+                                 schema.column(col_idx).name(),
+                                 column.name()),
+                          MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+        }
+        // Copy the column id from imported (original) schema.
+        column.set_id(column_ids[col_idx++]);
+      }
+
+      l->mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
+      l->mutable_data()->pb.set_version(l->data().pb.version() + 1);
+      // Update sys-catalog with the new table schema.
+      RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
+      l->Commit();
+      // Update the new table schema in tablets.
+      SendAlterTableRequest(table);
     }
   } else {
     table_data->new_table_id = table_data->old_table_id;
