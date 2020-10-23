@@ -443,6 +443,14 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
     VLOG_WITH_PREFIX(2) << "Apply: " << data.ToString();
 
+    WaitLoaded(data.transaction_id);
+
+    ScopedRWOperation operation(pending_op_counter_);
+    if (!operation.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Process apply rejected";
+      return Status::OK();
+    }
+
     {
       // It is our last chance to load transaction metadata, if missing.
       // Because it will be deleted when intents are applied.
@@ -546,8 +554,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     bool had_db = db_ != nullptr;
     db_ = db;
     key_bounds_ = key_bounds;
+    pending_op_counter_ = pending_op_counter;
 
-    // In case of truncate we should not reload transactions.
+    // We should only load transactions on the initial call to SetDB (when opening the tablet), not
+    // in case of truncate/restore.
     if (!had_db) {
       auto scoped_pending_operation = std::make_unique<ScopedRWOperation>(pending_op_counter);
       if (scoped_pending_operation->ok()) {
@@ -558,7 +568,14 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         load_thread_ = std::thread(
             &Impl::LoadTransactions, this, iter.release(), scoped_pending_operation.release());
       }
+      return;
     }
+
+    WaitAllLoaded();
+    MinRunningNotifier min_running_notifier(&applier_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    transactions_.clear();
+    TransactionsModifiedUnlocked(&min_running_notifier);
   }
 
   void GetStatus(
@@ -977,6 +994,17 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
   }
 
+  // Disable thread safety analysis because std::unique_lock is used.
+  void WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
+    if (all_loaded_.load(std::memory_order_acquire)) {
+      return;
+    }
+    std::unique_lock<std::mutex> lock(mutex_);
+    load_cond_.wait(lock, [this] {
+      return all_loaded_.load(std::memory_order_acquire);
+    });
+  }
+
   LockAndFindResult LockAndFind(
       const TransactionId& id, const std::string& reason, TransactionLoadFlags flags) {
     WaitLoaded(id);
@@ -1314,6 +1342,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   rocksdb::DB* db_ = nullptr;
   const docdb::KeyBounds* key_bounds_;
+  // Owned externally, should be guaranteed that would not be destroyed before this.
+  RWOperationCounter* pending_op_counter_ = nullptr;
 
   Transactions transactions_;
   // Ids of running requests, stored in increasing order.

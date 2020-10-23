@@ -1022,9 +1022,10 @@ Status Tablet::PrepareTransactionWriteBatch(
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
     if (!transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch)) {
-      return STATUS(TryAgain,
-                    Format("Transaction was recently aborted: $0", transaction_id), Slice(),
-                    PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+      auto status = STATUS(
+          TryAgain, Format("Transaction was recently aborted: $0", transaction_id), Slice(),
+          PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+      return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
     }
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
