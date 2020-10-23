@@ -1311,9 +1311,10 @@ $$) AS (id agtype);
 SELECT * FROM cypher('expr', $$
     RETURN id()
 $$) AS (id agtype);
-ERROR:  invalid number of input parameters for id()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_id() does not exist
+LINE 2:     RETURN id()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- start_id()
 SELECT * FROM cypher('expr', $$
     MATCH ()-[e]-() RETURN start_id(e)
@@ -1341,9 +1342,10 @@ ERROR:  start_id() argument must be an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN start_id()
 $$) AS (start_id agtype);
-ERROR:  invalid number of input parameters for start_id()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_start_id() does not exist
+LINE 2:     RETURN start_id()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- end_id()
 SELECT * FROM cypher('expr', $$
     MATCH ()-[e]-() RETURN end_id(e)
@@ -1371,9 +1373,10 @@ ERROR:  end_id() argument must be an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN end_id()
 $$) AS (end_id agtype);
-ERROR:  invalid number of input parameters for end_id()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_end_id() does not exist
+LINE 2:     RETURN end_id()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- startNode()
 SELECT * FROM cypher('expr', $$
     MATCH ()-[e]-() RETURN id(e), start_id(e), startNode(e)
@@ -1401,9 +1404,10 @@ ERROR:  startNode() argument must be an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN startNode()
 $$) AS (startNode agtype);
-ERROR:  invalid number of input parameters for startNode()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_startnode() does not exist
+LINE 2:     RETURN startNode()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- endNode()
 SELECT * FROM cypher('expr', $$
     MATCH ()-[e]-() RETURN id(e), end_id(e), endNode(e)
@@ -1431,9 +1435,10 @@ ERROR:  endNode() argument must be an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN endNode()
 $$) AS (endNode agtype);
-ERROR:  invalid number of input parameters for endNode()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_endnode() does not exist
+LINE 2:     RETURN endNode()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- type()
 SELECT * FROM cypher('expr', $$
     MATCH ()-[e]-() RETURN type(e)
@@ -1461,9 +1466,10 @@ ERROR:  type() argument must be an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN type()
 $$) AS (type agtype);
-ERROR:  invalid number of input parameters for type()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_type() does not exist
+LINE 2:     RETURN type()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- timestamp() can't be done as it will always have a different value
 -- size() of a string
 SELECT * FROM cypher('expr', $$
@@ -1516,9 +1522,10 @@ ERROR:  size() unsupported argument
 SELECT * FROM cypher('expr', $$
     RETURN size()
 $$) AS (size agtype);
-ERROR:  invalid number of input parameters for size()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_size() does not exist
+LINE 2:     RETURN size()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- head() of an array
 SELECT * FROM cypher('expr', $$
     RETURN head([1, 2, 3, 4, 5])
@@ -1561,9 +1568,10 @@ ERROR:  head() argument must resolve to a list or null
 SELECT * FROM cypher('expr', $$
     RETURN head()
 $$) AS (head agtype);
-ERROR:  invalid number of input parameters for head()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_head() does not exist
+LINE 2:     RETURN head()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- last()
 SELECT * FROM cypher('expr', $$
     RETURN last([1, 2, 3, 4, 5])
@@ -1606,9 +1614,10 @@ ERROR:  last() argument must resolve to a list or null
 SELECT * FROM cypher('expr', $$
     RETURN last()
 $$) AS (last agtype);
-ERROR:  invalid number of input parameters for last()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_last() does not exist
+LINE 2:     RETURN last()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- properties()
 SELECT * FROM cypher('expr', $$
     MATCH (v) RETURN properties(v)
@@ -1649,9 +1658,10 @@ ERROR:  properties() argument must be a vertex, an edge or null
 SELECT * FROM cypher('expr', $$
     RETURN properties()
 $$) AS (properties agtype);
-ERROR:  invalid number of input parameters for properties()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_properties() does not exist
+LINE 2:     RETURN properties()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- coalesce
 SELECT * FROM cypher('expr', $$
     RETURN coalesce(null, 1, null, null)
@@ -1775,9 +1785,10 @@ ERROR:  toBoolean() unsupported argument agtype 3
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean()
 $$) AS (toBoolean agtype);
-ERROR:  invalid number of input parameters for toBoolean()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_toboolean() does not exist
+LINE 2:     RETURN toBoolean()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- toFloat()
 SELECT * FROM cypher('expr', $$
     RETURN toFloat(1)
@@ -1844,9 +1855,10 @@ ERROR:  toFloat() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toFloat()
 $$) AS (toFloat agtype);
-ERROR:  invalid number of input parameters for toFloat()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_tofloat() does not exist
+LINE 2:     RETURN toFloat()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- toInteger()
 SELECT * FROM cypher('expr', $$
     RETURN toInteger(1)
@@ -1913,9 +1925,10 @@ ERROR:  toInteger() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toInteger()
 $$) AS (toInteger agtype);
-ERROR:  invalid number of input parameters for toInteger()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_tointeger() does not exist
+LINE 2:     RETURN toInteger()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- length() of a path
 SELECT * FROM cypher('expr', $$
     RETURN length([{id: 0, label: "vertex 0", properties: {}}::vertex, {id: 2, label: "edge 0", end_id: 1, start_id: 0, properties: {}}::edge, {id: 1, label: "vertex 1", properties: {}}::vertex]::path)
@@ -1950,9 +1963,10 @@ ERROR:  length() argument must resolve to a path or null
 SELECT * FROM cypher('expr', $$
     RETURN length()
 $$) AS (length agtype);
-ERROR:  invalid number of input parameters for length()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_length() does not exist
+LINE 2:     RETURN length()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
 -- toString()
 --
@@ -2080,9 +2094,10 @@ LINE 1: SELECT * FROM age_toString();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (results agtype);
-ERROR:  invalid number of input parameters for toString()
+ERROR:  function ag_catalog.age_tostring() does not exist
 LINE 1: SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (re...
-                                      ^
+                                               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
 -- reverse(string)
 --
@@ -2143,9 +2158,10 @@ ERROR:  reverse() unsupported argument type 1700
 SELECT * FROM cypher('expr', $$
     RETURN reverse()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for reverse()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_reverse() does not exist
+LINE 2:     RETURN reverse()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM age_reverse();
 ERROR:  function age_reverse() does not exist
 LINE 1: SELECT * FROM age_reverse();
@@ -2231,9 +2247,10 @@ ERROR:  toUpper() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toUpper()
 $$) AS (toUpper agtype);
-ERROR:  invalid number of input parameters for toUpper()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_toupper() does not exist
+LINE 2:     RETURN toUpper()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN toLower(true)
 $$) AS (toLower agtype);
@@ -2241,9 +2258,10 @@ ERROR:  toLower() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN toLower()
 $$) AS (toLower agtype);
-ERROR:  invalid number of input parameters for toLower()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_tolower() does not exist
+LINE 2:     RETURN toLower()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM age_toupper();
 ERROR:  function age_toupper() does not exist
 LINE 1: SELECT * FROM age_toupper();
@@ -2358,21 +2376,24 @@ ERROR:  trim() unsupported argument agtype 5
 SELECT * FROM cypher('expr', $$
     RETURN lTrim()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for lTrim()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_ltrim() does not exist
+LINE 2:     RETURN lTrim()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN rTrim()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for rTrim()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_rtrim() does not exist
+LINE 2:     RETURN rTrim()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN trim()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for trim()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_trim() does not exist
+LINE 2:     RETURN trim()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM age_ltrim();
 ERROR:  function age_ltrim() does not exist
 LINE 1: SELECT * FROM age_ltrim();
@@ -2456,9 +2477,10 @@ ERROR:  left() negative values are not supported for length
 SELECT * FROM cypher('expr', $$
     RETURN left()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for left()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_left() does not exist
+LINE 2:     RETURN left()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM age_left('123456789', null);
 ERROR:  left() length parameter cannot be null
 SELECT * FROM age_left('123456789', -1);
@@ -2534,9 +2556,10 @@ ERROR:  right() negative values are not supported for length
 SELECT * FROM cypher('expr', $$
     RETURN right()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for right()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_right() does not exist
+LINE 2:     RETURN right()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM age_right('123456789', null);
 ERROR:  right() length parameter cannot be null
 SELECT * FROM age_right('123456789', -1);
@@ -2768,15 +2791,14 @@ ERROR:  split() unsupported argument agtype 3
 SELECT * FROM cypher('expr', $$
     RETURN split("a,b,c,d,e,f")
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for split()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  split() invalid number of arguments
 SELECT * FROM cypher('expr', $$
     RETURN split()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for split()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_split() does not exist
+LINE 2:     RETURN split()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM age_split(123456789, ',');
 ERROR:  split() unsupported argument type 23
 SELECT * FROM age_split('a,b,c,d,e,f', -1);
@@ -2920,21 +2942,18 @@ SELECT * FROM age_replace('', 'Hello', 'Mellow');
 SELECT * FROM cypher('expr', $$
     RETURN replace()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for replace()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_replace() does not exist
+LINE 2:     RETURN replace()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN replace("Hello")
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for replace()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  replace() invalid number of arguments
 SELECT * FROM cypher('expr', $$
     RETURN replace("Hello", null)
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for replace()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  replace() invalid number of arguments
 SELECT * FROM cypher('expr', $$
     RETURN replace("Hello", "e", 1)
 $$) AS (results agtype);
@@ -3092,27 +3111,31 @@ ERROR:  cot() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN sin()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for sin()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_sin() does not exist
+LINE 2:     RETURN sin()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN cos()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for cos()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_cos() does not exist
+LINE 2:     RETURN cos()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN tan()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for tan()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_tan() does not exist
+LINE 2:     RETURN tan()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN cot()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for cot()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_cot() does not exist
+LINE 2:     RETURN cot()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM age_sin('0');
 ERROR:  sin() unsupported argument type 25
 SELECT * FROM age_cos('0');
@@ -3341,33 +3364,35 @@ ERROR:  atan2() unsupported argument agtype 1
 SELECT * FROM cypher('expr', $$
     RETURN asin()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for asin()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_asin() does not exist
+LINE 2:     RETURN asin()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN acos()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for acos()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_acos() does not exist
+LINE 2:     RETURN acos()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN atan()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for atan()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_atan() does not exist
+LINE 2:     RETURN atan()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN atan2()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for atan2()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_atan2() does not exist
+LINE 2:     RETURN atan2()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN atan2(null)
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for atan2()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  atan2() invalid number of arguments
 SELECT * FROM age_asin('0');
 ERROR:  asin() unsupported argument type 25
 SELECT * FROM age_acos('0');
@@ -3455,15 +3480,17 @@ $$) AS (results agtype);
 SELECT * FROM cypher('expr', $$
     RETURN pi(null)
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for pi()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function pg_catalog.pi(agtype) does not exist
+LINE 2:     RETURN pi(null)
+                     ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN pi(1)
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for pi()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function pg_catalog.pi(agtype) does not exist
+LINE 2:     RETURN pi(1)
+                     ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
 -- radians() & degrees()
 --
@@ -3552,15 +3579,17 @@ $$) AS (results agtype);
 SELECT * FROM cypher('expr', $$
     RETURN radians()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for radians()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_radians() does not exist
+LINE 2:     RETURN radians()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN degrees()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for degrees()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_degrees() does not exist
+LINE 2:     RETURN degrees()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN radians("1")
 $$) AS (results agtype);
@@ -3785,33 +3814,38 @@ $$) AS (results agtype);
 SELECT * FROM cypher('expr', $$
     RETURN abs()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for abs()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_abs() does not exist
+LINE 2:     RETURN abs()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN ceil()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for ceil()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_ceil() does not exist
+LINE 2:     RETURN ceil()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN floor()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for floor()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_floor() does not exist
+LINE 2:     RETURN floor()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN round()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for round()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_round() does not exist
+LINE 2:     RETURN round()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN sign()
 $$) AS (results agtype);
-ERROR:  invalid number of input parameters for sign()
-LINE 1: SELECT * FROM cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_sign() does not exist
+LINE 2:     RETURN sign()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN abs("1")
 $$) AS (results agtype);
@@ -3928,15 +3962,17 @@ $$) as (result agtype);
 SELECT * from cypher('expr', $$
     RETURN log()
 $$) as (result agtype);
-ERROR:  invalid number of input parameters for log()
-LINE 1: SELECT * from cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_log() does not exist
+LINE 2:     RETURN log()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * from cypher('expr', $$
     RETURN log10()
 $$) as (result agtype);
-ERROR:  invalid number of input parameters for log10()
-LINE 1: SELECT * from cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_log10() does not exist
+LINE 2:     RETURN log10()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
 -- e()
 --
@@ -3988,9 +4024,10 @@ $$) as (result agtype);
 SELECT * from cypher('expr', $$
     RETURN exp()
 $$) as (result agtype);
-ERROR:  invalid number of input parameters for exp()
-LINE 1: SELECT * from cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_exp() does not exist
+LINE 2:     RETURN exp()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * from cypher('expr', $$
     RETURN exp("1")
 $$) as (result agtype);
@@ -4043,9 +4080,10 @@ $$) as (result agtype);
 SELECT * from cypher('expr', $$
     RETURN sqrt()
 $$) as (result agtype);
-ERROR:  invalid number of input parameters for sqrt()
-LINE 1: SELECT * from cypher('expr', $$
-                                      ^
+ERROR:  function ag_catalog.age_sqrt() does not exist
+LINE 2:     RETURN sqrt()
+                   ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * from cypher('expr', $$
     RETURN sqrt("1")
 $$) as (result agtype);

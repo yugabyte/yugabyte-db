@@ -227,16 +227,6 @@ void out_cypher_typecast(StringInfo str, const ExtensibleNode *node)
     write_location_field(location);
 }
 
-/* function */
-void out_cypher_function(StringInfo str, const ExtensibleNode *node)
-{
-    DEFINE_AG_NODE(cypher_function);
-
-    write_node_field(exprs);
-    write_node_field(funcname);
-    write_location_field(location);
-}
-
 /* integer constant */
 void out_cypher_integer_const(StringInfo str, const ExtensibleNode *node)
 {

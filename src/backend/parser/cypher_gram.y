@@ -1171,6 +1171,7 @@ func_name:
             $$ = list_make1(makeString($1));
         }
     ;
+
 property_key_name:
     schema_name
     ;
@@ -1430,23 +1431,39 @@ static Node *make_typecast_expr(Node *expr, char *typecast, int location)
  */
 static Node *make_function_expr(List *func_name, List *exprs, int location)
 {
-    cypher_function *node;
+    FuncCall *fnode;
 
-    /* check for AGE functions that are mapped to another function */
+    /* AGE function names are unqualified. So, their list size = 1 */
     if (list_length(func_name) == 1)
     {
+        List *funcname;
+        char *name;
+
         /* get the name of the function */
-        char *name = ((Value*)linitial(func_name))->val.str;
+        name = ((Value*)linitial(func_name))->val.str;
 
-        /* currently we only map rand (cypher) -> random (PG) */
+        /*
+         * Check for openCypher functions that are directly mapped to PG
+         * functions. Currently, we only map rand() and pi().
+         */
         if (pg_strcasecmp(name, "rand") == 0)
-            func_name = list_make1(makeString("random"));
+            funcname = SystemFuncName("random");
+        else if (pg_strcasecmp(name, "pi") == 0)
+            funcname = SystemFuncName("pi");
+        else
+            /*
+             * We don't qualify AGE functions here. This is done in the
+             * transform layer and allows us to know which functions are ours.
+             */
+            funcname = func_name;
+
+        /* build the function call */
+        fnode = makeFuncCall(funcname, exprs, location);
     }
+    /* all other functions are passed as is */
+    else
+        fnode = makeFuncCall(func_name, exprs, location);
 
-    node = make_ag_node(cypher_function);
-    node->exprs = exprs;
-    node->funcname = func_name;
-    node->location = location;
-
-    return (Node *)node;
+    /* return the node */
+    return (Node *)fnode;
 }

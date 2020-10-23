@@ -26,6 +26,7 @@
 #include "optimizer/tlist.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
+#include "parser/parse_func.h"
 #include "parser/cypher_clause.h"
 #include "parser/parse_node.h"
 #include "parser/parse_oper.h"
@@ -41,99 +42,6 @@
 #include "parser/cypher_parse_node.h"
 #include "utils/ag_func.h"
 #include "utils/agtype.h"
-
-/* supported function definitions */
-#define FUNC_ENDNODE    {"endNode",    AGTYPEOID, AGTYPEOID, 0, AGTYPEOID, 1, 2, true, false}
-#define FUNC_HEAD       {"head",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_ID         {"id",         AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_STARTID    {"start_id",   AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_ENDID      {"end_id",     AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_LAST       {"last",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_LENGTH     {"length",     AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_PROPERTIES {"properties", AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_SIZE       {"size",       ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_STARTNODE  {"startNode",  AGTYPEOID, AGTYPEOID, 0, AGTYPEOID, 1, 2, true, false}
-#define FUNC_TOBOOLEAN  {"toBoolean",  ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_TOFLOAT    {"toFloat",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_TOINTEGER  {"toInteger",  ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_TYPE       {"type",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_EXISTS     {"exists",     AGTYPEOID, 0, 0, BOOLOID,   1, 1, false, false}
-#define FUNC_TOSTRING   {"toString",   ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_REVERSE    {"reverse",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_TOUPPER    {"toUpper",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_TOLOWER    {"toLower",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_LTRIM      {"lTrim",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_RTRIM      {"rTrim",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_BTRIM      {"trim",       ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_RSUBSTR    {"right",      ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false, false}
-#define FUNC_LSUBSTR    {"left",       ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false, false}
-#define FUNC_BSUBSTR    {"substring",  ANYOID,    ANYOID, ANYOID, AGTYPEOID, -1, 1, false, false}
-#define FUNC_SPLIT      {"split",      ANYOID,    ANYOID, 0, AGTYPEOID, 2, 1, false, false}
-#define FUNC_REPLACE    {"replace",    ANYOID,    ANYOID, 0, AGTYPEOID, 3, 1, false, false}
-#define FUNC_RSIN       {"sin",        ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_RCOS       {"cos",        ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_RTAN       {"tan",        ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_RCOT       {"cot",        ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_RASIN      {"asin",       ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_RACOS      {"acos",       ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_RATAN      {"atan",       ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_RATAN2     {"atan2",      ANYOID,    0, 0, AGTYPEOID, 2, 1, false, false}
-#define FUNC_PI         {"pi",         0,         0, 0, FLOAT8OID, 0, 0, false, true}
-#define FUNC_DEGREES    {"degrees",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_RADIANS    {"radians",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_ROUND      {"round",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_CEIL       {"ceil",       ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_FLOOR      {"floor",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_ABS        {"abs",        ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_SIGN       {"sign",       ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_RAND       {"random",     0,         0, 0, FLOAT8OID, 0, 0, false, true}
-#define FUNC_LOG        {"log",        ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_LOG10      {"log10",      ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_E          {"e",          0,         0, 0, AGTYPEOID, 0, 0, false, false}
-#define FUNC_EXP        {"exp",        ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_SQRT       {"sqrt",       ANYOID,    0, 0, AGTYPEOID, 1, 1, false, false}
-#define FUNC_TIMESTAMP  {"timestamp",  0,         0, 0, AGTYPEOID, 0, 0, false, false}
-
-/* supported functions */
-#define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
-                             FUNC_STARTID, FUNC_ENDID, FUNC_LAST, FUNC_LENGTH, \
-                             FUNC_PROPERTIES, FUNC_SIZE, FUNC_STARTNODE, \
-                             FUNC_TOINTEGER, FUNC_TOBOOLEAN, FUNC_TOFLOAT, \
-                             FUNC_EXISTS, FUNC_TOSTRING, FUNC_REVERSE, \
-                             FUNC_TOUPPER, FUNC_TOLOWER, FUNC_LTRIM, \
-                             FUNC_RTRIM, FUNC_BTRIM, FUNC_RSUBSTR, \
-                             FUNC_LSUBSTR, FUNC_BSUBSTR, FUNC_SPLIT, \
-                             FUNC_REPLACE, FUNC_RSIN, FUNC_RCOS, FUNC_RTAN, \
-                             FUNC_RCOT, FUNC_RASIN, FUNC_RACOS, FUNC_RATAN, \
-                             FUNC_RATAN2, FUNC_PI, FUNC_DEGREES, FUNC_RADIANS, \
-                             FUNC_ROUND, FUNC_CEIL, FUNC_FLOOR, FUNC_ABS, \
-                             FUNC_SIGN, FUNC_RAND, FUNC_LOG, FUNC_LOG10, \
-                             FUNC_E, FUNC_EXP, FUNC_SQRT, FUNC_TIMESTAMP}
-
-/* structure for supported function signatures */
-typedef struct function_signature
-{
-    /* the name from the parser */
-    char *parsed_name;
-    /* input types, currently only up to 3 are supported */
-    Oid input1_oid;
-    Oid input2_oid;
-    Oid input3_oid;
-    /* output type */
-    Oid result_oid;
-    /* number of expressions (arguments) passed by the parser */
-    int nexprs;
-    /*
-     * The number of actual arguments to the function. This can differ from the
-     * number of expressions passed if the function requires additional
-     * information to be passed, such as the graph name.
-     */
-    int nargs;
-    /* needs graph name passed */
-    bool needs_graph_name;
-    /* is the function listed in pg_catalog */
-    bool in_pg_catalog;
-} function_signature;
 
 static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
                                            Node *expr);
@@ -157,12 +65,10 @@ static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
                                            cypher_string_match *csm_node);
 static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
                                        cypher_typecast *ctypecast);
-static Node *transform_cypher_function(cypher_parsestate *cpstate,
-                                       cypher_function *cfunction);
 static Node *transform_CoalesceExpr(cypher_parsestate *cpstate,
                                     CoalesceExpr *cexpr);
 static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink);
-
+static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn);
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
                             ParseExprKind expr_kind)
 {
@@ -247,14 +153,12 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
         if (is_ag_node(expr, cypher_typecast))
             return transform_cypher_typecast(cpstate,
                                              (cypher_typecast *)expr);
-        if (is_ag_node(expr, cypher_function))
-            return transform_cypher_function(cpstate,
-                                             (cypher_function *)expr);
-
         ereport(ERROR,
                 (errmsg_internal("unrecognized ExtensibleNode: %s",
                                  ((ExtensibleNode *)expr)->extnodename)));
         return NULL;
+    case T_FuncCall:
+        return transform_FuncCall(cpstate, (FuncCall *)expr);
     case T_SubLink:
         return transform_SubLink(cpstate, (SubLink *)expr);
         break;
@@ -787,117 +691,98 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
 }
 
 /*
- * Function to create a function execute node
+ * Code borrowed from PG's transformFuncCall and updated for AGE
  */
-static Node *transform_cypher_function(cypher_parsestate *cpstate,
-                                       cypher_function *cfunction)
+static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
 {
-    FuncExpr *func_expr = NULL;
-    char *funcname = NULL;
-    List *exprs = NIL;
-    List *texprs = NIL;
-    ListCell *lc = NULL;
-    int nexprs;
-    Oid func_operator_oid = InvalidOid;
-    char *graph_name = cpstate->graph_name;
-    int i;
-    /* load supported functions */
-    function_signature supported_functions[] = SUPPORTED_FUNCTIONS;
-    function_signature *fs = NULL;
-    int nfunctions = sizeof(supported_functions)/sizeof(function_signature);
+    ParseState *pstate = &cpstate->pstate;
+    Node *last_srf = pstate->p_last_srf;
+    List *targs = NIL;
+    List *fname = NIL;
+    ListCell *args;
 
-    /* verify input parameter */
-    Assert (cpstate != NULL);
-    Assert (cfunction != NULL);
-    Assert (nfunctions >= 0);
+    /* Transform the list of arguments ... */
+    foreach(args, fn->args)
+        targs = lappend(targs,
+                        transform_cypher_expr_recurse(cpstate,
+                                                      (Node *)lfirst(args)));
 
-    /* get the function name and expressions */
-    funcname = ((Value*)linitial(cfunction->funcname))->val.str;
-    exprs = cfunction->exprs;
-    nexprs = list_length(exprs);
+    /*
+     * When WITHIN GROUP is used, we treat its ORDER BY expressions as
+     * additional arguments to the function, for purposes of function lookup
+     * and argument type coercion.  So, transform each such expression and add
+     * them to the targs list.  We don't explicitly mark where each argument
+     * came from, but ParseFuncOrColumn can tell what's what by reference to
+     * list_length(fn->agg_order).
+     */
 
-    /* iterate through SUPPORTED_FUNCTIONS */
-    for (i = 0; i < nfunctions; i++)
+    /* This part needs to be worked on. So, for now, we exit if it is set. */
+    Assert(fn->agg_within_group == false);
+    if (fn->agg_within_group)
     {
-        fs = &supported_functions[i];
-        /* we need to ignore case */
-        if (pg_strcasecmp(funcname, fs->parsed_name) == 0)
+        Assert(fn->agg_order != NIL);
+        foreach(args, fn->agg_order)
         {
-            /* is the function listed in pg_catalog */
-            if (fs->in_pg_catalog)
-                func_operator_oid = get_pg_func_oid(fs->parsed_name, fs->nargs,
-                                                    fs->input1_oid,
-                                                    fs->input2_oid,
-                                                    fs->input3_oid);
-            /* this is an AGE function - all are prefixed with age_ */
-            else
-            {
-                /* get the function name, length, and allocate a new string */
-                int pnlen = strlen(fs->parsed_name);
-                char *actual_name = palloc(pnlen + 5);
-                int i;
+            SortBy *arg = (SortBy *) lfirst(args);
 
-                /* copy in the prefix */
-                strncpy(actual_name, "age_", 4);
-
-                /*
-                 * All PG function names are in lower case. So, copy in the name
-                 * in lower case for the search.
-                 */
-                for(i = 0; i < pnlen; i++)
-                    actual_name[i + 4] = tolower(fs->parsed_name[i]);
-
-                /* terminate it with 0 */
-                actual_name[i + 4] = 0;
-
-                /* look for a matching function */
-                func_operator_oid = get_ag_func_oid(actual_name, fs->nargs,
-                                                    fs->input1_oid,
-                                                    fs->input2_oid,
-                                                    fs->input3_oid);
-            }
-            break;
+            targs = lappend(targs, transformExpr(pstate, arg->node,
+                                                 EXPR_KIND_ORDER_BY));
         }
     }
 
-    /* we should have something at this point */
-    Assert(fs != NULL);
-    /* if none was found, error out */
-    if (func_operator_oid == InvalidOid)
-        ereport(ERROR, (errmsg_internal("function \'%s\' not supported",
-                                        funcname)));
     /*
-     * verify the number of passed arguments -
-     * if -1 its variable but at least 1
-     * otherwise they must match.
+     * If the function name is not qualified, then it is one of ours. We need to
+     * construct its name, and qualify it, so that PG can find it.
      */
-    if (((fs->nexprs != -1) || (nexprs == 0)) &&
-        (fs->nexprs != nexprs))
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("invalid number of input parameters for %s()",
-                               funcname)));
-    /* does this function need the graph name passed in as the first arg? */
-    if (fs->needs_graph_name)
+    if (list_length(fn->funcname) == 1)
     {
-        Datum d = string_to_agtype(graph_name);
-        Const *c = makeConst(AGTYPEOID, -1, InvalidOid, -1, d, false, false);
+        /* get the name, size, and the ag name allocated */
+        char *name = ((Value*)linitial(fn->funcname))->val.str;
+        int pnlen = strlen(name);
+        char *ag_name = palloc(pnlen + 5);
+        int i;
 
-        texprs = lappend(texprs, c);
+        /* copy in the prefix - all AGE functions are prefixed with age_ */
+        strncpy(ag_name, "age_", 4);
+
+        /*
+         * All AGE function names are in lower case. So, copy in the name
+         * in lower case.
+         */
+        for(i = 0; i < pnlen; i++)
+            ag_name[i + 4] = tolower(name[i]);
+
+        /* terminate it with 0 */
+        ag_name[i + 4] = 0;
+
+        /* qualify the name with our schema name */
+        fname = list_make2(makeString("ag_catalog"), makeString(ag_name));
+
+        /*
+         * Currently 2 functions need the graph name passed in as the first
+         * argument - in addition to the other arguments: startNode and endNode.
+         * So, check for those 2 functions here and that the arg list is not
+         * empty. Then prepend the graph name if necessary.
+         */
+        if ((list_length(targs) != 0) &&
+            ((pg_strcasecmp("startNode", name) == 0 ||
+              pg_strcasecmp("endNode", name) == 0)))
+        {
+            char *graph_name = cpstate->graph_name;
+            Datum d = string_to_agtype(graph_name);
+            Const *c = makeConst(AGTYPEOID, -1, InvalidOid, -1, d, false, false);
+
+            targs = lcons(c, targs);
+        }
+
     }
-    /* transform expression arguments */
-    foreach(lc, exprs)
-    {
-        Node *expr = (Node *)lfirst(lc);
+    /* If it is not one of our functions, pass the name list through */
+    else
+        fname = fn->funcname;
 
-        expr = transform_cypher_expr_recurse(cpstate, expr);
-        texprs = lappend(texprs, expr);
-    }
-    /* make function node */
-    func_expr = makeFuncExpr(func_operator_oid, fs->result_oid, texprs,
-                             InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
-    func_expr->location = cfunction->location;
-
-    return (Node *)func_expr;
+    /* ... and hand off to ParseFuncOrColumn */
+    return ParseFuncOrColumn(pstate, fname, targs, last_srf, fn, false,
+                             fn->location);
 }
 
 /*

@@ -50,8 +50,7 @@ typedef enum ag_node_tag
     cypher_string_match_t,
     // typecast
     cypher_typecast_t,
-    // functions
-    cypher_function_t,
+    // integer constant
     cypher_integer_const_t,
     // sub patterns
     cypher_sub_pattern_t

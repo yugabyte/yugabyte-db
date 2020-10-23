@@ -274,16 +274,6 @@ typedef struct cypher_typecast
     int location;
 } cypher_typecast;
 
-/* grammar node for functions (scalar, etc.) */
-typedef struct cypher_function
-{
-    ExtensibleNode extensible;
-    /* we take an expr_list */
-    List *exprs;
-    List *funcname;
-    int location;
-} cypher_function;
-
 /* clauses */
 void out_cypher_return(StringInfo str, const ExtensibleNode *node);
 void out_cypher_with(StringInfo str, const ExtensibleNode *node);
@@ -309,9 +299,6 @@ void out_cypher_string_match(StringInfo str, const ExtensibleNode *node);
 
 /* typecast */
 void out_cypher_typecast(StringInfo str, const ExtensibleNode *node);
-
-/* function */
-void out_cypher_function(StringInfo str, const ExtensibleNode *node);
 
 /* integer constant */
 void out_cypher_integer_const(StringInfo str, const ExtensibleNode *node);
