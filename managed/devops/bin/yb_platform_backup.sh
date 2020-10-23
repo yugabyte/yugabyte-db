@@ -60,6 +60,7 @@ create_backup() {
     set_prometheus_data_dir
     snapshot_dir=$(curl -X POST http://localhost:9090/api/v1/admin/tsdb/snapshot |
       python -c "import sys, json; print(json.load(sys.stdin)['data']['name'])")
+    mkdir -p "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
     sudo cp -aR "$PROMETHEUS_DATA_DIR/snapshots/$snapshot_dir" "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
   fi
   echo "Creating platform backup package"
