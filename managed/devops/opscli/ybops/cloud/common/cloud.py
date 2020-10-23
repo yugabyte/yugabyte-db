@@ -296,7 +296,7 @@ class AbstractCloud(AbstractCommandParser):
             remote_shell.put_file(client_cert_path, os.path.join(self.YSQLSH_CERT_DIR,
                                                                  self.CLIENT_CERT_NAME))
             remote_shell.put_file(client_key_path, os.path.join(self.YSQLSH_CERT_DIR,
-                                                                self.CLIENT_KEY_NAMEE))
+                                                                self.CLIENT_KEY_NAME))
             remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
         try:
