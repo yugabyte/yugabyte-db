@@ -138,10 +138,10 @@ boost::optional<YBPgErrorCode> PsqlErrorCode(const Status& status) {
 }
 
 // Get a common Postgres error code from the status and all errors, and append it to a previous
-// result.
+// Status.
 // If any of those have different conflicting error codes, previous result is returned as-is.
-Status AppendPsqlErrorCode(const Status& status,
-                           const client::CollectedErrors& errors) {
+CHECKED_STATUS AppendPsqlErrorCode(const Status& status,
+                                   const client::CollectedErrors& errors) {
   boost::optional<YBPgErrorCode> common_psql_error =  boost::make_optional(false, YBPgErrorCode());
   for(const auto& error : errors) {
     const auto psql_error = PsqlErrorCode(error->status());
@@ -155,9 +155,42 @@ Status AppendPsqlErrorCode(const Status& status,
   return common_psql_error ? status.CloneAndAddErrorCode(PgsqlError(*common_psql_error)) : status;
 }
 
+// Get a common transaction error code for all the errors and append it to the previous Status.
+CHECKED_STATUS AppendTxnErrorCode(const Status& status, const client::CollectedErrors& errors) {
+  TransactionErrorCode common_txn_error = TransactionErrorCode::kNone;
+  for (const auto& error : errors) {
+    const TransactionErrorCode txn_error = TransactionError(error->status()).value();
+    if (txn_error == TransactionErrorCode::kNone ||
+        txn_error == common_txn_error) {
+      continue;
+    }
+    if (common_txn_error == TransactionErrorCode::kNone) {
+      common_txn_error = txn_error;
+      continue;
+    }
+    // If we receive a list of errors, with one as kConflict and others as kAborted, we retain the
+    // error as kConflict, since in case of a batched request the first operation would receive the
+    // kConflict and all the others would receive the kAborted error.
+    if ((txn_error == TransactionErrorCode::kConflict &&
+         common_txn_error == TransactionErrorCode::kAborted) ||
+        (txn_error == TransactionErrorCode::kAborted &&
+         common_txn_error == TransactionErrorCode::kConflict)) {
+      common_txn_error = TransactionErrorCode::kConflict;
+      continue;
+    }
+
+    // In all the other cases, reset the common_txn_error to kNone.
+    common_txn_error = TransactionErrorCode::kNone;
+    break;
+  }
+
+  return (common_txn_error != TransactionErrorCode::kNone) ?
+    status.CloneAndAddErrorCode(TransactionError(common_txn_error)) : status;
+}
+
 // Given a set of errors from operations, this function attempts to combine them into one status
 // that is later passed to PostgreSQL and further converted into a more specific error code.
-Status CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
+CHECKED_STATUS CombineErrorsToStatus(const client::CollectedErrors& errors, const Status& status) {
   if (errors.empty())
     return status;
 
@@ -183,7 +216,7 @@ Status CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
     ? STATUS(InternalError, GetStatusStringSet(errors))
     : status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
 
-  return AppendPsqlErrorCode(result, errors);
+  return AppendTxnErrorCode(AppendPsqlErrorCode(result, errors), errors);
 }
 
 docdb::PrimitiveValue NullValue(ColumnSchema::SortingType sorting) {

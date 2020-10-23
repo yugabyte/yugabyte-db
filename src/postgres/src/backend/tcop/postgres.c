@@ -3986,7 +3986,7 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 
 	bool is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
-	bool is_conflict_error = YBCIsTxnConflicError(edata->yb_txn_errcode);
+	bool is_conflict_error = YBCIsTxnConflictError(edata->yb_txn_errcode);
 	if (!is_read_restart_error && !is_conflict_error)
 		return false;
 
