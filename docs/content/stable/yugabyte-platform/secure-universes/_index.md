@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to secure YugabyteDB universe data.
 image: /images/section_icons/manage/backup.png
 headcontent: Use Yugabyte Platform to secure YugabyteDB universes and data.
 menu:
-  latest:
+  stable:
     parent: yugabyte-platform
     identifier: secure-universes
 weight: 645

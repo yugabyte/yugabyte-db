@@ -7,7 +7,7 @@ aliases:
  menu:
 - /stable/yugabyte-platform/secure-universes/create-kms-config
 menu:
-  latest:
+  stable:
     parent: secure-universes
     identifier: create-kms-config-1-aws-kms
     weight: 20
