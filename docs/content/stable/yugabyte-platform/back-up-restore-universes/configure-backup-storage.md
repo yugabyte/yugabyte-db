@@ -3,7 +3,7 @@ headerTitle: Configure backup storage
 linkTitle: Configure backup storage
 description: Configure backup storage
 aliases:
- - /stable/manage/enterprise-edition/backup-restore
+  - /stable/manage/enterprise-edition/backup-restore
  - /stable/manage/enterprise-edition/back-up-restore-data
  - /stable/yugabyte-platform/manage/backup-restore-data
 menu:
