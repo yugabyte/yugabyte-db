@@ -8,7 +8,7 @@
       "pgTAP List <pgtap-users@pgfoundry.org>"
    ],
    "license": {
-      "PostgreSQL": "http://www.postgresql.org/about/licence"
+      "PostgreSQL": "https://www.postgresql.org/about/licence"
    },
    "prereqs": {
       "runtime": {
@@ -39,7 +39,7 @@
      }
    },
    "resources": {
-      "homepage": "http://pgtap.org/",
+      "homepage": "https://pgtap.org/",
       "bugtracker": {
          "web": "https://github.com/theory/pgtap/issues"
       },
@@ -52,7 +52,7 @@
    "generated_by": "David E. Wheeler",
    "meta-spec": {
       "version": "1.0.0",
-      "url": "http://pgxn.org/meta/spec.txt"
+      "url": "https://pgxn.org/meta/spec.txt"
    },
    "tags": [
       "testing",

@@ -3,7 +3,7 @@ pgTAP 1.1.0
 
 pgTAP is a unit testing framework for PostgreSQL written in PL/pgSQL and
 PL/SQL. It includes a comprehensive collection of
-[TAP](http://testanything.org)-emitting assertion functions, as well as the
+[TAP](https://testanything.org)-emitting assertion functions, as well as the
 ability to integrate with other TAP-emitting test frameworks. It can also be
 used in the xUnit testing style.
 
@@ -125,7 +125,7 @@ Testing pgTAP with pgTAP
 In addition to the PostgreSQL-standard `installcheck` target, the `test`
 target uses the `pg_prove` Perl program to do its testing, which will be
 installed with the
-[TAP::Parser::SourceHandler::pgTAP](http://search.cpan.org/dist/TAP-Parser-SourceHandler-pgTAP)
+[TAP::Parser::SourceHandler::pgTAP](https://metacpan.org/module/TAP::Parser::SourceHandler::pgTAP)
 CPAN distribution. You'll need to make sure that you use a database with
 PL/pgSQL loaded, or else the tests won't work. `pg_prove` supports a number of
 environment variables that you might need to use, including all the usual
@@ -239,7 +239,7 @@ Using `pg_prove`
 
 Or save yourself some effort -- and run a batch of tests scripts or all of
 your xUnit test functions at once -- by using `pg_prove`, available in the
-[TAP::Parser::SourceHandler::pgTAP](http://search.cpan.org/dist/TAP-Parser-SourceHandler-pgTAP)
+[TAP::Parser::SourceHandler::pgTAP](https://metacpan.org/module/TAP::Parser::SourceHandler::pgTAP)
 CPAN distribution. If you're not relying on `installcheck`, your test scripts
 can be a lot less verbose; you don't need to set all the extra variables,
 because `pg_prove` takes care of that for you:
@@ -772,7 +772,7 @@ an unnecessary PITA. Each of the query-executing functions in this section
 thus support an alternative to make your tests more SQLish: using prepared
 statements.
 
-[Prepared statements](http://www.postgresql.org/docs/current/static/sql-prepare.html)
+[Prepared statements](https://www.postgresql.org/docs/current/static/sql-prepare.html)
 allow you to just write SQL and simply
 pass the prepared statement names to test functions. For example, the above
 example can be rewritten as:
@@ -847,7 +847,7 @@ error-prone as you think they should be.
 : An SQL statement or the name of a prepared statement, passed as a string.
 
 `:errcode`
-: A [PostgreSQL error code](http://www.postgresql.org/docs/current/static/errcodes-appendix.html
+: A [PostgreSQL error code](https://www.postgresql.org/docs/current/static/errcodes-appendix.html
 "Appendix A. PostgreSQL Error Codes")
 
 `:errmsg`
@@ -869,9 +869,9 @@ five-character string (if it happens to consist only of numbers and you pass
 it as an integer, it will still work). If this value is not `NULL`,
 `throws_ok()` will check the thrown exception to ensure that it is the
 expected exception. For a complete list of error codes, see [Appendix
-A.](http://www.postgresql.org/docs/current/static/errcodes-appendix.html
+A.](https://www.postgresql.org/docs/current/static/errcodes-appendix.html
 "Appendix A. PostgreSQL Error Codes") in the [PostgreSQL
-documentation](http://www.postgresql.org/docs/current/static/).
+documentation](https://www.postgresql.org/docs/current/static/).
 
 The third argument is an error message. This will be most useful for functions
 you've written that raise exceptions, so that you can test the exception
@@ -1640,7 +1640,7 @@ test fails.
 : An SQL statement or the name of a prepared statement, passed as a string.
 
 `:record`
-: A row or value, also known as a [composite type](http://www.postgresql.org/docs/current/static/rowtypes.html).
+: A row or value, also known as a [composite type](https://www.postgresql.org/docs/current/static/rowtypes.html).
 
 `:description`
 : A short description of the test.
@@ -5591,7 +5591,7 @@ But then you check with `has_function()` first, right?
 
 Tests the volatility of a function. Supported volatilities are "volatile",
 "stable", and "immutable". Consult the [`CREATE FUNCTION`
-documentation](http://www.postgresql.org/docs/current/static/sql-createfunction.html)
+documentation](https://www.postgresql.org/docs/current/static/sql-createfunction.html)
 for details. The function name is required. If the `:schema` argument is
 omitted, then the function must be visible in the search path. If the
 `:args[]` argument is passed, then the function with that argument signature
@@ -5674,7 +5674,7 @@ other database objects.
 : A short description of the test.
 
 Tests that the specified procedural language is trusted. See the [CREATE
-LANGUAGE](http://www.postgresql.org/docs/current/static/sql-createlanguage.html
+LANGUAGE](https://www.postgresql.org/docs/current/static/sql-createlanguage.html
 "CREATE LANGUAGE") documentation for details on trusted and untrusted
 procedural languages. If the `:description` argument is not passed, a suitably
 useful default will be created.
@@ -5842,7 +5842,7 @@ varying", and not "VARCHAR".
 
 The The supported contexts are "implicit", "assignment", and "explicit". You
 can also just pass in "i", "a", or "e". Consult the PostgreSQL [`CREATE
-CAST`](http://www.postgresql.org/docs/current/static/sql-createcast.html)
+CAST`](https://www.postgresql.org/docs/current/static/sql-createcast.html)
 documentation for the differences between these contexts (hint: they
 correspond to the default context, `AS IMPLICIT`, and `AS ASSIGNMENT`). If you
 don't supply a test description, pgTAP will create a reasonable one for you.
@@ -5961,7 +5961,7 @@ members, don't you? Of course you do.
 
 Checks whether a rule on the specified relation is an `INSTEAD` rule. See the
 [`CREATE RULE`
-Documentation](http://www.postgresql.org/docs/current/static/sql-createrule.html)
+Documentation](https://www.postgresql.org/docs/current/static/sql-createrule.html)
 for details. If the `:schema` argument is omitted, the relation must be
 visible in the search path. If the `:description` argument is omitted, an
 appropriate description will be created. An example:
@@ -8327,7 +8327,7 @@ comments, suggestions, and bug reports are welcomed there.
 Author
 ------
 
-[David E. Wheeler](http://justatheory.com/)
+[David E. Wheeler](https://justatheory.com/)
 
 Credits
 -------

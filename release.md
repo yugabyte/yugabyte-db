@@ -90,7 +90,7 @@ Here are the steps to take to make a release of pgTAP:
          git ci -m 'Timestamp v0.98.0.'
          git tag -sm 'Tag v0.98.0.' v0.98.0
 
-*   Package the source and submit to [PGXN](http://manager.pgxn.org/).
+*   Package the source and submit to [PGXN](https://manager.pgxn.org/).
 
         gem install pgxn_utils
         git archive --format zip --prefix=pgtap-1.0.0/ \

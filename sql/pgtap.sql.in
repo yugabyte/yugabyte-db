@@ -3,7 +3,7 @@
 --
 -- The home page for the pgTAP project is:
 --
--- http://pgtap.org/
+-- https://pgtap.org/
 
 CREATE OR REPLACE FUNCTION pg_version()
 RETURNS text AS 'SELECT current_setting(''server_version'')'
@@ -1852,7 +1852,7 @@ RETURNS text AS $$
     ), $2);
 $$ LANGUAGE SQL immutable;
 
--- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
+-- Borrowed from newsysviews: sFoundry/newsysviews/
 CREATE OR REPLACE FUNCTION _pg_sv_column_array( OID, SMALLINT[] )
 RETURNS NAME[] AS $$
     SELECT ARRAY(
@@ -1864,7 +1864,7 @@ RETURNS NAME[] AS $$
     )
 $$ LANGUAGE SQL stable;
 
--- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
+-- Borrowed from newsysviews: https://www.postgresql.org/ftp/projects/pgFoundry/newsysviews/
 CREATE OR REPLACE FUNCTION _pg_sv_table_accessible( OID, OID )
 RETURNS BOOLEAN AS $$
     SELECT CASE WHEN has_schema_privilege($1, 'USAGE') THEN (
@@ -1879,7 +1879,7 @@ RETURNS BOOLEAN AS $$
     END;
 $$ LANGUAGE SQL immutable strict;
 
--- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
+-- Borrowed from newsysviews: https://www.postgresql.org/ftp/projects/pgFoundry/newsysviews/
 CREATE OR REPLACE VIEW pg_all_foreign_keys
 AS
   SELECT n1.nspname                                   AS fk_schema_name,

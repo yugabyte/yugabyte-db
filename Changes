@@ -18,6 +18,9 @@ Revision history for pgTAP
   identifier. Thanks to Matt DeLuco for the report (#216)!
 * Fixed the `col_not_null()` drop statements in the uninstall script. Thanks
   to Kyle L. Jensen for the report (#252).
+* Removed straggler references to Postgres 9.0 and earlier, including conditional
+  tests.
+* Updated all relevant URLs to use https instead of http.
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------
@@ -220,7 +223,7 @@ Revision history for pgTAP
     + `has_foreign_table(:schema, :table)`
     + `hasnt_foreign_table(:schema, :table)`
 * Fixed the format of SKIP output to match the
-  [TAP spec](http://podwiki.hexten.net/TAP/TAP.html#Skippingtests).
+  [TAP spec](https://testanything.org/tap-specification.html#skipping-tests).
 * Fixed incorrect handling of leading space when comparing diagnostic output
   in `check_test()`.
 * Fixed an installation issue on PostgreSQL 9.3.2.
@@ -373,7 +376,7 @@ Revision history for pgTAP
 * Removed `pg_prove` and `pg_tapgen` from the distribution. They must now be
   installed separately from CPAN. If it's not installed, the intaller will
   issue a warning.
-* Added `META.json` and distributed on [PGXN](http://pgxn.org/).
+* Added `META.json` and distributed on [PGXN](https://pgxn.org/).
 * Rearranged the source directory layout to more closely match the [preferred
   PGXN layout](http://manager.pgxn.org/howto#new-order).
 
@@ -814,4 +817,4 @@ Revision history for pgTAP
 0.01  2008-06-07T05:24:27Z
 --------------------------
 * Initial public release. Announcement at
-  http://justatheory.com/computers/databases/postgresql/introducing_pgtap.html
+  https://justatheory.com/2008/06/introducing-pgtap/

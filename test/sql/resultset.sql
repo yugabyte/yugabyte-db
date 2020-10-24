@@ -20,7 +20,7 @@ CREATE TABLE someat (
 
 RESET client_min_messages;
 
--- Top 100 boy an 100 girl names in 2005. http://www.ssa.gov/OACT/babynames/
+-- Top 100 boy an 100 girl names in 2005. https://www.ssa.gov/OACT/babynames/
 INSERT INTO names (name) VALUES ('Jacob');
 INSERT INTO names (name) VALUES ('Emily');
 INSERT INTO names (name) VALUES ('Michael');
