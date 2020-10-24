@@ -62,7 +62,7 @@ If you encounter an error such as:
     "Makefile", line 8: Need an operator
 
 You need to use GNU make, which may well be installed on your system as
-'gmake':
+`gmake`:
 
     gmake
     gmake install
@@ -74,7 +74,7 @@ If you encounter an error such as:
 
 Or:
 
-    Makefile:52: *** pgTAP requires PostgreSQL 8.1 or later. This is .  Stop.
+    Makefile:52: *** pgTAP requires PostgreSQL 9.1 or later. This is .  Stop.
 
 Be sure that you have `pg_config` installed and in your path. If you used a
 package management system such as RPM to install PostgreSQL, be sure that the
@@ -83,9 +83,9 @@ to find it:
 
     env PG_CONFIG=/path/to/pg_config make && make install && make installcheck
 
-And finally, if all that fails (and if you're on PostgreSQL 8.1, it likely
-will), copy the entire distribution directory to the `contrib/` subdirectory
-of the PostgreSQL source tree and try it there without `pg_config`:
+And finally, if all that fails, copy the entire distribution directory to the
+`contrib/` subdirectory of the PostgreSQL source tree and try it there without
+`pg_config`:
 
     env NO_PGXS=1 make && make install && make installcheck
 
@@ -97,6 +97,27 @@ You need to run the test suite using a super user, such as the default
 "postgres" super user:
 
     make installcheck PGUSER=postgres
+
+Once pgTAP is installed, you can add it to a database by connecting as a super
+user and running:
+
+    CREATE EXTENSION pgtap;
+
+If you've upgraded your cluster to PostgreSQL 9.1 and already had pgTAP
+installed, you can upgrade it to a properly packaged extension with:
+
+    CREATE EXTENSION pgtap FROM unpackaged;
+
+If you want to install pgTAP and all of its supporting objects into a
+specific schema, use the `PGOPTIONS` environment variable to specify the
+schema, like so:
+
+    PGOPTIONS=--search_path=tap psql -d mydb -f pgTAP.sql
+
+If you want to install pgTAP and all of its supporting objects into a specific
+schema, use the `SCHEMA` clause to specify the schema, like so:
+
+    CREATE EXTENSION pgtap SCHEMA tap;
 
 Testing pgTAP with pgTAP
 ------------------------
@@ -500,7 +521,7 @@ Will produce something like this:
 So you can figure out what went wrong without re-running the test.
 
 You are encouraged to use `is()` and `isnt()` over `ok()` where possible. You
-can even use them to compare records in PostgreSQL 8.4 and later:
+can even use them to compare records:
 
     SELECT is( users.*, ROW(1, 'theory', true)::users )
       FROM users
@@ -1273,25 +1294,13 @@ will be represented as "NULL":
     #         have: (1,Anna)
     #         want: NULL
 
-On PostgreSQL 8.4 or higher, if the number of columns varies between result
-sets, or if results are of different data types, you'll get diagnostics like
-so:
+If the number of columns varies between result sets, or if results are of
+different data types, you'll get diagnostics like so:
 
     # Failed test 148
     #     Number of columns or their types differ between the queries:
     #         have: (1)
     #         want: (foo,1)
-
-On PostgreSQL 8.3 and down, the rows are cast to text for comparison, rather
-than compared as `record` objects. The downside to this necessity is that the
-test cannot detect incompatibilities in column numbers or types, or
-differences in columns that convert to the same text representation. For
-example, a `NULL` column will be equivalent to an empty string. As a result,
-pgTAP will not show the `have` and `want` values if they are the same, just
-the error message, like so:
-
-    # Failed test 149
-    #     Number of columns or their types differ between the queries
 
 ### `results_ne()` ###
 
@@ -1330,9 +1339,6 @@ want is `results_eq()` or `set_ne()`. But this function is included for
 completeness and is kind of cute, so enjoy. If a `results_ne()` test fails,
 however, there will be no diagnostics, because, well, the results will be the
 same!
-
-Note that the caveats for `results_ne()` on PostgreSQL 8.3 and down apply to
-`results_ne()` as well.
 
 ### `set_eq()` ###
 
@@ -2501,10 +2507,9 @@ missing domains, like so:
 : A short description of the test.
 
 Tests that all of the enums in the named schema are the only enums in that
-schema. Enums are supported in PostgreSQL 8.3 and up. If the `:schema`
-argument is omitted, the enums must be visible in the search path, excluding
-`pg_catalog` and `information_schema`. If the description is omitted, a
-generally useful default description will be generated. Example:
+schema. If the `:schema` argument is omitted, the enums must be visible in the
+search path, excluding `pg_catalog` and `information_schema`. If the description
+is omitted, a generally useful default description will be generated. Example:
 
     SELECT enums_are('myschema', ARRAY[ 'timezone', 'state' ]);
 
@@ -3413,11 +3418,11 @@ domain does *not* exist.
 `:description`
 : A short description of the test.
 
-This function tests whether or not a enum exists in the database. Enums are
-supported in PostgreSQL 8.3 or higher. The first argument is a schema name,
-the second is the an enum name, and the third is the test description. If you
-omit the schema, the enum must be visible in the search path. If you omit the
-test description, it will be set to "Enum `:enum` should exist". Example:
+This function tests whether or not a enum exists in the database. The first
+argument is a schema name, the second is the an enum name, and the third is the
+test description. If you omit the schema, the enum must be visible in the search
+path. If you omit the test description, it will be set to "Enum `:enum` should
+exist". Example:
 
     SELECT has_enum( 'myschema', 'someenum' );
 
@@ -4425,9 +4430,7 @@ that this test will fail if the table or column in question does not exist.
 The default argument must have an unambiguous type in order for the call to
 succeed. If you see an error such as 'ERROR: could not determine polymorphic
 type because input has type "unknown"', it's because you forgot to cast the
-expected value, probably a `NULL` (which, by the way, you can only properly
-test for in PostgreSQL 8.3 and later), to its proper type. IOW, this will
-fail:
+expected value, probably a `NULL`, to its proper type. IOW, this will fail:
 
     SELECT col_default_is( 'tab', age, NULL );
 
@@ -5707,10 +5710,9 @@ far.
 `:description`
 : A short description of the test.
 
-This function tests that an enum consists of an expected list of labels. Enums
-are supported in PostgreSQL 8.3 or higher. The first argument is a schema
-name, the second an enum name, the third an array of enum labels, and the
-fourth a description. Example:
+This function tests that an enum consists of an expected list of labels.The
+first argument is a schema name, the second an enum name, the third an array of
+enum labels, and the fourth a description. Example:
 
     SELECT enum_has_labels( 'myschema', 'someenum', ARRAY['foo', 'bar'] );
 
@@ -6552,9 +6554,8 @@ diagnostics will look something like:
 `:description`
 : A short description of the test.
 
-Tests the ownership of a procedural language. If the `:description` argument
-is omitted, an appropriate description will be created. Works on PostgreSQL
-8.3 and higher. Examples:
+Tests the ownership of a procedural language. If the `:description` argument is
+omitted, an appropriate description will be created. Examples:
 
     SELECT language_owner_is( 'plpgsql', 'larry', 'Larry should own plpgsql' );
     SELECT language_owner_is( 'plperl', current_user );
@@ -6887,9 +6888,6 @@ table privileges are:
 * TRUNCATE
 * UPDATE
 
-Note that the privilege RULE is not available after PostgreSQL 8.1, and that
-TRIGGER was added in 8.4.
-
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
 
@@ -7033,9 +7031,6 @@ The available column privileges are:
 * SELECT
 * UPDATE
 
-Note that column privileges were added in PostgreSQL 8.4, so this function
-will likely throw an exception on earlier versions.
-
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
 
@@ -7108,9 +7103,6 @@ available column privileges are:
 * REFERENCES
 * SELECT
 * UPDATE
-
-Note that column privileges were added in PostgreSQL 8.4, so this function
-will likely throw an exception on earlier versions.
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
@@ -7308,9 +7300,6 @@ available function privileges are:
 
 * USAGE
 
-Note that foreign data wrapper privileges were added in PostgreSQL 8.4, so
-this function will likely throw an exception on earlier versions.
-
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
 
@@ -7370,9 +7359,6 @@ Tests the privileges granted to a role to access a server. The available
 function privileges are:
 
 * USAGE
-
-Note that server privileges were added in PostgreSQL 8.4, so this function
-will likely throw an exception on earlier versions.
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
@@ -7597,10 +7583,9 @@ Which would produce:
     # but yours is set to en_US.ISO8859-1.
     # As a result, some tests may fail. YMMV.
 
-You can pass data of any type to `diag()` on PostgreSQL 8.3 and higher and it
-will all be converted to text for the diagnostics. On PostgreSQL 8.4 and
-higher, you can pass any number of arguments (as long as they are all the same
-data type) and they will be concatenated together.
+You can pass data of any type to `diag()` and it will all be converted to text
+for the diagnostics. You can als pass any number of arguments (as long as they
+are all the same data type) and they will be concatenated together.
 
 Conditional Tests
 -----------------
@@ -7775,9 +7760,9 @@ the stringified version number displayed in the first part of the core
 `version()` function and stored in the "server_version" setting:
 
     try=% select current_setting( 'server_version'), pg_version();
-     current_setting | pg_version
+     current_setting | pg_version 
     -----------------+------------
-     8.3.4           | 8.3.4
+     12.2            | 12.2
     (1 row)
 
 ### `pg_version_num()` ###
@@ -7838,14 +7823,6 @@ when used in combination with `skip()`:
            skip('Collation-specific test', 4)
       END;
 
-On PostgreSQL 8.4 and higher, it can take any number of arguments. Lower than
-8.4 requires the explicit use of an array:
-
-    SELECT collect_tap(ARRAY[
-        ok(true, 'This should pass'),
-        ok(false, 'This should fail)
-    ]);
-
 ### `display_oper()` ###
 
     SELECT display_oper( :opername, :operoid );
@@ -7883,11 +7860,6 @@ executing the comparison, but might be generally useful.
      pg_typeof | pg_typeof
     -----------+-----------
      integer   | numeric
-
-*Note:* pgTAP does not build `pg_typeof()` on PostgreSQL 8.4 or higher,
-because it's in core in 8.4. You only need to worry about this if you depend
-on the function being in particular schema. It will always be in `pg_catalog`
-in 8.4 and higher.
 
 ### `findfuncs()` ###
 

@@ -96,8 +96,7 @@ SELECT * FROM check_test(
 \echo ok 26 - todo fail
 \echo ok 27 - todo fail
 SELECT * FROM todo('just because', 2 );
--- We have to use ok() instead of is() to get around lack of cast to text in 8.0.
-SELECT ok(
+SELECT is(
     ARRAY(
         SELECT fail('This is a todo test 1') AS stuff
         UNION
@@ -107,8 +106,8 @@ SELECT ok(
         UNION
         SELECT fail('This is a todo test 3')
         ORDER BY stuff
-    )
-    = ARRAY[
+    ),
+    ARRAY[
         'not ok 25 - This is a todo test 1 # TODO just because
 # Failed (TODO) test 25: "This is a todo test 1"',
         'not ok 26 - This is a todo test 2 # TODO inside
@@ -125,8 +124,7 @@ SELECT ok(
 \echo ok 30 - todo fail
 \echo ok 31 - todo fail
 SELECT * FROM todo_start('some todos');
--- We have to use ok() instead of is() to get around lack of cast to text in 8.0.
-SELECT ok(
+SELECT is(
     ARRAY(
         SELECT fail('This is a todo test 1') AS stuff
         UNION
@@ -142,8 +140,8 @@ SELECT ok(
         UNION
         SELECT in_todo()::text
         ORDER BY stuff
-    )
-    = ARRAY[
+    ),
+    ARRAY[
         'false',
         'not ok 29 - This is a todo test 1 # TODO some todos
 # Failed (TODO) test 29: "This is a todo test 1"',

@@ -10,22 +10,20 @@ Here are the steps to take to make a release of pgTAP:
     [pull requests](https://github.com/theory/pgtap/pulls).
 
 *   Test on all supported PostgreSQL versions, starting with the latest version
-    (10) and moving backward in order (9.6, 9.5, 9.4, etc.).
+    (12) and moving backward in order (9.6, 9.5, 9.4, etc.).
     [pgenv](https://github.com/theory/pgenv/) is a handy tool for installing and
     switching between versions. For each version, ensure that:
 
     +   Patches apply cleanly (try to eliminate Hunk warnings for patches to
         `pgtap.sql` itself, usually by fixing line numbers)
 
-    +   All files are installed (on 8.3 and earlier that includes pgtap.so).
+    +   All files are installed.
 
-    +   `ALTER EXTENSION pgtap UPDATE;` works on 9.1 and higher.
+    +   `ALTER EXTENSION pgtap UPDATE;` works.
 
-    +   `CREATE EXTENSION pgtap;` works on 9.1 and higher.
+    +   `CREATE EXTENSION pgtap;` works.
 
-    +   All tests pass in `make installcheck` (on 8.1, move the pgtap source
-        dir into the postgres source `contrib` directory and run
-        `make NO_PGXS=1 installcheck`)
+    +   All tests pass in `make installcheck`.
 
 *   If you've made any significant changes while testing versions backward, test
     them again in forward order (9.1, 9.2, 9.3, etc.) to make sure the changes
@@ -41,11 +39,11 @@ Here are the steps to take to make a release of pgTAP:
     bullet mentioning the upgrade.
 
 *   Run `make html` (you'll need
-    [MultiMarkdown](http://fletcherpenney.net/multimarkdown/) (Macports: port
-    install multimarkdown) in your path and the
+    [MultiMarkdown](https://fletcherpenney.net/multimarkdown/) (Homebrew:
+    `brew install multimarkdown`) in your path and the
     [Pod::Simple::XHTML](https://metacpan.org/module/Pod::Simple::XHTML)
-    (Macports: port install p5-pod-simple) Perl module installed), then
-    checkout the `gh-pages` branch and make these changes:
+    (Homebrew: `brew install cpanm && cpanm Pod::Simple::XHTML`) Perl module
+    installed), then checkout the `gh-pages` branch and make these changes:
 
     +   `cp .documentation.html.template documentation.html`. Edit
         documentation.html, the main div should look like this:

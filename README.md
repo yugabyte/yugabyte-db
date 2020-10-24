@@ -1,13 +1,13 @@
 pgTAP 1.1.0
 ============
 
-[pgTAP](http://pgtap.org) is a unit testing framework for PostgreSQL written
+[pgTAP](https://pgtap.org) is a unit testing framework for PostgreSQL written
 in PL/pgSQL and PL/SQL. It includes a comprehensive collection of
-[TAP](http://testanything.org)-emitting assertion functions, as well as the
+[TAP](https://testanything.org)-emitting assertion functions, as well as the
 ability to integrate with other TAP-emitting test frameworks. It can also be
 used in the xUnit testing style. For detailed documentation, see the
 documentation in `doc/pgtap.mmd` or
-[online](http://pgtap.org/documentation.html "Complete pgTAP Documentation").
+[online](https://pgtap.org/documentation.html "Complete pgTAP Documentation").
 
 [![PGXN version](https://badge.fury.io/pg/pgtap.svg)](https://badge.fury.io/pg/pgtap)
 [![Build Status](https://travis-ci.org/theory/pgtap.png)](https://travis-ci.org/theory/pgtap)
@@ -35,7 +35,7 @@ If you encounter an error such as:
 
 Or:
 
-    Makefile:52: *** pgTAP requires PostgreSQL 8.1 or later. This is .  Stop.
+    Makefile:52: *** pgTAP requires PostgreSQL 9.1 or later. This is .  Stop.
 
 Be sure that you have `pg_config` installed and in your path. If you used a
 package management system such as RPM to install PostgreSQL, be sure that the
@@ -44,9 +44,9 @@ to find it:
 
     env PG_CONFIG=/path/to/pg_config make && make install && make installcheck
 
-And finally, if all that fails (and if you're on PostgreSQL 8.1, it likely
-will), copy the entire distribution directory to the `contrib/` subdirectory
-of the PostgreSQL source tree and try it there without `pg_config`:
+And finally, if all that fails, copy the entire distribution directory to the
+`contrib/` subdirectory of the PostgreSQL source tree and try it there without
+`pg_config`:
 
     env NO_PGXS=1 make && make install && make installcheck
 
@@ -59,9 +59,8 @@ You need to run the test suite using a super user, such as the default
 
     make installcheck PGUSER=postgres
 
-Once pgTAP is installed, you can add it to a database. If you're running
-PostgreSQL 9.1.0 or greater, it's a simple as connecting to a database as a
-super user and running:
+Once pgTAP is installed, you can add it to a database by connecting as a super
+user and running:
 
     CREATE EXTENSION pgtap;
 
@@ -70,22 +69,21 @@ installed, you can upgrade it to a properly packaged extension with:
 
     CREATE EXTENSION pgtap FROM unpackaged;
 
-For versions of PostgreSQL less than 9.1.0, you'll need to run the
-installation script:
-
-    psql -d mydb -f /path/to/pgsql/share/contrib/pgtap.sql
-
 If you want to install pgTAP and all of its supporting objects into a
 specific schema, use the `PGOPTIONS` environment variable to specify the
 schema, like so:
 
     PGOPTIONS=--search_path=tap psql -d mydb -f pgTAP.sql
 
+If you want to install pgTAP and all of its supporting objects into a specific
+schema, use the `SCHEMA` clause to specify the schema, like so:
+
+    CREATE EXTENSION pgtap SCHEMA tap;
+
 Dependencies
 ------------
 
-pgTAP requires PostgreSQL 8.1 or higher, with 8.4 or higher recommended for
-full use of its API. It also requires PL/pgSQL.
+pgTAP requires PostgreSQL 9.1 or higher.
 
 Copyright and License
 ---------------------

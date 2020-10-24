@@ -1,11 +1,11 @@
-Summary:	Unit testing suite for PostgreSQL
-Name:		pgtap
-Version:	1.1.0
-Release:	1%{?dist}
-Group:		Applications/Databases
-License:	PostgreSQL
-URL:		http://pgtap.org/
-Source0:	http://master.pgxn.org/dist/pgtap/%{version}/pgtap-%{version}.zip
+Summary:	  Unit testing suite for PostgreSQL
+Name:		    pgtap
+Version:	  1.1.0
+Release:	  2%{?dist}
+Group:		  Applications/Databases
+License:	  PostgreSQL
+URL:		    https://pgtap.org/
+Source0:	  https://master.pgxn.org/dist/pgtap/%{version}/pgtap-%{version}.zip
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root
 Provides:   %{name}
 Provides:   %{name}-core
@@ -22,10 +22,6 @@ Requires:       postgresql-server = %{postgresver}, perl-Test-Harness >= 3.0
 Requires:       perl(TAP::Parser::SourceHandler::pgTAP)
 BuildRequires:	postgresql-devel = %{postgresver}
 
-%if "%{postgresver}" != "8.4"
-BuildArch:	noarch
-%endif
- 
 %prep
 %setup -q
 
@@ -41,18 +37,19 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 
 %files
 %defattr(-,root,root,-)
-%if "%{postgresver}" == "8.3"
-%{_libdir}/pgsql/pgtap.so
-%endif
 %{_datadir}/pgsql/contrib/*
 %{_docdir}/pgsql/contrib/README.pgtap
 
 %changelog
-* Mon Nov 25 2019 Jim Nasby <nasbyj@amazon.com> 1.1.0
+* Sat Oct 24 2020 Jim Nasby <nasbyj@amazon.com> 1.1.0-2
+- Remove last vestiges of pre-PostgreSQL 9.1
+- Use https for URLs
+
+* Mon Nov 25 2019 Jim Nasby <nasbyj@amazon.com> 1.1.0-1
 - Update to 1.1.0
 - Remove support for PostgreSQL prior to 9.1
 
-* Thu Feb 21 2019 Jim Nasby <jim@nasby.net> 1.0.0
+* Thu Feb 21 2019 Jim Nasby <jim@nasby.net> 1.0.0-1
 - Update to 1.0.0
 
 * Sun Sep 16 2018 David E. Wheeler <david@justatheory.com> 0.99.0-1

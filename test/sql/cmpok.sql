@@ -4,23 +4,6 @@
 SELECT plan(38);
 
 /****************************************************************************/
-
--- Set up some functions that are used only by this test, and aren't available
--- in PostgreSQL 8.2 or older
-
-CREATE OR REPLACE FUNCTION quote_literal(polygon)
-RETURNS TEXT AS 'SELECT '''''''' || textin(poly_out($1)) || '''''''''
-LANGUAGE SQL IMMUTABLE STRICT;
-
-CREATE OR REPLACE FUNCTION quote_literal(integer[])
-RETURNS TEXT AS 'SELECT '''''''' || textin(array_out($1)) || '''''''''
-LANGUAGE SQL IMMUTABLE STRICT;
-
-CREATE OR REPLACE FUNCTION quote_literal(inet[])
-RETURNS TEXT AS 'SELECT '''''''' || textin(array_out($1)) || '''''''''
-LANGUAGE SQL IMMUTABLE STRICT;
-
-/****************************************************************************/
 -- Test cmp_ok().
 SELECT * FROM check_test(
     cmp_ok( 1, '=', 1, '1 should = 1' ),
