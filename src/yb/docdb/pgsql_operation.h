@@ -200,6 +200,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                            const bool scan_time_exceeded,
                                            const Schema* schema,
                                            int64_t batch_arg_index,
+                                           const ReadHybridTime& read_time,
                                            bool *has_paging_state);
 
   //------------------------------------------------------------------------------------------------

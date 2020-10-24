@@ -40,6 +40,13 @@ DECLARE_bool(ysql_disable_index_backfill);
 DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
               "YSQL read scan timeout multipler of retryable_rpc_single_call_timeout_ms.");
 
+DEFINE_bool(pgsql_consistent_transactional_paging, true,
+            "Whether to enforce consistency of data returned for second page and beyond for YSQL "
+            "queries on transactional tables. If true, read restart errors could be returned to "
+            "prevent inconsistency. If false, no read restart errors are returned but the data may "
+            "be stale. The latter is preferable for long scans. The data returned for the first "
+            "page of results is never stale regardless of this flag.");
+
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
@@ -574,8 +581,9 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms));
   }
 
-  RETURN_NOT_OK(SetPagingStateIfNecessary(iter, fetched_rows, row_count_limit, scan_time_exceeded,
-                                          scan_schema, batch_arg_index, has_paging_state));
+  RETURN_NOT_OK(SetPagingStateIfNecessary(
+      iter, fetched_rows, row_count_limit, scan_time_exceeded, scan_schema, batch_arg_index,
+      read_time, has_paging_state));
   return fetched_rows;
 }
 
@@ -650,6 +658,7 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIte
                                                      const bool scan_time_exceeded,
                                                      const Schema* schema,
                                                      int64_t batch_arg_index,
+                                                     const ReadHybridTime& read_time,
                                                      bool *has_paging_state) {
   *has_paging_state = false;
   if (!request_.return_paging_state()) {
@@ -676,6 +685,16 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIte
       }
       paging_state->set_next_row_key(keybytes.ToStringBuffer());
       *has_paging_state = true;
+    }
+  }
+  if (*has_paging_state) {
+    if (FLAGS_pgsql_consistent_transactional_paging) {
+      read_time.AddToPB(response_.mutable_paging_state());
+    } else {
+      // Using SingleTime will help avoid read restarts on second page and later but will
+      // potentially produce stale results on those pages.
+      auto per_row_consistent_read_time = ReadHybridTime::SingleTime(read_time.read);
+      per_row_consistent_read_time.AddToPB(response_.mutable_paging_state());
     }
   }
 

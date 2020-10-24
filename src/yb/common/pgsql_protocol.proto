@@ -250,6 +250,9 @@ message PgsqlPagingStatePB {
   // queried, one for each combination of allowed values for the hash columns.
   // This holds the index of the next partition and is used to resume the read from the right place.
   optional uint64 next_partition_index = 5;
+
+  // Used read time.
+  optional ReadHybridTimePB read_time = 6;
 }
 
 // TODO(neil) The protocol for select needs to be changed accordingly when we introduce and cache

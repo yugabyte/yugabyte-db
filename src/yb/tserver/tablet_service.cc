@@ -1915,6 +1915,12 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
           read_context->context);
       return;
     }
+    if (read_context->allow_retry && read_context->read_time &&
+        read_context->read_time == *result) {
+      YB_LOG_EVERY_N_SECS(DFATAL, 5)
+          << __func__ << ", restarting read with the same read time: " << *result << THROTTLE_MSG;
+      read_context->allow_retry = false;
+    }
     read_context->read_time = *result;
     // If read was successful, then restart time is invalid. Finishing.
     if (!read_context->read_time) {
@@ -2069,9 +2075,10 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
         DCHECK_GT(result.restart_read_ht, read_context->read_time.read);
         VLOG(1) << "Restart read required at: " << result.restart_read_ht
                 << ", original: " << read_context->read_time;
-        read_context->read_time.read = result.restart_read_ht;
-        read_context->read_time.local_limit = read_context->safe_ht_to_read;
-        return read_context->read_time;
+        auto read_time = read_context->read_time;
+        read_time.read = result.restart_read_ht;
+        read_time.local_limit = read_context->safe_ht_to_read;
+        return read_time;
       }
       result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_ql_batch()->Swap(&result.response);

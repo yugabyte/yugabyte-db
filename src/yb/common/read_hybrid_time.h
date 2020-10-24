@@ -16,7 +16,8 @@
 
 #include "yb/common/clock.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/util/format.h"
+#include "yb/util/compare_util.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
@@ -114,14 +115,19 @@ struct ReadHybridTime {
     return !read.is_valid();
   }
 
+#define YB_READ_HYBRID_TIME_FIELDS read, local_limit, global_limit, in_txn_limit, serial_no
+
   std::string ToString() const {
-    return Format("{ read: $0 local_limit: $1 global_limit: $2 in_txn_limit: $3 serial_no: $4 }",
-                  read, local_limit, global_limit, in_txn_limit, serial_no);
+    return YB_STRUCT_TO_STRING(YB_READ_HYBRID_TIME_FIELDS);
   }
 };
 
 inline std::ostream& operator<<(std::ostream& out, const ReadHybridTime& read_time) {
   return out << read_time.ToString();
+}
+
+inline bool operator==(const ReadHybridTime& lhs, const ReadHybridTime& rhs) {
+  return YB_STRUCT_EQUALS(YB_READ_HYBRID_TIME_FIELDS);
 }
 
 } // namespace yb
