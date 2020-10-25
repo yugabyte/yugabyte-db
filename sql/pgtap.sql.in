@@ -1852,7 +1852,7 @@ RETURNS text AS $$
     ), $2);
 $$ LANGUAGE SQL immutable;
 
--- Borrowed from newsysviews: sFoundry/newsysviews/
+-- Borrowed from newsysviews: https://www.postgresql.org/ftp/projects/pgFoundry/newsysviews/
 CREATE OR REPLACE FUNCTION _pg_sv_column_array( OID, SMALLINT[] )
 RETURNS NAME[] AS $$
     SELECT ARRAY(
