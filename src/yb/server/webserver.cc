@@ -73,6 +73,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/thread.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/shared_lock.h"
@@ -362,10 +363,15 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
   return RunPathHandler(*handler, connection, request_info);
 }
 
+thread_local std::unique_ptr<CDSAttacher> cds_attacher;
 
 int Webserver::RunPathHandler(const PathHandler& handler,
                               struct sq_connection* connection,
                               struct sq_request_info* request_info) {
+  if (!cds_attacher) {
+    cds_attacher = std::make_unique<CDSAttacher>();
+  }
+
   // Should we render with css styles?
   bool use_style = true;
 

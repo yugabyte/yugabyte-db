@@ -120,6 +120,9 @@ DEFINE_int32(master_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_queue_length, advanced);
 
+DEFINE_test_flag(string, master_extra_list_host_port, "",
+                 "Additional host port used in list masters");
+
 DECLARE_int64(inbound_rpc_memory_limit);
 
 namespace yb {
@@ -422,6 +425,10 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
     }
     for (const auto& hp : peer.last_known_broadcast_addr()) {
       addrs.push_back(HostPortFromPB(hp));
+    }
+    if (!FLAGS_TEST_master_extra_list_host_port.empty()) {
+      addrs.push_back(VERIFY_RESULT(HostPort::FromString(
+          FLAGS_TEST_master_extra_list_host_port, 0)));
     }
 
     // Make GetMasterRegistration calls for peer master info.
