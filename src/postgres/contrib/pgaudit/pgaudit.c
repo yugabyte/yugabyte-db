@@ -1229,7 +1229,15 @@ static void pgaudit_ProcessUtility_hook(
           if (nextItem->auditEvent.commandTag != T_SelectStmt &&
               nextItem->auditEvent.commandTag != T_VariableShowStmt &&
               nextItem->auditEvent.commandTag != T_ExplainStmt) {
-            elog(ERROR, "pgaudit stack is not empty");
+            // TODO(Sudheer): Remove the following statements suppressing the
+            // 'stack is not empty' error  once we have a proper fix for
+            // correctly restarting write operations in presence of PGAudit.
+            if (nextItem->auditEvent.commandTag != T_InsertStmt &&
+                nextItem->auditEvent.commandTag != T_DeleteStmt &&
+                nextItem->auditEvent.commandTag != T_UpdateStmt &&
+                nextItem->auditEvent.commandTag != T_ExecuteStmt) {
+              elog(ERROR, "pgaudit stack is not empty");
+            }
           }
 
           nextItem = nextItem->next;
