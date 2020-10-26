@@ -158,8 +158,8 @@ Status PartitionSchema::FromPB(const PartitionSchemaPB& pb,
   // One example for interpretation
   // - Use range-partition schema to SPLIT by TIME, so that users can archive old data away.
   // - Use hash-partition schema for performance purposes.
-  SCHECK(!pb.has_hash_schema() || !pb.has_range_schema(), Corruption,
-         "Table schema that has both hash and range partition is not yet supported");
+  SCHECK(!pb.has_hash_schema() || !pb.has_range_schema() || pb.range_schema().splits_size() == 0,
+         Corruption, "Table schema that has both hash and range partition is not yet supported");
 
   // Initialize partition schema.
   partition_schema->Clear();
