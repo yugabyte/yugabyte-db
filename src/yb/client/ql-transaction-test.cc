@@ -1218,7 +1218,7 @@ TEST_F(QLTransactionTest, StatusEvolution) {
         continue;
       }
       if (state.metadata.isolation == IsolationLevel::NON_TRANSACTIONAL) {
-        if (IsReady(state.metadata_future)) {
+        if (!IsReady(state.metadata_future)) {
           continue;
         }
         state.metadata = state.metadata_future.get();
