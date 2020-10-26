@@ -1977,18 +1977,11 @@ void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
     return;
   }
   if (db_options_.listeners.size() > 0) {
+    int num_0level_files = cfd->current()->storage_info()->NumLevelFiles(0);
     bool triggered_writes_slowdown =
-        (cfd->current()->storage_info()->NumLevelFiles(0) >=
-         mutable_cf_options.level0_slowdown_writes_trigger);
+        num_0level_files >= mutable_cf_options.level0_slowdown_writes_trigger;
     bool triggered_writes_stop =
-        (cfd->current()->storage_info()->NumLevelFiles(0) >=
-         mutable_cf_options.level0_stop_writes_trigger);
-    if (triggered_writes_stop) {
-      TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteStop");
-    } else if (triggered_writes_slowdown) {
-      TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteSlowdown");
-    }
-
+        num_0level_files >= mutable_cf_options.level0_stop_writes_trigger;
     // release lock while notifying events
     mutex_.Unlock();
     {
