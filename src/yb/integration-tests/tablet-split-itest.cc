@@ -731,7 +731,7 @@ CHECKED_STATUS SplitTablet(master::CatalogManager* catalog_mgr, const tablet::Ta
 TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
   constexpr auto kNumTablets = 3;
 
-  FLAGS_db_write_buffer_size = 20_KB;
+  FLAGS_db_write_buffer_size = 100_KB;
 
   TestWorkload workload(cluster_.get());
   workload.set_table_name(client::kTableName);
@@ -749,20 +749,24 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
   const auto test_table_id = ASSERT_RESULT(client_->GetYBTableInfo(client::kTableName)).table_id;
 
   std::vector<tablet::TabletPeerPtr> peers;
-  AssertLoggedWaitFor([&] {
+  ASSERT_OK(LoggedWaitFor([&] {
     peers = ListTableTabletLeadersPeers(cluster_.get(), test_table_id);
     return peers.size() == kNumTablets;
-  }, 60s, "Waiting for leaders ...");
+  }, 60s, "Waiting for leaders ..."));
 
   LOG(INFO) << "Starting workload ...";
   workload.Start();
 
   for (const auto& peer : peers) {
-    AssertLoggedWaitFor(
+    ASSERT_OK(LoggedWaitFor(
         [&peer] {
-          return peer->tablet()->TEST_db()->GetCurrentVersionDataSstFilesSize() >
-                 15 * FLAGS_db_write_buffer_size;
-    }, 40s * kTimeMultiplier, Format("Writing data to split (tablet $0) ...", peer->tablet_id()));
+          const auto data_size =
+              peer->tablet()->TEST_db()->GetCurrentVersionSstFilesUncompressedSize();
+          YB_LOG_EVERY_N_SECS(INFO, 5) << "Data written: " << data_size;
+          return data_size > (FLAGS_rocksdb_level0_file_num_compaction_trigger + 1) *
+                                 FLAGS_db_write_buffer_size;
+        },
+        60s * kTimeMultiplier, Format("Writing data to split (tablet $0) ...", peer->tablet_id())));
   }
 
   DumpWorkloadStats(workload);

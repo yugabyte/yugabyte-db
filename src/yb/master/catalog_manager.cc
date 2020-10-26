@@ -6877,6 +6877,11 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
   int64_t remaining_timeout_ms =
       FLAGS_tablet_creation_timeout_ms - time_since_updated.ToMilliseconds();
 
+  if (tablet->LockForRead()->data().pb.has_split_parent_tablet_id()) {
+    // No need to recreate post-split tablets, since this is always done on source tablet replicas.
+    VLOG(2) << "Post-split tablet " << AsString(tablet) << " still being created.";
+    return;
+  }
   // Skip the tablet if the assignment timeout is not yet expired.
   if (remaining_timeout_ms > 0) {
     VLOG(2) << "Tablet " << tablet->ToString() << " still being created. "
