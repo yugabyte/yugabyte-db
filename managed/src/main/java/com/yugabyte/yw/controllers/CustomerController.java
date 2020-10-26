@@ -325,7 +325,8 @@ public class CustomerController extends AuthenticatedController {
     // mount point for an onprem universe.
     if (mqParams.metrics.contains("disk_usage")) {
       List<Universe> universes =  customer.getUniverses().stream()
-        .filter(u -> u.getUniverseDetails().nodePrefix.equals(nodePrefix))
+        .filter(u -> u.getUniverseDetails().nodePrefix != null &&
+                     u.getUniverseDetails().nodePrefix.equals(nodePrefix))
         .collect(Collectors.toList());
       if (universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.providerType ==
           CloudType.onprem) {
