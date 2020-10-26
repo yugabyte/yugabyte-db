@@ -15,8 +15,8 @@ from yb.common_util import (
 
 
 # We build PostgreSQL code in a separate directory (postgres_build) rsynced from the source tree to
-# support out-of-source builds. Then, after generating the compilation commands, we rewriten them
-# to work with original files (in src/postgres) so that CLangd can use them.
+# support out-of-source builds. Then, after generating the compilation commands, we rewrite them
+# to work with original files (in src/postgres) so that clangd can use them.
 
 # The "combined compilation commands" file contains all compilation commands for C++ code and
 # PostgreSQL C code. This is the file that is symlinked in the YugabyteDB source root directory and
@@ -166,13 +166,14 @@ class CompileCommandProcessor:
         for pg_build_root_alias in self.pg_build_root_aliases:
             # Some files only exist in the postgres build directory. We don't switch the work
             # directory of the compiler to the original source directory in those cases.
-            if (original_working_directory.startswith(pg_build_root_alias + '/') and
-                (os.path.isabs(file_path) or
-                 os.path.isfile(os.path.join(new_working_directory, file_path)))):
-                new_working_directory = os.path.join(
-                    self.postgres_src_root, os.path.relpath(
-                        original_working_directory, pg_build_root_alias))
-                break
+            if original_working_directory.startswith(pg_build_root_alias + '/'):
+                corresponding_src_dir = os.path.join(
+                    self.postgres_src_root,
+                    os.path.relpath(original_working_directory, pg_build_root_alias))
+                if (os.path.isabs(file_path) or
+                        os.path.isfile(os.path.join(corresponding_src_dir, file_path))):
+                    new_working_directory = corresponding_src_dir
+                    break
 
         if new_working_directory == original_working_directory:
             new_args = arguments
