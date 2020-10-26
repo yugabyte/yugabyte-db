@@ -1,8 +1,11 @@
 @import '../../../../uikit/common';
 
 .wizard-expandable-section {
-  margin-top: 22px;
   align-items: center;
+
+  &:not(:first-child) {
+    margin-top: 22px;
+  }
 
   &__head {
     display: flex;
@@ -61,4 +64,3 @@
     }
   }
 }
-

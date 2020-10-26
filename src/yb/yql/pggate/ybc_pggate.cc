@@ -341,9 +341,8 @@ YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_table
   return ToYBCStatus(pgapi->CreateTableSetNumTablets(handle, num_tablets));
 }
 
-YBCStatus YBCPgCreateTableAddSplitRow(YBCPgStatement handle, int num_cols,
-    YBCPgTypeEntity **types, uint64_t *data) {
-  return ToYBCStatus(pgapi->CreateTableAddSplitRow(handle, num_cols, types, data));
+YBCStatus YBCPgAddSplitBoundary(YBCPgStatement handle, YBCPgExpr *exprs, int expr_count) {
+  return ToYBCStatus(pgapi->AddSplitBoundary(handle, exprs, expr_count));
 }
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
@@ -497,11 +496,6 @@ YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name
 
 YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_tablets) {
   return ToYBCStatus(pgapi->CreateIndexSetNumTablets(handle, num_tablets));
-}
-
-YBCStatus YBCPgCreateIndexAddSplitRow(YBCPgStatement handle, int num_cols,
-                                      YBCPgTypeEntity **types, uint64_t *data) {
-  return ToYBCStatus(pgapi->CreateIndexAddSplitRow(handle, num_cols, types, data));
 }
 
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
@@ -723,6 +717,11 @@ YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, const YBCPgTypeEn
 YBCStatus YBCPgNewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
                            uint64_t datum, bool is_null, YBCPgExpr *expr_handle) {
   return ToYBCStatus(pgapi->NewConstant(stmt, type_entity, datum, is_null, expr_handle));
+}
+
+YBCStatus YBCPgNewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                                  YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstantVirtual(stmt, type_entity, datum_kind, expr_handle));
 }
 
 YBCStatus YBCPgNewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,

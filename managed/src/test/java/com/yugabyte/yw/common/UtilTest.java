@@ -28,6 +28,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doReturn;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 
 @RunWith(JUnitParamsRunner.class)
 public class UtilTest extends FakeDBApplication {
@@ -90,8 +91,9 @@ public class UtilTest extends FakeDBApplication {
       for (int i = 0; i < azCount; i++) {
         azUUIDs[i] = UUID.randomUUID();
       }
-      Set<NodeDetails> nodeDetailsSet = prepareNodes(azUUIDs, azCount, countsInAZ, mastersInAZ,
-          stoppedInAZ);
+      Cluster cluster = new Cluster(ClusterType.PRIMARY, null);
+      Set<NodeDetails> nodeDetailsSet = prepareNodes(cluster, azUUIDs, azCount, countsInAZ,
+          mastersInAZ, stoppedInAZ);
 
       // Going through all the zones trying to add a node
       NodeDetails currentNode = createNode(null, false, NodeState.Stopped);
@@ -102,8 +104,8 @@ public class UtilTest extends FakeDBApplication {
       }
     }
 
-    private static Set<NodeDetails> prepareNodes(UUID[] azUUIDs, int azCount, int[] countsInAZ,
-        int[] mastersInAZ, int[] stoppedInAZ) {
+    private static Set<NodeDetails> prepareNodes(Cluster cluster, UUID[] azUUIDs, int azCount,
+        int[] countsInAZ, int[] mastersInAZ, int[] stoppedInAZ) {
       Set<NodeDetails> nodeDetailsSet = new HashSet<>();
       for (int i = 0; i < azCount; i++) {
         int mastersToPlace = mastersInAZ[i];
@@ -113,8 +115,10 @@ public class UtilTest extends FakeDBApplication {
           if (isStopped) {
             stoppedCount--;
           }
-          nodeDetailsSet.add(createNode(azUUIDs[i], mastersToPlace > 0,
-              isStopped ? NodeState.Stopped : NodeState.Live));
+          NodeDetails node = createNode(azUUIDs[i], mastersToPlace > 0,
+              isStopped ? NodeState.Stopped : NodeState.Live);
+          node.placementUuid = cluster.uuid;
+          nodeDetailsSet.add(node);
           mastersToPlace--;
         }
       }
@@ -147,18 +151,21 @@ public class UtilTest extends FakeDBApplication {
       }
 
       UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-      taskParams.nodeDetailsSet = prepareNodes(azUUIDs, azCount, countsInAZ, mastersInAZ,
-          stoppedInAZ);
       Cluster cluster = new Cluster(ClusterType.PRIMARY, new UserIntent());
+      cluster.uuid = UUID.randomUUID();
       cluster.userIntent.replicationFactor = replicationFactor;
       taskParams.clusters.add(cluster);
+      taskParams.nodeDetailsSet = prepareNodes(cluster, azUUIDs, azCount, countsInAZ, mastersInAZ,
+          stoppedInAZ);
 
       Universe universe = mock(Universe.class);
       doReturn(taskParams.nodeDetailsSet).when(universe).getNodes();
       doReturn(taskParams).when(universe).getUniverseDetails();
+      doReturn(cluster).when(universe).getCluster(cluster.uuid);
 
       // Going through all the zones trying to add a node
       NodeDetails currentNode = createNode(null, false, NodeState.Stopped);
+      currentNode.placementUuid = cluster.uuid;
       for (int i = 0; i < azCount; i++) {
         currentNode.azUuid = azUUIDs[i];
         assertEquals("Zone to probe " + i, expectedResults[i],
@@ -202,6 +209,39 @@ public class UtilTest extends FakeDBApplication {
     @SafeVarargs
     public static boolean[] $(boolean... values) {
       return values;
+    }
+
+    @Test
+    public void testAreMastersUnderReplicatedForReadReplicaNode() {
+      int azCount = 3;
+      UUID[] azUUIDs = new UUID[azCount];
+      for (int i = 0; i < azCount; i++) {
+        azUUIDs[i] = UUID.randomUUID();
+      }
+
+      UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+      Cluster cluster = new Cluster(ClusterType.PRIMARY, new UserIntent());
+      cluster.uuid = UUID.randomUUID();
+      cluster.userIntent.replicationFactor = 3;
+      taskParams.clusters.add(cluster);
+      taskParams.nodeDetailsSet = prepareNodes(cluster, azUUIDs, azCount, $(3, 3, 3), $(0, 0, 0),
+          $(1, 1, 1));
+
+      Cluster replicaCluster = new Cluster(ClusterType.ASYNC, new UserIntent());
+      replicaCluster.uuid = UUID.randomUUID();
+      taskParams.clusters.add(replicaCluster);
+
+      Universe universe = mock(Universe.class);
+      doReturn(taskParams.nodeDetailsSet).when(universe).getNodes();
+      doReturn(taskParams).when(universe).getUniverseDetails();
+      doReturn(cluster).when(universe).getCluster(cluster.uuid);
+      doReturn(replicaCluster).when(universe).getCluster(replicaCluster.uuid);
+
+      NodeDetails currentNode = createNode(null, false, NodeState.Stopped);
+      currentNode.placementUuid = replicaCluster.uuid;
+      taskParams.nodeDetailsSet.add(currentNode);
+
+      assertFalse(Util.areMastersUnderReplicated(currentNode, universe));
     }
 
     // TODO: Add tests for other functions

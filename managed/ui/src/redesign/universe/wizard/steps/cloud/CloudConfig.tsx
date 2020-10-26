@@ -119,7 +119,7 @@ export const CloudConfig: FC<CloudConfigProps> = ({ dispatch }) => {
 
                 <Row className="cloud-config__row">
                   <Col sm={2} className="cloud-config__label-col">
-                    <I18n className="cloud-config__label">Auto Replica Placement</I18n>
+                    <I18n className="cloud-config__label">Replica Placement</I18n>
                   </Col>
                   <Col sm={4}>
                     <ReplicaPlacementToggleField disabled={isEditMode} />
@@ -144,6 +144,7 @@ export const CloudConfig: FC<CloudConfigProps> = ({ dispatch }) => {
                 <I18n>Cancel</I18n>
               </Button>
               <Button
+                isCTA
                 chevronRight
                 className="cloud-config__footer-btn"
                 onClick={() => submit(WizardStep.Instance)}

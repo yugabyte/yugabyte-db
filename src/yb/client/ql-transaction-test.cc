@@ -34,6 +34,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -689,7 +690,7 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
     for (auto i = active_transactions.begin(); i != active_transactions.end(); ++i) {
       const auto txn_id = i->ToString();
       if (!i->commit_future.valid()) {
-        if (i->flush_future.wait_for(0s) == std::future_status::ready) {
+        if (IsReady(i->flush_future)) {
           auto flush_status = i->flush_future.get();
           if (!flush_status.ok()) {
             LOG(INFO) << "TXN: " << txn_id << ", flush failed: " << flush_status;
@@ -703,7 +704,7 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
           }
           i->commit_future = i->transaction->CommitFuture();
         }
-      } else if (i->commit_future.wait_for(0s) == std::future_status::ready) {
+      } else if (IsReady(i->commit_future)) {
         auto commit_status = i->commit_future.get();
         if (!commit_status.ok()) {
           LOG(INFO) << "TXN: " << txn_id << ", commit failed: " << commit_status;
@@ -1217,7 +1218,7 @@ TEST_F(QLTransactionTest, StatusEvolution) {
         continue;
       }
       if (state.metadata.isolation == IsolationLevel::NON_TRANSACTIONAL) {
-        if (state.metadata_future.wait_for(0s) != std::future_status::ready) {
+        if (!IsReady(state.metadata_future)) {
           continue;
         }
         state.metadata = state.metadata_future.get();

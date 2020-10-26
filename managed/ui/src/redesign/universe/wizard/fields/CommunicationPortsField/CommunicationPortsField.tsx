@@ -42,7 +42,6 @@ export const CommunicationPortsField: FC<CommunicationPortsFieldProps> = ({ disa
           />
         )}
       />
-
     </div>
   );
 };

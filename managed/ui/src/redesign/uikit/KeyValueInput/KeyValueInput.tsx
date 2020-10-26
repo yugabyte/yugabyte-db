@@ -40,7 +40,12 @@ const arrayToObject = (data: RowItem[]): ValueType => {
   return result;
 };
 
-export const KeyValueInput: FC<KeyValueInputProps> = ({ value, onChange, disabled, softReadonly }) => {
+export const KeyValueInput: FC<KeyValueInputProps> = ({
+  value,
+  onChange,
+  disabled,
+  softReadonly
+}) => {
   const [internalValue, setInternalValue] = useState<RowItem[]>(objectToArray(value));
 
   const addRow = () => updateData([...internalValue, { key: '', value: '' }]);

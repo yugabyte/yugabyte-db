@@ -111,7 +111,7 @@ enum TableType {
   DEFAULT_TABLE_TYPE = 2;
 }
 
-    enum YBConsistencyLevel {
+enum YBConsistencyLevel {
   // This consistency level provides Linearizability guarantees and is the default for our system.
   STRONG = 1;
 
@@ -354,12 +354,30 @@ message PartitionSchemaPB {
     }
   }
 
+  message RangeSplitPB {
+    // Each range column will be assigned a lower bound.
+    optional bytes column_bounds = 1;
+
+    // TODO (neil)
+    //   To identify where to scan, each split/partition should have an ID.  See bug 6051.
+    //   NOTE: Original Postgres names each of its range partitions, and that's one way to
+    //         identify them although their syntax is not friendly.
+    // Add the following field when we extend SPLIT syntax.
+    // optional int32 id = ??;
+  }
+
   message RangeSchemaPB {
     // Column identifiers of columns included in the range. All columns must be
     // a component of the primary key.
     repeated ColumnIdentifierPB columns = 1;
+
     // Split points for range tables.
-    repeated string split_rows = 2;
+    repeated RangeSplitPB splits = 3;
+
+    // Field "split_rows" is only available in beta version for SPLIT AT feature. This feature had
+    // not been used, so the release version for SPLIT AT does not need to be compatible with
+    // the beta version in the past releases.
+    repeated bytes DEPRECATED_split_rows = 2;
   }
 
   message HashBucketSchemaPB {
@@ -530,6 +548,11 @@ message CloudInfoPB {
 // YQL support.
 // The following section is common for all query language.
 //--------------------------------------------------------------------------------------------------
+// Represent system internal values.
+enum QLVirtualValuePB {
+  LIMIT_MAX = 1;
+  LIMIT_MIN = 2;
+}
 
 // A QL value
 message QLValuePB {
@@ -566,6 +589,8 @@ message QLValuePB {
     int64 time_value = 22;
     uint32 uint32_value = 23;
     uint64 uint64_value = 24;
+    // Represent various system values.
+    QLVirtualValuePB virtual_value = 25;
   }
 }
 

@@ -3,9 +3,6 @@
 .universe-wizard {
   padding: 35px 0;
   width: 100%;
-  background-color: $YB_PAGE_BACKGROUND;
-  // stretch the wizard to occupy all visible space and show white background without a gray gap at the bottom
-  min-height: calc(100vh - 105px); // 105px = 60px header + 45px footer
   font-family: $YB_FONT_FAMILY;
 
   &__header {

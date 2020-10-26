@@ -34,11 +34,11 @@ showAsideToc: true
 
 </ul>
 
-Use Yugabyte Platform to perform regularly scheduled backups of YugabyteDB universe data for all YSQL tables in a namespace.
+Use Yugabyte Platform to perform regularly scheduled backups of YugabyteDB universe data for all YSQL tables in a namespace. To back up your universe YCQL data immediately, see [Back up universe YSQL data](../../back-up-universe-data/ysql).
 
 ## Schedule a backup
 
-To schedule a backup, follow these steps:
+To schedule a backup of your universe YSQL data:
 
 1. Open the Yugabyte Platform console and click **Universes** in the navigation bar.
 2. Click the name of the universe you want to schedule backups for.

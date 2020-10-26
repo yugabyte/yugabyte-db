@@ -3,22 +3,22 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Link, withRouter, browserHistory } from 'react-router';
-import {isNonEmptyString, isNonEmptyArray, isNonEmptyObject} from '../../../utils/ObjectUtils';
+import { isNonEmptyString, isNonEmptyArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import './TaskDetail.scss';
 import { StepProgressBar } from '../../common/indicators';
 import { YBResourceCount } from '../../common/descriptors';
-import {Row, Col} from 'react-bootstrap';
+import { Row, Col } from 'react-bootstrap';
 import './TaskDetail.scss';
 import moment from 'moment';
 import { YBPanelItem } from '../../panels';
 import _ from 'lodash';
 import Highlight from 'react-highlight';
-import "highlight.js/styles/github.css";
+import 'highlight.js/styles/github.css';
 
 class TaskDetail extends Component {
   constructor(props) {
     super(props);
-    this.state = {errorStringDisplay: false};
+    this.state = { errorStringDisplay: false };
   }
 
   gotoTaskList = () => {
@@ -26,7 +26,7 @@ class TaskDetail extends Component {
   };
 
   toggleErrorStringDisplay = () => {
-    this.setState({errorStringDisplay: !this.state.errorStringDisplay});
+    this.setState({ errorStringDisplay: !this.state.errorStringDisplay });
   };
 
   componentDidMount() {
@@ -38,50 +38,60 @@ class TaskDetail extends Component {
     }
   }
   render() {
-    const { tasks: { failedTasks, taskProgressData }} = this.props;
+    const {
+      tasks: { failedTasks, taskProgressData }
+    } = this.props;
     const self = this;
     const currentTaskData = taskProgressData.data;
-    const formatDateField = function(cell) {
-      return moment(cell).format("YYYY-MM-DD hh:mm:ss a");
+    const formatDateField = function (cell) {
+      return moment(cell).format('YYYY-MM-DD hh:mm:ss a');
     };
-    let taskTopLevelData = <span/>;
+    let taskTopLevelData = <span />;
     if (isNonEmptyObject(currentTaskData)) {
       taskTopLevelData = (
-        <div className={"task-detail-status"}>
-          <div className="pull-right" >{Math.round(currentTaskData.percent)}% complete</div>
+        <div className={'task-detail-status'}>
+          <div className="pull-right">{Math.round(currentTaskData.percent)}% complete</div>
           <div className={currentTaskData.status.toLowerCase()}>{currentTaskData.status}</div>
         </div>
       );
-    };
-
-    let taskProgressBarData = <span/>;
-    if (taskProgressData.data.details && isNonEmptyArray(taskProgressData.data.details.taskDetails)) {
-      taskProgressBarData = <StepProgressBar progressData={taskProgressData.data} status={currentTaskData.status}/>;
     }
-    let taskFailureDetails = <span/>;
-    const getTruncatedErrorString = function(errorString) {
+
+    let taskProgressBarData = <span />;
+    if (
+      taskProgressData.data.details &&
+      isNonEmptyArray(taskProgressData.data.details.taskDetails)
+    ) {
+      taskProgressBarData = (
+        <StepProgressBar progressData={taskProgressData.data} status={currentTaskData.status} />
+      );
+    }
+    let taskFailureDetails = <span />;
+    const getTruncatedErrorString = function (errorString) {
       return (
-        <Highlight className='json'>
+        <Highlight className="json">
           {_.truncate(errorString, {
-            'length': 400,
-            'separator': /,? +/
+            length: 400,
+            separator: /,? +/
           })}
         </Highlight>
       );
     };
 
-    const getErrorMessageDisplay = errorString => {
+    const getErrorMessageDisplay = (errorString) => {
       let errorElement = getTruncatedErrorString(errorString);
-      let displayMessage = "Expand";
+      let displayMessage = 'Expand';
       if (self.state.errorStringDisplay) {
-        errorElement = <Highlight className='json'>{errorString}</Highlight>;
-        displayMessage = "View Less";
+        errorElement = <Highlight className="json">{errorString}</Highlight>;
+        displayMessage = 'View Less';
       }
 
       return (
         <div className="clearfix">
           {errorElement}
-          <div className="btn btn-orange text-center pull-right" onClick={self.toggleErrorStringDisplay}>
+          <div
+            className="btn btn-orange text-center pull-right"
+            onClick={self.toggleErrorStringDisplay}
+          >
             {displayMessage}
           </div>
         </div>
@@ -89,9 +99,9 @@ class TaskDetail extends Component {
     };
 
     if (isNonEmptyArray(failedTasks.data.failedSubTasks)) {
-      taskFailureDetails = failedTasks.data.failedSubTasks.map(subTask => {
-        let errorString = <span/>;
-        if (subTask.errorString !== "null") {
+      taskFailureDetails = failedTasks.data.failedSubTasks.map((subTask) => {
+        let errorString = <span />;
+        if (subTask.errorString !== 'null') {
           errorString = getErrorMessageDisplay(subTask.errorString);
         }
         return (
@@ -113,23 +123,25 @@ class TaskDetail extends Component {
 
     let universe = null;
     if (currentTaskData.targetUUID) {
-      const universes = (this.props.universe && this.props.universe.universeList &&
-        this.props.universe.universeList.data) || [];
-      universe = _.find(universes, universe => universe.universeUUID === currentTaskData.targetUUID);
+      const universes =
+        (this.props.universe &&
+          this.props.universe.universeList &&
+          this.props.universe.universeList.data) ||
+        [];
+      universe = _.find(
+        universes,
+        (universe) => universe.universeUUID === currentTaskData.targetUUID
+      );
     }
 
     let heading;
     if (universe) {
       heading = (
         <h2 className="content-title">
-          <Link to={`/universes/${universe.universeUUID}`}>
-            {universe.name}
-          </Link>
+          <Link to={`/universes/${universe.universeUUID}`}>{universe.name}</Link>
           <span>
             <i className="fa fa-chevron-right"></i>
-            <Link to={`/universes/${universe.universeUUID}/tasks`}>
-              Tasks
-            </Link>
+            <Link to={`/universes/${universe.universeUUID}/tasks`}>Tasks</Link>
           </span>
         </h2>
       );
@@ -150,19 +162,22 @@ class TaskDetail extends Component {
         {heading}
         <div className="task-detail-overview">
           <div className="task-top-heading">
-            <YBResourceCount className="text-align-right pull-right" kind="Target universe" size={currentTaskData.title && currentTaskData.title.split(" : ")[1]}/>
-            <YBResourceCount kind="Task name" size={currentTaskData.title && currentTaskData.title.split(" : ")[0]}/>
+            <YBResourceCount
+              className="text-align-right pull-right"
+              kind="Target universe"
+              size={currentTaskData.title && currentTaskData.title.split(' : ')[1]}
+            />
+            <YBResourceCount
+              kind="Task name"
+              size={currentTaskData.title && currentTaskData.title.split(' : ')[0]}
+            />
             {taskTopLevelData}
           </div>
-          <div className="task-step-bar-container">
-            {taskProgressBarData}
-          </div>
+          <div className="task-step-bar-container">{taskProgressBarData}</div>
         </div>
 
         <YBPanelItem
-          header={
-            <h2>Task details</h2>
-          }
+          header={<h2>Task details</h2>}
           body={
             <div className="task-detail-container">
               <Row className="task-heading-row">

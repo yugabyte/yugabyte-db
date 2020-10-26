@@ -50,7 +50,7 @@ export const DBConfig: FC<DBConfigProps> = ({ dispatch }) => {
   return (
     <div className="wizard-step-wrapper">
       <div className="wizard-step-wrapper__stepper">
-        <WizardStepper activeStep={WizardStep.Db} clickableTabs={isEditMode} onChange={submit} />
+        <WizardStepper activeStep={WizardStep.Db} clickableTabs onChange={submit} />
       </div>
       <div className="wizard-step-wrapper__container">
         <div className="wizard-step-wrapper__form">
@@ -129,6 +129,7 @@ export const DBConfig: FC<DBConfigProps> = ({ dispatch }) => {
                 <I18n>Review and Launch</I18n>
               </Button>
               <Button
+                isCTA
                 chevronRight
                 className="db-config__footer-btn"
                 onClick={() => submit(WizardStep.Security)}

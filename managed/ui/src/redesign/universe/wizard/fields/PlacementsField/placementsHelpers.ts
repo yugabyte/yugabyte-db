@@ -81,6 +81,8 @@ export const useAutoPlacement = (
   const payload: UniverseConfigure = {
     currentClusterType: clusterType,
     clusterOperation: 'CREATE', // auto-placement supposed to be used for new universes only
+    resetAZConfig: true,
+    userAZSelected: false,
     clusters: [
       {
         userIntent: {

@@ -49,7 +49,7 @@ char* DupYBStatusMessage(YBCStatus status, bool message_only);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 
-bool YBCIsTxnConflicError(uint16_t txn_errcode);
+bool YBCIsTxnConflictError(uint16_t txn_errcode);
 
 void YBCResolveHostname();
 

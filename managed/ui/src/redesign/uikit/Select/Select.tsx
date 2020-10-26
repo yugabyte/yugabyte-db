@@ -9,7 +9,7 @@ const customStyles: Styles = {
     border: `1px solid ${
       state.selectProps.className === 'validation-error' ? '#FF0000' : '#C5C6CE'
     }`,
-    borderRadius: '29px',
+    borderRadius: '7px',
     overflow: 'hidden',
     minHeight: '44px',
     width: '100%',
@@ -44,7 +44,7 @@ const customStyles: Styles = {
   multiValue: (provided) => ({
     ...provided,
     backgroundColor: '#E8E9F3',
-    borderRadius: '29px',
+    borderRadius: '7px',
     overflow: 'hidden'
   }),
   multiValueLabel: (provided) => ({
@@ -53,7 +53,7 @@ const customStyles: Styles = {
     paddingTop: '3px',
     paddingBottom: '3px',
     paddingLeft: '12px',
-    paddingRight: '6px',
+    paddingRight: '3px',
     fontSize: '16px',
     color: '#546371'
   }),

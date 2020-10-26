@@ -4,7 +4,7 @@ headerTitle: Install Yugabyte Platform
 linkTitle: Install software
 description: Install the Yugabyte Platform software.
 aliases:
- - /stable/yugabyte-platform/install-yugabyte-platform/install-software/
+  - /stable/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
   stable:
     parent: install-yugabyte-platform

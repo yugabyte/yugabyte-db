@@ -9,7 +9,7 @@ interface EnableNodeToNodeTLSFieldProps {
   disabled: boolean;
 }
 
-export const EnableNodeToNodeTLSField: FC<EnableNodeToNodeTLSFieldProps> = ({ disabled}) => {
+export const EnableNodeToNodeTLSField: FC<EnableNodeToNodeTLSFieldProps> = ({ disabled }) => {
   const { control } = useFormContext<SecurityConfigFormValue>();
 
   return (

@@ -3,9 +3,14 @@
 import { connect } from 'react-redux';
 import { reduxForm } from 'redux-form';
 import { StorageConfiguration } from '../../config';
-import { addCustomerConfig, addCustomerConfigResponse,
-         fetchCustomerConfigs, fetchCustomerConfigsResponse,
-         deleteCustomerConfig, deleteCustomerConfigResponse } from '../../../actions/customers';
+import {
+  addCustomerConfig,
+  addCustomerConfigResponse,
+  fetchCustomerConfigs,
+  fetchCustomerConfigsResponse,
+  deleteCustomerConfig,
+  deleteCustomerConfigResponse
+} from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
 
 const mapStateToProps = (state) => {
@@ -38,12 +43,12 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     showDeleteStorageConfig: (configName) => {
-      dispatch(openDialog("delete" + configName + "StorageConfig"));
+      dispatch(openDialog('delete' + configName + 'StorageConfig'));
     },
 
     hideDeleteStorageConfig: () => {
       dispatch(closeDialog());
-    },
+    }
   };
 };
 
@@ -51,4 +56,7 @@ const storageConfigForm = reduxForm({
   form: 'storageConfigForm'
 });
 
-export default connect(mapStateToProps, mapDispatchToProps)(storageConfigForm(StorageConfiguration));
+export default connect(
+  mapStateToProps,
+  mapDispatchToProps
+)(storageConfigForm(StorageConfiguration));

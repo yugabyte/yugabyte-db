@@ -3,7 +3,7 @@ title: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot
 image: /images/section_icons/troubleshoot/troubleshoot.png
-headcontent: Tools and issues specific to the Yugabyte Platform.
+headcontent: Diagnose and troubleshoot universe and Yugabyte Platform issues.
 aliases:
   - /troubleshoot/enterprise-edition/
   - /latest/troubleshoot/enterprise-edition/
@@ -24,7 +24,7 @@ menu:
         <div class="title">Install and upgrade issues</div>
       </div>
       <div class="body">
-        Troubleshoot issues encountered during installing or upgrading Yugabyte Platform.
+        Troubleshoot issues encountered when installing or upgrading Yugabyte Platform.
       </div>
     </a>
   </div>

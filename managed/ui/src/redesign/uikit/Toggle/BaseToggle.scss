@@ -36,7 +36,8 @@
       padding-right: 15px;
     }
 
-    &--disabled {}
+    &--disabled {
+    }
   }
 
   &__value {
@@ -52,7 +53,6 @@
     position: absolute;
     visibility: hidden;
   }
-
 
   &__handle {
     width: 32px;

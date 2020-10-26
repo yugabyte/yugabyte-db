@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
-import {getCustomerEndpoint} from './common';
+import { getCustomerEndpoint } from './common';
 export const FETCH_TASK_PROGRESS = 'FETCH_TASK_PROGRESS';
 export const FETCH_TASK_PROGRESS_RESPONSE = 'FETCH_TASK_PROGRESS_RESPONSE';
 export const RESET_TASK_PROGRESS = 'RESET_TASK_PROGRESS';
@@ -14,8 +14,7 @@ export const FETCH_FAILED_TASK_DETAIL = 'FETCH_TASK_DETAIL';
 export const FETCH_FAILED_TASK_DETAIL_RESPONSE = 'FETCH_TASK_DETAIL_RESPONSE';
 
 export function fetchTaskProgress(taskUUID) {
-  const request =
-    axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
+  const request = axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
   return {
     type: FETCH_TASK_PROGRESS,
     payload: request

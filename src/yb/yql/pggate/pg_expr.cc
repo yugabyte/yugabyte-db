@@ -524,6 +524,24 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
   InitializeTranslateData();
 }
 
+PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
+                       PgDatumKind datum_kind,
+                       PgExpr::Opcode opcode)
+    : PgExpr(opcode, type_entity) {
+  switch (datum_kind) {
+    case PgDatumKind::YB_YQL_DATUM_STANDARD_VALUE:
+      // Leave the result as NULL.
+      break;
+    case PgDatumKind::YB_YQL_DATUM_LIMIT_MAX:
+      ql_value_.set_virtual_value(QLVirtualValuePB::LIMIT_MAX);
+      break;
+    case PgDatumKind::YB_YQL_DATUM_LIMIT_MIN:
+      ql_value_.set_virtual_value(QLVirtualValuePB::LIMIT_MIN);
+      break;
+  }
+  InitializeTranslateData();
+}
+
 PgConstant::~PgConstant() {
 }
 

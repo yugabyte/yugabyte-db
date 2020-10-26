@@ -14,6 +14,19 @@ import { PlacementUI } from './fields/PlacementsField/PlacementsField';
 import { AUTH_GFLAG_YCQL, AUTH_GFLAG_YSQL } from '../dtoToFormData';
 import './UniverseWizard.scss';
 
+// To add a new form field:
+// - add field to Universe type at dtos.ts and to corresponding form value config type (CloudConfigFormValue/InstanceConfigFormValue/...)
+// - set default value in corresponding const at dtoToFormData.ts
+// - populate form value from universe object in getFormData() at dtoToFormData.ts
+// - map form value to payload in useLaunchUniverse() and maybe patchConfigResponse() at reviewHelpers.ts
+// - add logic to "update_form_data" reducer case at UniverseWizard.tsx, if needed
+// - add actual field ui component to corresponding step
+
+// Field component requirements:
+// - should update itself only and don't modify other form fields
+// - could watch other form values
+// - should have field validation logic, if needed
+
 export enum ClusterOperation {
   NEW_PRIMARY,
   EDIT_PRIMARY,
@@ -102,7 +115,10 @@ const reducer = (state: WizardState, action: WizardAction): WizardState => {
       }
 
       // reset root certificate if both node-to-node and client-to-node toggles are off
-      if (!newFormData.securityConfig.enableNodeToNodeEncrypt && !newFormData.securityConfig.enableClientToNodeEncrypt) {
+      if (
+        !newFormData.securityConfig.enableNodeToNodeEncrypt &&
+        !newFormData.securityConfig.enableClientToNodeEncrypt
+      ) {
         newFormData.securityConfig.rootCA = null;
       }
 
@@ -150,7 +166,7 @@ export const UniverseWizard: FC<UniverseWizardProps> = ({
           <div className="universe-wizard__title">
             {operation === ClusterOperation.NEW_PRIMARY && <I18n>Create Universe</I18n>}
             {operation === ClusterOperation.NEW_ASYNC && <I18n>Create Read Replica</I18n>}
-            {operation === ClusterOperation.EDIT_PRIMARY && <I18n>Edit Universe</I18n>}
+            {operation === ClusterOperation.EDIT_PRIMARY && <I18n>Edit Universe: {universe?.name}</I18n>}
             {operation === ClusterOperation.EDIT_ASYNC && <I18n>Edit Read Replica</I18n>}
           </div>
           <div className="universe-wizard__beta">BETA</div>

@@ -49,11 +49,7 @@ export const SecurityConfig: FC<SecurityConfigProps> = ({ dispatch }) => {
   return (
     <div className="wizard-step-wrapper">
       <div className="wizard-step-wrapper__stepper">
-        <WizardStepper
-          activeStep={WizardStep.Security}
-          clickableTabs={isEditMode}
-          onChange={submit}
-        />
+        <WizardStepper activeStep={WizardStep.Security} clickableTabs onChange={submit} />
       </div>
       <div className="wizard-step-wrapper__container">
         <div className="wizard-step-wrapper__form">

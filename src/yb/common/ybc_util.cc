@@ -242,7 +242,7 @@ YBCStatus YBCInitGFlags(const char* argv0) {
   return ToYBCStatus(yb::InitGFlags(argv0));
 }
 
-bool YBCIsTxnConflicError(uint16_t txn_errcode) {
+bool YBCIsTxnConflictError(uint16_t txn_errcode) {
   return txn_errcode == static_cast<uint16_t>(TransactionErrorCode::kConflict);
 }
 

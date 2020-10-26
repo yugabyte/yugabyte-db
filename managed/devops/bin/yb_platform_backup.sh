@@ -33,7 +33,7 @@ docker_aware_cmd() {
   if [[ -z "$DOCKER_BASED" ]]; then
     sh -c "$2"
   else
-    docker exec -it $1 $2
+    docker exec -i $1 $2
   fi
 }
 
@@ -52,14 +52,15 @@ create_backup() {
   tarname="${output_path}/backup_${now}.tgz"
   trap "cleanup ${data_dir}/${YUGAWARE_DUMP_FNAME}" EXIT
   echo "Creating snapshot of platform data"
-  docker_aware_cmd "postgres" "pg_dump -U postgres -Fc yugaware > \
-                                 ${data_dir}/${YUGAWARE_DUMP_FNAME}"
+  docker_aware_cmd "postgres" "pg_dump -U postgres -Fc yugaware" > \
+                              "${data_dir}/${YUGAWARE_DUMP_FNAME}"
   # Backup prometheus data.
   if [[ "$3" = false ]]; then
     echo "Creating prometheus snapshot"
     set_prometheus_data_dir
     snapshot_dir=$(curl -X POST http://localhost:9090/api/v1/admin/tsdb/snapshot |
       python -c "import sys, json; print(json.load(sys.stdin)['data']['name'])")
+    mkdir -p "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
     sudo cp -aR "$PROMETHEUS_DATA_DIR/snapshots/$snapshot_dir" "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
   fi
   echo "Creating platform backup package"
@@ -91,7 +92,7 @@ restore_backup() {
   trap "cleanup $yugaware_dump" EXIT
   tar -xzf $input_path --directory $destination
   echo "Restoring platform data to database"
-  docker_aware_cmd "postgres" "pg_restore -U postgres -d yugaware -c < ${yugaware_dump}"
+  docker_aware_cmd "postgres" "pg_restore -U postgres -d yugaware -c" < "${yugaware_dump}"
   # Restore prometheus data.
   if [[ "$is_prometheus" = true ]]; then
     if [[ -z "$PROMETHEUS_DATA_DIR" ]]; then

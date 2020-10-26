@@ -42,6 +42,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
@@ -716,20 +717,18 @@ public class Universe extends Model {
     NodeDetails node = getNode(nodeName);
     Cluster curCluster = getCluster(node.placementUuid);
 
-    if (node.isMaster && (action == NodeActionType.STOP || action == NodeActionType.REMOVE)) {
+    if (node.isMaster && (action == NodeActionType.STOP || action == NodeActionType.REMOVE)
+        && (curCluster.clusterType == ClusterType.PRIMARY)) {
       long numMasterNodesUp = universeDetails.getNodesInCluster(curCluster.uuid).stream()
-          .filter((n) -> n.isMaster && n.state == NodeDetails.NodeState.Live)
-          .count();
+          .filter((n) -> n.isMaster && n.state == NodeDetails.NodeState.Live).count();
       if (numMasterNodesUp <= (curCluster.userIntent.replicationFactor + 1) / 2) {
         return false;
       }
     }
 
     if (action == NodeActionType.START_MASTER) {
-      if (node.isMaster || (node.state != NodeDetails.NodeState.Live)
-          || !Util.areMastersUnderReplicated(node, this)) {
-        return false;
-      }
+      return (!node.isMaster && (node.state == NodeDetails.NodeState.Live)
+          && Util.areMastersUnderReplicated(node, this));
     }
 
     return node.getAllowedActions().contains(action);
