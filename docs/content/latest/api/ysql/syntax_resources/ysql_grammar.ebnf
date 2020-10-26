@@ -203,6 +203,14 @@ alter_user_config ::= 'ALTER' 'USER' ( role_specification | 'ALL' ) [ 'IN' 'DATA
 (* 'BEGIN' *)
 begin = 'BEGIN' [ 'TRANSACTION' | 'WORK' ] { transaction_mode } ;
 
+(* 'CALL' *)
+
+call_procedure ::= 'CALL' qualified_name '(' [ procedure_argument { ',' procedure_argument } ] ')' ;
+
+procedure_argument ::= [ argument_name '=>' ] expression ;
+
+argument_name ::= '<Text Literal>' ;
+
 (* 'COMMENT' *)
 comment_on = 'COMMENT' 'ON' (
   'ACCESS' 'METHOD' object_name |
@@ -496,36 +504,6 @@ create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
                       | 'AS' 'obj_file', 'link_symbol'
                    ) } ;
 
-(* 'CREATE' 'ROLE' *)
-create_role ::= 'CREATE' 'ROLE' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
-
-role_option ::= 'SUPERUSER'
-              | 'NOSUPERUSER'
-              | 'CREATEDB'
-              | 'NOCREATEDB'
-              | 'CREATEROLE'
-              | 'NOCREATEROLE'
-              | 'INHERIT'
-              | 'NOINHERIT'
-              | 'LOGIN'
-              | 'NOLOGIN'
-              | 'CONNECTION' 'LIMIT' connlimit
-              | [ 'ENCRYPTED' ] 'PASSWORD' ''' password '''
-              | 'PASSWORD' 'NULL'
-              | 'VALID' 'UNTIL' ''' timestamp '''
-              | 'IN' 'ROLE' role_name { ',' role_name }
-              | 'IN' 'GROUP' role_name { ',' role_name }
-              | 'ROLE' role_name { ',' role_name }
-              | 'ADMIN' role_name { ',' role_name }
-              | 'USER' role_name { ',' role_name }
-              | 'SYSID' uid ;
-
-role_name ::= name ;
-password ::= '<Text Literal>' ;
-timestamp ::= '<DateTime Literal>' ;
-connlimit ::= '<Integer Literal>';
-uid ::= '<Text Literal>';
-
 (* 'CREATE' 'RULE' *)
 create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event
               'TO' table_name [ 'WHERE' boolean_expression ]
@@ -797,7 +775,8 @@ drop_owned = 'DROP' 'OWNED' 'BY' role_specification { ',' role_specification }
             [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'TABLE' *)
-drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name { ',' table_name} ;
+drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name { ',' table_name}
+                  [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'TYPE' *)
 drop_type ::= 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
@@ -988,8 +967,9 @@ select ::= [ 'WITH' [ 'RECURSIVE' ] ( with_query { ',' with_query } ) ] \
                [ 'WINDOW' ( ( name 'AS' window_definition ) { ',' ( name 'AS' window_definition ) } ) ] \
                [ ( 'UNION' | 'INTERSECT' | 'EXCEPT' ) [ 'ALL' | 'DISTINCT' ] select ] \
                [ 'ORDER' 'BY' ( order_expr { ',' order_expr } ) ] \
-               [ 'LIMIT' [ integer | 'ALL' ] ] \
-               [ 'OFFSET' integer [ 'ROW' | 'ROWS' ] ] ;
+               [ 'LIMIT' ( integer | 'ALL' ) ] \
+               [ 'OFFSET' integer [ 'ROW' | 'ROWS' ] ] \
+               [ 'FETCH' ( FIRST | NEXT ) integer ( ROW | ROWS ) ONLY ] ;
 
 select_expression ::= expression [ [ 'AS' ] name ] ;
 
@@ -1055,6 +1035,17 @@ update_item ::= ( column_name '=' column_value
                   | '(' column_names ')' '=' '(' query ')' ) ;
 
 column_value ::= expression | 'DEFAULT' ;
+
+(* 'VALUES' *)
+
+values ::= 'VALUES' '(' expression_list ')' { ',' '(' expression_list ')' } \
+            [ 'ORDER' 'BY' ( order_expr { ',' order_expr } ) ] \
+            [ 'LIMIT' ( integer | 'ALL' ) ] \
+            [ 'OFFSET' integer [ 'ROW' | 'ROWS' ] ] \
+            [ 'FETCH' ( FIRST | NEXT ) integer ( ROW | ROWS ) ONLY ] ;
+
+expression_list ::= expression { ',' expression } ;
+
 
 (* For the invocation of a window function, or an aggregate function, in conjunction with the OVER keyword.*)
 (* And for the invocation of an aggregate function, in conjunction with the GROUP BY clause.*)
@@ -1238,8 +1229,6 @@ param_name ::= '<Text Literal>' ;
 param_value ::= '<Text Literal>' ;
 
 code ::= '<Text Literal>' ;
-
-column_value = '<column value>' ;
 
 aggregate_argmode = 'IN' | 'VARIADIC' ;
 sfunc = function_name ;

@@ -13,8 +13,9 @@ select ::= [ WITH [ RECURSIVE ] { with_query [ , ... ] } ]  SELECT
            [ WINDOW { { name AS window_definition } [ , ... ] } ]  
            [ { UNION | INTERSECT | EXCEPT } [ ALL | DISTINCT ] select ] 
             [ ORDER BY { order_expr [ , ... ] } ]  
-           [ LIMIT [ integer | ALL ] ]  
-           [ OFFSET integer [ ROW | ROWS ] ]
+           [ LIMIT { integer | ALL } ]  
+           [ OFFSET integer [ ROW | ROWS ] ]  
+           [ FETCH { FIRST | NEXT } integer { ROW | ROWS } ONLY ]
 
 fn_over_window ::= name  ( [ expression [ , ... ] | * ]  
                    [ FILTER ( WHERE boolean_expression ) ] OVER 
