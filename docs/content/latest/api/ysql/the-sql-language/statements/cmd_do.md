@@ -56,7 +56,13 @@ The procedural language to be used must already have been installed into the cur
 
 ## Notes
 
-If `DO` is executed in a transaction block, then the procedure code cannot execute transaction control statements. Transaction control statements are only allowed if `DO` is executed in its own transaction.
+If `DO` is executed in a transaction block, then the procedure code cannot execute transaction control statements. The attempt causes this runtime error:
+
+```
+2D000: invalid transaction termination
+```
+
+Transaction control statements are  allowed with `AUTOCOMMIT` set to `on`—in which case the `DO` statement executes in its own transaction.
 
 ## Examples
 
