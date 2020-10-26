@@ -74,6 +74,18 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="alerts-monitoring/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
+        <div class="title">Alerts and monitoring</div>
+      </div>
+      <div class="body">
+        Create alerts and monitor dashboards using Yugabyte Platform.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="troubleshoot/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
