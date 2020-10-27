@@ -2,7 +2,7 @@
 title: Enable encryption in transit using Yugabyte Platform
 headerTitle: Enable encryption in transit
 linkTitle: Enable encryption in transit
-description: Enable encryption in transit using Yugabyte Platform
+description: Use Yugabyte Platform to enable encryption in transit on a YugabyteDB universe.
 menu:
   latest:
     parent: secure-universes
