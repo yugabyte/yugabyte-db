@@ -226,6 +226,9 @@ DEFINE_test_flag(int32, txn_status_table_tablet_creation_delay_ms, 0,
 DEFINE_test_flag(int32, leader_stepdown_delay_ms, 0,
                  "Amount of time to delay before starting a leader stepdown change.");
 
+DEFINE_test_flag(int32, transactional_read_delay_ms, 0,
+                 "Amount of time to delay between transaction status check and reading start.");
+
 namespace yb {
 namespace tserver {
 
@@ -1733,6 +1736,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       isolation_level = *isolation_level_result;
     }
     serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
+
+    if (PREDICT_FALSE(FLAGS_TEST_transactional_read_delay_ms > 0)) {
+      LOG(INFO) << "Delaying transactional read for "
+                << FLAGS_TEST_transactional_read_delay_ms << " ms.";
+      SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_transactional_read_delay_ms));
+    }
+
 #if defined(DUMP_READ)
     if (req->pgsql_batch().size() > 0) {
       LOG(INFO) << CHECK_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()))
@@ -1903,11 +1913,7 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
     read_context->context->ResetRpcSidecars();
     VLOG(1) << "Read time: " << read_context->read_time
             << ", safe: " << read_context->safe_ht_to_read;
-    Result<ReadHybridTime> result{ReadHybridTime()};
-    {
-      LongOperationTracker long_operation_tracker("Read", 1s);
-      result = DoRead(read_context);
-    }
+    const auto result = DoRead(read_context);
     if (!result.ok()) {
       WARN_NOT_OK(result.status(), "DoRead");
       SetupErrorAndRespond(
@@ -1998,6 +2004,24 @@ void HandleRedisReadRequestAsync(
 }
 
 Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
+  Result<ReadHybridTime> result{ReadHybridTime()};
+  {
+    LongOperationTracker long_operation_tracker("Read", 1s);
+    result = DoReadImpl(read_context);
+  }
+  // Check transaction is still alive in case read was successful
+  // and data has been written earlier into current tablet in context of current transaction.
+  const auto* transaction =
+      read_context->req->has_transaction() ? &read_context->req->transaction() : nullptr;
+  if (result.ok() && transaction && transaction->isolation() == NON_TRANSACTIONAL) {
+    const auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction->transaction_id()));
+    auto& txn_participant = *down_cast<Tablet&>(*read_context->tablet).transaction_participant();
+    RETURN_NOT_OK(txn_participant.CheckAborted(txn_id));
+  }
+  return result;
+}
+
+Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) {
   auto read_tx = VERIFY_RESULT(
       tablet::ScopedReadOperation::Create(
           read_context->tablet.get(), read_context->require_lease, read_context->read_time));

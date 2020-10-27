@@ -231,6 +231,8 @@ struct TransactionMetadata {
 
   void ToPB(TransactionMetadataPB* dest) const;
 
+  void TransactionIdToPB(TransactionMetadataPB* dest) const;
+
   // Fill dest with full metadata even when isolation is non transactional.
   void ForceToPB(TransactionMetadataPB* dest) const;
 

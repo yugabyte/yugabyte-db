@@ -173,7 +173,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   YBTransactionPtr transaction() const;
 
   const TransactionMetadata& transaction_metadata() const {
-    return transaction_metadata_;
+    return ops_info_.metadata;
   }
 
   void set_allow_local_calls_in_curr_thread(bool flag) { allow_local_calls_in_curr_thread_ = flag; }
@@ -231,7 +231,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   void CheckForFinishedFlush();
   void FlushBuffersIfReady();
   std::shared_ptr<AsyncRpc> CreateRpc(
-      RemoteTablet* tablet, InFlightOps::const_iterator begin, InFlightOps::const_iterator end,
+      RemoteTablet* tablet, const InFlightOpsGroup& group,
       bool allow_local_calls_in_curr_thread, bool need_consistent_read);
 
   // Calls/Schedules flush_callback_ and resets it to free resources.
@@ -285,6 +285,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Added to this set during apply, removed during Finished of AsyncRpc.
   std::unordered_set<InFlightOpPtr> ops_;
   InFlightOps ops_queue_;
+  InFlightOpsGroupsWithMetadata ops_info_;
 
   // When each operation is added to the batcher, it is assigned a sequence number
   // which preserves the user's intended order. Preserving order is critical when
@@ -309,8 +310,6 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   std::shared_ptr<yb::client::internal::AsyncRpcMetrics> async_rpc_metrics_;
 
   YBTransactionPtr transaction_;
-
-  TransactionMetadata transaction_metadata_;
 
   // The consistent read point for this batch if it is specified.
   ConsistentReadPoint* read_point_ = nullptr;

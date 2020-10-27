@@ -48,9 +48,6 @@
 
 #include "yb/master/master.proxy.h"
 
-DEFINE_test_flag(bool, disable_fk_check_force_flush, false, "Disable workaround with the force "
-                 "flushing before the foreign key check. Remove after the fixing of #5954.");
-
 namespace yb {
 namespace pggate {
 
@@ -1093,11 +1090,6 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
       ybctids.push_back(it->ybctid);
       to_remove.push_back(it);
     }
-  }
-
-  // TODO(dmitry): Flush is not necessary here. It is the temporary workaround for #5954.
-  if (!FLAGS_TEST_disable_fk_check_force_flush) {
-    RETURN_NOT_OK(FlushBufferedOperations());
   }
 
   for (auto& r : VERIFY_RESULT(reader(table_id, ybctids))) {
