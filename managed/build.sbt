@@ -1,3 +1,5 @@
+import play.sbt.PlayImport.PlayKeys.playMonitoredFiles
+
 name := """yugaware"""
 
 lazy val root = (project in file("."))
@@ -72,3 +74,14 @@ sources in (Compile, doc) := Seq()
 publishArtifact in (Compile, packageDoc) := false
 
 topLevelDirectory := None
+
+// Skip auto-recompile of code in dev mode if AUTO_RELOAD=false
+lazy val autoReload = Option(System.getenv("AUTO_RELOAD")).getOrElse("true")
+playMonitoredFiles := {
+  if (autoReload != null && autoReload.equals("false")) {
+    Seq()
+  } else {
+    playMonitoredFiles.value
+  }
+}
+
