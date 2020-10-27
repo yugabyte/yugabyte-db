@@ -30,15 +30,16 @@
 using namespace std::literals;
 using yb::master::SysSnapshotEntryPB;
 
-DECLARE_uint64(max_clock_skew_usec);
-DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
-DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(enable_history_cutoff_propagation);
-DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_int32(TEST_inject_status_resolver_complete_delay_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(raft_heartbeat_interval_ms);
-DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
+DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 
 namespace yb {
 namespace client {
@@ -540,6 +541,8 @@ TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
 TEST_F(BackupTxnTest, Consistency) {
   constexpr int kThreads = 5;
   constexpr int kKeys = 10;
+
+  FLAGS_TEST_inject_status_resolver_complete_delay_ms = 100;
 
   TestThreadHolder thread_holder;
   std::atomic<int> value(0);
