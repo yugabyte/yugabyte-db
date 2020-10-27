@@ -130,13 +130,13 @@ The following output should appear:
 
     ```
     NAME               	CHART VERSION	APP VERSION	DESRIPTION
-    yugabytedb/yugabyte	2.3.0        	2.3.1.0	YugabyteDB is the high-performance distributed ..
+    yugabytedb/yugabyte	2.3.3        	2.3.3.0	YugabyteDB is the high-performance distributed ..
     ```
 
 4. Run the following `helm install` command to install Yugabyte Platform (`yugaware`) Helm chart:
 
 ```sh
-helm install yw-test yugabytedb/yugaware --version 2.3.2 -n yb-platform --wait
+helm install yw-test yugabytedb/yugaware --version 2.3.3 -n yb-platform --wait
 ```
 
 A message is output that the deployment succeeded.
