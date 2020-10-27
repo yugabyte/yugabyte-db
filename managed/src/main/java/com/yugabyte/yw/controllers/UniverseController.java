@@ -162,7 +162,7 @@ public class UniverseController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
-    Customer customer = Customer.get(customerUUID);
+
     Form<DatabaseSecurityFormData> formData =
         formFactory.form(DatabaseSecurityFormData.class).bindFromRequest();
     if (formData.hasErrors()) {
@@ -202,7 +202,7 @@ public class UniverseController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
-    Customer customer = Customer.get(customerUUID);
+
     Form<DatabaseUserFormData> formData =
         formFactory.form(DatabaseUserFormData.class).bindFromRequest();
     if (formData.hasErrors()) {

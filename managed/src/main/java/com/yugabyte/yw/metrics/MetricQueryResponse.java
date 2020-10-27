@@ -29,6 +29,7 @@ public class MetricQueryResponse {
     public String resultType;
     public ArrayNode result;
   }
+
   public String status;
   public MetricsData data;
   public String errorType;
@@ -48,7 +49,7 @@ public class MetricQueryResponse {
       }
     }
 
-  };
+  }
 
 
 
