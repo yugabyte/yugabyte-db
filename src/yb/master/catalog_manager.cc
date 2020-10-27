@@ -1556,12 +1556,13 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
   // placements is not set. Return error if the cluster has read replica placements set.
   auto l = cluster_config_->LockForRead();
   const ReplicationInfoPB& cluster_replication_info = l->data().pb.replication_info();
-  if (!cluster_replication_info.read_replicas().empty() ||
-      !cluster_replication_info.affinitized_leaders().empty()) {
+  // TODO(bogdan): figure this out when we expand on geopartition support.
+  // if (!cluster_replication_info.read_replicas().empty() ||
+  //     !cluster_replication_info.affinitized_leaders().empty()) {
 
-      return STATUS(InvalidArgument, "Setting table level replication info is not supported "
-          "for clusters with read replica placements");
-  }
+  //     return STATUS(InvalidArgument, "Setting table level replication info is not supported "
+  //         "for clusters with read replica placements");
+  // }
   // If the replication info has placement_uuid set, verify that it matches the cluster
   // placement_uuid.
   if (replication_info.live_replicas().placement_uuid().empty()) {
