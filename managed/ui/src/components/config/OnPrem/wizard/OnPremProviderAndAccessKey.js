@@ -84,11 +84,11 @@ export default class OnPremProviderAndAccessKey extends Component {
                 <Field
                   name="skipProvisioning"
                   component={YBToggle}
-                  label="Skip Provisioning"
+                  label="Manually Provision Nodes"
                   defaultChecked={false}
                   isReadOnly={isReadOnly}
                   infoContent={skipProvisioningHelp}
-                  infoTitle="Skip Provisioning"
+                  infoTitle="Manually Provision Nodes"
                 />
                 <Field
                   name="privateKeyContent"
