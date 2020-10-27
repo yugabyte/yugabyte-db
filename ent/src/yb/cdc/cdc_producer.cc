@@ -31,6 +31,10 @@
 DEFINE_int32(cdc_transaction_timeout_ms, 0,
   "Don't check for an aborted transaction unless its original write is lagging by this duration.");
 
+// Todo(Rahul): Enable this by default (https://github.com/yugabyte/yugabyte-db/issues/6128)
+DEFINE_bool(cdc_enable_replicate_intents, false,
+            "Enable replication of intents before they've been committed.");
+
 namespace yb {
 namespace cdc {
 
@@ -73,7 +77,7 @@ void AddPrimaryKey(const docdb::SubDocKey& decoded_key,
 // This will look at transaction status to determine commit time to be used for CDC record.
 // Returns true if we need to stop processing WAL records beyond this, false otherwise.
 Result<bool> SetCommittedRecordIndexForReplicateMsg(
-    const ReplicateMsgPtr& msg, size_t index, const TxnStatusMap& txn_map,
+    const ReplicateMsgPtr& msg, size_t index, const TxnStatusMap& txn_map, bool replicate_intents,
     std::vector<RecordTimeIndex>* records) {
 
   switch (msg->op_type()) {
@@ -87,7 +91,7 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
     }
 
     case consensus::OperationType::WRITE_OP: {
-      if (msg->write_request().write_batch().has_transaction()) {
+      if (msg->write_request().write_batch().has_transaction() && !replicate_intents) {
         auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
             msg->write_request().write_batch().transaction().transaction_id()));
         const auto txn_status = txn_map.find(txn_id);
@@ -136,7 +140,8 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
 }
 
 Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
-    const ReplicateMsgs& msgs, const TxnStatusMap& txn_map, OpId* checkpoint) {
+    const ReplicateMsgs& msgs, const TxnStatusMap& txn_map, bool replicate_intents,
+    OpId* checkpoint) {
   size_t index = 0;
   std::vector<RecordTimeIndex> records;
 
@@ -146,7 +151,7 @@ Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
       // If the message came from an external source, ignore it when producing change list.
       // Note that checkpoint, however, will be updated and will account for external message too.
       bool stop = VERIFY_RESULT(SetCommittedRecordIndexForReplicateMsg(
-          msg, index, txn_map, &records));
+          msg, index, txn_map, replicate_intents, &records));
       if (stop) {
         return records;
       }
@@ -157,7 +162,7 @@ Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
   return records;
 }
 
-// Order WAL records based on transaction commit time.
+// Filter out WAL records that are external and order records based on transaction commit time.
 // Records in WAL don't represent the exact order in which records are written in DB due to delay
 // in writing txn APPLYING record.
 // Consider the following WAL entries:
@@ -170,12 +175,16 @@ Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
 // T6: WRITE K4
 // The order in which keys are written to DB in this example is K0, K3, K2, K1, K4.
 // This method will also set checkpoint to the op id of last processed record.
-Result<ReplicateMsgs> SortWrites(const ReplicateMsgs& msgs,
-                                 const TxnStatusMap& txn_map,
-                                 OpId* checkpoint) {
+Result<ReplicateMsgs> FilterAndSortWrites(const ReplicateMsgs& msgs,
+                                          const TxnStatusMap& txn_map,
+                                          bool replicate_intents,
+                                          OpId* checkpoint) {
   std::vector<RecordTimeIndex> records = VERIFY_RESULT(GetCommittedRecordIndexes(
-      msgs, txn_map, checkpoint));
-  std::sort(records.begin(), records.end());
+      msgs, txn_map, replicate_intents, checkpoint));
+
+  if (!replicate_intents) {
+    std::sort(records.begin(), records.end());
+  }
 
   ReplicateMsgs ordered_msgs;
   ordered_msgs.reserve(records.size());
@@ -278,10 +287,11 @@ CHECKED_STATUS SetRecordTxnAndTime(const TransactionId& txn_id,
 CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
                                    const TxnStatusMap& txn_map,
                                    const StreamMetadata& metadata,
-                                   const Schema& schema,
+                                   const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                                   bool replicate_intents,
                                    GetChangesResponsePB* resp) {
   const auto& batch = msg->write_request().write_batch();
-
+  const auto& schema = *tablet_peer->tablet()->schema();
   // Write batch may contain records from different rows.
   // For CDC, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
@@ -324,11 +334,11 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
         record->set_operation(CDCRecordPB_OperationType_WRITE);
       }
 
-      if (batch.has_transaction()) {
-        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
-            batch.transaction().transaction_id()));
-        RETURN_NOT_OK(SetRecordTxnAndTime(txn_id, txn_map, record));
-      } else {
+      if (!replicate_intents && batch.has_transaction()) {
+          auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+              batch.transaction().transaction_id()));
+          RETURN_NOT_OK(SetRecordTxnAndTime(txn_id, txn_map, record));
+      }  else {
         record->set_time(msg->hybrid_time());
       }
     }
@@ -349,6 +359,20 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
       } else if (column_id.value_type() != docdb::ValueType::kSystemColumnId) {
         LOG(DFATAL) << "Unexpected value type in key: " << column_id.value_type();
       }
+    }
+  }
+  if (replicate_intents) {
+    if (msg->has_transaction_state()) {
+      record = resp->add_records();
+      record->mutable_transaction_state()->CopyFrom(msg->transaction_state());
+      if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
+        // Add the partition metadata so the consumer knows which tablets to apply the transaction
+        // to.
+        tablet_peer->tablet()->metadata()->partition()->ToPB(record->mutable_partition());
+      }
+    }
+    if (batch.has_transaction()) {
+      record->mutable_transaction()->CopyFrom(batch.transaction());
     }
   }
   return Status::OK();
@@ -375,13 +399,10 @@ Status GetChanges(const std::string& stream_id,
                   consensus::ReplicateMsgsHolder* msgs_holder,
                   GetChangesResponsePB* resp,
                   int64_t* last_readable_opid_index) {
+  bool replicate_intents = GetAtomicFlag(&FLAGS_cdc_enable_replicate_intents);
   // Request scope on transaction participant so that transactions are not removed from participant
   // while RequestScope is active.
   RequestScope request_scope;
-  auto txn_participant = tablet_peer->tablet()->transaction_participant();
-  if (txn_participant) {
-    request_scope = RequestScope(txn_participant);
-  }
 
   auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->
     ReadReplicatedMessagesForCDC(from_op_id, last_readable_opid_index));
@@ -390,21 +411,31 @@ Status GetChanges(const std::string& stream_id,
     consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
   }
 
-  TxnStatusMap txn_map = VERIFY_RESULT(BuildTxnStatusMap(
-      read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant));
-
+  ReplicateMsgs messages = read_ops.messages;
   OpId checkpoint;
-  auto ordered_messages = VERIFY_RESULT(SortWrites(read_ops.messages, txn_map, &checkpoint));
+  TxnStatusMap txn_map;
+  if (!replicate_intents) {
+    auto txn_participant = tablet_peer->tablet()->transaction_participant();
+    if (txn_participant) {
+      request_scope = RequestScope(txn_participant);
+    }
+    txn_map = TxnStatusMap(VERIFY_RESULT(BuildTxnStatusMap(
+      read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant)));
+  }
+  messages = VERIFY_RESULT(FilterAndSortWrites(read_ops.messages, txn_map, replicate_intents,
+                                               &checkpoint));
 
-  for (const auto& msg : ordered_messages) {
+  for (const auto& msg : messages) {
     switch (msg->op_type()) {
       case consensus::OperationType::UPDATE_TRANSACTION_OP:
-        RETURN_NOT_OK(PopulateTransactionRecord(msg, resp->add_records()));
-        break;
-
+        if (!replicate_intents) {
+          RETURN_NOT_OK(PopulateTransactionRecord(msg, resp->add_records()));
+          break;
+        }
+        FALLTHROUGH_INTENDED;
       case consensus::OperationType::WRITE_OP:
-        RETURN_NOT_OK(PopulateWriteRecord(msg, txn_map, stream_metadata,
-                                          *tablet_peer->tablet()->schema(), resp));
+        RETURN_NOT_OK(PopulateWriteRecord(msg, txn_map, stream_metadata, tablet_peer,
+                                          replicate_intents, resp));
         break;
 
       default:
@@ -417,7 +448,7 @@ Status GetChanges(const std::string& stream_id,
     consumption.Add(resp->SpaceUsedLong());
   }
   *msgs_holder = consensus::ReplicateMsgsHolder(
-      nullptr, std::move(ordered_messages), std::move(consumption));
+      nullptr, std::move(messages), std::move(consumption));
   (checkpoint.index > 0 ? checkpoint : from_op_id).ToPB(
       resp->mutable_checkpoint()->mutable_op_id());
   return Status::OK();
