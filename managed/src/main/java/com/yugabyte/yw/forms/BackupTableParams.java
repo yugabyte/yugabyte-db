@@ -2,10 +2,13 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.yb.Common.TableType;
 import play.data.validation.Constraints;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public class BackupTableParams extends TableManagerParams {
@@ -59,4 +62,16 @@ public class BackupTableParams extends TableManagerParams {
 
   // The associated schedule UUID (if applicable)
   public UUID scheduleUUID = null;
+
+  @JsonIgnore
+  public Set<String> getTableNames() {
+    Set<String> tableNames = new HashSet<>();
+    if (tableUUIDList != null && !tableUUIDList.isEmpty()) {
+      tableNames.addAll(tableNameList);
+    } else if (tableName != null) {
+      tableNames.add(tableName);
+    }
+
+    return tableNames;
+  }
 }

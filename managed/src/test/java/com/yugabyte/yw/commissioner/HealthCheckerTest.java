@@ -103,12 +103,12 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     // Finally setup the mocked instance.
     healthChecker = new HealthChecker(
-        mockActorSystem,
-        mockConfig,
-        mockEnvironment,
-        mockExecutionContext,
-        mockHealthManager,
-        testRegistry);
+      mockActorSystem,
+      mockConfig,
+      mockExecutionContext,
+      mockHealthManager,
+      testRegistry
+    );
   }
 
   private Universe setupUniverse(String name) {
@@ -177,29 +177,31 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   private void verifyHealthManager(Universe u, String expectedEmail) {
     verify(mockHealthManager, times(1)).runCommand(
-        eq(defaultProvider),
-        any(),
-        eq(u.name),
-        eq(String.format("[%s][%s]", defaultCustomer.name, defaultCustomer.code)),
-        eq(expectedEmail),
-        eq(0L),
-        eq(true),
-        eq(false),
-        any());
+      eq(defaultProvider),
+      any(),
+      eq(u.name),
+      eq(String.format("[%s][%s]", defaultCustomer.name, defaultCustomer.code)),
+      eq(expectedEmail),
+      eq(0L),
+      eq(true),
+      eq(false),
+      any()
+    );
   }
 
   private void verifyK8sHealthManager(Universe u, String expectedEmail) {
     ArgumentCaptor<List> expectedClusters = ArgumentCaptor.forClass(List.class);
     verify(mockHealthManager, times(1)).runCommand(
-        eq(kubernetesProvider),
-        expectedClusters.capture(),
-        eq(u.name),
-        eq(String.format("[%s][%s]", defaultCustomer.name, defaultCustomer.code)),
-        eq(expectedEmail),
-        eq(0L),
-        eq(true),
-        eq(false),
-        any());
+      eq(kubernetesProvider),
+      expectedClusters.capture(),
+      eq(u.name),
+      eq(String.format("[%s][%s]", defaultCustomer.name, defaultCustomer.code)),
+      eq(expectedEmail),
+      eq(0L),
+      eq(true),
+      eq(false),
+      any()
+    );
     HealthManager.ClusterInfo cluster = (HealthManager.ClusterInfo) expectedClusters.getValue().get(0);
     assertEquals(cluster.namespaceToConfig.get("univ1"), "foo");
     assertEquals(cluster.ysqlPort, 5433);
@@ -270,7 +272,8 @@ public class HealthCheckerTest extends FakeDBApplication {
       eq(0L),
       eq(false),
       eq(true),
-      any());
+      any()
+    );
 
       // disable report only errors
       setupAlertingData(null, true, false);
@@ -284,7 +287,8 @@ public class HealthCheckerTest extends FakeDBApplication {
         eq(0L),
         eq(false),
         eq(false),
-        any());
+        any()
+      );
   }
 
   @Test
@@ -433,12 +437,30 @@ public class HealthCheckerTest extends FakeDBApplication {
     // First time we both check and send update.
     healthChecker.checkCustomer(defaultCustomer);
     verify(mockHealthManager, times(1)).runCommand(
-        any(), any(), any(), any(), any(), any(), eq(true), eq(false), any());
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      eq(true),
+      eq(false),
+      any()
+    );
     // If we run right afterwards, none of the timers should be hit again, so total hit with any
     // args should still be 1.
     healthChecker.checkCustomer(defaultCustomer);
     verify(mockHealthManager, times(1)).runCommand(
-        any(), any(), any(), any(), any(), any(), any(), any(), any());
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any()
+    );
     try {
       Thread.sleep(waitMs);
     } catch (InterruptedException e) {
@@ -446,8 +468,17 @@ public class HealthCheckerTest extends FakeDBApplication {
     // One cycle later, we should be running another test, but no status update, so first time
     // running with false.
     healthChecker.checkCustomer(defaultCustomer);
-    verify(mockHealthManager, times(1)).runCommand(
-        any(), any(), any(), any(), any(), any(), eq(false), eq(false), any());
+    verify(mockHealthManager, times(2)).runCommand(
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any()
+    );
     // Another cycle later, we should be running yet another test, but now with status update.
     try {
       Thread.sleep(waitMs);
@@ -456,8 +487,17 @@ public class HealthCheckerTest extends FakeDBApplication {
     // One cycle later, we should be running another test, but no status update, so second time
     // running with true.
     healthChecker.checkCustomer(defaultCustomer);
-    verify(mockHealthManager, times(2)).runCommand(
-        any(), any(), any(), any(), any(), any(), eq(true), eq(false), any());
+    verify(mockHealthManager, times(3)).runCommand(
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any()
+    );
   }
 
   @Test
@@ -468,8 +508,16 @@ public class HealthCheckerTest extends FakeDBApplication {
         "Should error");
 
     when(mockHealthManager.runCommand(
-        any(), any(), any(), any(), any(), any(), any(), any(), any())
-    ).thenReturn(dummyShellResponseFail);
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any(),
+      any()
+    )).thenReturn(dummyShellResponseFail);
     Universe u = setupUniverse("univ1");
     setupAlertingData(null, false, false);
     testSingleUniverse(u, null, true);
@@ -503,15 +551,16 @@ public class HealthCheckerTest extends FakeDBApplication {
     healthChecker.checkSingleUniverse(u, defaultCustomer, customerConfig, true, null);
     ArgumentCaptor<List> expectedClusters = ArgumentCaptor.forClass(List.class);
     verify(mockHealthManager, times(1)).runCommand(
-        any(),
-        expectedClusters.capture(),
-        eq(u.name),
-        anyString(),
-        anyString(),
-        anyLong(),
-        anyBoolean(),
-        anyBoolean(),
-        any());
+      any(),
+      expectedClusters.capture(),
+      eq(u.name),
+      anyString(),
+      anyString(),
+      anyLong(),
+      anyBoolean(),
+      anyBoolean(),
+      any()
+    );
     HealthManager.ClusterInfo clusterInfo = (ClusterInfo) expectedClusters.getValue().get(0);
     assertEquals(enabledYEDIS, clusterInfo.redisPort == 1234);
   }

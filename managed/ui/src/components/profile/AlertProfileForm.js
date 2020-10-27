@@ -21,7 +21,8 @@ const validationSchema = Yup.object().shape({
     alertingEmail: Yup.string().nullable(), // This field can be one or more emails separated by commas
     checkIntervalMs: Yup.number().typeError('Must specify a number'),
     statusUpdateIntervalMs: Yup.number().typeError('Must specify a number'),
-    reportOnlyErrors: Yup.boolean().default(false).nullable()
+    reportOnlyErrors: Yup.boolean().default(false).nullable(),
+    reportBackupFailures: Yup.boolean().default(false).nullable()
   }),
   customSmtp: Yup.boolean(),
   smtpData: Yup.object().when('customSmtp', {
@@ -95,7 +96,8 @@ export default class AlertProfileForm extends Component {
           customer.data.alertingData.statusUpdateIntervalMs :
           STATUS_UPDATE_INTERVAL_MS) : '',
         sendAlertsToYb: customer.data.alertingData && customer.data.alertingData.sendAlertsToYb,
-        reportOnlyErrors: customer.data.alertingData && customer.data.alertingData.reportOnlyErrors
+        reportOnlyErrors: customer.data.alertingData && customer.data.alertingData.reportOnlyErrors,
+        reportBackupFailures: customer.data.alertingData && customer.data.alertingData.reportBackupFailures
       },
       customSmtp: isNonEmptyObject(_.get(customer, 'data.smtpData', {})),
       smtpData: {
@@ -194,6 +196,20 @@ export default class AlertProfileForm extends Component {
                         }}
                         label="Only include errors in alert emails"
                         subLabel="Whether or not to include errors in alert emails."
+                      />
+                    )}
+                  </Field>
+                  <Field name="alertingData.reportBackupFailures">
+                    {({ field }) => (
+                      <YBToggle
+                        onToggle={handleChange}
+                        name="alertingData.reportBackupFailures"
+                        input={{
+                          value: field.value,
+                          onChange: field.onChange
+                        }}
+                        label="Send backup failure notification"
+                        subLabel="Whether or not to send an email if a backup task fails."
                       />
                     )}
                   </Field>
