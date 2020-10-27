@@ -1,4 +1,6 @@
-import play.sbt.PlayImport.PlayKeys.playMonitoredFiles
+import jline.console.ConsoleReader
+import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
+import play.sbt.PlayInteractionMode
 
 name := """yugaware"""
 
@@ -84,4 +86,48 @@ playMonitoredFiles := {
     playMonitoredFiles.value
   }
 }
+
+lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
+
+consoleSetting := {
+  object PlayConsoleInteractionModeNew extends PlayInteractionMode {
+    private def withConsoleReader[T](f: ConsoleReader => T): T = {
+      val consoleReader = new ConsoleReader
+      try f(consoleReader)
+      finally consoleReader.close()
+    }
+    private def waitForKey(): Unit = {
+      withConsoleReader { consoleReader =>
+        def waitEOF(): Unit = {
+          consoleReader.readCharacter() match {
+            case 4 | -1 =>
+            // Note: we have to listen to -1 for jline2, for some reason...
+            // STOP on Ctrl-D, EOF.
+            case 11 =>
+              consoleReader.clearScreen(); waitEOF()
+            case 10 | 13 =>
+              println(); waitEOF()
+            case x => waitEOF()
+          }
+        }
+        doWithoutEcho(waitEOF())
+      }
+    }
+    def doWithoutEcho(f: => Unit): Unit = {
+      withConsoleReader { consoleReader =>
+        val terminal = consoleReader.getTerminal
+        terminal.setEchoEnabled(false)
+        try f
+        finally terminal.restore()
+      }
+    }
+    override def waitForCancel(): Unit = waitForKey()
+
+    override def toString = "Console Interaction Mode"
+  }
+
+  PlayConsoleInteractionModeNew
+}
+
+playInteractionMode := consoleSetting.value
 
