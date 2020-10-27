@@ -38,6 +38,9 @@ public class NodeDetails {
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
     ToBeAdded,
+    // Set when a new node is provisioned and configured but before it is added into
+    // the existing cluster.
+    ToJoinCluster,
     // Set after the node (without any configuration) is created using the IaaS provider at the
     // end of the provision step.
     Provisioned,
@@ -177,18 +180,28 @@ public class NodeDetails {
       return new HashSet<>();
     }
     switch (state) {
-      case Adding:
-        return new HashSet<>(Arrays.asList(NodeActionType.REMOVE));
+      // Unexpected/abnormal states.
       case ToBeAdded:
-        return new HashSet<>(Arrays.asList(NodeActionType.DELETE, NodeActionType.REMOVE));
+        return new HashSet<>(Arrays.asList(NodeActionType.DELETE));
+      case Adding:
+        return new HashSet<>(Arrays.asList(NodeActionType.DELETE));
+      case ToJoinCluster:
+        return new HashSet<>(Arrays.asList(NodeActionType.REMOVE));
+      case SoftwareInstalled:
+        return new HashSet<>(Arrays.asList(NodeActionType.START, NodeActionType.DELETE));
+      case ToBeRemoved:
+        return new HashSet<>(Arrays.asList(NodeActionType.REMOVE));
+
+      // Expected/normal states.
       case Live:
         return new HashSet<>(Arrays.asList(NodeActionType.STOP, NodeActionType.REMOVE));
       case Stopped:
         return new HashSet<>(Arrays.asList(NodeActionType.START, NodeActionType.RELEASE));
       case Removed:
-        return new HashSet<>(Arrays.asList(NodeActionType.ADD, NodeActionType.RELEASE));
+        return new HashSet<>(
+            Arrays.asList(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE));
       case Decommissioned:
-        return new HashSet<>(Arrays.asList(NodeActionType.ADD));
+        return new HashSet<>(Arrays.asList(NodeActionType.ADD, NodeActionType.DELETE));
       default:
         return new HashSet<>();
     }
@@ -196,8 +209,9 @@ public class NodeDetails {
 
   @JsonIgnore
   public boolean isRemovable() {
-    return state == NodeState.ToBeAdded || state == NodeState.Removed
-      || state == NodeState.Decommissioned;
+    return state == NodeState.ToBeAdded || state == NodeState.Adding
+        || state == NodeState.SoftwareInstalled || state == NodeState.Removed
+        || state == NodeState.Decommissioned;
   }
 
   @JsonIgnore
