@@ -3502,6 +3502,14 @@ GetCommandLogLevel(Node *parsetree)
 			}
 			break;
 
+		case T_CreateTableGroupStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_DropTableGroupStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
 		default:
 			elog(WARNING, "unrecognized node type: %d",
 				 (int) nodeTag(parsetree));
