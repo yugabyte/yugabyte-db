@@ -58,8 +58,8 @@ export default class OnPremProviderAndAccessKey extends Component {
                   readOnly={isReadOnly} infoContent={portHelpContent}
                   infoTitle="SSH Port" />
                 <Field name="skipProvisioning" component={YBToggle}
-                  label="Skip Provisioning" defaultChecked={false} isReadOnly={isReadOnly}
-                  infoContent={skipProvisioningHelp} infoTitle="Skip Provisioning"/>
+                  label="Manually Provision Nodes" defaultChecked={false} isReadOnly={isReadOnly}
+                  infoContent={skipProvisioningHelp} infoTitle="Manually Provision Nodes"/>
                 <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" insetError={true}
                        className="ssh-key-container" isReadOnly={isReadOnly} infoContent={pkHelpContent}
                        infoTitle="SSH Key" />
