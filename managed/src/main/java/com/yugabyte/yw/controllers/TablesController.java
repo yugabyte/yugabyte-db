@@ -73,9 +73,7 @@ public class TablesController extends AuthenticatedController {
   public TablesController(YBClientService service) { this.ybService = service; }
 
   public Result create(UUID customerUUID, UUID universeUUID) {
-
     try {
-
       // Validate customer UUID and universe UUID
       Customer customer = Customer.get(customerUUID);
       if (customer == null) {
@@ -367,10 +365,10 @@ public class TablesController extends AuthenticatedController {
       LOG.info("Submitted task to universe {}, task uuid = {}.",
           universe.name, taskUUID);
       CustomerTask.create(customer,
-          customerUUID,
+          taskParams.universeUUID,
           taskUUID,
-          CustomerTask.TargetType.Universe,
-          CustomerTask.TaskType.Backup,
+          CustomerTask.TargetType.Backup,
+          CustomerTask.TaskType.Create,
           universe.name);
       LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID,
           universe.name);
@@ -429,8 +427,8 @@ public class TablesController extends AuthenticatedController {
       CustomerTask.create(customer,
           taskParams.universeUUID,
           taskUUID,
-          CustomerTask.TargetType.Table,
-          CustomerTask.TaskType.Backup,
+          CustomerTask.TargetType.Backup,
+          CustomerTask.TaskType.Create,
           taskParams.tableName);
       LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
           tableUUID, taskParams.keyspace, taskParams.tableName);

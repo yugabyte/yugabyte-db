@@ -84,6 +84,7 @@ public class CustomerTask extends Model {
     @EnumValue("BulkImportData")
     BulkImportData,
 
+    @Deprecated
     @EnumValue("Backup")
     Backup,
 
@@ -266,6 +267,14 @@ public class CustomerTask extends Model {
       return tasks.get(0);
     } else {
       return null;
+    }
+  }
+
+  public String getNotificationTargetName() {
+    if (getType().equals(TaskType.Create) && getTarget().equals(TargetType.Backup)) {
+      return Universe.get(getTargetUUID()).name;
+    } else {
+      return getTargetName();
     }
   }
 }

@@ -18,12 +18,7 @@ import javax.persistence.Enumerated;
 import javax.persistence.EnumType;
 import javax.persistence.Id;
 
-import java.lang.annotation.Target;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
-
-import com.yugabyte.yw.models.Universe;
+import java.util.*;
 
 @Entity
 public class Alert extends Model {
@@ -39,6 +34,15 @@ public class Alert extends Model {
       switch (this) {
         case UniverseType:
           return Universe.class;
+        default:
+          return null;
+      }
+    }
+
+    public static TargetType getType(CustomerTask.TargetType targetType) {
+      switch (targetType) {
+        case Universe:
+          return UniverseType;
         default:
           return null;
       }
@@ -81,34 +85,9 @@ public class Alert extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Alert.class);
   private static final Finder<UUID, Alert> find = new Finder<UUID, Alert>(Alert.class) {};
 
-  /**
-   * Create new alert.
-   *
-   * @param uuid
-   * @param customerUUID
-   * @param createTime
-   * @param type
-   * @param message
-   * @return new alert
-   */
-  public static Alert create(UUID customerUUID, String errCode, String type, String message) {
-    return Alert.create(customerUUID, null, null, errCode, type, message);
-  }
-
-  /**
-   * Create new alert.
-   *
-   * @param uuid
-   * @param customerUUID
-   * @param targetUUID
-   * @param targetType
-   * @param createTime
-   * @param type
-   * @param message
-   * @return new alert
-   */
-  public static Alert create(UUID customerUUID, UUID targetUUID, TargetType targetType,
-                             String errCode, String type, String message) {
+  public static Alert create(
+    UUID customerUUID, UUID targetUUID, TargetType targetType,String errCode,
+    String type, String message) {
     Alert alert = new Alert();
     alert.uuid = UUID.randomUUID();
     alert.customerUUID = customerUUID;
@@ -122,6 +101,10 @@ public class Alert extends Model {
     return alert;
   }
 
+  public static Alert create(UUID customerUUID, String errCode, String type, String message) {
+    return Alert.create(customerUUID, null, null, errCode, type, message);
+  }
+
   public void update(String newMessage) {
     createTime = new Date();
     message = newMessage;
@@ -130,12 +113,12 @@ public class Alert extends Model {
 
   public JsonNode toJson() {
     ObjectNode json = Json.newObject()
-        .put("uuid", uuid.toString())
-        .put("customerUUID", customerUUID.toString())
-        .put("createTime", createTime.toString())
-        .put("errCode", errCode)
-        .put("type", type)
-        .put("message", message);
+      .put("uuid", uuid.toString())
+      .put("customerUUID", customerUUID.toString())
+      .put("createTime", createTime.toString())
+      .put("errCode", errCode)
+      .put("type", type)
+      .put("message", message);
     return json;
   }
 
@@ -148,11 +131,14 @@ public class Alert extends Model {
                                .eq("target_uuid", targetUUID).findCount() != 0;
   }
 
-  public static List<Alert> get(UUID customerUUID) {
-    return find.query().where().eq("customer_uuid", customerUUID).findList();
+  public static List<Alert> list(UUID customerUUID) {
+    return find.query().where()
+      .eq("customer_uuid", customerUUID)
+      .orderBy("create_time desc")
+      .findList();
   }
 
-  public static List<Alert> get(UUID customerUUID, String errCode) {
+  public static List<Alert> list(UUID customerUUID, String errCode) {
     return find.query().where().eq("customer_uuid", customerUUID)
                                .eq("errCode", errCode).findList();
   }
@@ -161,5 +147,9 @@ public class Alert extends Model {
     return find.query().where().eq("customer_uuid", customerUUID)
                                .eq("errCode", errCode)
                                .eq("target_uuid", targetUUID).findOne();
+  }
+
+  public static Alert get(UUID alertUUID) {
+    return find.query().where().idEq(alertUUID).findOne();
   }
 }

@@ -49,7 +49,7 @@ public class SubTaskGroup implements Runnable {
   // Flag to denote the task is done.
   boolean tasksDone = false;
 
-  // Flag to denote is an exception needs to be thrown on failure.
+  // Flag to denote if an exception needs to be thrown on failure.
   boolean ignoreErrors = false;
 
   /**

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
 import com.yugabyte.yw.models.Provider;
 
@@ -43,23 +44,79 @@ public class HealthManager extends DevopsBase {
   }
 
   public ShellProcessHandler.ShellResponse runCommand(
-      Provider provider,
-      List<ClusterInfo> clusters,
-      String universeName,
-      String customerTag,
-      String destination,
-      Long potentialStartTimeMs,
-      Boolean sendMailAlways,
-      Boolean reportOnlyErrors,
-      SmtpData smtpData) {
+    String customerTag,
+    String destination,
+    SmtpData smtpData,
+    JsonNode taskFailures
+  ) {
+    return runCommand(
+      null /* provider */,
+      null /* clusters */,
+      null /* universeName */,
+      customerTag,
+      destination,
+      0L,
+      true /* sendMailAlways */,
+      false /* reportOnlyErrors */,
+      smtpData,
+      true /* isTaskNotification */,
+      taskFailures
+    );
+  }
+
+  public ShellProcessHandler.ShellResponse runCommand(
+    Provider provider,
+    List<ClusterInfo> clusters,
+    String universeName,
+    String customerTag,
+    String destination,
+    Long potentialStartTimeMs,
+    Boolean sendMailAlways,
+    Boolean reportOnlyErrors,
+    SmtpData smtpData
+  ) {
+    return runCommand(
+      provider,
+      clusters,
+      universeName,
+      customerTag,
+      destination,
+      potentialStartTimeMs,
+      sendMailAlways,
+      reportOnlyErrors,
+      smtpData,
+      false /* isTaskNotification */,
+      null /* alertInfo */
+    );
+  }
+
+  public ShellProcessHandler.ShellResponse runCommand(
+    Provider provider,
+    List<ClusterInfo> clusters,
+    String universeName,
+    String customerTag,
+    String destination,
+    Long potentialStartTimeMs,
+    Boolean sendMailAlways,
+    Boolean reportOnlyErrors,
+    SmtpData smtpData,
+    Boolean isTaskNotification,
+    JsonNode taskInfo
+  ) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(HEALTH_CHECK_SCRIPT);
-    commandArgs.add("--cluster_payload");
-    commandArgs.add(Json.stringify(Json.toJson(clusters)));
-    commandArgs.add("--universe_name");
-    commandArgs.add(universeName);
+    if (clusters != null) {
+      commandArgs.add("--cluster_payload");
+      commandArgs.add(Json.stringify(Json.toJson(clusters)));
+    }
+
+    if (universeName != null) {
+      commandArgs.add("--universe_name");
+      commandArgs.add(universeName);
+    }
+
     commandArgs.add("--customer_tag");
     commandArgs.add(customerTag);
     if (destination != null) {
@@ -73,8 +130,10 @@ public class HealthManager extends DevopsBase {
     if (sendMailAlways) {
       commandArgs.add("--send_status");
     }
+
     // Start with a copy of the cloud config env vars.
-    HashMap extraEnvVars = new HashMap<>(provider.getConfig());
+    HashMap<String, String> extraEnvVars = provider == null ?
+      new HashMap<>() : new HashMap<>(provider.getConfig());
 
     String email = appConfig.getString("yb.health.default_email");
     if (smtpData != null) {
@@ -111,6 +170,12 @@ public class HealthManager extends DevopsBase {
     }
     if (reportOnlyErrors) {
       commandArgs.add("--report_only_errors");
+    }
+
+    if (isTaskNotification) {
+      commandArgs.add("--send_notification");
+      commandArgs.add("--task_info");
+      commandArgs.add(Json.stringify(taskInfo));
     }
 
     LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
