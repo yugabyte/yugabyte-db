@@ -115,6 +115,7 @@ public class ModelFactory {
     UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
     userIntent.provider = p.uuid.toString();
+    userIntent.providerType = cloudType;
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.universeUUID = universeUUID;
     params.nodeDetailsSet = new HashSet<>();

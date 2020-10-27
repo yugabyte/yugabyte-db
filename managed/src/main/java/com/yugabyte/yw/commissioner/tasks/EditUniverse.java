@@ -161,6 +161,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       }
     }
 
+    // All necessary nodes are created. Data moving will coming soon.
+    createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.ToJoinCluster)
+        .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
     // Creates the primary cluster by first starting the masters.
     if (!newMasters.isEmpty()) {
       if (cluster.clusterType == ClusterType.ASYNC) {
