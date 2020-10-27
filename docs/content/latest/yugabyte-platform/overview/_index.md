@@ -16,32 +16,33 @@ The Yugabyte Platform is best fit for mission-critical deployments, such as prod
 
 Yugabyte Platform is a containerized application that is installed and managed using <a href="https://www.replicated.com/" target="_blank">Replicated</a> for mission-critical environments (for example, production, performance, or failure mode testing). Replicated is a purpose-built tool for on-premises deployments and life cycle management of containerized applications. For environments that are not mission-critical, such as those needed for local development or simple functional testing, you can also use <a href="../../quick-start/install">YugabyteDB</a>.
 
-<!--
+
+## Getting Started with Yugabyte Platform
+
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="architecture-yp/">
+    <a class="section-link icon-offset" href="install/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise.png" aria-hidden="true" />
-        <div class="title">Yugabyte Platform architecture</div>
+        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
+        <div class="title">Install</div>
       </div>
       <div class="body">
-        Overview of Yugabyte Platform and its architecture.
+        Overview of installing Yugabyte Platform on any environment
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="deployment-options-yp/">
+    <a class="section-link icon-offset" href="configure/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise.png" aria-hidden="true" />
-        <div class="title">Deployment options</div>
+        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
+        <div class="title">Configure</div>
       </div>
       <div class="body">
-        Deployment options available in the Yugabyte Platform.
+        Configuring Yugabyte Platform to various providers
       </div>
     </a>
   </div>
 
 </div>
--->
