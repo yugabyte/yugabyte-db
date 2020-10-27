@@ -76,9 +76,9 @@ public class TableManager extends DevopsBase {
     commandArgs.add("--masters");
     commandArgs.add(universe.getMasterAddresses());
 
-    BackupTableParams backupTableParams = null;
-    Customer customer = null;
-    CustomerConfig customerConfig = null;
+    BackupTableParams backupTableParams;
+    Customer customer;
+    CustomerConfig customerConfig;
 
     switch (subType) {
       case BACKUP:

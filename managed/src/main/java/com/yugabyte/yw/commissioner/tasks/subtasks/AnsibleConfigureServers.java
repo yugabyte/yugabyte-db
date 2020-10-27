@@ -31,8 +31,6 @@ import java.util.Map;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class AnsibleConfigureServers extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleConfigureServers.class);

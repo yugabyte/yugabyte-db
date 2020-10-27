@@ -147,7 +147,7 @@ public class TaskRunner implements Runnable {
 
     } catch (Throwable t) {
       LOG.error("Error running task", t);
-
+      if (task.shouldSendNotification()) task.sendNotification();
       // Update the task state to failure and checkpoint it.
       updateTaskState(TaskInfo.State.Failure);
 

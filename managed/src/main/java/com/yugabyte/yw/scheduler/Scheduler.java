@@ -238,7 +238,7 @@ public class Scheduler {
     MultiTableBackup.Params taskParams = Json.fromJson(params,
         MultiTableBackup.Params.class);
     taskParams.scheduleUUID = schedule.scheduleUUID;
-    Universe universe = null;
+    Universe universe;
     try {
       universe = Universe.get(taskParams.universeUUID);
     } catch (Exception e) {
@@ -258,10 +258,10 @@ public class Scheduler {
     LOG.info("Submitted backup for universe: {}, task uuid = {}.",
         taskParams.universeUUID, taskUUID);
     CustomerTask.create(customer,
-        customerUUID,
+        taskParams.universeUUID,
         taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.Backup,
+        CustomerTask.TargetType.Backup,
+        CustomerTask.TaskType.Create,
         universe.name
         );
     LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}", taskUUID,

@@ -12,7 +12,6 @@ import com.yugabyte.yw.common.ApiHelper;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Configuration;
 import play.libs.Json;
 
 import java.io.IOException;
@@ -35,7 +34,7 @@ public class MetricQueryHelper {
   public static final Integer STEP_SIZE =  100;
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
   @Inject
-  Configuration appConfig;
+  play.Configuration appConfig;
 
   @Inject
   ApiHelper apiHelper;
@@ -98,7 +97,7 @@ public class MetricQueryHelper {
 
     ObjectNode responseJson = Json.newObject();
     String metricsUrl = appConfig.getString("yb.metrics.url");
-    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative", false);
+    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative");
     if ((null == metricsUrl || metricsUrl.isEmpty()) && !useNativeMetrics) {
       LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
       return responseJson;
@@ -169,7 +168,7 @@ public class MetricQueryHelper {
     getParams.put("query", promQueryExpression);
     final JsonNode responseJson = apiHelper.getRequest(
                                     queryUrl,
-                                    new HashMap<String, String>(), /*headers*/
+                                    new HashMap<>(), /*headers*/
                                     getParams);
     final MetricQueryResponse metricResponse = Json.fromJson(
                                                   responseJson,
@@ -177,6 +176,7 @@ public class MetricQueryHelper {
     if (metricResponse.error != null || metricResponse.data == null) {
       throw new RuntimeException("Error querying prometheus metrics: " + responseJson.toString());
     }
+
     return metricResponse.getValues();
   }
 }

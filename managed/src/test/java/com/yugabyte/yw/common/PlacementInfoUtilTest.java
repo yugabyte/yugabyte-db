@@ -513,7 +513,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       t.removeNodesAndVerify(nodes);
 
       udtp = universe.getUniverseDetails();
-      updateNodeCountInAZ(udtp, 0, 0, 1, -1);
+      updateNodeCountInAZ(udtp, 0, 0, 0, -1);
       // Requires this flag to associate correct mode with update operation
       udtp.userAZSelected = true;
       primaryCluster = udtp.getPrimaryCluster();

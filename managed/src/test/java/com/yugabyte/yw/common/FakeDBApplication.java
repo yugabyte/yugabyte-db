@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
