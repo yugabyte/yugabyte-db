@@ -157,4 +157,6 @@ if [[ -n "$yugabyted" ]]; then
   test_args+=(-y "$yugabyted")
 fi
 
+log "Test log at ${logfile}"
+
 time "$test_script" "${test_args[@]}" | tee "${logfile}"
