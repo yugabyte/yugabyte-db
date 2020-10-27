@@ -1624,6 +1624,9 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
     master::SysClusterConfigEntryPB* sys_cluster_config_entry =
       resp_cluster_config.mutable_cluster_config();
     replication_info.CopyFrom(sys_cluster_config_entry->replication_info());
+    // TODO(bogdan): Figure out how to handle read replias and leader affinity.
+    replication_info.clear_read_replicas();
+    replication_info.clear_affinitized_leaders();
   } else {
     // Table replication info exists, copy it over.
     replication_info.CopyFrom(table->replication_info().get());
