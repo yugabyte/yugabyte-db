@@ -265,7 +265,7 @@ If you encounter any issues when installing or using a particular extension, fil
 [PostGIS](https://postgis.net/) is a spatial database extender for PostgreSQL-compatible object-relational databases.
 The simplest way to set it up locally is to install it together with regular PostgreSQL.
 
-#### For instance, on macOS, you can:
+#### macOS
 
 - download and install [Postgres.app](https://postgresapp.com/)
 - install with Homebrew:
@@ -274,14 +274,19 @@ The simplest way to set it up locally is to install it together with regular Pos
     $ brew install postgres && brew install postgis
     ```
 
-#### Ubuntu 18.04
-On Ubuntu, you can add the [PostgreSQL APT sources](https://www.postgresql.org/download/linux/ubuntu/). Then you can 
-install:
+#### Ubuntu
+Add the [PostgreSQL APT sources](https://www.postgresql.org/download/linux/ubuntu/). Then you can install:
 
 ```shell script
 sudo apt-get install postgresql-11 postgresql-11-postgis-3
 ```
 
+#### Centos
+You can get the YUM repository from [PostgreSQL website](https://www.postgresql.org/download/linux/redhat/). Then you 
+can use `yum` or `dnf` to install:
+```shell script
+yum install postgresql-11 postgresql-11-postgis-3
+```
 {{< note title="Note" >}}
 If you have multiple PostgreSQL versions installed, make sure you're selecting the correct `pg_config`. On an Ubuntu 18.04 environment 
 with multiple PostgreSQL versions installed:
