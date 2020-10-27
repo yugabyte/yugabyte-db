@@ -51,7 +51,6 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
     LOG.info("Started {} task for node {} in univ uuid={}", getName(),
              taskParams().nodeName, taskParams().universeUUID);
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
@@ -114,6 +113,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       // Set default gflags
       addDefaultGFlags(cluster.userIntent);
+
+      // All necessary nodes are created. Data moving will coming soon.
+      createSetNodeStateTasks(node, NodeDetails.NodeState.ToJoinCluster)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Bring up any masters, as needed.
       boolean masterAdded = false;
@@ -200,14 +203,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      hitException = true;
       throw t;
     } finally {
-      // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
-        setNodeState(taskParams().nodeName, currentNode.state);
-      }
-
       // Mark the update of the universe as done. This will allow future updates to the universe.
       unlockUniverseForUpdate();
     }

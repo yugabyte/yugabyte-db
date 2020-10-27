@@ -75,14 +75,14 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.get(taskParams().universeUUID); 
+    Universe universe = Universe.get(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificate();
     YBClient client = null;
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
-    
+
       ModifyUniverseConfig modifyConfig = new ModifyUniverseConfig(client,
                                                                    taskParams().universeUUID,
                                                                    taskParams().blacklistNodes);
@@ -188,7 +188,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
         Master.BlacklistPB.Builder blacklistBuilder = configBuilder.getServerBlacklistBuilder();
         for (String nodeName : blacklistNodes) {
           NodeDetails node = universe.getNode(nodeName);
-          if (node.isTserver) {
+          if (node.isTserver && node.cloudInfo.private_ip != null) {
             blacklistBuilder.addHosts(ProtobufHelper.hostAndPortToPB(
                 HostAndPort.fromParts(node.cloudInfo.private_ip, node.tserverRpcPort)));
           }
