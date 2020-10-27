@@ -65,8 +65,8 @@ class MetricEntity;
 class ThreadPool;
 
 namespace cdc {
-class CDCServiceTest_TestLogRetentionByOpId_MaxRentionTime_Test;
-class CDCServiceTest_TestLogRetentionByOpId_MinSpace_Test;
+class CDCServiceTestMaxRentionTime_TestLogRetentionByOpId_MaxRentionTime_Test;
+class CDCServiceTestMinSpace_TestLogRetentionByOpId_MinSpace_Test;
 }
 
 namespace log {
@@ -304,8 +304,8 @@ class Log : public RefCountedThreadSafe<Log> {
   FRIEND_TEST(LogTest, TestMultipleEntriesInABatch);
   FRIEND_TEST(LogTest, TestReadLogWithReplacedReplicates);
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
-  FRIEND_TEST(cdc::CDCServiceTest, TestLogRetentionByOpId_MaxRentionTime);
-  FRIEND_TEST(cdc::CDCServiceTest, TestLogRetentionByOpId_MinSpace);
+  FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
+  FRIEND_TEST(cdc::CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace);
 
   class Appender;
 
