@@ -269,15 +269,23 @@ bool AsyncRpc::IsLocalCall() const {
 
 namespace {
 
-void SetTransactionMetadata(const TransactionMetadata& metadata, tserver::WriteRequestPB* req) {
-  auto& write_batch = *req->mutable_write_batch();
-  metadata.ToPB(write_batch.mutable_transaction());
-  write_batch.set_deprecated_may_have_metadata(true);
+template<class T>
+void SetTransactionMetadata(const TransactionMetadata& metadata,
+                            bool need_full_metadata,
+                            T* dest) {
+  auto* transaction = dest->mutable_transaction();
+  if (need_full_metadata) {
+    metadata.ToPB(transaction);
+  } else {
+    metadata.TransactionIdToPB(transaction);
+  }
+  dest->set_deprecated_may_have_metadata(true);
 }
 
-void SetTransactionMetadata(const TransactionMetadata& metadata, tserver::ReadRequestPB* req) {
-  metadata.ToPB(req->mutable_transaction());
-  req->set_deprecated_may_have_metadata(true);
+void SetTransactionMetadata(const TransactionMetadata& metadata,
+                            bool need_full_metadata,
+                            tserver::WriteRequestPB* req) {
+  SetTransactionMetadata(metadata, need_full_metadata, req->mutable_write_batch());
 }
 
 } // namespace
@@ -318,7 +326,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data,
   }
   auto& transaction_metadata = batcher_->transaction_metadata();
   if (!transaction_metadata.transaction_id.IsNil()) {
-    SetTransactionMetadata(transaction_metadata, &req_);
+    SetTransactionMetadata(transaction_metadata, data->need_metadata, &req_);
     bool serializable = transaction_metadata.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
     LOG_IF(DFATAL, has_read_time && serializable)
         << "Read time should NOT be specified for serializable isolation: "

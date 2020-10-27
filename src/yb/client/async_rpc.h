@@ -55,6 +55,7 @@ struct AsyncRpcData {
   bool need_consistent_read = false;
   HybridTime write_time_for_backfill_ = HybridTime::kInvalid;
   InFlightOps ops;
+  bool need_metadata = false;
 };
 
 struct FlushExtraResult {
