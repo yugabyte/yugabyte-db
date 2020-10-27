@@ -65,6 +65,16 @@ YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased)(kSe
 
 } // namespace
 
+InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)
+    : begin(group_begin), end(group_end) {
+}
+
+std::string InFlightOpsGroup::ToString() const {
+  return Format("{items: $0 need_metadata: $1}",
+                AsString(boost::make_iterator_range(begin, end)),
+                need_metadata);
+}
+
 Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransactionDataPB& data) {
   ChildTransactionData result;
   auto metadata = TransactionMetadata::FromPB(data.metadata());
@@ -197,47 +207,35 @@ class YBTransaction::Impl final {
     return Status::OK();
   }
 
-  bool Prepare(const internal::InFlightOps& ops,
+  bool Prepare(InFlightOpsGroupsWithMetadata* ops_info,
                ForceConsistentRead force_consistent_read,
                CoarseTimePoint deadline,
                Initial initial,
-               Waiter waiter,
-               TransactionMetadata* metadata) {
-    VLOG_WITH_PREFIX(2) << "Prepare(" << AsString(ops) << ", " << force_consistent_read << ", "
-                        << initial << ")";
+               Waiter waiter) {
+    VLOG_WITH_PREFIX(2) << "Prepare(" << AsString(ops_info->groups) << ", "
+                        << force_consistent_read << ", " << initial << ")";
 
-    bool has_tablets_without_metadata = false;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       const bool defer = !ready_;
 
-      int num_tablets = 0;
       if (!defer || initial) {
-        for (auto op_it = ops.begin(); op_it != ops.end();) {
-          ++num_tablets;
-          auto& first_op = **op_it;
-          auto* tablet = first_op.tablet.get();
-          auto op_group = first_op.yb_op->group();
-          bool should_add_intents = (**op_it).yb_op->should_add_intents(metadata_.isolation);
-          for (;;) {
-            if (++op_it == ops.end() || (**op_it).tablet.get() != tablet ||
-                (**op_it).yb_op->group() != op_group) {
-              break;
-            }
-          }
-
+        for (auto& group : ops_info->groups) {
+          auto& first_op = **group.begin;
+          const auto should_add_intents = first_op.yb_op->should_add_intents(metadata_.isolation);
+          const auto& tablet_id = first_op.tablet->tablet_id();
           bool has_metadata;
           if (initial && should_add_intents) {
-            auto& tablet_state = tablets_[tablet->tablet_id()];
+            auto& tablet_state = tablets_[tablet_id];
             // TODO(dtxn) Handle skipped writes, i.e. writes that did not write anything (#3220)
             first_op.batch_idx = tablet_state.num_batches;
             ++tablet_state.num_batches;
             has_metadata = tablet_state.has_metadata;
           } else {
-            auto it = tablets_.find(tablet->tablet_id());
+            const auto it = tablets_.find(tablet_id);
             has_metadata = it != tablets_.end() && it->second.has_metadata;
           }
-          has_tablets_without_metadata = has_tablets_without_metadata || !has_metadata;
+          group.need_metadata = !has_metadata;
         }
       }
 
@@ -255,18 +253,10 @@ class YBTransaction::Impl final {
       // snapshot.
       // For snapshot isolation, if read time was not yet picked, we have to choose it now, if there
       // multiple tablets that will process first request.
-      SetReadTimeIfNeeded(num_tablets > 1 || force_consistent_read);
+      SetReadTimeIfNeeded(ops_info->groups.size() > 1 || force_consistent_read);
     }
 
-    VLOG_WITH_PREFIX(3) << "Prepare, has_tablets_without_metadata: "
-                        << has_tablets_without_metadata;
-    if (metadata) {
-      if (has_tablets_without_metadata) {
-        *metadata = metadata_;
-      } else {
-        metadata->transaction_id = metadata_.transaction_id;
-      }
-    }
+    ops_info->metadata = metadata_;
 
     return true;
   }
@@ -1061,14 +1051,12 @@ void YBTransaction::InitWithReadPoint(
   return impl_->InitWithReadPoint(isolation, std::move(read_point));
 }
 
-bool YBTransaction::Prepare(const internal::InFlightOps& ops,
+bool YBTransaction::Prepare(InFlightOpsGroupsWithMetadata* ops_info,
                             ForceConsistentRead force_consistent_read,
                             CoarseTimePoint deadline,
                             Initial initial,
-                            Waiter waiter,
-                            TransactionMetadata* metadata) {
-  return impl_->Prepare(
-      ops, force_consistent_read, deadline, initial, std::move(waiter), metadata);
+                            Waiter waiter) {
+  return impl_->Prepare(ops_info, force_consistent_read, deadline, initial, std::move(waiter));
 }
 
 void YBTransaction::ExpectOperations(size_t count) {

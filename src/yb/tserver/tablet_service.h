@@ -176,6 +176,7 @@ class TabletServiceImpl : public TabletServerServiceIf {
   // Read implementation. If restart is required returns restart time, in case of success
   // returns invalid ReadHybridTime. Otherwise returns error status.
   Result<ReadHybridTime> DoRead(ReadContext* read_context);
+  Result<ReadHybridTime> DoReadImpl(ReadContext* read_context);
   // Completes read, invokes DoRead in loop, adjusting read time due to read restart time.
   // Sends response, etc.
   void CompleteRead(ReadContext* read_context);
