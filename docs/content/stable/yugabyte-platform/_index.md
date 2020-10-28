@@ -77,7 +77,7 @@ menu:
     <a class="section-link icon-offset" href="secure-universes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
-        <div class="title">Secure universes</div>
+        <div class="title">Security</div>
       </div>
       <div class="body">
         Secure YugabyteDB and universe data.

@@ -4,10 +4,10 @@ headerTitle: Enable encryption at rest
 linkTitle: Enable encryption at rest
 description: Enable encryption at rest
 menu:
-  stable:
-    parent: secure-universes
+  latest:
+    parent: security
     identifier: enable-encryption-at-rest
-    weight: 20
+    weight: 28
 isTocNested: true
 showAsideToc: true
 ---
