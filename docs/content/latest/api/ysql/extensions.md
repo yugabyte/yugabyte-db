@@ -281,7 +281,7 @@ Add the [PostgreSQL APT sources](https://www.postgresql.org/download/linux/ubunt
 sudo apt-get install postgresql-11 postgresql-11-postgis-3
 ```
 
-#### Centos
+#### CentOS
 You can get the YUM repository from [PostgreSQL website](https://www.postgresql.org/download/linux/redhat/). Then you 
 can use `yum` or `dnf` to install:
 ```shell script
