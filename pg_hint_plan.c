@@ -2777,6 +2777,31 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
 	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
 	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
 	SET_CONFIG_OPTION("enable_hashjoin", ENABLE_HASHJOIN);
+
+	/*
+	 * Hash join may be rejected for the reason of estimated memory usage. Try
+	 * getting rid of that limitation.
+	 */
+	if (enforce_mask == ENABLE_HASHJOIN)
+	{
+		char			buf[32];
+		int				new_multipler;
+
+		/* See final_cost_hashjoin(). */
+		new_multipler = MAX_KILOBYTES / work_mem;
+
+		/* See guc.c for the upper limit */
+		if (new_multipler >= 1000)
+			new_multipler = 1000;
+
+		if (new_multipler > hash_mem_multiplier)
+		{
+			snprintf(buf, sizeof(buf), UINT64_FORMAT, (uint64)new_multipler);
+			set_config_option_noerror("hash_mem_multiplier", buf,
+									  context, PGC_S_SESSION, GUC_ACTION_SAVE,
+									  true, ERROR);
+		}
+	}
 }
 
 /*
