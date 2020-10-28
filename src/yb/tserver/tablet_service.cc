@@ -919,13 +919,16 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   UpdateClock(*req, server_->Clock());
 
   LeaderTabletPeer tablet;
-  if (req->state().status() != CLEANUP) {
-    tablet = LookupLeaderTabletOrRespond(
-        server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
-  } else {
+  auto txn_status = req->state().status();
+  auto cleanup = txn_status == TransactionStatus::IMMEDIATE_CLEANUP ||
+                 txn_status == TransactionStatus::GRACEFUL_CLEANUP;
+  if (cleanup) {
     tablet.peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
         server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
     tablet.leader_term = OpId::kUnknownTerm;
+  } else {
+    tablet = LookupLeaderTabletOrRespond(
+        server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
   }
   if (!tablet) {
     return;
@@ -936,8 +939,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
-  if (req->state().status() == TransactionStatus::APPLYING ||
-      req->state().status() == TransactionStatus::CLEANUP) {
+  if (req->state().status() == TransactionStatus::APPLYING || cleanup) {
     tablet.peer->tablet()->transaction_participant()->Handle(std::move(state), tablet.leader_term);
   } else {
     tablet.peer->tablet()->transaction_coordinator()->Handle(std::move(state), tablet.leader_term);

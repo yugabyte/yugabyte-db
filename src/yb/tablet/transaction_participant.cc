@@ -362,17 +362,32 @@ class TransactionParticipant::Impl
   void CleanTransactionsUnlocked(MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
     ProcessRemoveQueueUnlocked(min_running_notifier);
 
+    CleanTransactionsQueue(&immediate_cleanup_queue_, min_running_notifier);
+    CleanTransactionsQueue(&graceful_cleanup_queue_, min_running_notifier);
+  }
+
+  template <class Queue>
+  void CleanTransactionsQueue(
+      Queue* queue, MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
     int64_t min_request = running_requests_.empty() ? std::numeric_limits<int64_t>::max()
                                                     : running_requests_.front();
-    while (!cleanup_queue_.empty() && cleanup_queue_.front().request_id < min_request) {
-      const auto& id = cleanup_queue_.front().transaction_id;
+    HybridTime safe_time;
+    while (!queue->empty()) {
+      const auto& front = queue->front();
+      if (front.request_id >= min_request) {
+        break;
+      }
+      if (!front.Ready(&participant_context_, &safe_time)) {
+        break;
+      }
+      const auto& id = front.transaction_id;
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
         (**it).ScheduleRemoveIntents(*it);
         RemoveTransaction(it, min_running_notifier);
       }
       VLOG_WITH_PREFIX(2) << "Cleaned from queue: " << id;
-      cleanup_queue_.pop_front();
+      queue->pop_front();
     }
   }
 
@@ -419,20 +434,25 @@ class TransactionParticipant::Impl
   }
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term) {
-    if (state->request()->status() == TransactionStatus::APPLYING) {
+    auto txn_status = state->request()->status();
+    if (txn_status == TransactionStatus::APPLYING) {
       HandleApplying(std::move(state), term);
       return;
     }
 
-    if (state->request()->status() == TransactionStatus::CLEANUP) {
-      HandleCleanup(std::move(state), term);
+    if (txn_status == TransactionStatus::IMMEDIATE_CLEANUP ||
+        txn_status == TransactionStatus::GRACEFUL_CLEANUP) {
+      auto cleanup_type = txn_status == TransactionStatus::IMMEDIATE_CLEANUP
+          ? CleanupType::kImmediate
+          : CleanupType::kGraceful;
+      HandleCleanup(std::move(state), term, cleanup_type);
       return;
     }
 
-    auto status = STATUS_FORMAT(
+    auto error_status = STATUS_FORMAT(
         InvalidArgument, "Unexpected status in transaction participant Handle: $0", *state);
-    LOG_WITH_PREFIX(DFATAL) << status;
-    state->CompleteWithStatus(status);
+    LOG_WITH_PREFIX(DFATAL) << error_status;
+    state->CompleteWithStatus(error_status);
   }
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data) {
@@ -574,22 +594,32 @@ class TransactionParticipant::Impl
     }
   }
 
-  CHECKED_STATUS ProcessCleanup(
-      const TransactionApplyData& data, PostApplyCleanup post_apply_cleanup) {
+  CHECKED_STATUS ProcessCleanup(const TransactionApplyData& data, CleanupType cleanup_type) {
     loader_.WaitLoaded(data.transaction_id);
 
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = transactions_.find(data.transaction_id);
     if (it == transactions_.end()) {
-      cleanup_cache_.Insert(data.transaction_id);
+      if (cleanup_type == CleanupType::kImmediate) {
+        cleanup_cache_.Insert(data.transaction_id);
+      }
 
       return Status::OK();
     }
 
-    if (!post_apply_cleanup && (**it).ProcessingApply()) {
+    if ((**it).ProcessingApply()) {
       VLOG_WITH_PREFIX(2) << "Don't cleanup transaction because it is applying intents: "
                           << data.transaction_id;
+      return Status::OK();
+    }
+
+    if (cleanup_type == CleanupType::kGraceful) {
+      graceful_cleanup_queue_.push_back(GracefulCleanupQueueEntry{
+        .request_id = request_serial_,
+        .transaction_id = data.transaction_id,
+        .required_safe_time = participant_context_.Now(),
+      });
       return Status::OK();
     }
 
@@ -1057,7 +1087,10 @@ class TransactionParticipant::Impl
     // Since we try to remove the transaction after all its records are removed from the provisional
     // DB, it is safe to complete removal at this point, because it means that there will be no more
     // queries to status of this transactions.
-    cleanup_queue_.push_back({request_serial_, (**it).id()});
+    immediate_cleanup_queue_.push_back(ImmediateCleanupQueueEntry{
+      .request_id = request_serial_,
+      .transaction_id = (**it).id(),
+    });
     VLOG_WITH_PREFIX(2) << "Queued for cleanup: " << (**it).id() << ", reason: " << reason;
     return false;
   }
@@ -1223,7 +1256,9 @@ class TransactionParticipant::Impl
     participant_context_.SubmitUpdateTransaction(std::move(state), term);
   }
 
-  void HandleCleanup(std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term) {
+  void HandleCleanup(
+      std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term,
+      CleanupType cleanup_type) {
     VLOG_WITH_PREFIX(3) << "Cleanup";
     auto id = FullyDecodeTransactionId(state->request()->transaction_id());
     if (!id.ok()) {
@@ -1238,9 +1273,9 @@ class TransactionParticipant::Impl
         .commit_ht = HybridTime(),
         .log_ht = HybridTime(),
         .sealed = state->request()->sealed(),
-        .status_tablet = std::string() };
-    WARN_NOT_OK(ProcessCleanup(data, PostApplyCleanup::kTrue),
-                "Process cleanup failed");
+        .status_tablet = std::string()
+    };
+    WARN_NOT_OK(ProcessCleanup(data, cleanup_type), "Process cleanup failed");
     state->CompleteWithStatus(Status::OK());
   }
 
@@ -1259,7 +1294,7 @@ class TransactionParticipant::Impl
       return ProcessApply(apply_data);
     }
     if (!data.sealed) {
-      return ProcessCleanup(apply_data, PostApplyCleanup::kFalse);
+      return ProcessCleanup(apply_data, CleanupType::kImmediate);
     }
     return Status::OK();
   }
@@ -1348,9 +1383,26 @@ class TransactionParticipant::Impl
     return status_resolvers_.back();
   }
 
-  struct CleanupQueueEntry {
+  struct ImmediateCleanupQueueEntry {
     int64_t request_id;
     TransactionId transaction_id;
+
+    bool Ready(TransactionParticipantContext* participant_context, HybridTime* safe_time) const {
+      return true;
+    }
+  };
+
+  struct GracefulCleanupQueueEntry {
+    int64_t request_id;
+    TransactionId transaction_id;
+    HybridTime required_safe_time;
+
+    bool Ready(TransactionParticipantContext* participant_context, HybridTime* safe_time) const {
+      if (!*safe_time) {
+        *safe_time = participant_context->SafeTimeForTransactionParticipant();
+      }
+      return *safe_time >= required_safe_time;
+    }
   };
 
   std::string log_prefix_;
@@ -1368,10 +1420,12 @@ class TransactionParticipant::Impl
   // from both collections.
   std::priority_queue<int64_t, std::vector<int64_t>, std::greater<void>> complete_requests_;
 
-  // Queue of transaction ids that should be cleaned, paired with request that should be completed
+  // Queues of transaction ids that should be cleaned, paired with request that should be completed
   // in order to be able to do clean.
-  // Guarded by RunningTransactionContext::mutex_
-  std::deque<CleanupQueueEntry> cleanup_queue_;
+  // Immediate cleanup is performed as soon as possible.
+  // Graceful cleanup is performed after safe time becomes greater than cleanup request hybrid time.
+  std::deque<ImmediateCleanupQueueEntry> immediate_cleanup_queue_ GUARDED_BY(mutex_);
+  std::deque<GracefulCleanupQueueEntry> graceful_cleanup_queue_ GUARDED_BY(mutex_);
 
   // Remove queue maintains transactions that could be cleaned when safe time for follower reaches
   // appropriate time for an entry.

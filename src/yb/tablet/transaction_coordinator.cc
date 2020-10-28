@@ -257,7 +257,8 @@ class TransactionState {
         case TransactionStatus::COMMITTED: FALLTHROUGH_INTENDED;
         case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
         case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
-        case TransactionStatus::CLEANUP:
+        case TransactionStatus::IMMEDIATE_CLEANUP: FALLTHROUGH_INTENDED;
+        case TransactionStatus::GRACEFUL_CLEANUP:
           ProcessQueue();
           break;
       }
@@ -344,7 +345,8 @@ class TransactionState {
       case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
       case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
       case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
-      case TransactionStatus::CLEANUP:
+      case TransactionStatus::IMMEDIATE_CLEANUP: FALLTHROUGH_INTENDED;
+      case TransactionStatus::GRACEFUL_CLEANUP:
         return STATUS_FORMAT(Corruption, "Transaction has unexpected status: $0",
                              TransactionStatus_Name(status_));
     }
@@ -521,7 +523,8 @@ class TransactionState {
         FATAL_INVALID_ENUM_VALUE(TransactionStatus, data.state.status());
       case TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS:
         return AppliedInAllInvolvedTabletsReplicationFinished(data);
-      case TransactionStatus::CLEANUP:
+      case TransactionStatus::IMMEDIATE_CLEANUP: FALLTHROUGH_INTENDED;
+      case TransactionStatus::GRACEFUL_CLEANUP:
         // CLEANUP is handled separately, because it is received for transactions not managed by
         // this tablet as a transaction status tablet, but tablets that are involved in the data
         // path (receive write intents) for this transactions
@@ -534,9 +537,10 @@ class TransactionState {
     const auto& state = *request->request();
 
     Status status;
-    if (state.status() == TransactionStatus::COMMITTED) {
+    auto txn_status = state.status();
+    if (txn_status == TransactionStatus::COMMITTED) {
       status = HandleCommit();
-    } else if (state.status() == TransactionStatus::PENDING) {
+    } else if (txn_status == TransactionStatus::PENDING) {
       if (status_ != TransactionStatus::PENDING) {
         status = STATUS_FORMAT(IllegalState,
             "Transaction in wrong state during heartbeat: $0",
@@ -556,7 +560,8 @@ class TransactionState {
     VLOG_WITH_PREFIX(4) << Format("DoHandle, replicating = $0", replicating_);
     replicating_ = request.get();
     auto submitted = context_.SubmitUpdateTransaction(std::move(request));
-    CHECK(submitted);
+    // Should always succeed, since we execute this code only on the leader.
+    CHECK(submitted) << "Status: " << TransactionStatus_Name(txn_status);
   }
 
   CHECKED_STATUS HandleCommit() {
@@ -1274,15 +1279,15 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   MUST_USE_RESULT bool SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperationState> state) override {
-    if (postponed_leader_actions_.leader()) {
-      postponed_leader_actions_.updates.push_back(std::move(state));
-      return true;
-    } else {
+    if (!postponed_leader_actions_.leader()) {
       auto status = STATUS(IllegalState, "Submit update transaction on non leader");
       VLOG_WITH_PREFIX(1) << status;
       state->CompleteWithStatus(status);
       return false;
     }
+
+    postponed_leader_actions_.updates.push_back(std::move(state));
+    return true;
   }
 
   void CompleteWithStatus(

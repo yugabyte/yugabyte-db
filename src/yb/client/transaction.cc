@@ -485,7 +485,7 @@ class YBTransaction::Impl final {
       }
       CleanupTransaction(
           manager_->client(), manager_->clock(), metadata_.transaction_id, Sealed::kFalse,
-          cleanup_tablet_ids);
+          CleanupType::kImmediate, cleanup_tablet_ids);
     });
     std::unique_lock<std::mutex> lock(mutex_);
     if (state_.load(std::memory_order_acquire) == TransactionState::kAborted) {
@@ -663,10 +663,10 @@ class YBTransaction::Impl final {
             std::bind(&Impl::AbortDone, this, _1, _2, transaction)),
         &abort_handle_);
 
-    DoAbortCleanup(transaction);
+    DoAbortCleanup(transaction, CleanupType::kImmediate);
   }
 
-  void DoAbortCleanup(const YBTransactionPtr& transaction) {
+  void DoAbortCleanup(const YBTransactionPtr& transaction, CleanupType cleanup_type) {
     if (FLAGS_TEST_disable_proactive_txn_cleanup_on_abort) {
       return;
     }
@@ -686,7 +686,7 @@ class YBTransaction::Impl final {
 
     CleanupTransaction(
         manager_->client(), manager_->clock(), metadata_.transaction_id, Sealed::kFalse,
-        tablet_ids);
+        cleanup_type, tablet_ids);
   }
 
   void CommitDone(const Status& status,
@@ -708,6 +708,13 @@ class YBTransaction::Impl final {
     }
     VLOG_WITH_PREFIX(4) << "Commit done: " << actual_status;
     commit_callback_(actual_status);
+
+    if (actual_status.IsExpired()) {
+      // We can't perform immediate cleanup here because the transaction could be committed,
+      // its APPLY records replicated in all participant tablets, and its status record removed
+      // from the status tablet.
+      DoAbortCleanup(transaction, CleanupType::kGraceful);
+    }
   }
 
   void AbortDone(const Status& status,
@@ -905,7 +912,7 @@ class YBTransaction::Impl final {
         SetError(status);
         // If state is committed, then we should not cleanup.
         if (state == TransactionState::kRunning) {
-          DoAbortCleanup(transaction);
+          DoAbortCleanup(transaction, CleanupType::kImmediate);
         }
         if (transaction_status == TransactionStatus::CREATED) {
           NotifyWaiters(status);

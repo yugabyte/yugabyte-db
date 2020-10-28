@@ -189,7 +189,7 @@ void CqlIndexTest::TestTxnCleanup(size_t max_remaining_txns_per_tablet) {
   auto prepared = ASSERT_RESULT(session.Prepare("INSERT INTO t (key, value) VALUES (?, ?)"));
 
   for (int i = 0; i != RegularBuildVsSanitizers(100, 30); ++i) {
-    CleanFutures(&futures, CheckReady::kTrue);
+    ASSERT_NO_FATALS(CleanFutures(&futures, CheckReady::kTrue));
 
     auto stmt = prepared.Bind();
     stmt.Bind(0, i);
@@ -197,7 +197,7 @@ void CqlIndexTest::TestTxnCleanup(size_t max_remaining_txns_per_tablet) {
     futures.push_back(session.ExecuteGetFuture(stmt));
   }
 
-  CleanFutures(&futures, CheckReady::kFalse);
+  ASSERT_NO_FATALS(CleanFutures(&futures, CheckReady::kFalse));
 
   AssertRunningTransactionsCountLessOrEqualTo(cluster_.get(), max_remaining_txns_per_tablet);
 }

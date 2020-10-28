@@ -474,7 +474,8 @@ enum TransactionStatus {
   // tablets:
   APPLYING = 20;
   APPLIED_IN_ONE_OF_INVOLVED_TABLETS = 21;
-  CLEANUP = 22;
+  IMMEDIATE_CLEANUP = 22;
+  GRACEFUL_CLEANUP = 23;
 }
 
 message TransactionMetadataPB {
