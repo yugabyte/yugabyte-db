@@ -109,7 +109,6 @@ public class CustomerController extends AuthenticatedController {
 
   public Result update(UUID customerUUID) {
     ObjectNode responseJson = Json.newObject();
-    ObjectNode errorJson = Json.newObject();
 
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -133,8 +132,7 @@ public class CustomerController extends AuthenticatedController {
 
       CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
       if (config == null && formData.get().alertingData != null) {
-        config = CustomerConfig.createAlertConfig(
-                customerUUID, Json.toJson(formData.get().alertingData));
+        CustomerConfig.createAlertConfig(customerUUID, Json.toJson(formData.get().alertingData));
       } else if (config != null && formData.get().alertingData != null) {
         config.data = Json.toJson(formData.get().alertingData);
         config.update();
@@ -142,8 +140,7 @@ public class CustomerController extends AuthenticatedController {
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
       if (smtpConfig == null && formData.get().smtpData != null) {
-        smtpConfig = CustomerConfig.createSmtpConfig(
-            customerUUID, Json.toJson(formData.get().smtpData));
+        CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(formData.get().smtpData));
       } else if (smtpConfig != null && formData.get().smtpData != null) {
         smtpConfig.data = Json.toJson(formData.get().smtpData);
         smtpConfig.update();
@@ -325,7 +322,8 @@ public class CustomerController extends AuthenticatedController {
     // mount point for an onprem universe.
     if (mqParams.metrics.contains("disk_usage")) {
       List<Universe> universes =  customer.getUniverses().stream()
-        .filter(u -> u.getUniverseDetails().nodePrefix.equals(nodePrefix))
+        .filter(u -> u.getUniverseDetails().nodePrefix != null &&
+                     u.getUniverseDetails().nodePrefix.equals(nodePrefix))
         .collect(Collectors.toList());
       if (universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.providerType ==
           CloudType.onprem) {

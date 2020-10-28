@@ -27,16 +27,11 @@ import org.slf4j.LoggerFactory;
 import play.mvc.Result;
 import play.data.Form;
 import play.data.FormFactory;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import play.libs.Json;
 
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.CONFLICT;
 
 public class AlertController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(AlertController.class);
@@ -51,10 +46,12 @@ public class AlertController extends AuthenticatedController {
     if (Customer.get(customerUUID) == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
+
     ArrayNode alerts = Json.newArray();
-    for (Alert alert: Alert.get(customerUUID)) {
+    for (Alert alert: Alert.list(customerUUID)) {
         alerts.add(alert.toJson());
     }
+
     return ok(alerts);
   }
 
@@ -76,7 +73,7 @@ public class AlertController extends AuthenticatedController {
     }
 
     AlertFormData data = formData.get();
-    List<Alert> alerts = Alert.get(customerUUID, data.errCode);
+    List<Alert> alerts = Alert.list(customerUUID, data.errCode);
     if (alerts.size() > 1) {
       return ApiResponse.error(CONFLICT,
         "May only update alerts that have been created once."
@@ -84,7 +81,7 @@ public class AlertController extends AuthenticatedController {
     } else if (alerts.size() == 1) {
       alerts.get(0).update(data.message);
     } else {
-      Alert.create(customerUUID, data.errCode, data.type, data.message);
+      Alert alert = Alert.create(customerUUID, data.errCode, data.type, data.message);
     }
     Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ok();
@@ -103,7 +100,7 @@ public class AlertController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
     AlertFormData data = formData.get();
-    Alert.create(customerUUID, data.errCode, data.type, data.message);
+    Alert alert = Alert.create(customerUUID, data.errCode, data.type, data.message);
     Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ok();
   }
