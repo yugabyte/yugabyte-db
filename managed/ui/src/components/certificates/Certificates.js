@@ -115,8 +115,6 @@ class Certificates extends Component {
     const payload = {
       name: row.name,
       uuid: row.uuid,
-      certStart: moment(row.creationTime).valueOf(),
-      certExpiry: moment(row.expiryDate).valueOf(),
     };
 
     return (
