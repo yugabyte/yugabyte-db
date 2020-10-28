@@ -7,7 +7,7 @@ menu:
   stable:
     parent: security
     identifier: create-kms-config-2-smartkey-kms
-    weight: 20
+    weight: 27
 isTocNested: true
 showAsideToc: true
 ---

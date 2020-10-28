@@ -7,7 +7,7 @@ menu:
   stable:
     parent: security
     identifier: security-checklist-yp
-    weight: 15
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---
