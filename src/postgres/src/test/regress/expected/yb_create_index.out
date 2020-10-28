@@ -1031,3 +1031,42 @@ SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC;
  15
  10
 (9 rows)
+
+-- Test creating indexes with (table_oid = x)
+CREATE TABLE test_index_with_oids (v1 INT, v2 INT, v3 INT);
+INSERT INTO test_index_with_oids VALUES (1, 11, 21), (2, 12, 22), (3, 13, 23), (4, 14, 24), (5, 15, 25);
+-- Test with variable = false
+CREATE INDEX index_with_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
+ERROR:  Create index with oid is not allowed.
+HINT:  Try enabling the session variable yb_enable_create_with_table_oid.
+-- Turn on variable and test
+set yb_enable_create_with_table_oid=1;
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 0);
+ERROR:  User tables must have an OID >= 16384.
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = -1);
+ERROR:  value -1 out of bounds for option "table_oid"
+DETAIL:  Valid values are between "16384" and "2147483647".
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 123);
+ERROR:  User tables must have an OID >= 16384.
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 'test');
+ERROR:  table_oid requires an integer value
+CREATE INDEX index_with_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
+select relname, oid from pg_class where relname = 'index_with_table_oid';
+       relname        |   oid
+----------------------+---------
+ index_with_table_oid | 1111111
+(1 row)
+
+SELECT * FROM test_index_with_oids ORDER BY v1;
+ v1 | v2 | v3
+----+----+----
+  1 | 11 | 21
+  2 | 12 | 22
+  3 | 13 | 23
+  4 | 14 | 24
+  5 | 15 | 25
+(5 rows)
+
+CREATE INDEX index_with_duplicate_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
+ERROR:  Oid 1111111 is in use.
+set yb_enable_create_with_table_oid=0;
