@@ -73,6 +73,10 @@ class GcpCloud(AbstractCloud):
         self.get_admin().mount_disk(args.zone, instance, body)
 
     def delete_instance(self, args):
+        host_info = self.get_host_info(args)
+        if args.node_ip is None or host_info['private_ip'] != args.node_ip:
+            logging.error("Host {} IP does not match.".format(args.search_pattern))
+            return
         self.get_admin().delete_instance(args.zone, args.search_pattern)
 
     def get_regions(self, args):
