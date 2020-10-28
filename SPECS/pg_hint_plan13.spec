@@ -1,7 +1,7 @@
 # SPEC file for pg_store_plans
 # Copyright(C) 2020 NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
-%define _pgdir   /usr/pgsql-12
+%define _pgdir   /usr/pgsql-13
 %define _bindir  %{_pgdir}/bin
 %define _libdir  %{_pgdir}/lib
 %define _datadir %{_pgdir}/share
@@ -15,8 +15,8 @@
 
 ## Set general information for pg_store_plans.
 Summary:    Optimizer hint on PostgreSQL 12
-Name:       pg_hint_plan12
-Version:    1.3.6
+Name:       pg_hint_plan13
+Version:    1.3.7
 Release:    1%{?dist}
 License:    BSD
 Group:      Applications/Databases
@@ -26,8 +26,8 @@ BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-%(%{__id_u} -n)
 Vendor:     NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
 ## We use postgresql-devel package
-BuildRequires:  postgresql12-devel
-Requires:  postgresql12-server
+BuildRequires:  postgresql13-devel
+Requires:  postgresql13-server
 
 ## Description for "pg_hint_plan"
 %description
@@ -35,19 +35,19 @@ Requires:  postgresql12-server
 pg_hint_plan provides capability to tweak execution plans to be
 executed on PostgreSQL.
 
-Note that this package is available for only PostgreSQL 12.
+Note that this package is available for only PostgreSQL 13.
 
 %package llvmjit
-Requires: postgresql12-server, postgresql12-llvmjit
-Requires: pg_hint_plan12 = 1.3.6
-Summary:  Just-in-time compilation support for pg_hint_plan12
+Requires: postgresql13-server, postgresql13-llvmjit
+Requires: pg_hint_plan13 = 1.3.7
+Summary:  Just-in-time compilation support for pg_hint_plan13
 
 %description llvmjit
-Just-in-time compilation support for pg_hint_plan12
+Just-in-time compilation support for pg_hint_plan13
 
 ## pre work for build pg_hint_plan
 %prep
-PATH=/usr/pgsql-12/bin:$PATH
+PATH=/usr/pgsql-13/bin:$PATH
 if [ "${MAKE_ROOT}" != "" ]; then
   pushd ${MAKE_ROOT}
   make clean %{name}-%{version}.tar.gz
@@ -58,7 +58,7 @@ if [ ! -d %{_rpmdir} ]; then mkdir -p %{_rpmdir}; fi
 
 ## Set variables for build environment
 %build
-PATH=/usr/pgsql-12/bin:$PATH
+PATH=/usr/pgsql-13/bin:$PATH
 make USE_PGXS=1 %{?_smp_mflags}
 
 ## Set variables for install
@@ -73,7 +73,7 @@ rm -rf %{buildroot}
 %defattr(0755,root,root)
 %{_libdir}/pg_hint_plan.so
 %defattr(0644,root,root)
-%{_datadir}/extension/pg_hint_plan--1.3.6.sql
+%{_datadir}/extension/pg_hint_plan--1.3.7.sql
 %{_datadir}/extension/pg_hint_plan.control
 
 %files llvmjit
@@ -85,19 +85,5 @@ rm -rf %{buildroot}
 
 # History of pg_hint_plan.
 %changelog
-* Wed Aug 5 2020 Kyotaro Horiguchi
-- Fix some bugs. Version 1.3.6.
-* Thu Feb 20 2020 Kyotaro Horiguchi
-- Support PostgreSQL 12. Fix some bugs. Version 1.3.5.
-* Thu Jan 17 2019 Kyotaro Horiguchi
-- Fix some bugs. Version 1.3.4.
-* Tue Nov 13 2018 Kyotaro Horiguchi
-- Support PostgreSQL 11. Version 1.3.2.
-* Fri Jun 08 2018 Kyotaro Horiguchi
-- Fixed a crash bug. Version 1.3.1.
-* Tue Oct 10 2017 Kyotaro Horiguchi
-- Support PostgreSQL 10. Version 1.3.0.
-* Tue Feb 7 2017 Kyotaro Horiguchi
-- Added new hint Parallel. Version 1.2.0.
-* Thu Jul 21 2016 Kyotaro Horiguchi
-- Support PostgreSQL 9.6
+* Thu Oct 29 2020 Kyotaro Horiguchi
+- First release of pg_hint_plan13.
