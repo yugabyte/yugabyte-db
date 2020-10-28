@@ -3609,9 +3609,9 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 			rel->indexlist = list_delete_cell(rel->indexlist, cell);
 
 			/*
-			 * the elements after cell moved to the list head by 1 element.
-			 * the next iteration should visit the cell at the same address if
-			 * any.
+			 * The cells after the deleted cell have been moved towards the
+			 * list head by 1 element.  the next iteration should visit the
+			 * cell at the same address if any.
 			 */
 			if (next)
 				next = cell;
@@ -4403,6 +4403,14 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 					{
 						hstate->join_hint_level[i] =
 							list_delete_cell(hstate->join_hint_level[i], l);
+						/*
+						 * The cells after the deleted cell have been moved
+						 * towards the list head by 1 element.  the next
+						 * iteration should visit the cell at the same address
+						 * if any.
+						 */
+						if (next)
+							next = l;
 					}
 				}
 			}
