@@ -9,7 +9,7 @@ menu:
   latest:
     parent: security
     identifier: create-kms-config-1-aws-kms
-    weight: 20
+    weight: 27
 isTocNested: true
 showAsideToc: true
 ---

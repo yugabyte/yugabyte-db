@@ -27,13 +27,25 @@ weight: 645
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="enable-encryption-in-transit/">
+    <a class="section-link icon-offset" href="customize-ports/">
       <div class="head">
-       <img class="icon" src="/images/section_icons/secure/tls-encryption.png" />
-        <div class="title">Enable encryption in transit</div>
+       <img class="icon" src="/images/section_icons/index/secure.png" />
+        <div class="title">Customize ports</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to enable encryption in transit and protect data between nodes and clients.
+        Customize ports
+      </div>
+    </a>
+  </div>
+
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="authorization-platform/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/authorization.png" aria-hidden="true" />
+        <div class="title">Authorization platform</div>
+      </div>
+      <div class="body">
+        Use Yugabyte Platform to manager users and roles.
       </div>
     </a>
   </div>
@@ -51,13 +63,13 @@ weight: 645
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="authorization-platform/">
+    <a class="section-link icon-offset" href="enable-encryption-in-transit/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authorization.png" aria-hidden="true" />
-        <div class="title">Authorization platform</div>
+       <img class="icon" src="/images/section_icons/secure/tls-encryption.png" />
+        <div class="title">Enable encryption in transit (TLS)</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to manager users and roles.
+        Use Yugabyte Platform to enable encryption in transit using TLS and protect data between nodes and clients.
       </div>
     </a>
   </div>

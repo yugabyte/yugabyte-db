@@ -7,7 +7,7 @@ menu:
   latest:
     parent: security
     identifier: enable-encryption-at-rest
-    weight: 25
+    weight: 28
 isTocNested: true
 showAsideToc: true
 ---
