@@ -698,6 +698,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
               }
             }
           });
+      auto se = ScopeExit([&resolver] {
+        resolver.Shutdown();
+      });
       {
         std::lock_guard <std::mutex> lock(mutex_);
         if (recheck_ids.empty() && committed_ids.empty()) {

@@ -23,10 +23,15 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
 
-DEFINE_test_flag(int32, inject_status_resolver_delay_ms, 0,
+DEFINE_test_flag(int32, TEST_inject_status_resolver_delay_ms, 0,
                  "Inject delay before launching transaction status resolver RPC.");
+
+DEFINE_test_flag(int32, TEST_inject_status_resolver_complete_delay_ms, 0,
+                 "Inject delay before counting down latch in transaction status resolver "
+                 "complete.");
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -42,13 +47,18 @@ class TransactionStatusResolver::Impl {
         max_transactions_per_request_(max_transactions_per_request), callback_(std::move(callback)),
         log_prefix_(participant_context->LogPrefix()), handle_(rpcs_.InvalidHandle()) {}
 
+  ~Impl() {
+    LOG_IF_WITH_PREFIX(DFATAL, !closing_.load(std::memory_order_acquire))
+        << "Destroy resolver without Shutdown";
+  }
+
   void Shutdown() {
     closing_.store(true, std::memory_order_release);
     for (;;) {
       if (run_latch_.WaitFor(10s)) {
         break;
       }
-      LOG(DFATAL) << "Long wait for transaction status resolver to shutdown";
+      LOG_WITH_PREFIX(DFATAL) << "Long wait for transaction status resolver to shutdown";
     }
   }
 
@@ -101,10 +111,7 @@ class TransactionStatusResolver::Impl {
       req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.data()), txn_id.size());
     }
 
-    auto injected_delay = FLAGS_inject_status_resolver_delay_ms;
-    if (injected_delay > 0) {
-      std::this_thread::sleep_for(1ms * injected_delay);
-    }
+    AtomicFlagSleepMs(&FLAGS_TEST_inject_status_resolver_delay_ms);
 
     auto client = participant_context_.client_future().get();
     if (!client || !rpcs_.RegisterAndStart(
@@ -193,6 +200,7 @@ class TransactionStatusResolver::Impl {
   void Complete(const Status& status) {
     LOG_WITH_PREFIX(INFO) << "Complete: " << status;
     result_promise_.set_value(status);
+    AtomicFlagSleepMs(&FLAGS_TEST_inject_status_resolver_complete_delay_ms);
     run_latch_.CountDown();
   }
 
