@@ -274,7 +274,7 @@ class AwsCloud(AbstractCloud):
             subnet_per_region[r] = host_info["subnet"]
         return subnet_per_region
 
-    def get_host_info(self, args, get_all=False):
+    def get_host_info(self, args, get_all=False, private_ip=None):
         """Override to call the respective AWS specific API for returning hosts by name.
 
         Required fields in args:
@@ -283,9 +283,9 @@ class AwsCloud(AbstractCloud):
         """
         region = args.region
         search_pattern = args.search_pattern
-        return self.get_host_info_specific_args(region, search_pattern, get_all)
+        return self.get_host_info_specific_args(region, search_pattern, get_all, private_ip)
 
-    def get_host_info_specific_args(self, region, search_pattern, get_all=False):
+    def get_host_info_specific_args(self, region, search_pattern, get_all=False, private_ip=None):
         filters = [
             {
                 "Name": "instance-state-name",
@@ -311,6 +311,10 @@ class AwsCloud(AbstractCloud):
         results = []
         for instance in instances:
             data = instance.meta.data
+            if private_ip is not None and private_ip != data["PrivateIpAddress"]:
+                logging.warn("Node name {} is not unique. Expected IP {}, got IP {}".format(
+                    search_pattern, private_ip, data["PrivateIpAddress"]))
+                continue
             zone = data["Placement"]["AvailabilityZone"]
             name_tags = None
             server_tags = None

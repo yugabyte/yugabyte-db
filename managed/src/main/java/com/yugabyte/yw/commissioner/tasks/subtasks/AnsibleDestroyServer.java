@@ -31,6 +31,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     public boolean isForceDelete;
     // Flag to track if node info should be deleted from universe db.
     public boolean deleteNode = true;
+    // IP of node to be deleted.
+    public String nodeIP = null;
   }
 
   @Override

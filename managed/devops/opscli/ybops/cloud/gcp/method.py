@@ -81,6 +81,11 @@ class GcpDestroyInstancesMethod(DestroyInstancesMethod):
     def __init__(self, base_command):
         super(GcpDestroyInstancesMethod, self).__init__(base_command)
 
+    def add_extra_args(self):
+        super(GcpDestroyInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to delete.")
+
     def callback(self, args):
         self.cloud.delete_instance(args)
 
