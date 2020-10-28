@@ -70,18 +70,17 @@ YugabyteDB supports a number of languages and client drivers. Below is a brief l
 
 # What's being worked on?
 
-> This section has been updated on **July 22, 2020**.
+> This section has been updated on **Oct 28, 2020**.
 
 ## Current roadmap
 
-Here is a list of some of the key features being worked on for the upcoming releases. Note that the YugabyteDB v2.2 ~~release is expected around July 2020~~ was released July 15 2020 and the **v2.3 release** is expected in **Nov 2020**.
+Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB **v2.5 latest release** is expected in **Nov 2020**, the **v2.4 stable release** is expected in **Jan 2021**).
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
-| Support loading large data sets into YSQL using `COPY` | PROGRESS  | v2.3  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5241)
-| Follower reads in YSQL | PROGRESS | v2.3 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5232) | Ability to perform follower reads for YSQL and transactional tables in YCQL. Note that this is currently supported for scenarios without distributed transactions.  |
-| Support `pgloader` to migrate from MySQL | PLANNING  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3725) | 
-| YSQL cluster administration features | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/4194) | See currently active queries, find which queries are slow, slow query logging, etc. |
+| Follower reads in YSQL | DONE | v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5232) | Ability to perform follower reads for YSQL and transactional tables in YCQL.  |
+| YSQL cluster administration features - node-level statistics | DONE  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/4194) | Per-node view of currently active queries, find which queries are slow, what active connections are doing, etc. |
+| Support loading large data sets into YSQL using `COPY` | DONE  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5241)
 | Database runtime activity monitoring | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1331) | Activity monitoring, audit logging, inactivity monitoring |
 | Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.5           |                 |               |
 | [Online schema migration](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md)  | PROGRESS  | v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) | YCQL already supports online schema changes |
@@ -101,6 +100,7 @@ The following items are being planned as additions to the roadmap
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
 | Improve YSQL query performance | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) |  |
+| Support `pgloader` to migrate from MySQL | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/3725) | 
 | Make [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) default for YSQL | PLANNING  |  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5239)  |  |
 | Point in time restores | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/1820) |  |
 | Support Kafka as source and sink | PLANNING |  |  | Support source and sink for both YSQL and YSQL |
