@@ -87,8 +87,11 @@ public class CertificateController extends AuthenticatedController {
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
-    Date certStart = new Date(formData.get().certStart);
-    Date certExpiry = new Date(formData.get().certExpiry);
+    Long certTimeMillis = formData.get().certStart;
+    Long certExpiryMillis = formData.get().certExpiry;
+    Date certStart = certTimeMillis != 0L ? new Date(certTimeMillis) : null;
+    Date certExpiry = certExpiryMillis != 0L ? new Date(certExpiryMillis) : null;
+
     try {
       JsonNode result = CertificateHelper.createClientCertificate(
           rootCA, null, formData.get().username, certStart, certExpiry);
