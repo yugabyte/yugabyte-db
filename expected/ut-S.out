@@ -430,9 +430,9 @@ error hint:
 -- No. S-1-5-4
 CREATE TEMP TABLE tm1 (LIKE s1.t1 INCLUDING ALL);
 EXPLAIN (COSTS false) SELECT * FROM tm1 WHERE tm1.c1 = 1;
-            QUERY PLAN            
-----------------------------------
- Index Scan using tm1_pkey on tm1
+             QUERY PLAN             
+------------------------------------
+ Index Scan using tm1_c1_idx on tm1
    Index Cond: (c1 = 1)
 (2 rows)
 
