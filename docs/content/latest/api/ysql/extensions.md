@@ -300,7 +300,7 @@ So you need to make sure you're using the correct `pg_config`. In this case, `/u
 {{< /note >}}
 
 
-Now follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create
+Now, follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create
 the extension.
 
 ```sh
