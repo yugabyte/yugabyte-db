@@ -820,6 +820,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			attr->attidentity = colDef->identity;
 	}
 
+	/* Check for WITH (table_oid = x). */
+	relationId = GetTableOidFromRelOptions(
+		stmt->options, tablespaceId, stmt->relation->relpersistence);
+
 	/*
 	 * Create the relation.  Inherited defaults and constraints are passed in
 	 * for immediate handling --- since they don't need parsing, they can be
@@ -828,7 +832,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	relationId = heap_create_with_catalog(relname,
 										  namespaceId,
 										  tablespaceId,
-										  InvalidOid,
+										  relationId,
 										  InvalidOid,
 										  ofTypeId,
 										  ownerId,

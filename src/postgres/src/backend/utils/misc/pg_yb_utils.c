@@ -783,6 +783,11 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 }
 
 //------------------------------------------------------------------------------
+// YB GUC variables.
+
+bool yb_enable_create_with_table_oid = false;
+
+//------------------------------------------------------------------------------
 // YB Debug utils.
 
 bool yb_debug_report_error_stacktrace = false;
