@@ -84,3 +84,17 @@ select userid,dbid,queryid,query,calls,rows,shared_blks_hit,shared_blks_read,sha
 (4 rows)
 
 drop table test;
+-- Testing uuid-ossp
+create extension "uuid-ossp";
+select uuid_generate_v5('00000000-0000-0000-0000-000000000000', 'yugabyte');
+           uuid_generate_v5
+--------------------------------------
+ dc72413f-8ae5-51c0-8aa2-c7d117077c5e
+(1 row)
+
+-- generated values are random, so to ensure deterministic output ignore the actual values.
+select uuid_generate_v1() != uuid_generate_v4();
+ ?column?
+----------
+ t
+(1 row)
