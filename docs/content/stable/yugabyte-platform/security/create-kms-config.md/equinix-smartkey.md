@@ -5,7 +5,7 @@ linkTitle: Create a KMS configuration
 description: Use Yugabyte Platform to create a KMS configuration using Equinix SmartKey.
 menu:
   stable:
-    parent: secure-universes
+    parent: security
     identifier: create-kms-config-2-smartkey-kms
     weight: 20
 isTocNested: true
