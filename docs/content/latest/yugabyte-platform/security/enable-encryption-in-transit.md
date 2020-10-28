@@ -2,7 +2,7 @@
 title: Enable encryption in transit using Yugabyte Platform
 headerTitle: Enable encryption in transit
 linkTitle: Enable encryption in transit
-description: Use Yugabyte Platform to enable encryption in transit on a YugabyteDB universe.
+description: Use Yugabyte Platform to enable encryption in transit on a YugabyteDB universe and connect to clients.
 menu:
   latest:
     parent: security
@@ -68,11 +68,11 @@ If you enabled the Client-to-Node TLS option when you created your universe, the
 
 1. Go to the **Certificates** page, then to your universe’s certificate, and select the **Download YSQL Cert** option as shown below.
 
-![Download YSQL Certificate](/images/yp/enctryption-in-transit/download-ysql-cert.png)
+![Download YSQL Certificate](/images/yp/encryption-in-transit/download-ysql-cert.png)
 
-This will download two files: `yugabytedb.crt` and `yugabytedb.key`. 
+This will download two files: `yugabytedb.crt` and `yugabytedb.key`.
 
-2. For testing with a `ysqlsh` client, copy these files to `<home-dir>/.yugabytedb` directory and change the permissions to `0600`. 
+2. For testing with a `ysqlsh` client, copy these files to `<home-dir>/.yugabytedb` directory and change the permissions to `0600`.
 
 ```sh
 $ mkdir ~/.yugabytedb; cd ~/.yugabytedb
