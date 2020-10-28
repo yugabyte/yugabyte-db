@@ -290,7 +290,7 @@ $ yum install postgresql-11 postgresql-11-postgis-3
 {{< note title="Note" >}}
 If you have multiple PostgreSQL versions installed, make sure you're selecting the correct `pg_config`. On an Ubuntu 18.04 environment 
 with multiple PostgreSQL versions installed:
-```shell script
+```sh
 $ pg_config --version
 PostgreSQL 13.0 (Ubuntu 13.0-1.pgdg18.04+1)
 $ /usr/lib/postgresql/11/bin/pg_config --version
