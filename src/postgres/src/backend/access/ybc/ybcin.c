@@ -26,6 +26,7 @@
 
 #include "miscadmin.h"
 #include "access/nbtree.h"
+#include "access/reloptions.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "access/ybcam.h"
@@ -237,6 +238,13 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 bytea *
 ybcinoptions(Datum reloptions, bool validate)
 {
+	/*
+	 * For now we only need to validate the reloptions, as we currently have no
+	 * need for a special struct similar to BrinOptions or GinOptions.
+	 * Thus, we will still return NULL for now.
+	 */
+	int numoptions;
+	(void) parseRelOptions(reloptions, validate, RELOPT_KIND_INDEX, &numoptions);
 	return NULL;
 }
 

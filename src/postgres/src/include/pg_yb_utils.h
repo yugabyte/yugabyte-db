@@ -324,6 +324,17 @@ void YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level);
 extern double PowerWithUpperLimit(double base, int exponent, double upper_limit);
 
 //------------------------------------------------------------------------------
+// YB GUC variables.
+
+/**
+ * YSQL guc variables that can be used to toggle yugabyte features.
+ * See also the corresponding entries in guc.c.
+ */
+
+/* Enables tables/indexes to be created WITH (table_oid = x). */
+extern bool yb_enable_create_with_table_oid;
+
+//------------------------------------------------------------------------------
 // YB Debug utils.
 
 /**

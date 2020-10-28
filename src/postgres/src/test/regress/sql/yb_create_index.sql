@@ -71,7 +71,7 @@ CREATE TABLE t2 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h hash, r));
 \d t1
 \d t2
 
-INSERT INTO t1 VALUES (1, 1, 11, 11), (1, 2, 11, 12); 
+INSERT INTO t1 VALUES (1, 1, 11, 11), (1, 2, 11, 12);
 INSERT INTO t2 VALUES (1, 1, 21, 21);
 
 -- The following 2 inserts should produce error due to duplicate primary key / unique index value
@@ -311,3 +311,23 @@ EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC;
 SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC;
 EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC;
 SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC;
+
+-- Test creating indexes with (table_oid = x)
+CREATE TABLE test_index_with_oids (v1 INT, v2 INT, v3 INT);
+INSERT INTO test_index_with_oids VALUES (1, 11, 21), (2, 12, 22), (3, 13, 23), (4, 14, 24), (5, 15, 25);
+
+-- Test with variable = false
+CREATE INDEX index_with_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
+-- Turn on variable and test
+set yb_enable_create_with_table_oid=1;
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 0);
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = -1);
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 123);
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 'test');
+
+CREATE INDEX index_with_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
+select relname, oid from pg_class where relname = 'index_with_table_oid';
+SELECT * FROM test_index_with_oids ORDER BY v1;
+
+CREATE INDEX index_with_duplicate_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
+set yb_enable_create_with_table_oid=0;

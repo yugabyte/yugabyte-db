@@ -697,21 +697,6 @@ YBCCreateIndex(const char *indexName,
 					 schema_name,
 					 indexName);
 
-	/* Check reloptions. */
-	ListCell	*opt_cell;
-	foreach(opt_cell, untransformRelOptions(reloptions))
-	{
-		DefElem *def = (DefElem *) lfirst(opt_cell);
-
-		if (strcmp(def->defname, "colocated") == 0)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot set option \"%s\" on index",
-							def->defname)));
-		}
-	}
-
 	YBCPgStatement handle = NULL;
 
 	HandleYBStatus(YBCPgNewCreateIndex(db_name,

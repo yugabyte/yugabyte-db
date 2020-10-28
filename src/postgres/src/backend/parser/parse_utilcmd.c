@@ -359,6 +359,21 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 		}
 		else if (strcmp(def->defname, "colocated") == 0)
 			(void) defGetBoolean(def);
+		else if (strcmp(def->defname, "table_oid") == 0)
+		{
+			if (!yb_enable_create_with_table_oid)
+			{
+				ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					errmsg("Create table with oid is not allowed."),
+					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
+			}
+			Oid table_oid = defGetInt32(def);
+			if (table_oid < FirstNormalObjectId)
+			{
+				elog(ERROR, "User tables must have an OID >= %d.",
+					 FirstNormalObjectId);
+			}
+		}
 		else
 			ereport(WARNING,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -2680,6 +2695,21 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("Cannot supply tablegroup through WITH clause.")));
+		}
+		else if (strcmp(def->defname, "table_oid") == 0)
+		{
+			if (!yb_enable_create_with_table_oid)
+			{
+				ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					errmsg("Create index with oid is not allowed."),
+					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
+			}
+			Oid table_oid = defGetInt32(def);
+			if (table_oid < FirstNormalObjectId)
+			{
+				elog(ERROR, "User tables must have an OID >= %d.",
+					 FirstNormalObjectId);
+			}
 		}
 	}
 

@@ -994,6 +994,13 @@ DefineIndex(Oid relationId,
 	if (stmt->initdeferred)
 		constr_flags |= INDEX_CONSTR_CREATE_INIT_DEFERRED;
 
+	/* Check for WITH (table_oid = x). */
+	if (!OidIsValid(indexRelationId) && stmt->relation)
+	{
+		indexRelationId = GetTableOidFromRelOptions(
+			stmt->options, tablespaceId, stmt->relation->relpersistence);
+	}
+
 	indexRelationId =
 		index_create(rel, indexRelationName, indexRelationId, parentIndexId,
 					 parentConstraintId,

@@ -1884,6 +1884,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_create_with_table_oid", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables the ability to set table oids when creating tables or indexes."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_create_with_table_oid,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"data_sync_retry", PGC_POSTMASTER, ERROR_HANDLING_OPTIONS,
 			gettext_noop("Whether to continue running after a failure to sync data files."),
 		},
