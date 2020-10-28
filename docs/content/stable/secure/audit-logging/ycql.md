@@ -1,8 +1,8 @@
 ---
-title: Audit logging logging in YugabyteDB for the YCQL API
-headerTitle: Audit logging in YugabyteDB for the YCQL API
+title: Audit logging logging for the YCQL API
+headerTitle: Audit logging for the YCQL API
 linkTitle: Audit logging
-description: Use audit logging for YugabyteDB for the YCQL API.
+description: Use audit logging in YugabyteDB for the YCQL API.
 aliases:
   - /stable/secure/audit-logging
 menu:
