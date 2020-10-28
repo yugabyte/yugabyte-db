@@ -15797,7 +15797,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 						doing_hash = true;
 					}
 
-					appendPQExpBuffer(q, "%s", col_name);
+					appendPQExpBuffer(q, "%s", fmtId(col_name));
 					if (indoption & INDOPTION_DESC)
 						appendPQExpBuffer(q, " DESC");
 					else if (!doing_hash)
