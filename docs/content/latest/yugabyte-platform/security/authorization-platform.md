@@ -7,7 +7,7 @@ menu:
   latest:
     parent: security
     identifier: authorization-platform
-    weight: 20
+    weight: 27
 isTocNested: true
 showAsideToc: true
 ---

@@ -7,7 +7,7 @@ menu:
   latest:
     parent: security
     identifier: enable-encryption-in-transit
-    weight: 20
+    weight: 23
 isTocNested: true
 showAsideToc: true
 ---
