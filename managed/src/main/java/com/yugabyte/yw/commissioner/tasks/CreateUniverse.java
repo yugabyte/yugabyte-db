@@ -18,9 +18,11 @@ import org.slf4j.LoggerFactory;
 import org.yb.Common;
 import org.yb.client.YBClient;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -60,6 +62,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Check if nodes are able to be provisioned/configured properly.
       createPrecheckTasks(taskParams().nodeDetailsSet)
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
+      // Update the universe to the latest state and
+      // check if the nodes already exist in the cloud provider, if so,
+      // fail the universe creation.
+      universe = Universe.get(universe.universeUUID);
+      checkIfNodesExist(universe);
 
       // Create the required number of nodes in the appropriate locations.
       createSetupServerTasks(taskParams().nodeDetailsSet)
@@ -154,5 +162,29 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
+  }
+
+  private void checkIfNodesExist(Universe universe) {
+    String errMsg;
+    for (NodeDetails node : universe.getNodes()) {
+      if (node.placementUuid == null) {
+        errMsg = String.format("Node %s does not have placement.", node.nodeName);
+        throw new RuntimeException(errMsg);
+      }
+      Cluster cluster = universe.getCluster(node.placementUuid);
+      if (!cluster.userIntent.providerType.equals(CloudType.onprem)) {
+        NodeTaskParams nodeParams = new NodeTaskParams();
+        nodeParams.universeUUID = universe.universeUUID;
+        nodeParams.expectedUniverseVersion = universe.version;
+        nodeParams.nodeName = node.nodeName;
+        nodeParams.azUuid = node.azUuid;
+        nodeParams.placementUuid = node.placementUuid;
+        if (instanceExists(nodeParams)){
+          errMsg = String.format("Node %s already exist. Pick different universe name.",
+                                 node.nodeName);
+          throw new RuntimeException(errMsg);
+        }
+      }
+    }
   }
 }

@@ -462,6 +462,8 @@ public class NodeManagerTest extends FakeDBApplication {
       case Destroy:
         expectedCommand.add("--instance_type");
         expectedCommand.add(instanceTypeCode);
+        expectedCommand.add("--node_ip");
+        expectedCommand.add("1.1.1.1");
         break;
       case Tags:
         InstanceActions.Params tagsParams = (InstanceActions.Params)params;
@@ -1231,6 +1233,7 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, createUniverse());
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater(t.cloudType)));
+      params.nodeIP = "1.1.1.1";
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Destroy, params, t));

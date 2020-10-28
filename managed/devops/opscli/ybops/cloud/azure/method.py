@@ -48,7 +48,8 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
 
     def add_extra_args(self):
         super(AzureCreateInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--volume_type", choices=["premium_lrs", "standardssd_lrs", "ultrassd_lrs"],
+        self.parser.add_argument("--volume_type",
+                                 choices=["premium_lrs", "standardssd_lrs", "ultrassd_lrs"],
                                  default="premium_lrs", help="Volume type for Azure instances.")
         self.parser.add_argument("--security_group_id", default=None,
                                  help="Azure comma delimited security group IDs.")
@@ -86,6 +87,11 @@ class AzureProvisionInstancesMethod(ProvisionInstancesMethod):
 class AzureDestroyInstancesMethod(DestroyInstancesMethod):
     def __init__(self, base_command):
         super(AzureDestroyInstancesMethod, self).__init__(base_command)
+
+    def add_extra_args(self):
+        super(AzureDestroyInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to delete.")
 
     def callback(self, args):
         self.cloud.destroy_instance(args)
