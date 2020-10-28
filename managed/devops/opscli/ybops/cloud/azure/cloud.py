@@ -70,7 +70,8 @@ class AzureCloud(AbstractCloud):
             logging.info("Bootstrapping individual regions.")
             # Bootstrap the individual region items standalone (vnet, subnet, sg, RT, etc).
             for region, metadata in perRegionMetadata.items():
-                components[region] = self.get_admin().network(metadata).bootstrap(region).to_components()
+                components[region] = self.get_admin().network(metadata) \
+                                         .bootstrap(region).to_components()
             self.get_admin().network().peer(components)
         print(json.dumps(components))
 
@@ -101,6 +102,9 @@ class AzureCloud(AbstractCloud):
 
     def destroy_instance(self, args):
         host_info = self.get_host_info(args)
+        if args.node_ip is None or host_info['private_ip'] != args.node_ip:
+            logging.error("Host {} IP does not match.".format(args.search_pattern))
+            return
         self.get_admin().destroy_instance(args.search_pattern, host_info)
 
     def query_vpc(self, args):

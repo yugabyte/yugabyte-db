@@ -288,6 +288,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                                                boolean deleteNode) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
+      // Check if the private ip for the node is set. If not, that means we don't have
+      // a clean state to delete the node. Log it and skip the node.
+      if (node.cloudInfo.private_ip == null) {
+        LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node delete.",
+                               node.nodeName));
+        continue;
+      }
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = taskParams().deviceInfo;
@@ -303,6 +310,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.deleteNode = deleteNode;
       // Add the instance type
       params.instanceType = node.cloudInfo.instance_type;
+      // Assign the node IP to ensure deletion of the correct node.
+      params.nodeIP = node.cloudInfo.private_ip;
       // Create the Ansible task to destroy the server.
       AnsibleDestroyServer task = new AnsibleDestroyServer();
       task.initialize(params);

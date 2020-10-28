@@ -541,12 +541,15 @@ public class NodeManager extends DevopsBase {
         if (!(nodeTaskParam instanceof AnsibleDestroyServer.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
         }
+        AnsibleDestroyServer.Params taskParam = (AnsibleDestroyServer.Params) nodeTaskParam;
         commandArgs.add("--instance_type");
-        commandArgs.add(nodeTaskParam.instanceType);
-        if (nodeTaskParam.deviceInfo != null) {
-          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+        commandArgs.add(taskParam.instanceType);
+        commandArgs.add("--node_ip");
+        commandArgs.add(taskParam.nodeIP);
+        if (taskParam.deviceInfo != null) {
+          commandArgs.addAll(getDeviceArgs(taskParam));
         }
-        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
         break;
       }
       case Control: {
