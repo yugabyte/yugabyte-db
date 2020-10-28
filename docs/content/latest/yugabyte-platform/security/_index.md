@@ -12,30 +12,64 @@ menu:
 weight: 645
 ---
 
-Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pods, machines, etc., provided by IaaS), logically grouped together to form one logical distributed database. Each universe includes one or more clusters. A universe is comprised of one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-kms-config/">
+    <a class="section-link icon-offset" href="security-checklist/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Configure key management system (KMS)</div>
+        <div class="title">Security checklist</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to configure the key management system (KMS) for your universe data.
+        Security considerations for Yugabyte Platform and YugabyteDB universes.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="back-up-universe-data/">
+    <a class="section-link icon-offset" href="enable-encryption-in-transit/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Enable encryption in transit</div>
+      </div>
+      <div class="body">
+        Use Yugabyte Platform to enable encryption in transit and protect data between nodes and clients.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="enable-encryption-at-rest/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
         <div class="title">Enable encryption at rest</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to enable encryption at rest.
+        Use Yugabyte Platform to enable encryption at rest and protect data in storage.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="authorization-platform/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Authorization platform</div>
+      </div>
+      <div class="body">
+        Use Yugabyte Platform to manager users and roles.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="network-security/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Network security</div>
+      </div>
+      <div class="body">
+        Use Yugabyte Platform to manager users and roles.
       </div>
     </a>
   </div>

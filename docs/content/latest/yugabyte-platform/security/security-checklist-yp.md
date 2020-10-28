@@ -7,7 +7,7 @@ menu:
   latest:
     parent: security
     identifier: security-checklist-yp
-    weight: 20
+    weight: 33
 isTocNested: true
 showAsideToc: true
 ---
@@ -27,21 +27,12 @@ Read more about enabling Encryption at rest in YugabyteDB.
 
 ## Configure role-based access control
 
-Roles can be assigned to grant users only the essential privileges based on the operations they need to perform against the platform. Typically, a super admin role is created first. The super admin can create additional admins and other fewer privileged users.
+Roles can be assigned to grant users only the essential privileges based on the operations they need to perform against the platform. Typically, a super admin role is created first. The Super Admin can create additional admins and other fewer privileged users.
 
-See the authorization section to enable role-based access control in Yugabyte Platform.
+To enable role-based access control in Yugabyte Platform, see [Authorization platform](../authorization-platform).
 
 ## Enable authentication
 
 Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. The authentication credentials in YugabyteDB are stored internally in the YB-Master system tables. The authentication mechanisms available to users depends on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
 
 Read more about how to enable authentication in YugabyteDB.
-
-## Network Security
-
-To ensure that Yugabyte Platform YugabyteDB runs in a trusted network environment you can restrict machine and port access. Here are some steps to ensure that.
-
-* Servers running YugabyteDB services are directly accessible only by the Yugabyte Platform, servers running the application, and database administrators.
-* Only Yugabyte Platform and servers running applications can connect to YugabyteDB services on the RPC ports. Access to the YugabyteDB ports should be denied to everybody else.
-
-Check the list of default ports that need to be opened on the YugabyteDB servers for the Yugabyte Platform and other applications to connect.
