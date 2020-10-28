@@ -257,6 +257,8 @@ CoarseTimePoint TransactionRpcDeadline();
 extern const std::string kTransactionsTableName;
 extern const std::string kMetricsSnapshotsTableName;
 
+YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))
+
 } // namespace yb
 
 #endif // YB_COMMON_TRANSACTION_H
