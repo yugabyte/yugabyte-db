@@ -4,12 +4,12 @@ headerTitle: Create a KMS configuration using AWS KMS
 linkTitle: Create a KMS configuration
 description: Use Yugabyte Platform to create a KMS configuration for Amazon Web Services (AWS) KMS.
 aliases:
-  - /latest/yugabyte-platform/secure-universes/create-kms-config
+  - /latest/yugabyte-platform/security/create-kms-config
 menu:
   latest:
-    parent: secure-universes
+    parent: security
     identifier: create-kms-config-1-aws-kms
-    weight: 20
+    weight: 27
 isTocNested: true
 showAsideToc: true
 ---
