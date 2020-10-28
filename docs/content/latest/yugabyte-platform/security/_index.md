@@ -69,7 +69,7 @@ weight: 645
         <div class="title">Network security</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to manager users and roles.
+        Restrict machine and port access to run in trusted network environments.
       </div>
     </a>
   </div>
