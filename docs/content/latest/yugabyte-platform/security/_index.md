@@ -1,14 +1,14 @@
 ---
-title: Secure universes
-headerTitle: Secure universes
-linkTitle: Secure universes
-description: Use Yugabyte Platform to secure YugabyteDB universe data.
+title: Security
+headerTitle: Security
+linkTitle: Security
+description: Secure Yugabyte Platform and YugabyteDB universes.
 image: /images/section_icons/manage/backup.png
-headcontent: Use Yugabyte Platform to secure YugabyteDB universes and data.
+headcontent: Secure Yugabyte Platform and your YugabyteDB universes.
 menu:
   latest:
     parent: yugabyte-platform
-    identifier: secure-universes
+    identifier: security
 weight: 645
 ---
 

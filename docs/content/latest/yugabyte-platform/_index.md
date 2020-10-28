@@ -74,13 +74,13 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="secure-universes/">
+    <a class="section-link icon-offset" href="security/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
-        <div class="title">Secure universes</div>
+        <div class="title">Security</div>
       </div>
       <div class="body">
-        Secure YugabyteDB and universe data.
+        Secure Yugabyte Platform and YugabyteDB universes.
       </div>
     </a>
   </div>

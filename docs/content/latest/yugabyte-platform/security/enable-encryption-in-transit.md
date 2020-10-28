@@ -5,7 +5,7 @@ linkTitle: Enable encryption in transit
 description: Use Yugabyte Platform to enable encryption in transit on a YugabyteDB universe.
 menu:
   latest:
-    parent: secure-universes
+    parent: security
     identifier: enable-encryption-in-transit
     weight: 20
 isTocNested: true
@@ -59,3 +59,64 @@ To view the certificate, select the drop-down list in the top-right corner of th
 10. Based on your needs, select **Enable Node-to-Node TLS** and **Enable Client-to-Node TLS**.
 11. Choose an existing certificate from the **Root Certificate** drop-down list and then select the certificate that was uploaded.
 12. Create the universe.
+
+## Connect to clusters
+
+### Connecting to the YSQL endpoint with TLS
+
+If you enabled the Client-to-Node TLS option when you created your universe, then you must download client certificates to your client machine to connect to your database.
+
+1. Go to the **Certificates** page, then to your universe’s certificate, and select the **Download YSQL Cert** option as shown below.
+
+![Download YSQL Certificate](/images/yp/enctryption-in-transit/download-ysql-cert.png)
+
+This will download two files: `yugabytedb.crt` and `yugabytedb.key`. 
+
+2. For testing with a `ysqlsh` client, copy these files to `<home-dir>/.yugabytedb` directory and change the permissions to `0600`. 
+
+```sh
+$ mkdir ~/.yugabytedb; cd ~/.yugabytedb
+$ cp <DownloadDir>/yugabytedb.crt .
+$ cp <DownloadDir>/yugabytedb.key .
+$ chmod 600 yugabytedb.*
+```
+
+3. Run `ysqlsh` using tje `sslmode=require` option.
+
+```sh
+$ cd <yugabyte software install directory>
+$ bin/ysqlsh -h 172.152.43.78 -p 5433 sslmode=require
+ysqlsh (11.2-YB-2.3.3.0-b0)
+SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
+Type "help" for help.
+
+yugabyte=#
+```
+
+To use TLS from a different client, see the client-specific documentation. For example, if you’re using a Postgres JDBC driver to connect to YugabyteDB, see [Using SSL – Configuring the Client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
+
+### Connecting to the YCQL endpoint with TLS
+
+If you enabled the Client-to-Node TLS option when you created your universe, then you must download the Root CA certificate to your client machine to connect to the database.
+
+1. Go to **Certificates** page, navigate to your universe’s certificate, and select **Download Root Cert** option as shown below.
+
+![Download Root Cert](/images/yp/encryption-in-transit/download-root-cert.png)
+
+This will download a file called `root.crt`.
+
+2. Set `SSL_CERTFILE` environment variable to where you saved the downloaded root certificate.
+
+3. Run `ycqlsh` using `-ssl` option.
+
+```sh
+$ cp <DownloadDir>/root.crt ~/.yugabytedb/root.crt
+$ export SSL_CERTFILE=~/.yugabytedb/root.crt
+$ bin/ycqlsh 172.152.43.78 --ssl
+Connected to local cluster at 172.152.43.78:9042.
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+Use HELP for help.
+ycqlsh>
+```
+
+To use TLS from a different client, see the client-specific documentation. For example, if you’re using a Cassandra driver to connect to YugabyteDB, see [Security – SSL](https://docs.datastax.com/en/developer/python-driver/3.19/security/#ssl) for more details.

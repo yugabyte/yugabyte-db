@@ -5,7 +5,7 @@ linkTitle: Enable encryption at rest
 description: Enable encryption at rest
 menu:
   latest:
-    parent: secure-universes
+    parent: security
     identifier: enable-encryption-at-rest
     weight: 20
 isTocNested: true

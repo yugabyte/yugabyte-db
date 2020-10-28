@@ -5,8 +5,8 @@ linkTitle: Security checklist
 description: Security measures that can be implemented to protect your Yugabyte Platform and YugabyteDB universes.
 menu:
   latest:
-    parent: secure-universes
-    identifier: security-checklist
+    parent: security
+    identifier: security-checklist-yp
     weight: 20
 isTocNested: true
 showAsideToc: true
@@ -19,7 +19,7 @@ Below is a list of security measures that can be implemented to protect your Yug
 TLS encryption ensures that network communication between servers is secure. You can configure YugabyteDB to use TLS to encrypt intra-cluster and client to server network communication. Yugabyte recommends enabling encryption in transit in YugabyteDB clusters and clients to ensure the privacy and integrity of data transferred over the network.
 
 Read more about enabling [Encryption in transit](../enable-encryption-at-rest) in YugabyteDB.
- 
+
 ## Enable encryption at rest
 
 [Encryption at rest](https://en.wikipedia.org/wiki/Data_at_rest#Encryption) ensures that data at rest, stored on disk, is protected. You can configure YugabyteDB with a user-generated symmetric key to perform cluster-wide encryption.
