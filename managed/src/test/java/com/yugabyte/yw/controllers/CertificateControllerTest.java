@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -38,6 +39,7 @@ import java.util.LinkedHashMap;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
@@ -77,6 +79,13 @@ public class CertificateControllerTest extends FakeDBApplication {
     String uri = "/api/customers/" + customerUUID + "/certificates";
     return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
         user.createAuthToken(), bodyJson);
+  }
+
+  private Result updateCertificate(UUID customerUUID, UUID rootUUID, ObjectNode bodyJson) {
+    String uri = "/api/customers/" + customerUUID + "/certificates/" + rootUUID +
+                 "/update_empty_cert";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(),
+                                                       bodyJson);
   }
 
   private Result getCertificate(UUID customerUUID, String label) {
@@ -183,6 +192,59 @@ public class CertificateControllerTest extends FakeDBApplication {
     assertTrue(ci.certificate.contains("/tmp"));
     assertEquals(ci.certType, CertificateInfo.Type.CustomCertHostPath);
     assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testUpdateCustomCertificate() {
+    UUID certUUID = UUID.randomUUID();
+    Date date = new Date();
+    CertificateInfo.create(certUUID, customer.uuid, "test", date, date,
+                           "/tmp", null);
+    CertificateParams.CustomCertInfo customCertInfo =
+        CertificateInfo.get(certUUID).getCustomCertInfo();
+    assertNull(customCertInfo);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("label", "test");
+    bodyJson.put("certContent", "cert_test");
+    bodyJson.put("certStart", date.getTime());
+    bodyJson.put("certExpiry", date.getTime());
+    bodyJson.put("certType", "CustomCertHostPath");
+    ObjectNode certJson = Json.newObject();
+    certJson.put("rootCertPath", "/tmp/rootCertPath");
+    certJson.put("nodeCertPath", "/tmp/nodeCertPath");
+    certJson.put("nodeKeyPath", "/tmp/nodeKeyPath");
+    bodyJson.put("customCertInfo", certJson);
+    Result result = updateCertificate(customer.uuid, certUUID, bodyJson);
+    assertEquals(OK, result.status());
+    customCertInfo = CertificateInfo.get(certUUID).getCustomCertInfo();
+    assertNotNull(customCertInfo);
+  }
+
+  @Test
+  public void testUpdateCustomCertificateFailure() {
+    UUID certUUID = UUID.randomUUID();
+    Date date = new Date();
+    CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
+    customCertInfo.rootCertPath = "rootCertPath";
+    customCertInfo.nodeCertPath = "nodeCertPath";
+    customCertInfo.nodeKeyPath = "nodeKeyPath";
+    CertificateInfo.create(certUUID, customer.uuid, "test", date, date,
+                           "/tmp", customCertInfo);
+    customCertInfo = CertificateInfo.get(certUUID).getCustomCertInfo();
+    assertNotNull(customCertInfo);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("label", "test");
+    bodyJson.put("certContent", "cert_test");
+    bodyJson.put("certStart", date.getTime());
+    bodyJson.put("certExpiry", date.getTime());
+    bodyJson.put("certType", "CustomCertHostPath");
+    ObjectNode certJson = Json.newObject();
+    certJson.put("rootCertPath", "/tmp/rootCertPath");
+    certJson.put("nodeCertPath", "/tmp/nodeCertPath");
+    certJson.put("nodeKeyPath", "/tmp/nodeKeyPath");
+    bodyJson.put("customCertInfo", certJson);
+    Result result = updateCertificate(customer.uuid, certUUID, bodyJson);
+    assertEquals(BAD_REQUEST, result.status());
   }
 
   @Test

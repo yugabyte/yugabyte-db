@@ -187,6 +187,13 @@ public class NodeInstanceController extends AuthenticatedController {
           || nodeAction == NodeActionType.START_MASTER) {
         taskParams.clusters = universe.getUniverseDetails().clusters;
         taskParams.rootCA = universe.getUniverseDetails().rootCA;
+        if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
+          String errMsg = String.format("The certificate %s needs info. Update the cert" +
+                                        " and retry.",
+                                        CertificateInfo.get(taskParams.rootCA).label);
+            LOG.error(errMsg);
+            return ApiResponse.error(BAD_REQUEST, errMsg);
+        }
       }
       LOG.info("{} Node {} in universe={}: name={} at version={}.",
                nodeAction.toString(false), nodeName, universe.universeUUID,
