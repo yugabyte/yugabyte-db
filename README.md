@@ -79,8 +79,8 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
 | Follower reads in YSQL | DONE | v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5232) | Ability to perform follower reads for YSQL and transactional tables in YCQL.  |
-| YSQL cluster administration features - node-level statistics | DONE  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/4194) | Per-node view of currently active queries, find which queries are slow, what active connections are doing, etc. |
-| Support loading large data sets into YSQL using `COPY` | DONE  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5241)
+| YSQL cluster administration features - Node-Level statistics | DONE  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/4194) | Per-node view of currently active queries, find which queries are slow, what active connections are doing, etc. |
+| Support loading large data sets into YSQL using `COPY` | DONE  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5241) | Improving transactions which have a very large number of operations, as well as provide various options to batch load data more efficiently
 | Database runtime activity monitoring | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1331) | Activity monitoring, audit logging, inactivity monitoring |
 | Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.5           |                 |               |
 | [Online schema migration](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md)  | PROGRESS  | v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) | YCQL already supports online schema changes |
