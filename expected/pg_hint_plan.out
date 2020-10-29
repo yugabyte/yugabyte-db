@@ -7081,14 +7081,14 @@ error hint:
 /*+IndexScan(p2 p2_val_idx6)*/
 EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
 LOG:  available indexes for IndexScan(p2): p2_val_idx6
-LOG:  available indexes for IndexScan(p2_c1): p2_c1_val_idx6
-LOG:  available indexes for IndexScan(p2_c2): p2_c2_val_idx6
-LOG:  available indexes for IndexScan(p2_c3): p2_c3_val_idx6
-LOG:  available indexes for IndexScan(p2_c4): p2_c4_val_idx6
-LOG:  available indexes for IndexScan(p2_c1_c1): p2_c1_c1_val_idx6
-LOG:  available indexes for IndexScan(p2_c1_c2): p2_c1_c2_val_idx6
-LOG:  available indexes for IndexScan(p2_c3_c1): p2_c3_c1_val_idx6
-LOG:  available indexes for IndexScan(p2_c3_c2): p2_c3_c2_val_idx6
+LOG:  available indexes for IndexScan(p2_c1): p2_c1_val_idx7
+LOG:  available indexes for IndexScan(p2_c2): p2_c2_val_idx7
+LOG:  available indexes for IndexScan(p2_c3): p2_c3_val_idx7
+LOG:  available indexes for IndexScan(p2_c4): p2_c4_val_idx7
+LOG:  available indexes for IndexScan(p2_c1_c1): p2_c1_c1_val_idx7
+LOG:  available indexes for IndexScan(p2_c1_c2): p2_c1_c2_val_idx7
+LOG:  available indexes for IndexScan(p2_c3_c1): p2_c3_c1_val_idx7
+LOG:  available indexes for IndexScan(p2_c3_c2): p2_c3_c2_val_idx7
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(p2 p2_val_idx6)
@@ -7122,14 +7122,14 @@ error hint:
 /*+IndexScan(p2 p2_val_idx p2_val_idx6)*/
 EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
 LOG:  available indexes for IndexScan(p2): p2_val_idx6 p2_val_idx
-LOG:  available indexes for IndexScan(p2_c1): p2_c1_val_idx6 p2_c1_val_idx
-LOG:  available indexes for IndexScan(p2_c2): p2_c2_val_idx6 p2_c2_val_idx
-LOG:  available indexes for IndexScan(p2_c3): p2_c3_val_idx6 p2_c3_val_idx
-LOG:  available indexes for IndexScan(p2_c4): p2_c4_val_idx6 p2_c4_val_idx
-LOG:  available indexes for IndexScan(p2_c1_c1): p2_c1_c1_val_idx6 p2_c1_c1_val_idx
-LOG:  available indexes for IndexScan(p2_c1_c2): p2_c1_c2_val_idx6 p2_c1_c2_val_idx
-LOG:  available indexes for IndexScan(p2_c3_c1): p2_c3_c1_val_idx6 p2_c3_c1_val_idx
-LOG:  available indexes for IndexScan(p2_c3_c2): p2_c3_c2_val_idx6 p2_c3_c2_val_idx
+LOG:  available indexes for IndexScan(p2_c1): p2_c1_val_idx7 p2_c1_val_idx
+LOG:  available indexes for IndexScan(p2_c2): p2_c2_val_idx7 p2_c2_val_idx
+LOG:  available indexes for IndexScan(p2_c3): p2_c3_val_idx7 p2_c3_val_idx
+LOG:  available indexes for IndexScan(p2_c4): p2_c4_val_idx7 p2_c4_val_idx
+LOG:  available indexes for IndexScan(p2_c1_c1): p2_c1_c1_val_idx7 p2_c1_c1_val_idx
+LOG:  available indexes for IndexScan(p2_c1_c2): p2_c1_c2_val_idx7 p2_c1_c2_val_idx
+LOG:  available indexes for IndexScan(p2_c3_c1): p2_c3_c1_val_idx7 p2_c3_c1_val_idx
+LOG:  available indexes for IndexScan(p2_c3_c2): p2_c3_c2_val_idx7 p2_c3_c2_val_idx
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(p2 p2_val_idx p2_val_idx6)

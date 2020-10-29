@@ -561,11 +561,11 @@ not used hint:
 duplication hint:
 error hint:
 
-                QUERY PLAN                 
--------------------------------------------
+                 QUERY PLAN                  
+---------------------------------------------
  Nested Loop
    ->  Seq Scan on tm1 t1
-   ->  Index Scan using tm1_pkey on tm1 t2
+   ->  Index Scan using tm1_c1_idx on tm1 t2
          Index Cond: (c1 = t1.c1)
 (4 rows)
 
