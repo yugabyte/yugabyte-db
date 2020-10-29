@@ -535,6 +535,13 @@ public class UniverseController extends AuthenticatedController {
                   "Custom certificates are only supported for onprem providers."
                 );
               }
+              if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
+                  String errMsg = String.format("The certificate %s needs info. Update the cert" +
+                                                " and retry.",
+                                                CertificateInfo.get(taskParams.rootCA).label);
+                  LOG.error(errMsg);
+                  return ApiResponse.error(BAD_REQUEST, errMsg);
+              }
               LOG.info(
                 "Skipping client certificate creation for universe {} ({}) " +
                 "because cert {} (type {})is not a self-signed cert.",
@@ -752,6 +759,12 @@ public class UniverseController extends AuthenticatedController {
       updatePlacementInfo(taskParams.getNodesInCluster(uuid), placementInfo);
 
       taskParams.rootCA = universe.getUniverseDetails().rootCA;
+      if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
+        String errMsg = String.format("The certificate %s needs info. Update the cert and retry.",
+                                      CertificateInfo.get(taskParams.rootCA).label);
+          LOG.error(errMsg);
+          return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
       LOG.info("Found universe {} : name={} at version={}.",
                universe.universeUUID, universe.name, universe.version);
 
@@ -1281,6 +1294,14 @@ public class UniverseController extends AuthenticatedController {
                                    "Manually migrate the deployment to helm3 " +
                                    "and then mark the universe as helm 3 compatible.");
         }
+      }
+
+      taskParams.rootCA = universe.getUniverseDetails().rootCA;
+      if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
+        String errMsg = String.format("The certificate %s needs info. Update the cert and retry.",
+                                      CertificateInfo.get(taskParams.rootCA).label);
+          LOG.error(errMsg);
+          return ApiResponse.error(BAD_REQUEST, errMsg);
       }
 
       UUID taskUUID = commissioner.submit(taskType, taskParams);
