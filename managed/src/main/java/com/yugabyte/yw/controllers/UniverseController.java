@@ -1424,8 +1424,9 @@ public class UniverseController extends AuthenticatedController {
       if (primaryIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
         return ApiResponse.error(BAD_REQUEST, "Scratch type disk cannot be modified.");
       }
-      if (primaryIntent.instanceType.startsWith("i3")) {
-        return ApiResponse.error(BAD_REQUEST, "Cannot modify i3 instance volumes.");
+      if (primaryIntent.instanceType.startsWith("i3.") ||
+          primaryIntent.instanceType.startsWith("c5d.")) {
+        return ApiResponse.error(BAD_REQUEST, "Cannot modify instance volumes.");
       }
 
       primaryIntent.deviceInfo.volumeSize = taskParams.size;

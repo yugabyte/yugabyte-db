@@ -2160,7 +2160,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" +
                  u.universeUUID + "/disk_update";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    assertBadRequest(result, "Cannot modify i3 instance volumes.");
+    assertBadRequest(result, "Cannot modify instance volumes.");
   }
 
   @Test
