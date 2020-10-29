@@ -1,9 +1,11 @@
 # Global excludes across all subdirectories
 *.o
 *.so
+*.bc
 tags
 regression.*
 *.tar.gz
+*~
 
 # Generated subdirectories
 /.deps/
