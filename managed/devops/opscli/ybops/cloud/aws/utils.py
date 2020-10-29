@@ -837,11 +837,11 @@ def get_device_names(instance_type, num_volumes):
 
 
 def is_next_gen(instance_type):
-    return instance_type.startswith(("c3", "c4", "c5", "m4", "r4"))
+    return instance_type.startswith(("c3.", "c4.", "c5.", "m4.", "r4."))
 
 
 def is_nvme(instance_type):
-    return instance_type.startswith("i3")
+    return instance_type.startswith(("i3.", "c5d."))
 
 
 def has_ephemerals(instance_type):
