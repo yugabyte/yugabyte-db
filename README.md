@@ -90,7 +90,7 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Improve TPC-C benchmarking | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3226) |  |
 | Improvements to [automatic tablet splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PROGRESS  | v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |
 | Identity and access management in YSQL | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) | LDAP and Active Directory support |
-| Transparently restart transactions | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/5683) | This should decrease the incidence of transaction restart errors seen in various scenarios |
+| Transparently restart transactions | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5683) | This should decrease the incidence of transaction restart errors seen in various scenarios |
 
 
 ## Planned additions to roadmap
@@ -103,7 +103,7 @@ The following items are being planned as additions to the roadmap
 | Support `pgloader` to migrate from MySQL | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/3725) | 
 | Make [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) default for YSQL | PLANNING  |  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5239)  |  |
 | Point in time restores | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/1820) |  |
-| Support Kafka as source and sink | PLANNING |  |  | Support source and sink for both YSQL and YSQL |
+| Support Kafka as source and sink | PLANNING |  |  | Support source and sink for both YSQL and YCQL |
 | Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1808) | Apply transactions atomically on consumer cluster. |
 
 ## Recently released features
