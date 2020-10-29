@@ -521,38 +521,6 @@ public class AWSInitializer extends AbstractInitializer {
           volumeSizeGB = 250;
           volumeType = VolumeType.EBS;
         }
-      } else if (instanceTypeCode.startsWith("i3")) {
-        // TODO: remove this once aws pricing api is fixed
-        // TODO: see discussion: https://forums.aws.amazon.com/thread.jspa?messageID=783507
-        String[] instanceTypeParts = instanceTypeCode.split("\\.");
-        volumeType = VolumeType.SSD;
-        switch (instanceTypeParts[1]) {
-          case "large":
-            volumeCount = 1;
-            volumeSizeGB = 475;
-            break;
-          case "xlarge":
-            volumeCount = 1;
-            volumeSizeGB = 950;
-            break;
-          case "2xlarge":
-            volumeCount = 1;
-            volumeSizeGB = 1900;
-            break;
-          case "4xlarge":
-            volumeCount = 2;
-            volumeSizeGB = 1900;
-            break;
-          case "8xlarge":
-            volumeCount = 4;
-            volumeSizeGB = 1900;
-            break;
-          case "16xlarge":
-          default:
-            volumeCount = 8;
-            volumeSizeGB = 1900;
-            break;
-        }
       } else {
         if (parts[1].equals("x")) {
           volumeCount = Integer.parseInt(parts[0]);
@@ -590,13 +558,13 @@ public class AWSInitializer extends AbstractInitializer {
       if (details.tenancy == null) {
         details.tenancy = PublicCloudConstants.Tenancy.Shared;
       }
-
       // Update the object.
+      InstanceType.upsert(provider.name(), instanceTypeCode, numCores, memSizeGB, details);
       if (enableVerboseLogging) {
+        instanceType = InstanceType.get(provider.name(), instanceTypeCode);
         LOG.debug("Saving {} ({} cores, {}GB) with details {}", instanceType.idKey.toString(),
             instanceType.numCores, instanceType.memSizeGB, Json.stringify(Json.toJson(details)));
       }
-      InstanceType.upsert(provider.name(), instanceTypeCode, numCores, memSizeGB, details);
     }
   }
 
