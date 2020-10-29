@@ -795,8 +795,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-J.tmpout
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    InitPlan 1 (returns $1)
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -4745,8 +4745,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-J.tmpout
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Full Join  (cost=xxx rows=1000 width=xxx)
    Hash Cond: (t1.c1 = t2.c1)
    ->  Seq Scan on t1  (cost=xxx rows=1000 width=xxx)

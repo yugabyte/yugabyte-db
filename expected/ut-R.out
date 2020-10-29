@@ -7,8 +7,8 @@ SET search_path TO public;
 EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -33,8 +33,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -56,8 +56,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t_1.c1 = t_2.c1)
    ->  Index Scan using t1_i1 on t1 t_1  (cost=xxx rows=1000 width=xxx)
@@ -79,8 +79,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t_1.c1 = t_2.c1)
    ->  Index Scan using t1_i1 on t1 t_1  (cost=xxx rows=1000 width=xxx)
@@ -105,8 +105,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -128,8 +128,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -154,8 +154,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -177,8 +177,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -203,8 +203,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -218,8 +218,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t1_1.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -242,8 +242,8 @@ Rows(t1 t1 #1)
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t1_1.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -264,8 +264,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t1_1.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -278,8 +278,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.t1, s2.t1 s2t1 WHERE s1.t1.c1 = s2t1.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = s2t1.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -300,8 +300,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = s2t1.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -315,8 +315,8 @@ error hint:
 EXPLAIN SELECT *, (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    InitPlan 1 (returns $0)
@@ -345,8 +345,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    InitPlan 1 (returns $0)
@@ -376,8 +376,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    InitPlan 1 (returns $0)
@@ -410,8 +410,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -435,8 +435,8 @@ Rows(t1 t1 #1)
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -453,8 +453,8 @@ INFO:  pg_hint_plan: hint syntax error at or near "(t1 t1)(t2 t2)"
 DETAIL:  Unrecognized hint keyword "".
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -467,8 +467,8 @@ DETAIL:  Unrecognized hint keyword "".
 EXPLAIN SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Merge Join  (cost=xxx rows=1000 width=xxx)
@@ -487,8 +487,8 @@ INFO:  pg_hint_plan: hint syntax error at or near "(t1 t2 t1 t2)"
 DETAIL:  Unrecognized hint keyword "".
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=100 width=xxx)
    ->  Merge Join  (cost=xxx rows=100 width=xxx)
          Merge Cond: (t1.c1 = t2.c1)
@@ -519,8 +519,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -534,8 +534,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.p1 t1, s1.p1 t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=301 width=xxx)
    Hash Cond: (t1.c1 = t2.c1)
    ->  Append  (cost=xxx rows=301 width=xxx)
@@ -563,8 +563,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1 width=xxx)
    Hash Cond: (t1.c1 = t2.c1)
    ->  Append  (cost=xxx rows=301 width=xxx)
@@ -585,8 +585,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.ul1 t1, s1.ul1 t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                              QUERY PLAN                               
------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1130 width=xxx)
    Hash Cond: (t1.c1 = t2.c1)
    ->  Seq Scan on ul1 t1  (cost=xxx rows=1130 width=xxx)
@@ -606,8 +606,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                              QUERY PLAN                               
------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1 width=xxx)
    Hash Cond: (t1.c1 = t2.c1)
    ->  Seq Scan on ul1 t1  (cost=xxx rows=1130 width=xxx)
@@ -621,8 +621,8 @@ CREATE TEMP TABLE tm1 (LIKE s1.t1 INCLUDING ALL);
 EXPLAIN SELECT * FROM tm1 t1, tm1 t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                              QUERY PLAN                               
------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1130 width=xxx)
    Hash Cond: (t1.c1 = t2.c1)
    ->  Seq Scan on tm1 t1  (cost=xxx rows=1130 width=xxx)
@@ -642,8 +642,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                              QUERY PLAN                               
------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1 width=xxx)
    Hash Cond: (t1.c1 = t2.c1)
    ->  Seq Scan on tm1 t1  (cost=xxx rows=1130 width=xxx)
@@ -657,8 +657,8 @@ CREATE TEMP TABLE t_pg_class WITH OIDS AS SELECT * from pg_class LIMIT 100;
 EXPLAIN SELECT * FROM t_pg_class t1, t_pg_class t2 WHERE t1.oid = t2.oid;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=310 width=xxx)
    Hash Cond: (t1.oid = t2.oid)
    ->  Seq Scan on t_pg_class t1  (cost=xxx rows=310 width=xxx)
@@ -678,8 +678,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1 width=xxx)
    Hash Cond: (t1.oid = t2.oid)
    ->  Seq Scan on t_pg_class t1  (cost=xxx rows=310 width=xxx)
@@ -694,8 +694,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.f1() t1, s1.f1() t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                           QUERY PLAN                            
------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    Join Filter: (t1.c1 = t2.c1)
    ->  Function Scan on f1 t1  (cost=xxx rows=1 width=xxx)
@@ -714,8 +714,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                           QUERY PLAN                            
------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    Join Filter: (t1.c1 = t2.c1)
    ->  Function Scan on f1 t1  (cost=xxx rows=1 width=xxx)
@@ -727,8 +727,8 @@ error hint:
 EXPLAIN SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4),  s1.t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=3 width=xxx)
    Hash Cond: (t2.c1 = "*VALUES*".column1)
    ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
@@ -748,8 +748,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=3 width=xxx)
    Hash Cond: (t2.c1 = "*VALUES*".column1)
    ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
@@ -769,8 +769,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1 width=xxx)
    Hash Cond: (t2.c1 = "*VALUES*".column1)
    ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
@@ -783,8 +783,8 @@ error hint:
 EXPLAIN WITH c1(c1) AS (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1) SELECT * FROM s1.t1, c1 WHERE t1.c1 = c1.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    CTE c1
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -812,8 +812,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=2 width=xxx)
    CTE c1
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -833,8 +833,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.v1 t1, s1.v1 t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1000 width=xxx)
    Hash Cond: (v1t1.c1 = v1t1_1.c1)
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
@@ -854,8 +854,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1000 width=xxx)
    Hash Cond: (v1t1.c1 = v1t1_1.c1)
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
@@ -875,8 +875,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1 width=xxx)
    Hash Cond: (v1t1.c1 = v1t1_.c1)
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
@@ -889,8 +889,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1 AND t1.c1 = (SELECT max(st1.c1) FROM s1.t1 st1, s1.t2 st2 WHERE st1.c1 = st2.c1);
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    InitPlan 1 (returns $0)
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -919,8 +919,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    InitPlan 1 (returns $0)
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -944,8 +944,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -966,8 +966,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -988,8 +988,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -1016,8 +1016,8 @@ Rows(t1 #1)
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -1041,8 +1041,8 @@ Rows(t1 t2 1)
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -1066,8 +1066,8 @@ Rows(t1 t2 #notrows)
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -1117,8 +1117,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    InitPlan 1 (returns $1)
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -1212,8 +1212,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    InitPlan 1 (returns $1)
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -1305,8 +1305,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    InitPlan 1 (returns $1)
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -1426,8 +1426,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    InitPlan 1 (returns $1)
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -1501,8 +1501,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Merge Join  (cost=xxx rows=100 width=xxx)
          Merge Cond: (bmt1.c1 = bmt2.c1)
@@ -1538,8 +1538,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=1 width=xxx)
          Join Filter: (bmt2.c1 = bmt1.c1)
@@ -1570,8 +1570,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Merge Join  (cost=xxx rows=100 width=xxx)
          Merge Cond: (bmt1.c1 = bmt2.c1)
@@ -1607,8 +1607,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=1 width=xxx)
          Join Filter: (bmt2.c1 = bmt1.c1)
@@ -1661,8 +1661,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    InitPlan 1 (returns $1)
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -1758,8 +1758,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    InitPlan 1 (returns $1)
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -1852,8 +1852,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    InitPlan 1 (returns $1)
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -1974,8 +1974,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    InitPlan 1 (returns $1)
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -2080,8 +2080,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    CTE c1
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -2195,8 +2195,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    CTE c1
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -2308,8 +2308,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    CTE c1
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -2458,8 +2458,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    CTE c1
      ->  Aggregate  (cost=xxx rows=1 width=xxx)
@@ -2564,8 +2564,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    CTE c1
      ->  Index Only Scan using t1_i1 on t1 b1t1  (cost=xxx rows=1 width=xxx)
@@ -2616,8 +2616,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    CTE c1
      ->  Index Only Scan using t1_i1 on t1 b1t1  (cost=xxx rows=1 width=xxx)
@@ -2677,8 +2677,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=10 width=xxx)
    Hash Cond: (bmt1.c1 = bmt2.c1)
    CTE c1
@@ -2767,8 +2767,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1 width=xxx)
    Hash Cond: (bmt1.c1 = bmt2.c1)
    CTE c1
@@ -2862,8 +2862,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=10 width=xxx)
    Merge Cond: (bmt1.c1 = bmt2.c1)
    CTE c1
@@ -3009,8 +3009,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (bmt1.c1 = bmt2.c1)
    CTE c1
@@ -3115,8 +3115,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=10 width=xxx)
    Merge Cond: (bmt1.c1 = bmt2.c1)
    CTE c1
@@ -3210,8 +3210,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (bmt1.c1 = bmt2.c1)
    CTE c1
@@ -3269,8 +3269,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=1 width=xxx)
          Join Filter: (t1.c1 = t4.c1)
@@ -3315,8 +3315,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=2 width=xxx)
          Join Filter: (t1.c1 = t4.c1)
@@ -3351,8 +3351,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                             QUERY PLAN                                             
-----------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=1 width=xxx)
          Join Filter: (b1t1.c1 = b1t4.c1)
@@ -3397,8 +3397,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                     QUERY PLAN                                      
--------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=2 width=xxx)
          Join Filter: (b1t1.c1 = b1t4.c1)
@@ -3441,8 +3441,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=1 width=xxx)
          Join Filter: (t1.c1 = t4.c1)
@@ -3519,8 +3519,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=2 width=xxx)
          Join Filter: (t1.c1 = t4.c1)
@@ -3584,8 +3584,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                             QUERY PLAN                                             
-----------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=1 width=xxx)
          Join Filter: (b1t1.c1 = b1t4.c1)
@@ -3677,8 +3677,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                     QUERY PLAN                                      
--------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=2 width=xxx)
          Join Filter: (b1t1.c1 = b1t4.c1)
@@ -3747,8 +3747,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=1 width=xxx)
          Join Filter: (t1.c1 = t4.c1)
@@ -3857,8 +3857,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=2 width=xxx)
          Join Filter: (t1.c1 = t4.c1)
@@ -3953,8 +3953,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                             QUERY PLAN                                             
-----------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=1 width=xxx)
          Join Filter: (b1t1.c1 = b1t4.c1)
@@ -4103,8 +4103,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                     QUERY PLAN                                      
--------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=2 width=xxx)
          Join Filter: (b1t1.c1 = b1t4.c1)
@@ -4178,8 +4178,8 @@ HashJoin(v1t1 v1t1)
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1000 width=xxx)
    Hash Cond: (v1t1.c1 = v1t1_1.c1)
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
@@ -4204,8 +4204,8 @@ Rows(v1t1 v1t1 #1)
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1000 width=xxx)
    Hash Cond: (v1t1.c1 = v1t1_1.c1)
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
@@ -4226,8 +4226,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1000 width=xxx)
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
    ->  Index Scan using t1_i1 on t1 v1t1_  (cost=xxx rows=1 width=xxx)
@@ -4247,8 +4247,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
    ->  Index Scan using t1_i1 on t1 v1t1_  (cost=xxx rows=1 width=xxx)
@@ -4263,8 +4263,8 @@ INFO:  pg_hint_plan: hint syntax error at or near "RowsHashJoin(r4t1 r4t1)"
 DETAIL:  Unrecognized hint keyword "RowsHashJoin".
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1000 width=xxx)
    Hash Cond: (r4t1.c1 = r4t1_1.c1)
    ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=xxx)
@@ -4279,8 +4279,8 @@ INFO:  pg_hint_plan: hint syntax error at or near "RowsHashJoin(r4t1 r4t1)Rows(r
 DETAIL:  Unrecognized hint keyword "RowsHashJoin".
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1000 width=xxx)
    Hash Cond: (r4t1.c1 = r4t1_1.c1)
    ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=xxx)
@@ -4301,8 +4301,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1000 width=xxx)
    ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=xxx)
    ->  Index Scan using t1_i1 on t1 r5t1  (cost=xxx rows=1 width=xxx)
@@ -4322,8 +4322,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=xxx)
    ->  Index Scan using t1_i1 on t1 r5t1  (cost=xxx rows=1 width=xxx)
@@ -4338,8 +4338,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    ->  Hash Join  (cost=xxx rows=2 width=xxx)
          Hash Cond: (t2.c1 = "*VALUES*".column1)
@@ -4364,8 +4364,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    ->  Hash Join  (cost=xxx rows=2 width=xxx)
          Hash Cond: (t2.c1 = "*VALUES*".column1)
@@ -4390,8 +4390,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=20 width=xxx)
    ->  Nested Loop  (cost=xxx rows=2 width=xxx)
          ->  Values Scan on "*VALUES*"  (cost=xxx rows=2 width=xxx)
@@ -4406,8 +4406,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=1 width=xxx)
          Join Filter: (t2.c1 = "*VALUES*_1".column1)
@@ -4437,8 +4437,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=1 width=xxx)
          Join Filter: (t2.c1 = "*VALUES*_1".column1)
@@ -4474,8 +4474,8 @@ Rows(*VALUES* t1 t2 t3 #2)
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=1 width=xxx)
          Join Filter: (t2.c1 = "*VALUES*_1".column1)
@@ -4498,8 +4498,8 @@ Rows(*VALUES* t1 t2 t3 #2)
 EXPLAIN SELECT max(bmt1.c1) FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = sbmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                              QUERY PLAN                                              
-------------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Aggregate  (cost=xxx rows=1 width=xxx)
    ->  Nested Loop  (cost=xxx rows=100 width=xxx)
          ->  Merge Join  (cost=xxx rows=100 width=xxx)
@@ -4531,8 +4531,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=70 width=xxx)
    Merge Cond: (bmt1.c1 = bmt2.c1)
    ->  Index Only Scan using t1_i1 on t1 bmt1  (cost=xxx rows=1000 width=xxx)
@@ -4554,8 +4554,8 @@ error hint:
 EXPLAIN SELECT bmt1.c1 FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = sbmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                           QUERY PLAN                                           
-------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=100 width=xxx)
    ->  Merge Join  (cost=xxx rows=100 width=xxx)
          Merge Cond: (bmt1.c1 = bmt2.c1)
@@ -4586,8 +4586,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=60 width=xxx)
    Merge Cond: (bmt1.c1 = bmt2.c1)
    ->  Index Only Scan using t1_i1 on t1 bmt1  (cost=xxx rows=1000 width=xxx)
@@ -4609,8 +4609,8 @@ error hint:
 EXPLAIN SELECT bmt1.c1 FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = sbmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                           QUERY PLAN                                           
-------------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Nested Loop  (cost=xxx rows=100 width=xxx)
    ->  Merge Join  (cost=xxx rows=100 width=xxx)
          Merge Cond: (bmt1.c1 = bmt2.c1)
@@ -4641,8 +4641,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=50 width=xxx)
    Merge Cond: (bmt1.c1 = bmt2.c1)
    ->  Index Only Scan using t1_i1 on t1 bmt1  (cost=xxx rows=1000 width=xxx)
@@ -4676,8 +4676,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -4699,8 +4699,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=5 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -4725,8 +4725,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=101 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -4748,8 +4748,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=99 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -4772,8 +4772,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -4799,8 +4799,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -4822,8 +4822,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=200 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -4845,8 +4845,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=10 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -4863,8 +4863,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=301 width=xxx)
    Hash Cond: (p2.c1 = p1.c1)
    ->  Append  (cost=xxx rows=304 width=xxx)
@@ -4898,8 +4898,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=1 width=xxx)
    Hash Cond: (p2.c1 = p1.c1)
    ->  Append  (cost=xxx rows=304 width=xxx)
@@ -4926,8 +4926,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=301 width=xxx)
    Hash Cond: (p2.c1 = p1.c1)
    ->  Append  (cost=xxx rows=304 width=xxx)
@@ -4961,8 +4961,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Hash Join  (cost=xxx rows=301 width=xxx)
    Hash Cond: (p2.c1 = p1.c1)
    ->  Append  (cost=xxx rows=304 width=xxx)
@@ -4992,8 +4992,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -5017,8 +5017,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -5032,8 +5032,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -5060,8 +5060,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -5075,8 +5075,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -5100,8 +5100,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -5115,8 +5115,8 @@ error hint:
 EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -5143,8 +5143,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -5162,8 +5162,8 @@ SET client_min_messages TO DEBUG1;
 EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)
@@ -5185,8 +5185,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-R.tmpout
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=101 width=xxx)
    Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=xxx)

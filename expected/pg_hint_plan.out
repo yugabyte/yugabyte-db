@@ -8846,8 +8846,8 @@ Rows()
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
 \o
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1000 width=xxx)
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
@@ -8866,8 +8866,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=99 width=xxx)
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
@@ -8886,8 +8886,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1099 width=xxx)
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
@@ -8906,8 +8906,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=901 width=xxx)
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
@@ -8926,8 +8926,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=99000 width=xxx)
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
@@ -8946,8 +8946,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=10 width=xxx)
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
@@ -8968,8 +8968,8 @@ Rows(t1 t2 #aa)
 
 \o
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1000 width=xxx)
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
@@ -8990,8 +8990,8 @@ Rows(t1 t2 /99)
 
 \o
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1000 width=xxx)
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
@@ -9012,8 +9012,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
@@ -9025,8 +9025,8 @@ error hint:
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
 \o
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=10 width=xxx)
    Merge Cond: (t1.id = t3.id)
    ->  Merge Join  (cost=xxx rows=1000 width=xxx)
@@ -9050,8 +9050,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.id = t3.id)
    ->  Merge Join  (cost=xxx rows=22 width=xxx)
@@ -9076,8 +9076,8 @@ error hint:
 \o
 set max_parallel_workers_per_gather to DEFAULT;
 \! sql/maskout.sh results/pg_hint_plan.tmpout
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.id = t3.id)
    ->  Merge Join  (cost=xxx rows=1000 width=xxx)

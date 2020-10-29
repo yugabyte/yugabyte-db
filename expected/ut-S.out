@@ -5260,8 +5260,8 @@ error hint:
 EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
 \o
 \! sql/maskout.sh results/ut-S.tmpout
-                        QUERY PLAN                        
-----------------------------------------------------------
+  QUERY PLAN
+----------------
  Append  (cost=xxx rows=4 width=xxx)
    ->  Seq Scan on p1  (cost=xxx rows=1 width=xxx)
          Filter: ((c1 < 10) AND ((c2 * 2) < 100))
@@ -5282,8 +5282,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-S.tmpout
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Append  (cost=xxx rows=4 width=xxx)
    ->  Index Scan using p1_parent on p1  (cost=xxx rows=1 width=xxx)
          Filter: ((c2 * 2) < 100)
@@ -5307,8 +5307,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-S.tmpout
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Append  (cost=xxx rows=4 width=xxx)
    ->  Index Scan using p1_i2 on p1  (cost=xxx rows=1 width=xxx)
          Index Cond: (c2 = 1)
@@ -5335,8 +5335,8 @@ error hint:
 
 \o
 \! sql/maskout.sh results/ut-S.tmpout
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+  QUERY PLAN
+----------------
  Append  (cost=xxx rows=3 width=xxx)
    ->  Seq Scan on p2  (cost=xxx rows=1 width=xxx)
          Filter: (c1 = 1)
