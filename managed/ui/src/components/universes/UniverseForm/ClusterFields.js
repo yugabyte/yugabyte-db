@@ -921,16 +921,24 @@ export default class ClusterFields extends Component {
 
     if (isNonEmptyObject(deviceInfo)) {
       const currentProvider = this.getCurrentProvider(self.state.providerSelected);
-      if ((self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD') && isDefinedNotNull(currentProvider)) {
+      if (
+        (self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD'
+         || self.state.volumeType === 'NVME') &&
+        isDefinedNotNull(currentProvider)
+      ) {
         const isInAws = currentProvider.code === 'aws';
         const isInGcp = currentProvider.code === 'gcp';
         const isInAzu = currentProvider.code === 'azu';
         // We don't want to keep the volume fixed in case of Kubernetes or persistent GCP storage.
-        const fixedVolumeInfo = self.state.volumeType === 'SSD' &&
-          currentProvider.code !== 'kubernetes' && deviceInfo.storageType === "Scratch" &&
+        const fixedVolumeInfo =
+          (self.state.volumeType === 'SSD' || self.state.volumeType === 'NVME') &&
+          currentProvider.code !== 'kubernetes' &&
+          deviceInfo.storageType === 'Scratch' &&
           currentProvider.code !== 'azu';
-        const fixedNumVolumes = self.state.volumeType === 'SSD' &&
-          currentProvider.code !== 'kubernetes' && currentProvider.code !== 'gcp' &&
+        const fixedNumVolumes =
+          (self.state.volumeType === 'SSD' || self.state.volumeType === 'NVME') &&
+          currentProvider.code !== 'kubernetes' &&
+          currentProvider.code !== 'gcp' &&
           currentProvider.code !== 'azu';
         const isIoType = deviceInfo.storageType === 'IO1';
         if (isIoType) {
