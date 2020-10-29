@@ -2770,6 +2770,25 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
 	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
 	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
 	SET_CONFIG_OPTION("enable_hashjoin", ENABLE_HASHJOIN);
+
+	/*
+	 * Hash join may be rejected for the reason of estimated memory usage. Try
+	 * getting rid of that limitation. This change on work_mem is reverted just
+	 * after searching join path so no suginificant side-effects are expected.
+	 */
+	if (enforce_mask == ENABLE_HASHJOIN)
+	{
+		char			buf[32];
+
+		/* See final_cost_hashjoin(). */
+		if (work_mem < MAX_KILOBYTES)
+		{
+			snprintf(buf, sizeof(buf), UINT64_FORMAT, (uint64)MAX_KILOBYTES);
+			set_config_option_noerror("work_mem", buf,
+									  context, PGC_S_SESSION, GUC_ACTION_SAVE,
+									  true, ERROR);
+		}
+	}
 }
 
 /*
