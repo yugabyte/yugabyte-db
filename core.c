@@ -12,17 +12,17 @@
  *
  * src/backend/optimizer/path/allpaths.c
  *
- *	static functions:
- *	   set_plain_rel_pathlist()
- *     add_paths_to_append_rel()
- *     try_partitionwise_join()
- *
  *  public functions:
  *     standard_join_search(): This funcion is not static. The reason for
  *        including this function is make_rels_by_clause_joins. In order to
  *        avoid generating apparently unwanted join combination, we decided to
  *        change the behavior of make_join_rel, which is called under this
  *        function.
+ *
+ *	static functions:
+ *	   set_plain_rel_pathlist()
+ *	   set_append_rel_pathlist()
+ *	   create_plain_partial_paths()
  *
  * src/backend/optimizer/path/joinrels.c
  *
@@ -35,8 +35,9 @@
  *     make_rels_by_clauseless_joins()
  *     join_is_legal()
  *     has_join_restriction()
+ *     mark_dummy_rel()
  *     restriction_is_constant_false()
- *
+ *     try_partitionwise_join()
  *
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -45,8 +46,8 @@
  */
 
 static void populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
-								RelOptInfo *rel2, RelOptInfo *joinrel,
-								SpecialJoinInfo *sjinfo, List *restrictlist);
+							RelOptInfo *rel2, RelOptInfo *joinrel,
+							SpecialJoinInfo *sjinfo, List *restrictlist);
 
 /*
  * set_plain_rel_pathlist
@@ -261,6 +262,7 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 
 	return rel;
 }
+
 
 /*
  * create_plain_partial_paths
@@ -1026,6 +1028,7 @@ restriction_is_constant_false(List *restrictlist,
 	}
 	return false;
 }
+
 
 /*
  * Assess whether join between given two partitioned relations can be broken

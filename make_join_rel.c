@@ -5,7 +5,12 @@
  *	  modifications.
  *
  * src/backend/optimizer/path/joinrels.c
+ *
+ * This file contains the following functions from corresponding files.
+ *
+ *	static functions:
  *     make_join_rel()
+ *     populate_joinrel_with_paths()
  *
  * Portions Copyright (c) 2013-2020, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
@@ -43,6 +48,7 @@ adjust_rows(double rows, RowsHint *hint)
 
 	return result;
 }
+
 
 /*
  * make_join_rel
@@ -216,6 +222,7 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 
 	return joinrel;
 }
+
 
 /*
  * populate_joinrel_with_paths
