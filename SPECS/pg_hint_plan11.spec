@@ -16,7 +16,7 @@
 ## Set general information for pg_hint_plan.
 Summary:    Optimizer hint on PostgreSQL 11
 Name:       pg_hint_plan11
-Version:    1.3.6
+Version:    1.3.7
 Release:    1%{?dist}
 License:    BSD
 Group:      Applications/Databases
@@ -39,7 +39,7 @@ Note that this package is available for only PostgreSQL 11.
 
 %package llvmjit
 Requires: postgresql11-server, postgresql11-llvmjit
-Requires: pg_hint_plan11 = 1.3.6
+Requires: pg_hint_plan11 = 1.3.7
 Summary:  Just-in-time compilation support for pg_hint_plan11
 
 %description llvmjit
@@ -77,7 +77,8 @@ rm -rf %{buildroot}
 %{_datadir}/extension/pg_hint_plan--1.3.3--1.3.4.sql
 %{_datadir}/extension/pg_hint_plan--1.3.4--1.3.5.sql
 %{_datadir}/extension/pg_hint_plan--1.3.5--1.3.6.sql
-%{_datadir}/extension/pg_hint_plan--1.3.6.sql
+%{_datadir}/extension/pg_hint_plan--1.3.6--1.3.7.sql
+%{_datadir}/extension/pg_hint_plan--1.3.7.sql
 %{_datadir}/extension/pg_hint_plan.control
 
 %files llvmjit
@@ -89,6 +90,8 @@ rm -rf %{buildroot}
 
 # History of pg_hint_plan.
 %changelog
+* Thu Oct 29 2020 Kyotaro Horiguchi
+- Fix a bug. Version 1.3.7.
 * Wed Aug 5 2020 Kyotaro Horiguchi
 - Fix some bugs. Version 1.3.6.
 * Thu Feb 21 2020 Kyotaro Horiguchi
