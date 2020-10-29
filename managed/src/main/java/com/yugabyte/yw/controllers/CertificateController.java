@@ -144,4 +144,36 @@ public class CertificateController extends AuthenticatedController {
       return ApiResponse.success(cert.uuid);
     }
   }
+
+  public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
+    Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
+                                                  .bindFromRequest();
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+    if (Customer.get(customerUUID) == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    CertificateInfo certificate = CertificateInfo.get(rootCA);
+    if (certificate == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Cert ID: " + rootCA);
+    }
+    if (!certificate.customerUUID.equals(customerUUID)) {
+      return ApiResponse.error(BAD_REQUEST, "Certificate doesn't belong to customer");
+    }
+    if (certificate.certType == CertificateInfo.Type.SelfSigned) {
+      return ApiResponse.error(BAD_REQUEST, "Cannot edit self-signed cert.");
+    }
+    if (certificate.customCertInfo != null) {
+      return ApiResponse.error(BAD_REQUEST, "Cannot edit pre-customized cert. Create a new one.");
+    }
+    CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
+    try {
+      certificate.setCustomCertInfo(customCertInfo);
+      return ApiResponse.success(certificate);
+    } catch (Exception e) {
+      LOG.error("Could not set cert info for certificate {}", rootCA, e);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't set custom cert info.");
+    }
+  }
 }

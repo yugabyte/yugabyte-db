@@ -76,6 +76,10 @@ public class CertificateInfo extends Model {
     }
     return null;
   }
+  public void setCustomCertInfo(CertificateParams.CustomCertInfo certInfo) {
+    this.customCertInfo = Json.toJson(certInfo);
+    this.save();
+  }
 
   public static final Logger LOG = LoggerFactory.getLogger(CertificateInfo.class);
 
@@ -125,5 +129,20 @@ public class CertificateInfo extends Model {
 
   public static List<CertificateInfo> getAll(UUID customerUUID) {
     return find.query().where().eq("customer_uuid", customerUUID).findList();
+  }
+
+  public static boolean isCertificateValid(UUID certUUID) {
+    if (certUUID == null) {
+      return true;
+    }
+    CertificateInfo certificate = CertificateInfo.get(certUUID);
+    if (certificate == null) {
+      return false;
+    }
+    if (certificate.certType == CertificateInfo.Type.CustomCertHostPath &&
+        certificate.customCertInfo == null) {
+      return false;
+    }
+    return true;
   }
 }
