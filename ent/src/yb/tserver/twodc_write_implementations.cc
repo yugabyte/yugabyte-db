@@ -20,6 +20,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
+#include "yb/util/locks.h"
 
 #include "yb/common/hybrid_time.h"
 
@@ -97,6 +98,7 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
 
   void ProcessRecord(const std::string& tablet_id, const cdc::CDCRecordPB& record) override {
     WriteRequestPB* write_request;
+    std::lock_guard<decltype(lock_)> l(lock_);
     auto it = records_.find(tablet_id);
     if (it == records_.end()) {
       std::deque<std::unique_ptr<WriteRequestPB>> queue;
@@ -135,6 +137,7 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
   }
 
   std::unique_ptr <WriteRequestPB> GetNextWriteRequest() override {
+    std::lock_guard<decltype(lock_)> l(lock_);
     auto& queue = records_.begin()->second;
     auto next_req = std::move(queue.front());
     queue.pop_front();
@@ -145,12 +148,14 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
   }
 
   bool HasMoreWrites() override {
+    std::lock_guard<decltype(lock_)> l(lock_);
     return records_.size() > 0;
   }
 
  private:
   std::map <std::string, std::deque<std::unique_ptr < WriteRequestPB>>>
   records_;
+  mutable rw_spinlock lock_;
 };
 
 void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy) {
