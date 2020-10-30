@@ -1461,6 +1461,13 @@ Status ExternalMiniCluster::SetFlag(ExternalDaemon* daemon,
   return Status::OK();
 }
 
+Status ExternalMiniCluster::SetFlagOnMasters(const string& flag, const string& value) {
+  for (const auto& master : masters_) {
+    RETURN_NOT_OK(SetFlag(master.get(), flag, value));
+  }
+  return Status::OK();
+}
+
 Status ExternalMiniCluster::SetFlagOnTServers(const string& flag, const string& value) {
   for (const auto& tablet_server : tablet_servers_) {
     RETURN_NOT_OK(SetFlag(tablet_server.get(), flag, value));

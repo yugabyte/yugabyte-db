@@ -338,10 +338,6 @@ Status PgCreateTable::Exec() {
     }
     if (skip_index_backfill()) {
       table_creator->skip_index_backfill(true);
-    } else if (!FLAGS_ysql_disable_index_backfill) {
-      // For online index backfill, don't wait for backfill to finish because waiting on index
-      // permissions is done anyway.
-      table_creator->wait(false);
     }
   }
 
