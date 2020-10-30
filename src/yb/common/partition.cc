@@ -736,15 +736,19 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
         if (!pend.empty()) {
           uint16 hash_end = DecodeMultiColumnHashValue(pend);
           if (pstart.empty()) {
-            s.append(Substitute("hash_split: [<start>, $1)", hash_start, hash_end));
+            s.append(Substitute("hash_split: [0x0000, $0)",
+                                Uint16ToHexString(hash_end)));
           } else {
-            s.append(Substitute("hash_split: [$0, $1)", hash_start, hash_end));
+            s.append(Substitute("hash_split: [$0, $1)",
+                                Uint16ToHexString(hash_start),
+                                Uint16ToHexString(hash_end)));
           }
         } else {
           if (pstart.empty()) {
-            s.append(Substitute("hash_split: [<start>, <end>)"));
+            s.append(Substitute("hash_split: [0x0000, 0x0000)"));
           } else {
-            s.append(Substitute("hash_split: [$0, <end>)", hash_start));
+            s.append(Substitute("hash_split: [$0, 0xFFFF)",
+                                Uint16ToHexString(hash_start)));
           }
         }
         return s;
