@@ -304,6 +304,8 @@ class PgApiImpl {
 
   CHECKED_STATUS ExecPostponedDdlStmt(PgStatement *handle);
 
+  CHECKED_STATUS BackfillIndex(const PgObjectId& table_id);
+
   //------------------------------------------------------------------------------------------------
   // All DML statements
   CHECKED_STATUS DmlAppendTarget(PgStatement *handle, PgExpr *expr);

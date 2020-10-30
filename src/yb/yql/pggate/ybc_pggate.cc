@@ -549,6 +549,13 @@ YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecPostponedDdlStmt(handle));
 }
 
+YBCStatus YBCPgBackfillIndex(
+    const YBCPgOid database_oid,
+    const YBCPgOid index_oid) {
+  const PgObjectId index_id(database_oid, index_oid);
+  return ToYBCStatus(pgapi->BackfillIndex(index_id));
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statements.
 //--------------------------------------------------------------------------------------------------
@@ -905,6 +912,10 @@ int32_t YBCGetSequenceCacheMinval() {
 
 bool YBCGetDisableIndexBackfill() {
   return FLAGS_ysql_disable_index_backfill;
+}
+
+int32_t YBCGetTestIndexStateFlagsUpdateDelayMs() {
+  return FLAGS_TEST_ysql_index_state_flags_update_delay_ms;
 }
 
 bool YBCPgIsYugaByteEnabled() {

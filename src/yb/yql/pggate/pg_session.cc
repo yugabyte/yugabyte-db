@@ -50,6 +50,11 @@
 
 DEFINE_test_flag(bool, disable_fk_check_force_flush, false, "Disable workaround with the force "
                  "flushing before the foreign key check. Remove after the fixing of #5954.");
+DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60 min.
+             "Timeout for WaitUntilIndexPermissionsAtLeast RPCs from client to master initiated "
+             "from YSQL layer.");
+TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
+TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, runtime);
 
 namespace yb {
 namespace pggate {
@@ -865,6 +870,10 @@ Status PgSession::TruncateTable(const PgObjectId& table_id) {
   return client_->TruncateTable(table_id.GetYBTableId());
 }
 
+Status PgSession::BackfillIndex(const PgObjectId& table_id) {
+  return client_->BackfillIndex(table_id.GetYBTableId());
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgSession::CreateTablegroup(const string& database_name,
@@ -1164,10 +1173,13 @@ Result<IndexPermissions> PgSession::WaitUntilIndexPermissionsAtLeast(
     const PgObjectId& table_id,
     const PgObjectId& index_id,
     const IndexPermissions& target_index_permissions) {
+  auto deadline = CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(
+      FLAGS_ysql_wait_until_index_permissions_timeout_ms);
   return client_->WaitUntilIndexPermissionsAtLeast(
       table_id.GetYBTableId(),
       index_id.GetYBTableId(),
-      target_index_permissions);
+      target_index_permissions,
+      deadline);
 }
 
 Status PgSession::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {

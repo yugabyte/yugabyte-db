@@ -165,6 +165,11 @@ class YBClient::Data {
                                               const std::string& table_id,
                                               CoarseTimePoint deadline);
 
+  CHECKED_STATUS BackfillIndex(YBClient* client,
+                               const YBTableName& table_name,
+                               const TableId& table_id,
+                               CoarseTimePoint deadline);
+
   CHECKED_STATUS AlterTable(YBClient* client,
                             const master::AlterTableRequestPB& req,
                             CoarseTimePoint deadline);

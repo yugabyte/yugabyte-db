@@ -2177,20 +2177,33 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
 
   // Connect and execute.
   auto conn = PQconnectdb(conn_str.c_str());
+  if (!conn) {
+    return STATUS(
+        IllegalState,
+        "BACKFILL request failed: failed to connect to DB");
+  }
   auto res = PQexec(conn, query_str.c_str());
+  if (!res) {
+    return STATUS(
+        IllegalState,
+        "BACKFILL request failed: query couldn't be sent");
+  }
   auto status = PQresultStatus(res);
-  PQclear(res);
-  PQfinish(conn);
 
   // TODO(jason): more properly handle bad statuses
   if (status == PGRES_FATAL_ERROR) {
-    return STATUS_FORMAT(
+    Status s = STATUS_FORMAT(
         IllegalState,
         "BACKFILL request failed: PQ status $0 with message \"$1\" when running \"$2\"",
         status,
         PQresultErrorMessage(res),
         query_str);
+    PQclear(res);
+    PQfinish(conn);
+    return s;
   }
+  PQclear(res);
+  PQfinish(conn);
   // TODO(jason): handle partially finished backfills.  How am I going to get that info?  From
   // response message by libpq or manual DocDB inspection?
   return "";

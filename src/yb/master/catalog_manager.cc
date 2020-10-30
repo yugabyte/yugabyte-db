@@ -275,6 +275,13 @@ DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
 
+// TODO(jason): get rid of this when closing issue #6234.
+DEFINE_int32(ysql_backfill_is_create_table_done_delay_ms, 1000, // 1 min.
+    "Time to wait after IsCreateTableDone for an index using online schema migration finds the"
+    " index in the master index map.");
+TAG_FLAG(ysql_backfill_is_create_table_done_delay_ms, hidden);
+TAG_FLAG(ysql_backfill_is_create_table_done_delay_ms, runtime);
+
 DEFINE_bool(
     hide_pg_catalog_table_creation_logs, false,
     "Whether to hide detailed log messages for PostgreSQL catalog table creation. "
@@ -2521,11 +2528,19 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Wrote table to system table");
 
   // For index table, insert index info in the indexed table.  However, for backwards compatibility,
-  // don't insert index info for YSQL tables.
+  // don't insert index info for YSQL tables when index backfill is disabled.
   if ((req.has_index_info() || req.has_indexed_table_id()) &&
       (index_backfill_enabled || !is_pg_table)) {
     if (index_backfill_enabled && !req.skip_index_backfill()) {
-      index_info.set_index_permissions(INDEX_PERM_DELETE_ONLY);
+      if (is_pg_table) {
+        // YSQL: start at some permission before backfill.  The real enforcement happens with
+        // pg_index system table's indislive and indisready columns.  Choose WRITE_AND_DELETE
+        // because it will probably be less confusing.
+        index_info.set_index_permissions(INDEX_PERM_WRITE_AND_DELETE);
+      } else {
+        // YCQL
+        index_info.set_index_permissions(INDEX_PERM_DELETE_ONLY);
+      }
     }
     s = AddIndexInfoToTable(indexed_table, index_info, resp);
     if (PREDICT_FALSE(!s.ok())) {
@@ -2874,6 +2889,10 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
       for (const auto& index : get_schema_resp.indexes()) {
         if (index.has_table_id() && index.table_id() == table->id()) {
           resp->set_done(true);
+          // We need to wait to hopefully avoid consistency issues.
+          // TODO(jason): get rid of this when closing issue #6234.
+          VLOG(1) << "Wait to give tservers time to apply schema change";
+          SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_backfill_is_create_table_done_delay_ms));
           break;
         }
       }
@@ -3309,6 +3328,75 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
   return Status::OK();
 }
 
+// Note: only used by YSQL as of 2020-10-29.
+Status CatalogManager::BackfillIndex(
+    const BackfillIndexRequestPB* req,
+    BackfillIndexResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  TableIdentifierPB index_table_identifier = req->table_identifier();
+
+  scoped_refptr<TableInfo> index_table;
+  RETURN_NOT_OK(FindTable(index_table_identifier, &index_table));
+  if (index_table == nullptr) {
+    Status s = STATUS(
+        NotFound,
+        "The index does not exist",
+        index_table_identifier.ShortDebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+  if (index_table->GetTableType() != PGSQL_TABLE_TYPE) {
+    // This request is only supported for YSQL for now.  YCQL has its own mechanism.
+    return STATUS(
+        InvalidArgument,
+        "Unexpected non-YSQL table",
+        index_table_identifier.ShortDebugString());
+  }
+
+  // Collect indexed_table.
+  scoped_refptr<TableInfo> indexed_table;
+  {
+    auto l = index_table->LockForRead();
+    TableId indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(l->data().pb);
+    indexed_table = GetTableInfo(indexed_table_id);
+  }
+
+  // TODO(jason): when ready to use INDEX_PERM_DO_BACKFILL for resuming backfill across master
+  // leader changes, replace the following (issue #6218).
+
+  // Collect index_info_pb.
+  IndexInfoPB index_info_pb;
+  indexed_table->GetIndexInfo(index_table->id()).ToPB(&index_info_pb);
+  if (index_info_pb.index_permissions() != INDEX_PERM_WRITE_AND_DELETE) {
+    return SetupError(
+        resp->mutable_error(),
+        MasterErrorPB::INVALID_SCHEMA,
+        STATUS_FORMAT(
+            InvalidArgument,
+            "Expected WRITE_AND_DELETE perm, got $0",
+            IndexPermissions_Name(index_info_pb.index_permissions())));
+  }
+
+  // Collect ns_info.
+  scoped_refptr<NamespaceInfo> ns_info;
+  {
+    NamespaceIdentifierPB ns_identifier;
+    ns_identifier.set_id(indexed_table->namespace_id());
+    RETURN_NOT_OK_PREPEND(
+        FindNamespace(ns_identifier, &ns_info),
+        "Unable to get namespace info for backfill");
+  }
+
+  auto backfill_table = std::make_shared<BackfillTable>(
+      master_,
+      AsyncTaskPool(),
+      indexed_table,
+      std::vector<IndexInfoPB>{index_info_pb},
+      ns_info);
+  backfill_table->Launch();
+
+  return Status::OK();
+}
+
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
     DeleteTableResponsePB* resp) {
@@ -3577,7 +3665,7 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
     for (auto index : l->data().pb.indexes()) {
       index_identifier.set_table_id(index.table_id());
       RETURN_NOT_OK(DeleteTableInMemory(index_identifier, true /* is_index_table */,
-                                        false /* update_index_table */, tables,
+                                        false /* update_indexed_table */, tables,
                                         table_lcks, resp, rpc));
     }
   } else if (update_indexed_table) {
@@ -4170,7 +4258,10 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
       resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->data().pb));
       *resp->mutable_index_info() = l->data().pb.index_info();
     }
-    VLOG(1) << " Returning pb.schema() ";
+    VLOG(3) << " Returning "
+            << " schema with version " << l->data().pb.version()
+            << " : \n"
+            << yb::ToString(l->data().pb.indexes());
   }
   resp->mutable_partition_schema()->CopyFrom(l->data().pb.partition_schema());
   if (IsReplicationInfoSet(l->data().pb.replication_info())) {

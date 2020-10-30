@@ -1258,86 +1258,68 @@ DefineIndex(Oid relationId,
 
 	PopActiveSnapshot();
 
-	/*
-	 * TODO(jason): retry backfill or revert schema changes instead of failing
-	 * through HandleYBStatus.
-	 */
-	elog(LOG, "waiting for YB_INDEX_PERM_DELETE_ONLY");
-	HandleYBStatus(YBCPgWaitUntilIndexPermissionsAtLeast(MyDatabaseId,
-														 relationId,
-														 indexRelationId,
-														 YB_INDEX_PERM_DELETE_ONLY,
-														 &actual_index_permissions));
-	/*
-	 * TODO(jason): handle bad actual_index_permissions.
-	 */
-
 	elog(LOG, "committing pg_index tuple with indislive=true");
-	/* TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
-	 * level 1). */
-	/* No need to break (abort) ongoing txns since this is an online schema change */
-	YBDecrementDdlNestingLevel(true /* success */, 
+	/*
+	 * No need to break (abort) ongoing txns since this is an online schema
+	 * change.
+	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
+	 * level 1).
+	 */
+	YBDecrementDdlNestingLevel(true /* success */,
 	                           true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);
 	CommitTransactionCommand();
+
+	/*
+	 * Delay after committing pg_index update.  Although it is controlled by a
+	 * test flag, it currently helps (but does not guarantee) correctness
+	 * because commits may not have propagated to all tservers by this time.
+	 */
+	pg_usleep(YBCGetTestIndexStateFlagsUpdateDelayMs() * 1000);
 
 	StartTransactionCommand();
 	YBIncrementDdlNestingLevel();
 
 	/*
-	 * TODO(jason): retry backfill or revert schema changes instead of failing
-	 * through HandleYBStatus.
-	 */
-	HandleYBStatus(YBCPgAsyncUpdateIndexPermissions(MyDatabaseId, relationId));
-	elog(LOG, "waiting for YB_INDEX_PERM_WRITE_AND_DELETE");
-	HandleYBStatus(YBCPgWaitUntilIndexPermissionsAtLeast(MyDatabaseId,
-														 relationId,
-														 indexRelationId,
-														 YB_INDEX_PERM_WRITE_AND_DELETE,
-														 &actual_index_permissions));
-	/*
-	 * TODO(jason): handle bad actual_index_permissions.
-	 */
-
-	/*
-	 * Update the pg_index row to mark the index as ready for inserts.  This
-	 * allows writes, but Yugabyte would only accept deletes until the index
-	 * permission changes to INDEX_PERM_WRITE_AND_DELETE.
+	 * Update the pg_index row to mark the index as ready for inserts.
 	 */
 	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_READY);
 
-	/*
-	 * Commit this transaction to make the indisready update visible.
-	 */
 	elog(LOG, "committing pg_index tuple with indisready=true");
-	/* TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
-	 * level 1). */
-	/* No need to break (abort) ongoing txns since this is an online schema change */
-	YBDecrementDdlNestingLevel(true /* success */, 
+	/*
+	 * No need to break (abort) ongoing txns since this is an online schema
+	 * change.
+	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
+	 * level 1).
+	 */
+	YBDecrementDdlNestingLevel(true /* success */,
 	                           true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);
 	CommitTransactionCommand();
 	
+	/*
+	 * Delay after committing pg_index update.  Although it is controlled by a
+	 * test flag, it currently helps (but does not guarantee) correctness
+	 * because commits may not have propagated to all tservers by this time.
+	 */
+	pg_usleep(YBCGetTestIndexStateFlagsUpdateDelayMs() * 1000);
+
 	StartTransactionCommand();
 	YBIncrementDdlNestingLevel();
 
 	/* TODO(jason): handle exclusion constraints, possibly not here. */
 
-	/*
-	 * TODO(jason): retry backfill or revert schema changes instead of failing
-	 * through HandleYBStatus.
-	 */
-	HandleYBStatus(YBCPgAsyncUpdateIndexPermissions(MyDatabaseId, relationId));
-	elog(LOG, "waiting for Yugabyte index read permission");
+	/* Do backfill. */
+	HandleYBStatus(YBCPgBackfillIndex(MyDatabaseId, indexRelationId));
 	HandleYBStatus(YBCPgWaitUntilIndexPermissionsAtLeast(MyDatabaseId,
 														 relationId,
 														 indexRelationId,
 														 YB_INDEX_PERM_READ_WRITE_AND_DELETE,
 														 &actual_index_permissions));
-	/*
-	 * TODO(jason): handle bad actual_index_permissions, like
-	 * YB_INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING.
-	 */
+	if (actual_index_permissions != YB_INDEX_PERM_READ_WRITE_AND_DELETE)
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				 errmsg("index backfill failed")));
 
 	/*
 	 * Index can now be marked valid -- update its pg_index entry

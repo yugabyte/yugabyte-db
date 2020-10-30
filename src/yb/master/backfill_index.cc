@@ -113,8 +113,14 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
+DEFINE_int32(ysql_index_backfill_rpc_timeout_ms, 30 * 60 * 1000, // 30 min.
+             "Timeout used by the master when attempting to backfill a YSQL tablet during index "
+             "creation.");
+TAG_FLAG(ysql_index_backfill_rpc_timeout_ms, advanced);
+TAG_FLAG(ysql_index_backfill_rpc_timeout_ms, runtime);
+
 DEFINE_int32(index_backfill_rpc_timeout_ms, 1 * 30 * 1000, // 30 sec.
-             "Timeout used by the master when attempting to backfilll a tablet "
+             "Timeout used by the master when attempting to backfill a tablet "
              "during index creation.");
 TAG_FLAG(index_backfill_rpc_timeout_ms, advanced);
 TAG_FLAG(index_backfill_rpc_timeout_ms, runtime);
@@ -364,7 +370,7 @@ Status MultiStageAlterTable::StartBackfillingData(
     const scoped_refptr<TableInfo> &indexed_table, const IndexInfoPB index_pb) {
   if (indexed_table->IsBackfilling()) {
     LOG(WARNING) << __func__ << " Not starting backfill for "
-                 << indexed_table->ToString() << " one is already in progress ";
+                 << indexed_table->ToString() << ": one is already in progress";
     return STATUS(AlreadyPresent, "Backfill already in progress");
   }
 
@@ -394,7 +400,7 @@ Status MultiStageAlterTable::StartBackfillingData(
     ns_identifier.set_id(indexed_table->namespace_id());
     RETURN_NOT_OK_PREPEND(
         catalog_manager->FindNamespace(ns_identifier, &ns_info),
-        "Getting namespace info for backfill");
+        "Unable to get namespace info for backfill");
   }
   auto backfill_table = std::make_shared<BackfillTable>(
       catalog_manager->master_, catalog_manager->AsyncTaskPool(),
@@ -440,6 +446,8 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     uint32_t current_version) {
   DVLOG(3) << __PRETTY_FUNCTION__ << yb::ToString(*indexed_table);
 
+  const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
+
   std::unordered_map<TableId, IndexPermissions> indexes_to_update;
   vector<IndexInfoPB> indexes_to_backfill;
   vector<IndexInfoPB> indexes_to_delete;
@@ -462,7 +470,10 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
         indexes_to_backfill.emplace_back(idx_pb);
       } else if (idx_pb.index_permissions() == INDEX_PERM_INDEX_UNUSED) {
         indexes_to_delete.emplace_back(idx_pb);
-      } else if (idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE) {
+      // For YSQL, INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING is considered a terminal state.
+      } else if (idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE &&
+                 !(is_ysql_table &&
+                   idx_pb.index_permissions() == INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING)) {
         indexes_to_update.emplace(idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
       }
     }
@@ -471,10 +482,38 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   if (indexes_to_update.empty() &&
       indexes_to_delete.empty() &&
       indexes_to_backfill.empty()) {
-
     TRACE("Not necessary to launch next version");
     VLOG(1) << "Not necessary to launch next version";
     return ClearAlteringState(catalog_manager, indexed_table, current_version);
+  }
+
+  // For YSQL online schema migration of indexes, instead of master driving the schema changes,
+  // postgres will drive it.  Postgres will use three of the DocDB index permissions:
+  //
+  // - INDEX_PERM_WRITE_AND_DELETE (set from the start)
+  // - INDEX_PERM_READ_WRITE_AND_DELETE (set by master)
+  // - INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING (set by master)
+  //
+  // This changes how we treat indexes_to_foo:
+  //
+  // - indexes_to_update shouldn't cause moving on to the next permission because we don't want
+  //   master to control that.  Do nothing when nonempty.
+  // - indexes_to_delete is impossible to be nonempty, and, in the future, when we do use
+  //   INDEX_PERM_INDEX_UNUSED, we want to use some other delete trigger that makes sure no
+  //   transactions are left using the index.  Prepare for that by doing nothing when nonempty.
+  // - indexes_to_backfill is impossible to be nonempty, but, in the future, we want to set
+  //   INDEX_PERM_DO_BACKFILL so that backfill resumes on master leader changes.  Prepare for that
+  //   by handling indexes_to_backfill like for YCQL.
+  //
+  // We still need to know indexes_to_foo.empty for ClearAlteringState logic since we want to keep
+  // the table as ALTERING if the index is in a transient state.
+  // TODO(jason): when using INDEX_PERM_DO_BACKFILL, update this comment (issue #6218).
+  if (is_ysql_table) {
+    if (indexes_to_backfill.empty()) {
+      return Status::OK();
+    }
+    indexes_to_update.clear();
+    indexes_to_delete.clear();
   }
 
   if (!indexes_to_update.empty()) {
@@ -1065,7 +1104,12 @@ void BackfillChunk::Launch() {
 
 MonoTime BackfillChunk::ComputeDeadline() {
   MonoTime timeout = MonoTime::Now();
-  timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_index_backfill_rpc_timeout_ms));
+  if (GetTableType() == TableType::PGSQL_TABLE_TYPE) {
+    timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_ysql_index_backfill_rpc_timeout_ms));
+  } else {
+    DCHECK(GetTableType() == TableType::YQL_TABLE_TYPE);
+    timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_index_backfill_rpc_timeout_ms));
+  }
   return MonoTime::Earliest(timeout, deadline_);
 }
 
@@ -1085,7 +1129,7 @@ bool BackfillChunk::SendRequest(int attempt) {
   req.set_read_at_hybrid_time(backfill_tablet_->read_time_for_backfill().ToUint64());
   req.set_schema_version(backfill_tablet_->schema_version());
   req.set_start_key(start_key_);
-  if (backfill_tablet_->tablet()->table()->GetTableType() == TableType::PGSQL_TABLE_TYPE) {
+  if (GetTableType() == TableType::PGSQL_TABLE_TYPE) {
     req.set_namespace_name(backfill_tablet_->GetNamespaceName());
   }
   for (const IndexInfoPB& idx_info : backfill_tablet_->indexes()) {

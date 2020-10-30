@@ -805,6 +805,10 @@ Status PgApiImpl::ExecPostponedDdlStmt(PgStatement *handle) {
   return STATUS(InvalidArgument, "Invalid statement handle");
 }
 
+Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
+  return pg_session_->BackfillIndex(table_id);
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statment Support.
 //--------------------------------------------------------------------------------------------------

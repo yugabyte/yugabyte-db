@@ -330,6 +330,12 @@ void MasterServiceImpl::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* 
   HandleIn(req, resp, &rpc, &CatalogManager::IsTruncateTableDone);
 }
 
+void MasterServiceImpl::BackfillIndex(const BackfillIndexRequestPB* req,
+                                      BackfillIndexResponsePB* resp,
+                                      RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::BackfillIndex);
+}
+
 void MasterServiceImpl::DeleteTable(const DeleteTableRequestPB* req,
                                     DeleteTableResponsePB* resp,
                                     RpcContext rpc) {
