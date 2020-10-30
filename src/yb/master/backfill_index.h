@@ -346,6 +346,10 @@ class BackfillChunk : public RetryingTSRpcTask {
   int num_max_retries() override;
   int max_delay_ms() override;
 
+  TableType GetTableType() const {
+    return backfill_tablet_->tablet()->table()->GetTableType();
+  }
+
   tserver::BackfillIndexResponsePB resp_;
   std::shared_ptr<BackfillTablet> backfill_tablet_;
   std::string start_key_;
