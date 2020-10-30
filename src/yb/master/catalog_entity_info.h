@@ -228,6 +228,11 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   CHECKED_STATUS CheckRunning() const;
 
+  bool InitiateElection() {
+    bool expected = false;
+    return initiated_election_.compare_exchange_strong(expected, true);
+  }
+
  private:
   friend class RefCountedThreadSafe<TabletInfo>;
 
@@ -256,6 +261,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   std::unordered_map<TableId, uint32_t> reported_schema_version_ = {};
 
   LeaderStepDownFailureTimes leader_stepdown_failure_times_;
+
+  std::atomic<bool> initiated_election_{false};
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };

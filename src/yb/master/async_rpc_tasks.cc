@@ -526,6 +526,46 @@ bool AsyncCreateReplica::SendRequest(int attempt) {
 }
 
 // ============================================================================
+//  Class AsyncStartElection.
+// ============================================================================
+AsyncStartElection::AsyncStartElection(Master *master,
+                                       ThreadPool *callback_pool,
+                                       const string& permanent_uuid,
+                                       const scoped_refptr<TabletInfo>& tablet)
+  : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get()),
+    tablet_id_(tablet->tablet_id()) {
+  deadline_ = start_ts_;
+  deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
+
+  req_.set_dest_uuid(permanent_uuid_);
+  req_.set_tablet_id(tablet_id_);
+  req_.set_initial_election(true);
+}
+
+void AsyncStartElection::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    Status s = StatusFromPB(resp_.error().status());
+    if (!s.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "RunLeaderElection RPC for tablet " << tablet_id_
+                               << " on TS " << permanent_uuid_ << " failed: " << s;
+    }
+
+    return;
+  }
+
+  TransitionToCompleteState();
+}
+
+bool AsyncStartElection::SendRequest(int attempt) {
+  LOG_WITH_PREFIX(INFO) << Format(
+      "Hinted Leader start election at $0 for tablet $1, attempt $2",
+      permanent_uuid_, tablet_id_, attempt);
+  consensus_proxy_->RunLeaderElectionAsync(req_, &resp_, &rpc_, BindRpcCallback());
+
+  return true;
+}
+
+// ============================================================================
 //  Class AsyncDeleteReplica.
 // ============================================================================
 void AsyncDeleteReplica::HandleResponse(int attempt) {

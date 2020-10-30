@@ -307,6 +307,15 @@ DEFINE_bool(enable_register_ts_from_raft, false, "Whether to register a tserver 
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
+DEFINE_bool(use_create_table_leader_hint, true,
+            "Whether the Master should hint which replica for each tablet should "
+            "be leader initially on tablet creation.");
+TAG_FLAG(use_create_table_leader_hint, runtime);
+
+DEFINE_test_flag(bool, create_table_leader_hint_min_lexicographic, false,
+                 "Whether the Master should hint replica with smallest lexicographic rank for each "
+                 "tablet as leader initially on tablet creation.");
+
 namespace yb {
 namespace master {
 
@@ -4839,6 +4848,11 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
           }
         }
 
+        if (FLAGS_use_create_table_leader_hint &&
+            !cstate.has_leader_uuid() && cstate.current_term() == 0) {
+          StartElectionIfReady(cstate, tablet.get());
+        }
+
         // 7. Send an AlterSchema RPC if the tablet has an old schema version.
         if (report.has_schema_version() &&
             report.schema_version() != table_lock->data().pb.version()) {
@@ -7279,6 +7293,97 @@ void CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets
       WARN_NOT_OK(task->Run(), "Failed to send new tablet request");
     }
   }
+}
+
+// If responses have been received from sufficient replicas (including hinted leader),
+// pick proposed leader and start election.
+void CatalogManager::StartElectionIfReady(
+    const consensus::ConsensusStatePB& cstate, TabletInfo* tablet) {
+  TabletInfo::ReplicaMap replicas;
+  tablet->GetReplicaLocations(&replicas);
+  int num_voters = 0;
+  for (const auto& peer : cstate.config().peers()) {
+    if (peer.member_type() == RaftPeerPB::VOTER) {
+      ++num_voters;
+    }
+  }
+  int majority_size = num_voters / 2 + 1;
+  int running_voters = 0;
+  for (const auto& replica : replicas) {
+    if (replica.second.member_type == RaftPeerPB::VOTER) {
+      ++running_voters;
+    }
+  }
+
+  VLOG_WITH_PREFIX(4)
+      << __func__ << ": T " << tablet->tablet_id() << ": " << AsString(replicas) << ", voters: "
+      << running_voters << "/" << majority_size;
+
+  if (running_voters < majority_size) {
+    VLOG_WITH_PREFIX(4) << __func__ << ": Not enough voters";
+    return;
+  }
+
+  ReplicationInfoPB replication_info;
+  {
+    auto l = cluster_config_->LockForRead();
+    replication_info = l->data().pb.replication_info();
+  }
+
+  // Find tservers that can be leaders for a tablet.
+  TSDescriptorVector ts_descs;
+  {
+    SharedLock<LockType> l(blacklist_lock_);
+    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, leaderBlacklistState.tservers_);
+  }
+
+  std::vector<std::string> possible_leaders;
+  for (const auto& replica : replicas) {
+    for (const auto& ts_desc : ts_descs) {
+      if (ts_desc->permanent_uuid() == replica.first) {
+        if (ts_desc->IsAcceptingLeaderLoad(replication_info)) {
+          possible_leaders.push_back(replica.first);
+        }
+        break;
+      }
+    }
+  }
+
+  if (FLAGS_TEST_create_table_leader_hint_min_lexicographic) {
+    std::string min_lexicographic;
+    for (const auto& peer : cstate.config().peers()) {
+      if (peer.member_type() == RaftPeerPB::VOTER) {
+        if (min_lexicographic.empty() || peer.permanent_uuid() < min_lexicographic) {
+          min_lexicographic = peer.permanent_uuid();
+        }
+      }
+    }
+    if (min_lexicographic.empty() || !replicas.count(min_lexicographic)) {
+      LOG_WITH_PREFIX(INFO)
+          << __func__ << ": Min lexicographic is not yet ready: " << min_lexicographic;
+      return;
+    }
+    possible_leaders = { min_lexicographic };
+  }
+
+  if (possible_leaders.empty()) {
+    VLOG_WITH_PREFIX(4) << __func__ << ": Cannot pick candidate";
+    return;
+  }
+
+  if (!tablet->InitiateElection()) {
+    VLOG_WITH_PREFIX(4) << __func__ << ": Already initiated";
+    return;
+  }
+
+  const auto& protege = RandomElement(possible_leaders);
+
+  LOG_WITH_PREFIX(INFO)
+      << "Starting election at " << tablet->tablet_id() << " in favor of " << protege;
+
+  auto task = std::make_shared<AsyncStartElection>(master_, AsyncTaskPool(), protege, tablet);
+  tablet->table()->AddTask(task);
+  WARN_NOT_OK(task->Run(), "Failed to send new tablet start election request");
 }
 
 shared_ptr<TSDescriptor> CatalogManager::PickBetterReplicaLocation(

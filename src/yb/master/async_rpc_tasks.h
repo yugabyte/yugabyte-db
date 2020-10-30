@@ -315,6 +315,34 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
   tserver::CreateTabletResponsePB resp_;
 };
 
+// Task to start election at hinted leader for a newly created tablet.
+class AsyncStartElection : public RetrySpecificTSRpcTask {
+ public:
+  AsyncStartElection(Master *master,
+                     ThreadPool *callback_pool,
+                     const std::string& permanent_uuid,
+                     const scoped_refptr<TabletInfo>& tablet);
+
+  Type type() const override { return START_ELECTION; }
+
+  std::string type_name() const override { return "Hinted Leader Start Election"; }
+
+  std::string description() const override {
+    return "RunLeaderElection RPC for tablet " + tablet_id_ + " on TS " + permanent_uuid_;
+  }
+
+ protected:
+  TabletId tablet_id() const override { return tablet_id_; }
+
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+ private:
+  const TabletId tablet_id_;
+  consensus::RunLeaderElectionRequestPB req_;
+  consensus::RunLeaderElectionResponsePB resp_;
+};
+
 // Send a DeleteTablet() RPC request.
 class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
  public:

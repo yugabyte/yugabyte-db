@@ -208,8 +208,8 @@ DEFINE_test_flag(int32, log_change_config_every_n, 1,
 
 DEFINE_bool(enable_lease_revocation, true, "Enables lease revocation mechanism");
 
-DEFINE_bool(quick_leader_election_on_create, true, "Do we trigger quick leader elections on table "
-                                                   "creation.");
+DEFINE_bool(quick_leader_election_on_create, false,
+            "Do we trigger quick leader elections on table creation.");
 TAG_FLAG(quick_leader_election_on_create, advanced);
 TAG_FLAG(quick_leader_election_on_create, hidden);
 
@@ -510,6 +510,11 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
   {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForConfigChange(&lock));
+
+    if (data.initial_election && state_->GetCurrentTermUnlocked() != 0) {
+      LOG_WITH_PREFIX(INFO) << "Not starting initial " << election_name << " -- non zero term";
+      return Status::OK();
+    }
 
     RaftPeerPB::Role active_role = state_->GetActiveRoleUnlocked();
     if (active_role == RaftPeerPB::LEADER) {
