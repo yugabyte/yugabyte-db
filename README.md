@@ -474,13 +474,6 @@ postgres=# select wait_event_type, query from pg_stat_monitor;
                  | select * from pg_stat_monitor_reset()
 ```
 
-## License
-
-Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
-
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
 
 
