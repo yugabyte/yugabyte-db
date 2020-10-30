@@ -84,7 +84,7 @@ showAsideToc: true
 
 {{< note title="Note" >}}
 
-By default CentOS 8 doesn’t have an unversioned system-wide python command to avoid locking the users to a specific version of Python.
+By default CentOS 8 doesn’t have an unversioned system-wide `python` command to avoid locking users to a specific version of Python.
 One way to fix this is to set `python3` the alternative for `python` by running: `sudo alternatives --set python /usr/bin/python3`.
 
 {{< /note >}}
