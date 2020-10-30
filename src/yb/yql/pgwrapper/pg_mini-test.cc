@@ -889,7 +889,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   ASSERT_EQ(num_tables_before, num_tables_after);
 }
 
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropAllTablesInColocatedDB),
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(DropAllTablesInColocatedDB),
           PgMiniMasterFailoverTest) {
   const std::string kDatabaseName = "testdb";
   // Create a colocated DB, create some tables, delete all of them.
