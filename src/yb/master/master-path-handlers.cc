@@ -282,12 +282,39 @@ string MasterPathHandlers::GetHttpHostPortFromServerRegistration(
   return "";
 }
 
+namespace {
+
+bool TabletServerComparator(
+    const std::shared_ptr<TSDescriptor>& a, const std::shared_ptr<TSDescriptor>& b) {
+  auto a_cloud_info = a->GetRegistration().common().cloud_info();
+  auto b_cloud_info = b->GetRegistration().common().cloud_info();
+
+  if (a_cloud_info.placement_cloud() == b_cloud_info.placement_cloud()) {
+    if (a_cloud_info.placement_region() == b_cloud_info.placement_region()) {
+      if (a_cloud_info.placement_zone() == b_cloud_info.placement_zone()) {
+        return a->permanent_uuid() < b->permanent_uuid();
+      }
+      return a_cloud_info.placement_zone() < b_cloud_info.placement_zone();
+    }
+    return a_cloud_info.placement_region() < b_cloud_info.placement_region();
+  }
+  return a_cloud_info.placement_cloud() < b_cloud_info.placement_cloud();
+}
+
+} // anonymous namespace
+
 void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         std::vector<std::shared_ptr<TSDescriptor>>* descs,
                                         TabletCountMap* tablet_map,
                                         std::stringstream* output,
                                         const int hide_dead_node_threshold_mins) {
-  for (auto desc : *descs) {
+  // Copy vector to avoid changes to the reference descs passed
+  std::vector<std::shared_ptr<TSDescriptor>> local_descs(*descs);
+
+  // Comparator orders by cloud, region, zone and uuid fields.
+  std::sort(local_descs.begin(), local_descs.end(), &TabletServerComparator);
+
+  for (auto desc : local_descs) {
     if (desc->placement_uuid() == current_uuid) {
       if (ShouldHideTserverNodeFromDisplay(desc.get(), hide_dead_node_threshold_mins)) {
         continue;
