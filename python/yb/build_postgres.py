@@ -397,7 +397,11 @@ class PostgresBuilder(YbBuildToolBase):
                 '--prefix', self.pg_prefix,
                 '--with-extra-version=-YB-' + self.get_yb_version(),
                 '--enable-depend',
+                '--with-ldap',
                 '--with-openssl',
+                # Options are ossp (original/old implementation), bsd (BSD) and e2fs
+                # (libuuid-based for Unix/Mac).
+                '--with-uuid=e2fs',
                 '--with-libedit-preferred',
                 '--with-includes=' + self.openssl_include_dir,
                 '--with-libraries=' + self.openssl_lib_dir,
