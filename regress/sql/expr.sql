@@ -1740,6 +1740,41 @@ SELECT * from cypher('expr', $$
 $$) as (result agtype);
 
 --
+-- user defined function expressions - using pg functions for these tests
+--
+SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt(25)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN ag_catalog.age_sqrt(25)
+$$) as (result agtype);
+-- should return null
+SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt(null)
+$$) as (result agtype);
+-- should fail
+SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt()
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt("1")
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt(-1)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN something.pg_catalog.sqrt("1")
+$$) as (result agtype);
+-- should fail do to schema but using a reserved_keyword
+SELECT * from cypher('expr', $$
+    RETURN distinct.age_sqrt(25)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+    RETURN contains.age_sqrt(25)
+$$) as (result agtype);
+
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);

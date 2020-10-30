@@ -97,7 +97,6 @@
 
 /* RETURN and WITH clause */
 %type <node> return return_item sort_item skip_opt limit_opt with
-%type <boolean> distinct_opt
 %type <list> return_item_list order_by_opt sort_item_list
 %type <integer> order_opt
 
@@ -134,7 +133,7 @@
 /* names */
 %type <string> property_key_name var_name var_name_opt label_name
 %type <string> symbolic_name schema_name
-%type <keyword> reserved_keyword
+%type <keyword> reserved_keyword safe_keywords conflicted_keywords
 %type <list> func_name
 
 /* precedence: lowest to highest */
@@ -294,12 +293,12 @@ updating_clause:
  */
 
 return:
-    RETURN distinct_opt return_item_list order_by_opt skip_opt limit_opt
+    RETURN DISTINCT return_item_list order_by_opt skip_opt limit_opt
         {
             cypher_return *n;
 
             n = make_ag_node(cypher_return);
-            n->distinct = $2;
+            n->distinct = true;
             n->items = $3;
             n->order_by = $4;
             n->skip = $5;
@@ -307,17 +306,20 @@ return:
 
             $$ = (Node *)n;
         }
-    ;
+    | RETURN return_item_list order_by_opt skip_opt limit_opt
+        {
+            cypher_return *n;
 
-distinct_opt:
-    /* empty */
-        {
-            $$ = false;
+            n = make_ag_node(cypher_return);
+            n->distinct = false;
+            n->items = $2;
+            n->order_by = $3;
+            n->skip = $4;
+            n->limit = $5;
+
+            $$ = (Node *)n;
         }
-    | DISTINCT
-        {
-            $$ = true;
-        }
+
     ;
 
 return_item_list:
@@ -442,8 +444,7 @@ limit_opt:
     ;
 
 with:
-    WITH distinct_opt return_item_list order_by_opt skip_opt limit_opt
-    where_opt
+    WITH DISTINCT return_item_list order_by_opt skip_opt limit_opt where_opt
         {
             ListCell *li;
             cypher_with *n;
@@ -465,12 +466,44 @@ with:
             }
 
             n = make_ag_node(cypher_with);
-            n->distinct = $2;
+            n->distinct = true;
             n->items = $3;
             n->order_by = $4;
             n->skip = $5;
             n->limit = $6;
             n->where = $7;
+
+            $$ = (Node *)n;
+        }
+    | WITH return_item_list order_by_opt skip_opt limit_opt
+    where_opt
+        {
+            ListCell *li;
+            cypher_with *n;
+
+            // check expressions are aliased
+            foreach (li, $2)
+            {
+                ResTarget *item = lfirst(li);
+
+                // variable does not have to be aliased
+                if (IsA(item->val, ColumnRef) || item->name)
+                    continue;
+
+                ereport(ERROR,
+                        (errcode(ERRCODE_SYNTAX_ERROR),
+                         errmsg("expression item must be aliased"),
+                         errhint("Items can be aliased by using AS."),
+                         ag_scanner_errposition(item->location, scanner)));
+            }
+
+            n = make_ag_node(cypher_with);
+            n->distinct = false;
+            n->items = $2;
+            n->order_by = $3;
+            n->skip = $4;
+            n->limit = $5;
+            n->where = $6;
 
             $$ = (Node *)n;
         }
@@ -961,9 +994,74 @@ expr:
 
             $$ = append_indirection($1, (Node *)i);
         }
-    | expr '.' property_key_name
+    /*
+     * This is a catch all grammar rule that allows us to avoid some
+     * shift/reduce errors between expression indirection rules by colapsing
+     * those rules into one generic rule. We can then inspect the expressions to
+     * decide what specific rule needs to be applied and then construct the
+     * required result.
+     */
+    | expr '.' expr
         {
-            $$ = append_indirection($1, (Node *)makeString($3));
+            /*
+             * This checks for the grammar rule -
+             *     expr '.' property_key_name
+             * where the expr can be anything.
+             * Note: A property_key_name ends up as a ColumnRef.
+             * Note: We restrict some of what the expr can be, for now. More may
+             *       need to be added later to loosen the restrictions. Or, it
+             *       may need to be removed.
+             */
+            if (IsA($3, ColumnRef) &&
+                (IsA($1, ExtensibleNode) ||
+                 IsA($1, ColumnRef) ||
+                 IsA($1, A_Indirection)))
+            {
+                ColumnRef *cr = (ColumnRef*)$3;
+                List *fields = cr->fields;
+                Value *string = linitial(fields);
+
+                $$ = append_indirection($1, (Node*)string);
+            }
+            /*
+             * This checks for the grammar rule -
+             *    symbolic_name '.' expr
+             * Where expr is a function call.
+             * Note: symbolic_name ends up as a ColumnRef
+             */
+            else if (IsA($3, FuncCall) && IsA($1, ColumnRef))
+            {
+                FuncCall *fc = (FuncCall*)$3;
+                ColumnRef *cr = (ColumnRef*)$1;
+                List *fields = cr->fields;
+                Value *string = linitial(fields);
+
+                /*
+                 * A function can only be qualified with a single schema. So, we
+                 * check to see that the function isn't already qualified. There
+                 * may be unforeseen cases where we might need to remove this in
+                 * the future.
+                 */
+                if (list_length(fc->funcname) == 1)
+                {
+                    fc->funcname = lcons(string, fc->funcname);
+                    $$ = (Node*)fc;
+                }
+                else
+                    ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("function already qualified"),
+                             ag_scanner_errposition(@1, scanner)));
+            }
+            /*
+             * All other types of expression indirections are currently not
+             * supported
+             */
+            else
+                ereport(ERROR,
+                        (errcode(ERRCODE_SYNTAX_ERROR),
+                         errmsg("invalid indirection syntax"),
+                         ag_scanner_errposition(@1, scanner)));
         }
     | expr TYPECAST symbolic_name
         {
@@ -1170,6 +1268,16 @@ func_name:
         {
             $$ = list_make1(makeString($1));
         }
+    /*
+     * symbolic_name '.' symbolic_name is already covered with the
+     * rule expr '.' expr above. This rule is to allow most reserved
+     * keywords to be used as well. So, it essentially makes the
+     * rule schema_name '.' symbolic_name for func_name
+     */
+    | safe_keywords '.' symbolic_name
+        {
+            $$ = list_make2(makeString((char *)$1), makeString($3));
+        }
     ;
 
 property_key_name:
@@ -1200,43 +1308,57 @@ schema_name:
     symbolic_name
     | reserved_keyword
         {
-            $$ = pstrdup($1);
+            /* we don't need to copy it, as it already has been */
+            $$ = (char *) $1;
         }
     ;
 
 reserved_keyword:
+    safe_keywords
+    | conflicted_keywords
+    ;
+
+/*
+ * All keywords need to be copied and properly terminated with a null before
+ * using them, pnstrdup effectively does this for us.
+ */
+
+safe_keywords:
     AND
-    | AS
-    | ASC
-    | ASCENDING
-    | BY
-    | COALESCE
-    | CONTAINS
-    | CREATE
-    | DELETE
-    | DESC
-    | DESCENDING
-    | DETACH
-    | DISTINCT
-    | ENDS
-    | EXISTS
-    | FALSE_P
-    | IN
-    | IS
-    | LIMIT
-    | MATCH
-    | NOT
-    | NULL_P
-    | OR
-    | ORDER
-    | REMOVE
-    | RETURN
-    | SET
-    | SKIP
-    | STARTS
-    | TRUE_P
-    | WHERE
-    | WITH
+    | AS         { $$ = pnstrdup($1, 2); }
+    | ASC        { $$ = pnstrdup($1, 3); }
+    | ASCENDING  { $$ = pnstrdup($1, 9); }
+    | BY         { $$ = pnstrdup($1, 2); }
+    | COALESCE   { $$ = pnstrdup($1, 8); }
+    | CONTAINS   { $$ = pnstrdup($1, 8); }
+    | CREATE     { $$ = pnstrdup($1, 6); }
+    | DELETE     { $$ = pnstrdup($1, 6); }
+    | DESC       { $$ = pnstrdup($1, 4); }
+    | DESCENDING { $$ = pnstrdup($1, 10); }
+    | DETACH     { $$ = pnstrdup($1, 6); }
+    | DISTINCT   { $$ = pnstrdup($1, 8); }
+    | ENDS       { $$ = pnstrdup($1, 4); }
+    | EXISTS     { $$ = pnstrdup($1, 6); }
+    | IN         { $$ = pnstrdup($1, 2); }
+    | IS         { $$ = pnstrdup($1, 2); }
+    | LIMIT      { $$ = pnstrdup($1, 6); }
+    | MATCH      { $$ = pnstrdup($1, 6); }
+    | NOT        { $$ = pnstrdup($1, 3); }
+    | OR         { $$ = pnstrdup($1, 2); }
+    | ORDER      { $$ = pnstrdup($1, 5); }
+    | REMOVE     { $$ = pnstrdup($1, 6); }
+    | RETURN     { $$ = pnstrdup($1, 6); }
+    | SET        { $$ = pnstrdup($1, 3); }
+    | SKIP       { $$ = pnstrdup($1, 4); }
+    | STARTS     { $$ = pnstrdup($1, 6); }
+    | WHERE      { $$ = pnstrdup($1, 5); }
+    | WITH       { $$ = pnstrdup($1, 4); }
+    ;
+
+conflicted_keywords:
+    FALSE_P  { $$ = pnstrdup($1, 7); }
+    | NULL_P { $$ = pnstrdup($1, 6); }
+    | TRUE_P { $$ = pnstrdup($1, 6); }
     ;
 
 %%

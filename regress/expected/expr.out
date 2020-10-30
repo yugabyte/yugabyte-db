@@ -4089,6 +4089,69 @@ SELECT * from cypher('expr', $$
 $$) as (result agtype);
 ERROR:  sqrt() unsupported argument agtype 1
 --
+-- user defined function expressions - using pg functions for these tests
+--
+SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt(25)
+$$) as (result agtype);
+ result 
+--------
+ 5.0
+(1 row)
+
+SELECT * from cypher('expr', $$
+    RETURN ag_catalog.age_sqrt(25)
+$$) as (result agtype);
+ result 
+--------
+ 5.0
+(1 row)
+
+-- should return null
+SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt(null)
+$$) as (result agtype);
+ result 
+--------
+ 
+(1 row)
+
+-- should fail
+SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt()
+$$) as (result agtype);
+ERROR:  function pg_catalog.sqrt() does not exist
+LINE 2:     RETURN pg_catalog.sqrt()
+                              ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt("1")
+$$) as (result agtype);
+ERROR:  cannot cast agtype string to type float
+SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt(-1)
+$$) as (result agtype);
+ERROR:  cannot take square root of a negative number
+SELECT * from cypher('expr', $$
+    RETURN something.pg_catalog.sqrt("1")
+$$) as (result agtype);
+ERROR:  invalid indirection syntax
+LINE 2:     RETURN something.pg_catalog.sqrt("1")
+                   ^
+-- should fail do to schema but using a reserved_keyword
+SELECT * from cypher('expr', $$
+    RETURN distinct.age_sqrt(25)
+$$) as (result agtype);
+ERROR:  schema "distinct" does not exist
+LINE 2:     RETURN distinct.age_sqrt(25)
+                                    ^
+SELECT * from cypher('expr', $$
+    RETURN contains.age_sqrt(25)
+$$) as (result agtype);
+ERROR:  schema "contains" does not exist
+LINE 2:     RETURN contains.age_sqrt(25)
+                                    ^
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
