@@ -147,6 +147,8 @@ struct LeaderElectionData {
 
   TEST_SuppressVoteRequest suppress_vote_request = TEST_SuppressVoteRequest::kFalse;
 
+  bool initial_election = false;
+
   std::string ToString() const;
 };
 

@@ -1316,6 +1316,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   MonoTime time_elected_leader_;
 
+  void StartElectionIfReady(
+      const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
+
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(lock_);
 
