@@ -61,6 +61,8 @@
 #include <glog/logging.h>
 #include <squeasel.h>
 
+#include <cds/init.h>
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
@@ -363,13 +365,14 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
   return RunPathHandler(*handler, connection, request_info);
 }
 
-thread_local std::unique_ptr<CDSAttacher> cds_attacher;
+thread_local bool cds_attached = false;
 
 int Webserver::RunPathHandler(const PathHandler& handler,
                               struct sq_connection* connection,
                               struct sq_request_info* request_info) {
-  if (!cds_attacher) {
-    cds_attacher = std::make_unique<CDSAttacher>();
+  if (!cds_attached) {
+    cds::threading::Manager::attachThread();
+    cds_attached = true;
   }
 
   // Should we render with css styles?
