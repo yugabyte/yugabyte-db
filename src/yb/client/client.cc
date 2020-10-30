@@ -496,6 +496,11 @@ Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
+Status YBClient::BackfillIndex(const TableId& table_id) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->BackfillIndex(this, YBTableName(), table_id, deadline);
+}
+
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,

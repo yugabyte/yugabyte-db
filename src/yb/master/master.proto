@@ -946,6 +946,16 @@ message IsTruncateTableDoneResponsePB {
   optional bool done = 2;
 }
 
+message BackfillIndexRequestPB {
+  // The index to backfill.
+  optional TableIdentifierPB table_identifier = 1;
+}
+
+message BackfillIndexResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
 // Delete table request (including index table).
 message DeleteTableRequestPB {
   required TableIdentifierPB table = 1;
@@ -1901,6 +1911,8 @@ service MasterService {
 
   rpc TruncateTable(TruncateTableRequestPB) returns (TruncateTableResponsePB);
   rpc IsTruncateTableDone(IsTruncateTableDoneRequestPB) returns (IsTruncateTableDoneResponsePB);
+
+  rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB);
 
   rpc DeleteTable(DeleteTableRequestPB) returns (DeleteTableResponsePB);
   rpc IsDeleteTableDone(IsDeleteTableDoneRequestPB) returns (IsDeleteTableDoneResponsePB);

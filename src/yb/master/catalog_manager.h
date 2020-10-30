@@ -244,6 +244,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Get the information about an in-progress truncate operation.
   CHECKED_STATUS IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
                                      IsTruncateTableDoneResponsePB* resp);
+
+  // Backfill the specified index.  Currently only supported for YSQL.  YCQL does not need this as
+  // master automatically runs backfill according to the DocDB permissions.
+  CHECKED_STATUS BackfillIndex(
+      const BackfillIndexRequestPB* req,
+      BackfillIndexResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   // Delete the specified table.
   //
   // The RPC context is provided for logging/tracing purposes,

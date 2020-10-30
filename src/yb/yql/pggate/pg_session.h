@@ -194,6 +194,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       client::YBTableName* indexed_table_name = nullptr,
       bool wait = true);
   CHECKED_STATUS TruncateTable(const PgObjectId& table_id);
+  CHECKED_STATUS BackfillIndex(const PgObjectId& table_id);
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);
 

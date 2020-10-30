@@ -301,6 +301,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsAlterTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsFlushTablesDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsTruncateTableDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(BackfillIndex);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsLoadBalanced);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsLoadBalancerIdle);
@@ -758,6 +759,35 @@ Status YBClient::Data::AlterNamespace(YBClient* client,
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
+  return Status::OK();
+}
+
+Status YBClient::Data::BackfillIndex(YBClient* client,
+                                     const YBTableName& table_name,
+                                     const TableId& table_id,
+                                     CoarseTimePoint deadline) {
+  BackfillIndexRequestPB req;
+  BackfillIndexResponsePB resp;
+
+  if (table_name.has_table()) {
+    table_name.SetIntoTableIdentifierPB(req.mutable_table_identifier());
+  }
+  if (!table_id.empty()) {
+    req.mutable_table_identifier()->set_table_id(table_id);
+  }
+
+  RETURN_NOT_OK((SyncLeaderMasterRpc<BackfillIndexRequestPB, BackfillIndexResponsePB>(
+      deadline,
+      req,
+      &resp,
+      nullptr /* num_attempts */,
+      "BackfillIndex",
+      &MasterServiceProxy::BackfillIndex)));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  LOG(INFO) << "Initiated backfill index " << req.table_identifier().ShortDebugString();
   return Status::OK();
 }
 

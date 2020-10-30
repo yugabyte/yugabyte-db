@@ -283,6 +283,10 @@ YBCStatus YBCPgAsyncUpdateIndexPermissions(
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
 
+YBCStatus YBCPgBackfillIndex(
+    const YBCPgOid database_oid,
+    const YBCPgOid index_oid);
+
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)
 //--------------------------------------------------------------------------------------------------
@@ -484,6 +488,9 @@ int32_t YBCGetSequenceCacheMinval();
 
 // Retrieve value of ysql_disable_index_backfill gflag.
 bool YBCGetDisableIndexBackfill();
+
+// Retrieve value of TEST_ysql_index_state_flags_update_delay_ms gflag.
+int32_t YBCGetTestIndexStateFlagsUpdateDelayMs();
 
 bool YBCPgIsYugaByteEnabled();
 

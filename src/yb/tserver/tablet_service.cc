@@ -695,8 +695,9 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  bool all_past_backfill = true;
   bool all_at_backfill = true;
+  bool all_past_backfill = true;
+  bool is_pg_table = tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE;
   const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map();
   std::vector<IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
@@ -709,11 +710,20 @@ void TabletServiceAdminImpl::BackfillIndex(
 
       IndexInfoPB idx_info_pb;
       index_info->ToPB(&idx_info_pb);
-      all_at_backfill &=
-          idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
+      if (!is_pg_table) {
+        all_at_backfill &=
+            idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
+      } else {
+        // YSQL tables don't use all the docdb permissions, so use this approximation.
+        // TODO(jason): change this back to being like YCQL once we bring the docdb permission
+        // DO_BACKFILL back (issue #6218).
+        all_at_backfill &=
+            idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_WRITE_AND_DELETE;
+      }
       all_past_backfill &=
           idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
     } else {
+      LOG(WARNING) << "index " << idx.table_id() << " not found in tablet matadata";
       all_at_backfill = false;
     }
   }
@@ -744,7 +754,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   }
 
   Result<string> resume_from = STATUS(InternalError, "placeholder");
-  if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
+  if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
           resp->mutable_error(),

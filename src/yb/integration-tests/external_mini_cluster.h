@@ -373,6 +373,8 @@ class ExternalMiniCluster : public MiniClusterBase {
                          const std::string& flag,
                          const std::string& value);
 
+  // Sets the given flag on all masters.
+  CHECKED_STATUS SetFlagOnMasters(const std::string& flag, const std::string& value);
   // Sets the given flag on all tablet servers.
   CHECKED_STATUS SetFlagOnTServers(const std::string& flag, const std::string& value);
 
