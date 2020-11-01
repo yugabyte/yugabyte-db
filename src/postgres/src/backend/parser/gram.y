@@ -8023,10 +8023,16 @@ opt_unique:
 		;
 
 opt_concurrently:
-			CONCURRENTLY							{
+			CONCURRENTLY
+				{
 					parser_ybc_not_support(@1, "CREATE INDEX CONCURRENTLY");
-                                                      $$ = true; }
-			| /*EMPTY*/								{ $$ = false; }
+					$$ = true;
+				}
+			/* TODO(jason): add NONCONCURRENTLY grammar (issue #6237). */
+			| /*EMPTY*/
+				{
+					$$ = !YBCGetDisableIndexBackfill();
+				}
 		;
 
 opt_index_name:
