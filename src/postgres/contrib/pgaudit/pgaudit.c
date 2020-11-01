@@ -1111,6 +1111,18 @@ static ProcessUtility_hook_type next_ProcessUtility_hook = NULL;
 static object_access_hook_type next_object_access_hook = NULL;
 static ExecutorStart_hook_type next_ExecutorStart_hook = NULL;
 
+static void pgaudit_NextExecutorStart_hook(QueryDesc *queryDesc, int eflags) {
+  /* Call the previous hook or standard function */
+  if (next_ExecutorStart_hook)
+    next_ExecutorStart_hook(queryDesc, eflags);
+  else
+    standard_ExecutorStart(queryDesc, eflags);
+}
+
+bool isAuditLoggingDisabled() {
+  return (auditRole == NULL || auditRole[0] == '\0') && !auditLogBitmap;
+}
+
 /*
  * Hook ExecutorStart to get the query text and basic command type for queries
  * that do not contain a table and so can't be idenitified accurately in
@@ -1118,6 +1130,10 @@ static ExecutorStart_hook_type next_ExecutorStart_hook = NULL;
  */
 static void pgaudit_ExecutorStart_hook(QueryDesc *queryDesc, int eflags) {
   AuditEventStackItem *stackItem = NULL;
+  if (isAuditLoggingDisabled()) {
+    pgaudit_NextExecutorStart_hook(queryDesc, eflags);
+    return;
+  }
 
   if (!internalStatement) {
     /* Push the audit even onto the stack */
@@ -1162,10 +1178,7 @@ static void pgaudit_ExecutorStart_hook(QueryDesc *queryDesc, int eflags) {
   }
 
   /* Call the previous hook or standard function */
-  if (next_ExecutorStart_hook)
-    next_ExecutorStart_hook(queryDesc, eflags);
-  else
-    standard_ExecutorStart(queryDesc, eflags);
+  pgaudit_NextExecutorStart_hook(queryDesc, eflags);
 
   /*
    * Move the stack memory context to the query memory context.  This needs
@@ -1181,10 +1194,12 @@ static void pgaudit_ExecutorStart_hook(QueryDesc *queryDesc, int eflags) {
  * Hook ExecutorCheckPerms to do session and object auditing for DML.
  */
 static bool pgaudit_ExecutorCheckPerms_hook(List *rangeTabls, bool abort) {
-  Oid auditOid;
+  Oid auditOid = InvalidOid;
 
   /* Get the audit oid if the role exists */
-  auditOid = get_role_oid(auditRole, true);
+  if (auditRole != NULL && auditRole[0] != '\0') {
+    auditOid = get_role_oid(auditRole, true);
+  }
 
   /* Log DML if the audit role is valid or session logging is enabled */
   if ((auditOid != InvalidOid || auditLogBitmap != 0) && !IsAbortedTransactionBlockState())
@@ -1195,6 +1210,21 @@ static bool pgaudit_ExecutorCheckPerms_hook(List *rangeTabls, bool abort) {
     return false;
 
   return true;
+}
+
+static void pgaudit_NextProcessUtility_hook(
+    PlannedStmt *pstmt,
+    const char *queryString,
+    ProcessUtilityContext context,
+    ParamListInfo params,
+    QueryEnvironment *queryEnv,
+    DestReceiver *dest,
+    char *completionTag) {
+  /* Call the standard process utility chain. */
+  if (next_ProcessUtility_hook)
+    (*next_ProcessUtility_hook)(pstmt, queryString, context, params, queryEnv, dest, completionTag);
+  else
+    standard_ProcessUtility(pstmt, queryString, context, params, queryEnv, dest, completionTag);
 }
 
 /*
@@ -1211,6 +1241,19 @@ static void pgaudit_ProcessUtility_hook(
   AuditEventStackItem *stackItem = NULL;
   int64 stackId = 0;
 
+  /*
+      Early bail out on pgAudit if
+      1. auditLogBitmap is not set (i.e. auditing is not enabled)
+      2. auditRole is not set (i.e. you do not have permissions to audit)
+      3. if you are not trying to set variable pgaudit.log. In that case you might need to
+         log the set statement too and hence you cant bail out.
+  */
+  if (isAuditLoggingDisabled() &&
+      (pstmt->utilityStmt->type != T_VariableSetStmt && !strstr(queryString, "pgaudit."))) {
+    pgaudit_NextProcessUtility_hook(
+        pstmt, queryString, context, params, queryEnv, dest, completionTag);
+    return;
+  }
   /*
    * Don't audit substatements.  All the substatements we care about should
    * be covered by the event triggers.
@@ -1277,10 +1320,8 @@ static void pgaudit_ProcessUtility_hook(
   }
 
   /* Call the standard process utility chain. */
-  if (next_ProcessUtility_hook)
-    (*next_ProcessUtility_hook)(pstmt, queryString, context, params, queryEnv, dest, completionTag);
-  else
-    standard_ProcessUtility(pstmt, queryString, context, params, queryEnv, dest, completionTag);
+  pgaudit_NextProcessUtility_hook(
+      pstmt, queryString, context, params, queryEnv, dest, completionTag);
 
   /*
    * Process the audit event if there is one.  Also check that this event

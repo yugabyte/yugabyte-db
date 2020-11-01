@@ -804,6 +804,12 @@ CREATE INDEX h_idx ON h (x);
 DROP INDEX h_idx;
 DROP TABLE h;
 
+--
+-- Testing if setting pgaudit.log is audited. We perform an early bail out when logging is disabled.
+-- When we are trying to set pgaudit.log this set statement should be logged although the state
+-- of the current system is such that logging is disable. We test that corner case here.
+SET pgaudit.log = 'NONE';
+SET pgaudit.log = 'ALL';
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';
