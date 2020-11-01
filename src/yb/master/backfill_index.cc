@@ -952,7 +952,7 @@ BackfillTablet::BackfillTablet(
   } else if (done()) {
     VLOG(1) << tablet_->ToString() << " backfill already done";
   } else {
-    VLOG(1) << tablet_->ToString() << " begining backfill from "
+    VLOG(1) << tablet_->ToString() << " beginning backfill from "
             << "<start-of-the-tablet>";
   }
 }

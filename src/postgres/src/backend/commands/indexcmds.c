@@ -366,6 +366,7 @@ DefineIndex(Oid relationId,
 	LOCKMODE	lockmode;
 	int			i;
 	YBIndexPermissions actual_index_permissions;
+	bool		is_indexed_table_colocated = false;
 
 	/*
 	 * count key attributes in index
@@ -395,27 +396,48 @@ DefineIndex(Oid relationId,
 						INDEX_MAX_KEYS)));
 
 	/*
-	 * An index build should be concurent when all of the following hold:
-	 * - index backfill is enabled
-	 * - the index is secondary
-	 * - the indexed table is not temporary
-	 * - we are not in bootstrap mode
-	 * Otherwise, it should not be concurrent.  This logic works because
+	 * Get whether the indexed table is colocated.  This includes tables that
+	 * are colocated because they are part of a tablegroup with colocation.
+	 */
+	if (IsYugaByteEnabled() &&
+		!IsBootstrapProcessingMode() &&
+		!YBIsPreparingTemplates() &&
+		IsYBRelationById(relationId))
+	{
+		HandleYBStatus(YBCPgIsTableColocated(MyDatabaseId,
+											 relationId,
+											 &is_indexed_table_colocated));
+	}
+
+	/*
+	 * An index build should not be concurent when
+	 * - index backfill is disabled
+	 * - the index is primary
+	 * - the indexed table is temporary
+	 * - we are in bootstrap mode
+	 * This logic works because
 	 * - primary key indexes are on the main table, and index backfill doesn't
 	 *   apply to them.
 	 * - temporary tables cannot have concurrency issues when building indexes.
 	 * - system table indexes created during initdb cannot have concurrency
 	 *   issues.
-	 * Concurrent index build is currently disabled for
+	 * Concurrent index build is currently also disabled for
 	 * - indexes in nested DDL
+	 * - indexes whose indexed table is colocated (issue #6215)
 	 * - unique indexes
 	 * - system table indexes (implied by disallowing on bootstrap mode)
+	 * TODO(jason): check whether it's even possible to come here with
+	 * concurrent true and
+	 * - bootstrap mode
+	 * - nested DDL
+	 * - primary index
 	 */
-	stmt->concurrent = (!YBCGetDisableIndexBackfill()
-						&& !stmt->primary
-						&& IsYBRelationById(relationId) &&
-						!IsBootstrapProcessingMode());
-	/* Use fast path create index when in nested DDL.  This is desired
+	if (stmt->primary ||
+		!IsYBRelationById(relationId) ||
+		IsBootstrapProcessingMode())
+		stmt->concurrent = false;
+	/*
+	 * Use fast path create index when in nested DDL.  This is desired
 	 * when there would be no concurrency issues (e.g. `CREATE TABLE
 	 * ... (... UNIQUE (...))`).  However, there may be cases where it
 	 * is unsafe to use the fast path.  For now, just use the fast path
@@ -424,6 +446,12 @@ DefineIndex(Oid relationId,
 	 * path for the appropriate statements (issue #4786).
 	 */
 	if (stmt->concurrent && YBGetDdlNestingLevel() > 1)
+		stmt->concurrent = false;
+	/*
+	 * Backfilling indexes whose indexed table is colocated is currently not
+	 * supported.  See issue #6215.
+	 */
+	if (is_indexed_table_colocated)
 		stmt->concurrent = false;
 	/*
 	 * Backfilling unique indexes is currently not supported.  This is desired
@@ -593,8 +621,8 @@ DefineIndex(Oid relationId,
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 		errmsg("Cannot use TABLEGROUP with SPLIT."),
-				 		errdetail("Please supply NO TABLEGROUP to opt-out of indexed table's tablegroup.")));
+						 errmsg("Cannot use TABLEGROUP with SPLIT."),
+						 errdetail("Please supply NO TABLEGROUP to opt-out of indexed table's tablegroup.")));
 			}
 		}
 		else
@@ -606,7 +634,7 @@ DefineIndex(Oid relationId,
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 		errmsg("Cannot use TABLEGROUP with SPLIT.")));
+							 errmsg("Cannot use TABLEGROUP with SPLIT.")));
 				}
 				tablegroupId = get_tablegroup_oid(grp->tablegroup_name, false);
 			}
