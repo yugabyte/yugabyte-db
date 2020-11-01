@@ -190,7 +190,7 @@ void PreparerImpl::Run() {
     ProcessAndClearLeaderSideBatch();
     std::unique_lock<std::mutex> stop_lock(stop_mtx_);
     running_.store(false, std::memory_order_release);
-    // Check whether tasks we added while we were setting running to false.
+    // Check whether tasks were added while we were setting running to false.
     if (active_tasks_.load(std::memory_order_acquire)) {
       // Got more operations, try stay in the loop.
       bool expected = false;
