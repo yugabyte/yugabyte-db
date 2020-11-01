@@ -1107,6 +1107,13 @@ NOTICE:  AUDIT: SESSION,56,1,READ,SELECT,TABLE,public.h_0,SELECT * FROM h_0;,<no
 CREATE INDEX h_idx ON h (x);
 DROP INDEX h_idx;
 DROP TABLE h;
+--
+-- Testing if setting pgaudit.log is audited. We perform an early bail out when logging is disabled.
+-- When we are trying to set pgaudit.log this set statement should be logged although the state
+-- of the current system is such that logging is disable. We test that corner case here.
+SET pgaudit.log = 'NONE';
+SET pgaudit.log = 'ALL';
+NOTICE:  AUDIT: SESSION,57,1,MISC,SET,,,SET pgaudit.log = 'ALL';,<none>
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';
