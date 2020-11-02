@@ -306,7 +306,8 @@ class UniverseDetail extends Component {
             disabled={isDisabled(currentCustomer.data.features, "universes.details.replication")}
           >
             <ReplicationContainer />
-          </Tab.Pane>,
+          </Tab.Pane>
+        ),
 
         isNotHidden(currentCustomer.data.features, "universes.details.tasks") &&
           <Tab.Pane
