@@ -280,11 +280,11 @@ DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
 
-DEFINE_int32(ysql_backfill_is_create_table_done_delay_ms, 0,
+DEFINE_int32(yql_is_create_index_done_delay_ms, 0,
     "Time to wait after IsCreateTableDone for an index using online schema migration finds the"
     " index in the master index map.");
-TAG_FLAG(ysql_backfill_is_create_table_done_delay_ms, hidden);
-TAG_FLAG(ysql_backfill_is_create_table_done_delay_ms, runtime);
+TAG_FLAG(yql_is_create_index_done_delay_ms, hidden);
+TAG_FLAG(yql_is_create_index_done_delay_ms, runtime);
 
 DEFINE_bool(enable_transactional_ddl_gc, true,
     "A kill switch for transactional DDL GC. Temporary safety measure.");
@@ -3217,17 +3217,17 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   RETURN_NOT_OK(table->GetCreateTableErrorStatus());
 
   // 4. For index table:
-  //   a. If backfill is enabled, check if an index is present in indexed table's index map.
-  //   b. Otherwise check if alter schema is done on the indexed table as well.
-  // TODO(alex, amit): While (4.a) sounds like it should be enabled for both YSQL and YCQL,
-  //    currently it makes YCQL index backfill unstable - which is indicated by intermittent
-  //    failures of various tests under CppCassandraDriverTest - mostly TestCreateIndex.
+  // YCQL only needs to wait for the index to be added to the table's index map, since the
+  // expectation is that the backfill will be completed asynchronously. i.e. create-index does not
+  // wait for it. However, for YSQL index tables:
+  //   a. If backfill is enabled, wait until the index is present in indexed table's index map.
+  //   b. Otherwise wait until the alter schema is done on the indexed table as well.
   if (resp->done() && PROTO_IS_INDEX(pb)) {
     auto& indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(pb);
-    if (pb.table_type() == PGSQL_TABLE_TYPE &&
-        IsUserCreatedTable(*table) &&
-        IsIndexBackfillEnabled(pb.table_type(),
-                               pb.schema().table_properties().is_transactional())) {
+    if (pb.table_type() == YQL_TABLE_TYPE ||
+        (pb.table_type() == PGSQL_TABLE_TYPE && IsUserCreatedTable(*table) &&
+         IsIndexBackfillEnabled(
+             pb.table_type(), pb.schema().table_properties().is_transactional()))) {
       GetTableSchemaRequestPB get_schema_req;
       GetTableSchemaResponsePB get_schema_resp;
       get_schema_req.mutable_table()->set_table_id(indexed_table_id);
@@ -3248,13 +3248,11 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
           // consistency issues.  It should now be fixed, but it still exists for now because the
           // gflag was part of the 2.5 release.  Later, it shouldn't be a big deal to remove this
           // and the gflag.
-          SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_backfill_is_create_table_done_delay_ms));
+          SleepFor(MonoDelta::FromMilliseconds(FLAGS_yql_is_create_index_done_delay_ms));
           break;
         }
       }
     } else {
-      // TODO(alex, amit): We probably should be fine doing something like (a) case here, since we
-      //                   shouldn't care if other indexes are being created
       IsAlterTableDoneRequestPB alter_table_req;
       IsAlterTableDoneResponsePB alter_table_resp;
       alter_table_req.mutable_table()->set_table_id(indexed_table_id);
