@@ -1,7 +1,5 @@
 # Use the latest 2.1 version of CircleCI pipeline process engine. See: https://circleci.com/docs/2.0/configuration-reference
 version: 2.1
-orbs:
-  welcome: circleci/welcome-orb@0.4.1
 
 jobs:
   build:
@@ -29,7 +27,9 @@ workflows:
 
   welcome:
     jobs:
-      - welcome/run:
+      - build:
+          name: mac-debug
+          flavor: "debug"
           filters:
             branches:
               only: circleci-project-setup
