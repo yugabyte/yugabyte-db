@@ -14,7 +14,7 @@ showAsideToc: true
 ---
 
 When a RAFT peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones.
-If 2/3 of RAFT peers fail for a given tablet, we have to manually execute the equivalent of a remote bootstrap. We
+If a majority of RAFT peers fail for a given tablet, we have to manually execute the equivalent of a remote bootstrap. We
  can get a list of tablets in `yb-master-ip:7000/tablet-replication` yb-admin gui. 
 
 
