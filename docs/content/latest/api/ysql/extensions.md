@@ -285,7 +285,7 @@ sudo apt-get install postgresql-11 postgresql-11-postgis-3
 You can get the YUM repository from [PostgreSQL website](https://www.postgresql.org/download/linux/redhat/). Then you 
 can use `yum` or `dnf` to install:
 ```shell script
-yum install postgresql-11 postgresql-11-postgis-3
+sudo yum install postgresql11-server postgis31_11
 ```
 {{< note title="Note" >}}
 If you have multiple PostgreSQL versions installed, make sure you're selecting the correct `pg_config`. On an Ubuntu 18.04 environment 
