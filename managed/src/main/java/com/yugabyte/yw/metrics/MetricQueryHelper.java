@@ -97,7 +97,7 @@ public class MetricQueryHelper {
 
     ObjectNode responseJson = Json.newObject();
     String metricsUrl = appConfig.getString("yb.metrics.url");
-    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative");
+    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative", false);
     if ((null == metricsUrl || metricsUrl.isEmpty()) && !useNativeMetrics) {
       LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
       return responseJson;
