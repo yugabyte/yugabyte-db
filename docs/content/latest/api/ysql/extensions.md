@@ -281,16 +281,16 @@ Add the [PostgreSQL APT sources](https://www.postgresql.org/download/linux/ubunt
 sudo apt-get install postgresql-11 postgresql-11-postgis-3
 ```
 
-#### Centos
+#### CentOS
 You can get the YUM repository from [PostgreSQL website](https://www.postgresql.org/download/linux/redhat/). Then you 
 can use `yum` or `dnf` to install:
-```shell script
+```sh
 sudo yum install postgresql11-server postgis31_11
 ```
 {{< note title="Note" >}}
 If you have multiple PostgreSQL versions installed, make sure you're selecting the correct `pg_config`. On an Ubuntu 18.04 environment 
 with multiple PostgreSQL versions installed:
-```shell script
+```sh
 $ pg_config --version
 PostgreSQL 13.0 (Ubuntu 13.0-1.pgdg18.04+1)
 $ /usr/lib/postgresql/11/bin/pg_config --version
@@ -300,7 +300,7 @@ So you need to make sure you're using the correct `pg_config`. In this case, `/u
 {{< /note >}}
 
 
-Now follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create
+Now, follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create
 the extension.
 
 ```sh
