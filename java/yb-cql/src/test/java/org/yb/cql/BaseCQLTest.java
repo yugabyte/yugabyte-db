@@ -52,6 +52,23 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 public class BaseCQLTest extends BaseMiniClusterTest {
+  public static final int TP_NO_FLAGS          = 0;
+  public static final int TP_NON_TRANSACTIONAL = TP_NO_FLAGS;
+  public static final int TP_TRANSACTIONAL     = 1; // bit 0
+  public static final int TP_DIRECT_QUERY      = TP_NO_FLAGS;
+  public static final int TP_PREPARED_QUERY    = 2; // bit 1
+  public class TableProperty {
+    public int flags;
+    public TableProperty() { flags = TP_NO_FLAGS; }
+    public TableProperty(int f) { flags = f; }
+    public Boolean isTransactional() throws Exception {
+      return (flags & TP_TRANSACTIONAL) == TP_TRANSACTIONAL;
+    }
+    public Boolean usePreparedQueries() throws Exception {
+      return (flags & TP_PREPARED_QUERY) == TP_PREPARED_QUERY;
+    }
+  };
+
   protected static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
 
   // Integer.MAX_VALUE seconds is the maximum allowed TTL by Cassandra.
@@ -73,6 +90,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   protected static boolean startRedisProxy = false;
   protected static int systemQueryCacheMsecs = 4000;
   protected static boolean systemQueryCacheEmptyResponses = false;
+  protected static int cqlClientTimeoutMs = 120 * 1000;
 
   protected Cluster cluster;
   protected Session session;
@@ -134,6 +152,10 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       builder.addMasterArgs("--" + entry.getKey() + "=" + entry.getValue());
     }
     builder.enablePostgres(false);
+    // Prevent YB server processes from closing connections which are idle for less than client
+    // timeout period.
+    builder.addCommonArgs(String.format(
+        "--rpc_default_keepalive_time_ms=%d", cqlClientTimeoutMs + 5000));
   }
 
   @BeforeClass
@@ -152,8 +174,8 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     // Set a long timeout for CQL queries since build servers might be really slow (especially Mac
     // Mini).
     SocketOptions socketOptions = new SocketOptions();
-    socketOptions.setReadTimeoutMillis(120 * 1000);
-    socketOptions.setConnectTimeoutMillis(120 * 1000);
+    socketOptions.setReadTimeoutMillis(cqlClientTimeoutMs);
+    socketOptions.setConnectTimeoutMillis(cqlClientTimeoutMs);
     return Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
               .withQueryOptions(queryOptions)

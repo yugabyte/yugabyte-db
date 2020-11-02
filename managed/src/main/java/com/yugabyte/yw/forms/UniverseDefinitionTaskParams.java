@@ -20,7 +20,6 @@ import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -265,11 +264,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean enableYSQL = false;
 
+    public boolean enableYEDIS = true;
+
     public boolean enableNodeToNodeEncrypt = false;
 
     public boolean enableClientToNodeEncrypt = false;
 
     public boolean enableVolumeEncryption = false;
+
+    public boolean enableIPV6 = false;
 
     public String awsArnString;
 
@@ -315,6 +318,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.useTimeSync = useTimeSync;
       newUserIntent.enableYSQL = enableYSQL;
+      newUserIntent.enableYEDIS = enableYEDIS;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
@@ -538,13 +542,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     if (uuid == null) {
       return getPrimaryCluster();
     }
+
     List<Cluster> foundClusters =  clusters.stream()
-                                           .filter(c -> c.uuid.equals(uuid))
-                                           .collect(Collectors.toList());
+      .filter(c -> c.uuid.equals(uuid))
+      .collect(Collectors.toList());
+
     if (foundClusters.size() > 1) {
       throw new RuntimeException("Multiple clusters with uuid " + uuid.toString() +
           " found in params for universe " + universeUUID.toString());
     }
+
     return Iterables.getOnlyElement(foundClusters, null);
   }
 

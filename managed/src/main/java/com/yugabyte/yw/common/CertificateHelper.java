@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
@@ -131,8 +132,17 @@ public class CertificateHelper {
         certWriter.flush();
         keyWriter.writeObject(keyPair.getPrivate());
         keyWriter.flush();
-        CertificateInfo cert = CertificateInfo.create(rootCA_UUID, customerUUID, nodePrefix,
-                                                      certStart, certExpiry, keyPath, certPath);
+        CertificateInfo.Type certType = CertificateInfo.Type.SelfSigned;
+        LOG.info(
+          "Generated self signed cert label {} uuid {} of type {} for customer {} at paths {}, {}",
+          nodePrefix, rootCA_UUID, certType, customerUUID,
+          certPath, keyPath
+        );
+
+        CertificateInfo cert = CertificateInfo.create(
+          rootCA_UUID, customerUUID, nodePrefix,
+          certStart, certExpiry, keyPath, certPath, certType
+        );
 
         LOG.info("Created Root CA for {}.", nodePrefix);
         return cert.uuid;
@@ -161,6 +171,10 @@ public class CertificateHelper {
       }
 
       CertificateInfo cert = CertificateInfo.get(rootCA);
+      if (cert.privateKey == null) {
+        throw new RuntimeException("Keyfile cannot be null!");
+      }
+
       FileInputStream is = new FileInputStream(new File(cert.certificate));
       CertificateFactory fact = CertificateFactory.getInstance("X.509");
       X509Certificate cer = (X509Certificate) fact.generateCertificate(is);
@@ -247,30 +261,46 @@ public class CertificateHelper {
     }
   }
 
-  public static UUID uploadRootCA(String label, UUID customerUUID, String storagePath,
-                                  String certContent, String keyContent, Date certStart,
-                                  Date certExpiry) throws IOException {
-    if (certContent == null || keyContent == null) {
-      throw new RuntimeException("Keyfile or certfile can't be null");
+  public static UUID uploadRootCA(
+    String label, UUID customerUUID, String storagePath,
+    String certContent, String keyContent, Date certStart,
+    Date certExpiry, CertificateInfo.Type certType,
+    CertificateParams.CustomCertInfo customCertInfo) throws IOException {
+
+    if (certContent == null) {
+      throw new RuntimeException("Certfile can't be null");
     }
     UUID rootCA_UUID = UUID.randomUUID();
-    String keyPath = String.format("%s/certs/%s/%s/ca.key.pem", storagePath,
+    String keyPath = null;
+    if (certType == CertificateInfo.Type.SelfSigned) {
+      keyPath = String.format("%s/certs/%s/%s/ca.key.pem", storagePath,
                                    customerUUID.toString(), rootCA_UUID.toString());
+    }
     String certPath = String.format("%s/certs/%s/%s/ca.%s", storagePath,
                                     customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
-    
-    File certfile = new File(certPath);
-    File keyfile = new File(keyPath);
 
+    File certfile = new File(certPath);
     // Create directory to store the keys.
     certfile.getParentFile().mkdirs();
-
     Files.write(certfile.toPath(), certContent.getBytes());
-    Files.write(keyfile.toPath(), keyContent.getBytes());
-    
-    CertificateInfo cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
-        certExpiry, keyPath, certPath);
-    
+    if (certType == CertificateInfo.Type.SelfSigned) {
+      File keyfile = new File(keyPath);
+      Files.write(keyfile.toPath(), keyContent.getBytes());
+    }
+    LOG.info(
+      "Uploaded cert label {} (uuid {}) of type {} at paths {}, {}",
+      label, rootCA_UUID, certType,
+      certPath, ((keyPath == null) ? "no private key" : keyPath)
+    );
+    CertificateInfo cert;
+    if (certType == CertificateInfo.Type.SelfSigned) {
+      cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
+        certExpiry, keyPath, certPath, certType);
+    } else {
+      cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
+        certExpiry, certPath, customCertInfo);
+    }
+
     return cert.uuid;
 
   }

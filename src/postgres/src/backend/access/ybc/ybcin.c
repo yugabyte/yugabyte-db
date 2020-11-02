@@ -26,6 +26,7 @@
 
 #include "miscadmin.h"
 #include "access/nbtree.h"
+#include "access/reloptions.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "access/ybcam.h"
@@ -237,6 +238,13 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 bytea *
 ybcinoptions(Datum reloptions, bool validate)
 {
+	/*
+	 * For now we only need to validate the reloptions, as we currently have no
+	 * need for a special struct similar to BrinOptions or GinOptions.
+	 * Thus, we will still return NULL for now.
+	 */
+	int numoptions;
+	(void) parseRelOptions(reloptions, validate, RELOPT_KIND_INDEX, &numoptions);
 	return NULL;
 }
 
@@ -244,7 +252,7 @@ bool
 ybcinproperty(Oid index_oid, int attno, IndexAMProperty prop, const char *propname,
 			  bool *res, bool *isnull)
 {
-	return false;	
+	return false;
 }
 
 bool
@@ -270,7 +278,7 @@ ybcinbeginscan(Relation rel, int nkeys, int norderbys)
 	return scan;
 }
 
-void 
+void
 ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys, int norderbys)
 {
 	if (scan->opaque)
@@ -303,6 +311,11 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 
 	YbScanDesc ybscan = (YbScanDesc) scan->opaque;
 	ybscan->exec_params = scan->yb_exec_params;
+	if (!ybscan->exec_params) {
+		ereport(DEBUG1, (errmsg("null exec_params")));
+	} else {
+		ybscan->exec_params->read_from_followers = YBReadFromFollowersEnabled();
+	}
 	Assert(PointerIsValid(ybscan));
 
 	/*
@@ -321,6 +334,9 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 	else
 	{
+		if (ybscan->exec_params && ybscan->exec_params->read_from_followers) {
+			ereport(DEBUG2, (errmsg("ybcingettuple read from followers")));
+		}
 		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, is_forward_scan, &scan->xs_recheck);
 		if (tuple)
 		{
@@ -333,7 +349,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	return scan->xs_ctup.t_ybctid != 0;
 }
 
-void 
+void
 ybcinendscan(IndexScanDesc scan)
 {
 	YbScanDesc ybscan = (YbScanDesc)scan->opaque;

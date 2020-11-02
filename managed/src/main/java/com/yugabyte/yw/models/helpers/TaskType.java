@@ -34,6 +34,8 @@ public enum TaskType {
 
   BackupUniverse("BackupUniverse"),
 
+  DeleteBackup("DeleteBackup"),
+
   MultiTableBackup("MultiTableBackup"),
 
   EditUniverse("EditUniverse"),
@@ -71,6 +73,8 @@ public enum TaskType {
   DeleteKMSConfig("DeleteKMSConfig"),
 
   UpdateDiskSize("UpdateDiskSize"),
+
+  StartMasterOnNode("StartMasterOnNode"),
 
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),

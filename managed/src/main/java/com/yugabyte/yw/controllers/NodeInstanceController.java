@@ -183,7 +183,8 @@ public class NodeInstanceController extends AuthenticatedController {
         }
       }
 
-      if (nodeAction == NodeActionType.ADD) {
+      if (nodeAction == NodeActionType.ADD || nodeAction == NodeActionType.START
+          || nodeAction == NodeActionType.START_MASTER) {
         taskParams.clusters = universe.getUniverseDetails().clusters;
         taskParams.rootCA = universe.getUniverseDetails().rootCA;
       }

@@ -228,16 +228,17 @@ struct BlockBasedTable::Rep {
   BlockHandle filter_handle;
 
   std::shared_ptr<const TableProperties> table_properties;
-  IndexType index_type;
-  bool hash_index_allow_collision;
-  bool whole_key_filtering;
-  bool prefix_filtering;
+  IndexType index_type = IndexType::kBinarySearch;
+  bool hash_index_allow_collision = false;
+  bool whole_key_filtering = false;
+  bool prefix_filtering = false;
   // TODO(kailiu) It is very ugly to use internal key in table, since table
   // module should not be relying on db module. However to make things easier
   // and compatible with existing code, we introduce a wrapper that allows
   // block to extract prefix without knowing if a key is internal or not.
   unique_ptr<SliceTransform> internal_prefix_transform;
-  DataIndexLoadMode data_index_load_mode;
+
+  DataIndexLoadMode data_index_load_mode = static_cast<DataIndexLoadMode>(0);
   yb::MemTrackerPtr mem_tracker;
 };
 

@@ -569,6 +569,8 @@ class ClusterOptions:
         self.placement_info = []
         self.verbose_level = 0
         self.use_cassandra_authentication = False
+        self.ysql_hba_conf_csv = None
+        self.ysql_pg_conf_csv = None
         self.node_type = DAEMON_TYPE_TSERVER
         self.is_shell_master = False
         self.is_startup_command = False
@@ -644,6 +646,12 @@ class ClusterOptions:
 
         if hasattr(args, "use_cassandra_authentication"):
             self.use_cassandra_authentication = args.use_cassandra_authentication
+
+        if hasattr(args, "ysql_hba_conf_csv"):
+            self.ysql_hba_conf_csv = args.ysql_hba_conf_csv
+
+        if hasattr(args, "ysql_pg_conf_csv"):
+            self.ysql_pg_conf_csv = args.ysql_pg_conf_csv
 
         if hasattr(args, "ip_start"):
             self.ip_start = args.ip_start
@@ -1105,6 +1113,12 @@ class ClusterControl:
                                          help="Disable YugaByte SQL API.",
                                          default=None)
 
+            subparsers[cmd].add_argument("--ysql_hba_conf_csv",
+                                         help="Set HBA configuration for YSQL API in CSV format")
+
+            subparsers[cmd].add_argument("--ysql_pg_conf_csv",
+                                         help="Set configuration for YSQL API in CSV format")
+
             subparsers[cmd].add_argument(
                     "--ysql_port",
                     help="YSQL (PostgreSQL-compatible) API port. Default: %d." % YSQL_DEFAULT_PORT,
@@ -1332,6 +1346,12 @@ class ClusterControl:
                 "--pgsql_proxy_bind_address=" +
                 self.options.get_client_listen_host_port(daemon_id, 'ysql')
             ]
+            if (self.options.ysql_hba_conf_csv is not None):
+                command_list.append(
+                    "--ysql_hba_conf_csv='{}'".format(self.options.ysql_hba_conf_csv))
+            if (self.options.ysql_pg_conf_csv is not None):
+                command_list.append(
+                    "--ysql_pg_conf_csv='{}'".format(self.options.ysql_pg_conf_csv))
         else:
             command_list += ["--enable_ysql=false"]
         return self.customize_flags(command_list, self.options.tserver_flags)

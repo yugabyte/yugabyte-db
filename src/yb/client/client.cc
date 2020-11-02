@@ -131,6 +131,8 @@ using yb::master::DeleteUDTypeRequestPB;
 using yb::master::DeleteUDTypeResponsePB;
 using yb::master::DeleteRoleRequestPB;
 using yb::master::DeleteRoleResponsePB;
+using yb::master::DeleteTabletRequestPB;
+using yb::master::DeleteTabletResponsePB;
 using yb::master::GetPermissionsRequestPB;
 using yb::master::GetPermissionsResponsePB;
 using yb::master::GrantRevokeRoleRequestPB;
@@ -494,6 +496,11 @@ Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
+Status YBClient::BackfillIndex(const TableId& table_id) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->BackfillIndex(this, YBTableName(), table_id, deadline);
+}
+
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
@@ -633,25 +640,59 @@ Result<IndexPermissions> YBClient::GetIndexPermissions(
 Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
     const TableId& table_id,
     const TableId& index_id,
-    const IndexPermissions& target_index_permissions) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+    const IndexPermissions& target_index_permissions,
+    const CoarseTimePoint deadline,
+    const CoarseDuration max_wait) {
   return data_->WaitUntilIndexPermissionsAtLeast(
       this,
       table_id,
       index_id,
+      target_index_permissions,
       deadline,
-      target_index_permissions);
+      max_wait);
+}
+
+Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
+    const TableId& table_id,
+    const TableId& index_id,
+    const IndexPermissions& target_index_permissions,
+    const CoarseDuration max_wait) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitUntilIndexPermissionsAtLeast(
+      table_id,
+      index_id,
+      target_index_permissions,
+      deadline,
+      max_wait);
 }
 
 Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
     const YBTableName& table_name,
     const YBTableName& index_name,
-    const IndexPermissions& target_index_permissions) {
-  YBTableInfo table_info = VERIFY_RESULT(GetYBTableInfo(table_name));
-  YBTableInfo index_info = VERIFY_RESULT(GetYBTableInfo(index_name));
-  return WaitUntilIndexPermissionsAtLeast(table_info.table_id,
-                                          index_info.table_id,
-                                          target_index_permissions);
+    const IndexPermissions& target_index_permissions,
+    const CoarseTimePoint deadline,
+    const CoarseDuration max_wait) {
+  return data_->WaitUntilIndexPermissionsAtLeast(
+      this,
+      table_name,
+      index_name,
+      target_index_permissions,
+      deadline,
+      max_wait);
+}
+
+Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
+    const YBTableName& table_name,
+    const YBTableName& index_name,
+    const IndexPermissions& target_index_permissions,
+    const CoarseDuration max_wait) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitUntilIndexPermissionsAtLeast(
+      table_name,
+      index_name,
+      target_index_permissions,
+      deadline,
+      max_wait);
 }
 
 Status YBClient::AsyncUpdateIndexPermissions(const TableId& indexed_table_id) {
@@ -1354,6 +1395,11 @@ void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback call
   data_->DeleteCDCStream(this, stream_id, deadline, callback);
 }
 
+void YBClient::DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  data_->DeleteTablet(this, tablet_id, deadline, callback);
+}
+
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
   int tserver_count_cached = data_->tserver_count_cached_.load(std::memory_order_acquire);
   if (use_cache && tserver_count_cached > 0) {
@@ -1378,7 +1424,8 @@ Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tabl
     const ListTabletServersResponsePB_Entry& e = resp.servers(i);
     auto ts = std::make_unique<YBTabletServer>(
         e.instance_id().permanent_uuid(),
-        DesiredHostPort(e.registration().common(), data_->cloud_info_pb_).host());
+        DesiredHostPort(e.registration().common(), data_->cloud_info_pb_).host(),
+        e.registration().common().placement_uuid());
     tablet_servers->push_back(std::move(ts));
   }
   return Status::OK();
@@ -1526,7 +1573,7 @@ Status YBClient::GetTabletsAndUpdateCache(
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
 
   RETURN_NOT_OK(data_->meta_cache_->ProcessTabletLocations(
-      tablets, /* partition_group_start= */ nullptr, /* request_no= */ 0));
+      tablets, /* partition_group_start= */ nullptr, /* cleanup= */ nullptr));
 
   return Status::OK();
 }
@@ -1563,12 +1610,18 @@ std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinR
     const TabletId& tablet_id) {
   std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
   auto& tablet = data_->tablet_requests_[tablet_id];
+  if (tablet.request_id_seq == kInitializeFromMinRunning) {
+    return std::make_pair(kInitializeFromMinRunning, kInitializeFromMinRunning);
+  }
   auto id = tablet.request_id_seq++;
   tablet.running_requests.insert(id);
   return std::make_pair(id, *tablet.running_requests.begin());
 }
 
 void YBClient::RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id) {
+  if (request_id == kInitializeFromMinRunning) {
+    return;
+  }
   std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
   auto& tablet = data_->tablet_requests_[tablet_id];
   auto it = tablet.running_requests.find(request_id);
@@ -1580,7 +1633,17 @@ void YBClient::RequestFinished(const TabletId& tablet_id, RetryableRequestId req
   }
 }
 
-void YBClient::LookupTabletByKey(const YBTable* table,
+void YBClient::MaybeUpdateMinRunningRequestId(
+    const TabletId& tablet_id, RetryableRequestId min_running_request_id) {
+  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
+  auto& tablet = data_->tablet_requests_[tablet_id];
+  if (tablet.request_id_seq == kInitializeFromMinRunning) {
+    tablet.request_id_seq = min_running_request_id + (1 << 24);
+    VLOG(1) << "Set request_id_seq for tablet " << tablet_id << " to " << tablet.request_id_seq;
+  }
+}
+
+void YBClient::LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
                                  const std::string& partition_key,
                                  CoarseTimePoint deadline,
                                  LookupTabletCallback callback) {
@@ -1588,11 +1651,12 @@ void YBClient::LookupTabletByKey(const YBTable* table,
 }
 
 void YBClient::LookupTabletById(const std::string& tablet_id,
+                                const std::shared_ptr<const YBTable>& table,
                                 CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
-      tablet_id, deadline, std::move(callback), use_cache);
+      tablet_id, table, deadline, std::move(callback), use_cache);
 }
 
 HostPort YBClient::GetMasterLeaderAddress() {

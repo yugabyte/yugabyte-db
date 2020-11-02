@@ -28,7 +28,8 @@ class MetricEntity;
 namespace client {
 
 // Lookup first tablet of specified table.
-std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(const YBTable *table);
+std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
+    const std::shared_ptr<const YBTable>& table);
 
 Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
     const string &client_name,

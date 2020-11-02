@@ -28,6 +28,8 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+
 import org.yb.ColumnSchema.SortOrder;
 
 public class ApiUtils {
@@ -100,8 +102,11 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-        PlacementInfo placementInfo = PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY,
-                                                                         userIntent);
+        PlacementInfo placementInfo = PlacementInfoUtil.getPlacementInfo(
+          ClusterType.PRIMARY,
+          userIntent,
+          userIntent.replicationFactor
+        );
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
@@ -236,7 +241,47 @@ public class ApiUtils {
         universe.setUniverseDetails(universeDetails);
       }
     };
-  }  
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithInactiveAndReadReplicaNodes(
+      boolean setMasters, int readOnlyNodes) {
+    return new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+        // Add a desired number of nodes.
+        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        userIntent.numNodes = userIntent.replicationFactor;
+        UUID primaryClusterUUID = universeDetails.getPrimaryCluster().uuid;
+        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
+              setMasters && idx <= userIntent.replicationFactor);
+          node.placementUuid = primaryClusterUUID;
+          universeDetails.nodeDetailsSet.add(node);
+        }
+        universeDetails.upsertPrimaryCluster(userIntent, null);
+
+        NodeDetails node = getDummyNodeDetails(userIntent.numNodes + 1,
+            NodeDetails.NodeState.Removed);
+        node.placementUuid = primaryClusterUUID;
+        universeDetails.nodeDetailsSet.add(node);
+        universeDetails.nodePrefix = "host";
+
+        UUID readonlyClusterUUID = UUID.randomUUID();
+        Set<NodeDetails> readReplicaNodesSet = getDummyNodeDetailSet(readonlyClusterUUID, 0,
+            readOnlyNodes);
+        for (NodeDetails roNode : readReplicaNodesSet) {
+          roNode.state = NodeState.Live;
+        }
+
+        universeDetails.nodeDetailsSet.addAll(readReplicaNodesSet);
+        universeDetails.upsertCluster(userIntent, null, readonlyClusterUUID);
+
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+  }
 
   public static UserIntent getDefaultUserIntent(Customer customer) {
     Provider p = ModelFactory.awsProvider(customer);

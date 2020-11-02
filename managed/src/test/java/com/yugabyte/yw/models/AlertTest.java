@@ -40,8 +40,8 @@ public class AlertTest extends FakeDBApplication {
   public void testAlertsSameCustomer() {
     Alert alert1 = Alert.create(cust1.uuid, "TEST_ALERT_1", "Warning", "Testing alert 1.");
     Alert alert2 = Alert.create(cust1.uuid, "TEST_ALERT_2", "Warning", "Testing alert 2.");
-    List<Alert> cust1Alerts = Alert.get(cust1.uuid);
-    List<Alert> cust2Alerts = Alert.get(cust2.uuid);
+    List<Alert> cust1Alerts = Alert.list(cust1.uuid);
+    List<Alert> cust2Alerts = Alert.list(cust2.uuid);
 
     assertThat(cust1Alerts, hasItem(alert1));
     assertThat(cust1Alerts, hasItem(alert2));
@@ -54,8 +54,8 @@ public class AlertTest extends FakeDBApplication {
   public void testAlertsDiffCustomer() {
     Alert alert1 = Alert.create(cust1.uuid, "TEST_ALERT_1", "Warning", "Testing alert 1.");
     Alert alert2 = Alert.create(cust2.uuid, "TEST_ALERT_2", "Warning", "Testing alert 2.");
-    List<Alert> cust1Alerts = Alert.get(cust1.uuid);
-    List<Alert> cust2Alerts = Alert.get(cust2.uuid);
+    List<Alert> cust1Alerts = Alert.list(cust1.uuid);
+    List<Alert> cust2Alerts = Alert.list(cust2.uuid);
 
     assertThat(cust1Alerts, hasItem(alert1));
     assertThat(cust1Alerts, not(hasItem(alert2)));
@@ -63,4 +63,17 @@ public class AlertTest extends FakeDBApplication {
     assertThat(cust2Alerts, not(hasItem(alert1)));
     assertThat(cust2Alerts, hasItem(alert2));
   }
+
+  @Test
+  public void testAlertsUniverseType() {
+    Universe u = ModelFactory.createUniverse();
+    Alert alert = Alert.create(cust1.uuid, u.universeUUID, Alert.TargetType.UniverseType,
+                               "TEST_ALERT_1", "Warning", "Testing alert.");
+    assertNotNull(alert.uuid);
+    assertEquals(cust1.uuid, alert.customerUUID);
+    assertEquals(u.universeUUID, alert.targetUUID);
+    assertEquals(Universe.class, alert.targetType.getType());
+    assertEquals("Warning", alert.type);
+    assertEquals("Testing alert.", alert.message);
+}
 }

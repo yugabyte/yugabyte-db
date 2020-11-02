@@ -321,4 +321,10 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
 #define YB_DISABLE_TEST_IN_SANITIZERS(test_name) test_name
 #endif
 
+#if defined(__APPLE__) || defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+#define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) BOOST_PP_CAT(DISABLED_, test_name)
+#else
+#define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) test_name
+#endif
+
 #endif  // YB_UTIL_TEST_MACROS_H

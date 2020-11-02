@@ -254,7 +254,7 @@ ysqlsh (11.2-YB-2.2.1.0-b0)
 Type "help" for help.
 ```
 
-```postgresql
+```plpgsql
 test=# \d
 ```
 
@@ -267,7 +267,7 @@ test=# \d
 (2 rows)
 ```
 
-```postgresql
+```plpgsql
 test=# \d t
 ```
 
@@ -281,7 +281,7 @@ Indexes:
     "t_pkey" PRIMARY KEY, lsm (a HASH)
 ```
 
-```postgresql
+```plpgsql
 test=# SELECT * from t;
 ```
 

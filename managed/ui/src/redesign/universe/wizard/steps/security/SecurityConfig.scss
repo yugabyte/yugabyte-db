@@ -1,0 +1,57 @@
+@import '../../../../uikit/common';
+
+.security-config {
+  position: relative;
+  background-color: $YB_UNIVERSE_WIZARD_FORM_BACKGROUND;
+  border: 1px solid $YB_BORDER_1;
+  padding: 35px 50px;
+  min-height: 752px;
+
+  &__title {
+    font-size: 22px;
+    font-weight: 600;
+    color: $YB_TEXT_2;
+  }
+
+  &__row {
+    margin-top: 22px;
+    display: flex;
+    align-items: center;
+  }
+
+  &__label-col {
+    min-width: 180px;
+  }
+
+  &__label-line {
+    display: flex;
+    align-items: center;
+  }
+
+  &__line {
+    margin-left: 10px;
+    border-top: 1px solid $YB_BORDER_1;
+    width: 405px;
+  }
+
+  &__label {
+    display: block;
+    color: $YB_TEXT_2;
+    font-size: 16px;
+  }
+
+  &__padded {
+    padding-left: 50px;
+  }
+
+  &__footer-row {
+    margin-top: 25px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  &__footer-btn:not(:last-child) {
+    margin-right: 20px;
+  }
+}

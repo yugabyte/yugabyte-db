@@ -9,6 +9,8 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -62,6 +64,7 @@ public class Util {
     for (int i = 0; i < numChars; i++) {
       sb.append(CHARACTERS.charAt(rng.nextInt(CHARACTERS.length())));
     }
+
     return sb.toString();
   }
 
@@ -89,7 +92,7 @@ public class Util {
    */
   public static List<InetSocketAddress> getNodesAsInet(UUID universeUUID) {
     Universe universe = Universe.get(universeUUID);
-    List<InetSocketAddress> inetAddrs = new ArrayList<InetSocketAddress>();
+    List<InetSocketAddress> inetAddrs = new ArrayList<>();
     for (String address : universe.getYQLServerAddresses().split(",")) {
       String[] splitAddress = address.split(":");
       String privateIp = splitAddress[0];
@@ -155,7 +158,7 @@ public class Util {
    * @return Map of azUUID to numMastersInAZ.
    */
   private static Map<UUID, Integer> getMastersToAZMap(Collection<NodeDetails> nodeDetailsSet) {
-    Map<UUID, Integer> mastersToAZMap = new HashMap<UUID, Integer>();
+    Map<UUID, Integer> mastersToAZMap = new HashMap<>();
     for (NodeDetails currentNode : nodeDetailsSet) {
       if (currentNode.isMaster) {
         mastersToAZMap.put(currentNode.azUuid,
@@ -196,7 +199,7 @@ public class Util {
    */
   public static boolean needMasterQuorumRestore(NodeDetails currentNode,
                                                 Set<NodeDetails> nodeDetailsSet,
-                                                int numMastersToBeAdded) {
+                                                long numMastersToBeAdded) {
     Map<UUID, Integer> mastersToAZMap = getMastersToAZMap(nodeDetailsSet);
 
     // If this is a single AZ deploy or if no master in current AZ, then start a master.
@@ -208,11 +211,12 @@ public class Util {
     int numStoppedMasters = 0;
     for (UUID azUUID : azToNumStoppedNodesMap.keySet()) {
       if (azUUID != currentNode.azUuid &&
-          (mastersToAZMap.containsKey(azUUID) || mastersToAZMap.get(azUUID) == 0)) {
+          (!mastersToAZMap.containsKey(azUUID) || mastersToAZMap.get(azUUID) == 0)) {
         numStoppedMasters++;
       }
     }
     LOG.info("Masters: numStopped {}, numToBeAdded {}", numStoppedMasters, numMastersToBeAdded);
+
     return numStoppedMasters < numMastersToBeAdded;
   }
 
@@ -222,7 +226,7 @@ public class Util {
    * @return Map of azUUID to num stopped nodes in that AZ.
    */
   private static Map<UUID, Integer> getAZToStoppedNodesCountMap(Set<NodeDetails> nodeDetailsSet) {
-    Map<UUID, Integer> azToNumStoppedNodesMap = new HashMap<UUID, Integer>();
+    Map<UUID, Integer> azToNumStoppedNodesMap = new HashMap<>();
     for (NodeDetails currentNode : nodeDetailsSet) {
       if (currentNode.state == NodeDetails.NodeState.Stopped ||
           currentNode.state == NodeDetails.NodeState.Removed ||
@@ -243,16 +247,19 @@ public class Util {
    */
   public static boolean areMastersUnderReplicated(NodeDetails currentNode,
                                                   Universe universe) {
+    Cluster cluster = universe.getCluster(currentNode.placementUuid);
+    if ((cluster == null) || (cluster.clusterType != ClusterType.PRIMARY)) {
+      return false;
+    }
+
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
-    int numMasters = getNumMasters(nodes);
+    long numMasters = getNumMasters(nodes);
     int replFactor = universeDetails.getPrimaryCluster().userIntent.replicationFactor;
     LOG.info("RF = {} , numMasters = {}", replFactor, numMasters);
-    if (replFactor > numMasters &&
-        needMasterQuorumRestore(currentNode, nodes, replFactor - numMasters)) {
-      return true;
-    }
-    return false;
+
+    return replFactor > numMasters &&
+      needMasterQuorumRestore(currentNode, nodes, replFactor - numMasters);
   }
 
   public static String UNIV_NAME_ERROR_MESG =
@@ -265,7 +272,7 @@ public class Util {
   // Helper API to create a CSV of any keys present in existing map but not in new map.
   public static String getKeysNotPresent(Map<String, String> existing,
                                          Map<String, String> newMap) {
-    Set<String> keysNotPresent = new HashSet<String>();
+    Set<String> keysNotPresent = new HashSet<>();
     Set<String> existingKeySet = existing.keySet();
     Set<String> newKeySet = newMap.keySet();
     for (String key : existingKeySet) {
@@ -274,7 +281,8 @@ public class Util {
       }
     }
     LOG.info("KeysNotPresent  = " + keysNotPresent);
-    return keysNotPresent.stream().collect(Collectors.joining(","));
+
+    return String.join(",", keysNotPresent);
   }
 
   public static JsonNode convertStringToJson(String inputString) {
@@ -291,6 +299,7 @@ public class Util {
       return new URL("https", host, endpoint).toString();
     } catch (MalformedURLException e) {
       LOG.error("Error building request URL", e);
+
       return null;
     }
   }
@@ -298,6 +307,7 @@ public class Util {
   public static String unixTimeToString(long epochSec) {
     Date date = new Date(epochSec * 1000);
     SimpleDateFormat format = new SimpleDateFormat();
+
     return format.format(date);
   }
 
@@ -312,6 +322,7 @@ public class Util {
     Scanner fileReader = new Scanner(file);
     while (fileReader.hasNextLine()) stringBuilder.append(fileReader.nextLine());
     fileReader.close();
+
     return stringBuilder.toString();
   }
 

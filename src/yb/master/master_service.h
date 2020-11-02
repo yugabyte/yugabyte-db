@@ -69,6 +69,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
                            IsTruncateTableDoneResponsePB* resp,
                            rpc::RpcContext rpc) override;
+  void BackfillIndex(const BackfillIndexRequestPB* req,
+                     BackfillIndexResponsePB* resp,
+                     rpc::RpcContext rpc) override;
   void DeleteTable(const DeleteTableRequestPB* req,
                    DeleteTableResponsePB* resp,
                    rpc::RpcContext rpc) override;
@@ -306,6 +309,9 @@ class MasterServiceImpl : public MasterServiceIf,
 
   void SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) override;
+
+  void DeleteTablet(
+      const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext rpc) override;
 
  private:
 };

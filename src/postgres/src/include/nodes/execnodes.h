@@ -142,7 +142,7 @@ typedef struct ExprState
  *		Am					Oid of index AM
  *		AmCache				private cache area for index AM
  *		Context				memory context holding this IndexInfo
- *		SplitOptions		Options to split index into tablets. 
+ *		SplitOptions		Options to split index into tablets.
  *
  * ii_Concurrent, ii_BrokenHotChain, and ii_ParallelWorkers are used only
  * during index build; they're conventionally zeroed otherwise.
@@ -590,6 +590,15 @@ typedef struct EState
 																		 * we cache the conflict tuple here when processing and
 																		 * then free the slot after the conflict is resolved. */
 	YBCPgExecParameters yb_exec_params;
+
+	/*
+	 * Whether we can batch updates - note that enabling this will cause batched
+	 * updates to not return a correct rows_affected_count, thus cannot be used
+	 * for plpgsql (which uses this value for GET DIAGNOSTICS...ROW_COUNT and
+	 * FOUND).
+	 * Currently only enabled for PGSQL functions / procedures.
+	 */
+	bool yb_can_batch_updates;
 } EState;
 
 
@@ -826,7 +835,7 @@ typedef struct SetExprState
 	 * (by InitFunctionCallInfoData) if func.fn_oid is valid.  It also saves
 	 * argument values between calls, when setArgsValid is true.
 	 */
-	FunctionCallInfoData fcinfo_data;
+	FunctionCallInfo fcinfo;
 } SetExprState;
 
 /* ----------------

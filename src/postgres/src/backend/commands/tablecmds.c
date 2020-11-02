@@ -820,6 +820,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			attr->attidentity = colDef->identity;
 	}
 
+	/* Check for WITH (table_oid = x). */
+	relationId = GetTableOidFromRelOptions(
+		stmt->options, tablespaceId, stmt->relation->relpersistence);
+
 	/*
 	 * Create the relation.  Inherited defaults and constraints are passed in
 	 * for immediate handling --- since they don't need parsing, they can be
@@ -828,7 +832,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	relationId = heap_create_with_catalog(relname,
 										  namespaceId,
 										  tablespaceId,
-										  InvalidOid,
+										  relationId,
 										  InvalidOid,
 										  ofTypeId,
 										  ownerId,
@@ -9113,7 +9117,7 @@ validateForeignKeyConstraint(char *conname,
 
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
-		FunctionCallInfoData fcinfo;
+		LOCAL_FCINFO(fcinfo, 0);
 		TriggerData trigdata;
 
 		/*
@@ -9121,7 +9125,7 @@ validateForeignKeyConstraint(char *conname,
 		 *
 		 * No parameters are passed, but we do set a context
 		 */
-		MemSet(&fcinfo, 0, sizeof(fcinfo));
+		MemSet(fcinfo, 0, SizeForFunctionCallInfo(0));
 
 		/*
 		 * We assume RI_FKey_check_ins won't look at flinfo...
@@ -9135,9 +9139,9 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_trigtuplebuf = scan->rs_cbuf;
 		trigdata.tg_newtuplebuf = InvalidBuffer;
 
-		fcinfo.context = (Node *) &trigdata;
+		fcinfo->context = (Node *) &trigdata;
 
-		RI_FKey_check_ins(&fcinfo);
+		RI_FKey_check_ins(fcinfo);
 	}
 
 	heap_endscan(scan);
@@ -10979,7 +10983,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing, LOCKMODE lock
 		case RELKIND_TOASTVALUE:
 			if (recursing)
 				break;
-			/* FALL THRU */
+			switch_fallthrough();
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),

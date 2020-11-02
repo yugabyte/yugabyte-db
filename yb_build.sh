@@ -159,9 +159,6 @@ Options:
     Do a clean build of the PostgreSQL subtree.
   --no-postgres, --skip-postgres, --np, --sp
     Skip PostgreSQL build
-  --gen-compilation-db, --gcdb
-    Generate the "compilation database" file, compile_commands.json, that can be used by editors
-    to provide better code assistance.
   --make-ninja-extra-args <extra_args>
     Extra arguments for the build tool such as Unix Make or Ninja.
   --run-java-test-methods-separately, --rjtms
@@ -711,9 +708,6 @@ while [[ $# -gt 0 ]]; do
     --run-java-tests|--java-tests)
       run_java_tests=true
     ;;
-    --static)
-      YB_LINK=static
-    ;;
     --save-log)
       save_log=true
     ;;
@@ -1007,6 +1001,7 @@ while [[ $# -gt 0 ]]; do
       export YB_DO_NOT_BUILD_TESTS=1
     ;;
     *)
+
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
         env_var_name=${BASH_REMATCH[1]}
         # Use "the ultimate fix" from http://bit.ly/setenvvar to set a variable with the name stored

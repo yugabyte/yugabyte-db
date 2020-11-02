@@ -131,6 +131,10 @@ const bool YBTable::colocated() const {
   return info_.colocated;
 }
 
+const boost::optional<master::ReplicationInfoPB>& YBTable::replication_info() const {
+  return info_.replication_info;
+}
+
 std::string YBTable::ToString() const {
   return strings::Substitute(
       "$0 $1 IndexInfo: $2 IndexMap $3", (IsIndex() ? "Index Table" : "Normal Table"), id(),
@@ -139,6 +143,18 @@ std::string YBTable::ToString() const {
 
 const PartitionSchema& YBTable::partition_schema() const {
   return info_.partition_schema;
+}
+
+bool YBTable::IsHashPartitioned() const {
+  // TODO(neil) After fixing github #5832, "partition_schema" must be used here.
+  // return info_.partition_schema.IsHashPartitioning();
+  return info_.schema.num_hash_key_columns() > 0;
+}
+
+bool YBTable::IsRangePartitioned() const {
+  // TODO(neil) After fixing github #5832, "partition_schema" must be used here.
+  // return info_.partition_schema.IsRangePartitioning();
+  return info_.schema.num_hash_key_columns() == 0;
 }
 
 const std::vector<std::string>& YBTable::GetPartitions() const {

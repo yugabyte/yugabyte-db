@@ -22,7 +22,7 @@ from texttable import Texttable
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
-    generate_random_password, validated_key_file, format_rsa_key
+    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status
 from ansible_vault import Vault
 from ybops.utils import generate_rsa_keypair, scp_package_to_tmp
 
@@ -356,7 +356,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Path to local directory with the prometheus tarball.")
         self.parser.add_argument("--node_exporter_port", type=int, default=9300,
                                  help="The port for node_exporter to bind to")
-        self.parser.add_argument("--install_node_exporter", default=True)
+        self.parser.add_argument("--node_exporter_user", default="prometheus")
+        self.parser.add_argument("--install_node_exporter", action="store_true")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -381,6 +382,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
         if args.install_node_exporter:
             self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
+        if args.node_exporter_user:
+            self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
@@ -439,6 +442,30 @@ class UpdateDiskMethod(AbstractInstancesMethod):
         self.cloud.expand_file_system(args, ssh_options)
 
 
+class CronCheckMethod(AbstractInstancesMethod):
+    """Superclass for checking cronjob status on specified node.
+    """
+    def __init__(self, base_command):
+        super(CronCheckMethod, self).__init__(base_command, "croncheck")
+
+    def get_ssh_user(self):
+        # Force croncheck to be done on yugabyte user.
+        return "yugabyte"
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args)
+        ssh_options = {
+            "ssh_user": self.get_ssh_user(),
+            "private_key_file": args.private_key_file
+        }
+        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        if not validate_cron_status(
+                ssh_options['ssh_host'], ssh_options['ssh_port'], ssh_options['ssh_user'],
+                ssh_options['private_key_file']):
+            raise YBOpsRuntimeError(
+                'Failed to find cronjobs on host {}'.format(ssh_options['ssh_host']))
+
+
 class ConfigureInstancesMethod(AbstractInstancesMethod):
     VALID_PROCESS_TYPES = ['master', 'tserver']
 
@@ -463,6 +490,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--rootCA_key')
         self.parser.add_argument('--client_key')
         self.parser.add_argument('--client_cert')
+        self.parser.add_argument('--use_custom_certs', action="store_true")
+        self.parser.add_argument('--root_cert_path')
+        self.parser.add_argument('--node_cert_path')
+        self.parser.add_argument('--node_key_path')
+        self.parser.add_argument('--client_cert_path')
+        self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
         self.parser.add_argument('--certs_node_dir', default="yugabyte-tls-config")
@@ -536,16 +569,31 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.extra_vars["gflags_to_remove"] = json.loads(args.gflags_to_remove)
 
         if args.rootCA_cert is not None:
-            self.extra_vars["rootCA_cert"] = args.rootCA_cert
+            self.extra_vars["rootCA_cert"] = args.rootCA_cert.strip()
 
         if args.rootCA_key is not None:
-            self.extra_vars["rootCA_key"] = args.rootCA_key
+            self.extra_vars["rootCA_key"] = args.rootCA_key.strip()
 
         if args.client_cert is not None:
-            self.extra_vars["client_cert"] = args.client_cert
+            self.extra_vars["client_cert"] = args.client_cert.strip()
 
         if args.client_key is not None:
-            self.extra_vars["client_key"] = args.client_key
+            self.extra_vars["client_key"] = args.client_key.strip()
+
+        if args.root_cert_path is not None:
+            self.extra_vars["root_cert_path"] = args.root_cert_path.strip()
+
+        if args.node_cert_path is not None:
+            self.extra_vars["node_cert_path"] = args.node_cert_path.strip()
+
+        if args.node_key_path is not None:
+            self.extra_vars["node_key_path"] = args.node_key_path.strip()
+
+        if args.client_cert_path is not None:
+            self.extra_vars["client_cert_path"] = args.client_cert_path.strip()
+
+        if args.client_key_path is not None:
+            self.extra_vars["client_key_path"] = args.client_key_path.strip()
 
         host_info = None
         if args.search_pattern != 'localhost':
@@ -592,9 +640,14 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
-        if args.rootCA_cert and args.rootCA_key is not None:
-            logging.info("Creating and copying over client TLS certificate")
-            self.cloud.generate_client_cert(self.extra_vars, ssh_options)
+        if args.use_custom_certs:
+            logging.info("Copying custom certificates to {}.".format(args.search_pattern))
+            self.cloud.copy_certs(self.extra_vars, ssh_options)
+        else:
+            if args.rootCA_cert and args.rootCA_key is not None:
+                logging.info("Creating and copying over client TLS certificate to {}".format(
+                    args.search_pattern))
+                self.cloud.generate_client_cert(self.extra_vars, ssh_options)
         if args.encryption_key_source_file is not None:
             self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
             logging.info("Copying over encryption-at-rest certificate from {} to {}".format(

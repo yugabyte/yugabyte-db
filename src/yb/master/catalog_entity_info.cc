@@ -348,22 +348,28 @@ void TableInfo::AddTabletUnlocked(TabletInfo* tablet) {
 }
 
 void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos* ret) const {
+  GetTabletsInRange(
+      req->partition_key_start(), req->partition_key_end(), ret, req->max_returned_locations());
+}
+
+void TableInfo::GetTabletsInRange(
+    const std::string& partition_key_start, const std::string& partition_key_end,
+    TabletInfos* ret, const int32_t max_returned_locations) const {
   shared_lock<decltype(lock_)> l(lock_);
-  int32_t max_returned_locations = req->max_returned_locations();
 
   TableInfo::TabletInfoMap::const_iterator it, it_end;
-  if (req->has_partition_key_start()) {
-    it = tablet_map_.upper_bound(req->partition_key_start());
+  if (partition_key_start.empty()) {
+    it = tablet_map_.begin();
+  } else {
+    it = tablet_map_.upper_bound(partition_key_start);
     if (it != tablet_map_.begin()) {
       --it;
     }
-  } else {
-    it = tablet_map_.begin();
   }
-  if (req->has_partition_key_end()) {
-    it_end = tablet_map_.upper_bound(req->partition_key_end());
-  } else {
+  if (partition_key_end.empty()) {
     it_end = tablet_map_.end();
+  } else {
+    it_end = tablet_map_.upper_bound(partition_key_end);
   }
 
   int32_t count = 0;

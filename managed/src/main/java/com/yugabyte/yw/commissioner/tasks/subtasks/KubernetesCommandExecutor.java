@@ -577,6 +577,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       tlsInfo.put("rootCA", rootCA);
       overrides.put("tls", tlsInfo);
     }
+    if (userIntent.enableIPV6) {
+      overrides.put("ip_version_support", "v6_only");
+    }
     Map<String, Object> partition = new HashMap<>();
     if (taskParams().serverType == ServerType.TSERVER) {
       partition.put("tserver", taskParams().rollingUpgradePartition);

@@ -26,7 +26,7 @@ import java.util.Map;
 
 public class BackupTable extends AbstractTaskBase {
 
-  Backup backup = null;
+  Backup backup;
 
   public BackupTable(Backup backup) {
     this.backup = backup;
@@ -50,6 +50,7 @@ public class BackupTable extends AbstractTaskBase {
     if (backup == null) {
       backup = Backup.fetchByTaskUUID(userTaskUUID);
     }
+
     try {
       Universe universe = Universe.get(taskParams().universeUUID);
       Map<String, String> config = universe.getConfig();
@@ -60,11 +61,13 @@ public class BackupTable extends AbstractTaskBase {
             JsonNode jsonNode = Json.parse(response.message);
             if (response.code != 0 || jsonNode.has("error")) {
               LOG.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
+
               throw new RuntimeException(response.message);
             } else {
               LOG.info("[" + getName() + "] STDOUT: " + response.message);
             }
           }
+
           backup.transitionState(Backup.BackupState.Completed);
         } else {
           ShellProcessHandler.ShellResponse response = tableManager.createBackup(taskParams());

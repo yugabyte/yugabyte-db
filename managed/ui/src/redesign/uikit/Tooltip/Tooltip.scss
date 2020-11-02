@@ -1,0 +1,46 @@
+@import '../common';
+
+.yb-uikit-tooltip {
+  display: inline-flex;
+  margin: 0 10px;
+  position: relative;
+
+  &__handler {
+    &:before {
+      content: '?';
+      user-select: none;
+      color: $YB_CTA;
+      background-color: $YB_PAGE_BACKGROUND;
+      box-shadow: 0 0 10px #00000029;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      font-family: $YB_FONT_FAMILY;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  }
+
+  // TODO: temp, replace with popper.js
+  &__content {
+    position: absolute;
+    display: none;
+    top: 40px;
+    left: 0;
+    background-color: $YB_PAGE_BACKGROUND;
+    box-shadow: 0 0 10px #00000029;
+    border-radius: 10px;
+    padding: 10px;
+    max-width: 300px;
+    z-index: 2000;
+    font-size: 14px;
+  }
+
+  &:hover &__content {
+    display: block;
+  }
+}

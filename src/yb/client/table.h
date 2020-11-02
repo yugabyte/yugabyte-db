@@ -47,6 +47,7 @@ struct YBTableInfo {
   boost::optional<IndexInfo> index_info;
   YBTableType table_type;
   bool colocated;
+  boost::optional<master::ReplicationInfoPB> replication_info;
 };
 
 // A YBTable represents a table on a particular cluster. It holds the current
@@ -80,6 +81,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   const YBSchema& schema() const;
   const Schema& InternalSchema() const;
   const PartitionSchema& partition_schema() const;
+  bool IsHashPartitioned() const;
+  bool IsRangePartitioned() const;
 
   const std::vector<std::string>& GetPartitions() const;
 
@@ -100,6 +103,9 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   // Is the table colocated?
   const bool colocated() const;
+
+  // Returns the replication info for the table.
+  const boost::optional<master::ReplicationInfoPB>& replication_info() const;
 
   std::string ToString() const;
   //------------------------------------------------------------------------------------------------
@@ -144,7 +150,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   struct VersionedPartitions {
     std::vector<std::string> keys;
-    // See SysTabletsEntryPB::partitions_version.
+    // See SysTablesEntryPB::partitions_version.
     int32_t version;
   };
 

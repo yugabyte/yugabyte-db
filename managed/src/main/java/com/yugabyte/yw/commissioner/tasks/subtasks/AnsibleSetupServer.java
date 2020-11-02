@@ -57,13 +57,13 @@ public class AnsibleSetupServer extends NodeTaskBase {
     List<AccessKey> accessKeys = AccessKey.getAll(p.uuid);
     boolean skipProvision = false;
 
-    // For now we will skipProvision if the provider is onprem with either airGapInstall or passwordlessSudo enabled
+    // For now we will skipProvision if it's set in accessKeys.
     if (p.code.equals(Common.CloudType.onprem.name()) && accessKeys.size() > 0) {
-      skipProvision = !accessKeys.get(0).getKeyInfo().passwordlessSudoAccess || accessKeys.get(0).getKeyInfo().airGapInstall;
+      skipProvision = accessKeys.get(0).getKeyInfo().skipProvisioning;
     }
 
     if (skipProvision) {
-      LOG.info("Skipping ansible provision because provider " + p.code + " does not support passwordless sudo access.");
+      LOG.info("Skipping ansible provision.");
     } else {
       // Execute the ansible command.
       ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(

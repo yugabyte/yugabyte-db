@@ -228,6 +228,11 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   CHECKED_STATUS CheckRunning() const;
 
+  bool InitiateElection() {
+    bool expected = false;
+    return initiated_election_.compare_exchange_strong(expected, true);
+  }
+
  private:
   friend class RefCountedThreadSafe<TabletInfo>;
 
@@ -256,6 +261,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   std::unordered_map<TableId, uint32_t> reported_schema_version_ = {};
 
   LeaderStepDownFailureTimes leader_stepdown_failure_times_;
+
+  std::atomic<bool> initiated_election_{false};
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
@@ -369,6 +376,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // This only returns tablets which are in RUNNING state.
   void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
+  void GetTabletsInRange(
+      const std::string& partition_key_start, const std::string& partition_key_end,
+      TabletInfos* ret,
+      int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const;
 
   // Get all tablets of the table.
   void GetAllTablets(TabletInfos *ret) const;

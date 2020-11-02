@@ -128,7 +128,7 @@ YBTableCreator& YBTableCreator::set_range_partition_columns(
   }
 
   for (const auto& row : split_rows) {
-    range_schema->add_split_rows(row);
+    range_schema->add_splits()->set_column_bounds(row);
   }
   return *this;
 }

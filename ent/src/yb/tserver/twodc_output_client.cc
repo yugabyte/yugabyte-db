@@ -36,6 +36,8 @@ TAG_FLAG(cdc_force_remote_tserver, runtime);
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 
+using namespace std::placeholders;
+
 namespace yb {
 namespace tserver {
 namespace enterprise {
@@ -48,20 +50,24 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       CDCConsumer* cdc_consumer,
       const cdc::ConsumerTabletInfo& consumer_tablet_info,
       const std::shared_ptr<CDCClient>& local_client,
+      rpc::Rpcs* rpcs,
       std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk,
       bool use_local_tserver) :
       cdc_consumer_(cdc_consumer),
       consumer_tablet_info_(consumer_tablet_info),
       local_client_(local_client),
+      rpcs_(rpcs),
+      write_handle_(rpcs->InvalidHandle()),
       apply_changes_clbk_(std::move(apply_changes_clbk)),
       use_local_tserver_(use_local_tserver) {}
 
-  ~TwoDCOutputClient() = default;
+  ~TwoDCOutputClient() {
+    rpcs_->Abort({&write_handle_});
+  }
 
   CHECKED_STATUS ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
 
-  void WriteCDCRecordDone(const Status& status, const WriteResponsePB& response,
-                          rpc::Rpcs::Handle handle);
+  void WriteCDCRecordDone(const Status& status, const WriteResponsePB& response);
 
  private:
   void TabletLookupCallback(
@@ -85,6 +91,8 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   CDCConsumer* cdc_consumer_;
   cdc::ConsumerTabletInfo consumer_tablet_info_;
   std::shared_ptr<CDCClient> local_client_;
+  rpc::Rpcs* rpcs_;
+  rpc::Rpcs::Handle write_handle_;
   std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk_;
 
   bool use_local_tserver_;
@@ -162,7 +170,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
       TabletLookupCallbackFastTrack(i);
     } else {
       local_client_->client->LookupTabletByKey(
-          table_.get(),
+          table_,
           PartitionSchema::EncodeMultiColumnHashValue(
               boost::lexical_cast<uint16_t>(twodc_resp_copy_.records(i).key(0).key())),
           CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
@@ -231,26 +239,24 @@ void TwoDCOutputClient::SendNextCDCWriteToTablet() {
 
   auto deadline = CoarseMonoClock::Now() +
                   MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
-  auto write_rpc_handle = local_client_->rpcs->Prepare();
-  if (write_rpc_handle != local_client_->rpcs->InvalidHandle()) {
+  write_handle_ = rpcs_->Prepare();
+  if (write_handle_ != rpcs_->InvalidHandle()) {
     // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
-    *write_rpc_handle = CreateCDCWriteRpc(
+    *write_handle_ = CreateCDCWriteRpc(
         deadline,
         nullptr /* RemoteTablet */,
         local_client_->client.get(),
         write_request.get(),
-        std::bind(&TwoDCOutputClient::WriteCDCRecordDone, this,
-                  std::placeholders::_1, std::placeholders::_2, write_rpc_handle),
+        std::bind(&TwoDCOutputClient::WriteCDCRecordDone, this, _1, _2),
         UseLocalTserver());
-    (**write_rpc_handle).SendRpc();
+    (**write_handle_).SendRpc();
   } else {
     LOG(WARNING) << "Invalid handle for CDC write, tablet ID: " << write_request->tablet_id();
   }
 }
 
-void TwoDCOutputClient::WriteCDCRecordDone(const Status& status, const WriteResponsePB& response,
-                                           rpc::Rpcs::Handle handle) {
-  auto retained = local_client_->rpcs->Unregister(handle);
+void TwoDCOutputClient::WriteCDCRecordDone(const Status& status, const WriteResponsePB& response) {
+  auto retained = rpcs_->Unregister(&write_handle_);
   if (!status.ok()) {
     HandleError(status, true /* done */);
     return;
@@ -310,9 +316,10 @@ std::unique_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
     CDCConsumer* cdc_consumer,
     const cdc::ConsumerTabletInfo& consumer_tablet_info,
     const std::shared_ptr<CDCClient>& local_client,
+    rpc::Rpcs* rpcs,
     std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk,
     bool use_local_tserver) {
-  return std::make_unique<TwoDCOutputClient>(cdc_consumer, consumer_tablet_info, local_client,
+  return std::make_unique<TwoDCOutputClient>(cdc_consumer, consumer_tablet_info, local_client, rpcs,
                                              std::move(apply_changes_clbk), use_local_tserver);
 }
 

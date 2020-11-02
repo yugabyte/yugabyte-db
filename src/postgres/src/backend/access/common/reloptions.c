@@ -23,6 +23,7 @@
 #include "access/nbtree.h"
 #include "access/reloptions.h"
 #include "access/spgist.h"
+#include "access/transam.h"
 #include "access/tuptoaster.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -73,7 +74,7 @@
  * currently executing.
  *
  * Fillfactor can be set because it applies only to subsequent changes made to
- * data blocks, as documented in heapio.c
+ * data blocks, as documented in hio.c
  *
  * n_distinct options can be set at ShareUpdateExclusiveLock because they
  * are only used during ANALYZE, which uses a ShareUpdateExclusiveLock,
@@ -364,10 +365,19 @@ static relopt_int intRelOpts[] =
 		{
 			"tablegroup",
 			"Tablegroup oid for this relation.",
-			RELOPT_KIND_HEAP,
+			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
 			AccessExclusiveLock
 		},
 		-1, 0, INT_MAX
+	},
+	{
+		{
+			"table_oid",
+			"Postgres table oid for this relation.",
+			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
+			AccessExclusiveLock
+		},
+		-1, FirstNormalObjectId, INT_MAX
 	},
 	/* list terminator */
 	{{NULL}}
@@ -1406,6 +1416,7 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		{"colocated", RELOPT_TYPE_BOOL,
 		offsetof(StdRdOptions, colocated)},
 		{"tablegroup", RELOPT_TYPE_INT, offsetof(StdRdOptions, tablegroup)},
+		{"table_oid", RELOPT_TYPE_INT, offsetof(StdRdOptions, table_oid)},
 	};
 
 	options = parseRelOptions(reloptions, validate, kind, &numoptions);

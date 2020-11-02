@@ -3,11 +3,9 @@
 import { connect } from 'react-redux';
 import Certificates from './Certificates';
 import { openDialog, closeDialog } from '../../actions/modal';
-import { retrieveClientCertificate } from '../../actions/customers';
+import { retrieveClientCertificate, fetchRootCertificate } from '../../actions/customers';
 
-import { getTlsCertificates,
-  getTlsCertificatesResponse }
-  from '../../actions/customers';
+import { getTlsCertificates, getTlsCertificatesResponse } from '../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -17,10 +15,10 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     showAddCertificateModal: () => {
-      dispatch(openDialog("addCertificateModal"));
+      dispatch(openDialog('addCertificateModal'));
     },
     showDownloadCertificateModal: () => {
-      dispatch(openDialog("downloadCertificateModal"));
+      dispatch(openDialog('downloadCertificateModal'));
     },
     closeModal: () => {
       dispatch(closeDialog());
@@ -28,8 +26,19 @@ const mapDispatchToProps = (dispatch) => {
     fetchClientCert: (id, values) => {
       return dispatch(retrieveClientCertificate(id, values)).then((response) => {
         if (response.error) {
-          console.err(response.payload.response);
-          throw new Error("Error fetching client certificate.");
+          console.error(response.payload.response);
+          throw new Error('Error fetching client certificate.');
+        } else {
+          // Don't save the certificate in Redux store, just return directly
+          return response.payload.data;
+        }
+      });
+    },
+    fetchRootCert: (id) => {
+      return dispatch(fetchRootCertificate(id)).then((response) => {
+        if (response.error) {
+          console.error(response.payload.response);
+          throw new Error('Error fetching client certificate.');
         } else {
           // Don't save the certificate in Redux store, just return directly
           return response.payload.data;

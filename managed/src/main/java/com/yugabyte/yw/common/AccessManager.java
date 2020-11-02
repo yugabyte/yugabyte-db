@@ -102,7 +102,7 @@ public class AccessManager extends DevopsBase {
   public AccessKey uploadKeyFile(UUID regionUUID, File uploadedFile,
                                  String keyCode, KeyType keyType,
                                  String sshUser, Integer sshPort,
-                                 boolean airGapInstall) {
+                                 boolean airGapInstall, boolean skipProvisioning) {
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
@@ -145,18 +145,25 @@ public class AccessManager extends DevopsBase {
     keyInfo.sshUser = sshUser;
     keyInfo.sshPort = sshPort;
     keyInfo.airGapInstall = airGapInstall;
+    keyInfo.skipProvisioning = skipProvisioning;
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
   // This method would create a public/private key file and upload that to
   // the provider cloud account. And store the credentials file in the keyFilePath
   // and return the file names. It will also create the vault file.
-  public AccessKey addKey(UUID regionUUID, String keyCode, Integer sshPort, boolean airGapInstall) {
-    return addKey(regionUUID, keyCode, null, null, sshPort, airGapInstall);
+  public AccessKey addKey(UUID regionUUID, String keyCode, Integer sshPort, boolean airGapInstall,
+                          boolean skipProvisioning) {
+    return addKey(regionUUID, keyCode, null, null, sshPort, airGapInstall, skipProvisioning);
   }
 
   public AccessKey addKey(UUID regionUUID, String keyCode, File privateKeyFile, String sshUser,
       Integer sshPort, boolean airGapInstall) {
+    return addKey(regionUUID, keyCode, privateKeyFile, sshUser, sshPort, airGapInstall, false);
+  }
+
+  public AccessKey addKey(UUID regionUUID, String keyCode, File privateKeyFile, String sshUser,
+      Integer sshPort, boolean airGapInstall, boolean skipProvisioning) {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
@@ -199,6 +206,7 @@ public class AccessManager extends DevopsBase {
       }
       keyInfo.sshPort = sshPort;
       keyInfo.airGapInstall = airGapInstall;
+      keyInfo.skipProvisioning = skipProvisioning;
       accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
     }
     return accessKey;

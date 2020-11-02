@@ -1,0 +1,19 @@
+.wizard-step-wrapper {
+  &__stepper {
+    margin-left: 50px;
+    margin-bottom: 10px;
+  }
+
+  &__container {
+    display: flex;
+  }
+
+  &__form {
+    flex-grow: 1;
+    min-width: 880px;
+    max-width: 1030px;
+  }
+
+  &__summary {
+  }
+}

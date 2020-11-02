@@ -13,8 +13,10 @@ from ybops.cloud.common.method import AbstractMethod
 from ybops.cloud.common.method import AbstractInstancesMethod
 from ybops.cloud.common.method import CreateInstancesMethod
 from ybops.cloud.common.method import DestroyInstancesMethod
-from ybops.cloud.common.method import ProvisionInstancesMethod
-from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path, YB_HOME_DIR
+from ybops.cloud.common.method import ProvisionInstancesMethod, ListInstancesMethod
+from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path, YB_HOME_DIR, \
+                        get_mount_roots
+from ybops.utils.remote_shell import RemoteShell
 
 import json
 import logging
@@ -79,6 +81,46 @@ class OnPremValidateMethod(AbstractInstancesMethod):
                                 self.mount_points.split(',')))
 
 
+class OnPremListInstancesMethod(ListInstancesMethod):
+    """Subclass for listing instances in onprem.
+    """
+    def __init__(self, base_command):
+        super(OnPremListInstancesMethod, self).__init__(base_command)
+
+    def callback(self, args):
+        logging.debug("Received args {}".format(args))
+
+        host_infos = self.cloud.get_host_info(args, get_all=args.as_json)
+        if not host_infos:
+            return None
+
+        if 'server_type' in host_infos and host_infos['server_type'] is None:
+            del host_infos['server_type']
+
+        if args.mount_points:
+            for host_info in host_infos:
+                try:
+                    ssh_options = {
+                        "ssh_user": host_info['ssh_user'],
+                        "private_key_file": args.private_key_file
+                    }
+                    ssh_options.update(get_ssh_host_port(
+                                        self.cloud.get_host_info(args),
+                                        args.custom_ssh_port))
+                    host_info['mount_roots'] = get_mount_roots(ssh_options, args.mount_points)
+
+                except Exception as e:
+                    logging.info("Error {} locating mount root for host '{}', ignoring.".format(
+                        str(e), host_info
+                    ))
+                    continue
+
+        if args.as_json:
+            print(json.dumps(host_infos))
+        else:
+            print('\n'.join(["{}={}".format(k, v) for k, v in host_infos.iteritems()]))
+
+
 class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
     """Subclass for destroying an onprem instance, which essentially means cleaning up the used
     resources.
@@ -138,6 +180,10 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
                                  help='If the ssh_user has passwordless sudo access or not.')
         self.parser.add_argument("--air_gap", action="store_true",
                                  help='If instances are air gapped or not.')
+        self.parser.add_argument("--node_exporter_port", type=int, default=9300,
+                                 help="The port for node_exporter to bind to")
+        self.parser.add_argument("--node_exporter_user", default="prometheus")
+        self.parser.add_argument("--install_node_exporter", action="store_true")
 
     def callback(self, args):
         config = {'devops_home': ybutils.YB_DEVOPS_HOME, 'cloud': self.cloud.name}

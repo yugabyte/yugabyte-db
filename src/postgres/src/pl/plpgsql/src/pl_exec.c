@@ -490,8 +490,8 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 					PLpgSQL_var *var = (PLpgSQL_var *) estate.datums[n];
 
 					assign_simple_var(&estate, var,
-									  fcinfo->arg[i],
-									  fcinfo->argnull[i],
+									  fcinfo->args[i].value,
+									  fcinfo->args[i].isnull,
 									  false);
 
 					/*
@@ -542,12 +542,12 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 				{
 					PLpgSQL_rec *rec = (PLpgSQL_rec *) estate.datums[n];
 
-					if (!fcinfo->argnull[i])
+					if (!fcinfo->args[i].isnull)
 					{
 						/* Assign row value from composite datum */
 						exec_move_row_from_datum(&estate,
 												 (PLpgSQL_variable *) rec,
-												 fcinfo->arg[i]);
+												 fcinfo->args[i].value);
 					}
 					else
 					{
@@ -3124,7 +3124,7 @@ exec_stmt_return(PLpgSQL_execstate *estate, PLpgSQL_stmt_return *stmt)
 				/* fulfill promise if needed, then handle like regular var */
 				plpgsql_fulfill_promise(estate, (PLpgSQL_var *) retvar);
 
-				/* FALL THRU */
+				switch_fallthrough();
 
 			case PLPGSQL_DTYPE_VAR:
 				{
@@ -3270,7 +3270,7 @@ exec_stmt_return_next(PLpgSQL_execstate *estate,
 				/* fulfill promise if needed, then handle like regular var */
 				plpgsql_fulfill_promise(estate, (PLpgSQL_var *) retvar);
 
-				/* FALL THRU */
+				switch_fallthrough();
 
 			case PLPGSQL_DTYPE_VAR:
 				{
@@ -5333,7 +5333,7 @@ exec_eval_datum(PLpgSQL_execstate *estate,
 			/* fulfill promise if needed, then handle like regular var */
 			plpgsql_fulfill_promise(estate, (PLpgSQL_var *) datum);
 
-			/* FALL THRU */
+			switch_fallthrough();
 
 		case PLPGSQL_DTYPE_VAR:
 			{

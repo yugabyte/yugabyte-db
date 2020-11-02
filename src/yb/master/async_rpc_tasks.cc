@@ -222,8 +222,14 @@ void RetryingTSRpcTask::RpcCallback() {
   // Defer the actual work of the callback off of the reactor thread.
   // This is necessary because our callbacks often do synchronous writes to
   // the catalog table, and we can't do synchronous IO on the reactor.
-  CHECK_OK(callback_pool_->SubmitFunc(
-      std::bind(&RetryingTSRpcTask::DoRpcCallback, shared_from(this))));
+  //
+  // Note: This can fail on shutdown, so just print a warning for it.
+  Status s = callback_pool_->SubmitFunc(
+      std::bind(&RetryingTSRpcTask::DoRpcCallback, shared_from(this)));
+  if (!s.ok()) {
+    WARN_NOT_OK(s, "Could not submit to queue, probably shutting down");
+    AbortTask(s);
+  }
 }
 
 // Handle the actual work of the RPC callback. This is run on the master's worker
@@ -355,17 +361,20 @@ Status RetryingTSRpcTask::Failed(const Status& status) {
 }
 
 void RetryingTSRpcTask::UnregisterAsyncTask() {
+  // Retain a reference to the object, in case RemoveTask would have removed the last one.
+  auto self = shared_from_this();
   std::unique_lock<decltype(unregister_mutex_)> lock(unregister_mutex_);
-  UnregisterAsyncTaskCallback();
-
   auto s = state();
   if (!IsStateTerminal(s)) {
     LOG_WITH_PREFIX(FATAL) << "Invalid task state " << s;
   }
   end_ts_ = MonoTime::Now();
   if (table_ != nullptr) {
-    table_->RemoveTask(shared_from_this());
+    table_->RemoveTask(self);
   }
+  // Make sure to run the callbacks last, in case they rely on the task no longer being tracked
+  // by the table.
+  UnregisterAsyncTaskCallback();
 }
 
 void RetryingTSRpcTask::AbortIfScheduled() {
@@ -526,10 +535,49 @@ bool AsyncCreateReplica::SendRequest(int attempt) {
 }
 
 // ============================================================================
+//  Class AsyncStartElection.
+// ============================================================================
+AsyncStartElection::AsyncStartElection(Master *master,
+                                       ThreadPool *callback_pool,
+                                       const string& permanent_uuid,
+                                       const scoped_refptr<TabletInfo>& tablet)
+  : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get()),
+    tablet_id_(tablet->tablet_id()) {
+  deadline_ = start_ts_;
+  deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
+
+  req_.set_dest_uuid(permanent_uuid_);
+  req_.set_tablet_id(tablet_id_);
+  req_.set_initial_election(true);
+}
+
+void AsyncStartElection::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    Status s = StatusFromPB(resp_.error().status());
+    if (!s.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "RunLeaderElection RPC for tablet " << tablet_id_
+                               << " on TS " << permanent_uuid_ << " failed: " << s;
+    }
+
+    return;
+  }
+
+  TransitionToCompleteState();
+}
+
+bool AsyncStartElection::SendRequest(int attempt) {
+  LOG_WITH_PREFIX(INFO) << Format(
+      "Hinted Leader start election at $0 for tablet $1, attempt $2",
+      permanent_uuid_, tablet_id_, attempt);
+  consensus_proxy_->RunLeaderElectionAsync(req_, &resp_, &rpc_, BindRpcCallback());
+
+  return true;
+}
+
+// ============================================================================
 //  Class AsyncDeleteReplica.
 // ============================================================================
 void AsyncDeleteReplica::HandleResponse(int attempt) {
-  bool delete_done = false;
   if (resp_.has_error()) {
     Status status = StatusFromPB(resp_.error().status());
 
@@ -542,21 +590,18 @@ void AsyncDeleteReplica::HandleResponse(int attempt) {
             << " because the tablet was not found. No further retry: "
             << status.ToString();
         TransitionToCompleteState();
-        delete_done = true;
         break;
       case TabletServerErrorPB::CAS_FAILED:
         LOG_WITH_PREFIX(WARNING)
             << "TS " << permanent_uuid_ << ": delete failed for tablet " << tablet_id_
             << " due to a CAS failure. No further retry: " << status.ToString();
         TransitionToCompleteState();
-        delete_done = true;
         break;
       case TabletServerErrorPB::WRONG_SERVER_UUID:
         LOG_WITH_PREFIX(WARNING)
             << "TS " << permanent_uuid_ << ": delete failed for tablet " << tablet_id_
             << " due to an incorrect UUID. No further retry: " << status.ToString();
         TransitionToCompleteState();
-        delete_done = true;
         break;
       default:
         LOG_WITH_PREFIX(WARNING)
@@ -576,11 +621,7 @@ void AsyncDeleteReplica::HandleResponse(int attempt) {
           << " did not belong to a known table, but was successfully deleted";
     }
     TransitionToCompleteState();
-    delete_done = true;
     VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": delete complete on tablet " << tablet_id_;
-  }
-  if (delete_done) {
-    UnregisterAsyncTaskCallback();
   }
 }
 
@@ -602,7 +643,10 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
 }
 
 void AsyncDeleteReplica::UnregisterAsyncTaskCallback() {
-  master_->catalog_manager()->NotifyTabletDeleteFinished(permanent_uuid_, tablet_id_);
+  // Only notify if we are in a success state.
+  if (state() == MonitoredTaskState::kComplete) {
+    master_->catalog_manager()->NotifyTabletDeleteFinished(permanent_uuid_, tablet_id_, table());
+  }
 }
 
 // ============================================================================
@@ -692,7 +736,7 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
   req.set_dest_uuid(permanent_uuid());
   req.set_tablet_id(tablet_->tablet_id());
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
-  req.set_is_backfilling(false);
+  req.set_mark_backfill_done(true);
   schema_version_ = l->data().pb.version();
   l->Unlock();
 

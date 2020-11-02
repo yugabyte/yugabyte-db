@@ -130,7 +130,7 @@ YB_DEFINE_ENUM(ElectionMode,
 
 // Arguments for StartElection.
 struct LeaderElectionData {
-  ElectionMode mode;
+  ElectionMode mode = ElectionMode::NORMAL_ELECTION;
 
   // pending_commit - we should start election only after we have specified entry committed.
   const bool pending_commit = false;
@@ -146,6 +146,8 @@ struct LeaderElectionData {
   std::string originator_uuid = std::string();
 
   TEST_SuppressVoteRequest suppress_vote_request = TEST_SuppressVoteRequest::kFalse;
+
+  bool initial_election = false;
 
   std::string ToString() const;
 };

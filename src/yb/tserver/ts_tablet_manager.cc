@@ -70,6 +70,7 @@
 #include "yb/rocksdb/memory_monitor.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/poller.h"
 
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet.h"
@@ -99,6 +100,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
@@ -135,6 +137,10 @@ DEFINE_bool(log_cache_gc_evict_only_over_allocated, true,
 DEFINE_bool(enable_block_based_table_cache_gc, false,
             "Set to true to enable block based table garbage collector.");
 
+DEFINE_int32(cleanup_split_tablets_interval_sec, 60,
+             "Interval at which tablet manager tries to cleanup split tablets which are no longer "
+             "needed. Setting this to 0 disables cleanup of split tablets.");
+
 DEFINE_test_flag(double, fault_crash_after_blocks_deleted, 0.0,
                  "Fraction of the time when the tablet will crash immediately "
                  "after deleting the data blocks during tablet deletion.");
@@ -168,6 +174,9 @@ DEFINE_test_flag(bool, force_single_tablet_failure, false,
 
 DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
                  "Inject delay into TSTabletManager::ApplyTabletSplit.");
+
+DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
+                 "Skip deleting tablets which have been split.");
 
 namespace {
 
@@ -401,7 +410,6 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     next_report_seq_(0),
     metric_registry_(metric_registry),
     state_(MANAGER_INITIALIZING) {
-
   ThreadPoolMetrics metrics = {
       METRIC_op_apply_queue_length.Instantiate(server_->metric_entity()),
       METRIC_op_apply_queue_time.Instantiate(server_->metric_entity()),
@@ -418,7 +426,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   // "number of CPUs" may cause blocking tasks to starve other "fast" tasks).
   // However, the effective upper bound is the number of replicas as each will
   // submit its own tasks via a dedicated token.
-  CHECK_OK(ThreadPoolBuilder("raft")
+  CHECK_OK(ThreadPoolBuilder("consensus")
                .set_min_threads(1)
                .unlimited_threads()
                .Build(&raft_pool_));
@@ -540,14 +548,14 @@ Status TSTabletManager::Init() {
     }
     LOG_WITH_PREFIX(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
-  ThreadPoolMetrics metrics = {
+  ThreadPoolMetrics bootstrap_metrics = {
           NULL,
           NULL,
           METRIC_ts_bootstrap_time.Instantiate(server_->metric_entity())
   };
   RETURN_NOT_OK(ThreadPoolBuilder("tablet-bootstrap")
                 .set_max_threads(max_bootstrap_threads)
-                .set_metrics(std::move(metrics))
+                .set_metrics(std::move(bootstrap_metrics))
                 .Build(&open_tablet_pool_));
 
   CleanupCheckpoints();
@@ -611,6 +619,9 @@ Status TSTabletManager::Init() {
     RETURN_NOT_OK(background_task_->Init());
   }
 
+  tablets_cleaner_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), std::bind(&TSTabletManager::CleanupSplitTablets, this));
+
   return Status::OK();
 }
 
@@ -646,8 +657,34 @@ void TSTabletManager::CleanupCheckpoints() {
 
 Status TSTabletManager::Start() {
   async_client_init_->Start();
+  if (FLAGS_cleanup_split_tablets_interval_sec > 0) {
+    tablets_cleaner_->Start(
+        &server_->messenger()->scheduler(), FLAGS_cleanup_split_tablets_interval_sec * 1s);
+    LOG(INFO) << "Split tablets cleanup monitor started...";
+  } else {
+    LOG(INFO)
+        << "Split tablets cleanup is disabled by cleanup_split_tablets_interval_sec flag set to 0";
+  }
 
   return Status::OK();
+}
+
+void TSTabletManager::CleanupSplitTablets() {
+  VLOG_WITH_PREFIX_AND_FUNC(3) << "looking for tablets to cleanup...";
+  auto tablet_peers = GetTabletPeers();
+  for (const auto& tablet_peer : tablet_peers) {
+    if (tablet_peer->CanBeDeleted()) {
+      const auto& tablet_id = tablet_peer->tablet_id();
+      if (PREDICT_FALSE(FLAGS_TEST_skip_deleting_split_tablets)) {
+        LOG_WITH_PREFIX(INFO) << Format("Skipped triggering delete of tablet $0", tablet_id);
+      } else {
+        LOG_WITH_PREFIX(INFO) << Format("Triggering delete of tablet $0", tablet_id);
+        client().DeleteTablet(tablet_peer->tablet_id(), [tablet_id] (const Status& status) {
+          LOG(INFO) << Format("Tablet $0 deletion result: $1", tablet_id, status);
+        });
+      }
+    }
+  }
 }
 
 Status TSTabletManager::WaitForAllBootstrapsToFinish() {
@@ -1454,15 +1491,14 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
                    << Trace::CurrentTrace()->DumpToString(true);
     }
   }
+
+  if (tablet->MightHaveNonRelevantData()) {
+    WARN_NOT_OK(
+        tablet->ForceFullRocksDBCompactAsync(), "Failed to submit compaction for split tablet");
+  }
 }
 
 void TSTabletManager::StartShutdown() {
-  async_client_init_->Shutdown();
-
-  if (background_task_) {
-    background_task_->Shutdown();
-  }
-
   {
     std::lock_guard<RWMutex> lock(mutex_);
     switch (state_) {
@@ -1484,6 +1520,14 @@ void TSTabletManager::StartShutdown() {
         LOG(FATAL) << "Invalid state: " << TSTabletManagerStatePB_Name(state_);
       }
     }
+  }
+
+  tablets_cleaner_->Shutdown();
+
+  async_client_init_->Shutdown();
+
+  if (background_task_) {
+    background_task_->Shutdown();
   }
 
   // Wait for all RBS operations to finish.

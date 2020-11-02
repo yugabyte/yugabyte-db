@@ -643,35 +643,45 @@ string TEST_RpcBindEndpoint(int index, uint16_t port) {
 }
 
 constexpr int kMaxServers = 20;
+constexpr int kMinServerIdx = 1;
+
+// We group servers by two. Servers in the same group communciate via private connection. Servers in
+// different groups communicate via public connection.
+int ServerGroupNum(int server_idx) {
+  return (server_idx - 1) / 2;
+}
 
 void TEST_SetupConnectivity(rpc::Messenger* messenger, int index) {
   if (!FLAGS_TEST_check_broadcast_address) {
     return;
   }
 
-  CHECK_GE(index, 1);
+  CHECK_GE(index, kMinServerIdx);
   CHECK_LE(index, kMaxServers);
 
   messenger->TEST_SetOutboundIpBase(
       CHECK_RESULT(HostToAddress(TEST_RpcAddress(index, Private::kTrue))));
-  for (int i = 1; i <= kMaxServers; ++i) {
+  auto server_group = ServerGroupNum(index);
+  for (int other_server_idx = kMinServerIdx; other_server_idx <= kMaxServers; ++other_server_idx) {
     // We group servers by 2. When servers belongs to the same group, they should use
     // private ip for communication, otherwise public ip should be used.
-    bool same_group = (i - 1) / 2 == (index - 1) / 2;
-    auto broken_address = CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private(!same_group))));
+    bool same_group = ServerGroupNum(other_server_idx) == server_group;
+    auto broken_address = CHECK_RESULT(
+        HostToAddress(TEST_RpcAddress(other_server_idx, Private(!same_group))));
     LOG(INFO) << "Break " << index << " => " << broken_address;
     messenger->BreakConnectivityWith(broken_address);
-    auto working_address = CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private(same_group))));
+    auto working_address = CHECK_RESULT(
+        HostToAddress(TEST_RpcAddress(other_server_idx, Private(same_group))));
     messenger->RestoreConnectivityWith(working_address);
   }
 }
 
 void TEST_Isolate(rpc::Messenger* messenger) {
-  for (int i = 1; i <= kMaxServers; ++i) {
+  for (int other_server_idx = kMinServerIdx; other_server_idx <= kMaxServers; ++other_server_idx) {
     messenger->BreakConnectivityWith(
-        CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private::kFalse))));
+        CHECK_RESULT(HostToAddress(TEST_RpcAddress(other_server_idx, Private::kTrue))));
     messenger->BreakConnectivityWith(
-        CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private::kTrue))));
+        CHECK_RESULT(HostToAddress(TEST_RpcAddress(other_server_idx, Private::kFalse))));
   }
 }
 

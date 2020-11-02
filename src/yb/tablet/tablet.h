@@ -211,13 +211,16 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
                                       const HybridTime read_time);
 
   CHECKED_STATUS UpdateIndexInBatches(
-      const QLTableRow& row, const std::vector<IndexInfo>& indexes,
+      const QLTableRow& row,
+      const std::vector<IndexInfo>& indexes,
+      const HybridTime write_time,
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
       CoarseTimePoint* last_flushed_at);
 
   CHECKED_STATUS FlushIndexBatchIfRequired(
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
       bool force_flush,
+      const HybridTime write_time,
       CoarseTimePoint* last_flushed_at);
 
   CHECKED_STATUS
@@ -338,7 +341,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const ReadHybridTime& read_time,
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,
-      PgsqlReadRequestResult* result) override;
+      PgsqlReadRequestResult* result,
+      size_t* num_rows_read) override;
 
   CHECKED_STATUS CreatePagingStateForRead(
       const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,
@@ -495,8 +499,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   ScopedRWOperation GetPermitToWrite(CoarseTimePoint deadline);
 
   // Used from tests
-  const std::shared_ptr<rocksdb::Statistics>& rocksdb_statistics() const {
-    return rocksdb_statistics_;
+  const std::shared_ptr<rocksdb::Statistics>& regulardb_statistics() const {
+    return regulardb_statistics_;
+  }
+
+  const std::shared_ptr<rocksdb::Statistics>& intentsdb_statistics() const {
+    return intentsdb_statistics_;
   }
 
   TransactionCoordinator* transaction_coordinator() {
@@ -507,7 +515,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return transaction_participant_.get();
   }
 
+  // Returns true if this tablet may have large contiguous ranges of data which are not relevant,
+  // e.g. in the case of a recent tablet split where no compaction has occurred yet.
+  bool MightHaveNonRelevantData();
+
   void ForceRocksDBCompactInTest();
+
+  CHECKED_STATUS ForceFullRocksDBCompactAsync();
 
   docdb::DocDB doc_db() const { return { regular_db_.get(), intents_db_.get(), &key_bounds_ }; }
 
@@ -737,7 +751,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::shared_ptr<FlushCompactCommonHooks> common_hooks_;
 
   // Statistics for the RocksDB database.
-  std::shared_ptr<rocksdb::Statistics> rocksdb_statistics_;
+  std::shared_ptr<rocksdb::Statistics> regulardb_statistics_;
+  std::shared_ptr<rocksdb::Statistics> intentsdb_statistics_;
 
   // RocksDB database for key-value tables.
   std::unique_ptr<rocksdb::DB> regular_db_;

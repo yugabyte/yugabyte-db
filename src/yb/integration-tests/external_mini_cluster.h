@@ -172,6 +172,8 @@ struct ExternalMiniClusterOptions {
 // other hand, there is little access to inspect the internal state of the daemons.
 class ExternalMiniCluster : public MiniClusterBase {
  public:
+  typedef ExternalMiniClusterOptions Options;
+
   // Mode to which node types a certain action (like Shutdown()) should apply.
   enum NodeSelectionMode {
     TS_ONLY,
@@ -371,6 +373,8 @@ class ExternalMiniCluster : public MiniClusterBase {
                          const std::string& flag,
                          const std::string& value);
 
+  // Sets the given flag on all masters.
+  CHECKED_STATUS SetFlagOnMasters(const std::string& flag, const std::string& value);
   // Sets the given flag on all tablet servers.
   CHECKED_STATUS SetFlagOnTServers(const std::string& flag, const std::string& value);
 

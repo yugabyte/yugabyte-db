@@ -2677,6 +2677,7 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 	TransactionId OldestXmin;
 	BlockNumber root_blkno = InvalidBlockNumber;
 	OffsetNumber root_offsets[MaxHeapTuplesPerPage];
+	MemoryContext oldcontext = GetCurrentMemoryContext();
 
 	/*
 	 * sanity checks
@@ -2793,6 +2794,9 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 	}
 
 	reltuples = 0;
+
+	if (IsYBRelation(indexRelation))
+		MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
 	/*
 	 * Scan all tuples in the base relation.
@@ -3084,7 +3088,8 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 			tupleIsAlive = true;
 		}
 
-		MemoryContextReset(econtext->ecxt_per_tuple_memory);
+		if (!IsYBRelation(indexRelation))
+			MemoryContextReset(econtext->ecxt_per_tuple_memory);
 
 		/* Set up for predicate or expression evaluation */
 		ExecStoreTuple(heapTuple, slot, InvalidBuffer, false);
@@ -3150,7 +3155,13 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 			callback(indexRelation, heapTuple, values, isnull, tupleIsAlive,
 					 callback_state);
 		}
+	
+		if (IsYBRelation(indexRelation))
+			MemoryContextReset(econtext->ecxt_per_tuple_memory);
 	}
+
+	if (IsYBRelation(indexRelation))
+		MemoryContextSwitchTo(oldcontext);
 
 	heap_endscan(scan);
 

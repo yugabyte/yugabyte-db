@@ -46,27 +46,17 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       LOG.error("No node in universe with name " + nodeName);
       return;
     }
-    UserIntent userIntent = u.getUniverseDetails()
-        .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent;
     // Persist the desired node information into the DB.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         universeDetails.removeNode(nodeName);
-        LOG.debug("Removing node " + nodeName + " from universe " + taskParams().universeUUID);
+        LOG.info("Removed node " + nodeName + " from universe " + taskParams().universeUUID);
       }
     };
 
     Universe.saveDetails(taskParams().universeUUID, updater);
-
-    if (userIntent.providerType.equals(Common.CloudType.onprem)) {
-      // Free up the node.
-      NodeInstance node = NodeInstance.getByName(nodeName);
-      node.inUse = false;
-      node.setNodeName("");
-      node.save();
-    }
   }
 
   @Override
@@ -82,6 +72,25 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       if (!taskParams().isForceDelete) {
         throw e;
       }
+    }
+
+    Universe u = Universe.get(taskParams().universeUUID);
+    UserIntent userIntent = u.getUniverseDetails()
+        .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent;
+    NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
+
+    if (userIntent.providerType.equals(Common.CloudType.onprem) &&
+        univNodeDetails.state != NodeDetails.NodeState.Decommissioned) {
+      // Free up the node.
+      try {
+        NodeInstance providerNode = NodeInstance.getByName(taskParams().nodeName);
+        providerNode.clearNodeDetails();
+      } catch (Exception e) {
+        if (!taskParams().isForceDelete) {
+          throw e;
+        }
+      }
+      LOG.info("Marked node instance {} as available", taskParams().nodeName);
     }
 
     if (taskParams().deleteNode) {

@@ -233,17 +233,16 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
 ////////////////////////////////////////////////////////////
 
 CatalogManager::~CatalogManager() {
-  Shutdown();
+  if (StartShutdown()) {
+    CompleteShutdown();
+  }
 }
 
-void CatalogManager::Shutdown() {
+void CatalogManager::CompleteShutdown() {
   snapshot_coordinator_.Shutdown();
-  if (cdc_ybclient_) {
-    cdc_ybclient_->Shutdown();
-  }
   // Call shutdown on base class before exiting derived class destructor
   // because BgTasks is part of base & uses this derived class on Shutdown.
-  super::Shutdown();
+  super::CompleteShutdown();
 }
 
 Status CatalogManager::RunLoaders(int64_t term) {
@@ -346,7 +345,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
 
     // Verify that the snapshot does not exist.
     auto inserted = non_txn_snapshot_ids_map_.emplace(snapshot_id, snapshot).second;
-    DSCHECK(inserted, IllegalState, Format("Snapshot already exists: $0", snapshot_id));
+    RSTATUS_DCHECK(inserted, IllegalState, Format("Snapshot already exists: $0", snapshot_id));
     current_snapshot_id_ = snapshot_id;
   }
 
@@ -878,17 +877,21 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
   ns_data.second = db_type;
 
   TRACE("Looking up namespace");
+  // First of all try to find the namespace by ID. It will work if we are restoring the backup
+  // on the original cluster where the backup was created.
   scoped_refptr<NamespaceInfo> ns;
   {
     SharedLock<LockType> l(lock_);
     ns = FindPtrOrNull(namespace_ids_map_, entry.id());
   }
 
-  if (ns != nullptr && ns->name() == meta.name()) {
+  if (ns != nullptr && ns->name() == meta.name() && ns->state() == SysNamespaceEntryPB::RUNNING) {
     ns_data.first = entry.id();
     return Status::OK();
   }
 
+  // If the namespace was not found by ID, it's ok on a new cluster OR if the namespace was
+  // deleted and created again. In both cases the namespace can be found by NAME.
   if (db_type == YQL_DATABASE_PGSQL) {
     // YSQL database must be created via external call. Find it by name.
     {
@@ -898,6 +901,10 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
 
     if (ns == nullptr) {
       return STATUS(InvalidArgument, "YSQL database must exist", meta.name(),
+                    MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
+    }
+    if (ns->state() != SysNamespaceEntryPB::RUNNING) {
+      return STATUS(InvalidArgument, "Found YSQL database must be running", meta.name(),
                     MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
 
@@ -936,13 +943,9 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   *req.mutable_partition_schema() = meta.partition_schema();
   *req.mutable_replication_info() = meta.replication_info();
 
-  // Clear column IDs.
   SchemaPB* const schema = req.mutable_schema();
-  schema->mutable_table_properties()->set_num_tablets(table_data->num_tablets);
   *schema = meta.schema();
-  for (int i = 0; i < schema->columns_size(); ++i) {
-    DCHECK_NOTNULL(schema->mutable_columns(i))->clear_id();
-  }
+  schema->mutable_table_properties()->set_num_tablets(table_data->num_tablets);
 
   // Setup Index info.
   if (table_data->is_index()) {
@@ -1041,21 +1044,21 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   }
 
   if (table == nullptr) {
-    if (table_data->table_entry_pb.table_type() == TableType::PGSQL_TABLE_TYPE) {
+    if (meta.table_type() == TableType::PGSQL_TABLE_TYPE) {
       // YSQL table must be created via external call. Find it by name.
       // Expecting the table name is unique in the YSQL database.
       SharedLock<LockType> l(lock_);
       DCHECK(table_data->new_table_id.empty());
 
       for (const auto& entry : *table_ids_map_) {
-        const auto& table_info = *entry.second;
-        auto ltm = table_info.LockForRead();
+        table = entry.second;
+        auto ltm = table->LockForRead();
 
-        if (table_info.is_running() &&
-            new_namespace_id == table_info.namespace_id() &&
+        if (table->is_running() &&
+            new_namespace_id == table->namespace_id() &&
             meta.name() == ltm->data().name() &&
-            ((table_data->is_index() && IsUserIndexUnlocked(table_info)) ||
-                (!table_data->is_index() && IsUserTableUnlocked(table_info)))) {
+            ((table_data->is_index() && IsUserIndexUnlocked(*table)) ||
+                (!table_data->is_index() && IsUserTableUnlocked(*table)))) {
           // Found the new YSQL table by name.
           if (table_data->new_table_id.empty()) {
               table_data->new_table_id = entry.first;
@@ -1084,17 +1087,67 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       return STATUS(InternalError, Format("Created table not found: $0", table_data->new_table_id),
                     MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
+
+    Schema schema, persisted_schema;
+    RETURN_NOT_OK(SchemaFromPB(meta.schema(), &schema));
+    RETURN_NOT_OK(table->GetSchema(&persisted_schema));
+    const auto& column_ids = schema.column_ids();
+
+    // Schema::Equals() compares only column names & types. It does not compare the column ids.
+    if (!persisted_schema.Equals(schema)
+        || persisted_schema.column_ids().size() != column_ids.size()) {
+      return STATUS(InternalError,
+                    Format("Invalid created table schema={$0}, expected={$1}",
+                           persisted_schema,
+                           schema),
+                    MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+    }
+
+    // Update the table column ids if it's not equal to the stored ids.
+    if (persisted_schema.column_ids() != column_ids) {
+      if (meta.table_type() != TableType::PGSQL_TABLE_TYPE) {
+        LOG(WARNING) << "Unexpected wrong column ids in " << TableType_Name(meta.table_type())
+                     << " table " << meta.name() << " in namespace id " << new_namespace_id;
+      }
+
+      LOG(INFO) << "Restoring column ids in " << TableType_Name(meta.table_type()) << " table "
+                << meta.name() << " in namespace id " << new_namespace_id;
+      auto l = table->LockForWrite();
+      size_t col_idx = 0;
+      for (auto& column : *l->mutable_data()->pb.mutable_schema()->mutable_columns()) {
+        // Expecting here correct schema (columns - order, names, types), but with only wrong
+        // column ids. Checking correct column order and column names below.
+        if (column.name() != schema.column(col_idx).name()) {
+            return STATUS(InternalError,
+                          Format("Unexpected column name for index=$0: name=$1, expected name=$2",
+                                 col_idx,
+                                 schema.column(col_idx).name(),
+                                 column.name()),
+                          MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+        }
+        // Copy the column id from imported (original) schema.
+        column.set_id(column_ids[col_idx++]);
+      }
+
+      l->mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
+      l->mutable_data()->pb.set_version(l->data().pb.version() + 1);
+      // Update sys-catalog with the new table schema.
+      RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
+      l->Commit();
+      // Update the new table schema in tablets.
+      SendAlterTableRequest(table);
+    }
   } else {
     table_data->new_table_id = table_data->old_table_id;
   }
 
   TRACE("Locking table");
-  auto l = table->LockForRead();
+  auto table_lock = table->LockForRead();
   vector<scoped_refptr<TabletInfo>> new_tablets;
   table->GetAllTablets(&new_tablets);
 
   for (const scoped_refptr<TabletInfo>& tablet : new_tablets) {
-    auto l = tablet->LockForRead();
+    auto tablet_lock = tablet->LockForRead();
     const PartitionPB& partition_pb = tablet->metadata().state().pb.partition();
     const ExternalTableSnapshotData::PartitionKeys key(
         partition_pb.partition_key_start(), partition_pb.partition_key_end());
@@ -1877,45 +1930,21 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
   RETURN_NOT_OK(CheckOnline());
 
-  if (!cdc_ybclient_) {
-    // First. For each deleted stream, delete the cdc state rows.
-    std::vector<std::string> addrs;
-    for (auto const& master_address : *master_->opts().GetMasterAddresses()) {
-      for (auto const& host_port : master_address) {
-        addrs.push_back(host_port.ToString());
-      }
-    }
-    if (addrs.empty()) {
-      YB_LOG_EVERY_N_SECS(ERROR, 30) << "Unable to get master addresses for yb client";
-      return STATUS(InternalError, "Unable to get master address for yb client");
-    }
-    LOG(INFO) << "Using master addresses " << JoinCSVLine(addrs) << " to create cdc yb client";
-    auto result = yb::client::YBClientBuilder()
-        .master_server_addrs(addrs)
-        .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
-        .Build();
+  auto ybclient = master_->async_client_initializer().client();
 
-    std::unique_ptr<client::YBClient> client;
-    if (!result.ok()) {
-      YB_LOG_EVERY_N_SECS(ERROR, 30) << "Unable to create client: " << result.status();
-      return result.status().CloneAndPrepend("Unable to create yb client");
-    } else {
-      cdc_ybclient_ = std::move(*result);
-    }
-  }
-
+  // First. For each deleted stream, delete the cdc state rows.
   // Delete all the entries in cdc_state table that contain all the deleted cdc streams.
   client::TableHandle cdc_table;
   const client::YBTableName cdc_state_table_name(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  Status s = cdc_table.Open(cdc_state_table_name, cdc_ybclient_.get());
+  Status s = cdc_table.Open(cdc_state_table_name, ybclient);
   if (!s.ok()) {
     LOG(WARNING) << "Unable to open table " << master::kCdcStateTableName
                  << " to delete stream ids entries: " << s;
     return s.CloneAndPrepend("Unable to open cdc_state table");
   }
 
-  std::shared_ptr<client::YBSession> session = cdc_ybclient_->NewSession();
+  std::shared_ptr<client::YBSession> session = ybclient->NewSession();
   std::vector<std::pair<CDCStreamId, std::shared_ptr<client::YBqlWriteOp>>> stream_ops;
   std::set<CDCStreamId> failed_streams;
   for (const auto& stream : streams) {

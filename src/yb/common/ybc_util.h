@@ -49,6 +49,8 @@ char* DupYBStatusMessage(YBCStatus status, bool message_only);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 
+bool YBCIsTxnConflictError(uint16_t txn_errcode);
+
 void YBCResolveHostname();
 
 #define CHECKED_YBCSTATUS __attribute__ ((warn_unused_result)) YBCStatus

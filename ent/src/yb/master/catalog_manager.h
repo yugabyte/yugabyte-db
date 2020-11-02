@@ -35,7 +35,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       : super(master), snapshot_coordinator_(this) {}
 
   virtual ~CatalogManager();
-  void Shutdown();
+  void CompleteShutdown();
 
   CHECKED_STATUS RunLoaders(int64_t term) override REQUIRES(lock_);
 
@@ -335,9 +335,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Should catalog manager resend latest consumer registry to tserver.
   std::unordered_map<TabletServerId, bool> should_send_consumer_registry_
   GUARDED_BY(should_send_consumer_registry_mutex_);
-
-  // YBClient used to modify the cdc_state table from the master.
-  std::unique_ptr<client::YBClient> cdc_ybclient_;
 
   MasterSnapshotCoordinator snapshot_coordinator_;
 

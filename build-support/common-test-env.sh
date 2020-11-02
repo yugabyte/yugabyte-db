@@ -159,8 +159,7 @@ validate_abs_test_binary_path() {
 # The test name within the binary is what can be passed to Google Test as the --gtest_filter=...
 # argument. Some test binaries have to be run at once, e.g. non-gtest test binary or
 # test binaries with internal dependencies between tests. For those there is on
-# "$TEST_DESCRIPTOR_SEPARATOR" separator or the <test_name_within_binary> part (e.g.
-# bin/backupable_db_test above).
+# "$TEST_DESCRIPTOR_SEPARATOR" separator or the <test_name_within_binary> part.
 validate_test_descriptor() {
   expect_num_args 1 "$@"
   local test_descriptor=$1
@@ -1101,6 +1100,7 @@ did_test_succeed() {
   local -i -r exit_code=$1
   local -r log_path=$2
   if [[ $exit_code -ne 0 ]]; then
+    log "Test failure reason: exit code: $exit_code"
     return 1  # "false" value in bash, meaning the test failed
   fi
 
@@ -1397,14 +1397,14 @@ about_to_start_running_test() {
 # - yb-client org.yb.client.TestYBClient#testAllMasterChangeConfig
 #
 # <maven_module_name> could also be the module directory relative to $YB_SRC_ROOT, e.g.
-# java/yb-cql or ent/java/<enterprise_module_name>.
+# java/yb-cql.
 run_java_test() {
   expect_num_args 2 "$@"
   local module_name_or_rel_module_dir=$1
   local test_class_and_maybe_method=${2%.java}
   test_class_and_maybe_method=${test_class_and_maybe_method%.scala}
   if [[ $module_name_or_rel_module_dir == */* ]]; then
-    # E.g. java/yb-cql or ent/java/<enterprise_module_name>.
+    # E.g. java/yb-cql.
     local module_dir=$YB_SRC_ROOT/$module_name_or_rel_module_dir
     module_name=${module_name_or_rel_module_dir##*/}
   else
@@ -1440,7 +1440,7 @@ run_java_test() {
   local timestamp=$( get_timestamp_for_filenames )
   local surefire_rel_tmp_dir=surefire${timestamp}_${RANDOM}_${RANDOM}_${RANDOM}_$$
 
-  # This should change the directory to either "java" or "ent/java".
+  # This should change the directory to "java".
   cd "$module_dir"/..
 
   # We specify tempDir to use a separate temporary directory for each test.

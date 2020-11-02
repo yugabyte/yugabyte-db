@@ -154,6 +154,10 @@ YB_STRONGLY_TYPED_BOOL(LastKey);
 // key - pointer to key in format of SubDocKey (no ht)
 // last_key - whether it is last strong key in enumeration
 
+// Indicates that the intent contains a full document key, i.e. it does not omit any final range
+// components of the document key. This flag is also true for intents that include subdocument keys.
+YB_STRONGLY_TYPED_BOOL(FullDocKey);
+
 // TODO(dtxn) don't expose this method outside of DocDB if TransactionConflictResolver is moved
 // inside DocDB.
 // Note: From https://stackoverflow.com/a/17278470/461529:
@@ -163,7 +167,7 @@ YB_STRONGLY_TYPED_BOOL(LastKey);
 // So, we use boost::function which doesn't have such issue:
 // http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
 typedef boost::function<
-    Status(IntentStrength, Slice, KeyBytes*, LastKey)> EnumerateIntentsCallback;
+    Status(IntentStrength, FullDocKey, Slice, KeyBytes*, LastKey)> EnumerateIntentsCallback;
 
 CHECKED_STATUS EnumerateIntents(
     const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,

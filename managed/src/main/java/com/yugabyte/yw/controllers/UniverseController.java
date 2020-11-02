@@ -50,7 +50,9 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HealthCheck;
@@ -160,7 +162,7 @@ public class UniverseController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
-    Customer customer = Customer.get(customerUUID);
+
     Form<DatabaseSecurityFormData> formData =
         formFactory.form(DatabaseSecurityFormData.class).bindFromRequest();
     if (formData.hasErrors()) {
@@ -200,7 +202,7 @@ public class UniverseController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
-    Customer customer = Customer.get(customerUUID);
+
     Form<DatabaseUserFormData> formData =
         formFactory.form(DatabaseUserFormData.class).bindFromRequest();
     if (formData.hasErrors()) {
@@ -449,12 +451,32 @@ public class UniverseController extends AuthenticatedController {
       for (Cluster c : taskParams.clusters) {
         Provider provider = Provider.find.byId(UUID.fromString(c.userIntent.provider));
         c.userIntent.providerType = CloudType.valueOf(provider.code);
-        if (
-          c.userIntent.providerType.equals(CloudType.onprem) &&
-            provider.getConfig().containsKey("USE_HOSTNAME")
-        ) {
-          c.userIntent.useHostname = Boolean.parseBoolean(provider.getConfig().get("USE_HOSTNAME"));
+        if (c.userIntent.providerType.equals(CloudType.onprem)) {
+          if (provider.getConfig().containsKey("USE_HOSTNAME")) {
+            c.userIntent.useHostname =
+              Boolean.parseBoolean(provider.getConfig().get("USE_HOSTNAME"));
+          }
         }
+
+        // Set the node exporter config based on the provider
+        if (!c.userIntent.providerType.equals(CloudType.kubernetes)) {
+          AccessKey accessKey = AccessKey.get(provider.uuid, c.userIntent.accessKeyCode);
+          AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+          boolean installNodeExporter = keyInfo.installNodeExporter;
+          int nodeExporterPort = keyInfo.nodeExporterPort;
+          String nodeExporterUser = keyInfo.nodeExporterUser;
+          taskParams.extraDependencies.installNodeExporter = installNodeExporter;
+          taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
+
+          for (NodeDetails node : taskParams.nodeDetailsSet) {
+            node.nodeExporterPort = nodeExporterPort;
+          }
+
+          if (installNodeExporter) {
+            taskParams.nodeExporterUser = nodeExporterUser;
+          }
+        }
+
         updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       }
 
@@ -478,8 +500,14 @@ public class UniverseController extends AuthenticatedController {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                              Universe.HelmLegacy.V3.toString()));
+        } else {
+          if (primaryCluster.userIntent.enableIPV6) {
+            return ApiResponse.error(
+                  BAD_REQUEST,
+                  "IPV6 not supported for platform deployed VMs."
+                );
+          }
         }
-
         if (primaryCluster.userIntent.enableNodeToNodeEncrypt ||
                 primaryCluster.userIntent.enableClientToNodeEncrypt) {
           if (taskParams.rootCA == null) {
@@ -488,10 +516,26 @@ public class UniverseController extends AuthenticatedController {
           }
           // If client encryption is enabled, generate the client cert file for each node.
           if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
+            CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
+            if (cert.certType == CertificateInfo.Type.SelfSigned) {
             CertificateHelper.createClientCertificate(taskParams.rootCA,
                 String.format(CertificateHelper.CERT_PATH, appConfig.getString("yb.storage.path"),
                               customerUUID.toString(), taskParams.rootCA.toString()),
                 CertificateHelper.DEFAULT_CLIENT, null, null);
+            } else {
+              if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(
+                  CloudType.onprem)) {
+                return ApiResponse.error(
+                  BAD_REQUEST,
+                  "Custom certificates are only supported for onprem providers."
+                );
+              }
+              LOG.info(
+                "Skipping client certificate creation for universe {} ({}) " +
+                "because cert {} (type {})is not a self-signed cert.",
+                universe.name, universe.universeUUID, taskParams.rootCA, cert.certType
+              );
+            }
           }
           // Set the flag to mark the universe as using TLS enabled and therefore not allowing
           // insecure connections.
@@ -628,7 +672,7 @@ public class UniverseController extends AuthenticatedController {
     Customer customer = Customer.get(customerUUID);
 
     UniverseDefinitionTaskParams taskParams;
-    ObjectNode formData = null;
+    ObjectNode formData;
     try {
       LOG.info("Update {} for {}.", customerUUID, universeUUID);
       // Get the user submitted form data.
@@ -653,8 +697,8 @@ public class UniverseController extends AuthenticatedController {
 
     try {
       Cluster primaryCluster = taskParams.getPrimaryCluster();
-      UUID uuid = null;
-      PlacementInfo placementInfo = null;
+      UUID uuid;
+      PlacementInfo placementInfo;
       TaskType taskType = TaskType.EditUniverse;
       if (primaryCluster == null) {
         // Update of a read only cluster.
@@ -680,6 +724,22 @@ public class UniverseController extends AuthenticatedController {
                                      universeUUID + " as it is not helm 3 compatible. " +
                                      "Manually migrate the deployment to helm3 " +
                                      "and then mark the universe as helm 3 compatible.");
+          }
+        } else {
+          // Set the node exporter config based on the provider
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          boolean installNodeExporter = universeDetails.extraDependencies.installNodeExporter;
+          int nodeExporterPort = universeDetails.communicationPorts.nodeExporterPort;
+          String nodeExporterUser = universeDetails.nodeExporterUser;
+          taskParams.extraDependencies.installNodeExporter = installNodeExporter;
+          taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
+
+          for (NodeDetails node : taskParams.nodeDetailsSet) {
+            node.nodeExporterPort = nodeExporterPort;
+          }
+
+          if (installNodeExporter) {
+            taskParams.nodeExporterUser = nodeExporterUser;
           }
         }
       }
@@ -1364,8 +1424,9 @@ public class UniverseController extends AuthenticatedController {
       if (primaryIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
         return ApiResponse.error(BAD_REQUEST, "Scratch type disk cannot be modified.");
       }
-      if (primaryIntent.instanceType.startsWith("i3")) {
-        return ApiResponse.error(BAD_REQUEST, "Cannot modify i3 instance volumes.");
+      if (primaryIntent.instanceType.startsWith("i3.") ||
+          primaryIntent.instanceType.startsWith("c5d.")) {
+        return ApiResponse.error(BAD_REQUEST, "Cannot modify instance volumes.");
       }
 
       primaryIntent.deviceInfo.volumeSize = taskParams.size;

@@ -42,37 +42,50 @@ export default class NodeAction extends Component {
     });
   }
 
+  static getCaption(actionType) {
+    let caption = null;
+    if (actionType === 'STOP') {
+      caption = 'Stop Processes';
+    } else if (actionType === 'REMOVE') {
+      caption = 'Remove Node';
+    } else if (actionType === 'DELETE') {
+      caption = 'Delete Node';
+    } else if (actionType === 'RELEASE') {
+      caption = 'Release Instance';
+    } else if (actionType === 'START') {
+      caption = 'Start Processes';
+    } else if (actionType === 'ADD') {
+      caption = 'Add Node';
+    } else if (actionType === 'CONNECT') {
+      caption = 'Connect';
+    } else if (actionType === 'START_MASTER') {
+      caption = 'Start Master';
+    }
+    return caption;
+  }
+
   getLabel(actionType) {
-    let btnLabel = null;
+    const btnLabel = NodeAction.getCaption(actionType);
     let btnIcon = null;
-    if (actionType === "STOP") {
-      btnLabel = "Stop Processes";
-      btnIcon = "fa fa-stop-circle";
-    } else if (actionType === "REMOVE") {
-      btnLabel = "Remove Node";
-      btnIcon = "fa fa-minus-circle";
-    } else if (actionType === "DELETE") {
-      btnLabel = "Delete Node";
-      btnIcon = "fa fa-minus-circle";
-    } else if (actionType === "RELEASE") {
-      btnLabel = "Release Instance";
-      btnIcon = "fa fa-trash";
-    } else if (actionType === "START") {
-      btnLabel = "Start Processes";
-      btnIcon = "fa fa-play-circle";
-    } else if (actionType === "ADD") {
-      btnLabel = "Add Node";
-      btnIcon = "fa fa-plus-circle";
-    } else if (actionType === "CONNECT") {
-      btnLabel = "Connect";
-      btnIcon = "fa fa-link";
+    if (actionType === 'STOP') {
+      btnIcon = 'fa fa-stop-circle';
+    } else if (actionType === 'REMOVE') {
+      btnIcon = 'fa fa-minus-circle';
+    } else if (actionType === 'DELETE') {
+      btnIcon = 'fa fa-minus-circle';
+    } else if (actionType === 'RELEASE') {
+      btnIcon = 'fa fa-trash';
+    } else if (actionType === 'START') {
+      btnIcon = 'fa fa-play-circle';
+    } else if (actionType === 'ADD') {
+      btnIcon = 'fa fa-plus-circle';
+    } else if (actionType === 'CONNECT') {
+      btnIcon = 'fa fa-link';
+    } else if (actionType === 'START_MASTER') {
+      btnIcon = 'fa fa-play-circle';
     }
 
-    return (
-      <YBLabelWithIcon icon={btnIcon}>
-        {btnLabel}
-      </YBLabelWithIcon>
-    );
+    return <YBLabelWithIcon icon={btnIcon}>{btnLabel}</YBLabelWithIcon>;
   }
 
   render() {
@@ -80,8 +93,12 @@ export default class NodeAction extends Component {
     const actionButtons = currentRow.allowedActions.map((actionType, idx) => {
       const btnId = _.uniqueId('node_action_btn_');
       return (
-        <MenuItem key={btnId} eventKey={btnId} disabled={disabled}
-                  onClick={disabled ? null : this.openModal.bind(this, actionType)}>
+        <MenuItem
+          key={btnId}
+          eventKey={btnId}
+          disabled={disabled}
+          onClick={disabled ? null : this.openModal.bind(this, actionType)}
+        >
           {this.getLabel(actionType)}
         </MenuItem>
       );
@@ -89,20 +106,24 @@ export default class NodeAction extends Component {
 
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-        {!disableConnect && <NodeConnectModal currentRow={currentRow}
-          providerUUID={providerUUID} label={this.getLabel("CONNECT")}/>}
-        {
-          isNonEmptyArray(currentRow.allowedActions)
-            ? <Fragment>{actionButtons}
-              <NodeActionModalContainer
-                visible = {this.state.showModal}
-                onHide = { this.closeModal}
-                nodeInfo = {currentRow}
-                actionType = {this.state.actionType}
-              />
-            </Fragment>
-          : null
-        }
+        {!disableConnect && (
+          <NodeConnectModal
+            currentRow={currentRow}
+            providerUUID={providerUUID}
+            label={this.getLabel('CONNECT')}
+          />
+        )}
+        {isNonEmptyArray(currentRow.allowedActions) ? (
+          <Fragment>
+            {actionButtons}
+            <NodeActionModalContainer
+              visible={this.state.showModal}
+              onHide={this.closeModal}
+              nodeInfo={currentRow}
+              actionType={this.state.actionType}
+            />
+          </Fragment>
+        ) : null}
       </DropdownButton>
     );
   }

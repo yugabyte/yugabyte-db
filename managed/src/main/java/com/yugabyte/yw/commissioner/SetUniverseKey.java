@@ -72,7 +72,7 @@ public class SetUniverseKey {
         this.actorSystem.scheduler().schedule(
                 Duration.create(0, TimeUnit.MINUTES),
                 Duration.create(YB_SET_UNIVERSE_KEY_INTERVAL, TimeUnit.MINUTES),
-                () -> scheduleRunner(),
+                this::scheduleRunner,
                 this.executionContext
         );
     }

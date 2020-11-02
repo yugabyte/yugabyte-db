@@ -516,4 +516,9 @@ const HostPortPB& DesiredHostPort(const ServerRegistrationPB& registration,
       registration.cloud_info(), connect_from);
 }
 
+const std::string kMinRunningRequestIdCategoryName = "min running request ID";
+
+StatusCategoryRegisterer min_running_request_id_category_registerer(
+    StatusCategoryDescription::Make<MinRunningRequestIdTag>(&kMinRunningRequestIdCategoryName));
+
 } // namespace yb

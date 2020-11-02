@@ -23,10 +23,12 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_string(TEST_master_extra_list_host_port);
 
 namespace yb {
 namespace master {
@@ -34,7 +36,7 @@ namespace master {
 using std::string;
 
 const std::string kKeyspaceName("my_keyspace");
-const uint kNumMasters(1);
+const uint kNumMasters(3);
 const uint kNumTablets(3);
 
 class MasterPathHandlersItest : public YBMiniClusterTestBase<MiniCluster> {
@@ -45,7 +47,7 @@ class MasterPathHandlersItest : public YBMiniClusterTestBase<MiniCluster> {
     // Set low heartbeat timeout.
     FLAGS_tserver_unresponsive_timeout_ms = 5000;
     opts.num_tablet_servers = kNumTablets;
-    opts.num_masters = kNumMasters;
+    opts.num_masters = num_masters();
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
 
@@ -62,6 +64,10 @@ class MasterPathHandlersItest : public YBMiniClusterTestBase<MiniCluster> {
     const string tables_url = master_http_url_ + query_path;
     EasyCurl curl;
     ASSERT_OK(curl.FetchURL(tables_url, result));
+  }
+
+  virtual int num_masters() const {
+    return kNumMasters;
   }
 
  private:
@@ -191,6 +197,24 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
 
   // YBMiniClusterTestBase test-end verification will fail if the cluster is up with stopped nodes.
   cluster_->Shutdown();
+}
+
+class MultiMasterPathHandlersItest : public MasterPathHandlersItest {
+ public:
+  int num_masters() const override {
+    return 3;
+  }
+};
+
+TEST_F_EX(MasterPathHandlersItest, Forward, MultiMasterPathHandlersItest) {
+  FLAGS_TEST_master_extra_list_host_port = RandomHumanReadableString(16) + ".com";
+  EasyCurl curl;
+  faststring content;
+  for (int i = 0; i != cluster_->num_masters(); ++i) {
+    auto url = Format("http://$0/tablet-servers", cluster_->mini_master(i)->bound_http_addr());
+    content.clear();
+    ASSERT_OK(curl.FetchURL(url, &content));
+  }
 }
 
 } // namespace master

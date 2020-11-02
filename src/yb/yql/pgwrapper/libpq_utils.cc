@@ -378,6 +378,10 @@ Result<char*> GetValueWithLength(PGresult* result, int row, int column, size_t s
   return PQgetvalue(result, row, column);
 }
 
+Result<bool> GetBool(PGresult* result, int row, int column) {
+  return *VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(bool)));
+}
+
 Result<int32_t> GetInt32(PGresult* result, int row, int column) {
   return BigEndian::Load32(VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(int32_t))));
 }

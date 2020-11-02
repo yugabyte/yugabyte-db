@@ -13,6 +13,10 @@
 
 #include "yb/docdb/pgsql_operation.h"
 
+#include <limits>
+#include <string>
+#include <vector>
+
 #include <boost/optional/optional_io.hpp>
 
 #include "yb/common/partition.h"
@@ -35,6 +39,13 @@ DECLARE_bool(ysql_disable_index_backfill);
 
 DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
               "YSQL read scan timeout multipler of retryable_rpc_single_call_timeout_ms.");
+
+DEFINE_bool(pgsql_consistent_transactional_paging, true,
+            "Whether to enforce consistency of data returned for second page and beyond for YSQL "
+            "queries on transactional tables. If true, read restart errors could be returned to "
+            "prevent inconsistency. If false, no read restart errors are returned but the data may "
+            "be stale. The latter is preferable for long scans. The data returned for the first "
+            "page of results is never stale regardless of this flag.");
 
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
@@ -118,7 +129,7 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
     case PgsqlWriteRequestPB::PGSQL_UPSERT: {
       // Upserts should not have column refs (i.e. require read).
-      DSCHECK(!request_.has_column_refs() || request_.column_refs().ids().empty(),
+      RSTATUS_DCHECK(!request_.has_column_refs() || request_.column_refs().ids().empty(),
               IllegalState,
               "Upsert operation should not have column references");
       return ApplyInsert(data, IsUpsert::kTrue);
@@ -286,7 +297,7 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
     // nonexistent rows are expected to get written to the index when the index has the delete
     // permission during an online schema migration.
     // TODO(jason): apply deletes only when this is an index table going through a schema migration,
-    // not just when backfill is enabled.
+    // not just when backfill is enabled (issue #5686).
     if (FLAGS_ysql_disable_index_backfill) {
       return Status::OK();
     } else {
@@ -435,7 +446,8 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
   if (request_.batch_arguments_size() > 0) {
     if (request_.has_ybctid_column_value()) {
       fetched_rows = VERIFY_RESULT(ExecuteBatchYbctid(
-          ql_storage, deadline, read_time, schema, result_buffer, restart_read_ht));
+          ql_storage, deadline, read_time, schema,
+          request_.unknown_ybctid_allowed(), result_buffer, restart_read_ht));
     } else {
       fetched_rows = VERIFY_RESULT(ExecuteBatch(ql_storage, deadline, read_time, schema,
                                                 index_schema, result_buffer, restart_read_ht,
@@ -517,7 +529,6 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
   QLTableRow row;
   while (fetched_rows < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
          !scan_time_exceeded) {
-
     row.Clear();
 
     // If there is an index request, fetch ybbasectid from the index and use it as ybctid
@@ -570,8 +581,9 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms));
   }
 
-  RETURN_NOT_OK(SetPagingStateIfNecessary(iter, fetched_rows, row_count_limit, scan_time_exceeded,
-                                          scan_schema, batch_arg_index, has_paging_state));
+  RETURN_NOT_OK(SetPagingStateIfNecessary(
+      iter, fetched_rows, row_count_limit, scan_time_exceeded, scan_schema, batch_arg_index,
+      read_time, has_paging_state));
   return fetched_rows;
 }
 
@@ -604,6 +616,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf
                                                       CoarseTimePoint deadline,
                                                       const ReadHybridTime& read_time,
                                                       const Schema& schema,
+                                                      bool unknown_ybctid_allowed,
                                                       faststring *result_buffer,
                                                       HybridTime *restart_read_ht) {
   Schema projection;
@@ -618,8 +631,13 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf
                                          &table_iter_));
     row.Clear();
 
-    SCHECK(VERIFY_RESULT(table_iter_->HasNext()), Corruption,
-           "Given ybctid is not associated with any row in table");
+    if (!VERIFY_RESULT(table_iter_->HasNext())) {
+      if (unknown_ybctid_allowed) {
+        continue;
+      } else {
+        return STATUS(Corruption, "Given ybctid is not associated with any row in table");
+      }
+    }
     RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
 
     // Populate result set.
@@ -628,7 +646,8 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf
   }
 
   // Set status for this batch.
-  response_.set_batch_arg_count(row_count);
+  // Mark all rows were processed even in case some of the ybctids were not found.
+  response_.set_batch_arg_count(request_.batch_arguments_size());
 
   return row_count;
 }
@@ -639,6 +658,7 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIte
                                                      const bool scan_time_exceeded,
                                                      const Schema* schema,
                                                      int64_t batch_arg_index,
+                                                     const ReadHybridTime& read_time,
                                                      bool *has_paging_state) {
   *has_paging_state = false;
   if (!request_.return_paging_state()) {
@@ -656,7 +676,7 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIte
     if (!next_row_key.doc_key().empty()) {
       const auto& keybytes = next_row_key.Encode();
       PgsqlPagingStatePB* paging_state = response_.mutable_paging_state();
-      DSCHECK(schema != nullptr, IllegalState, "Missing schema");
+      RSTATUS_DCHECK(schema != nullptr, IllegalState, "Missing schema");
       if (schema->num_hash_key_columns() > 0) {
         paging_state->set_next_partition_key(
            PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
@@ -665,6 +685,16 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIte
       }
       paging_state->set_next_row_key(keybytes.ToStringBuffer());
       *has_paging_state = true;
+    }
+  }
+  if (*has_paging_state) {
+    if (FLAGS_pgsql_consistent_transactional_paging) {
+      read_time.AddToPB(response_.mutable_paging_state());
+    } else {
+      // Using SingleTime will help avoid read restarts on second page and later but will
+      // potentially produce stale results on those pages.
+      auto per_row_consistent_read_time = ReadHybridTime::SingleTime(read_time.read);
+      per_row_consistent_read_time.AddToPB(response_.mutable_paging_state());
     }
   }
 

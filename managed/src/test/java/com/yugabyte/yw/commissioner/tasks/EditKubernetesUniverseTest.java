@@ -264,10 +264,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       } else {
         assertEquals(1, tasks.size());
       }
+
       assertEquals(task, tasks.get(0).getTaskType());
       JsonNode expectedResults = resultList.get(position);
       List<JsonNode> taskDetails = tasks.stream()
-          .map(t -> t.getTaskDetails())
+          .map(TaskInfo::getTaskDetails)
           .collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
@@ -307,10 +308,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   public void testAddNode() {
     setupUniverseSingleAZ(/* Create Masters */ true);
 
-    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";

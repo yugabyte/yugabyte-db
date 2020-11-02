@@ -17,6 +17,7 @@ import static org.yb.AssertionWrappers.*;
 import static org.yb.util.SanitizerUtil.isASAN;
 import static org.yb.util.SanitizerUtil.isTSAN;
 
+import com.google.common.net.HostAndPort;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -33,8 +34,10 @@ import org.postgresql.util.PGobject;
 import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.AsyncYBClient;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
+import org.yb.client.YBClient;
 import org.yb.minicluster.*;
 import org.yb.minicluster.Metrics.YSQLStat;
 import org.yb.pgsql.cleaners.ClusterCleaner;
@@ -200,6 +203,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     flagMap.put("ysql_beta_features", "true");
+    flagMap.put("ysql_sleep_before_retry_on_txn_conflict", "false");
+    flagMap.put("ysql_max_write_restart_attempts", "2");
 
     return flagMap;
   }
@@ -508,6 +513,29 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       value.value += metric.sum;
     }
     return value;
+  }
+
+  protected Long getTserverMetricCountForTable(String metricName, String tableName)
+      throws Exception {
+    long count = 0;
+    for (JsonArray rawMetric : getRawTSMetric()) {
+      for (JsonElement elem : rawMetric.getAsJsonArray()) {
+        JsonObject obj = elem.getAsJsonObject();
+        if (obj.get("type").getAsString().equals("tablet") &&
+            obj.getAsJsonObject("attributes").get("table_name").getAsString().equals(tableName)) {
+          for (JsonElement subelem : obj.getAsJsonArray("metrics")) {
+            if (!subelem.isJsonObject()) {
+              continue;
+            }
+            JsonObject metric = subelem.getAsJsonObject();
+            if (metric.has("name") && metric.get("name").getAsString().equals(metricName)) {
+              count += metric.get("value").getAsLong();
+            }
+          }
+        }
+      }
+    }
+    return count;
   }
 
   protected long getMetricCounter(String metricName) throws Exception {
@@ -1022,7 +1050,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /**
-   *
    * @param statement The statement used to execute the query.
    * @param query The query string.
    * @param errorSubstring A (case-insensitive) substring of the expected error message.
@@ -1039,6 +1066,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                            e.getMessage(), errorSubstring));
       }
     }
+  }
+
+  /**
+   * Verify that a (write) query succeeds with a warning matching the given substring.
+   * @param statement The statement used to execute the query.
+   * @param query The query string.
+   * @param warningSubstring A (case-insensitive) substring of the expected warning message.
+   */
+  protected void verifyStatementWarning(Statement statement,
+                                        String query,
+                                        String warningSubstring) throws SQLException {
+    statement.execute(query);
+    SQLWarning warning = statement.getWarnings();
+    assertNotEquals("Expected (at least) one warning", null, warning);
+    assertTrue(String.format("Unexpected Warning Message. Got: '%s', expected to contain : '%s",
+                             warning.getMessage(), warningSubstring),
+               StringUtils.containsIgnoreCase(warning.getMessage(), warningSubstring));
+    assertEquals("Expected (at most) one warning", null, warning.getNextWarning());
   }
 
   protected String getSimpleTableCreationStatement(
@@ -1319,6 +1364,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /** Immutable connection builder */
+  private void runProcess(String... args) throws Exception {
+    assertEquals(0, new ProcessBuilder(args).start().waitFor());
+  }
+
+  protected HostAndPort getMasterLeaderAddress() {
+    return miniCluster.getClient().getLeaderMasterHostAndPort();
+  }
+
+  protected void setServerFlag(HostAndPort server, String flag, String value) throws Exception {
+    runProcess(TestUtils.findBinary("yb-ts-cli"),
+               "--server_address",
+               server.toString(),
+               "set_flag",
+               "-force",
+               flag,
+               value);
+  }
+
   public static class ConnectionBuilder implements Cloneable {
     private static final int MAX_CONNECTION_ATTEMPTS = 15;
     private static final int INITIAL_CONNECTION_DELAY_MS = 500;

@@ -281,10 +281,14 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state->exec_params = &estate->yb_exec_params;
 
 	ybc_state->exec_params->rowmark = -1;
+	ybc_state->exec_params->read_from_followers = YBReadFromFollowersEnabled();
+	if (YBReadFromFollowersEnabled()) {
+		ereport(DEBUG2, (errmsg("Doing read from followers")));
+	}
 	ListCell   *l;
 	foreach(l, estate->es_rowMarks) {
 		ExecRowMark *erm = (ExecRowMark *) lfirst(l);
-		// Do not propogate non-row-locking row marks.
+		// Do not propagate non-row-locking row marks.
 		if (erm->markType != ROW_MARK_REFERENCE &&
 			erm->markType != ROW_MARK_COPY)
 			ybc_state->exec_params->rowmark = erm->markType;
@@ -573,6 +577,7 @@ ybcFreeStatementObject(YbFdwExecState* yb_fdw_exec_state)
 	{
 		ResourceOwnerForgetYugaByteStmt(yb_fdw_exec_state->stmt_owner,
 										yb_fdw_exec_state->handle);
+		YBCPgDeleteStatement(yb_fdw_exec_state->handle);
 		yb_fdw_exec_state->handle = NULL;
 		yb_fdw_exec_state->stmt_owner = NULL;
 		yb_fdw_exec_state->exec_params = NULL;

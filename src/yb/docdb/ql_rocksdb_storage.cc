@@ -187,7 +187,11 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
       !request.paging_state().next_row_key().empty()) {
     KeyBytes start_key_bytes(request.paging_state().next_row_key());
     RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
-    req_read_time.read = start_sub_doc_key.hybrid_time();
+    if (request.paging_state().has_read_time()) {
+      req_read_time = ReadHybridTime::FromPB(request.paging_state().read_time());
+    } else {
+      req_read_time.read = start_sub_doc_key.hybrid_time();
+    }
   }
 
   doc_iter = std::make_unique<DocRowwiseIterator>(

@@ -41,9 +41,9 @@ YSQL authentication, the process of identifying that YSQL users are who they say
 
 Users, roles, and groups allow administrators to verify whether a particular user or role is authorized to create, access, change, or remove databases or manage users and roles. [Authorization](../../authorization/) is the process of managing access controls based on roles. For YSQL, enabling authentication automatically enables authorization and the [role-based access control (RBAC) model](../../authorization/rbac-model/), to determine the access privileges. Authentication verifies the identity of a user while authorization determines the verified user’s database access privileges.
 
-Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [`CREATE ROLE`](../../../api/ysql/commands/dcl_create_role/) statement (or its alias, [`CREATE USER`](../../../api/ysql/commands/dcl_create_user/)). After users and roles have been created, [`ALTER ROLE`](../../../api/ysql/commands/dcl_alter_role/) and [`DROP ROLE`](../../../api/ysql/commands/dcl_drop_role/) statements are used to change or remove users and roles.
+Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/) statement (or its alias, [`CREATE USER`](../../../api/ysql/the-sql-language/statements/dcl_create_user/)). After users and roles have been created, [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statements are used to change or remove users and roles.
 
-YSQL authorization is the process of access control created by granting or revoking privileges to YSQL users and roles, see [Authorization](../../authorization). Privileges are managed using [`GRANT`](../../../api/ysql/commands/dcl_grant/), [`REVOKE`](../../../api/ysql/commands/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/commands/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/commands/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/commands/dcl_drop_role/).
+YSQL authorization is the process of access control created by granting or revoking privileges to YSQL users and roles, see [Authorization](../../authorization). Privileges are managed using [`GRANT`](../../../api/ysql/the-sql-language/statements/dcl_grant/), [`REVOKE`](../../../api/ysql/the-sql-language/statements/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/).
 
 ## Specify default user password
 
@@ -56,7 +56,7 @@ If you are using YugabyteDB 2.0 (and **not** 2.0.1 or later) and have not assign
 1. With your YugabyteDB cluster up and running, open `ysqlsh`.
 2. Run the following `ALTER ROLE` statement, specifying a password (`yugabyte` or a password of your choice).
 
-    ```postgresql
+    ```plpgsql
     yugabyte=# ALTER ROLE yugabyte with password 'yugabyte';
     ```
 
@@ -123,7 +123,7 @@ Here are some common authentication-related tasks. For authorization-related tas
 
 ### Creating users
 
-To add a new user, run the [`CREATE ROLE` statement](../../../api/ysql/commands/dcl_create_role/) or its alias, the `CREATE USER` statement. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all of the YSQL statements on any of the database resources.
+To add a new user, run the [`CREATE ROLE` statement](../../../api/ysql/the-sql-language/statements/dcl_create_role/) or its alias, the `CREATE USER` statement. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all of the YSQL statements on any of the database resources.
 
 **NOTE** By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges — these need to be explicitly granted.
 
@@ -131,13 +131,13 @@ To add a new user, run the [`CREATE ROLE` statement](../../../api/ysql/commands/
 
 To add a new regular user (with non-superuser privileges) named `john`, with the password `PasswdForJohn`, and grant him `LOGIN` privileges, run the following `CREATE ROLE` command.
 
-```postgresql
+```plpgsql
 yugabyte=# CREATE ROLE john WITH LOGIN PASSWORD 'PasswdForJohn';
 ```
 
 To verify the user account just created, you can run a query like this:
 
-```postgresql
+```plpgsql
 yugabyte=# SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
@@ -160,13 +160,13 @@ The `SUPERUSER` status should be given only to a limited number of users. Applic
 
 To create a superuser `admin` with the `LOGIN` privilege, run the following command using a superuser account:
 
-```postgresql
+```plpgsql
 yugabyte=# CREATE ROLE admin WITH LOGIN SUPERUSER PASSWORD 'PasswdForAdmin';
 ```
 
 To verify the `admin` account just created, run the following query.
 
-```postgresql
+```plpgsql
 yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles;
 ```
 
@@ -218,13 +218,13 @@ $ ysqlsh -U john
 
 ### Edit user accounts
 
-You can edit existing user accounts using the [ALTER ROLE](../../../api/ysql/commands/dcl_alter_role/) command. Note that the role making these changes should have sufficient privileges to modify the target role.
+You can edit existing user accounts using the [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) command. Note that the role making these changes should have sufficient privileges to modify the target role.
 
 #### Changing password for a user
 
 To change the password for `john` above, you can do:
 
-```postgresql
+```plpgsql
 yugabyte=# ALTER ROLE john PASSWORD 'new-password';
 ```
 
@@ -232,7 +232,7 @@ yugabyte=# ALTER ROLE john PASSWORD 'new-password';
 
 In the example above, you can verify that `john` is not a superuser using the following `SELECT` statement:
 
-```postgresql
+```plpgsql
 yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='john';
 ```
 
@@ -263,7 +263,7 @@ Users with `SUPERUSER` status display "Superuser" in the list of attributes for 
 
 To grant `SUPERUSER` privileges to `john`, run the following `ALTER ROLE` command.
 
-```postgresql
+```plpgsql
 yugabyte=# ALTER ROLE john SUPERUSER;
 ```
 
@@ -292,7 +292,7 @@ In YugabyteDB (just as in PostgreSQL), `SUPERUSER` status includes all of the fo
 
 Similarly, you can revoke superuser privileges by running:
 
-```postgresql
+```plpgsql
 yugabyte=# ALTER ROLE john WITH NOSUPERUSER;
 ```
 
@@ -300,7 +300,7 @@ yugabyte=# ALTER ROLE john WITH NOSUPERUSER;
 
 In the example above, you can verify that `john` can login to the database by doing the following:
 
-```postgresql
+```plpgsql
 yugabyte=# SELECT role, rolcanlogin FROM pg_roles WHERE role='john';
 ```
 
@@ -313,13 +313,13 @@ yugabyte=# SELECT role, rolcanlogin FROM pg_roles WHERE role='john';
 
 To disable login privileges for `john`, run the following command.
 
-```postgresql
+```plpgsql
 yugabyte=# ALTER ROLE john WITH NOLOGIN;
 ```
 
 You can verify this as follows.
 
-```postgresql
+```plpgsql
 yugabyte=# SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname='john';
 ```
 
@@ -345,23 +345,23 @@ ysqlsh: FATAL:  role "john" is not permitted to log in
 
 To re-enable login privileges for `john`, run the following command.
 
-```postgresql
+```plpgsql
 yugabyte=#  ALTER ROLE john WITH LOGIN;
 ```
 
 ### Delete a user
 
-You can delete a user with the [DROP ROLE](../../../api/ysql/commands/dcl_drop_role/) statement.
+You can delete a user with the [DROP ROLE](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statement.
 
 For example, to drop the user `john` in the above example, run the following command as a superuser:
 
-```postgresql
+```plpgsql
 yugabyte=# DROP ROLE john;
 ```
 
 You can quickly verify that the `john` role was dropped by running the `\du` command:
 
-```postgresql
+```plpgsql
 yugabyte=# \du
 ```
 
@@ -376,8 +376,8 @@ yugabyte=# \du
 
 ## Related topics
 
-- [CREATE ROLE](../../../api/ysql/commands/dcl_create_role/)
-- [ALTER ROLE](../../../api/ysql/commands/dcl_alter_role/)
-- [DROP ROLE](../../../api/ysql/commands/dcl_drop_role/)
-- [GRANT](../../../api/ysql/commands/dcl_grant/)
-- [REVOKE](../../../api/ysql/commands/dcl_revoke/)
+- [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role/)
+- [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/)
+- [DROP ROLE](../../../api/ysql/the-sql-language/statements/dcl_drop_role/)
+- [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant/)
+- [REVOKE](../../../api/ysql/the-sql-language/statements/dcl_revoke/)

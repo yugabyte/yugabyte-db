@@ -50,7 +50,7 @@ void SetupClusterConfigEnt(const vector<string>& az_list,
                            const vector<string>& affinitized_leader_list,
                            ReplicationInfoPB* replication_info) {
   PlacementInfoPB* placement_info = replication_info->mutable_live_replicas();
-  placement_info->set_num_replicas(kNumReplicas);
+  placement_info->set_num_replicas(kDefaultNumReplicas);
 
   for (const string& az : az_list) {
     auto pb = placement_info->add_placement_blocks();

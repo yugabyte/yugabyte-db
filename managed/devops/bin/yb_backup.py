@@ -86,6 +86,11 @@ class BackupException(Exception):
     pass
 
 
+class CompatibilityException(BackupException):
+    """Exception which can be ignored for compatibility."""
+    pass
+
+
 def split_by_tab(line):
     return [item.replace(' ', '') for item in line.split("\t")]
 
@@ -336,29 +341,38 @@ class AzBackupStorage(AbstractBackupStorage):
         return 'az'
 
     def _command_list_prefix(self):
-        return "azcopy cp"
+        return "azcopy"
 
     def upload_file_cmd(self, src, dest):
         # azcopy requires quotes around the src and dest. This format is necessary to do so.
         src = "'{}'".format(src)
         dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
-        return ["{} {} {}".format(self._command_list_prefix(), src, dest)]
+        return ["{} {} {} {}".format(self._command_list_prefix(), "cp", src, dest)]
 
     def download_file_cmd(self, src, dest):
         src = "'{}'".format(src + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         dest = "'{}'".format(dest)
-        return ["{} {} {} {}".format(self._command_list_prefix(), src, dest, "--recursive")]
+        return ["{} {} {} {} {}".format(self._command_list_prefix(), "cp", src,
+                dest, "--recursive")]
 
     def upload_dir_cmd(self, src, dest):
         # azcopy will download the top-level directory as well as the contents without "/*".
         src = "'{}'".format(os.path.join(src, '*'))
         dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
-        return ["{} {} {} {}".format(self._command_list_prefix(), src, dest, "--recursive")]
+        return ["{} {} {} {} {}".format(self._command_list_prefix(), "cp", src,
+                dest, "--recursive")]
 
     def download_dir_cmd(self, src, dest):
         src = "'{}'".format(os.path.join(src, '*') + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         dest = "'{}'".format(dest)
-        return ["{} {} {} {}".format(self._command_list_prefix(), src, dest, "--recursive")]
+        return ["{} {} {} {} {}".format(self._command_list_prefix(), "cp", src,
+                dest, "--recursive")]
+
+    def delete_obj_cmd(self, dest):
+        if dest is None or dest == '/' or dest == '':
+            raise BackupException("Destination needs to be well formed.")
+        dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        return ["{} {} {} {}".format(self._command_list_prefix(), "rm", dest, "--recursive=true")]
 
 
 class GcsBackupStorage(AbstractBackupStorage):
@@ -384,6 +398,11 @@ class GcsBackupStorage(AbstractBackupStorage):
 
     def download_dir_cmd(self, src, dest):
         return self._command_list_prefix() + ["-m", "rsync", "-r", src, dest]
+
+    def delete_obj_cmd(self, dest):
+        if dest is None or dest == '/' or dest == '':
+            raise BackupException("Destination needs to be well formed.")
+        return self._command_list_prefix() + ["rm", "-r", dest]
 
 
 class S3BackupStorage(AbstractBackupStorage):
@@ -418,6 +437,11 @@ class S3BackupStorage(AbstractBackupStorage):
     def download_dir_cmd(self, src, dest):
         return self._command_list_prefix() + ["sync", "--no-check-md5", src, dest]
 
+    def delete_obj_cmd(self, dest):
+        if dest is None or dest == '/' or dest == '':
+            raise BackupException("Destination needs to be well formed.")
+        return self._command_list_prefix() + ["del", "-r", dest]
+
 
 class NfsBackupStorage(AbstractBackupStorage):
     def __init__(self, options):
@@ -451,6 +475,11 @@ class NfsBackupStorage(AbstractBackupStorage):
 
     def download_dir_cmd(self, src, dest):
         return self._command_list_prefix() + [src, dest]
+
+    def delete_obj_cmd(self, dest):
+        if dest is None or dest == '/' or dest == '':
+            raise BackupException("Destination needs to be well formed.")
+        return ["rm", "-rf", pipes.quote(dest)]
 
 
 BACKUP_STORAGE_ABSTRACTIONS = {
@@ -646,8 +675,8 @@ class YBBackup:
             default=S3BackupStorage.storage_type(),
             help="Storage backing for backups, eg: s3, nfs, gcs, ..")
         parser.add_argument(
-            'command', choices=['create', 'restore', 'restore_keys'],
-            help='Create or restore the backup from the provided backup location.')
+            'command', choices=['create', 'restore', 'restore_keys', 'delete'],
+            help='Create, restore or delete the backup from the provided backup location.')
         parser.add_argument(
             '--certs_dir', required=False,
             help="The directory containing the certs for secure connections.")
@@ -742,6 +771,9 @@ class YBBackup:
 
     def is_az(self):
         return self.args.storage_type == AzBackupStorage.storage_type()
+
+    def is_nfs(self):
+        return self.args.storage_type == NfsBackupStorage.storage_type()
 
     def is_k8s(self):
         return self.args.k8s_config is not None
@@ -947,10 +979,13 @@ class YBBackup:
             raise BackupException('Timed out waiting for snapshot!')
 
         if update_table_list:
-            if len(snapshot_keyspaces) != len(snapshot_tables) or len(snapshot_tables) == 0:
+            if len(snapshot_tables) == 0:
+                raise CompatibilityException("Created snapshot does not have tables.")
+
+            if len(snapshot_keyspaces) != len(snapshot_tables):
                 raise BackupException(
-                    "In the snapshot found {} keyspaces and {} tables. The numbers must be equal "
-                    "and more than zero.".format(len(snapshot_keyspaces), len(snapshot_tables)))
+                    "In the snapshot found {} keyspaces and {} tables. The numbers must be equal.".
+                    format(len(snapshot_keyspaces), len(snapshot_tables)))
 
             self.args.keyspace = snapshot_keyspaces
             self.args.table = snapshot_tables
@@ -1547,6 +1582,13 @@ class YBBackup:
             self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination)
         )
 
+    def delete_bucket_obj(self):
+        del_cmd = self.storage.delete_obj_cmd(self.args.backup_location)
+        if self.is_nfs:
+            self.run_ssh_cmd(del_cmd, self.get_leader_master_ip())
+        else:
+            self.run_program(del_cmd)
+
     def upload_metadata_and_checksum(self, src_path, dest_path):
         """
         Upload metadata file and checksum file to the target backup location.
@@ -1638,7 +1680,21 @@ class YBBackup:
             if not self.args.snapshot_id:
                 snapshot_id = self.create_snapshot()
                 logging.info("Snapshot started with id: %s" % snapshot_id)
-                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC, True)
+                # TODO: Remove the following try-catch for compatibility to un-relax the code, after
+                #       we ensure nobody uses versions < v2.1.4 (after all move to >= v2.1.8).
+                try:
+                    # With 'update_table_list=True' it runs: 'yb-admin list_snapshots SHOW_DETAILS'
+                    # to get updated list of backed up namespaces and tables. Note that the last
+                    # argument 'SHOW_DETAILS' is not supported in old YB versions (< v2.1.4).
+                    self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
+                                           update_table_list=True)
+                except CompatibilityException as ex:
+                    logging.info("Ignoring the exception in the compatibility mode: {}".format(ex))
+                    # In the compatibility mode repeat the command in old style
+                    # (without the new command line argument 'SHOW_DETAILS').
+                    # With 'update_table_list=False' it runs: 'yb-admin list_snapshots'.
+                    self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
+                                           update_table_list=False)
 
                 if not self.args.no_snapshot_deleting:
                     logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
@@ -2025,7 +2081,14 @@ class YBBackup:
         logging.info('Restored backup successfully!')
         print(json.dumps({"success": True}))
 
-    # At exit callbacks
+    def delete_backup(self):
+        """
+        Delete the backup specified by the storage location.
+        """
+        if self.args.backup_location:
+            self.delete_bucket_obj()
+        logging.info('Deleted backup %s successfully!', self.args.backup_location)
+        print(json.dumps({"success": True}))
 
     def restore_keys(self):
         """
@@ -2037,6 +2100,7 @@ class YBBackup:
         logging.info('Restored backup universe keys successfully!')
         print(json.dumps({"success": True}))
 
+    # At exit callbacks
     def cleanup_temporary_directory(self, tmp_dir):
         """
         Callback run on exit to clean up temporary directories.
@@ -2074,6 +2138,8 @@ class YBBackup:
                 self.backup_table()
             elif self.args.command == 'restore_keys':
                 self.restore_keys()
+            elif self.args.command == 'delete':
+                self.delete_backup()
             else:
                 logging.error('Command was not specified')
                 print(json.dumps({"error": "Command was not specified"}))

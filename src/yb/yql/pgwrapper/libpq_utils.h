@@ -36,6 +36,8 @@ struct PGResultClear {
 
 typedef std::unique_ptr<PGresult, PGResultClear> PGResultPtr;
 
+Result<bool> GetBool(PGresult* result, int row, int column);
+
 Result<int32_t> GetInt32(PGresult* result, int row, int column);
 
 Result<int64_t> GetInt64(PGresult* result, int row, int column);

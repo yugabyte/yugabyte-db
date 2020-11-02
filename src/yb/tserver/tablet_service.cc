@@ -137,7 +137,7 @@ DEFINE_int32(num_concurrent_backfills_allowed, 8,
 
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
 
-DEFINE_int32(max_stale_read_bound_time_ms, 0, "If we are allowed to read from followers, "
+DEFINE_int32(max_stale_read_bound_time_ms, 60000, "If we are allowed to read from followers, "
              "specify the maximum time a follower can be behind by using the last message received "
              "from the leader. If set to zero, a read can be served by a follower regardless of "
              "when was the last time it received a message from the leader or how far behind this"
@@ -205,9 +205,11 @@ DEFINE_test_flag(bool, assert_reads_served_by_follower, false, "If set, we verif
                  "consistency level is CONSISTENT_PREFIX, and that this server is not the leader "
                  "for the tablet");
 
-DEFINE_test_flag(bool, simulate_time_out_failures, false,
-                 "If true, we will randomly mark replicas as failed to simulate time out failures."
-                 "The periodic refresh of the lookup cache will eventually mark them as available");
+DEFINE_test_flag(int32, simulate_time_out_failures_msecs, 0, "If greater than 0, we will randomly "
+                 "mark read requests as timed out and sleep for the specificed amount of time by "
+                 "this flag to simulate time out failures. The requester will mark the timed out "
+                 "replica as failed, and its periodic refresh mechanism for the lookup cache will "
+                 "mark them as available.");
 
 DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
                  "Probability to respond that write request is failed");
@@ -223,6 +225,9 @@ DEFINE_test_flag(int32, txn_status_table_tablet_creation_delay_ms, 0,
 
 DEFINE_test_flag(int32, leader_stepdown_delay_ms, 0,
                  "Amount of time to delay before starting a leader stepdown change.");
+
+DEFINE_test_flag(int32, transactional_read_delay_ms, 0,
+                 "Amount of time to delay between transaction status check and reading start.");
 
 namespace yb {
 namespace tserver {
@@ -402,7 +407,7 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
     }
 
     if (!status_.ok()) {
-      LOG(INFO) << "Write failed: " << status_;
+      LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status_;
       SetupErrorAndRespond(get_error(), status_, code_, context_.get());
       return;
     }
@@ -690,8 +695,9 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  bool all_past_backfill = true;
   bool all_at_backfill = true;
+  bool all_past_backfill = true;
+  bool is_pg_table = tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE;
   const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map();
   std::vector<IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
@@ -704,11 +710,20 @@ void TabletServiceAdminImpl::BackfillIndex(
 
       IndexInfoPB idx_info_pb;
       index_info->ToPB(&idx_info_pb);
-      all_at_backfill &=
-          idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
+      if (!is_pg_table) {
+        all_at_backfill &=
+            idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
+      } else {
+        // YSQL tables don't use all the docdb permissions, so use this approximation.
+        // TODO(jason): change this back to being like YCQL once we bring the docdb permission
+        // DO_BACKFILL back (issue #6218).
+        all_at_backfill &=
+            idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_WRITE_AND_DELETE;
+      }
       all_past_backfill &=
           idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
     } else {
+      LOG(WARNING) << "index " << idx.table_id() << " not found in tablet matadata";
       all_at_backfill = false;
     }
   }
@@ -739,7 +754,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   }
 
   Result<string> resume_from = STATUS(InternalError, "placeholder");
-  if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
+  if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
           resp->mutable_error(),
@@ -914,13 +929,16 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   UpdateClock(*req, server_->Clock());
 
   LeaderTabletPeer tablet;
-  if (req->state().status() != CLEANUP) {
-    tablet = LookupLeaderTabletOrRespond(
-        server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
-  } else {
+  auto txn_status = req->state().status();
+  auto cleanup = txn_status == TransactionStatus::IMMEDIATE_CLEANUP ||
+                 txn_status == TransactionStatus::GRACEFUL_CLEANUP;
+  if (cleanup) {
     tablet.peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
         server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
     tablet.leader_term = OpId::kUnknownTerm;
+  } else {
+    tablet = LookupLeaderTabletOrRespond(
+        server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
   }
   if (!tablet) {
     return;
@@ -931,8 +949,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
-  if (req->state().status() == TransactionStatus::APPLYING ||
-      req->state().status() == TransactionStatus::CLEANUP) {
+  if (req->state().status() == TransactionStatus::APPLYING || cleanup) {
     tablet.peer->tablet()->transaction_participant()->Handle(std::move(state), tablet.leader_term);
   } else {
     tablet.peer->tablet()->transaction_coordinator()->Handle(std::move(state), tablet.leader_term);
@@ -1396,14 +1413,21 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   // For postgres requests check that the syscatalog version matches.
   if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
+    uint64_t last_breaking_catalog_version = 0; // unset.
     for (const auto& pg_req : req->pgsql_write_batch()) {
-      if (pg_req.has_ysql_catalog_version() &&
-          pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
-        SetupErrorAndRespond(resp->mutable_error(),
-            STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while processing "
-                                       "this query. Try Again."),
-            TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-        return;
+      if (pg_req.has_ysql_catalog_version()) {
+        if (last_breaking_catalog_version == 0) {
+          // Initialize last breaking version if not yet set.
+          server_->get_ysql_catalog_version(nullptr /* current_version */,
+                                            &last_breaking_catalog_version);
+        }
+        if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
+          SetupErrorAndRespond(resp->mutable_error(),
+              STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
+                                        "processing this query. Try again."),
+              TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+          return;
+        }
       }
     }
   }
@@ -1526,6 +1550,8 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
         auto now_micros = server_->Clock()->Now().GetPhysicalValueMicros();
         auto follower_staleness_ms = (now_micros - safe_time_micros) / 1000;
         if (follower_staleness_ms > FLAGS_max_stale_read_bound_time_ms) {
+          VLOG(1) << "Rejecting stale read with staleness "
+                     << follower_staleness_ms << " ms";
           SetupErrorAndRespond(resp->mutable_error(), STATUS(IllegalState, "Stale follower"),
                                TabletServerErrorPB::STALE_FOLLOWER, context);
           return false;
@@ -1722,6 +1748,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       isolation_level = *isolation_level_result;
     }
     serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
+
+    if (PREDICT_FALSE(FLAGS_TEST_transactional_read_delay_ms > 0)) {
+      LOG(INFO) << "Delaying transactional read for "
+                << FLAGS_TEST_transactional_read_delay_ms << " ms.";
+      SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_transactional_read_delay_ms));
+    }
+
 #if defined(DUMP_READ)
     if (req->pgsql_batch().size() > 0) {
       LOG(INFO) << CHECK_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()))
@@ -1735,15 +1768,22 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
   RowMarkType batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
   if (!req->pgsql_batch().empty()) {
+    uint64_t last_breaking_catalog_version = 0; // unset.
     for (const auto& pg_req : req->pgsql_batch()) {
       // For postgres requests check that the syscatalog version matches.
-      if (pg_req.has_ysql_catalog_version() &&
-          pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
-        SetupErrorAndRespond(resp->mutable_error(),
-            STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while processing "
-                                       "this query. Try Again."),
-            TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+      if (pg_req.has_ysql_catalog_version()) {
+        if (last_breaking_catalog_version == 0) {
+          // Initialize last breaking version if not yet set.
+          server_->get_ysql_catalog_version(nullptr /* current_version */,
+                                            &last_breaking_catalog_version);
+        }
+        if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
+          SetupErrorAndRespond(resp->mutable_error(),
+              STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
+                                        "processing this query. Try again."),
+              TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
         return;
+        }
       }
       RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
       if (IsValidRowMarkType(current_row_mark)) {
@@ -1782,8 +1822,9 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     leader_peer.leader_term = yb::OpId::kUnknownTerm;
   }
 
-  if (PREDICT_FALSE(FLAGS_TEST_simulate_time_out_failures) && RandomUniformInt(0, 10) < 3) {
-    LOG(INFO) << "Marking request as timed out for test";
+  if (FLAGS_TEST_simulate_time_out_failures_msecs > 0 && RandomUniformInt(0, 10) < 2) {
+    LOG(INFO) << "Marking request as timed out for test: " << req->ShortDebugString();
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_simulate_time_out_failures_msecs));
     SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, "timed out for test"),
         TabletServerErrorPB::UNKNOWN_ERROR, &context);
     return;
@@ -1868,6 +1909,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
+  if (req->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX) {
+    auto tablet = down_cast<Tablet*>(read_context.tablet.get());
+    if (tablet) {
+      tablet->metrics()->consistent_prefix_read_requests->Increment();
+    }
+  }
+
   CompleteRead(&read_context);
 }
 
@@ -1877,17 +1925,19 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
     read_context->context->ResetRpcSidecars();
     VLOG(1) << "Read time: " << read_context->read_time
             << ", safe: " << read_context->safe_ht_to_read;
-    Result<ReadHybridTime> result{ReadHybridTime()};
-    {
-      LongOperationTracker long_operation_tracker("Read", 1s);
-      result = DoRead(read_context);
-    }
+    const auto result = DoRead(read_context);
     if (!result.ok()) {
       WARN_NOT_OK(result.status(), "DoRead");
       SetupErrorAndRespond(
           read_context->resp->mutable_error(), result.status(), TabletServerErrorPB::UNKNOWN_ERROR,
           read_context->context);
       return;
+    }
+    if (read_context->allow_retry && read_context->read_time &&
+        read_context->read_time == *result) {
+      YB_LOG_EVERY_N_SECS(DFATAL, 5)
+          << __func__ << ", restarting read with the same read time: " << *result << THROTTLE_MSG;
+      read_context->allow_retry = false;
     }
     read_context->read_time = *result;
     // If read was successful, then restart time is invalid. Finishing.
@@ -1966,6 +2016,24 @@ void HandleRedisReadRequestAsync(
 }
 
 Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
+  Result<ReadHybridTime> result{ReadHybridTime()};
+  {
+    LongOperationTracker long_operation_tracker("Read", 1s);
+    result = DoReadImpl(read_context);
+  }
+  // Check transaction is still alive in case read was successful
+  // and data has been written earlier into current tablet in context of current transaction.
+  const auto* transaction =
+      read_context->req->has_transaction() ? &read_context->req->transaction() : nullptr;
+  if (result.ok() && transaction && transaction->isolation() == NON_TRANSACTIONAL) {
+    const auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction->transaction_id()));
+    auto& txn_participant = *down_cast<Tablet&>(*read_context->tablet).transaction_participant();
+    RETURN_NOT_OK(txn_participant.CheckAborted(txn_id));
+  }
+  return result;
+}
+
+Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) {
   auto read_tx = VERIFY_RESULT(
       tablet::ScopedReadOperation::Create(
           read_context->tablet.get(), read_context->require_lease, read_context->read_time));
@@ -2043,9 +2111,10 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
         DCHECK_GT(result.restart_read_ht, read_context->read_time.read);
         VLOG(1) << "Restart read required at: " << result.restart_read_ht
                 << ", original: " << read_context->read_time;
-        read_context->read_time.read = result.restart_read_ht;
-        read_context->read_time.local_limit = read_context->safe_ht_to_read;
-        return read_context->read_time;
+        auto read_time = read_context->read_time;
+        read_time.read = result.restart_read_ht;
+        read_time.local_limit = read_context->safe_ht_to_read;
+        return read_time;
       }
       result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_ql_batch()->Swap(&result.response);
@@ -2055,12 +2124,17 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
 
   if (!read_context->req->pgsql_batch().empty()) {
     ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(read_context->req);
+    size_t total_num_rows_read = 0;
     for (PgsqlReadRequestPB& pgsql_read_req : *mutable_req->mutable_pgsql_batch()) {
       tablet::PgsqlReadRequestResult result;
       TRACE("Start HandlePgsqlReadRequest");
+      size_t num_rows_read;
       RETURN_NOT_OK(read_context->tablet->HandlePgsqlReadRequest(
           read_context->context->GetClientDeadline(), read_tx.read_time(), pgsql_read_req,
-          read_context->req->transaction(), &result));
+          read_context->req->transaction(), &result, &num_rows_read));
+
+      total_num_rows_read += num_rows_read;
+
       TRACE("Done HandlePgsqlReadRequest");
       if (result.restart_read_ht.is_valid()) {
         VLOG(1) << "Restart read required at: " << result.restart_read_ht;
@@ -2070,6 +2144,12 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
       }
       result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_pgsql_batch()->Swap(&result.response);
+    }
+
+    if (read_context->req->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX &&
+        total_num_rows_read > 0) {
+      auto tablet = down_cast<Tablet*>(read_context->tablet.get());
+      tablet->metrics()->pgsql_consistent_prefix_read_rows->IncrementBy(total_num_rows_read);
     }
     return ReadHybridTime();
   }
@@ -2253,13 +2333,14 @@ void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* r
   if (!scope) {
     return;
   }
-  Status s = scope->StartElection(
-      { consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
-        req->has_committed_index(),
-        req->committed_index(),
-        req->has_originator_uuid() ? req->originator_uuid() : std::string(),
-        consensus::TEST_SuppressVoteRequest(
-          req->has_suppress_vote_request() && req->suppress_vote_request()) });
+
+  Status s = scope->StartElection(consensus::LeaderElectionData {
+    .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+    .pending_commit = req->has_committed_index(),
+    .must_be_committed_opid = req->committed_index(),
+    .originator_uuid = req->has_originator_uuid() ? req->originator_uuid() : std::string(),
+    .suppress_vote_request = consensus::TEST_SuppressVoteRequest(req->suppress_vote_request()),
+    .initial_election = req->initial_election() });
   scope.CheckStatus(s, resp);
 }
 

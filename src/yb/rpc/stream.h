@@ -34,7 +34,7 @@ class MemTracker;
 namespace rpc {
 
 struct ProcessDataResult {
-  size_t consumed;
+  size_t consumed = 0;
   Slice buffer;
   size_t bytes_to_skip = 0;
 

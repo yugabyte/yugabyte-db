@@ -191,6 +191,44 @@ typedef std::unordered_map<std::string, std::unique_ptr<RemoteTabletServer>> Tab
 YB_STRONGLY_TYPED_BOOL(UpdateLocalTsState);
 YB_STRONGLY_TYPED_BOOL(IncludeFailedReplicas);
 
+struct ReplicasCount {
+  ReplicasCount(int expected_live_replicas, int expected_read_replicas) {
+    SetExpectedReplicas(expected_live_replicas, expected_read_replicas);
+  }
+  int expected_live_replicas = 0;
+
+  int expected_read_replicas = 0;
+
+  // Number of live replicas in replicas_.
+  int num_alive_live_replicas = 0;
+
+  // Number of read replicas in replicas_.
+  int num_alive_read_replicas = 0;
+
+  bool IsReplicasCountConsistent() {
+    return (expected_live_replicas + expected_read_replicas) ==
+    (num_alive_live_replicas + num_alive_read_replicas);
+  }
+
+  // Set expected_live_replicas and expected_read_replicas.
+  void SetExpectedReplicas(int live_replicas, int read_replicas) {
+    expected_live_replicas = live_replicas;
+    expected_read_replicas = read_replicas;
+  }
+
+  void SetAliveReplicas(int live_replicas, int read_replicas) {
+    num_alive_live_replicas = live_replicas;
+    num_alive_read_replicas = read_replicas;
+  }
+
+  std::string ToString() {
+    return Format(
+        " live replicas $0, read replicas $1, expected live replicas $2, expected read replicas $3",
+        num_alive_live_replicas, num_alive_read_replicas,
+        expected_live_replicas, expected_read_replicas);
+  }
+};
+
 // The client's view of a given tablet. This object manages lookups of
 // the tablet's locations, status, etc.
 //
@@ -199,11 +237,13 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
  public:
   RemoteTablet(std::string tablet_id,
                Partition partition,
-               uint64 split_depth)
+               uint64 split_depth,
+               const TabletId& split_parent_tablet_id)
       : tablet_id_(std::move(tablet_id)),
         log_prefix_(Format("T $0: ", tablet_id_)),
         partition_(std::move(partition)),
         split_depth_(split_depth),
+        split_parent_tablet_id_(split_parent_tablet_id),
         stale_(false) {
   }
 
@@ -237,6 +277,15 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   // Return the number of failed replicas for this tablet.
   int GetNumFailedReplicas() const;
+
+  bool IsReplicasCountConsistent() const;
+
+  string ReplicasCountToString() const;
+
+  // Set expected_live_replicas and expected_read_replicas.
+  void SetExpectedReplicas(int expected_live_replicas, int expected_read_replicas);
+
+  void SetAliveReplicas(int alive_live_replicas, int alive_read_replicas);
 
   // Return the tablet server which is acting as the current LEADER for
   // this tablet, provided it hasn't failed.
@@ -289,6 +338,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // See TabletLocationsPB::split_depth.
   uint64 split_depth() const { return split_depth_; }
 
+  const TabletId& split_parent_tablet_id() const { return split_parent_tablet_id_; }
+
   int64_t lookups_without_new_replicas() const { return lookups_without_new_replicas_; }
 
  private:
@@ -299,12 +350,15 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   const std::string log_prefix_;
   const Partition partition_;
   const uint64 split_depth_;
+  const TabletId split_parent_tablet_id_;
 
   // All non-const members are protected by 'mutex_'.
   mutable rw_spinlock mutex_;
   bool stale_;
   bool is_split_ = false;
   std::vector<RemoteReplica> replicas_;
+
+  std::atomic<ReplicasCount> replicas_count_{{0, 0}};
 
   // Last time this object was refreshed. Initialized to MonoTime::Min() so we don't have to be
   // checking whether it has been initialized everytime we use this value.
@@ -319,6 +373,12 @@ class ToStringable {
  public:
   virtual std::string ToString() const = 0;
   virtual ~ToStringable() = default;
+};
+
+class RequestCleanup {
+ public:
+  virtual void CleanupRequest() = 0;
+  virtual ~RequestCleanup() = default;
 };
 
 // Manager of RemoteTablets and RemoteTabletServers. The client consults
@@ -348,13 +408,13 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   //
   // NOTE: the memory referenced by 'table' must remain valid until 'callback'
   // is invoked.
-  void LookupTabletByKey(const YBTable* table,
+  void LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
                          const std::string& partition_key,
                          CoarseTimePoint deadline,
                          LookupTabletCallback callback);
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
-      const YBTable* table,
+      const std::shared_ptr<const YBTable>& table,
       const std::string& partition_key,
       CoarseTimePoint deadline) {
     return MakeFuture<Result<internal::RemoteTabletPtr>>([&](auto callback) {
@@ -362,7 +422,10 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
     });
   }
 
+  // If table is specified and cache is not used or has no tablet leader also checks whether table
+  // partitions are stale and returns ClientErrorCode::kTablePartitionsAreStale in that case.
   void LookupTabletById(const TabletId& tablet_id,
+                        const std::shared_ptr<const YBTable>& table,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
                         UseCache use_cache);
@@ -394,7 +457,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   CHECKED_STATUS ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
       const std::string* partition_group_start,
-      int64_t request_no);
+      RequestCleanup* cleanup);
 
   void InvalidateTableCache(const TableId& table_id);
 
@@ -443,17 +506,13 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   struct TableData {
     std::map<PartitionKey, RemoteTabletPtr> tablets_by_partition;
     std::unordered_map<PartitionGroupKey, LookupDataGroup> tablet_lookups_by_group;
-    // When replacing tablet which has been split with post-split tablet in tablets_by_partition
-    // it is moved into split_tablets and added to the end of the chain corresponding to its
-    // partition start key.
-    std::map<PartitionKey, std::vector<RemoteTabletPtr>> split_tablets;
     bool stale = false;
   };
 
   // Lookup the given tablet by key, only consulting local information.
   // Returns true and sets *remote_tablet if successful.
   RemoteTabletPtr LookupTabletByKeyFastPathUnlocked(
-      const YBTable* table,
+      const std::shared_ptr<const YBTable>& table,
       const std::string& partition_key) REQUIRES_SHARED(mutex_);
 
   RemoteTabletPtr LookupTabletByIdFastPathUnlocked(const TabletId& tablet_id)
@@ -468,10 +527,12 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Notify appropriate callbacks that lookup of specified partition group of specified table
   // was failed because of specified status.
   void LookupByKeyFailed(
-      const YBTable* table, const std::string& partition_group_start, int64_t request_no,
-      const Status& status);
+      const std::shared_ptr<const YBTable>& table, const std::string& partition_group_start,
+      int64_t request_no, const Status& status);
 
-  void LookupByIdFailed(const TabletId& tablet_id, int64_t request_no, const Status& status);
+  void LookupByIdFailed(
+      const TabletId& tablet_id, const std::shared_ptr<const YBTable>& table, int64_t request_no,
+      const Status& status);
 
   class CallbackNotifier;
 
@@ -488,7 +549,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       CallbackNotifier* notifier) REQUIRES(mutex_);
 
   RemoteTabletPtr FastLookupTabletByKeyUnlocked(
-      const YBTable* table,
+      const std::shared_ptr<const YBTable>& table,
       const std::string& partition_start) REQUIRES_SHARED(mutex_);
 
   // If `tablet` is a result of splitting of pre-split tablet for which we already have
@@ -500,23 +561,16 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // pre-split tablet to post-split tablets.
   void MaybeUpdateClientRequests(const TableData& table_data, const RemoteTablet& tablet);
 
-  // Returns the nearest (known to MetaCache) split ancestor for the tablet, i.e. its partition
-  // strictly contains tablet's partition. Nearest mean it has maximum split_dept possible.
-  //
-  // Uses TableData::split_tablets where we store pre-split tablets which have been replaced by
-  // post-split tablets in addition to TableData::tablets_by_partition.
-  RemoteTabletPtr GetNearestSplitAncestorUnlocked(
-      const TableData& table_data, const RemoteTablet& tablet);
-
   template <class Lock>
   bool DoLookupTabletByKey(
-      const YBTable* table, const std::string& partition_start, CoarseTimePoint deadline,
-      LookupTabletCallback* callback, const std::string** partition_group_start);
+      const std::shared_ptr<const YBTable>& table, const std::string& partition_start,
+      CoarseTimePoint deadline, LookupTabletCallback* callback,
+      const std::string** partition_group_start);
 
   template <class Lock>
   bool DoLookupTabletById(
-      const TabletId& tablet_id, CoarseTimePoint deadline, UseCache use_cache,
-      LookupTabletCallback* callback);
+      const TabletId& tablet_id, const std::shared_ptr<const YBTable>& table,
+      CoarseTimePoint deadline, UseCache use_cache, LookupTabletCallback* callback);
 
   YBClient* const client_;
 
