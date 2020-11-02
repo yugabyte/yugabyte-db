@@ -265,7 +265,7 @@ If you encounter any issues when installing or using a particular extension, fil
 [PostGIS](https://postgis.net/) is a spatial database extender for PostgreSQL-compatible object-relational databases.
 The simplest way to set it up locally is to install it together with regular PostgreSQL.
 
-For instance, on macOS, you can:
+#### macOS
 
 - download and install [Postgres.app](https://postgresapp.com/)
 - install with Homebrew:
@@ -274,7 +274,35 @@ For instance, on macOS, you can:
     $ brew install postgres && brew install postgis
     ```
 
-Now follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create
+#### Ubuntu
+Add the [PostgreSQL APT sources](https://www.postgresql.org/download/linux/ubuntu/). Then you can install:
+
+```shell script
+sudo apt-get install postgresql-11 postgresql-11-postgis-3
+```
+
+#### CentOS
+You can get the YUM repository from [PostgreSQL website](https://www.postgresql.org/download/linux/redhat/). Then you 
+can use `yum` or `dnf` to install:
+```sh
+sudo yum install postgresql11-server postgis31_11
+```
+{{< note title="Note" >}}
+If you have multiple PostgreSQL versions installed, make sure you're selecting the correct `pg_config`. On an Ubuntu 18.04 environment 
+with multiple PostgreSQL versions installed:
+```sh
+$ pg_config --version
+PostgreSQL 13.0 (Ubuntu 13.0-1.pgdg18.04+1)
+$ /usr/lib/postgresql/11/bin/pg_config --version
+PostgreSQL 11.9 (Ubuntu 11.9-1.pgdg18.04+1)
+```
+So you need to make sure you're using the correct `pg_config`. In this case, `/usr/lib/postgresql/11/bin/pg_config`. 
+
+On CentOS, the correct path is `/usr/pgsql-11/bin/pg_config`.
+{{< /note >}}
+
+
+Now, follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create
 the extension.
 
 ```sh
