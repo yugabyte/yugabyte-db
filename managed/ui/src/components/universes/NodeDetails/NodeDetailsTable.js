@@ -129,11 +129,14 @@ export default class NodeDetailsTable extends Component {
       </Fragment>);
     };
 
-    const getNodeAction = function(cell, row, type) {
-      const hideIP = !isNotHidden(customer.currentCustomer.data.features,
-                                  "universes.proxyIp");
-      const actions_disabled = isDisabled(customer.currentCustomer.data.features,
-                                          "universes.actions");
+    const getNodeAction = function (cell, row) {
+      const hideIP = !isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp');
+      const actions_disabled = isDisabled(
+        customer.currentCustomer.data.features,
+        'universes.actions'
+      );
+      const hideQueries = !isNotHidden(customer.currentCustomer.data.features,
+        'universes.details.queries') || !row.isTServer;
 
       if (hideIP) {
         const index = row.allowedActions.indexOf('CONNECT');
@@ -141,9 +144,15 @@ export default class NodeDetailsTable extends Component {
           row.allowedActions.splice(index, 1);
         }
       }
-      return (<NodeAction currentRow={row} providerUUID={providerUUID}
-                         disableConnect={hideIP}
-                         disabled={actions_disabled} />);
+      return (
+        <NodeAction
+          currentRow={row}
+          providerUUID={providerUUID}
+          disableConnect={hideIP}
+          disableQueries={hideQueries}
+          disabled={actions_disabled}
+        />
+      );
     };
 
     const formatFloatValue = function(cell, row) {

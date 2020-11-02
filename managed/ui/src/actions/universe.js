@@ -622,3 +622,19 @@ export function updateBackupStateResponse(response) {
     payload: response
   };
 }
+
+export function fetchLiveQueries(universeUUID, cancelFn) {
+  const customerUUID = localStorage.getItem("customerId");
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/live_queries`;
+  let request;
+  if (cancelFn) {
+    const CancelToken = axios.CancelToken;
+    request = axios.get(endpoint, {
+      cancelToken: new CancelToken(cancelFn)
+    });
+  } else {
+    request = axios.get(endpoint);
+  }
+
+  return request;
+}

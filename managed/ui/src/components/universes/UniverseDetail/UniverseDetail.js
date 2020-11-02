@@ -13,7 +13,13 @@ import { UniverseFormContainer, UniverseStatusContainer, NodeDetailsContainer,
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from '../../tables';
-import { isEmptyObject, isNonEmptyObject, isNonEmptyArray, isEmptyArray } from '../../../utils/ObjectUtils';
+import { LiveQueries } from '../../queries';
+import {
+  isEmptyObject,
+  isNonEmptyObject,
+  isNonEmptyArray,
+  isEmptyArray
+} from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { hasLiveNodes } from '../../../utils/UniverseUtils';
@@ -277,7 +283,20 @@ class UniverseDetail extends Component {
             </div>
           </Tab.Pane>,
 
-        isNotHidden(currentCustomer.data.features, "universes.details.replication") &&
+        isNotHidden(currentCustomer.data.features, 'universes.details.queries') && (
+          <Tab.Pane
+            eventKey={"queries"}
+            tabtitle="Queries"
+            key="queries-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
+          >
+            <LiveQueries />
+          </Tab.Pane>
+        ),
+
+        isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
           <Tab.Pane
             eventKey={"replication"}
             tabtitle="Replication"

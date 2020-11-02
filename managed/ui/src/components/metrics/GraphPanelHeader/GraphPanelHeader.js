@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import { Link } from 'react-router';
 import { Dropdown, MenuItem, FormControl } from 'react-bootstrap';
 import { DateTimePicker } from 'react-widgets';
 import momentLocalizer from "react-widgets-moment";
@@ -290,6 +291,9 @@ class GraphPanelHeader extends Component {
           selectedUniverse={self.state.currentSelectedUniverse} />
       );
     }
+    // TODO: Need to fix handling of query params on Metrics tab
+    const liveQueriesLink = this.state.currentSelectedUniverse && this.state.nodeName !== 'all' &&
+      `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
     return (
       <YBPanelItem
         className="graph-panel"
@@ -300,10 +304,22 @@ class GraphPanelHeader extends Component {
               <FlexGrow power={1}>
                 <div className="filter-container">
                   {universePicker}
-                  <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}
-                              selectedUniverse={this.state.currentSelectedUniverse}
-                              selectedNode={this.state.currentSelectedNode}/>
-                  <YBButtonLink btnIcon="fa fa-refresh" btnClass="btn btn-default refresh-btn" onClick={this.refreshGraphQuery}/>
+                  <NodePicker
+                    {...this.props}
+                    nodeItemChanged={this.nodeItemChanged}
+                    selectedUniverse={this.state.currentSelectedUniverse}
+                    selectedNode={this.state.currentSelectedNode}
+                  />
+                  <YBButtonLink
+                    btnIcon="fa fa-refresh"
+                    btnClass="btn btn-default refresh-btn"
+                    onClick={this.refreshGraphQuery}
+                  />
+                  {liveQueriesLink && 
+                    <Link to={liveQueriesLink} style={{marginLeft: '15px'}}>
+                      <i className="fa fa-search" /> See Live Queries
+                    </Link>
+                  }
                 </div>
               </FlexGrow>
               <FlexGrow>
