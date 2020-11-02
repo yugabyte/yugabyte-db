@@ -1,7 +1,7 @@
 ---
-title: Fix 2/3 failed peers
-linkTitle: Fix 2/3 failed peers
-description: Fix 2/3 failed peers
+title: Manual remote bootstrap when a majority of peers fail
+linkTitle: Manual remote bootstrap when a majority of peers fail
+description: Manual remote bootstrap when a majority of peers fail
 menu:
   latest:
     parent: troubleshoot-cluster
