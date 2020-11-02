@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import { Alert } from 'react-bootstrap';
 import _ from 'lodash';
 import {
   isValidObject,
@@ -16,12 +17,13 @@ import {
 } from '../../config';
 import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
-import './OnPremConfiguration.scss';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
+import './OnPremConfiguration.scss';
 
 const PROVIDER_TYPE = 'onprem';
 const initialState = {
+  failedBootstrapMessage: null,
   isEditingProvider: false,
   isJsonEntry: false,
   isAdditionalHostOptionsOpen: false,
@@ -47,9 +49,6 @@ export default class OnPremConfiguration extends Component {
   constructor(props) {
     super(props);
     this.state = _.clone(initialState, true);
-  }
-
-  UNSAFE_componentWillMount() {
     this.props.resetConfigForm();
   }
 
@@ -109,6 +108,17 @@ export default class OnPremConfiguration extends Component {
       }
       this.setState({ bootstrapSteps: bootstrapSteps });
     }
+
+    // check if provider successfully created but some bootstrap step failed
+    // if so - proceed to the success state but with an error message of the failed step
+    if (bootstrapSteps[0].status === 'Success' && promiseState.isError()) {
+      this.setState({
+        ..._.clone(initialState),
+        failedBootstrapMessage: `${bootstrapSteps[currentStepIndex].name} bootstrap step failed. ${error}`
+      });
+      this.props.onPremConfigSuccess();
+    }
+
     if (isValidObject(response)) {
       const { isEditingProvider, numRegions } = this.state;
       const payloadString = _.clone(this.state.configJsonVal);
@@ -325,10 +335,17 @@ export default class OnPremConfiguration extends Component {
           );
         }
         return (
-          <OnPremSuccessContainer
-            showEditProviderForm={this.showEditProviderForm}
-            params={params}
-          />
+          <>
+            {this.state.failedBootstrapMessage && (
+              <Alert bsStyle="danger" onDismiss={() => this.setState({ failedBootstrapMessage: null })}>
+                {this.state.failedBootstrapMessage}
+              </Alert>
+            )}
+            <OnPremSuccessContainer
+              showEditProviderForm={this.showEditProviderForm}
+              params={params}
+            />
+          </>
         );
       }
     }
