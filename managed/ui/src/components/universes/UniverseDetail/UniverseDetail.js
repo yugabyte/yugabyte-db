@@ -20,6 +20,7 @@ import {
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from '../../tables';
+import { LiveQueries } from '../../queries';
 import {
   isEmptyObject,
   isNonEmptyObject,
@@ -315,6 +316,20 @@ class UniverseDetail extends Component {
                 isKubernetesUniverse={isItKubernetesUniverse}
               />
             </div>
+          </Tab.Pane>
+        ),
+
+        
+        isNotHidden(currentCustomer.data.features, 'universes.details.queries') && (
+          <Tab.Pane
+            eventKey={"queries"}
+            tabtitle="Queries"
+            key="queries-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
+          >
+            <LiveQueries />
           </Tab.Pane>
         ),
 

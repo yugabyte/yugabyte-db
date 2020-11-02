@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -33,6 +34,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 
+import com.yugabyte.yw.queries.LiveQueryHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,6 +86,9 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   MetricQueryHelper metricQueryHelper;
+
+  @Inject
+  LiveQueryHelper liveQueryHelper;
 
   @Inject
   play.Configuration appConfig;
@@ -1461,6 +1466,28 @@ public class UniverseController extends AuthenticatedController {
       return Results.status(OK, resultNode);
     } catch (Throwable t) {
       LOG.error("Error updating disk for universe", t);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
+  }
+
+  public Result getLiveQueries(UUID customerUUID, UUID universeUUID) {
+    LOG.info("Live queries for customer {}, universe {}", customerUUID, universeUUID);
+
+    Universe universe;
+    try {
+       universe = checkCallValid(customerUUID, universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+
+    try {
+      JsonNode resultNode = liveQueryHelper.query(universe);
+      return Results.status(OK, resultNode);
+    } catch (NullPointerException e) {
+      LOG.error("Universe does not have a private IP or DNS", e);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Universe failed to fetch live queries");
+    } catch (Throwable t) {
+      LOG.error("Error retrieving queries for universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
     }
   }
