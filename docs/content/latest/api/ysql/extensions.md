@@ -296,7 +296,9 @@ PostgreSQL 13.0 (Ubuntu 13.0-1.pgdg18.04+1)
 $ /usr/lib/postgresql/11/bin/pg_config --version
 PostgreSQL 11.9 (Ubuntu 11.9-1.pgdg18.04+1)
 ```
-So you need to make sure you're using the correct `pg_config`. In this case, `/usr/lib/postgresql/11/bin/pg_config`.
+So you need to make sure you're using the correct `pg_config`. In this case, `/usr/lib/postgresql/11/bin/pg_config`. 
+
+On CentOS, the correct path is `/usr/pgsql-11/bin/pg_config`.
 {{< /note >}}
 
 
