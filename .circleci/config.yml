@@ -16,10 +16,10 @@ jobs:
       - run:
           name: Build YugabyteDB
           command: |
-            brew install pkg-config
-            sudo mkdir -p /opt/yb-build/{thirdparty,brew,tmp}
-            sudo chmod 777 /opt/yb-build/{thirdparty,brew,tmp}
+            #brew install pkg-config
             echo "Building in directory: $PWD"
+            set -x
+            sudo mkdir -p -m 0777 /opt/yb-build
             ./yb_build.sh << parameters.flavor >>
 
 workflows:
