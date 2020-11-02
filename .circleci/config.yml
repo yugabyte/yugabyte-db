@@ -29,7 +29,7 @@ workflows:
 
   welcome:
     jobs:
-      - welcome/run
+      - welcome/run:
           filters:
             branches:
               only: circleci-project-setup
