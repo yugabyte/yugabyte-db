@@ -40,7 +40,7 @@ These are the steps to follow in such scenario:
 
 - restart `NODE_GOOD` so it can properly observe the changed state and data on `NODE_BAD1`
 
-At this point, `NODE_BAD2` should be automatically fixed and removed from its quorum, as it has gotten a majority of health peers.
+At this point, `NODE_BAD2` should be automatically fixed and removed from its quorum, as it has gotten a majority of healthy peers.
 
 {{< note title="Note" >}}
 
