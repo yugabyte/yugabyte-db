@@ -144,12 +144,14 @@ export default class NodeDetailsTable extends Component {
       );
     };
 
-    const getNodeAction = function (cell, row, type) {
+    const getNodeAction = function (cell, row) {
       const hideIP = !isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp');
       const actions_disabled = isDisabled(
         customer.currentCustomer.data.features,
         'universes.actions'
       );
+      const hideQueries = !isNotHidden(customer.currentCustomer.data.features,
+        'universes.details.queries') || !row.isTServer;
 
       if (hideIP) {
         const index = row.allowedActions.indexOf('CONNECT');
@@ -162,6 +164,7 @@ export default class NodeDetailsTable extends Component {
           currentRow={row}
           providerUUID={providerUUID}
           disableConnect={hideIP}
+          disableQueries={hideQueries}
           disabled={actions_disabled}
         />
       );

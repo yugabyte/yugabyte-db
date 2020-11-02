@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
+import { browserHistory } from 'react-router';
 import PropTypes from 'prop-types';
 import { NodeActionModalContainer, NodeConnectModal } from '../../universes';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
@@ -11,12 +12,13 @@ import _ from 'lodash';
 
 export default class NodeAction extends Component {
   constructor(props) {
-    super(props);
+    super();
     this.state = {
       showModal: false,
       actionType: null
     };
     this.closeModal = this.closeModal.bind(this);
+    this.handleLiveQueryClick = this.handleLiveQueryClick.bind(this);
   }
 
   static propTypes = {
@@ -35,10 +37,8 @@ export default class NodeAction extends Component {
   }
 
   closeModal() {
-    this.setState((prevState, props) => {
-      return {
-        showModal: false
-      };
+    this.setState({
+      showModal: false      
     });
   }
 
@@ -60,6 +60,8 @@ export default class NodeAction extends Component {
       caption = 'Connect';
     } else if (actionType === 'START_MASTER') {
       caption = 'Start Master';
+    } else if (actionType === 'QUERIES') {
+      caption = 'Show Live Queries';
     }
     return caption;
   }
@@ -83,13 +85,27 @@ export default class NodeAction extends Component {
       btnIcon = 'fa fa-link';
     } else if (actionType === 'START_MASTER') {
       btnIcon = 'fa fa-play-circle';
+    } else if (actionType === 'QUERIES') {      
+      btnIcon = 'fa fa-search';
     }
 
     return <YBLabelWithIcon icon={btnIcon}>{btnLabel}</YBLabelWithIcon>;
   }
 
+  handleLiveQueryClick() {
+    const { currentRow } = this.props;
+    const path = browserHistory.getCurrentLocation().pathname;
+    let universeUrl = '';
+    if (path[path.length - 1] === '/') {
+      universeUrl = path.substring(0, path.lastIndexOf('/', path.length - 2));
+    } else {
+      universeUrl = path.substring(0, path.lastIndexOf('/'));
+    }
+    browserHistory.push(`${universeUrl}/queries?nodeName=${currentRow.name}`);    
+  }
+
   render() {
-    const { currentRow, providerUUID, disableConnect, disabled } = this.props;
+    const { currentRow, providerUUID, disableConnect, disableQueries, disabled } = this.props;
     const actionButtons = currentRow.allowedActions.map((actionType, idx) => {
       const btnId = _.uniqueId('node_action_btn_');
       return (
@@ -124,6 +140,12 @@ export default class NodeAction extends Component {
             />
           </Fragment>
         ) : null}
+        {!disableQueries &&
+          <MenuItem key="queries_action_btn" eventKey="queries_action_btn"
+            disabled={disabled} onClick={this.handleLiveQueryClick}>
+            {this.getLabel('QUERIES')}
+          </MenuItem>
+        }
       </DropdownButton>
     );
   }
