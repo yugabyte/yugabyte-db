@@ -3,6 +3,27 @@ version: 2.1
 orbs:
   welcome: circleci/welcome-orb@0.4.1
 
+jobs:
+  build:
+    parameters:
+      flavor:
+        type: string
+
+    macos:
+      xcode: 11.7.0
+
+    steps:
+      - checkout
+
+      - run:
+          name: Build YugabyteDB
+          command: |
+            brew install autoconf automake pkg-config
+            sudo mkdir -p /opt/yb-build/{thirdparty,brew,tmp}
+            sudo chmod 777 /opt/yb-build/{thirdparty,brew,tmp}
+            echo "Building in directory: $PWD"
+            ./yb_build << parameters.flavor >>
+
 workflows:
   version: 2
 
