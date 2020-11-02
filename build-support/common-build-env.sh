@@ -152,6 +152,7 @@ readonly -a VALID_COMPILER_TYPES=(
   clang
   gcc
   gcc8
+  gcc9
   zapcc
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
@@ -884,8 +885,13 @@ find_compiler_by_type() {
       cc_executable+=${YB_GCC_SUFFIX:-}
       cxx_executable+=${YB_GCC_SUFFIX:-}
     ;;
+    # TODO mbautin: remove repetition in handling of various versions of GCC.
+    # TODO mbautin: do we actually need separate YB_GCC<n>_PREFIX environment variables?
     gcc8)
-      if [[ -n ${YB_GCC8_PREFIX:-} ]]; then
+      if is_centos; then
+        cc_executable=/opt/rh/devtoolset-8/root/usr/bin/gcc
+        cxx_executable=/opt/rh/devtoolset-8/root/usr/bin/g++
+      elif [[ -n ${YB_GCC8_PREFIX:-} ]]; then
         if [[ ! -d $YB_GCC8_PREFIX/bin ]]; then
           fatal "Directory YB_GCC_PREFIX/bin ($YB_GCC_PREFIX/bin) does not exist"
         fi
@@ -896,6 +902,23 @@ find_compiler_by_type() {
         cc_executable=$(which gcc-8)
         # shellcheck disable=SC2230
         cxx_executable=$(which g++-8)
+      fi
+    ;;
+    gcc9)
+      if is_centos; then
+        cc_executable=/opt/rh/devtoolset-9/root/usr/bin/gcc
+        cxx_executable=/opt/rh/devtoolset-9/root/usr/bin/g++
+      elif [[ -n ${YB_GCC9_PREFIX:-} ]]; then
+        if [[ ! -d $YB_GCC9_PREFIX/bin ]]; then
+          fatal "Directory YB_GCC_PREFIX/bin ($YB_GCC_PREFIX/bin) does not exist"
+        fi
+        cc_executable=$YB_GCC9_PREFIX/bin/gcc-9
+        cxx_executable=$YB_GCC9_PREFIX/bin/g++-9
+      else
+        # shellcheck disable=SC2230
+        cc_executable=$(which gcc-9)
+        # shellcheck disable=SC2230
+        cxx_executable=$(which g++-9)
       fi
     ;;
     clang)
@@ -1111,11 +1134,26 @@ download_thirdparty() {
 # Detecting Homebrew/Linuxbrew
 # -------------------------------------------------------------------------------------------------
 
+disable_linuxbrew() {
+  export YB_DISABLE_LINUXBREW=1
+  unset YB_LINUXBREW_DIR
+}
+
 detect_brew() {
   if [[ ${YB_DISABLE_LINUXBREW:-0} == "1" ]]; then
+    disable_linuxbrew
+    return
+  fi
+  if [[ -n ${YB_COMPILER_TYPE:-} &&
+        # YB_COMPILER_TYPE could be set to a specific compiler version, like clang10 or gcc8, and
+        # in those cases we know we don't use Linuxbrew.
+        $YB_COMPILER_TYPE != "gcc" &&
+        $YB_COMPILER_TYPE != "clang" ]]; then
+    disable_linuxbrew
     return
   fi
   if is_ubuntu; then
+    disable_linuxbrew
     return
   fi
   if is_linux; then
@@ -1680,6 +1718,14 @@ find_or_download_thirdparty() {
     if ! using_default_thirdparty_dir; then
       export NO_REBUILD_THIRDPARTY=1
     fi
+    return
+  fi
+
+  if [[ -n ${YB_COMPILER_TYPE:-} &&
+        ${YB_COMPILER_TYPE} != "gcc" &&
+        ${YB_COMPILER_TYPE} != "clang" ]]; then
+    # For compiler types like clang11 or gcc8, don't attempt to use a prebuilt thirdparty archive
+    # yet (as of 11/01/2020). We will do that when we pre-build those archives.
     return
   fi
 
