@@ -805,15 +805,17 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateIndex, CppCassandraDriverTestIndexSl
 
 TEST_F_EX(CppCassandraDriverTest, TestCreateIndexSlowTServer,
           CppCassandraDriverTestIndexNonResponsiveTServers) {
+  // We expect the create index to fail.
   auto res = TestBackfillCreateIndexTableSimple(this);
-  ASSERT_TRUE(!res.ok());
-  if (res.status().IsTimedOut()) {
+  if (res.ok()) {
+    ASSERT_NE(*res, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  } else if (res.status().IsTimedOut()) {
     // It was probably on NotFound retry loop, so just send some request to the index and expect
     // NotFound.  See issue #5932 to alleviate the need to do this.
     const YBTableName index_table_name(YQL_DATABASE_CQL, "test", "test_table_index_by_v");
-    auto res = client_->GetYBTableInfo(index_table_name);
-    ASSERT_TRUE(!res.ok());
-    ASSERT_TRUE(res.status().IsNotFound()) << res.status();
+    auto res2 = client_->GetYBTableInfo(index_table_name);
+    ASSERT_TRUE(!res2.ok());
+    ASSERT_TRUE(res2.status().IsNotFound()) << res.status();
   } else {
     ASSERT_TRUE(res.status().IsNotFound()) << res.status();
   }
