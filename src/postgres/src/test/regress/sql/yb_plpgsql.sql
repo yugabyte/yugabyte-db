@@ -103,3 +103,20 @@ begin
 end $$;
 
 select * from test order by k;
+
+create procedure p(a inout int)
+  language plpgsql
+as $body$
+begin
+  a := a + 1;
+end;
+$body$;
+
+do $body$
+declare
+  a int := 10;
+begin
+  call p(a);
+  raise info '%', a::text;
+end;
+$body$;
