@@ -33,20 +33,11 @@ hash_init(const char *hash_name, int key_size, int entry_size, int hash_size)
 	return ShmemInitHash(hash_name, hash_size, hash_size, &info, HASH_ELEM | HASH_BLOBS);
 }
 
-/*
- * shmem_startup hook: allocate or attach to shared memory,
- * then load any pre-existing statistics from file.
- * Also create and load the query-texts file, which is expected to exist
- * (even if empty) while the module is enabled.
- */
 void
-pgss_shmem_startup(void)
+pgss_startup(void)
 {
 	bool		found = false;
 	int32		i;
-
-	if (prev_shmem_startup_hook)
-		prev_shmem_startup_hook();
 
 	/* reset in case this is a restart within the postmaster */
 	pgss = NULL;
@@ -73,11 +64,11 @@ pgss_shmem_startup(void)
 
 	for (i = 0; i < PGSM_MAX_BUCKETS; i++)
 	{
-		unsigned char *buf;
-		pgss_qbuf[i] = (unsigned char *) ShmemAlloc(pgss->query_buf_size_bucket);
-		buf = pgss_qbuf[i];
+		unsigned char *buf = (unsigned char *)ShmemAlloc(pgss->query_buf_size_bucket);
+		set_qbuf(i, buf);
 		memset(buf, 0, sizeof (uint64));
 	}
+
 	pgss_hash = hash_init("pg_stat_monitor: Queries hashtable", sizeof(pgssHashKey), sizeof(pgssEntry),PGSM_MAX);
 
 	pgss_waiteventshash = hash_init("pg_stat_monitor: Wait Event hashtable", sizeof(pgssWaitEventKey), sizeof(pgssWaitEventEntry), 100);
@@ -330,7 +321,8 @@ hash_create_query_entry(unsigned int queryid,
     return entry;
 }
 
-bool IsHashInitialize(void)
+bool
+IsHashInitialize(void)
 {
 	return (pgss || pgss_hash || pgss_object_hash || pgss_buckethash || pgss_waiteventshash);
 }

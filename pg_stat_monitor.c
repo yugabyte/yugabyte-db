@@ -36,6 +36,7 @@ static struct rusage  rusage_start;
 static struct rusage  rusage_end;
 static volatile sig_atomic_t sigterm = false;
 static void handle_sigterm(SIGNAL_ARGS);
+static unsigned char *pgss_qbuf[MAX_BUCKETS];
 
 /* Saved hook values in case of unload */
 static planner_hook_type planner_hook_next = NULL;
@@ -45,7 +46,7 @@ static ExecutorRun_hook_type prev_ExecutorRun = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
-
+static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 
 PG_FUNCTION_INFO_V1(pg_stat_monitor_version);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_reset);
@@ -196,6 +197,22 @@ _PG_fini(void)
 	ProcessUtility_hook 	= prev_ProcessUtility;
 	hash_entry_reset();
 }
+
+/*
+ * shmem_startup hook: allocate or attach to shared memory,
+ * then load any pre-existing statistics from file.
+ * Also create and load the query-texts file, which is expected to exist
+ * (even if empty) while the module is enabled.
+ */
+void
+pgss_shmem_startup(void)
+{
+	if (prev_shmem_startup_hook)
+		prev_shmem_startup_hook();
+
+	pgss_startup();
+}
+
 
 /*
  * Select the version of pg_stat_monitor.
@@ -2422,16 +2439,22 @@ pg_stat_monitor_settings(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		values[j++] = CStringGetTextDatum(conf[i].guc_name);
-		values[j++] = Int64GetDatumFast(conf[i].guc_variable);
-		values[j++] = Int64GetDatumFast(conf[i].guc_default);
-		values[j++] = CStringGetTextDatum(conf[i].guc_desc);
-		values[j++] = Int64GetDatumFast(conf[i].guc_min);
-		values[j++] = Int64GetDatumFast(conf[i].guc_max);
-		values[j++] = Int64GetDatumFast(conf[i].guc_restart);
+		values[j++] = CStringGetTextDatum(get_conf(i)->guc_name);
+		values[j++] = Int64GetDatumFast(get_conf(i)->guc_variable);
+		values[j++] = Int64GetDatumFast(get_conf(i)->guc_default);
+		values[j++] = CStringGetTextDatum(get_conf(i)->guc_desc);
+		values[j++] = Int64GetDatumFast(get_conf(i)->guc_min);
+		values[j++] = Int64GetDatumFast(get_conf(i)->guc_max);
+		values[j++] = Int64GetDatumFast(get_conf(i)->guc_restart);
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
 	/* clean up and return the tuplestore */
 	tuplestore_donestoring(tupstore);
 	return (Datum)0;
+}
+
+void
+set_qbuf(int i, unsigned char *buf)
+{
+	pgss_qbuf[i] = buf;
 }

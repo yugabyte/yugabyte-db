@@ -252,7 +252,6 @@ do { \
 
 
 
-unsigned char *pgss_qbuf[MAX_BUCKETS];
 
 /*
  * Struct for tracking locations/lengths of constants during normalization
@@ -292,6 +291,7 @@ typedef struct pgssJumbleState
 
 /* guc.c */
 void init_guc(void);
+GucVariable *get_conf(int i);
 
 /* hash_create.c */
 void hash_alloc_object_entry(uint64 queryid, char *objects);
@@ -299,7 +299,6 @@ void hash_dealloc_object_entry(uint64 queryid, char *objects);
 bool IsHashInitialize(void);
 void pgss_shmem_startup(void);
 void pgss_shmem_shutdown(int code, Datum arg);
-shmem_startup_hook_type prev_shmem_startup_hook;
 int pgsm_get_bucket_size(void);
 pgssSharedState* pgsm_get_ss(void);
 HTAB* pgsm_get_wait_event_hash(void);
@@ -311,19 +310,22 @@ pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encodin
 Size hash_memsize(void);
 pgssEntry* hash_create_query_entry(unsigned int queryid, unsigned int userid, unsigned int dbid, unsigned int bucket_id, unsigned int ip);
 
-/*---- GUC variables ----*/
-#define PGSM_MAX conf[0].guc_variable
-#define PGSM_QUERY_MAX_LEN conf[1].guc_variable
-#define PGSM_ENABLED conf[2].guc_variable
-#define PGSM_TRACK_UTILITY conf[3].guc_variable
-#define PGSM_NORMALIZED_QUERY conf[4].guc_variable
-#define PGSM_MAX_BUCKETS conf[5].guc_variable
-#define PGSM_BUCKET_TIME conf[6].guc_variable
-#define PGSM_OBJECT_CACHE conf[7].guc_variable
-#define PGSM_RESPOSE_TIME_LOWER_BOUND conf[8].guc_variable
-#define PGSM_RESPOSE_TIME_STEP conf[9].guc_variable
-#define PGSM_QUERY_BUF_SIZE conf[10].guc_variable
-#define PGSM_TRACK_PLANNING conf[11].guc_variable
+/* hash_query.c */
+void pgss_startup(void);
+void set_qbuf(int i, unsigned char *);
 
-GucVariable conf[12];
+/*---- GUC variables ----*/
+#define PGSM_MAX get_conf(0)->guc_variable
+#define PGSM_QUERY_MAX_LEN get_conf(1)->guc_variable
+#define PGSM_ENABLED get_conf(2)->guc_variable
+#define PGSM_TRACK_UTILITY get_conf(3)->guc_variable
+#define PGSM_NORMALIZED_QUERY get_conf(4)->guc_variable
+#define PGSM_MAX_BUCKETS get_conf(5)->guc_variable
+#define PGSM_BUCKET_TIME get_conf(6)->guc_variable
+#define PGSM_OBJECT_CACHE get_conf(7)->guc_variable
+#define PGSM_RESPOSE_TIME_LOWER_BOUND get_conf(8)->guc_variable
+#define PGSM_RESPOSE_TIME_STEP get_conf(9)->guc_variable
+#define PGSM_QUERY_BUF_SIZE get_conf(10)->guc_variable
+#define PGSM_TRACK_PLANNING get_conf(11)->guc_variable
+
 #endif

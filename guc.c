@@ -13,6 +13,8 @@
 
 #include "pg_stat_monitor.h"
  
+GucVariable conf[12];
+
 /*
  * Define (or redefine) custom GUC variables.
  */
@@ -57,7 +59,7 @@ init_guc(void)
 	conf[i++] = (GucVariable) { 
 		.guc_name = "pg_stat_monitor.pgsm_normalized_query",
 		.guc_desc = "Selects whether save query in normalized format.",
-		.guc_default = 0,
+		.guc_default = 1,
 		.guc_min = 0,
 		.guc_max = 0,
 		.guc_restart = false
@@ -273,5 +275,11 @@ init_guc(void)
 							 NULL,
 							 NULL);
 
+}
+
+GucVariable*
+get_conf(int i)
+{
+	return  &conf[i];
 }
 
