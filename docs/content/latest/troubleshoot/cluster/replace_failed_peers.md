@@ -2,9 +2,6 @@
 title: Fix 2/3 failed peers
 linkTitle: Fix 2/3 failed peers
 description: Fix 2/3 failed peers
-aliases:
-  - /troubleshoot/cluster/fix-2-3-failed-peers/
-  - /latest/troubleshoot/cluster/fix-2-3-failed-peers/
 menu:
   latest:
     parent: troubleshoot-cluster
@@ -20,6 +17,7 @@ If a majority of RAFT peers fail for a given tablet, we have to manually execute
 
 Assuming we have a cluster where:
 
+- Replication factor is 3
 - a given tablet with UUID `TABLET1`
 - 3 tablet peers, 1 in good working order, referred to as `NODE_GOOD` and two broken peers, referred as `NODE_BAD1` and `NODE_BAD2`
 - We will be copying some tablet related data from the good peer to each of the bad peers
