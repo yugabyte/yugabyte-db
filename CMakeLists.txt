@@ -40,8 +40,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_standard_m
 include(YugabyteFunctions)
 include(YugabyteTesting)
 
-DETECT_BREW()
-
 ADD_CXX_FLAGS("-Werror")
 ADD_CXX_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
 ADD_CXX_FLAGS("-Winvalid-pch")
@@ -170,31 +168,52 @@ include(CMakeParseArguments)
 # Must be declared in the top-level CMakeLists.txt.
 set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY true)
 
+# -------------------------------------------------------------------------------------------------
+# Decide whether we will be rebuilding third-party dependencies.
+# -------------------------------------------------------------------------------------------------
+
+set(REBUILD_THIRDPARTY TRUE)
 # Also allow specifying -DNO_REBUILD_THIRDPARTY, because CLion does not always pass user-specified
 # environment variables correctly.
-if ("${YB_NO_REBUILD_THIRDPARTY}" STREQUAL "1")
-  set(ENV{NO_REBUILD_THIRDPARTY} "1")
-else()
-  # Do not try building thirdparty outside our source location
-  if(NOT "${YB_THIRDPARTY_DIR}" STREQUAL "${YB_SRC_ROOT}/thirdparty")
-    set(ENV{NO_REBUILD_THIRDPARTY} "1")
-  endif()
+if ((NOT "$ENV{NO_REBUILD_THIRDPARTY}" STREQUAL "") OR
+    ("${YB_NO_REBUILD_THIRDPARTY}" STREQUAL "1") OR
+    (NOT "${YB_THIRDPARTY_DIR}" STREQUAL "${YB_SRC_ROOT}/thirdparty"))
+  message("Decided that we should not rebuild third-party dependencies. Criteria: "
+          "NO_REBUILD_THIRDPARTY env var: '$ENV{NO_REBUILD_THIRDPARTY}', "
+          "YB_NO_REBUILD_THIRDPARTY CMake var: '${YB_NO_REBUILD_THIRDPARTY}', "
+          "YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR}.")
+  set(REBUILD_THIRDPARTY FALSE)
 endif()
 
-INIT_COMPILER_TYPE()
+# -------------------------------------------------------------------------------------------------
 
-# This helps find the right third-party build directory.
+INIT_COMPILER_TYPE_FROM_BUILD_ROOT()
+
 # TODO: this is complicated by the fact that we are trying to build third-party dependencies
 # here if necessary, and that the compiler is sometimes (e.g. Clang 7 with the Linuxbrew-based
 # setup) part of thoise third-party dependencies. Therefore, we don't yet know the exact compiler
-# version.
+# version. If we know that we are not using a third-party setup where we build our own Clang,
+# we include the CompilerInfo module early.
+
+set(INCLUDE_COMPILER_INFO_EARLY FALSE)
+if(NOT "${YB_COMPILER_TYPE}" STREQUAL "clang" OR NOT REBUILD_THIRDPARTY)
+  set(INCLUDE_COMPILER_INFO_EARLY TRUE)
+endif()
+if(INCLUDE_COMPILER_INFO_EARLY)
+  message("Including the CompilerInfo module before determining the third-party instrumentation "
+          "type to use. Criteria: "
+          "REBUILD_THIRDPARTY=${REBUILD_THIRDPARTY}, "
+          "YB_COMPILER_TYPE=${YB_COMPILER_TYPE}.")
+  include(CompilerInfo)
+endif()
+
+# This helps find the right third-party build directory.
 if (YB_USE_TSAN)
   set(THIRDPARTY_INSTRUMENTATION_TYPE "tsan")
 elseif (YB_USE_ASAN)
   set(THIRDPARTY_INSTRUMENTATION_TYPE "asan")
 elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "clang") # Cannot use IS_CLANG before building 3rd party
   if(NOT APPLE AND
-     NOT USING_LINUXBREW AND
      NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
     # This must be a Clang third-party build where we use "uninstrumented" instead of
     # "clang_uninstrumented" because everything is built with Clang.
@@ -202,18 +221,16 @@ elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "clang") # Cannot use IS_CLANG before 
   else()
     set(THIRDPARTY_INSTRUMENTATION_TYPE "clang_uninstrumented")
   endif()
-elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "gcc8")
-  set(THIRDPARTY_INSTRUMENTATION_TYPE "gcc8_uninstrumented")
-  ADD_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}/gcc/8")
-elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "gcc")
+elseif ("${COMPILER_FAMILY}" STREQUAL "gcc")
   set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
 else()
-  message(FATAL_ERROR "Not handled compiler family: ${COMPILER_FAMILY}.")
+  message(FATAL_ERROR "Unknown or still undetermined compiler family: '${COMPILER_FAMILY}'.")
 endif()
 message("THIRDPARTY_INSTRUMENTATION_TYPE=${THIRDPARTY_INSTRUMENTATION_TYPE}")
 
-# Make sure thirdparty stuff is up-to-date.
-if ("$ENV{NO_REBUILD_THIRDPARTY}" STREQUAL "")
+# Make sure third-party dependency is up-to-date.
+# TODO: do not invoke this step as part of the build. Always invoke it separately.
+if (REBUILD_THIRDPARTY)
   set(BUILD_THIRDPARTY_ARGS --build-type ${THIRDPARTY_INSTRUMENTATION_TYPE})
   message("Invoking build_thirdparty.sh with these arguments: ${BUILD_THIRDPARTY_ARGS}")
   execute_process(
@@ -223,8 +240,13 @@ if ("$ENV{NO_REBUILD_THIRDPARTY}" STREQUAL "")
     message(FATAL_ERROR "Thirdparty was built unsuccessfully, terminating.")
   endif()
 else()
-  message("The NO_REBUILD_THIRDPARTY environment variable is non-empty, skipping the third-party"
-          "build")
+  message("Skipping the third-party build (reasons logged earlier).")
+endif()
+
+if(NOT INCLUDE_COMPILER_INFO_EARLY)
+  message("Including the CompilerInfo module after we have considered building third-party "
+          "dependencies.")
+  include(CompilerInfo)
 endif()
 
 # Generate a Clang compile_commands.json "compilation database" file for use
@@ -252,16 +274,12 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "RELWITHDEBINFO" OR "${CMAKE_BUILD_TYPE}" STR
   set(CMAKE_BUILD_TYPE RELEASE)
 endif()
 
-############################################################
-# Compiler type (gcc, clang, etc.)
-############################################################
-# Determine compiler version. This will set COMPILER_FAMILY.
-include(CompilerInfo)
+VALIDATE_COMPILER_TYPE()
+DETECT_BREW()
 
 message("Using COMPILER_FAMILY=${COMPILER_FAMILY}")
 
 # We can only use IS_CLANG after calling VALIDATE_COMPILER_TYPE.
-VALIDATE_COMPILER_TYPE()
 if (NOT APPLE)
   # To enable 16-byte atomics support we should specify appropriate architecture.
   ADD_CXX_FLAGS("-march=ivybridge")
@@ -464,8 +482,8 @@ if (IS_CLANG)
   else()
     message("Running without a controlling terminal or in a dumb terminal")
   endif()
-elseif("${COMPILER_FAMILY}" STREQUAL "gcc" OR "${COMPILER_FAMILY}" STREQUAL "gcc8")
-  # These flags are not understood by some versions of clang.
+elseif("${COMPILER_FAMILY}" MATCHES "^gcc.*$")
+  # These flags are not understood by some versions.
   ADD_CXX_FLAGS("-mno-abm -mno-movbe")
 else()
   message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
@@ -694,7 +712,8 @@ message("CMAKE_C_FLAGS ${CMAKE_C_FLAGS}")
 
 set(CMAKE_CXX_STANDARD 14)
 
-if ("${COMPILER_FAMILY}" STREQUAL "gcc8")
+if ("${COMPILER_FAMILY}" STREQUAL "gcc" AND
+    "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "8.0.0")
   # Remove after switching to C++17
   ADD_CXX_FLAGS("-Wno-aligned-new")
 endif()
