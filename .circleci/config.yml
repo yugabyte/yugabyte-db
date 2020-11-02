@@ -16,6 +16,7 @@ jobs:
       - run:
           name: Build YugabyteDB
           command: |
+            brew install cmake
             echo "Building in directory: $PWD"
             set -x
             sudo mkdir -p -m 0777 /opt/yb-build
