@@ -8,7 +8,7 @@ jobs:
         type: string
 
     macos:
-      xcode: 11.7.0
+      xcode: 11.5.0
 
     steps:
       - checkout
@@ -16,7 +16,6 @@ jobs:
       - run:
           name: Build YugabyteDB
           command: |
-            #brew install pkg-config
             echo "Building in directory: $PWD"
             set -x
             sudo mkdir -p -m 0777 /opt/yb-build
