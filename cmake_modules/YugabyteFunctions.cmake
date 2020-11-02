@@ -74,12 +74,34 @@ function(ENFORCE_OUT_OF_SOURCE_BUILD)
 endfunction()
 
 function(DETECT_BREW)
+  if(NOT DEFINED IS_CLANG)
+    message(FATAL_ERROR "IS_CLANG undefined")
+  endif()
+  if(NOT DEFINED IS_GCC)
+    message(FATAL_ERROR "IS_GCC undefined")
+  endif()
+  if(NOT DEFINED COMPILER_VERSION)
+    message(FATAL_ERROR "COMPILER_VERSION undefined")
+  endif()
+  if(NOT DEFINED COMPILER_FAMILY)
+    message(FATAL_ERROR "COMPILER_FAMILY undefined")
+  endif()
+
   # Detect Linuxbrew.
   #
   # TODO: consolidate Linuxbrew detection logic between here and detect_brew in common-build-env.sh.
   # As of 10/2020 we only check the compiler version here but not in detect_brew.
   set(USING_LINUXBREW FALSE)
-  if(NOT APPLE AND (NOT IS_CLANG OR "${COMPILER_VERSION}" VERSION_LESS "10.0.0"))
+  if(NOT APPLE AND
+     # In practice, we only use Linuxbrew with Clang 7.x.
+     (NOT IS_CLANG OR "${COMPILER_VERSION}" VERSION_LESS "8.0.0") AND
+     # In practice, we only use Linuxbrew with GCC 5.x.
+     (NOT IS_GCC OR "${COMPILER_VERSION}" VERSION_LESS "6.0.0"))
+    message("Trying to detect whether we should use Linuxbrew. "
+            "IS_CLANG=${IS_CLANG}, "
+            "IS_GCC=${IS_GCC}, "
+            "COMPILER_VERSION=${COMPILER_VERSION}, "
+            "LINUXBREW_DIR=${LINUXBREW_DIR}")
     set(LINUXBREW_DIR "$ENV{YB_LINUXBREW_DIR}")
     if("${LINUXBREW_DIR}" STREQUAL "")
       if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt")
@@ -110,7 +132,7 @@ endfunction()
 
 # Ensures that the YB_COMPILER_TYPE environment variable matches the auto-detected compiler family.
 # Also this sets the convienience variables IS_GCC and IS_CLANG.
-function(INIT_COMPILER_TYPE)
+function(INIT_COMPILER_TYPE_FROM_BUILD_ROOT)
   get_filename_component(BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
 
   if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "")
@@ -132,6 +154,8 @@ function(INIT_COMPILER_TYPE)
   endif()
 
   message("YB_COMPILER_TYPE env var: $ENV{YB_COMPILER_TYPE}")
+  # Make sure we can use $ENV{YB_COMPILER_TYPE} and ${YB_COMPILER_TYPE} interchangeably.
+  SET(YB_COMPILER_TYPE "$ENV{YB_COMPILER_TYPE}" PARENT_SCOPE)
 endfunction()
 
 # Makes sure that we are using a supported compiler family.
@@ -161,15 +185,22 @@ function(VALIDATE_COMPILER_TYPE)
               "Compiler type is zapcc but the compiler family is '${COMPILER_FAMILY}' "
               "(expected to be clang)")
     endif()
-  elseif (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "${COMPILER_FAMILY}" AND
-          NOT ("$ENV{YB_COMPILER_TYPE}" STREQUAL "gcc" AND "${COMPILER_FAMILY}" STREQUAL "gcc8"))
+  endif()
+
+  if("${YB_COMPILER_TYPE}" MATCHES "^gcc.*$" AND NOT "${COMPILER_FAMILY}" STREQUAL "gcc")
     message(FATAL_ERROR
-            "YB_COMPILER_TYPE environment variable ($ENV{YB_COMPILER_TYPE}) does not match the "
-            "compiler family detected by CMake (${COMPILER_FAMILY}")
+            "Compiler type '${YB_COMPILER_TYPE}' does not match the compiler family "
+            "'${COMPILER_FAMILY}'.")
+  endif()
+
+  if(("${YB_COMPILER_TYPE}" STREQUAL "gcc8" AND NOT "${COMPILER_VERSION}" MATCHES "^8[.].*$") OR
+     ("${YB_COMPILER_TYPE}" STREQUAL "gcc9" AND NOT "${COMPILER_VERSION}" MATCHES "^9[.].*$"))
+    message(FATAL_ERROR
+            "Invalid compiler version '${COMPILER_VERSION}' for compiler type "
+            "'${YB_COMPILER_TYPE}'.")
   endif()
 
   if (NOT "${COMPILER_FAMILY}" STREQUAL "gcc" AND
-      NOT "${COMPILER_FAMILY}" STREQUAL "gcc8" AND
       NOT "${COMPILER_FAMILY}" STREQUAL "clang")
     message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY} (expected 'gcc' or 'clang').")
   endif()
@@ -180,7 +211,7 @@ function(VALIDATE_COMPILER_TYPE)
   endif()
 
   set(IS_GCC FALSE PARENT_SCOPE)
-  if ("${COMPILER_FAMILY}" STREQUAL "gcc" OR "${COMPILER_FAMILY}" STREQUAL "gcc8")
+  if ("${COMPILER_FAMILY}" STREQUAL "gcc")
     set(IS_GCC TRUE PARENT_SCOPE)
   endif()
 endfunction()

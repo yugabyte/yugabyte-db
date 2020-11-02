@@ -699,6 +699,9 @@ while [[ $# -gt 0 ]]; do
     --gcc8)
       YB_COMPILER_TYPE="gcc8"
     ;;
+    --gcc9)
+      YB_COMPILER_TYPE="gcc9"
+    ;;
     --zapcc)
       YB_COMPILER_TYPE="zapcc"
     ;;

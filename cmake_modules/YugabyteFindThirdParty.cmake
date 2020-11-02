@@ -235,6 +235,13 @@ set(BOOST_ROOT "${YB_THIRDPARTY_INSTALLED_DEPS_DIR}")
 set(Boost_NO_BOOST_CMAKE ON)
 set(Boost_NO_SYSTEM_PATHS ON)
 
+if("${YB_COMPILER_TYPE}" MATCHES "^gcc[0-9]+$")
+  # TODO: display this only if using a devtoolset compiler on CentOS, and ideally only if the error
+  # actually happens.
+  message("Note: if Boost fails to find Threads, you might need to install the "
+          "devtoolset-N-libatomic-devel package for the devtoolset you are using.")
+endif()
+
 # Find Boost static libraries.
 set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost COMPONENTS system thread REQUIRED)
