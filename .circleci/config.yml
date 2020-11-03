@@ -16,7 +16,7 @@ jobs:
       - run:
           name: Build YugabyteDB
           command: |
-            brew install cmake
+            brew install cmake maven
             echo "Building in directory: $PWD"
             set -x
             sudo mkdir -p -m 0777 /opt/yb-build
