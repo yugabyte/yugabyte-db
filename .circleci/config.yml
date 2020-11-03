@@ -37,13 +37,6 @@ jobs:
 workflows:
   version: 2
 
-  no-build:
-    when:
-      not: << pipeline.parameters.trigger >>
-    jobs:
-      - no-build:
-          name: no-automatic-build
-
   mac-build:
     when: << pipeline.parameters.trigger >>
     filters:
