@@ -21,8 +21,11 @@ import org.junit.runner.RunWith;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
 import org.yb.util.YBTestRunnerNonSanitizersOrMac;
+
+import static org.yb.AssertionWrappers.fail;
 
 @RunWith(value=YBTestRunnerNonSanitizersOrMac.class)
 public class TestYbBackup extends BasePgSQLTest {
@@ -73,6 +76,45 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 3.14));
       assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=2000", new Row(2000, 2002.14));
+      assertQuery(stmt, "SELECT h FROM test_tbl WHERE h=2000", new Row(2000));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9999");
+    }
+  }
+
+  @Test
+  public void testAlteredYSQLTableBackupInOriginalCluster() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
+
+      for (int i = 1; i <= 2000; ++i) {
+        stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES" +
+          " (" + String.valueOf(i) +                     // h
+          ", " + String.valueOf(100 + i) +               // a
+          ", " + String.valueOf(2.14 + (float)i) + ")"); // b
+      }
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      stmt.execute("ALTER TABLE test_tbl DROP a");
+      stmt.execute("INSERT INTO test_tbl (h, b) VALUES (9999, 8.9)");
+
+      try {
+        YBBackupUtil.runYbBackupRestore();
+        fail("Backup restoring did not fail as expected");
+      } catch (YBBackupException ex) {
+        LOG.info("Expected exception", ex);
+      }
+
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 3.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=2000", new Row(2000, 2002.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9999", new Row(9999, 8.9));
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=2000", new Row(2000, 2100, 2002.14));
       assertQuery(stmt, "SELECT h FROM test_tbl WHERE h=2000", new Row(2000));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9999");
     }
