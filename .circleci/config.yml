@@ -21,3 +21,6 @@ workflows:
     jobs:
       - no-build:
           name: no-automatic-build
+          filters:
+            branches:
+              ignore: /.*/
