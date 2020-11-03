@@ -2,10 +2,10 @@
 version: 2.1
 
 parameters:
-  trigger:
-    description: Content approved by YB to trigger build
-    type: boolean
-    default: false
+  pullreq:
+    description: Pull-request number approved by YB to trigger build
+    type: string
+    default: "000"
 
 jobs:
   no-build:
@@ -42,6 +42,7 @@ workflows:
   mac-build:
     jobs:
       - build:
-          when: << pipeline.parameters.trigger >>
           name: mac-debug
           flavor: "debug"
+          filters:
+            branches: pull/<< pipeline.parameters.pullreq >>/merge
