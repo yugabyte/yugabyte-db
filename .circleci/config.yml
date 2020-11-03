@@ -33,6 +33,7 @@ jobs:
             set -x
             sudo mkdir -p -m 0777 /opt/yb-build
             export BUILD_TYPE=<< parameters.flavor >>
+            export YB_USE_NINJA=0
             export YB_NUM_TESTS_TO_RUN=25
             ./build-support/jenkins/build-and-test.sh
 
