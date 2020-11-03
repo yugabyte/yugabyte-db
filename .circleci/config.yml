@@ -8,6 +8,10 @@ parameters:
     default: false
 
 jobs:
+  no-build:
+    steps:
+      run: echo "Not running builds at this time"
+
   build:
     parameters:
       flavor:
@@ -30,6 +34,10 @@ jobs:
 
 workflows:
   version: 2
+
+  no-build:
+    when:
+      not: << pipeline.parameters.trigger >>
 
   mac-build:
     when: << pipeline.parameters.trigger >>
