@@ -102,8 +102,9 @@ export default class AlertProfileForm extends Component {
         smtpServer: _.get(customer, 'data.smtpData.smtpServer', ''),
         smtpPort: _.get(customer, 'data.smtpData.smtpPort', DEFAULT_SMTP_PORT),
         emailFrom: _.get(customer, 'data.smtpData.emailFrom', ''),
-        smtpUsername: _.get(customer, 'data.smtpData.smtpUsername', ''),
-        smtpPassword: _.get(customer, 'data.smtpData.smtpPassword', ''),
+        // ensure username and password are always strings, even if API returns "null" as a value
+        smtpUsername: _.get(customer, 'data.smtpData.smtpUsername') || '',
+        smtpPassword: _.get(customer, 'data.smtpData.smtpPassword') || '',
         useSSL: _.get(customer, 'data.smtpData.useSSL', false),
         useTLS: _.get(customer, 'data.smtpData.useTLS', false)
       },
