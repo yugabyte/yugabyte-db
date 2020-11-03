@@ -3454,25 +3454,10 @@ Status CatalogManager::BackfillIndex(
             IndexPermissions_Name(index_info_pb.index_permissions())));
   }
 
-  // Collect ns_info.
-  scoped_refptr<NamespaceInfo> ns_info;
-  {
-    NamespaceIdentifierPB ns_identifier;
-    ns_identifier.set_id(indexed_table->namespace_id());
-    RETURN_NOT_OK_PREPEND(
-        FindNamespace(ns_identifier, &ns_info),
-        "Unable to get namespace info for backfill");
-  }
-
-  auto backfill_table = std::make_shared<BackfillTable>(
-      master_,
-      AsyncTaskPool(),
+  return MultiStageAlterTable::StartBackfillingData(
+      this,
       indexed_table,
-      std::vector<IndexInfoPB>{index_info_pb},
-      ns_info);
-  backfill_table->Launch();
-
-  return Status::OK();
+      index_info_pb);
 }
 
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
