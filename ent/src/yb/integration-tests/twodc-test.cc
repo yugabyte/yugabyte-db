@@ -1425,7 +1425,8 @@ TEST_P(TwoDCTest, ApplyOperationsRandomFailures) {
   SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
-  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
+  // Use unequal table count so we have M:N mapping and output to multiple tablets.
+  auto tables = ASSERT_RESULT(SetUpWithParams({3}, {5}, replication_factor));
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
   // tables contains both producer and consumer universe tables (alternately).
@@ -1443,8 +1444,8 @@ TEST_P(TwoDCTest, ApplyOperationsRandomFailures) {
       consumer_cluster(), producer_cluster(), producer_client(), kUniverseId, consumer_tables));
 
   // After creating the cluster, make sure all producer tablets are being polled for.
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
-  ASSERT_OK(CorrectlyPollingAllTablets(producer_cluster(), 1));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 5));
+  ASSERT_OK(CorrectlyPollingAllTablets(producer_cluster(), 3));
 
   // Write 1000 entries to each cluster.
   std::thread t1([&]() { WriteWorkload(0, 1000, producer_client(), tables[0]->name()); });
