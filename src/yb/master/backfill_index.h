@@ -65,7 +65,7 @@ class MultiStageAlterTable {
       const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
       boost::optional<uint32_t> current_version = boost::none);
 
- private:
+  // TODO(jason): make this private when closing issue #6218.
   // Start Index Backfill process/step for the specified table/index.
   static Status
   StartBackfillingData(CatalogManager *catalog_manager,
