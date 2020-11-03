@@ -1029,17 +1029,38 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       namespace_map.find(table_data->old_namespace_id)->second.first;
   LOG_IF(DFATAL, new_namespace_id.empty()) << "No namespace id";
 
+  Schema schema;
+  RETURN_NOT_OK(SchemaFromPB(meta.schema(), &schema));
+  const vector<ColumnId>& column_ids = schema.column_ids();
   scoped_refptr<TableInfo> table;
 
   // Create new table if namespace was changed.
   if (new_namespace_id == table_data->old_namespace_id) {
     TRACE("Looking up table");
-    SharedLock<LockType> l(lock_);
-    table = FindPtrOrNull(*table_ids_map_, table_data->old_table_id);
+    {
+      SharedLock<LockType> l(lock_);
+      table = FindPtrOrNull(*table_ids_map_, table_data->old_table_id);
+    }
 
-    // Check table is active OR table name was changed.
-    if (table != nullptr && (!table->is_running() || table->name() != meta.name())) {
-      table.reset();
+    // Check table is active, table name and table schema are equal to backed up ones.
+    if (table != nullptr) {
+      auto table_lock = table->LockForRead();
+      if (table->is_running() && table->name() == meta.name()) {
+        // Check the found table schema.
+        Schema persisted_schema;
+        RETURN_NOT_OK(table->GetSchema(&persisted_schema));
+        // Schema::Equals() compares only column names & types. Check the column ids separately.
+        if (!persisted_schema.Equals(schema) || persisted_schema.column_ids() != column_ids) {
+          const string msg = Format("Found by id $0 $1 table $2 in namespace $3 has "
+              "schema={$4}, expected={$5}", table_data->old_table_id,
+              TableType_Name(meta.table_type()), meta.name(), new_namespace_id,
+              persisted_schema, schema);
+          LOG(WARNING) << msg;
+          return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+        }
+      } else {
+        table.reset();
+      }
     }
   }
 
@@ -1080,19 +1101,22 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     }
 
     TRACE("Looking up new table");
-    SharedLock<LockType> l(lock_);
-    table = FindPtrOrNull(*table_ids_map_, table_data->new_table_id);
+    {
+      SharedLock<LockType> l(lock_);
+      table = FindPtrOrNull(*table_ids_map_, table_data->new_table_id);
+    }
 
     if (table == nullptr) {
       return STATUS(InternalError, Format("Created table not found: $0", table_data->new_table_id),
                     MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
 
-    Schema schema, persisted_schema;
-    RETURN_NOT_OK(SchemaFromPB(meta.schema(), &schema));
-    RETURN_NOT_OK(table->GetSchema(&persisted_schema));
-    const auto& column_ids = schema.column_ids();
-
+    Schema persisted_schema;
+    {
+      TRACE("Locking table");
+      auto table_lock = table->LockForRead();
+      RETURN_NOT_OK(table->GetSchema(&persisted_schema));
+    }
     // Schema::Equals() compares only column names & types. It does not compare the column ids.
     if (!persisted_schema.Equals(schema)
         || persisted_schema.column_ids().size() != column_ids.size()) {
@@ -1141,10 +1165,12 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     table_data->new_table_id = table_data->old_table_id;
   }
 
-  TRACE("Locking table");
-  auto table_lock = table->LockForRead();
   vector<scoped_refptr<TabletInfo>> new_tablets;
-  table->GetAllTablets(&new_tablets);
+  {
+    TRACE("Locking table");
+    auto table_lock = table->LockForRead();
+    table->GetAllTablets(&new_tablets);
+  }
 
   for (const scoped_refptr<TabletInfo>& tablet : new_tablets) {
     auto tablet_lock = tablet->LockForRead();

@@ -22,7 +22,6 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.yb.AssertionWrappers.fail;
 import org.yb.client.TestUtils;
 
 public final class YBBackupUtil {
@@ -66,7 +65,8 @@ public final class YBBackupUtil {
     }
 
     if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-      fail("Timeout of process run (" + timeoutSeconds + " seconds): [" + processStr + "]");
+      throw new YBBackupException(
+          "Timeout of process run (" + timeoutSeconds + " seconds): [" + processStr + "]");
     }
 
     final int exitCode = process.exitValue();
@@ -74,7 +74,8 @@ public final class YBBackupUtil {
 
     if (exitCode != 0) {
       LOG.info("STDOUT:\n" + stdout.toString());
-      fail("Failed process with exit code " + exitCode + ": [" + processStr + "]");
+      throw new YBBackupException(
+          "Failed process with exit code " + exitCode + ": [" + processStr + "]");
     }
 
     return stdout.toString();
@@ -116,7 +117,7 @@ public final class YBBackupUtil {
     if (json.has("error")) {
       final String error = json.getString("error");
       LOG.info("yb_backup failed with error: " + error);
-      fail("yb_backup failed with error: " + error);
+      throw new YBBackupException("yb_backup failed with error: " + error);
     }
 
     return output;
@@ -146,6 +147,9 @@ public final class YBBackupUtil {
     JSONObject json = new JSONObject(output);
     final boolean resultOk = json.getBoolean("success");
     LOG.info("SUCCESS. Backup-restore operation result: " + resultOk);
-    assert(resultOk);
+
+    if (!resultOk) {
+      throw new YBBackupException("Backup-restore operation result: " + resultOk);
+    }
   }
 }
