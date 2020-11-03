@@ -45,4 +45,5 @@ workflows:
           name: mac-debug
           flavor: "debug"
           filters:
-            branches: pull/<< pipeline.parameters.pullreq >>/merge
+            branches:
+              only: "pull/<< pipeline.parameters.pullreq >>"
