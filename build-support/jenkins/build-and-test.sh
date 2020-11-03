@@ -183,7 +183,7 @@ BUILD_TYPE=$build_type
 readonly BUILD_TYPE
 export BUILD_TYPE
 
-export YB_USE_NINJA=1
+export YB_USE_NINJA=${YB_USE_NINJA:=1}
 
 set_cmake_build_type_and_compiler_type
 
