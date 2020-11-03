@@ -9,8 +9,10 @@ parameters:
 
 jobs:
   no-build:
+    docker:
+      - image: cimg/node:latest
     steps:
-      run: echo "Not running builds at this time"
+      - run: echo "Not running builds at this time."
 
   build:
     parameters:
@@ -38,6 +40,9 @@ workflows:
   no-build:
     when:
       not: << pipeline.parameters.trigger >>
+    jobs:
+      - no-build:
+          name: no-automatic-build
 
   mac-build:
     when: << pipeline.parameters.trigger >>
