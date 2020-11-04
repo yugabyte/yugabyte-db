@@ -287,14 +287,14 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
     const scoped_refptr<TableInfo>& indexed_table,
     const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
     boost::optional<uint32_t> current_version) {
-  DVLOG(3) << __PRETTY_FUNCTION__ << yb::ToString(*indexed_table);
+  DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table);
   if (FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms > 0) {
-    TRACE("Sleeping for  $0 ms", FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms);
-    DVLOG(3) << __PRETTY_FUNCTION__ << yb::ToString(*indexed_table) << " sleeping for "
+    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms);
+    DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table) << " sleeping for "
              << FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms
              << "ms BEFORE updating the index permission to " << ToString(perm_mapping);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms));
-    DVLOG(3) << __PRETTY_FUNCTION__ << "Done Sleeping";
+    DVLOG(3) << __PRETTY_FUNCTION__ << " Done Sleeping";
     TRACE("Done Sleeping");
   }
 
@@ -355,11 +355,11 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms > 0)) {
     TRACE("Sleeping for $0 ms",
           FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms);
-    DVLOG(3) << __PRETTY_FUNCTION__ << yb::ToString(*indexed_table) << " sleeping for "
+    DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table) << " sleeping for "
              << FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms
              << "ms AFTER updating the index permission to " << ToString(perm_mapping);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms));
-    DVLOG(3) << __PRETTY_FUNCTION__ << "Done Sleeping";
+    DVLOG(3) << __PRETTY_FUNCTION__ << " Done Sleeping";
     TRACE("Done Sleeping");
   }
   return permissions_updated;
@@ -444,7 +444,7 @@ IndexPermissions NextPermission(IndexPermissions perm) {
 Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
     uint32_t current_version) {
-  DVLOG(3) << __PRETTY_FUNCTION__ << yb::ToString(*indexed_table);
+  DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table);
 
   const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
 
@@ -538,7 +538,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   if (!indexes_to_delete.empty()) {
     index_info_to_update = indexes_to_delete[0];
     VLOG(3) << "Deleting the index and the entry in the indexed table for "
-        << yb::ToString(index_info_to_update);
+            << yb::ToString(index_info_to_update);
     DeleteTableRequestPB req;
     DeleteTableResponsePB resp;
     req.mutable_table()->set_table_id(index_info_to_update.table_id());
@@ -552,7 +552,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     index_info_to_update = indexes_to_backfill[0];
     VLOG(3) << "Start backfilling for " << yb::ToString(index_info_to_update);
     TRACE("Starting backfill process");
-    VLOG(1) << ("Starting backfill process");
+    VLOG(1) << "Starting backfill process";
     WARN_NOT_OK(
         StartBackfillingData(catalog_manager, indexed_table.get(), index_info_to_update),
         "Could not launch Backfill");
@@ -693,7 +693,7 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
     // Move on to ABORTED permission.
     LOG_WITH_PREFIX(ERROR)
         << "Failed backfill. Could not compute safe time for "
-        << yb::ToString(indexed_table_) << s;
+        << yb::ToString(indexed_table_) << " " << s;
     if (!timestamp_chosen_.exchange(true)) {
       RETURN_NOT_OK_PREPEND(AlterTableStateToAbort(),
                             "Failed to mark backfill as failed. Abandoning.");
@@ -705,7 +705,7 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
   HybridTime read_timestamp;
   {
     std::lock_guard<simple_spinlock> l(mutex_);
-    VLOG(2) << " Updating read_time_for_backfill_ to max{ "
+    VLOG(2) << "Updating read_time_for_backfill_ to max{ "
             << read_time_for_backfill_.ToString() << ", " << ht.ToString()
             << " }.";
     read_time_for_backfill_.MakeAtLeast(ht);
@@ -754,7 +754,7 @@ void BackfillTable::LaunchBackfill() {
 void BackfillTable::Done(const Status& s) {
   if (!s.ok()) {
     // Move on to ABORTED permission.
-    LOG_WITH_PREFIX(ERROR) << "Failed to backfill the index " << s;
+    LOG_WITH_PREFIX(ERROR) << "failed to backfill the index: " << s;
     if (!done_.exchange(true)) {
       WARN_NOT_OK(AlterTableStateToAbort(),
                   "Failed to mark backfill as failed.");
@@ -969,7 +969,7 @@ void BackfillTablet::LaunchNextChunkOrDone() {
 
 void BackfillTablet::Done(const Status& status, const string& next_row_key) {
   if (!status.ok()) {
-    LOG(INFO) << "Failed to backfill the tablet " << yb::ToString(tablet_) << status;
+    LOG(INFO) << "Failed to backfill the tablet " << yb::ToString(tablet_) << ": " << status;
     backfill_table_->Done(status);
     return;
   }
@@ -1051,7 +1051,7 @@ void GetSafeTimeForTablet::HandleResponse(int attempt) {
         break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid() << ": GetSafeTime failed for tablet "
-                     << tablet_->ToString() << ": " << status << " code "<< resp_.error().code();
+                     << tablet_->ToString() << ": " << status << " code " << resp_.error().code();
         break;
     }
   } else {

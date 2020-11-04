@@ -685,7 +685,7 @@ void AsyncAlterTable::HandleResponse(int attempt) {
             "$0 for $1 failed while running AsyncAlterTable::HandleResponse. response $2",
             description(), tablet_->ToString(), resp_.DebugString()));
   } else {
-    VLOG_WITH_PREFIX(1) << "Task is not completed" << tablet_->ToString() << " for version "
+    VLOG_WITH_PREFIX(1) << "Task is not completed " << tablet_->ToString() << " for version "
                         << schema_version_;
   }
 }
@@ -726,11 +726,11 @@ bool AsyncAlterTable::SendRequest(int attempt) {
 bool AsyncBackfillDone::SendRequest(int attempt) {
   VLOG_WITH_PREFIX(1)
       << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
-      << "version " << schema_version_ << " waiting for a read lock.";
+      << " version " << schema_version_ << " waiting for a read lock.";
   auto l = table_->LockForRead();
   VLOG_WITH_PREFIX(1)
       << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
-      << "version " << schema_version_ << " obtained the read lock.";
+      << " version " << schema_version_ << " obtained the read lock.";
 
   tserver::ChangeMetadataRequestPB req;
   req.set_dest_uuid(permanent_uuid());
