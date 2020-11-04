@@ -787,7 +787,7 @@ build_yb_java_code_in_all_dirs() {
   local java_project_dir
   for java_project_dir in "${yb_java_project_dirs[@]}"; do
     pushd "$java_project_dir"
-    if ! time build_yb_java_code_with_retries "$@"; then
+    if time ! build_yb_java_code_with_retries "$@"; then
       log "Failed to build Java code in directory '$java_project_dir'" \
           "with these Maven arguments: $*"
       return 1
