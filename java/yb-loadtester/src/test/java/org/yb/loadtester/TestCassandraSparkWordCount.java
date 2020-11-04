@@ -34,6 +34,11 @@ public class TestCassandraSparkWordCount extends BaseCQLTest {
 
     private CassandraSparkWordCount app = new CassandraSparkWordCount();
 
+    protected Map<String, String> getTServerFlags() {
+        Map<String, String> flagMap = super.getTServerFlags();
+        flagMap.put("cql_update_system_query_cache_msecs", "1000");
+        return flagMap;
+    }
     @Test
     public void testDefaultRun() throws Exception {
         // Set up config.
