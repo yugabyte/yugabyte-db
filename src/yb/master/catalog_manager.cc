@@ -7949,14 +7949,13 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
       replica_pb->set_member_type(replica.second.member_type);
-      TSInformationPB tsinfo_pb = *replica.second.ts_desc->GetTSInformationPB();
+      auto tsinfo_pb = replica.second.ts_desc->GetTSInformationPB();
 
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
-      out_ts_info->set_permanent_uuid(tsinfo_pb.tserver_instance().permanent_uuid());
-      TakeRegistration(tsinfo_pb.mutable_registration()->mutable_common(), out_ts_info);
-      out_ts_info->set_placement_uuid(tsinfo_pb.registration().common().placement_uuid());
-      *out_ts_info->mutable_capabilities() = std::move(
-          *tsinfo_pb.mutable_registration()->mutable_capabilities());
+      out_ts_info->set_permanent_uuid(tsinfo_pb->tserver_instance().permanent_uuid());
+      CopyRegistration(tsinfo_pb->registration().common(), out_ts_info);
+      out_ts_info->set_placement_uuid(tsinfo_pb->registration().common().placement_uuid());
+      *out_ts_info->mutable_capabilities() = tsinfo_pb->registration().capabilities();
     }
     return Status::OK();
   }
