@@ -323,7 +323,7 @@ class BackfillChunk : public RetryingTSRpcTask {
   std::string type_name() const override { return "Backfill Index Table"; }
 
   std::string description() const override {
-    return yb::Format("Backfilling index_ids $0 : for $1 from $2",
+    return yb::Format("Backfilling index_ids $0 for tablet $1 from key '$2'",
                       backfill_tablet_->index_ids(), tablet_id(),
                       b2a_hex(start_key_));
   }

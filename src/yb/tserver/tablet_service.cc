@@ -397,7 +397,7 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
         state_(state), clock_(clock), include_trace_(trace) {}
 
   void OperationCompleted() override {
-    VLOG(1) << __PRETTY_FUNCTION__ << "completing with status " << status_;
+    VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status_;
     // When we don't need to return any data, we could return success on duplicate request.
     if (status_.IsAlreadyPresent() &&
         state_->ql_write_ops()->empty() &&
@@ -620,7 +620,7 @@ void TabletServiceAdminImpl::GetSafeTime(
   resp->set_safe_time(safe_time.ToUint64());
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   VLOG(1) << "Tablet " << tablet.peer->tablet_id()
-          << ". returning SafeTime for : " << yb::ToString(safe_time);
+          << " returning safe time " << yb::ToString(safe_time);
 
   context.RespondSuccess();
 }
@@ -641,7 +641,6 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  DVLOG(1) << "Received Backfill Index RPC: " << req->DebugString();
   const CoarseTimePoint &deadline = context.GetClientDeadline();
   const auto coarse_start = CoarseMonoClock::Now();
   {
@@ -786,8 +785,8 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
   DVLOG(1) << "Tablet " << tablet.peer->tablet_id()
-           << ". Backfilled indexes for : " << yb::ToString(index_ids)
-           << " got " << resume_from.ToString();
+           << " backfilled indexes " << yb::ToString(index_ids)
+           << " and got " << resume_from.ToString();
   if (!resume_from) {
     auto s = resume_from.status();
     SetupErrorAndRespond(

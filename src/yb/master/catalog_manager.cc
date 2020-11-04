@@ -4237,11 +4237,14 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
       resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->data().pb));
       *resp->mutable_index_info() = l->data().pb.fully_applied_index_info();
     }
-    VLOG(1) << " Returning "
-            << " fully_applied_schema with version " << l->data().pb.fully_applied_schema_version()
-            << " : \n"
-            << yb::ToString(l->data().pb.fully_applied_indexes()) << "\n instead of version "
-            << l->data().pb.version() << "\n"
+    VLOG(1) << "Returning"
+            << "\nfully_applied_schema with version "
+            << l->data().pb.fully_applied_schema_version()
+            << ":\n"
+            << yb::ToString(l->data().pb.fully_applied_indexes())
+            << "\ninstead of schema with version "
+            << l->data().pb.version()
+            << ":\n"
             << yb::ToString(l->data().pb.indexes());
   } else {
     // There's no AlterTable, the regular schema is "fully applied".
@@ -4252,9 +4255,10 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
       resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->data().pb));
       *resp->mutable_index_info() = l->data().pb.index_info();
     }
-    VLOG(3) << " Returning "
-            << " schema with version " << l->data().pb.version()
-            << " : \n"
+    VLOG(3) << "Returning"
+            << "\nschema with version "
+            << l->data().pb.version()
+            << ":\n"
             << yb::ToString(l->data().pb.indexes());
   }
   resp->mutable_partition_schema()->CopyFrom(l->data().pb.partition_schema());

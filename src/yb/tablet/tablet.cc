@@ -2191,21 +2191,33 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
   auto status = PQresultStatus(res);
 
   // TODO(jason): more properly handle bad statuses
-  if (status == PGRES_FATAL_ERROR) {
+  // TODO(jason): change to PGRES_TUPLES_OK when this query starts returning data
+  if (status != PGRES_COMMAND_OK) {
+    std::string msg(PQresultErrorMessage(res));
+    size_t num_newlines = std::count(msg.begin(), msg.end(), '\n');
+    if (num_newlines == 1) {
+      if (msg.back() == '\n') {
+        msg.resize(msg.size() - 1);
+      } else {
+        LOG(WARNING) << "Unexpected PQ error message not ending in newline";
+      }
+    } else {
+      LOG(WARNING) << "Unexpected PQ error message with " << num_newlines << " newlines";
+    }
     Status s = STATUS_FORMAT(
         IllegalState,
-        "BACKFILL request failed: PQ status $0 with message \"$1\" when running \"$2\"",
-        status,
-        PQresultErrorMessage(res),
+        "BACKFILL request failed: got $0 with message \"$1\" when running query \"$2\"",
+        PQresStatus(status),
+        msg,
         query_str);
     PQclear(res);
     PQfinish(conn);
     return s;
   }
-  PQclear(res);
-  PQfinish(conn);
   // TODO(jason): handle partially finished backfills.  How am I going to get that info?  From
   // response message by libpq or manual DocDB inspection?
+  PQclear(res);
+  PQfinish(conn);
   return "";
 }
 
@@ -2234,8 +2246,8 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
       if (res) {
         columns.push_back(*res);
       } else {
-        LOG(DFATAL) << "Unexpected : Cannot find the column in the main table for "
-            << idx;
+        LOG(DFATAL) << "Unexpected: cannot find the column in the main table for "
+                    << idx;
       }
     }
   }
@@ -2249,8 +2261,8 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
         if (res) {
           columns.push_back(*res);
         } else {
-          LOG(DFATAL) << "Unexpected : Cannot find the column in the main table for "
-              << idx_col.indexed_column_id;
+          LOG(DFATAL) << "Unexpected: cannot find the column in the main table for "
+                      << idx_col.indexed_column_id;
         }
       }
     }
@@ -2260,7 +2272,7 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
       VERIFY_RESULT(NewRowIterator(projection, boost::none, ReadHybridTime::SingleTime(read_time)));
 
   if (!backfill_from.empty()) {
-    VLOG(1) << "Resuming backfill from  " << b2a_hex(backfill_from);
+    VLOG(1) << "Resuming backfill from " << b2a_hex(backfill_from);
     RETURN_NOT_OK(iter->SeekTuple(Slice(backfill_from)));
   }
 
