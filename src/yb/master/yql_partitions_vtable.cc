@@ -111,7 +111,6 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
     // Get tablets for table.
     std::vector<scoped_refptr<TabletInfo>> tablet_infos;
     table->GetAllTablets(&tablet_infos);
-    tablets.reserve(tablets.size() + tablet_infos.size());
     for (const auto& info : tablet_infos) {
       tablets.emplace_back();
       auto& data = tablets.back();
@@ -138,6 +137,8 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
     dns_results.emplace(p.first, InetAddress(VERIFY_RESULT(p.second.get())));
   }
 
+  // Reserve upfront memory, as we're likely to need to insert a row for each tablet.
+  vtable->Reserve(tablets.size());
   for (const auto& data : tablets) {
     // Skip not-found tablets: they might not be running yet or have been deleted.
     if (data.locations->table_id().empty()) {
