@@ -553,6 +553,8 @@ systable_endscan(SysScanDesc sysscan)
  * wrappers around index_beginscan/index_getnext_slot.  The main reason for
  * their existence is to centralize possible future support of lossy operators
  * in catalog scans.
+ * TODO: This is not yet formally supported in YB, but cannot disable it
+ *       because it is used for enum types (see issues #6259).
  */
 SysScanDesc
 systable_beginscan_ordered(Relation heapRelation,
