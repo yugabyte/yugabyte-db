@@ -1238,7 +1238,7 @@ find_spark_submit_cmd() {
   fi
 
   if is_mac; then
-    spark_submit_cmd_path=$YB_MACOS_PY3_SPARK_SUBMIT_CMD
+    spark_submit_cmd_path=${YB_MACOS_PY3_SPARK_SUBMIT_CMD:-"NoSpark"}
     return
   fi
 
