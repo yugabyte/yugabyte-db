@@ -52,7 +52,7 @@ string FpToString(Fprint fp);
 string Uint128ToHexString(uint128 ui128);
 
 // Formats a uint16 as a 4-digit hex string.
-string Uint16ToHexString(uint16_t v);
+string Uint16ToHexString(uint16_t ui16);
 
 // Convert strings to numeric values, with strict error checking.
 // Leading and trailing spaces are allowed.

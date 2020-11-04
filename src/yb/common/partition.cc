@@ -731,26 +731,11 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
       case YBHashSchema::kRedisHash: FALLTHROUGH_INTENDED;
       case YBHashSchema::kMultiColumnHash: {
         const string& pstart = partition.partition_key_start();
-        uint16_t hash_start = !pstart.empty() ? DecodeMultiColumnHashValue(pstart) : 0;
         const string& pend = partition.partition_key_end();
-        if (!pend.empty()) {
-          uint16 hash_end = DecodeMultiColumnHashValue(pend);
-          if (pstart.empty()) {
-            s.append(Substitute("hash_split: [0x0000, $0)",
-                                Uint16ToHexString(hash_end)));
-          } else {
-            s.append(Substitute("hash_split: [$0, $1)",
-                                Uint16ToHexString(hash_start),
-                                Uint16ToHexString(hash_end)));
-          }
-        } else {
-          if (pstart.empty()) {
-            s.append(Substitute("hash_split: [0x0000, 0x0000)"));
-          } else {
-            s.append(Substitute("hash_split: [$0, 0xFFFF)",
-                                Uint16ToHexString(hash_start)));
-          }
-        }
+        uint16_t hash_start = !pstart.empty() ? DecodeMultiColumnHashValue(pstart) : 0;
+        uint16_t hash_end = !pend.empty() ? DecodeMultiColumnHashValue(pend) : 65535;
+        s.append(Substitute("hash_split: [0x$0, 0x$1]", 
+                            Uint16ToHexString(hash_start), Uint16ToHexString(hash_end)));
         return s;
       }
       case YBHashSchema::kPgsqlHash:
