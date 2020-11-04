@@ -23,6 +23,7 @@
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/rpc_util.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/errno.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/logging.h"
@@ -313,7 +314,7 @@ class SecureStream : public Stream, public StreamContext {
   CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
   void Close() override;
   void Shutdown(const Status& status) override;
-  size_t Send(OutboundDataPtr data) override;
+  Result<size_t> Send(OutboundDataPtr data) override;
   CHECKED_STATUS TryWrite() override;
   void ParseReceived() override;
 
@@ -349,10 +350,11 @@ class SecureStream : public Stream, public StreamContext {
   CHECKED_STATUS Handshake();
 
   CHECKED_STATUS Init();
-  void Established(SecureState state);
+  CHECKED_STATUS Established(SecureState state);
   static int VerifyCallback(int preverified, X509_STORE_CTX* store_context);
   bool Verify(bool preverified, X509_STORE_CTX* store_context);
-  void WriteEncrypted(OutboundDataPtr data);
+  CHECKED_STATUS SendEncrypted(OutboundDataPtr data);
+  CHECKED_STATUS WriteEncrypted(OutboundDataPtr data);
   CHECKED_STATUS ReadDecrypted();
   Result<size_t> SslRead(void* buf, int num);
 
@@ -398,44 +400,61 @@ void SecureStream::Shutdown(const Status& status) {
   lower_stream_->Shutdown(status);
 }
 
-size_t SecureStream::Send(OutboundDataPtr data) {
+Status SecureStream::SendEncrypted(OutboundDataPtr data) {
+  boost::container::small_vector<RefCntBuffer, 10> queue;
+  data->Serialize(&queue);
+  bool wrote_something = false;
+  for (const auto& buf : queue) {
+    Slice slice(buf.data(), buf.size());
+    for (;;) {
+      auto len = SSL_write(ssl_.get(), slice.data(), slice.size());
+      wrote_something = wrote_something || len > 0;
+      if (len == slice.size()) {
+        break;
+      }
+      auto error = len <= 0 ? SSL_get_error(ssl_.get(), len) : 0;
+      VLOG_WITH_PREFIX(4) << "SSL_write was not full: " << slice.size() << ", written: " << len
+                          << ", error: " << error;
+      if (len <= 0) {
+        LOG_WITH_PREFIX(INFO) << "SSL write failed: " << error;
+        if (!wrote_something) {
+          return STATUS_FORMAT(NetworkError, "SSL write failed: $0", error);
+        }
+      }
+      RETURN_NOT_OK(WriteEncrypted(nullptr));
+      wrote_something = false;
+      if (len > 0) {
+        slice.remove_prefix(len);
+      }
+    }
+  }
+  return WriteEncrypted(std::move(data));
+}
+
+Result<size_t> SecureStream::Send(OutboundDataPtr data) {
   switch (state_) {
   case SecureState::kInitial:
   case SecureState::kHandshake:
     pending_data_.push_back(std::move(data));
     return std::numeric_limits<size_t>::max();
-  case SecureState::kEnabled: {
-      boost::container::small_vector<RefCntBuffer, 10> queue;
-      data->Serialize(&queue);
-      for (const auto& buf : queue) {
-        Slice slice(buf.data(), buf.size());
-        for (;;) {
-          auto len = SSL_write(ssl_.get(), slice.data(), slice.size());
-          if (len == slice.size()) {
-            break;
-          }
-          VLOG_WITH_PREFIX(4) << "SSL_write was not full: " << slice.size() << ", written: " << len;
-          WriteEncrypted(nullptr);
-          slice.remove_prefix(len);
-        }
-      }
-      WriteEncrypted(std::move(data));
-    }
+  case SecureState::kEnabled:
+    RETURN_NOT_OK(SendEncrypted(std::move(data)));
     return std::numeric_limits<size_t>::max();
   case SecureState::kDisabled:
     return lower_stream_->Send(std::move(data));
   }
 
-  return std::numeric_limits<size_t>::max();
+  FATAL_INVALID_ENUM_VALUE(SecureState, state_);
 }
 
-void SecureStream::WriteEncrypted(OutboundDataPtr data) {
+Status SecureStream::WriteEncrypted(OutboundDataPtr data) {
   RefCntBuffer buf(BIO_ctrl_pending(bio_.get()));
   auto len = BIO_read(bio_.get(), buf.data(), buf.size());
   LOG_IF_WITH_PREFIX(DFATAL, len != buf.size())
       << "BIO_read was not full: " << buf.size() << ", read: " << len;
   VLOG_WITH_PREFIX(4) << "Write encrypted: " << len << ", " << yb::ToString(data);
-  lower_stream_->Send(std::make_shared<SecureOutboundData>(buf, std::move(data)));
+  return ResultToStatus(lower_stream_->Send(
+      std::make_shared<SecureOutboundData>(buf, std::move(data))));
 }
 
 Status SecureStream::TryWrite() {
@@ -503,7 +522,7 @@ Result<ProcessDataResult> SecureStream::ProcessReceived(
         ResetLogPrefix();
         RETURN_NOT_OK(Init());
       } else if (FLAGS_allow_insecure_connections) {
-        Established(SecureState::kDisabled);
+        RETURN_NOT_OK(Established(SecureState::kDisabled));
       } else {
         return STATUS_FORMAT(NetworkError, "Insecure connection header: $0",
                              Slice(bytes, 2).ToDebugHexString());
@@ -657,11 +676,11 @@ Status SecureStream::Handshake() {
       int len = BIO_read(bio_.get(), buffer.data(), buffer.size());
       DCHECK_EQ(len, pending_after);
       auto data = std::make_shared<SecureOutboundData>(buffer, nullptr);
-      lower_stream_->Send(data);
+      RETURN_NOT_OK(lower_stream_->Send(data));
       // If SSL_connect/SSL_accept returned positive result it means that TLS connection
       // was succesfully established. We just have to send last portion of data.
       if (result > 0) {
-        Established(SecureState::kEnabled);
+        RETURN_NOT_OK(Established(SecureState::kEnabled));
       }
     } else if (ssl_error == SSL_ERROR_WANT_READ) {
       // SSL expects that we would read from underlying transport.
@@ -669,8 +688,7 @@ Status SecureStream::Handshake() {
     } else if (SSL_get_shutdown(ssl_.get()) & SSL_RECEIVED_SHUTDOWN) {
       return STATUS(Aborted, "Handshake aborted");
     } else {
-      Established(SecureState::kEnabled);
-      return Status::OK();
+      return Established(SecureState::kEnabled);
     }
   }
 }
@@ -706,7 +724,7 @@ Status SecureStream::Init() {
   return Status::OK();
 }
 
-void SecureStream::Established(SecureState state) {
+Status SecureStream::Established(SecureState state) {
   VLOG_WITH_PREFIX(4) << "Established with state: " << state;
 
   state_ = state;
@@ -714,9 +732,10 @@ void SecureStream::Established(SecureState state) {
   connected_ = true;
   context_->Connected();
   for (auto& data : pending_data_) {
-    Send(std::move(data));
+    RETURN_NOT_OK(Send(std::move(data)));
   }
   pending_data_.clear();
+  return Status::OK();
 }
 
 int SecureStream::VerifyCallback(int preverified, X509_STORE_CTX* store_context) {

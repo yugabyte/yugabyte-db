@@ -72,7 +72,7 @@ class TcpStream : public Stream {
   CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
   void Close() override;
   void Shutdown(const Status& status) override;
-  size_t Send(OutboundDataPtr data) override;
+  Result<size_t> Send(OutboundDataPtr data) override;
   CHECKED_STATUS TryWrite() override;
   void Cancelled(size_t handle) override;
 
