@@ -684,7 +684,7 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
                                   RestartSafeCoarseTimePoint batch_mono_time,
                                   const StatusCallback& callback) {
   auto batch = CreateBatchFromAllocatedOperations(msgs);
-  if (committed_op_id) {
+  if (!committed_op_id.empty()) {
     committed_op_id.ToPB(batch.mutable_committed_op_id());
   }
   // Set batch mono time if it was specified.
