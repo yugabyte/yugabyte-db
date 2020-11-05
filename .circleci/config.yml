@@ -28,15 +28,29 @@ jobs:
       - run:
           name: Build YugabyteDB
           command: |
-            brew install cmake maven
+            brew install bash cmake maven
             echo "Building in directory: $PWD"
             set -x
             sudo mkdir -p -m 0777 /opt/yb-build
+            ulimit -n 1048576
+            ulimit -a
             export BUILD_TYPE=<< parameters.flavor >>
             export YB_USE_NINJA=0
             export YB_SKIP_CREATING_RELEASE_PACKAGE=1
-            export YB_NUM_TESTS_TO_RUN=25
             ./build-support/jenkins/build-and-test.sh
+
+      - run:
+          name: Gather Test Results
+          command: |
+            mkdir -p ~/test-results/java
+            find java -type f -regex ".*/target/surefire-reports/.*xml" -exec cp {} ~/test-results/java/ \;
+            tar -cvzf test_logs.tar.gz build/*/yb-test-logs build/*/test-logs
+
+      - store_test_results:
+          path: ~/test-results/java
+
+      - store_artifacts:
+          path: test_logs.tar.gz
 
 # If no workflows run, then error is generated.
 # If worflow runs, but no jobs, then success is logged.
