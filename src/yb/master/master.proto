@@ -1622,6 +1622,8 @@ message RolePermissionInfoPB {
   optional uint32 all_keyspaces_permissions = 2;
   optional uint32 all_roles_permissions = 3;
   repeated ResourcePermissionInfoPB resource_permissions = 4;
+  optional string salted_hash = 5;
+  optional bool can_login = 6;
 }
 
 message GetPermissionsResponsePB {
