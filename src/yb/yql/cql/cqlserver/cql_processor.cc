@@ -80,6 +80,7 @@ METRIC_DEFINE_counter(server, cql_parsers_created,
                       "Number of created CQL Parsers.");
 
 DECLARE_bool(use_cassandra_authentication);
+DECLARE_bool(ycql_cache_login_info);
 
 namespace yb {
 namespace cqlserver {
@@ -431,6 +432,27 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const AuthResponseRequest& req) {
   const auto& params = req.params();
+  if (FLAGS_ycql_cache_login_info) {
+    auto salted_hash_result = ql_env_.RoleSaltedHash(params.username);
+    if (salted_hash_result.ok()) {
+      auto can_login_result = ql_env_.RoleCanLogin(params.username);
+      if (can_login_result.ok()) {
+        unique_ptr<CQLResponse> response =
+          ProcessAuthResult(*salted_hash_result, *can_login_result);
+        VLOG(1) << "Used cached authentication";
+        // FIXME: Logged twice, with different ports!
+        // https://github.com/yugabyte/yugabyte-db/issues/6280
+        Status s = audit_logger_.LogAuthResponse(*response);
+        return response;
+      } else {
+        VLOG(1) << "Unable to get can_login for user " << params.username << ": "
+                  << can_login_result;
+      }
+    } else {
+      VLOG(1) << "Unable to get salted hash for user " << params.username << ": "
+                << salted_hash_result;
+    }
+  }
   shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
   if (!stmt->Prepare(this, nullptr /* memtracker */, true /* internal */).ok()) {
     return make_unique<ErrorResponse>(
@@ -534,6 +556,33 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessError(const Status& s,
                                     s.ToUserMessage());
 }
 
+unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash, bool can_login) {
+  const auto& req = down_cast<const AuthResponseRequest&>(*request_);
+  const auto& params = req.params();
+  unique_ptr<CQLResponse> response = nullptr;
+  // Username doesn't have a password, but one is required for authentication. Return an error.
+  if (saved_hash.empty()) {
+    response = make_unique<ErrorResponse>(*request_,
+        ErrorResponse::Code::BAD_CREDENTIALS,
+        "Provided username " + params.username + " and/or password are incorrect");
+  } else {
+    if (!service_impl_->CheckPassword(params.password, saved_hash)) {
+      response = make_unique<ErrorResponse>(*request_,
+          ErrorResponse::Code::BAD_CREDENTIALS,
+          "Provided username " + params.username + " and/or password are incorrect");
+    } else if (!can_login) {
+      response = make_unique<ErrorResponse>(*request_,
+          ErrorResponse::Code::BAD_CREDENTIALS,
+          params.username + " is not permitted to log in");
+    } else {
+      call_->ql_session()->set_current_role_name(params.username);
+      response = make_unique<AuthSuccessResponse>(*request_,
+                                                  "" /* this does not matter */);
+    }
+  }
+  return response;
+}
+
 unique_ptr<CQLResponse> CQLProcessor::ProcessResult(const ExecutedResult::SharedPtr& result) {
   if (result == nullptr) {
     return make_unique<VoidResultResponse>(*request_);
@@ -575,29 +624,11 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessResult(const ExecutedResult::Shared
                 row.column(schema.find_column(kRoleColumnNameSaltedHash));
             const auto& can_login =
                 row.column(schema.find_column(kRoleColumnNameCanLogin)).bool_value();
-            // Username doesn't have a password, but one is required for authentication. Return
-            // an error.
-            if (salted_hash_value.IsNull()) {
-              response = make_unique<ErrorResponse>(*request_,
-                  ErrorResponse::Code::BAD_CREDENTIALS,
-                  "Provided username " + params.username + " and/or password are incorrect");
-            } else {
-              const auto& saved_hash = salted_hash_value.string_value();
-              if (!service_impl_->CheckPassword(params.password, saved_hash)) {
-                response = make_unique<ErrorResponse>(*request_,
-                    ErrorResponse::Code::BAD_CREDENTIALS,
-                    "Provided username " + params.username + " and/or password are incorrect");
-              } else if (!can_login) {
-                response = make_unique<ErrorResponse>(*request_,
-                    ErrorResponse::Code::BAD_CREDENTIALS,
-                    params.username + " is not permitted to log in");
-              } else {
-                call_->ql_session()->set_current_role_name(params.username);
-                response = make_unique<AuthSuccessResponse>(*request_,
-                                                            "" /* this does not matter */);
-              }
-            }
-
+            // Returning empty string is fine since it would error out as expected,
+            // if the hash is empty
+            const string saved_hash = salted_hash_value.IsNull() ?
+                "" : salted_hash_value.string_value();
+            response = ProcessAuthResult(saved_hash, can_login);
           }
           // FIXME: Logged twice, with different ports!
           Status s = audit_logger_.LogAuthResponse(*response);
