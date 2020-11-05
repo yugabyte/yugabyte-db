@@ -35,6 +35,7 @@ using namespace std::literals;
 
 DEFINE_bool(allow_insecure_connections, true, "Whether we should allow insecure connections.");
 DEFINE_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
+DEFINE_int32(ssl_write_max_retries, 100, "Max number of retries for SSL write.");
 
 namespace yb {
 namespace rpc {
@@ -403,26 +404,23 @@ void SecureStream::Shutdown(const Status& status) {
 Status SecureStream::SendEncrypted(OutboundDataPtr data) {
   boost::container::small_vector<RefCntBuffer, 10> queue;
   data->Serialize(&queue);
-  bool wrote_something = false;
   for (const auto& buf : queue) {
     Slice slice(buf.data(), buf.size());
-    for (;;) {
+    for (int retries_left = FLAGS_ssl_write_max_retries;;) {
       auto len = SSL_write(ssl_.get(), slice.data(), slice.size());
-      wrote_something = wrote_something || len > 0;
       if (len == slice.size()) {
         break;
       }
-      auto error = len <= 0 ? SSL_get_error(ssl_.get(), len) : 0;
-      VLOG_WITH_PREFIX(4) << "SSL_write was not full: " << slice.size() << ", written: " << len
-                          << ", error: " << error;
-      if (len <= 0) {
-        LOG_WITH_PREFIX(INFO) << "SSL write failed: " << error;
-        if (!wrote_something) {
-          return STATUS_FORMAT(NetworkError, "SSL write failed: $0", error);
+      auto error = len <= 0 ? SSL_get_error(ssl_.get(), len) : SSL_ERROR_NONE;
+      if (error != SSL_ERROR_NONE) {
+        if (error != SSL_ERROR_WANT_WRITE || --retries_left <= 0) {
+          return STATUS_FORMAT(
+              NetworkError, "SSL write failed: $0 ($1)", SSLErrorMessage(error), error);
         }
       }
+      VLOG_WITH_PREFIX(4) << "SSL_write was not full: " << slice.size() << ", written: " << len
+                          << ", error: " << error;
       RETURN_NOT_OK(WriteEncrypted(nullptr));
-      wrote_something = false;
       if (len > 0) {
         slice.remove_prefix(len);
       }
@@ -448,7 +446,11 @@ Result<size_t> SecureStream::Send(OutboundDataPtr data) {
 }
 
 Status SecureStream::WriteEncrypted(OutboundDataPtr data) {
-  RefCntBuffer buf(BIO_ctrl_pending(bio_.get()));
+  auto pending = BIO_ctrl_pending(bio_.get());
+  if (pending == 0) {
+    return data ? STATUS(NetworkError, "No pending data during write") : Status::OK();
+  }
+  RefCntBuffer buf(pending);
   auto len = BIO_read(bio_.get(), buf.data(), buf.size());
   LOG_IF_WITH_PREFIX(DFATAL, len != buf.size())
       << "BIO_read was not full: " << buf.size() << ", read: " << len;
@@ -579,8 +581,10 @@ Result<size_t> SecureStream::SslRead(void* buf, int num) {
     if (error == SSL_ERROR_WANT_READ) {
       return 0;
     } else {
-      LOG_WITH_PREFIX(INFO) << "SSL read error: " << error;
-      return STATUS_FORMAT(NetworkError, "SSL read failed: $0", error);
+      auto status = STATUS_FORMAT(
+          NetworkError, "SSL read failed: $0 ($1)", SSLErrorMessage(error), error);
+      LOG_WITH_PREFIX(INFO) << status;
+      return status;
     }
   }
   return len;
