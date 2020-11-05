@@ -1392,7 +1392,7 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
   }
 
   // Release the lock while we wait for the log append to finish so that commits can go through.
-  if (result.wait_for_op_id) {
+  if (!result.wait_for_op_id.empty()) {
     RETURN_NOT_OK(WaitForWrites(result.wait_for_op_id));
   }
 
@@ -1998,7 +1998,7 @@ Status RaftConsensus::WaitForWrites(const yb::OpId& wait_for_op_id) {
         wait_for_op_id, MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms));
     // If just waiting for our log append to finish lets snooze the timer.
     // We don't want to fire leader election because we're waiting on our own log.
-    if (wait_result) {
+    if (!wait_result.empty()) {
       break;
     }
     SnoozeFailureDetector(DO_NOT_LOG);
