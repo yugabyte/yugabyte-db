@@ -26,16 +26,26 @@ jobs:
       - checkout
 
       - run:
-          name: Build YugabyteDB
+          name: Prep Mac Build & Test Environment
           command: |
-            brew install bash cmake maven
-            echo "Building in directory: $PWD"
+            brew install bash cmake maven pstree
             set -x
             sudo mkdir -p -m 0777 /opt/yb-build
-            launchctl limit maxfiles
-            sudo launchctl limit maxfiles 65536 1048576
-            ulimit -n 65536
-            ulimit -a
+            sudo launchctl limit maxfiles 1048576 1048576
+            for i in {0..3}; do
+              for j in {2..254}; do
+                sudo /sbin/ifconfig lo0 alias 127.0.$i.$j
+              done
+            done
+            # Enable host address lookup
+            echo $(ipconfig getifaddr en0) $(hostname) | sudo tee -a /etc/hosts
+
+      - run:
+          name: Build YugabyteDB
+          command: |
+            echo "Building in directory: $PWD"
+            ulimit -n 1048576
+            set -x
             export BUILD_TYPE=<< parameters.flavor >>
             export YB_USE_NINJA=0
             export YB_SKIP_CREATING_RELEASE_PACKAGE=1
@@ -54,8 +64,8 @@ jobs:
       - store_artifacts:
           path: test_logs.tar.gz
 
-# If no workflows run, then error is generated.
-# If worflow runs, but no jobs, then success is logged.
+# If no workflow is created, then error is generated for the PR/commit.
+# If worflow is created, but no jobs run, then it is ignored.
 workflows:
   version: 2
 
