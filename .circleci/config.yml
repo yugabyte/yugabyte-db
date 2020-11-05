@@ -32,7 +32,9 @@ jobs:
             echo "Building in directory: $PWD"
             set -x
             sudo mkdir -p -m 0777 /opt/yb-build
-            ulimit -n 1048576
+            launchctl limit maxfiles
+            ulimit -n
+            sudo ulimit -n 1048576
             ulimit -a
             export BUILD_TYPE=<< parameters.flavor >>
             export YB_USE_NINJA=0
