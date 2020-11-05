@@ -160,3 +160,27 @@ When you [enable SCRAM-SHA-256 authentication](#enable-scram-sha-256-authenticat
 - All existing passwords were encrypted using the MD5 hashing algorithm.
 
 Because all existing passwords must be changed, you can manage the migration of these user and role passwords from MD5 to SCRAM-SHA-256 by maintaining rules in the `--ysql_hba_conf` setting to allow both MD5 passwords and SCRAM-SHA-256 passwords to work until all passwords have been migrated to SCRAM-SHA-256. For an example, see [Create a cluster that uses SCRAM-SHA-256 password authentication](#Create-a-cluster-that-uses-scram-sha-256-password-authentication) above. If you follow a similar approach for an existing cluster, you can enhance your cluster security, track and migrate passwords, and then remove the much weaker MD5 rules after all passwords have been updated.
+
+## Resetting user password
+
+There are cases where we have lost the password of a user and want to reset it. The `pg_hba.conf` file can be modified 
+to allow administrator access without a password by changing the `--ysql_hba_conf` configuration flag. This is done by setting
+the flag as below and restarting the yb-tserver:
+
+```
+--ysql_hba_conf=host all yugabyte 0.0.0.0/0 trust,host all all 0.0.0.0/0 md5,host all yugabyte ::0/0 trust,host all all ::0/0 md5
+```
+
+After restarting the yb-tserver, password authentication will be enforced for all users except `yugabyte` user. Now we 
+can connect without a password:
+
+```sh
+$ ./bin/ysqlsh
+```
+And update the password of the user:
+
+```postgresql
+yugabyte=# ALTER ROLE yugabyte WITH PASSWORD 'yugabyte';
+```
+
+Rollback the configuration and restart the yb-tserver to enable password authentication for `yugabyte` user again.
