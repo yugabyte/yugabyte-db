@@ -733,8 +733,8 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
         const string& pstart = partition.partition_key_start();
         const string& pend = partition.partition_key_end();
         uint16_t hash_start = !pstart.empty() ? DecodeMultiColumnHashValue(pstart) : 0;
-        uint16_t hash_end = !pend.empty() ? DecodeMultiColumnHashValue(pend) : 65535;
-        s.append(Substitute("hash_split: [0x$0, 0x$1]", 
+        uint16_t hash_end = !pend.empty() ? DecodeMultiColumnHashValue(pend) : UINT16_MAX;
+        s.append(Substitute("hash_split: [0x$0,0x$1)", 
                             Uint16ToHexString(hash_start), Uint16ToHexString(hash_end)));
         return s;
       }
