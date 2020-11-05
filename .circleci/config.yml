@@ -23,22 +23,23 @@ jobs:
       xcode: 11.5.0
 
     steps:
-      - checkout
-
       - run:
           name: Prep Mac Build & Test Environment
           command: |
-            brew install bash cmake maven pstree
             set -x
             sudo mkdir -p -m 0777 /opt/yb-build
             sudo launchctl limit maxfiles 1048576 1048576
+            # Enable host address lookup
+            echo $(ipconfig getifaddr en0) $(hostname) | sudo tee -a /etc/hosts
+            # Provide plenty of local test addresses
             for i in {0..3}; do
               for j in {2..254}; do
                 sudo /sbin/ifconfig lo0 alias 127.0.$i.$j
               done
             done
-            # Enable host address lookup
-            echo $(ipconfig getifaddr en0) $(hostname) | sudo tee -a /etc/hosts
+            brew install bash cmake maven pstree
+
+      - checkout
 
       - run:
           name: Build YugabyteDB
