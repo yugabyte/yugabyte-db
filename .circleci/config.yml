@@ -33,8 +33,8 @@ jobs:
             set -x
             sudo mkdir -p -m 0777 /opt/yb-build
             launchctl limit maxfiles
-            ulimit -n
             sudo launchctl limit maxfiles 65536 1048576
+            ulimit -n 65536
             ulimit -a
             export BUILD_TYPE=<< parameters.flavor >>
             export YB_USE_NINJA=0
