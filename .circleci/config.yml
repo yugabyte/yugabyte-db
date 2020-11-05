@@ -32,8 +32,8 @@ jobs:
             # Enable host address lookup
             echo $(ipconfig getifaddr en0) $(hostname) | sudo tee -a /etc/hosts
             # Provide plenty of local test addresses
-            for i in {0..3}; do
-              for j in {2..254}; do
+            for i in {0..1}; do
+              for j in {2..64}; do
                 sudo /sbin/ifconfig lo0 alias 127.0.$i.$j
               done
             done
