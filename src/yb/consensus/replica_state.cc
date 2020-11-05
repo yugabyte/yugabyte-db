@@ -801,7 +801,7 @@ void ReplicaState::SetLastCommittedIndexUnlocked(const yb::OpId& committed_op_id
 }
 
 Status ReplicaState::InitCommittedOpIdUnlocked(const yb::OpId& committed_op_id) {
-  if (last_committed_op_id_) {
+  if (!last_committed_op_id_.empty()) {
     return STATUS_FORMAT(
         IllegalState,
         "Committed index already initialized to: $0, tried to set $1",

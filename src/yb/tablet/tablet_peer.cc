@@ -875,7 +875,7 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     // it is used during bootstrap to initialize ReplicaState::split_op_id_ which in its turn
     // is used to prevent already split tablet from serving new ops.
     auto split_op_id = consensus()->GetSplitOpId();
-    if (split_op_id) {
+    if (!split_op_id.empty()) {
       min_index = std::min(min_index, split_op_id.index);
     }
   }

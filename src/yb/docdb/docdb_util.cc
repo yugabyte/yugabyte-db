@@ -158,7 +158,7 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
 
   ConsensusFrontiers frontiers;
   rocksdb::WriteBatch rocksdb_write_batch;
-  if (op_id_) {
+  if (!op_id_.empty()) {
     ++op_id_.index;
     set_op_id(op_id_, &frontiers);
     set_hybrid_time(hybrid_time, &frontiers);

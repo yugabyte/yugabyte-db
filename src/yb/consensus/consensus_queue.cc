@@ -1414,17 +1414,18 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
 
   // TODO move commit index advancement here so that the queue is not dependent on consensus at all,
   // but that requires a bit more work.
-  OpId new_committed_index;
+  OpId new_committed_op_id;
   OpId last_applied_op_id;
   for (PeerMessageQueueObserver* observer : copy) {
     observer->UpdateMajorityReplicated(
-        majority_replicated_data, &new_committed_index, &last_applied_op_id);
+        majority_replicated_data, &new_committed_op_id, &last_applied_op_id);
   }
 
   {
     LockGuard lock(queue_lock_);
-    if (new_committed_index && new_committed_index.index > queue_state_.committed_op_id.index) {
-      queue_state_.committed_op_id = new_committed_index;
+    if (!new_committed_op_id.empty() &&
+        new_committed_op_id.index > queue_state_.committed_op_id.index) {
+      queue_state_.committed_op_id = new_committed_op_id;
     }
     queue_state_.last_applied_op_id.MakeAtLeast(last_applied_op_id);
     local_peer_->last_applied = queue_state_.last_applied_op_id;
