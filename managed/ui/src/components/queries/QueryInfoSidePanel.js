@@ -42,7 +42,7 @@ export const QueryInfoSidePanel = ({ data, visible, onHide }) => {
           <div className="side-panel__query">
             <Highlight className="sql">{data.query}</Highlight>
           </div>
-          <div>
+          <div className="copy-btn-container">
             <YBButton
               btnText={copied ? 'Copied!' : 'Copy Statement'}
               btnIcon="fa fa-copy"

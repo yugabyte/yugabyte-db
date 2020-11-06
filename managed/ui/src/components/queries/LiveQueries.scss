@@ -192,7 +192,7 @@
     right: 0;
     border-left: 1px solid $YB_BACKGROUND;
 
-    .side-panel__header {
+    &__header {
       margin-top: 119px;
       display: flex;
       position: relative;
@@ -217,11 +217,13 @@
       }
     }
 
-    .side-panel__content {
+    &__content {
       padding: 15px 30px;
 
       .side-panel__query code {
         background: $YB_WHITE;
+        overflow-y: auto;
+        max-height: 600px;
       }
 
       .side-panel__details {
@@ -235,6 +237,10 @@
             text-align: right;
           }
         }
+      }
+
+      .copy-btn-container {
+        margin-top: 15px;
       }
     }
   }

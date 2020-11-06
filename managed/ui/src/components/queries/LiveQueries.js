@@ -77,6 +77,7 @@ const LiveQueriesComponent = ({ location }) => {
   });
   const [searchText, setSearchText] = useState('');
   const [searchDropdownLeftPx, setSearchDropdownLeft] = useState(0);
+  const isYSQL = type === 'YSQL';
 
   useEffect(() => {
     if (location.search) {
@@ -186,6 +187,7 @@ const LiveQueriesComponent = ({ location }) => {
                   let newTokens = [...searchTokens];
                   newTokens.splice(idx, 1);
                   setSearchTokens(newTokens);
+                  clearBtnClick();
                 }}
               />
             </span>
@@ -224,10 +226,10 @@ const LiveQueriesComponent = ({ location }) => {
               <li data-col-key={type === 'YCQL' ? 'keyspace' : 'dbName'}>
                 {type === 'YCQL' ? 'Keyspace' : 'DB Name'}
               </li>
-              {type === 'YSQL' && <li data-col-key="sessionStatus">Session Status</li>}
+              {isYSQL && <li data-col-key="sessionStatus">Session Status</li>}
               <li data-col-key="query">Query</li>
               <li data-col-key="elapsedMillis">Elapsed Time</li>
-              {type === 'YSQL' ? (
+              {isYSQL ? (
                 <li data-col-key="appName">Client Name</li>
               ) : (
                 <li data-col-key="type">Type</li>
@@ -241,10 +243,22 @@ const LiveQueriesComponent = ({ location }) => {
     );
   };
 
+  /**
+   * We truncate the query text to 50 characters because highlight.js will
+   * cut off excess text and we don't need to display the full statement when
+   * the user can instead open the query in the side panel. Not truncating has
+   * caused performance issues when large BATCH queries were received. Each query
+   * statement contained over 10kB of text, causing highlight.js to create roughly
+   * 4000 additional DOM nodes, so having three or more entries caused the page to
+   * completely freeze up due to re-renders and layout calculations.
+   * 
+   * @param {String} cell A YSQL or YCQL query statement
+   */
   const getQueryStatement = (cell) => {
+    const truncatedText = cell.length > 50 ? `${cell.substring(0, 50)}...` : cell;
     return (
       <div className="query-container">
-        <Highlight className="sql">{cell}</Highlight>
+        <Highlight className="sql">{truncatedText}</Highlight>
       </div>
     );
   };
@@ -258,13 +272,12 @@ const LiveQueriesComponent = ({ location }) => {
     return true;
   };
 
-  const displayedQueries =
-    type === 'YSQL'
-      ? filterBySearchTokens(ysqlQueries, searchTokens)
-      : filterBySearchTokens(ycqlQueries, searchTokens);
+  const displayedQueries = isYSQL ?
+    filterBySearchTokens(ysqlQueries, searchTokens) :
+    filterBySearchTokens(ycqlQueries, searchTokens);
 
   let failedQueries = null;
-  if (type === 'YSQL') {
+  if (isYSQL) {
     if (errors.ysql > 0) {
       const percentFailed = parseFloat(errors.ysql) / (errors.ysql + ysqlQueries.length);
       failedQueries = (
@@ -273,7 +286,7 @@ const LiveQueriesComponent = ({ location }) => {
         </Alert>
       );
     }
-  } else if (type === 'YCQL') {
+  } else {
     if (errors.ycql > 0) {
       const percentFailed = parseFloat(errors.ycql) / (errors.ycql + ycqlQueries.length);
       failedQueries = (
@@ -304,7 +317,7 @@ const LiveQueriesComponent = ({ location }) => {
               <YBButtonLink
                 btnIcon="fa fa-refresh"
                 btnClass="btn btn-default refresh-btn"
-                onClick={() => getLiveQueries()}
+                onClick={getLiveQueries}
               />
               <div>
                 <div className="live-queries__dropdown-label">Show live queries</div>
@@ -314,10 +327,10 @@ const LiveQueriesComponent = ({ location }) => {
                     {type}
                   </Dropdown.Toggle>
                   <Dropdown.Menu>
-                    <MenuItem key="YCQL" active={type === 'YCQL'} onClick={() => setType('YCQL')}>
+                    <MenuItem key="YCQL" active={!isYSQL} onClick={() => setType('YCQL')}>
                       YCQL
                     </MenuItem>
-                    <MenuItem key="YSQL" active={type === 'YSQL'} onClick={() => setType('YSQL')}>
+                    <MenuItem key="YSQL" active={isYSQL} onClick={() => setType('YSQL')}>
                       YSQL
                     </MenuItem>
                   </Dropdown.Menu>
@@ -328,132 +341,64 @@ const LiveQueriesComponent = ({ location }) => {
         }
         body={
           <div className="live-queries__table">
-            {type === 'YSQL' && (
-              <BootstrapTable
-                data={displayedQueries}
-                search
-                searchPlaceholder="Filter by column or query text"
-                multiColumnSearch
-                selectRow={{
-                  mode: 'checkbox',
-                  clickToSelect: true,
-                  onSelect: handleRowSelect,
-                  selected: selectedRow
-                }}
-                options={{
-                  clearSearch: true,
-                  toolBar: renderTableToolbar,
-                  searchPanel: renderCustomSearchPanel
-                }}
+            <BootstrapTable
+              data={displayedQueries}
+              search
+              searchPlaceholder="Filter by column or query text"
+              multiColumnSearch
+              selectRow={{
+                mode: 'checkbox',
+                clickToSelect: true,
+                onSelect: handleRowSelect,
+                selected: selectedRow
+              }}
+              options={{
+                clearSearch: true,
+                toolBar: renderTableToolbar,
+                searchPanel: renderCustomSearchPanel
+              }}
+            >
+              <TableHeaderColumn dataField="id" isKey={true} hidden={true} />
+              <TableHeaderColumn
+                dataField="nodeName"
+                width="200px"
+                dataFormat={getTserverLink}
+                dataSort
               >
-                <TableHeaderColumn dataField="id" isKey={true} hidden={true} />
-                <TableHeaderColumn
-                  dataField="nodeName"
-                  width="200px"
-                  dataFormat={getTserverLink}
-                  dataSort
-                >
-                  Node Name
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="privateIp" width="200px" dataSort>
-                  Private IP
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="dbName" width="120px" dataSort>
-                  DB Name
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="sessionStatus" width="150px" dataSort>
-                  Session Status
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="query"
-                  width="300px"
-                  dataSort
-                  dataFormat={getQueryStatement}
-                >
-                  Query
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="elapsedMillis"
-                  width="100px"
-                  dataFormat={(cell, row) => `${cell} ms`}
-                  dataSort
-                  width="180px"
-                >
-                  Elapsed Time (ms)
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="appName" width="200px" dataSort>
-                  Client Name
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="clientHost" width="150px" dataSort>
-                  Client Host
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="clientPort" width="100px" dataSort>
-                  Client Port
-                </TableHeaderColumn>
-              </BootstrapTable>
-            )}
-            {type === 'YCQL' && (
-              <BootstrapTable
-                data={displayedQueries}
-                search
-                searchPlaceholder="Filter by column or query text"
-                selectRow={{
-                  mode: 'checkbox',
-                  clickToSelect: true,
-                  onSelect: handleRowSelect,
-                  selected: selectedRow
-                }}
-                multiColumnSearch
-                options={{
-                  clearSearch: true,
-                  toolBar: renderTableToolbar,
-                  searchPanel: renderCustomSearchPanel
-                }}
+                Node Name
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="privateIp" width="200px" dataSort>
+                Private IP
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField={isYSQL ? 'dbName' : 'keyspace'} width="120px" dataSort>
+                {isYSQL ? 'DB Name' : 'Keyspace'}
+              </TableHeaderColumn>              
+              <TableHeaderColumn
+                dataField="query"
+                width="350px"
+                dataSort
+                dataFormat={getQueryStatement}
               >
-                <TableHeaderColumn dataField="id" isKey={true} hidden={true} />
-                <TableHeaderColumn
-                  dataField="nodeName"
-                  width="150px"
-                  dataFormat={getTserverLink}
-                  dataSort
-                >
-                  Node Name
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="privateIp" width="200px" dataSort>
-                  Private IP
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="keyspace" width="160px" dataSort>
-                  Keyspace
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="query"
-                  width="350px"
-                  dataSort
-                  dataFormat={getQueryStatement}
-                >
-                  Query
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="elapsedMillis"
-                  width="100px"
-                  dataFormat={(cell, row) => `${cell} ms`}
-                  dataSort
-                  width="180px"
-                >
-                  Elapsed Time (ms)
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="type" width="150px" dataSort>
-                  Type
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="clientHost" width="150px" dataSort>
-                  Client Host
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="clientPort" width="100px" dataSort>
-                  Client Port
-                </TableHeaderColumn>
-              </BootstrapTable>
-            )}
-            {!type && <div>No Live Queries at this time</div>}
+                Query
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="elapsedMillis"
+                width="150px"
+                dataFormat={(cell) => `${cell} ms`}
+                dataSort
+              >
+                Elapsed Time (ms)
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField={isYSQL ? 'appName' : 'type'} width="200px" dataSort>
+                {isYSQL ? 'Client Name' : 'Type'}
+              </TableHeaderColumn>              
+              <TableHeaderColumn dataField="clientHost" width="150px" dataSort>
+                Client Host
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="clientPort" width="100px" dataSort>
+                Client Port
+              </TableHeaderColumn>
+            </BootstrapTable>            
           </div>
         }
       />
