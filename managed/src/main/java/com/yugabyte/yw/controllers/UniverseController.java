@@ -37,6 +37,8 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 
 import com.yugabyte.yw.queries.LiveQueryHelper;
+
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -164,12 +166,29 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
+  private static String escapeSingleQuotesOnly(String src) {
+    return src.replaceAll("'", "''");
+  }
+
+  @VisibleForTesting
+  static String removeEnclosingDoubleQuotes(String src) {
+    if (src != null && src.startsWith("\"") && src.endsWith("\"")) {
+      return src.substring(1, src.length() - 1);
+    }
+    return src;
+  }
+
   public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID) {
     Universe universe;
     try {
       universe = checkCallValid(customerUUID, universeUUID);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+
+    Customer customer = Customer.get(customerUUID);
+    if (!customer.code.equals("cloud")) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer type.");
     }
 
     Form<DatabaseSecurityFormData> formData =
@@ -179,26 +198,51 @@ public class UniverseController extends AuthenticatedController {
     }
 
     DatabaseSecurityFormData data = formData.get();
-    if (data.ysqlAdminUsername != null) {
+    if (StringUtils.isEmpty(data.ysqlAdminUsername)
+        && StringUtils.isEmpty(data.ycqlAdminUsername)) {
+      return ApiResponse.error(BAD_REQUEST, "Need to provide YSQL and/or YCQL username.");
+    }
+
+    data.ysqlAdminUsername = removeEnclosingDoubleQuotes(data.ysqlAdminUsername);
+    if (!StringUtils.isEmpty(data.ysqlAdminUsername)) {
       if (data.dbName == null) {
         return ApiResponse.error(BAD_REQUEST, "DB needs to be specified for YSQL user change.");
       }
+
+      if (data.ysqlAdminUsername.contains("\"")) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid username.");
+      }
+
       // Update admin user password YSQL.
       RunQueryFormData ysqlQuery = new RunQueryFormData();
-      ysqlQuery.query = String.format("ALTER USER %s WITH PASSWORD '%s'", data.ysqlAdminUsername,
-          data.ysqlAdminPassword);
+      ysqlQuery.query = String.format("ALTER USER \"%s\" WITH PASSWORD '%s'",
+          data.ysqlAdminUsername, escapeSingleQuotesOnly(data.ysqlAdminPassword));
       ysqlQuery.db_name = data.dbName;
-      ysqlQueryExecutor.executeQuery(universe, ysqlQuery, data.ysqlAdminUsername,
-          data.ysqlCurrAdminPassword);
+      JsonNode ysqlResponse = ysqlQueryExecutor.executeQuery(universe, ysqlQuery,
+          data.ysqlAdminUsername, data.ysqlCurrAdminPassword);
+      LOG.info("Updating YSQL user, result: " + ysqlResponse.toString());
+      if (ysqlResponse.has("error")) {
+        return ApiResponse.error(BAD_REQUEST, ysqlResponse.get("error").asText());
+      }
     }
 
-    if (data.ycqlAdminUsername != null) {
+    data.ycqlAdminUsername = removeEnclosingDoubleQuotes(data.ycqlAdminUsername);
+    if (!StringUtils.isEmpty(data.ycqlAdminUsername)) {
       // Update admin user password CQL.
+
+      // This part of code works only when TServer is started with
+      // --use_cassandra_authentication=true
+      // This is always true if the universe was created via cloud.
       RunQueryFormData ycqlQuery = new RunQueryFormData();
-      ycqlQuery.query = String.format("ALTER ROLE %s WITH PASSWORD='%s'",
-          data.ycqlAdminUsername, data.ycqlAdminPassword);
-      ycqlQueryExecutor.executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername,
-          data.ycqlCurrAdminPassword);
+      ycqlQuery.query = String.format("ALTER ROLE '%s' WITH PASSWORD='%s'",
+          escapeSingleQuotesOnly(data.ycqlAdminUsername),
+          escapeSingleQuotesOnly(data.ycqlAdminPassword));
+      JsonNode ycqlResponse = ycqlQueryExecutor.executeQuery(universe, ycqlQuery, true,
+          data.ycqlAdminUsername, data.ycqlCurrAdminPassword);
+      LOG.info("Updating YCQL user, result: " + ycqlResponse.toString());
+      if (ycqlResponse.has("error")) {
+        return ApiResponse.error(BAD_REQUEST, ycqlResponse.get("error").asText());
+      }
     }
 
     return ApiResponse.success("Updated security in DB.");
@@ -212,6 +256,11 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
 
+    Customer customer = Customer.get(customerUUID);
+    if (!customer.code.equals("cloud")) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer type.");
+    }
+
     Form<DatabaseUserFormData> formData =
         formFactory.form(DatabaseUserFormData.class).bindFromRequest();
     if (formData.hasErrors()) {
@@ -220,37 +269,56 @@ public class UniverseController extends AuthenticatedController {
 
     DatabaseUserFormData data = formData.get();
     if (data.username == null || data.password == null) {
-      return ApiResponse.error(BAD_REQUEST, "Need to provide username and password");
+      return ApiResponse.error(BAD_REQUEST, "Need to provide username and password.");
     }
-    if (data.ysqlAdminUsername != null) {
+
+    if (StringUtils.isEmpty(data.ysqlAdminUsername)
+        && StringUtils.isEmpty(data.ycqlAdminUsername)) {
+      return ApiResponse.error(BAD_REQUEST, "Need to provide YSQL and/or YCQL username.");
+    }
+
+    data.username = removeEnclosingDoubleQuotes(data.username);
+
+    if (!StringUtils.isEmpty(data.ysqlAdminUsername)) {
       if (data.dbName == null) {
         return ApiResponse.error(BAD_REQUEST, "DB needs to be specified for YSQL user creation.");
       }
+
+      if (data.username.contains("\"")) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid username.");
+      }
+
       RunQueryFormData ysqlQuery = new RunQueryFormData();
       // Create user for customer YSQL.
-      ysqlQuery.query = String.format("CREATE USER %s SUPERUSER INHERIT CREATEROLE " +
+      ysqlQuery.query = String.format("CREATE USER \"%s\" SUPERUSER INHERIT CREATEROLE " +
                                       "CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD '%s'",
-                                      data.username, data.password);
+          data.username, escapeSingleQuotesOnly(data.password));
       ysqlQuery.db_name = data.dbName;
       JsonNode ysqlResponse = ysqlQueryExecutor.executeQuery(universe, ysqlQuery,
                                                              data.ysqlAdminUsername,
                                                              data.ysqlAdminPassword);
+      LOG.info("Creating YSQL user, result: " + ysqlResponse.toString());
       if (ysqlResponse.has("error")) {
-        return ApiResponse.error(BAD_REQUEST, ysqlResponse.asText("error"));
+        return ApiResponse.error(BAD_REQUEST, ysqlResponse.get("error").asText());
       }
     }
 
-    if (data.ycqlAdminUsername != null) {
+    if (!StringUtils.isEmpty(data.ycqlAdminUsername)) {
       // Create user for customer CQL.
+
+      // This part of code works only when TServer is started with
+      // --use_cassandra_authentication=true
+      // This is always true if the universe was created via cloud.
       RunQueryFormData ycqlQuery = new RunQueryFormData();
-      ycqlQuery.query = String.format("CREATE ROLE %s WITH SUPERUSER=true AND " +
+      ycqlQuery.query = String.format("CREATE ROLE '%s' WITH SUPERUSER=true AND " +
                                       "LOGIN=true AND PASSWORD='%s'",
-                                      data.username, data.password);
+          escapeSingleQuotesOnly(data.username), escapeSingleQuotesOnly(data.password));
       JsonNode ycqlResponse = ycqlQueryExecutor.executeQuery(universe, ycqlQuery, true,
                                                              data.ycqlAdminUsername,
                                                              data.ycqlAdminPassword);
+      LOG.info("Creating YCQL user, result: " + ycqlResponse.toString());
       if (ycqlResponse.has("error")) {
-        return ApiResponse.error(BAD_REQUEST, ycqlResponse.asText("error"));
+        return ApiResponse.error(BAD_REQUEST, ycqlResponse.get("error").asText());
       }
     }
     return ApiResponse.success("Created user in DB.");
