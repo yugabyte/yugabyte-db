@@ -22,6 +22,9 @@ jobs:
     macos:
       xcode: 11.5.0
 
+    environment:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+
     steps:
       - run:
           name: Prep Mac Build & Test Environment
@@ -43,10 +46,11 @@ jobs:
 
       - run:
           name: Build YugabyteDB
+          no_output_timeout: "30m"
           command: |
             echo "Building in directory: $PWD"
-            ulimit -n 1048576
             set -x
+            ulimit -n 1048576
             export BUILD_TYPE=<< parameters.flavor >>
             export YB_USE_NINJA=0
             export YB_SKIP_CREATING_RELEASE_PACKAGE=1
