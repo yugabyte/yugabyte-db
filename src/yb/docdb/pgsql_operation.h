@@ -179,11 +179,6 @@ class PgsqlReadOperation : public DocExprExecutor {
                                     faststring *result_buffer,
                                     HybridTime *restart_read_ht);
 
-  CHECKED_STATUS GetPartitionIntent(
-      const Schema& schema,
-      const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
-      KeyValueWriteBatchPB* out);
-
   CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row,
                                    faststring *result_buffer);
 
