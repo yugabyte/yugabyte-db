@@ -331,3 +331,23 @@ SELECT * FROM test_index_with_oids ORDER BY v1;
 
 CREATE INDEX index_with_duplicate_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
 set yb_enable_create_with_table_oid=0;
+
+-- Test creating index nonconcurrently (i.e. without index backfill, without
+-- online schema migration)
+CREATE TABLE test_index_nonconcurrently (i INT, t TEXT);
+INSERT INTO test_index_nonconcurrently VALUES (generate_series(1, 10), 'a');
+
+CREATE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
+EXPLAIN (COSTS OFF) SELECT i FROM test_index_nonconcurrently WHERE i = 1;
+SELECT * FROM test_index_nonconcurrently WHERE i = 1;
+DROP INDEX test_index_nonconcurrently_i_idx;
+
+CREATE UNIQUE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
+EXPLAIN (COSTS OFF) SELECT i FROM test_index_nonconcurrently WHERE i = 1;
+INSERT INTO test_index_nonconcurrently VALUES (1, 'b');
+DROP INDEX test_index_nonconcurrently_i_idx;
+
+INSERT INTO test_index_nonconcurrently VALUES (1, 'b');
+CREATE UNIQUE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
+
+DROP TABLE test_index_nonconcurrently;
