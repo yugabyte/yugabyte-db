@@ -130,11 +130,12 @@ PgDocOp::~PgDocOp() {
   }
 }
 
-void PgDocOp::ExecuteInit(const PgExecParameters *exec_params) {
+Status PgDocOp::ExecuteInit(const PgExecParameters *exec_params) {
   end_of_data_ = false;
   if (exec_params) {
     exec_params_ = *exec_params;
   }
+  return Status::OK();
 }
 
 const PgExecParameters& PgDocOp::ExecParameters() const {
@@ -317,13 +318,17 @@ PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
     : PgDocOp(pg_session, table_desc), template_op_(std::move(read_op)) {
 }
 
-void PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
-  PgDocOp::ExecuteInit(exec_params);
+Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
+  SCHECK(pgsql_ops_.empty(),
+         IllegalState,
+         "Exec params can't be checked for already created operations");
+  RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
 
   template_op_->mutable_request()->set_return_paging_state(true);
   SetRequestPrefetchLimit();
   SetRowMark();
   SetReadTime();
+  return Status::OK();
 }
 
 Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {

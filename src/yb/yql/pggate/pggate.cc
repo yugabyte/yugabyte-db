@@ -107,12 +107,12 @@ Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr se
   PgsqlExpressionPB* expr_pb = read_req->add_targets();
   expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
   auto doc_op = std::make_shared<PgDocReadOp>(session, desc, std::move(read_op));
-  RETURN_NOT_OK(static_cast<PgDocOp*>(doc_op.get())->PopulateDmlByYbctidOps(&ybctids));
   // Postgres uses SELECT FOR KEY SHARE query for FK check.
   // Use same lock level.
   PgExecParameters exec_params = doc_op->ExecParameters();
   exec_params.rowmark = ROW_MARK_KEYSHARE;
-  doc_op->ExecuteInit(&exec_params);
+  RETURN_NOT_OK(doc_op->ExecuteInit(&exec_params));
+  RETURN_NOT_OK(static_cast<PgDocOp*>(doc_op.get())->PopulateDmlByYbctidOps(&ybctids));
   RETURN_NOT_OK(doc_op->Execute());
   std::vector<std::string> result;
   result.reserve(ybctids.size());

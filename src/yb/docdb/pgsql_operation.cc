@@ -71,6 +71,60 @@ CHECKED_STATUS CreateProjection(const Schema& schema,
   return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
 }
 
+void AddIntent(const std::string& encoded_key, KeyValueWriteBatchPB *out) {
+  auto pair = out->mutable_read_pairs()->Add();
+  pair->set_key(encoded_key);
+  pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
+}
+
+CHECKED_STATUS AddIntent(const PgsqlExpressionPB& ybctid, KeyValueWriteBatchPB* out) {
+  const auto &val = ybctid.value().binary_value();
+  SCHECK(!val.empty(), InternalError, "empty ybctid");
+  AddIntent(val, out);
+  return Status::OK();
+}
+
+template<class R, class Request, class DocKeyProcessor, class EncodedDocKeyProcessor>
+Result<R> FetchDocKeyImpl(const Schema& schema,
+                          const Request& req,
+                          const DocKeyProcessor& dk_processor,
+                          const EncodedDocKeyProcessor& edk_processor) {
+  // Init DocDB key using either ybctid or partition and range values.
+  if (req.has_ybctid_column_value()) {
+    const auto& ybctid = req.ybctid_column_value().value().binary_value();
+    SCHECK(!ybctid.empty(), InternalError, "empty ybctid");
+    return edk_processor(ybctid);
+  } else {
+    vector<PrimitiveValue> hashed_components, range_components;
+    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(
+        req.partition_column_values(), schema, 0 /* start_idx */, &hashed_components));
+    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(
+        req.range_column_values(), schema, schema.num_hash_key_columns(), &range_components));
+    return dk_processor(hashed_components.empty()
+        ? DocKey(schema, std::move(range_components))
+        : DocKey(
+            schema, req.hash_code(), std::move(hashed_components), std::move(range_components)));
+  }
+}
+
+Result<string> FetchEncodedDocKey(const Schema& schema, const PgsqlReadRequestPB& request) {
+  return FetchDocKeyImpl<string>(
+      schema, request,
+      [](const auto& doc_key) { return doc_key.Encode().ToStringBuffer(); },
+      [](const auto& encoded_doc_key) { return encoded_doc_key; });
+}
+
+Result<DocKey> FetchDocKey(const Schema& schema, const PgsqlWriteRequestPB& request) {
+  return FetchDocKeyImpl<DocKey>(
+      schema, request,
+      [](const auto& doc_key) { return doc_key; },
+      [&schema](const auto& encoded_doc_key) -> Result<DocKey> {
+        DocKey key(schema);
+        RETURN_NOT_OK(key.DecodeFrom(encoded_doc_key));
+        return key;
+      });
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -80,29 +134,7 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
   request_.Swap(request);
   response_ = response;
 
-  // Init DocDB key using either ybctid or partition and range values.
-  if (request_.has_ybctid_column_value()) {
-    const string& ybctid = request_.ybctid_column_value().value().binary_value();
-    SCHECK(!ybctid.empty(), InternalError, "empty ybctid");
-    doc_key_.emplace(schema_);
-    RETURN_NOT_OK(doc_key_->DecodeFrom(ybctid));
-  } else {
-    vector<PrimitiveValue> hashed_components;
-    vector<PrimitiveValue> range_components;
-    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.partition_column_values(),
-                                               schema_,
-                                               0,
-                                               &hashed_components));
-    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.range_column_values(),
-                                               schema_,
-                                               schema_.num_hash_key_columns(),
-                                               &range_components));
-    if (hashed_components.empty()) {
-      doc_key_.emplace(schema_, range_components);
-    } else {
-      doc_key_.emplace(schema_, request_.hash_code(), hashed_components, range_components);
-    }
-  }
+  doc_key_ = VERIFY_RESULT(FetchDocKey(schema_, request_));
   encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
 
   return Status::OK();
@@ -743,53 +775,23 @@ Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
   return Status::OK();
 }
 
-Status PgsqlReadOperation::GetPartitionIntent(
-    const Schema& schema,
-    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
-    KeyValueWriteBatchPB* out) {
-  auto pair = out->mutable_read_pairs()->Add();
-
-  std::vector<PrimitiveValue> hashed_components;
-  RETURN_NOT_OK(InitKeyColumnPrimitiveValues(
-      column_values, schema, 0 /* start_idx */, &hashed_components));
-
-  DocKey doc_key(schema, request_.hash_code(), hashed_components);
-  pair->set_key(doc_key.Encode().ToStringBuffer());
-  pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
-
-  return Status::OK();
-}
-
 Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
   if (request_.partition_column_values().empty()) {
     // Empty components mean that we don't have primary key at all, but request
     // could still contain hash_code as part of tablet routing.
     // So we should ignore it.
-    DocKey doc_key(schema);
-    auto pair = out->mutable_read_pairs()->Add();
-    pair->set_key(doc_key.Encode().ToStringBuffer());
-    pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
+    AddIntent(DocKey(schema).Encode().ToStringBuffer(), out);
     return Status::OK();
   }
 
-  // Use "true" condition as DocDB only supports scalar argument currently.
-  if (true) {
-    // Executing scalar argument.
-    return GetPartitionIntent(schema, request_.partition_column_values(), out);
-
-  } else {
-    // Executing batch argument.
-    // Currently, this code is still an experiment for executing requests in parallel.
-    // NOTE: Batch arguments are used for parallelism execution by partitions, so the partition
-    //       field must be present in each batch_argument.
-    DCHECK_GT(request_.batch_arguments_size(), 0) << "Batch argument was not provided";
-
-    for (const PgsqlBatchArgumentPB& batch_argument : request_.batch_arguments()) {
-      DCHECK_GT(batch_argument.partition_column_values_size(), 0);
-      RETURN_NOT_OK(GetPartitionIntent(schema, batch_argument.partition_column_values(), out));
+  if (request_.batch_arguments_size() > 0 && request_.has_ybctid_column_value()) {
+    for (const auto& batch_argument : request_.batch_arguments()) {
+      SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");
+      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), out));
     }
+  } else {
+    AddIntent(VERIFY_RESULT(FetchEncodedDocKey(schema, request_)), out);
   }
-
   return Status::OK();
 }
 
