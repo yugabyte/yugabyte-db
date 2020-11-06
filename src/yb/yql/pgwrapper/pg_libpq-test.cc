@@ -1954,6 +1954,54 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(actual_num_rows, kNumRows);
 }
 
+// Make sure that CREATE INDEX NONCONCURRENTLY doesn't use backfill.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillNonconcurrent),
+          PgLibPqTestIndexBackfill) {
+  const std::string kIndexName = "x";
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
+
+  // To determine whether the index uses backfill or not, look at the table schema version before
+  // and after.  We can't look at the DocDB index permissions because
+  // - if backfill is skipped, index_permissions is unset, and the default value is
+  //   INDEX_PERM_READ_WRITE_AND_DELETE
+  // - if backfill is used, index_permissions is INDEX_PERM_READ_WRITE_AND_DELETE
+  // - GetTableSchemaById offers no way to see whether the default value for index permissions is
+  //   set
+  std::shared_ptr<client::YBTableInfo> info = std::make_shared<client::YBTableInfo>();
+  {
+    Synchronizer sync;
+    ASSERT_OK(client->GetTableSchemaById(table_id, info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
+  }
+  ASSERT_EQ(info->schema.version(), 0);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX NONCONCURRENTLY $0 ON $1 (i)",
+                               kIndexName,
+                               kTableName));
+
+  // If the index used backfill, it would have incremented the table schema version by two or three:
+  // - add index info with INDEX_PERM_DELETE_ONLY
+  // - update to INDEX_PERM_DO_BACKFILL (as part of issue #6218)
+  // - update to INDEX_PERM_READ_WRITE_AND_DELETE
+  // If the index did not use backfill, it would have incremented the table schema version by one:
+  // - add index info with no DocDB permission (default INDEX_PERM_READ_WRITE_AND_DELETE)
+  // Expect that it did not use backfill.
+  {
+    Synchronizer sync;
+    ASSERT_OK(client->GetTableSchemaById(table_id, info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
+  }
+  ASSERT_EQ(info->schema.version(), 1);
+}
+
 // Override the index backfill test to disable transparent retries on cache version mismatch.
 class PgLibPqTestIndexBackfillNoRetry : public PgLibPqTestIndexBackfill {
  public:

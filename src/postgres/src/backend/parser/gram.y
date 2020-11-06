@@ -705,7 +705,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	MAPPING MATCH MATERIALIZED MAXVALUE METHOD MINUTE_P MINVALUE MODE MONTH_P MOVE
 
-	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NONE
+	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NONCONCURRENTLY NONE
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMERIC
 
@@ -8028,7 +8028,10 @@ opt_concurrently:
 					parser_ybc_not_support(@1, "CREATE INDEX CONCURRENTLY");
 					$$ = true;
 				}
-			/* TODO(jason): add NONCONCURRENTLY grammar (issue #6237). */
+			| NONCONCURRENTLY
+				{
+					$$ = false;
+				}
 			| /*EMPTY*/
 				{
 					$$ = !YBCGetDisableIndexBackfill();
@@ -16350,6 +16353,7 @@ type_func_name_keyword:
 			| LEFT
 			| LIKE
 			| NATURAL
+			| NONCONCURRENTLY
 			| NOTNULL
 			| OUTER_P
 			| OVERLAPS
