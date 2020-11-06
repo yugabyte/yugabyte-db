@@ -58,6 +58,7 @@ jobs:
 
       - run:
           name: Gather Test Results
+          when: always
           command: |
             mkdir -p ~/test-results/java
             find java -type f -regex ".*/target/surefire-reports/.*xml" -exec cp {} ~/test-results/java/ \;
