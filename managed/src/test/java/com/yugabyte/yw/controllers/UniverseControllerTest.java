@@ -1919,18 +1919,45 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testCreateUserInDB() {
+  // @formatter:off
+  @Parameters({
+                // cloud customer, normal username
+                "true,  foo, foo, baz, baz, true, true,",
+                // not cloud customer
+                "false, foo, foo, baz, baz, false, false, Invalid Customer type",
+                // cloud customer, double quotes in username
+                "true,  foo, foo, ba\"z, baz, false, false, Invalid username",
+                // cloud customer, username surrounded by double quotes
+                "true,  foo, foo, \"baz\", baz, true, true,",
+                // cloud customer, username surrounded by double quotes + double quotes inside
+                "true,  foo, foo, \"ba\"z\", baz, false, false, Invalid username",
+                // cloud customer, backslash in username
+                "true,  foo, foo, ba\\z, baz, true, true,",
+                // cloud customer, only YSQL user
+                "true, foo,, baz, baz, true, false,",
+                // cloud customer, only YCQL user
+                "true,, foo, baz, baz, false, true,",
+                // cloud customer, neither YSQL nor YCQL user
+                "true,,, baz, baz, false, false, Need to provide YSQL and/or YCQL username.",
+              })
+  // @formatter:on
+  public void testCreateUserInDB(boolean isCloudCustomer, String ysqlAdminUsername,
+      String ycqlAdminUsername, String username, String password, boolean ysqlProcessed,
+      boolean ycqlProcessed, String responseError) {
     Universe u = createUniverse(customer.getCustomerId());
+    if (isCloudCustomer) {
+      customer.code = "cloud";
+    }
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
     ObjectNode bodyJson = Json.newObject()
-        .put("ycqlAdminUsername", "foo")
-        .put("ysqlAdminUsername", "foo")
+        .put("ycqlAdminUsername", ycqlAdminUsername)
+        .put("ysqlAdminUsername", ysqlAdminUsername)
         .put("ycqlAdminPassword", "bar")
         .put("ysqlAdminPassword", "bar")
         .put("dbName", "test")
-        .put("username", "baz")
-        .put("password", "baz");
+        .put("username", username)
+        .put("password", password);
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
         "/create_db_credentials";
     when(mockYsqlQueryExecutor.executeQuery(any(), any(), any(), any()))
@@ -1941,30 +1968,64 @@ public class UniverseControllerTest extends WithApplication {
     ArgumentCaptor<Universe> universe = ArgumentCaptor.forClass(Universe.class);
     ArgumentCaptor<RunQueryFormData> info = ArgumentCaptor.forClass(RunQueryFormData.class);
     ArgumentCaptor<Boolean> auth = ArgumentCaptor.forClass(Boolean.class);
-    ArgumentCaptor<String> username = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<String> password = ArgumentCaptor.forClass(String.class);
-    Mockito.verify(mockYcqlQueryExecutor, times(1))
-        .executeQuery(universe.capture(), info.capture(), auth.capture(),
-                      username.capture(), password.capture());
-    Mockito.verify(mockYsqlQueryExecutor, times(1))
-        .executeQuery(universe.capture(), info.capture(),
-                      username.capture(), password.capture());
-    assertOk(result);
+    ArgumentCaptor<String> usernameCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> passwordCaptor = ArgumentCaptor.forClass(String.class);
+    Mockito.verify(mockYcqlQueryExecutor, times(ycqlProcessed ? 1 : 0)).executeQuery(
+        universe.capture(), info.capture(), auth.capture(), usernameCaptor.capture(),
+        passwordCaptor.capture());
+    Mockito.verify(mockYsqlQueryExecutor, times(ysqlProcessed ? 1 : 0)).executeQuery(
+        universe.capture(), info.capture(), usernameCaptor.capture(), passwordCaptor.capture());
+    if (ycqlProcessed || ysqlProcessed) {
+      assertOk(result);
+    } else {
+      assertErrorResponse(result, responseError);
+    }
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
-  public void testSetDatabaseCredentials() {
+  // @formatter:off
+  @Parameters({
+                // cloud customer, normal username
+                "true,  baz, baz, baz, baz, true, true,",
+                // not cloud customer
+                "false, baz, baz, baz, baz, false, false, Invalid Customer type",
+                // cloud customer, double quotes in username
+                "true,  ba\"z, baz, baz, baz, false, false, Invalid username",
+                // cloud customer, usernames surrounded by double quotes
+                "true,  \"baz\", baz, \"baz\", baz, true, true,",
+                // cloud customer, double quotes in username which surrounded by double quotes
+                "true,  \"ba\"z\", baz, baz, baz, false, false, Invalid username",
+                // cloud customer, backslash in username
+                "true,  ba\\z, baz, baz, baz, true, true,",
+                // cloud customer, only YSQL user
+                "true,  baz, baz,,, true, false,",
+                // cloud customer, only YSQL user, YCQL user is set as ""
+                "true,  baz, baz, \"\", baz, true, false,",
+                // cloud customer, only YCQL user
+                "true,,, baz, baz, false, true,",
+                // cloud customer, only YCQL user, YSQL user is set as ""
+                "true, \"\", baz, baz, baz, false, true,",
+                // cloud customer, neither YSQL nor YCQL user
+                "true,,,,, false, false, Need to provide YSQL and/or YCQL username.",
+              })
+  // @formatter:on
+  public void testSetDatabaseCredentials(boolean isCloudCustomer, String ysqlAdminUsername,
+      String ysqlPassword, String ycqlAdminUsername, String ycqlPassword, boolean ysqlProcessed,
+      boolean ycqlProcessed, String responseError) {
     Universe u = createUniverse(customer.getCustomerId());
+    if (isCloudCustomer) {
+      customer.code = "cloud";
+    }
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
     ObjectNode bodyJson = Json.newObject()
-        .put("ycqlAdminUsername", "foo")
-        .put("ysqlAdminUsername", "foo")
+        .put("ycqlAdminUsername", ycqlAdminUsername)
+        .put("ysqlAdminUsername", ysqlAdminUsername)
         .put("ycqlCurrAdminPassword", "foo")
         .put("ysqlCurrAdminPassword", "foo")
-        .put("ycqlAdminPassword", "bar")
-        .put("ysqlAdminPassword", "bar")
+        .put("ycqlAdminPassword", ycqlPassword)
+        .put("ysqlAdminPassword", ysqlPassword)
         .put("dbName", "test");
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
         "/update_db_credentials";
@@ -1976,15 +2037,18 @@ public class UniverseControllerTest extends WithApplication {
     ArgumentCaptor<Universe> universe = ArgumentCaptor.forClass(Universe.class);
     ArgumentCaptor<RunQueryFormData> info = ArgumentCaptor.forClass(RunQueryFormData.class);
     ArgumentCaptor<Boolean> auth = ArgumentCaptor.forClass(Boolean.class);
-    ArgumentCaptor<String> username = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<String> password = ArgumentCaptor.forClass(String.class);
-    Mockito.verify(mockYcqlQueryExecutor, times(1))
-        .executeQuery(universe.capture(), info.capture(), auth.capture(),
-                      username.capture(), password.capture());
-    Mockito.verify(mockYsqlQueryExecutor, times(1))
-        .executeQuery(universe.capture(), info.capture(),
-                      username.capture(), password.capture());
-    assertOk(result);
+    ArgumentCaptor<String> usernameCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> passwordCaptor = ArgumentCaptor.forClass(String.class);
+    Mockito.verify(mockYcqlQueryExecutor, times(ycqlProcessed ? 1 : 0)).executeQuery(
+        universe.capture(), info.capture(), auth.capture(), usernameCaptor.capture(),
+        passwordCaptor.capture());
+    Mockito.verify(mockYsqlQueryExecutor, times(ysqlProcessed ? 1 : 0)).executeQuery(
+        universe.capture(), info.capture(), usernameCaptor.capture(), passwordCaptor.capture());
+    if (ycqlProcessed || ysqlProcessed) {
+      assertOk(result);
+    } else {
+      assertErrorResponse(result, responseError);
+    }
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -2184,5 +2248,23 @@ public class UniverseControllerTest extends WithApplication {
       assertBadRequest(result, UniverseController.RUN_QUERY_ISNT_ALLOWED);
       assertAuditEntry(0, customer.uuid);
     }
+  }
+
+  @Test
+  public void testRemoveEnclosingDoubleQuotes() {
+    // Removes, happy path.
+    assertEquals("baz", UniverseController.removeEnclosingDoubleQuotes("\"baz\""));
+    // Doesn't remove single internal quotes
+    assertEquals("ba\"z", UniverseController.removeEnclosingDoubleQuotes("\"ba\"z\""));
+    // Doesn't remove pair of internal quotes.
+    assertEquals("a\"ba\"z", UniverseController.removeEnclosingDoubleQuotes("a\"ba\"z"));
+    // Doesn't remove only starting quotes.
+    assertEquals("\"baz", UniverseController.removeEnclosingDoubleQuotes("\"baz"));
+    // Doesn't remove only ending quotes.
+    assertEquals("baz\"", UniverseController.removeEnclosingDoubleQuotes("baz\""));
+    // Empty string
+    assertEquals("", UniverseController.removeEnclosingDoubleQuotes(""));
+    // Null string
+    assertEquals(null, UniverseController.removeEnclosingDoubleQuotes(null));
   }
 }
