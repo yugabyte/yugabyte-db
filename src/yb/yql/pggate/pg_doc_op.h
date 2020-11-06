@@ -210,7 +210,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   virtual ~PgDocOp();
 
   // Initialize doc operator.
-  virtual void ExecuteInit(const PgExecParameters *exec_params);
+  virtual CHECKED_STATUS ExecuteInit(const PgExecParameters *exec_params);
 
   const PgExecParameters& ExecParameters() const;
 
@@ -383,7 +383,7 @@ class PgDocReadOp : public PgDocOp {
               const PgTableDesc::ScopedRefPtr& table_desc,
               std::unique_ptr<client::YBPgsqlReadOp> read_op);
 
-  void ExecuteInit(const PgExecParameters *exec_params) override;
+  CHECKED_STATUS ExecuteInit(const PgExecParameters *exec_params) override;
 
  private:
   // Create protobuf requests using template_op_.
