@@ -485,9 +485,13 @@ Tablet::Tablet(const TabletInitData& data)
 
   auto table_info = metadata_->primary_table_info();
   bool has_index = !table_info->index_map.empty();
+  bool transactional = data.metadata->schema()->table_properties().is_transactional();
+  if (transactional) {
+    server::HybridClock::EnableClockSkewControl();
+  }
   if (txns_enabled_ &&
       data.transaction_participant_context &&
-      (is_sys_catalog_ || data.metadata->schema()->table_properties().is_transactional())) {
+      (is_sys_catalog_ || transactional)) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
         data.transaction_participant_context, this, metric_entity_);
     // Create transaction manager for secondary index update.

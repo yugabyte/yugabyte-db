@@ -37,6 +37,7 @@
 using namespace std::literals;
 
 DECLARE_bool(ycql_consistent_transactional_paging);
+DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int32(TEST_inject_load_transaction_delay_ms);
 DECLARE_int32(TEST_inject_status_resolver_delay_ms);
@@ -162,6 +163,7 @@ std::thread RandomClockSkewWalkThread(MiniCluster* cluster, std::atomic<bool>* s
 
         time_deltas[i] += change;
         time_deltas[i] = std::max(std::min(time_deltas[i], upperbound), lowerbound);
+        LOG(INFO) << "Set delta " << i << ": " << time_deltas[i].count();
         skewed_clock->SetDelta(time_deltas[i]);
 
         std::this_thread::sleep_for(100ms);
@@ -297,12 +299,16 @@ TEST_F(SnapshotTxnTest, BankAccounts) {
 }
 
 TEST_F(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
+  FLAGS_fail_on_out_of_range_clock_skew = false;
+
   TestBankAccounts(
       BankAccountsOptions{BankAccountsOption::kTimeStrobe}, 300s,
       RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
 }
 
 TEST_F(SnapshotTxnTest, BankAccountsWithTimeJump) {
+  FLAGS_fail_on_out_of_range_clock_skew = false;
+
   TestBankAccounts(
       BankAccountsOptions{BankAccountsOption::kTimeJump, BankAccountsOption::kStepDown}, 30s,
       RegularBuildVsSanitizers(3, 1) /* minimal_updates_per_second */);
