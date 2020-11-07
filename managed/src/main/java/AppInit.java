@@ -56,8 +56,8 @@ public class AppInit {
           appConfig.getBoolean("yb.seedData", false)) {
         Logger.debug("Seed the Yugaware DB");
 
-        List<?> all = (ArrayList<?>) yaml.load(
-            application.resourceAsStream("db_seed.yml"),
+        List<?> all = yaml.load(
+            environment.resourceAsStream("db_seed.yml"),
             application.classloader()
         );
         Ebean.saveAll(all);
@@ -76,10 +76,10 @@ public class AppInit {
       }
 
       // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
-      Object version = yaml.load(application.resourceAsStream("version.txt"),
+      String version = yaml.load(environment.resourceAsStream("version.txt"),
                                   application.classloader());
       configHelper.loadConfigToDB(SoftwareVersion, ImmutableMap.of("version", version));
-      Map <String, Object> ywMetadata = new HashMap<String, Object>();
+      Map <String, Object> ywMetadata = new HashMap<>();
       // Assign a new Yugaware UUID if not already present in the DB i.e. first install
       Object ywUUID = configHelper.getConfig(YugawareMetadata)
                                   .getOrDefault("yugaware_uuid", UUID.randomUUID());
@@ -104,8 +104,8 @@ public class AppInit {
       }
 
       // Load metrics configurations.
-      Map<String, Object> configs = (HashMap<String, Object>) yaml.load(
-          application.resourceAsStream("metrics.yml"),
+      Map<String, Object> configs = yaml.load(
+          environment.resourceAsStream("metrics.yml"),
           application.classloader()
       );
       MetricConfig.loadConfig(configs);
