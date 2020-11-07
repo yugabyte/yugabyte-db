@@ -139,6 +139,9 @@ class HybridClock : public Clock {
 
   static void RegisterProvider(std::string name, PhysicalClockProvider provider);
 
+  // Enables check whether clock skew within configured bounds.
+  static void EnableClockSkewControl();
+
   const PhysicalClockPtr& TEST_clock() { return clock_; }
 
  private:

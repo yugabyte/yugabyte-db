@@ -47,22 +47,23 @@ using namespace std::literals;
 using yb::tablet::GetTransactionTimeout;
 using yb::tablet::TabletPeer;
 
-DECLARE_uint64(transaction_heartbeat_usec);
-DECLARE_int32(log_min_seconds_to_retain);
-DECLARE_uint64(max_clock_skew_usec);
-DECLARE_bool(TEST_transaction_allow_rerequest_status);
-DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
-DECLARE_bool(enable_load_balancing);
-DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
-DECLARE_uint64(aborted_intent_cleanup_ms);
-DECLARE_int32(remote_bootstrap_max_chunk_size);
+DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
 DECLARE_bool(TEST_master_fail_transactional_tablet_lookups);
-DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_bool(TEST_transaction_allow_rerequest_status);
+DECLARE_bool(delete_intents_sst_files);
+DECLARE_bool(enable_load_balancing);
+DECLARE_bool(fail_on_out_of_range_clock_skew);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
-DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
-DECLARE_bool(delete_intents_sst_files);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(remote_bootstrap_max_chunk_size);
+DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
+DECLARE_uint64(aborted_intent_cleanup_ms);
+DECLARE_uint64(max_clock_skew_usec);
+DECLARE_uint64(transaction_heartbeat_usec);
 
 namespace yb {
 namespace client {
@@ -123,6 +124,8 @@ TEST_F(QLTransactionTest, LookupTabletFailure) {
 }
 
 TEST_F(QLTransactionTest, ReadWithTimeInFuture) {
+  FLAGS_fail_on_out_of_range_clock_skew = false;
+
   WriteData();
   server::SkewedClockDeltaChanger delta_changer(100ms, skewed_clock_);
   for (size_t i = 0; i != 100; ++i) {
