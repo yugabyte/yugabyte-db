@@ -150,9 +150,8 @@ public class SetUniverseKey {
 
     @VisibleForTesting
     void scheduleRunner() {
-        if (!running.get()) {
+        if (running.compareAndSet(false, true)) {
             LOG.info("Running universe key setter");
-            running.set(true);
             Customer.getAll().forEach(c -> {
               try {
                 setCustomerUniverseKeys(c);
