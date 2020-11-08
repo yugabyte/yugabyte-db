@@ -42,6 +42,14 @@ type_specification ::= { JSONB }
 - Values of text data types with correct format are convertible to `JSONB`.
 - `JSONB` value format supports text literals which are valid json.
 
+{{< note title="Note" >}}
+
+Due to internal conversions, small float/decimal values are stored and shown with a significant error.
+For now it's best to store decimal precision values in strings inside JSONB objects. [#996 issue](https://github.com/yugabyte/yugabyte-db/issues/996) 
+
+{{< /note >}}
+
+
 ## Operators and functions
 
 We currently support two operators which can be applied to the `JSONB` data type. The `->` operator 
