@@ -2002,6 +2002,128 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(info->schema.version(), 1);
 }
 
+// Test simultaneous CREATE INDEX.
+// TODO(jason): update this when closing issue #6269.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously),
+          PgLibPqTestIndexBackfill) {
+  constexpr int kNumRows = 10;
+  constexpr int kNumThreads = 5;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+  const std::string query = Format("SELECT * FROM $0 WHERE i = $1", kTableName, 7);
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1))",
+      kTableName,
+      kNumRows));
+
+  std::vector<std::thread> threads;
+  std::vector<Status> statuses;
+  LOG(INFO) << "Starting threads";
+  for (int i = 0; i < kNumThreads; ++i) {
+    threads.emplace_back([&] {
+      auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+      statuses.emplace_back(conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
+    });
+  }
+  LOG(INFO) << "Joining threads";
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  LOG(INFO) << "Inspecting statuses";
+  int num_ok = 0;
+  ASSERT_EQ(statuses.size(), kNumThreads);
+  for (auto& status : statuses) {
+    LOG(INFO) << "status: " << status;
+    if (status.ok()) {
+      num_ok++;
+    } else {
+      ASSERT_TRUE(status.IsNetworkError()) << status;
+      const std::string msg = status.message().ToBuffer();
+      ASSERT_TRUE(
+          (msg.find("Catalog Version Mismatch") != std::string::npos)
+          || (msg.find("Conflicts with higher priority transaction") != std::string::npos)
+          || (msg.find("Transaction aborted") != std::string::npos)
+          || (msg.find("Unknown transaction, could be recently aborted") != std::string::npos)
+          || (msg.find("Transaction metadata missing") != std::string::npos))
+        << status.message().ToBuffer();
+    }
+  }
+  ASSERT_EQ(num_ok, 1);
+
+  LOG(INFO) << "Checking postgres schema";
+  {
+    // Check number of indexes.
+    auto res = ASSERT_RESULT(conn.FetchFormat(
+        "SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName));
+    ASSERT_EQ(PQntuples(res.get()), 1);
+    const std::string actual = ASSERT_RESULT(GetString(res.get(), 0, 0));
+    const std::string expected = Format("$0_i_idx", kTableName);
+    ASSERT_EQ(actual, expected);
+
+    // Check whether index is public using index scan.
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  }
+  LOG(INFO) << "Checking DocDB schema";
+  std::vector<TableId> orphaned_docdb_index_ids;
+  {
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+    std::string table_id =
+        ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
+    std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+    Synchronizer sync;
+    ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
+
+    // Check schema version.
+    //   kNumThreads (INDEX_PERM_WRITE_AND_DELETE)
+    // + 1 (INDEX_PERM_READ_WRITE_AND_DELETE)
+    // = kNumThreads + 1
+    // TODO(jason): change this when closing #6218 because DO_BACKFILL permission will add another
+    // schema version.
+    ASSERT_EQ(table_info->schema.version(), kNumThreads + 1);
+
+    // Check number of indexes.
+    ASSERT_EQ(table_info->index_map.size(), kNumThreads);
+
+    // Check index permissions.  Also collect orphaned DocDB indexes.
+    int num_rwd = 0;
+    for (auto& pair : table_info->index_map) {
+      VLOG(1) << "table id: " << pair.first;
+      IndexPermissions perm = pair.second.index_permissions();
+      if (perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE) {
+        num_rwd++;
+      } else {
+        ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE);
+        orphaned_docdb_index_ids.emplace_back(pair.first);
+      }
+    }
+    ASSERT_EQ(num_rwd, 1);
+  }
+
+  LOG(INFO) << "Removing orphaned DocDB indexes";
+  {
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+    for (TableId& index_id : orphaned_docdb_index_ids) {
+      client::YBTableName indexed_table_name;
+      ASSERT_OK(client->DeleteIndexTable(index_id, &indexed_table_name));
+    }
+  }
+
+  LOG(INFO) << "Checking if index still works";
+  {
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+    auto res = ASSERT_RESULT(conn.Fetch(query));
+    ASSERT_EQ(PQntuples(res.get()), 1);
+    auto value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    ASSERT_EQ(value, 7);
+  }
+}
+
 // Override the index backfill test to disable transparent retries on cache version mismatch.
 class PgLibPqTestIndexBackfillNoRetry : public PgLibPqTestIndexBackfill {
  public:
@@ -2173,7 +2295,6 @@ TEST_F_EX(PgLibPqTest,
   const std::string kNamespaceName = "yugabyte";
   const std::string kTableName = "rn";
 
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
 
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int, PRIMARY KEY (i ASC))", kTableName));
@@ -2270,7 +2391,6 @@ TEST_F_EX(PgLibPqTest,
   const std::string kNamespaceName = "yugabyte";
   const std::string kTableName = "rn";
 
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
 
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int, PRIMARY KEY (i ASC))", kTableName));
