@@ -11,7 +11,7 @@ menu:
     identifier: prepare-environment-4-kubernetes
     weight: 55
 isTocNested: false
-showAsideToc: false
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -30,16 +30,12 @@ showAsideToc: false
     </a>
   </li>
 
-<!--
-
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
-
--->
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link active">
