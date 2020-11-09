@@ -15,6 +15,14 @@
     - name: Install setuptools
       command: "chdir=/usr/setuptools-44.1.1 python setup.py install"
 
+    - name: Copy and unarchive python magic
+      unarchive:
+        src: "{{ local_package_path }}/python-magic-0.4.18.tar.gz"
+        dest: "/usr"
+
+    - name: Install python magic
+      command: "chdir=/usr/python-magic-0.4.18 python setup.py install"
+
     - name: Copy and unarchive dateutil from thirdparty
       unarchive:
         src: "{{ local_package_path }}/python-dateutil-2.8.1.tar.gz"
