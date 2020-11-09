@@ -13,8 +13,8 @@ menu:
     identifier: set-up-cloud-provider-1-aws
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: false
+isTocNested: false
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
