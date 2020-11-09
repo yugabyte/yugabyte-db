@@ -32,7 +32,7 @@ showAsideToc: true
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link active">
       <i class="icon-azure" aria-hidden="true"></i>
-      Azure
+      &nbsp;&nbsp; Azure
     </a>
   </li>
 
