@@ -43,14 +43,13 @@ showAsideToc: true
     </a>
   </li>
 
-<!--
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
       <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
--->
+
 </ul>
 
 

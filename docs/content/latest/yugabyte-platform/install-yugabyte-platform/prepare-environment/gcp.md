@@ -41,14 +41,14 @@ showAsideToc: true
       Kubernetes
     </a>
   </li>
-<!--
+
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
--->
+
 </ul>
 
 ## 1. Create a new project (optional)
