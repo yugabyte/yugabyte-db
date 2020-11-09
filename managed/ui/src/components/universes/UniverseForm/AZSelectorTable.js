@@ -505,6 +505,7 @@ export default class AZSelectorTable extends Component {
     }
 
     const addNewAZField = () => {
+      const { type } = this.props;
       const unusedAZList = [...azListForSelectedRegions];
       azGroups.forEach((azGroup) => {
         for (let i = 0; i < unusedAZList.length; i++) {
@@ -516,10 +517,11 @@ export default class AZSelectorTable extends Component {
       });
 
       if (unusedAZList.length) {
+        const count = type === "Edit" ? 1 : 0;
         const newAZState = [
           ...this.state.azItemState,
           {
-            count: 0,
+            count: count,
             value: unusedAZList[0].uuid,
             isAffinitized: true
           }

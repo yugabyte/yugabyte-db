@@ -1091,7 +1091,9 @@ public class PlacementInfoUtil {
    * @return set of indexes in which to provision the nodes.
    */
   private static LinkedHashSet<PlacementIndexes> getDeltaPlacementIndices(
-      PlacementInfo placementInfo, Collection<NodeDetails> nodes) {
+      PlacementInfo placementInfo,
+      Collection<NodeDetails> nodes
+  ) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes, true);
 
@@ -1148,7 +1150,7 @@ public class PlacementInfoUtil {
    * @param taskParams
    */
   public static void configureNodeEditUsingPlacementInfo(UniverseDefinitionTaskParams taskParams) {
-    // TODO: this only works for a case when we have on read replica,
+    // TODO: this only works for a case when we have one read replica,
     // if we have more than one we need to revisit this logic.
     Cluster currentCluster = taskParams.currentClusterType.equals(PRIMARY) ?
         taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
@@ -1264,7 +1266,12 @@ public class PlacementInfoUtil {
         PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
         PlacementAZ placementAZ = placementRegion.azList.get(index.azIdx);
         if (isEditUniverse) {
-          decommissionNodeInAZ(nodes, placementAZ.uuid);
+          NodeDetails nodeDetails = findActiveTServerOnlyInAz(nodes, placementAZ.uuid);
+          if (nodeDetails == null || !nodeDetails.state.equals(NodeState.ToBeAdded)) {
+            decommissionNodeInAZ(nodes, placementAZ.uuid);
+          } else {
+            removeNodeInAZ(nodes, placementAZ.uuid);
+          }
         } else {
           removeNodeInAZ(nodes, placementAZ.uuid);
         }
