@@ -185,6 +185,7 @@ export default class NodeDetails extends Component {
           providerUUID={primaryCluster.userIntent.provider}
           clusterType="primary"
           customer={customer}
+          currentUniverse={currentUniverse}
         />
         {readOnlyCluster && (
           <NodeDetailsTable

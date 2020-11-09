@@ -14,11 +14,12 @@ import pluralize from 'pluralize';
 
 export default class NodeDetailsTable extends Component {
   render() {
-    const { nodeDetails, providerUUID, clusterType, customer } = this.props;
+    const { nodeDetails, providerUUID, clusterType, customer, currentUniverse } = this.props;
     const loadingIcon = <YBLoadingCircleIcon size="inline" />;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
     const sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
+    const universeUUID = currentUniverse.data.universeUUID;
 
     const formatIpPort = function (cell, row, type) {
       if (cell === '-') {
@@ -26,11 +27,11 @@ export default class NodeDetailsTable extends Component {
       }
       const isMaster = type === 'master';
       let href = '';
+
       if (IN_DEVELOPMENT_MODE || !!customer.INSECURE_apiToken) {
         href = 'http://' + row.privateIP + ':' + (isMaster ? row.masterPort : row.tserverPort);
       } else {
-        href =
-          '/proxy/' + row.privateIP + ':' + (isMaster ? row.masterPort : row.tserverPort) + '/';
+        href = '/universes/' + universeUUID + '/proxy/' + row.privateIP + ':' + (isMaster ? row.masterPort : row.tserverPort) + '/';
       }
 
       if (row.nodeAlive) {
