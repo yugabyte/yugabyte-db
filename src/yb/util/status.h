@@ -588,26 +588,34 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
             __LINE__, \
             ::yb::Format(__VA_ARGS__), error_code))
 
-// Utility macros to perform the appropriate check. If the check fails,
-// returns the specified (error) Status, with the given message.
-#define SCHECK_OP(var1, op, var2, type, msg) \
+// Utility macros to perform the appropriate check. If the check fails, returns the specified
+// (error) Status, with the given message.
+#define SCHECK(expr, status_type, msg) do { \
+    if (PREDICT_FALSE(!(expr))) return STATUS(status_type, (msg)); \
+  } while (0)
+
+#define SCHECK_FORMAT(expr, status_type, msg, ...) do { \
+    if (PREDICT_FALSE(!(expr))) return STATUS_FORMAT(status_type, (msg), __VA_ARGS__); \
+  } while (0)
+
+#define SCHECK_OP(var1, op, var2, status_type, msg) \
   do { \
     auto v1_tmp = (var1); \
     auto v2_tmp = (var2); \
-    if (PREDICT_FALSE(!((v1_tmp)op(v2_tmp)))) return STATUS(type, \
+    if (PREDICT_FALSE(!((v1_tmp) op (v2_tmp)))) return STATUS(status_type, \
       yb::Format("$0: $1 vs. $2", (msg), v1_tmp, v2_tmp)); \
   } while (0)
-#define SCHECK(expr, type, msg) SCHECK_OP(expr, ==, true, type, msg)
-#define SCHECK_EQ(var1, var2, type, msg) SCHECK_OP(var1, ==, var2, type, msg)
-#define SCHECK_NE(var1, var2, type, msg) SCHECK_OP(var1, !=, var2, type, msg)
-#define SCHECK_GT(var1, var2, type, msg) SCHECK_OP(var1, >, var2, type, msg)  // NOLINT.
-#define SCHECK_GE(var1, var2, type, msg) SCHECK_OP(var1, >=, var2, type, msg)
-#define SCHECK_LT(var1, var2, type, msg) SCHECK_OP(var1, <, var2, type, msg)  // NOLINT.
-#define SCHECK_LE(var1, var2, type, msg) SCHECK_OP(var1, <=, var2, type, msg)
-#define SCHECK_BOUNDS(var1, lbound, rbound, type, msg) \
+
+#define SCHECK_EQ(var1, var2, status_type, msg) SCHECK_OP(var1, ==, var2, status_type, msg)
+#define SCHECK_NE(var1, var2, status_type, msg) SCHECK_OP(var1, !=, var2, status_type, msg)
+#define SCHECK_GT(var1, var2, status_type, msg) SCHECK_OP(var1, >, var2, status_type, msg)
+#define SCHECK_GE(var1, var2, status_type, msg) SCHECK_OP(var1, >=, var2, status_type, msg)
+#define SCHECK_LT(var1, var2, status_type, msg) SCHECK_OP(var1, <, var2, status_type, msg)
+#define SCHECK_LE(var1, var2, status_type, msg) SCHECK_OP(var1, <=, var2, status_type, msg)
+#define SCHECK_BOUNDS(var1, lbound, rbound, status_type, msg) \
     do { \
-      SCHECK_GE(var1, lbound, type, msg); \
-      SCHECK_LE(var1, rbound, type, msg); \
+      SCHECK_GE(var1, lbound, status_type, msg); \
+      SCHECK_LE(var1, rbound, status_type, msg); \
     } while(false)
 
 #ifndef NDEBUG
