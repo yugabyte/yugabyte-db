@@ -765,4 +765,14 @@ public class Universe extends Model {
   public boolean universeIsLocked() {
     return getUniverseDetails().updateInProgress;
   }
+
+  public boolean nodeExists(String host, int port) {
+    return getUniverseDetails().nodeDetailsSet.parallelStream().anyMatch(n ->
+      n.cloudInfo.private_ip.equals(host) && (
+        port == n.masterHttpPort ||
+          port == n.tserverHttpPort ||
+          port == n.ysqlServerHttpPort ||
+          port == n.yqlServerRpcPort ||
+          port == n.redisServerHttpPort));
+  }
 }
