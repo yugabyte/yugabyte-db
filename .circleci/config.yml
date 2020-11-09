@@ -54,6 +54,7 @@ jobs:
             export BUILD_TYPE=<< parameters.flavor >>
             export YB_USE_NINJA=0
             export YB_SKIP_CREATING_RELEASE_PACKAGE=1
+            export EXTRA_TEST_FLAGS="-I1,25" # only run 25 ctests for testing automation
             ./build-support/jenkins/build-and-test.sh
 
       - run:
@@ -61,8 +62,8 @@ jobs:
           when: always
           command: |
             mkdir -p ~/test-results/java
-            find java -type f -regex ".*/target/surefire-reports/.*xml" -exec cp {} ~/test-results/java/ \;
-            tar -cvzf test_logs.tar.gz build/*/yb-test-logs build/*/test-logs
+            find java -type f -regex ".*/target/surefire-reports.*/.*xml" -exec cp {} ~/test-results/java/ \;
+            tar -cvzf test_logs.tar.gz build/*/yb-test-logs java/*/target/surefire*
 
       - store_test_results:
           path: ~/test-results/java
