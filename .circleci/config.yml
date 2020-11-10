@@ -58,7 +58,7 @@ jobs:
             export BUILD_TYPE=<< parameters.flavor >>
             export YB_USE_NINJA=0
             export YB_SKIP_CREATING_RELEASE_PACKAGE=1
-            export EXTRA_TEST_FLAGS="-I1,25" # only run 25 ctests for testing automation
+            export EXTRA_TEST_FLAGS="-I 1,25" # only run 25 ctests for testing automation
             ./build-support/jenkins/build-and-test.sh
 
       - save_cache:
