@@ -42,6 +42,10 @@ jobs:
             done
             brew install bash cmake maven pstree
 
+      - restore_cache:
+          name: Retrieve Thirdpary cache
+          key: v1-{{ checksum build-support/thirdparty_url_mac.txt }}
+
       - checkout
 
       - run:
@@ -56,6 +60,13 @@ jobs:
             export YB_SKIP_CREATING_RELEASE_PACKAGE=1
             export EXTRA_TEST_FLAGS="-I1,25" # only run 25 ctests for testing automation
             ./build-support/jenkins/build-and-test.sh
+
+      - save_cache:
+          name: Store Thirdpary cache
+          key: v1-{{ checksum build-support/thirdparty_url_mac.txt }}
+          paths:
+            - /opt/yb-build/thirdparty
+          when: always
 
       - run:
           name: Gather Test Results
