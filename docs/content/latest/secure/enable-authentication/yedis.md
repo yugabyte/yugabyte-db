@@ -1,16 +1,16 @@
 ---
-title: YEDIS authentication
-headerTitle: YEDIS authentication
-linkTitle: YEDIS authentication
-description: Identify that your YEDIS users are who they say they are.
-headcontent: Identify that your YEDIS users are who they say they are.
+title: Enable Users in YEDIS
+headerTitle: Enable Users in YEDIS
+linkTitle: Enable Users in YEDIS
+description: Enable Users in YEDIS.
+headcontent: Enable Users in YEDIS.
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:
-    name: Authentication
-    identifier: yedis-authentication
-    parent: authentication
-    weight: 723
+    name: Enable User Authentication
+    identifier: enable-authentication-3-yedis
+    parent: enable-authentication
+    weight: 715
 type: page
 isTocNested: true
 showAsideToc: true

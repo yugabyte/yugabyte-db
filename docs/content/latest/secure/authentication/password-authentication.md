@@ -1,7 +1,7 @@
 ---
-title: Password authentication
-headerTitle: Password authentication
-linkTitle: Password authentication
+title: Password Authentication
+headerTitle: Password Authentication
+linkTitle: Password Authentication
 description: Use SCRAM-SHA-256 password authentication to strengthen your YugyabyteDB security.
 menu:
   latest:
@@ -11,6 +11,15 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/secure/authentication/ysql-authentication" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
 
 By default, password authentication is disabled, allowing users and clients to connect to and interact with YugabyteDB with minimal effort. For production clusters, password authentication is important for maximizing the security. The password authentication methods work similarly, but differ in how user passwords are stored on the server and how the password provided by the client is sent across the connection.
 

@@ -1,16 +1,16 @@
 ---
-title: YCQL authentication
-headerTitle: YCQL authentication
-linkTitle: YCQL authentication
-description: Identify that your YCQL users are who they say they are.
-headcontent: Identify that your YCQL users are who they say they are.
+title: Enable Users in YCQL
+headerTitle: Enable Users in YCQL
+linkTitle: Enable Users in YCQL
+description: Enable Users in YCQL.
+headcontent: Enable Users in YCQL.
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:
-    name: Authentication
-    identifier: ycql-authentication
-    parent: authentication
-    weight: 723
+    name: Enable User Authentication
+    identifier: enable-authentication-2-ycql
+    parent: enable-authentication
+    weight: 715
 type: page
 isTocNested: true
 showAsideToc: true

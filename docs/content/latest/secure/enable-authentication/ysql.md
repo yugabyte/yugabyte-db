@@ -1,16 +1,16 @@
 ---
-title: YSQL authentication
-headerTitle: YSQL authentication
-linkTitle: YSQL authentication
-description: Identify that your YSQL users are who they say they are.
-headcontent: Identify that your YSQL users are who they say they are.
+title: Enable Users in YSQL
+headerTitle: Enable Users in YSQL
+linkTitle: Enable Users in YSQL
+description: Enable Users in YSQL.
+headcontent: Enable Users in YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:
-    name: Authentication
-    identifier: ysql-authentication
-    parent: authentication
-    weight: 721
+    name: Enable User Authentication
+    identifier: enable-authentication-1-ysql
+    parent: enable-authentication
+    weight: 715
 type: page
 isTocNested: true
 showAsideToc: true
