@@ -42,11 +42,11 @@ jobs:
             done
             brew install bash cmake maven pstree
 
-      - restore_cache:
-          name: Retrieve Thirdpary cache
-          key: v1-{{ checksum build-support/thirdparty_url_mac.txt }}
-
       - checkout
+
+      - restore_cache:
+          name: Retrieve Thirdparty cache
+          key: v1-3p-mac-{{ checksum build-support/thirdparty_url_mac.txt }}
 
       - run:
           name: Build YugabyteDB
@@ -62,8 +62,8 @@ jobs:
             ./build-support/jenkins/build-and-test.sh
 
       - save_cache:
-          name: Store Thirdpary cache
-          key: v1-{{ checksum build-support/thirdparty_url_mac.txt }}
+          name: Store Thirdparty cache
+          key: v1-3p-mac-{{ checksum build-support/thirdparty_url_mac.txt }}
           paths:
             - /opt/yb-build/thirdparty
           when: always
