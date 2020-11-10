@@ -1673,8 +1673,9 @@ collect_java_tests() {
         2>>"$stderr_log" | \
         tee -a "$stdout_log" | \
         egrep '^YUGABYTE_JAVA_TEST: ' | \
-        sed 's/^YUGABYTE_JAVA_TEST: //g' | head -25 >>"$java_test_list_path"
+        sed 's/^YUGABYTE_JAVA_TEST: //g' | head -n 25 >>"$java_test_list_path"
         ############################### ^^^^^^^^^^ Temporary for debugging automation
+        cat "$java_test_list_path"
     )
     if [[ $? -ne 0 ]]; then
       local log_file_path
