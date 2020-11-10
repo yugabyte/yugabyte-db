@@ -407,7 +407,6 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  MetricRegistry* metric_registry)
   : fs_manager_(fs_manager),
     server_(server),
-    next_report_seq_(0),
     metric_registry_(metric_registry),
     state_(MANAGER_INITIALIZING) {
   ThreadPoolMetrics metrics = {
@@ -1693,8 +1692,8 @@ void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
 }
 
 void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const {
-  SharedLock<RWMutex> shared_lock(mutex_);
-  auto filter = [this](const TabletId* id) {
+  SharedLock<decltype(mutex_)> shared_lock(mutex_);
+  auto filter = [this](const TabletId* id) REQUIRES_SHARED(mutex_) {
     auto it = tablet_map_.find(*id);
     if (it == tablet_map_.end()) {
       return true;
