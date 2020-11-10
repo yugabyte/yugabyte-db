@@ -28,13 +28,25 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="enable-authentication/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
+        <div class="title">Enable Authentication</div>
+      </div>
+      <div class="body">
+          Enable authentication for all clients connecting to YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="authentication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Authentication</div>
+        <div class="title">Authentication Methods</div>
       </div>
       <div class="body">
-          Verify the identity of users and clients connecting to YugabyteDB.
+          Choose an authentication mechanisms.
       </div>
     </a>
   </div>
@@ -43,7 +55,7 @@ menu:
     <a class="section-link icon-offset" href="authorization/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authorization.png" aria-hidden="true" />
-        <div class="title">Authorization</div>
+        <div class="title">Role-Based Access Control</div>
       </div>
       <div class="body">
           Grant privileges and permissions using role-based access control (RBAC) in YugabyteDB.

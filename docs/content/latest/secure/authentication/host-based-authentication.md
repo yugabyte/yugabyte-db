@@ -1,18 +1,30 @@
 ---
-title: Fine-grained authentication in YugabyteDB
-headerTitle: Fine-grained authentication
-linkTitle: Fine-grained authentication
+title: Host-Based Authentication
+headerTitle: Host-Based Authentication
+linkTitle: Host-Based Authentication
 description: Manage access control for localhost, remote hosts, and clients.
-headcontent: Configure fine-grained access control for YSQL clients
+headcontent: Configure host-based access control for YSQL clients
 image: /images/section_icons/secure/authentication.png
+aliases:
+  - /secure/authentication/client-authentication/
 menu:
   latest:
-    identifier: client-authentication
+    identifier: host-based-authentication
     parent: authentication
-    weight: 730
+    weight: 733
 isTocNested: true
 showAsideToc: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/secure/authentication/ysql-authentication" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
+
 
 YugabyteDB fine-grained authentication for YSQL manages access control for localhost, remote hosts, and clients. By default, authentication is restricted to localhost connections. Using fine-grained authentication, you can define rules for access to localhost and remote clients based on IP addresses, authentication methods, and use of TLS (aka SSL) certificates.
 
@@ -62,7 +74,6 @@ host all all ::0/0 trust
 Each record specified in the `--ysql_hba_conf` flag must match one of the following record formats available for local, CIDR addresses, or IP addresses:
 
 ```
-local      database  user  auth-method  [auth-options]
 host       database  user  address  auth-method  [auth-options]
 hostssl    database  user  address  auth-method  [auth-options]
 hostnossl  database  user  address  auth-method  [auth-options]
@@ -71,24 +82,7 @@ hostssl    database  user  IP-address  netmask  auth-method  [auth-options]
 hostnossl  database  user  IP-address  netmask  auth-method  [auth-options]
 ```
 
-| Record formats (with links to field descriptions)                                             |
-| :----------------------------------------------------------- |
-| **Local (localhost)**                                        |
-| [`local`](#local) [`database`](#database) [`user`](#user) [`auth-method`](#auth-method) [`auth-options`](#auth-options) |
-| **CIDR addresses**                                           |
-| [`host`](#host) [`database`](#database) [`user`](#user) [`address`](#address) [`auth-method`](#auth-method) [`auth-options`](#auth-options) |
-| [`hostssl`](#hostssl) [`database`](#database) [`user`](#user) [`address`](#address) [`auth-method`](#auth-method) [`auth-options`](#auth-options) |
-| [`hostnossl`](#hostnossl) [`database`](#database) [`user`](#user) [`address`](#address) [`auth-method`](#auth-method) [`auth-options`](#auth-options) |
-| **IP addresses**                                             |
-| [`host`](#host) [`database`](#database) [`user`](#user) [`IP-address`](#ip-address-netmask) [`netmask`](#ip-address-netmask) [`auth-method`](#auth-method) [`auth-options`](#auth-options) |
-| [`hostssl`](#hostssl) [`database`](#database) [`user`](#user) [`IP-address`](#ip-address-netmask) [`netmask`](#ip-address-netmask) [`auth-method`](#auth-method) [`auth-options`](#auth-options) |
-| [`hostnossl`](#hostssl) [`database`](#database) [`user`](#user) [`IP-address`](#ip-address-netmask) [`netmask`](#ip-address-netmask) [`auth-method`](#auth-method) [`auth-options`](#auth-options) |
-
-### Fields
-
-#### local
-
-This record matches connection attempts using Unix-domain sockets. Without a record of this type, Unix-domain socket connections are disallowed.
+The meaning of these fields are described below.
 
 #### host
 

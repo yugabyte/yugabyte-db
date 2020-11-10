@@ -1,8 +1,8 @@
 ---
-title: Create roles in YugabyteDB
-linkTitle: Create roles
-description: Create roles in YugabyteDB
-headcontent: Creating roles
+title: Manage Users and Roles in YSQL
+linkTitle: Manage Users and Roles
+description: Manage Users and Roles in YSQL
+headcontent: Manage Users and Roles
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
