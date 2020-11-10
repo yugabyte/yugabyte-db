@@ -46,7 +46,7 @@ jobs:
 
       - restore_cache:
           name: Retrieve Thirdparty cache
-          key: v1-3p-mac-{{ checksum build-support/thirdparty_url_mac.txt }}
+          key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
 
       - run:
           name: Build YugabyteDB
@@ -63,7 +63,7 @@ jobs:
 
       - save_cache:
           name: Store Thirdparty cache
-          key: v1-3p-mac-{{ checksum build-support/thirdparty_url_mac.txt }}
+          key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
           paths:
             - /opt/yb-build/thirdparty
           when: always
