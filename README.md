@@ -366,11 +366,11 @@ postgres=# \d pg_stat_monitor;
 
 ```
 
+### Buckets
 
 **`bucket`**: ``pg_stat_monitor`` accumulates the statistics per bucket. All the information and aggregate reset for each bucket. The `bucket` will be a number showing the number of buckets for which this record belongs.
 
 **`bucket_start_time`**: `bucket_start_time` shows the start time of the bucket. 
-
 
 ```
 postgres=# select bucket, bucket_start_time, query from pg_stat_monitor;
@@ -381,6 +381,8 @@ postgres=# select bucket, bucket_start_time, query from pg_stat_monitor;
 2 | 2020-05-23 13:24:44.652415+00 | SELECT * FROM foo
 (3 rows)
 ```
+
+### Query Information
 
 **`userid`**: An ID of the user whom  that query belongs. ``pg_stat_monitor`` is used to collect queries from all the users; therefore, `userid` is used to segregate the queries based on different users.
 
@@ -401,6 +403,9 @@ postgres=# select userid,  dbid, queryid, query, calls from pg_stat_monitor;
      10 | 12696 | 85900141D214EC52 | select bucket, bucket_start_time, query from pg_stat_monitor |     2
      10 | 12696 | F1AC132034D5B366 | SELECT * FROM foo                                            |     1
 ```
+
+### Error Messages / Error Codes and Error Level
+
 **`elevel`**, **`sqlcode`**,**`message`**,: error level / sql code and  log/warning/error message
 
 ```
@@ -416,6 +421,8 @@ postgres=# select substr(query,0,50) as query, decode_error_level(elevel)as elev
 (6 rows)
 ```
 
+### Query Timing Information
+
 **`total_time`**,  **`min_time`**, **`max_time`**, **`mean_time`**: The total / minimum / maximum and mean time spent for the same query.
 
 
@@ -430,6 +437,7 @@ postgres=# select userid,  total_time, min_time, max_time, mean_time, query from
      10 | 11277.79 | 11277.79 | 11277.79 | 11277.79| SELECT * FROM foo
 ```
 
+### Host / Client IP 
 
 **`client_ip`**: The IP address of the client that originated the query.
 
@@ -446,6 +454,8 @@ postgres=# select client_ip, query from pg_stat_monitor;
 (6 rows)
 ```
 
+### Call Timings Histogram
+
 **`resp_calls`**: Call histogram
 
 ```
@@ -458,6 +468,9 @@ postgres=# select resp_calls, query from pg_stat_monitor;
 ```
 
 There are 10 timebase buckets of the time **`pg_stat_monitor.pgsm_respose_time_step`** in the field ``resp_calls``. The value in the field shows how many queries run in that period of time.
+
+
+### Object Information.
 
 **`tables_names`**: The list of tables involved in the query
 
