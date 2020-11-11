@@ -215,6 +215,8 @@ Status Webserver::Start() {
   memset(&callbacks, 0, sizeof(callbacks));
   callbacks.begin_request = &Webserver::BeginRequestCallbackStatic;
   callbacks.log_message = &Webserver::LogMessageCallbackStatic;
+  callbacks.enter_worker_thread = &Webserver::EnterWorkerThreadCallbackStatic;
+  callbacks.leave_worker_thread = &Webserver::LeaveWorkerThreadCallbackStatic;
 
   // To work around not being able to pass member functions as C callbacks, we store a
   // pointer to this server in the per-server state, and register a static method as the
@@ -365,16 +367,9 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
   return RunPathHandler(*handler, connection, request_info);
 }
 
-thread_local bool cds_attached = false;
-
 int Webserver::RunPathHandler(const PathHandler& handler,
                               struct sq_connection* connection,
                               struct sq_request_info* request_info) {
-  if (!cds_attached) {
-    cds::threading::Manager::attachThread();
-    cds_attached = true;
-  }
-
   // Should we render with css styles?
   bool use_style = true;
 
@@ -541,6 +536,18 @@ void Webserver::BootstrapPageFooter(stringstream* output) {
     *output << "</div></footer>";
   }
   *output << "</body></html>";
+}
+
+namespace {
+thread_local std::unique_ptr<CDSAttacher> cds_attacher;
+}  // namespace
+
+void Webserver::EnterWorkerThreadCallbackStatic() {
+  cds_attacher = std::make_unique<CDSAttacher>();
+}
+
+void Webserver::LeaveWorkerThreadCallbackStatic() {
+  cds_attacher.reset();
 }
 
 } // namespace yb
