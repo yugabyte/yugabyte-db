@@ -1675,7 +1675,6 @@ collect_java_tests() {
         egrep '^YUGABYTE_JAVA_TEST: ' | \
         sed 's/^YUGABYTE_JAVA_TEST: //g' | head -n 25 >>"$java_test_list_path"
         ############################### ^^^^^^^^^^ Temporary for debugging automation
-        cat "$java_test_list_path"
     )
     if [[ $? -ne 0 ]]; then
       local log_file_path

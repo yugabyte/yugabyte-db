@@ -40,13 +40,17 @@ jobs:
                 sudo /sbin/ifconfig lo0 alias 127.0.$i.$j
               done
             done
-            brew install bash cmake maven pstree
+            brew install bash cmake maven pstree ninja
 
       - checkout
 
       - restore_cache:
           name: Retrieve Thirdparty cache
           key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
+
+      - restore_cache:
+          name: Retrieve Python venv cache
+          key: v1-venv-{{ checksum "requirements_frozen.txt" }}
 
       - run:
           name: Build YugabyteDB
@@ -68,16 +72,23 @@ jobs:
             - /opt/yb-build/thirdparty
           when: always
 
+      - save_cache:
+          name: Store Python venv cache
+          key: v1-venv-{{ checksum "requirements_frozen.txt" }}
+          paths:
+            - build/venv
+          when: always
+
       - run:
           name: Gather Test Results
           when: always
           command: |
-            mkdir -p ~/test-results/java
-            find java -type f -regex ".*/target/surefire-reports.*/.*xml" -exec cp {} ~/test-results/java/ \;
+            #mkdir -p ~/test-results/java
+            #find java -type f -regex ".*/target/surefire-reports.*/.*xml" -exec cp {} ~/test-results/java/ \;
             tar -cvzf test_logs.tar.gz build/*/yb-test-logs java/*/target/surefire*
 
-      - store_test_results:
-          path: ~/test-results/java
+      #- store_test_results:
+      #    path: ~/test-results/java
 
       - store_artifacts:
           path: test_logs.tar.gz

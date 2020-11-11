@@ -738,7 +738,6 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
       if ! spark_available; then
         log "Did not find Spark on the system, falling back to a ctest-based way of running tests"
         set +e
-        set -x
         time ctest -j$NUM_PARALLEL_TESTS ${EXTRA_TEST_FLAGS:-} \
             --output-log "$CTEST_FULL_OUTPUT_PATH" \
             --output-on-failure 2>&1 | tee "$CTEST_OUTPUT_PATH"
