@@ -1154,6 +1154,7 @@ void Tablet::KeyValueBatchFromRedisWriteBatch(std::unique_ptr<WriteOperation> op
   ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   if (!scoped_read_operation.ok()) {
     WriteOperation::StartSynchronization(std::move(operation), MoveStatus(scoped_read_operation));
+    return;
   }
 
   docdb::DocOperations& doc_ops = operation->doc_ops();
