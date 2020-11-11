@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { fetchLiveQueries } from '../../actions/universe';
 import { dropdownColKeys } from './LiveQueries';
-import _ from 'lodash';
 
 export const useApiQueriesFetch = ({ universeUUID }) => {
   const [ycqlQueries, setYCQLQueryRowData] = useState([]);
@@ -41,7 +40,7 @@ export const useApiQueriesFetch = ({ universeUUID }) => {
     return () => {
       cancel();
     };
-  }, []);
+  }, [universeUUID]);
 
   return {
     ycqlQueries,
@@ -82,6 +81,7 @@ export const filterBySearchTokens = (arr, searchTokens) => {
               const operator = match[2];
               if (operator) {
                 const limit = match[3];
+                // eslint-disable-next-line no-new-func
                 return Function(`return ${query[token.key]} ${operator} ${limit}`)();
               }
               const lowerRange = match[5];
@@ -113,6 +113,7 @@ export const filterBySearchTokens = (arr, searchTokens) => {
               const operator = match[2];
               if (operator) {
                 const timestampLimit = match[3];
+                // eslint-disable-next-line no-new-func
                 return Function(
                   `"use strict";return new Date("${
                     query[column.value]
@@ -122,11 +123,11 @@ export const filterBySearchTokens = (arr, searchTokens) => {
               const lowerTimeRange = match[11];
               const upperTimeRange = match[19];
               const queryTime = new Date(query[column.value]);
-              if (upperTimeRange === '*' && lowerTimeRange != '*') {
+              if (upperTimeRange === '*' && lowerTimeRange !== '*') {
                 return queryTime >= new Date(lowerTimeRange);
-              } else if (lowerTimeRange === '*' && upperTimeRange != '*') {
+              } else if (lowerTimeRange === '*' && upperTimeRange !== '*') {
                 return queryTime <= new Date(upperTimeRange);
-              } else if (lowerTimeRange != '*' && upperTimeRange != '*') {
+              } else if (lowerTimeRange !== '*' && upperTimeRange !== '*') {
                 return (
                   queryTime >= new Date(lowerTimeRange) && queryTime <= new Date(upperTimeRange)
                 );
