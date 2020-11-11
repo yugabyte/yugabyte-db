@@ -91,6 +91,7 @@ const LiveQueriesComponent = ({ location }) => {
         ]);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -116,7 +117,7 @@ const LiveQueriesComponent = ({ location }) => {
         setType('YCQL');
       }
     }
-  }, [ycqlQueries, ysqlQueries]);
+  }, [type, ycqlQueries, ysqlQueries]);
 
   // Gets the location of searchInput element and sets left pixels
   useLayoutEffect(() => {
@@ -133,7 +134,11 @@ const LiveQueriesComponent = ({ location }) => {
 
   const getTserverLink = (cell, row) => {
     return (
-      <a href={`http://${row.privateIp}/`} title={cell} target="_blank">
+      <a href={`http://${row.privateIp}/`}
+        title={cell}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         {cell}
       </a>
     );
@@ -184,7 +189,7 @@ const LiveQueriesComponent = ({ location }) => {
               <i
                 className="fa fa-times-circle remove-chip"
                 onClick={() => {
-                  let newTokens = [...searchTokens];
+                  const newTokens = [...searchTokens];
                   newTokens.splice(idx, 1);
                   setSearchTokens(newTokens);
                   clearBtnClick();

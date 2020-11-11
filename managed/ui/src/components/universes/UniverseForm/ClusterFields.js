@@ -1558,9 +1558,6 @@ export default class ClusterFields extends Component {
           </Col>
         </Row>
       );
-    }
-
-    if (clusterType === 'primary') {
       tagsArray = (
         <Row>
           <Col md={12}>
