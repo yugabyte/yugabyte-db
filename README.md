@@ -403,6 +403,7 @@ postgres=# select userid,  dbid, queryid, query, calls from pg_stat_monitor;
 ```
 **`elevel`**, **`sqlcode`**,**`message`**,: error level / sql code and  log/warning/error message
 
+```
 postgres=# select substr(query,0,50) as query, decode_error_level(elevel)as elevel,sqlcode,calls, substr(message,0,50) message from pg_stat_monitor;
                        query                       | elevel | sqlcode | calls |                      message                      
 ---------------------------------------------------+--------+---------+-------+---------------------------------------------------
@@ -413,7 +414,7 @@ postgres=# select substr(query,0,50) as query, decode_error_level(elevel)as elev
                                                    | LOG    |       0 |     1 | database system was shut down at 2020-11-11 11:37
  select $1/$2                                      |        |       0 |     1 | 
 (6 rows)
-
+```
 
 **`total_time`**,  **`min_time`**, **`max_time`**, **`mean_time`**: The total / minimum / maximum and mean time spent for the same query.
 
