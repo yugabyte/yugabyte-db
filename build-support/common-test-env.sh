@@ -1667,6 +1667,8 @@ collect_java_tests() {
     (
       export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
       set -x
+      # Debug - so head does not kill pipe and give error
+      set +o pipefail
       # The string "YUGABYTE_JAVA_TEST: " is specified in the Java code as COLLECTED_TESTS_PREFIX.
       #
       time mvn "${mvn_opts[@]}" surefire:test \

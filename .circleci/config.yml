@@ -44,6 +44,7 @@ jobs:
 
       - checkout
 
+      # Downloading from github releases is fast, so this cache is not much of a win
       - restore_cache:
           name: Retrieve Thirdparty cache
           key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
@@ -60,7 +61,6 @@ jobs:
             set -x
             ulimit -n 1048576
             export BUILD_TYPE=<< parameters.flavor >>
-            #export YB_USE_NINJA=0
             export YB_SKIP_CREATING_RELEASE_PACKAGE=1
             export EXTRA_TEST_FLAGS="-I 1,25" # only run 25 ctests for testing automation
             ./build-support/jenkins/build-and-test.sh
@@ -85,7 +85,7 @@ jobs:
           command: |
             #mkdir -p ~/test-results/java
             #find java -type f -regex ".*/target/surefire-reports.*/.*xml" -exec cp {} ~/test-results/java/ \;
-            tar -cvzf test_logs.tar.gz build/*/yb-test-logs java/*/target/surefire*
+            tar -cvzf test_logs.tar.gz test_*.json build/*/yb-test-logs java/*/target/surefire*
 
       #- store_test_results:
       #    path: ~/test-results/java
