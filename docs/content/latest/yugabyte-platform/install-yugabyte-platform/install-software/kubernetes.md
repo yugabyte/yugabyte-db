@@ -96,7 +96,7 @@ The following output should appear:
     kubectl create namespace yb-platform
     ```
 
-2. Apply the Yugabyte Platform secret (obtained from [Yugabyte Support](mailto:support@yugabyte.com) by running the following `kubectl create` command:
+2. Apply the Yugabyte Platform secret (obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form) by running the following `kubectl create` command:
 
     ```sh
     $ kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
