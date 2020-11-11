@@ -2457,7 +2457,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	/*
 	 * Initialize result type, slot and projection.
 	 */
-	ExecInitResultTupleSlotTL(estate, &aggstate->ss.ps);
+	ExecInitResultTupleSlotTL(&aggstate->ss.ps);
 	ExecAssignProjectionInfo(&aggstate->ss.ps, NULL);
 
 	/*
