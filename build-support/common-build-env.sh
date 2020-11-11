@@ -1497,9 +1497,8 @@ detect_num_cpus_and_set_make_parallelism() {
 }
 
 validate_thirdparty_dir() {
-  ensure_directory_exists "$YB_THIRDPARTY_DIR/build_definitions"
-  ensure_directory_exists "$YB_THIRDPARTY_DIR/patches"
-  ensure_file_exists "$YB_THIRDPARTY_DIR/build_definitions/__init__.py"
+  ensure_file_exists "$YB_THIRDPARTY_DIR/build_thirdparty.sh"
+  ensure_directory_exists "$YB_THIRDPARTY_DIR/installed"
 }
 
 # Detect if we're running on Google Compute Platform. We perform this check lazily as there might be
