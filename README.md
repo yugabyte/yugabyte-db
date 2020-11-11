@@ -490,17 +490,3 @@ postgres=# select tables_names, query from pg_stat_monitor;
 ```
 
 
-**`wait_event`**: Current state of the query 
-
-```
-postgres=# select wait_event_type, query from pg_stat_monitor;
- wait_event |                                         query                                         
------------------+-------------------------------------------------------------------------------
-                 | select client_ip, query from pg_stat_monitor
- ClientRead      | select wait_event_type, query from pg_stat_monitor
-                 | select * from pg_stat_monitor_reset()
-```
-
-
-
-

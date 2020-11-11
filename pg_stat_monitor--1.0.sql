@@ -64,16 +64,6 @@ RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 
-CREATE FUNCTION pg_stat_wait_events(
-  OUT queryid text, 
-  OUT pid bigint, 
-  OUT wait_event text, 
-  OUT wait_event_type text 
-  )
-RETURNS SETOF record
-AS 'MODULE_PATHNAME', 'pg_stat_wait_events'
-LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
-
 CREATE FUNCTION pg_stat_monitor_settings(
     OUT name  text,
     OUT value INTEGER,
@@ -162,32 +152,6 @@ SELECT
 $$
 LANGUAGE SQL PARALLEL SAFE;
 
--- Register a view on the function for ease of use.
-CREATE VIEW pg_stat_wait_events AS SELECT
-    m.queryid,
-    query,
-	wait_event,
-	wait_event_type 
-FROM  pg_stat_monitor(true) m, pg_stat_wait_events() w WHERE w.queryid = m.queryid;
-
-/*CREATE VIEW pg_stat_monitor_db AS
-SELECT
-  *
-FROM pg_stat_monitor GROUP BY dbid;
-
-CREATE VIEW pg_stat_monitor_user AS
-SELECT
-  *
-FROM pg_stat_monitor GROUP BY userid;
-
-CREATE VIEW pg_stat_monitor_ip AS
-SELECT
-  *
-FROM pg_stat_monitor GROUP BY client_ip;
-
-GRANT SELECT ON pg_stat_agg_user TO PUBLIC;
-GRANT SELECT ON pg_stat_agg_ip TO PUBLIC;
-GRANT SELECT ON pg_stat_agg_database TO PUBLIC;
 GRANT SELECT ON pg_stat_monitor_settings TO PUBLIC;
 */
 -- Don't want this to be available to non-superusers.

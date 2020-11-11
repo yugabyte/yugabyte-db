@@ -35,8 +35,6 @@ static int	exec_nested_level = 0;
 static bool system_init = false;
 static struct rusage  rusage_start;
 static struct rusage  rusage_end;
-static volatile sig_atomic_t sigterm = false;
-static void handle_sigterm(SIGNAL_ARGS);
 static unsigned char *pgss_qbuf[MAX_BUCKETS];
 
 
@@ -59,7 +57,6 @@ PG_FUNCTION_INFO_V1(pg_stat_monitor_reset);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_1_2);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_1_3);
 PG_FUNCTION_INFO_V1(pg_stat_monitor);
-PG_FUNCTION_INFO_V1(pg_stat_wait_events);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_settings);
 
 static uint pg_get_client_addr(void);
@@ -130,10 +127,6 @@ static uint64 get_next_wbucket(pgssSharedState *pgss);
 static void store_query(uint64 queryid, const char *query, uint64 query_len);
 static uint64 locate_query(uint64 bucket_id, uint64 queryid, char * query);
 
-/* Wait Event Local Functions */
-static void register_wait_event(void);
-void wait_event_main(Datum main_arg);
-static void update_wait_event(void);
 static uint64 get_query_id(pgssJumbleState *jstate, Query *query);
 
 /*
@@ -167,9 +160,6 @@ _PG_init(void)
 	RequestAddinShmemSpace(hash_memsize());
 	RequestNamedLWLockTranche("pg_stat_monitor", 1);
 
-	/* Register Wait events */
-	register_wait_event();
-
 	/*
 	 * Install hooks.
 	 */
@@ -200,8 +190,7 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
-	elog(DEBUG2, "pg_stat_monitor: %s()", __FUNCTION__);
-
+	system_init = false;
 	shmem_startup_hook 		= prev_shmem_startup_hook;
 	post_parse_analyze_hook = prev_post_parse_analyze_hook;
 	ExecutorStart_hook 		= prev_ExecutorStart;
@@ -943,105 +932,6 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 	LWLockRelease(pgss->lock);
 	PG_RETURN_VOID();
 }
-
-
-Datum
-pg_stat_wait_events(PG_FUNCTION_ARGS)
-{
-	ReturnSetInfo		*rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc			tupdesc;
-	Tuplestorestate 	*tupstore;
-	MemoryContext       per_query_ctx;
-	MemoryContext       oldcontext;
-	HASH_SEQ_STATUS     hash_seq;
-	pgssWaitEventEntry  *entry;
-	char                *query_txt;
-	char			    queryid_txt[64];
-	pgssSharedState     *pgss = pgsm_get_ss();
-	HTAB                *pgss_waiteventshash = pgsm_get_wait_event_hash();
-
-	/* Safety check... */
-	if (!IsSystemInitialized())
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
-
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("pg_stat_monitor: set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("pg_stat_monitor: materialize mode required, but it is not " \
-						"allowed in this context")));
-
-	query_txt = (char*) malloc(PGSM_QUERY_MAX_LEN);
-
-	/* Switch into long-lived context to construct returned data structures */
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "pg_stat_monitor: return type must be a row type");
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
-
-	LWLockAcquire(pgss->lock, LW_SHARED);
-
-	hash_seq_init(&hash_seq, pgss_waiteventshash);
-	while ((entry = hash_seq_search(&hash_seq)) != NULL)
-	{
-		Datum		values[4];
-		bool		nulls[4] = {true};
-		int			i = 0;
-		int64		queryid = entry->key.queryid;
-
-		if (queryid == 0)
-				continue;
-		memset(values, 0, sizeof(values));
-		memset(nulls, 0, sizeof(nulls));
-
-		sprintf(queryid_txt, "%08lX", queryid);
-
-		values[i++] = ObjectIdGetDatum(cstring_to_text(queryid_txt));
-		values[i++] = ObjectIdGetDatum(entry->pid);
-		if (entry->wait_event_info != 0)
-		{
-			const char *event_type = pgstat_get_wait_event_type(entry->wait_event_info);
-			const char *event = pgstat_get_wait_event(entry->wait_event_info);
-			if (event_type)
-				values[i++] = PointerGetDatum(cstring_to_text(event_type));
-			else
-				nulls[i++] = true;
-			if (event)
-				values[i++] = PointerGetDatum(cstring_to_text(event));
-			else
-				nulls[i++] = true;
-		}
-		else
-		{
-			nulls[i++] = true;
-			nulls[i++] = true;
-		}
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
-	}
-	free(query_txt);
-
-	/* clean up and return the tuplestore */
-	LWLockRelease(pgss->lock);
-
-	tuplestore_donestoring(tupstore);
-	return (Datum) 0;
-}
-
 
 Datum
 pg_stat_monitor(PG_FUNCTION_ARGS)
@@ -2282,14 +2172,6 @@ static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param
 #endif
 {
 	PlannedStmt *result;
-	pgssWaitEventEntry **pgssWaitEventEntries = pgsm_get_wait_event_entry();
-
-    if (MyProc)
-    {
-        int i = MyProc - ProcGlobal->allProcs;
-        if (pgssWaitEventEntries[i]->key.queryid != parse->queryId)
-		    pgssWaitEventEntries[i]->key.queryid = parse->queryId;
-	}
 #if PG_VERSION_NUM >= 130000
 	if (PGSM_TRACK_PLANNING && query_string
 		&& parse->queryId != UINT64CONST(0))
@@ -2353,86 +2235,16 @@ static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param
 	}
 	else
 	{
-
-    		if (planner_hook_next)
-        		result = planner_hook_next(parse, query_string, cursorOptions, boundParams);
-    		result = standard_planner(parse, query_string, cursorOptions, boundParams);
+		if (planner_hook_next)
+			result = planner_hook_next(parse, query_string, cursorOptions, boundParams);
+			result = standard_planner(parse, query_string, cursorOptions, boundParams);
 	}
 #else
-    if (planner_hook_next)
+	if (planner_hook_next)
 		result = planner_hook_next(parse, opt, param);
 	result = standard_planner(parse, opt, param);
 #endif
 	return result;
-}
-
-static void
-update_wait_event(void)
-{
-	PGPROC	           *proc = NULL;
-	int                i;
-	pgssWaitEventEntry **pgssWaitEventEntries = pgsm_get_wait_event_entry();
-
-	LWLockAcquire(ProcArrayLock, LW_SHARED);
-	for (i = 0; i < ProcGlobal->allProcCount; i++)
-    {
-        proc = &ProcGlobal->allProcs[i];
-		if (proc->pid == 0)
-			continue;
-
-		pgssWaitEventEntries[i]->wait_event_info = proc->wait_event_info;
-		pgssWaitEventEntries[i]->pid = proc->pid;
-	}
-	LWLockRelease(ProcArrayLock);
-}
-
-static void
-handle_sigterm(SIGNAL_ARGS)
-{
-    sigterm = true;
-}
-
-static void
-register_wait_event(void)
-{
-    BackgroundWorker worker;
-
-    memset(&worker, 0, sizeof(worker));
-    worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
-    worker.bgw_start_time = BgWorkerStart_ConsistentState;
-    worker.bgw_restart_time = 0;
-    worker.bgw_notify_pid = 0;
-    snprintf(worker.bgw_library_name, BGW_MAXLEN, "pg_stat_monitor");
-    snprintf(worker.bgw_function_name, BGW_MAXLEN, CppAsString(wait_event_main));
-    snprintf(worker.bgw_name, BGW_MAXLEN, "pg_stat_monitor collector");
-    worker.bgw_main_arg = (Datum) 0;
-    RegisterBackgroundWorker(&worker);
-}
-
-void
-wait_event_main(Datum main_arg)
-{
-	int rc;
-
-	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, NULL, false);
-	SetProcessingMode(NormalProcessing);
-    pqsignal(SIGTERM, handle_sigterm);
-    BackgroundWorkerUnblockSignals();
-	while (1)
-	{
-		sleep(1);
-		if (sigterm)
-			break;
-		rc = WaitLatch(&MyProc->procLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH, 1, PG_WAIT_EXTENSION);
-
-		if (rc & WL_POSTMASTER_DEATH)
-			proc_exit(1);
-
-		ResetLatch(&MyProc->procLatch);
-
-		update_wait_event();
-	}
-	proc_exit(0);
 }
 
 static uint64
@@ -2522,7 +2334,10 @@ pgsm_emit_log_hook(ErrorData *edata)
 #if PG_VERSION_NUM >= 130000
 	WalUsage walusage;
 #endif
-	if (PGSM_ENABLED == 1 && IsSystemInitialized())
+
+	if (PGSM_ENABLED == 1 &&
+		IsSystemInitialized() &&
+		(edata->elevel == ERROR || edata->elevel == WARNING || edata->elevel == INFO || edata->elevel == DEBUG1) )
 	{
 		uint64 queryid = 0;
 

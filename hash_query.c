@@ -17,9 +17,7 @@
 static pgssSharedState *pgss;
 static HTAB *pgss_hash;
 static HTAB *pgss_object_hash;
-static HTAB *pgss_waiteventshash = NULL;
 
-static pgssWaitEventEntry **pgssWaitEventEntries = NULL;
 static HTAB* hash_init(const char *hash_name, int key_size, int entry_size, int hash_size);
 
 static HTAB*
@@ -39,10 +37,10 @@ pgss_startup(void)
 	int32		i;
 
 	/* reset in case this is a restart within the postmaster */
+
 	pgss = NULL;
 	pgss_hash = NULL;
 	pgss_object_hash = NULL;
-	pgss_waiteventshash = NULL;
 
 	/*
 	* Create or attach to the shared memory state, including hash table
@@ -68,37 +66,15 @@ pgss_startup(void)
 	}
 
 	pgss_hash = hash_init("pg_stat_monitor: Queries hashtable", sizeof(pgssHashKey), sizeof(pgssEntry),PGSM_MAX);
-
-	pgss_waiteventshash = hash_init("pg_stat_monitor: Wait Event hashtable", sizeof(pgssWaitEventKey), sizeof(pgssWaitEventEntry), 100);
-
 	pgss_object_hash = hash_init("pg_stat_monitor: Object hashtable", sizeof(pgssObjectHashKey), sizeof(pgssObjectEntry), PGSM_OBJECT_CACHE);
-
-	Assert(IsHashInitialize());
-
-	pgssWaitEventEntries = malloc(sizeof (pgssWaitEventEntry) * MAX_BACKEND_PROCESES);
-	for (i = 0; i < MAX_BACKEND_PROCESES; i++)
-	{
-		pgssWaitEventKey	key;
-		pgssWaitEventEntry	*entry = NULL;
-		bool				found = false;
-
-		key.processid = i;
-		entry = (pgssWaitEventEntry *) hash_search(pgss_waiteventshash, &key, HASH_ENTER, &found);
-		if (!found)
-		{
-			SpinLockInit(&entry->mutex);
-			pgssWaitEventEntries[i] = entry;
-		}
-	}
 
 	LWLockRelease(AddinShmemInitLock);
 
 	/*
-	* If we're in the postmaster (or a standalone backend...), set up a shmem
-	* exit hook to dump the statistics to disk.
-	*/
-	if (!IsUnderPostmaster)
-		on_shmem_exit(pgss_shmem_shutdown, (Datum) 0);
+	 * If we're in the postmaster (or a standalone backend...), set up a shmem
+	 * exit hook to dump the statistics to disk.
+	 */
+	on_shmem_exit(pgss_shmem_shutdown, (Datum) 0);
 }
 
 int
@@ -117,16 +93,6 @@ HTAB* pgsm_get_hash(void)
 	return pgss_hash;
 }
 
-HTAB* pgsm_get_wait_event_hash(void)
-{
-	return pgss_waiteventshash;
-}
-
-pgssWaitEventEntry** pgsm_get_wait_event_entry(void)
-{
-	return pgssWaitEventEntries;
-}
-
 /*
  * shmem_shutdown hook: Dump statistics into file.
  *
@@ -136,12 +102,13 @@ pgssWaitEventEntry** pgsm_get_wait_event_entry(void)
 void
 pgss_shmem_shutdown(int code, Datum arg)
 {
-	elog(DEBUG2, "pg_stat_monitor: %s()", __FUNCTION__);
+	printf("--%s", __FUNCTION__);
 
 	/* Don't try to dump during a crash. */
 	if (code)
 		return;
 
+	pgss = NULL;
 	/* Safety check ... shouldn't get here unless shmem is set up. */
 	if (!IsHashInitialize())
 		return;
@@ -220,7 +187,6 @@ hash_entry_reset()
 {
 	HASH_SEQ_STATUS		hash_seq;
 	pgssEntry			*entry;
-	pgssWaitEventEntry	*weentry;
 
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 
@@ -229,14 +195,7 @@ hash_entry_reset()
 	{
 		hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
 	}
-
-	hash_seq_init(&hash_seq, pgss_waiteventshash);
-	while ((weentry = hash_seq_search(&hash_seq)) != NULL)
-	{
-		hash_search(pgss_waiteventshash, &weentry->key, HASH_REMOVE, NULL);
-    }
 	pgss->current_wbucket = 0;
-	free(pgssWaitEventEntries);
 	LWLockRelease(pgss->lock);
 }
 
@@ -314,7 +273,6 @@ IsHashInitialize(void)
 {
 	return (pgss != NULL &&
 			pgss_hash != NULL &&
-			pgss_object_hash !=NULL &&
-			pgss_waiteventshash != NULL);
+			pgss_object_hash !=NULL);
 }
 

@@ -111,23 +111,7 @@ typedef struct pgssObjectEntry
 	slock_t				mutex;						/* protects the counters only */
 } pgssObjectEntry;
 
-typedef struct pgssWaitEventKey
-{
-	uint64      queryid;
-	uint64		processid;
-} pgssWaitEventKey;
-
 #define MAX_QUERY_LEN 1024
-typedef struct pgssWaitEventEntry
-{
-	pgssWaitEventKey key;			/* hash key of entry - MUST BE FIRST */
-	uint64			 queryid;
-	uint64			 pid;
-	uint32 			 wait_event_info;
-	char			 query[MAX_QUERY_LEN];
-	slock_t			 mutex;			/* protects the counters only */
-} pgssWaitEventEntry;
-
 
 /* shared nenory storage for the query */
 typedef struct pgssHashKey
@@ -303,9 +287,7 @@ void pgss_shmem_startup(void);
 void pgss_shmem_shutdown(int code, Datum arg);
 int pgsm_get_bucket_size(void);
 pgssSharedState* pgsm_get_ss(void);
-HTAB* pgsm_get_wait_event_hash(void);
 HTAB* pgsm_get_hash(void);
-pgssWaitEventEntry** pgsm_get_wait_event_entry(void);
 void hash_entry_reset(void);
 void hash_entry_dealloc(int bucket);
 pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
