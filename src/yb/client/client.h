@@ -287,7 +287,7 @@ class YBClient {
   CHECKED_STATUS TruncateTables(const std::vector<std::string>& table_ids, bool wait = true);
 
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
-  CHECKED_STATUS BackfillIndex(const TableId& table_id);
+  CHECKED_STATUS BackfillIndex(const TableId& table_id, bool wait = true);
 
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.

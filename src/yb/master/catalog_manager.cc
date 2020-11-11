@@ -3411,7 +3411,7 @@ Status CatalogManager::BackfillIndex(
     const BackfillIndexRequestPB* req,
     BackfillIndexResponsePB* resp,
     rpc::RpcContext* rpc) {
-  TableIdentifierPB index_table_identifier = req->table_identifier();
+  TableIdentifierPB index_table_identifier = req->index_identifier();
 
   scoped_refptr<TableInfo> index_table;
   RETURN_NOT_OK(FindTable(index_table_identifier, &index_table));
@@ -3435,6 +3435,7 @@ Status CatalogManager::BackfillIndex(
   {
     auto l = index_table->LockForRead();
     TableId indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(l->data().pb);
+    resp->mutable_table_identifier()->set_table_id(indexed_table_id);
     indexed_table = GetTableInfo(indexed_table_id);
   }
 

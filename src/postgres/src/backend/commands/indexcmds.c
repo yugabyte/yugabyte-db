@@ -365,7 +365,6 @@ DefineIndex(Oid relationId,
 	LockRelId	heaprelid;
 	LOCKMODE	lockmode;
 	int			i;
-	YBIndexPermissions actual_index_permissions;
 	bool		is_indexed_table_colocated = false;
 
 	/*
@@ -1346,15 +1345,6 @@ DefineIndex(Oid relationId,
 
 	/* Do backfill. */
 	HandleYBStatus(YBCPgBackfillIndex(MyDatabaseId, indexRelationId));
-	HandleYBStatus(YBCPgWaitUntilIndexPermissionsAtLeast(MyDatabaseId,
-														 relationId,
-														 indexRelationId,
-														 YB_INDEX_PERM_READ_WRITE_AND_DELETE,
-														 &actual_index_permissions));
-	if (actual_index_permissions != YB_INDEX_PERM_READ_WRITE_AND_DELETE)
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("index backfill failed")));
 
 	/*
 	 * Index can now be marked valid -- update its pg_index entry
