@@ -401,6 +401,19 @@ postgres=# select userid,  dbid, queryid, query, calls from pg_stat_monitor;
      10 | 12696 | 85900141D214EC52 | select bucket, bucket_start_time, query from pg_stat_monitor |     2
      10 | 12696 | F1AC132034D5B366 | SELECT * FROM foo                                            |     1
 ```
+**`elevel`**, **`sqlcode`**,**`message`**,: error level / sql code and  log/warning/error message
+
+postgres=# select substr(query,0,50) as query, decode_error_level(elevel)as elevel,sqlcode,calls, substr(message,0,50) message from pg_stat_monitor;
+                       query                       | elevel | sqlcode | calls |                      message                      
+---------------------------------------------------+--------+---------+-------+---------------------------------------------------
+ select substr(query,$1,$2) as query, decode_error |        |       0 |     1 | 
+ select bucket,substr(query,$1,$2),decode_error_le |        |       0 |     3 | 
+                                                   | LOG    |       0 |     1 | database system is ready to accept connections
+ select 1/0;                                       | ERROR  |     130 |     1 | division by zero
+                                                   | LOG    |       0 |     1 | database system was shut down at 2020-11-11 11:37
+ select $1/$2                                      |        |       0 |     1 | 
+(6 rows)
+
 
 **`total_time`**,  **`min_time`**, **`max_time`**, **`mean_time`**: The total / minimum / maximum and mean time spent for the same query.
 

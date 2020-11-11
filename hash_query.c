@@ -17,7 +17,6 @@
 static pgssSharedState *pgss;
 static HTAB *pgss_hash;
 static HTAB *pgss_object_hash;
-static HTAB *pgss_buckethash = NULL;
 static HTAB *pgss_waiteventshash = NULL;
 
 static pgssWaitEventEntry **pgssWaitEventEntries = NULL;
@@ -43,7 +42,6 @@ pgss_startup(void)
 	pgss = NULL;
 	pgss_hash = NULL;
 	pgss_object_hash = NULL;
-	pgss_buckethash = NULL;
 	pgss_waiteventshash = NULL;
 
 	/*
@@ -111,25 +109,21 @@ pgsm_get_bucket_size(void)
 
 pgssSharedState* pgsm_get_ss(void)
 {
-	Assert(pgss);
 	return pgss;
 }
 
 HTAB* pgsm_get_hash(void)
 {
-	Assert(pgss_hash);
 	return pgss_hash;
 }
 
 HTAB* pgsm_get_wait_event_hash(void)
 {
-	Assert(pgss_waiteventshash);
 	return pgss_waiteventshash;
 }
 
 pgssWaitEventEntry** pgsm_get_wait_event_entry(void)
 {
-	Assert(pgssWaitEventEntries);
 	return pgssWaitEventEntries;
 }
 
@@ -143,12 +137,13 @@ void
 pgss_shmem_shutdown(int code, Datum arg)
 {
 	elog(DEBUG2, "pg_stat_monitor: %s()", __FUNCTION__);
+
 	/* Don't try to dump during a crash. */
 	if (code)
 		return;
 
 	/* Safety check ... shouldn't get here unless shmem is set up. */
-	if (IsHashInitialize())
+	if (!IsHashInitialize())
 		return;
 }
 
@@ -225,7 +220,6 @@ hash_entry_reset()
 {
 	HASH_SEQ_STATUS		hash_seq;
 	pgssEntry			*entry;
-	pgssObjectEntry		*objentry;
 	pgssWaitEventEntry	*weentry;
 
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
@@ -235,12 +229,6 @@ hash_entry_reset()
 	{
 		hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
 	}
-
-	hash_seq_init(&hash_seq, pgss_buckethash);
-    while ((objentry = hash_seq_search(&hash_seq)) != NULL)
-    {
-		hash_search(pgss_buckethash, &objentry->key, HASH_REMOVE, NULL);
-    }
 
 	hash_seq_init(&hash_seq, pgss_waiteventshash);
 	while ((weentry = hash_seq_search(&hash_seq)) != NULL)
@@ -324,6 +312,9 @@ hash_create_query_entry(unsigned int queryid,
 bool
 IsHashInitialize(void)
 {
-	return (pgss || pgss_hash || pgss_object_hash || pgss_buckethash || pgss_waiteventshash);
+	return (pgss != NULL &&
+			pgss_hash != NULL &&
+			pgss_object_hash !=NULL &&
+			pgss_waiteventshash != NULL);
 }
 

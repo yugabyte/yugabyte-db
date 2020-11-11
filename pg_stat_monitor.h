@@ -60,6 +60,7 @@
 #define MAX_BUCKETS			10
 #define MAX_OBJECT_CACHE	100
 #define TEXT_LEN			255
+#define ERROR_MESSAGE_LEN	100
 
 typedef struct GucVariables
 {
@@ -144,8 +145,16 @@ typedef struct QueryInfo
 	Oid			userid;						/* user OID */
 	Oid			dbid;						/* database OID */
 	uint		host;						/* client IP */
+	int64       type; 						/* type of query, options are query, info, warning, error, fatal */
 	char		tables_name[MAX_REL_LEN];   /* table names involved in the query */
 } QueryInfo;
+
+typedef struct ErrorInfo
+{
+	unsigned char	elevel;							/* error elevel */
+	unsigned char	sqlcode;						/* error sqlcode  */
+	char			message[ERROR_MESSAGE_LEN];   	/* error message text */
+} ErrorInfo;
 
 typedef struct Calls
 {
@@ -196,6 +205,7 @@ typedef struct Counters
 	CallTime	time[PGSS_NUMKIND];
 	Blocks		blocks;
 	SysInfo		sysinfo;
+	ErrorInfo   error;
 	int			plans;
 	int			resp_calls[MAX_RESPONSE_BUCKET];	/* execution time's in msec */
 } Counters;
@@ -213,12 +223,6 @@ typedef struct pgssEntry
 	slock_t			mutex;			/* protects the counters only */
 } pgssEntry;
 
-typedef struct QueryFifo
-{
-		int head;
-		int tail;
-} QueryFifo;
-
 /*
  * Global shared state
  */
@@ -233,7 +237,6 @@ typedef struct pgssSharedState
 	uint64			prev_bucket_usec;
 	uint64			bucket_overflow[MAX_BUCKETS];
 	uint64			bucket_entry[MAX_BUCKETS];
-	QueryFifo		query_fifo[MAX_BUCKETS];
 	int				query_buf_size_bucket;
 	Timestamp		bucket_start_time[MAX_BUCKETS];   	/* start time of the bucket */
 } pgssSharedState;
@@ -247,7 +250,6 @@ do { \
 		x->prev_bucket_usec = 0; \
 		memset(&x->bucket_overflow, 0, MAX_BUCKETS * sizeof(uint64)); \
 		memset(&x->bucket_entry, 0, MAX_BUCKETS * sizeof(uint64)); \
-		memset(&x->query_fifo, 0, MAX_BUCKETS * sizeof(uint64)); \
 } while(0)
 
 
@@ -314,6 +316,8 @@ pgssEntry* hash_create_query_entry(unsigned int queryid, unsigned int userid, un
 void pgss_startup(void);
 void set_qbuf(int i, unsigned char *);
 
+/* hash_query.c */
+void pgss_startup(void);
 /*---- GUC variables ----*/
 #define PGSM_MAX get_conf(0)->guc_variable
 #define PGSM_QUERY_MAX_LEN get_conf(1)->guc_variable

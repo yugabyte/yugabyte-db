@@ -22,6 +22,9 @@ CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
 
     OUT queryid             text,
     OUT query               text,
+    OUT elevel              int,
+    OUT sqlcode             int,
+    OUT message             text,
     OUT bucket_start_time   timestamptz,
 
 	OUT plans          		int8,
@@ -103,6 +106,9 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	'0.0.0.0'::inet + client_ip AS client_ip,
     queryid,
     query,
+	elevel,
+	sqlcode,
+	message,
 	plans,
 	round( CAST(plan_total_time as numeric), 2)::float8 as plan_total_time,
 	round( CAST(plan_min_time as numeric), 2)::float8 as plan_min_timei,
@@ -134,6 +140,27 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	(string_to_array(tables_names, ',')) tables_names
 FROM pg_stat_monitor(TRUE);
 
+CREATE FUNCTION decode_error_level(elevel int)
+RETURNS  text
+AS
+$$
+SELECT
+        CASE
+           WHEN elevel = 0 THEN  ''
+           WHEN elevel = 10 THEN 'DEBUG5'
+           WHEN elevel = 11 THEN 'DEBUG4'
+           WHEN elevel = 12 THEN 'DEBUG3'
+           WHEN elevel = 13 THEN 'DEBUG2'
+           WHEN elevel = 14 THEN 'DEBUG1'
+           WHEN elevel = 15 THEN 'LOG'
+           WHEN elevel = 16 THEN 'LOG_SERVER_ONLY'
+           WHEN elevel = 17 THEN 'INFO'
+           WHEN elevel = 18 THEN 'NOTICE'
+           WHEN elevel = 19 THEN 'WARNING'
+           WHEN elevel = 20 THEN 'ERROR'
+       END
+$$
+LANGUAGE SQL PARALLEL SAFE;
 
 -- Register a view on the function for ease of use.
 CREATE VIEW pg_stat_wait_events AS SELECT
