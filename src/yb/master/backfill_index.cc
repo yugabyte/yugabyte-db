@@ -753,6 +753,25 @@ void BackfillTable::Done(const Status& s) {
     // Move on to ABORTED permission.
     LOG_WITH_PREFIX(ERROR) << "failed to backfill the index: " << s;
     if (!done_.exchange(true)) {
+      // Set error message.
+      {
+        auto l = indexed_table_->LockForWrite();
+        auto& indexed_table_data = *l->mutable_data();
+        auto& indexed_table_pb = indexed_table_data.pb;
+        for (int i = 0; i < indexed_table_pb.indexes_size(); i++) {
+          IndexInfoPB* idx_pb = indexed_table_pb.mutable_indexes(i);
+          // TODO(jason): fix this when we start batching indexes (issue #4785).
+          if (idx_pb->table_id() == indexes()[0].table_id()) {
+            idx_pb->set_backfill_error_message(s.message().ToBuffer());
+            break;
+          }
+        }
+        WARN_NOT_OK(master_->catalog_manager()->sys_catalog_->UpdateItem(
+                        indexed_table_.get(), leader_term()),
+                    "Could not add error message.");
+        l->Commit();
+      }
+      // Now start aborting.
       WARN_NOT_OK(AlterTableStateToAbort(),
                   "Failed to mark backfill as failed.");
     } else {
