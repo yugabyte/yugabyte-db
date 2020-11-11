@@ -53,7 +53,6 @@ DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60
              "Timeout for WaitUntilIndexPermissionsAtLeast RPCs from client to master initiated "
              "from YSQL layer.");
 TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
-TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, runtime);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
 namespace yb {

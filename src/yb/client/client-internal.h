@@ -168,7 +168,17 @@ class YBClient::Data {
   CHECKED_STATUS BackfillIndex(YBClient* client,
                                const YBTableName& table_name,
                                const TableId& table_id,
-                               CoarseTimePoint deadline);
+                               CoarseTimePoint deadline,
+                               bool wait = true);
+  CHECKED_STATUS IsBackfillIndexInProgress(YBClient* client,
+                                           const TableId& table_id,
+                                           const TableId& index_id,
+                                           CoarseTimePoint deadline,
+                                           bool* backfill_in_progress);
+  CHECKED_STATUS WaitForBackfillIndexToFinish(YBClient* client,
+                                              const TableId& table_id,
+                                              const TableId& index_id,
+                                              CoarseTimePoint deadline);
 
   CHECKED_STATUS AlterTable(YBClient* client,
                             const master::AlterTableRequestPB& req,
@@ -229,7 +239,7 @@ class YBClient::Data {
   Result<IndexPermissions> GetIndexPermissions(
       YBClient* client,
       const YBTableName& table_name,
-      const YBTableName& index_name,
+      const TableId& index_id,
       const CoarseTimePoint deadline);
   Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
       YBClient* client,

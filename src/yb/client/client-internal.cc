@@ -763,17 +763,18 @@ Status YBClient::Data::AlterNamespace(YBClient* client,
 }
 
 Status YBClient::Data::BackfillIndex(YBClient* client,
-                                     const YBTableName& table_name,
-                                     const TableId& table_id,
-                                     CoarseTimePoint deadline) {
+                                     const YBTableName& index_name,
+                                     const TableId& index_id,
+                                     CoarseTimePoint deadline,
+                                     bool wait) {
   BackfillIndexRequestPB req;
   BackfillIndexResponsePB resp;
 
-  if (table_name.has_table()) {
-    table_name.SetIntoTableIdentifierPB(req.mutable_table_identifier());
+  if (index_name.has_table()) {
+    index_name.SetIntoTableIdentifierPB(req.mutable_index_identifier());
   }
-  if (!table_id.empty()) {
-    req.mutable_table_identifier()->set_table_id(table_id);
+  if (!index_id.empty()) {
+    req.mutable_index_identifier()->set_table_id(index_id);
   }
 
   RETURN_NOT_OK((SyncLeaderMasterRpc<BackfillIndexRequestPB, BackfillIndexResponsePB>(
@@ -787,8 +788,55 @@ Status YBClient::Data::BackfillIndex(YBClient* client,
     return StatusFromPB(resp.error().status());
   }
 
-  LOG(INFO) << "Initiated backfill index " << req.table_identifier().ShortDebugString();
+  // Spin until the table is fully backfilled, if requested.
+  if (wait) {
+    RETURN_NOT_OK(WaitForBackfillIndexToFinish(
+        client,
+        resp.table_identifier().table_id(),
+        index_id,
+        deadline));
+  }
+
+  LOG(INFO) << "Backfilled index " << req.index_identifier().ShortDebugString();
   return Status::OK();
+}
+
+Status YBClient::Data::IsBackfillIndexInProgress(YBClient* client,
+                                                 const TableId& table_id,
+                                                 const TableId& index_id,
+                                                 CoarseTimePoint deadline,
+                                                 bool* backfill_in_progress) {
+  DCHECK_ONLY_NOTNULL(backfill_in_progress);
+
+  YBTableInfo yb_table_info;
+  RETURN_NOT_OK(GetTableSchema(client,
+                               table_id,
+                               deadline,
+                               &yb_table_info));
+  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+
+  *backfill_in_progress = true;
+  if (!index_info->backfill_error_message().empty()) {
+    *backfill_in_progress = false;
+    return STATUS(Aborted, index_info->backfill_error_message());
+  } else if (index_info->index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL) {
+    *backfill_in_progress = false;
+  }
+
+  return Status::OK();
+}
+
+Status YBClient::Data::WaitForBackfillIndexToFinish(
+    YBClient* client,
+    const TableId& table_id,
+    const TableId& index_id,
+    CoarseTimePoint deadline) {
+  return RetryFunc(
+      deadline,
+      "Waiting on Backfill Index to be completed",
+      "Timed out waiting for Backfill Index",
+      std::bind(
+          &YBClient::Data::IsBackfillIndexInProgress, this, client, table_id, index_id, _1, _2));
 }
 
 Status YBClient::Data::IsCreateNamespaceInProgress(
@@ -1696,30 +1744,23 @@ Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
                                deadline,
                                &yb_table_info));
 
-  const IndexInfo* index_info =
-      VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
   return index_info->index_permissions();
 }
 
 Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
     YBClient* client,
     const YBTableName& table_name,
-    const YBTableName& index_name,
+    const TableId& index_id,
     const CoarseTimePoint deadline) {
   YBTableInfo yb_table_info;
-  YBTableInfo yb_index_info;
 
   RETURN_NOT_OK(GetTableSchema(client,
                                table_name,
                                deadline,
                                &yb_table_info));
-  RETURN_NOT_OK(GetTableSchema(client,
-                               index_name,
-                               deadline,
-                               &yb_index_info));
 
-  const IndexInfo* index_info =
-      VERIFY_RESULT(yb_table_info.index_map.FindIndex(yb_index_info.table_id));
+  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
   return index_info->index_permissions();
 }
 
@@ -1760,6 +1801,24 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
     const CoarseDuration max_wait) {
   const bool retry_on_not_found = (target_index_permissions != INDEX_PERM_NOT_USED);
   IndexPermissions actual_index_permissions = INDEX_PERM_NOT_USED;
+  YBTableInfo yb_index_info;
+  RETURN_NOT_OK(RetryFunc(
+      deadline,
+      "Waiting for index table schema",
+      "Timed out waiting for index table schema",
+      [&](CoarseTimePoint deadline, bool* retry) -> Status {
+        Status status = GetTableSchema(client,
+                                     index_name,
+                                     deadline,
+                                     &yb_index_info);
+        if (!status.ok()) {
+          *retry = retry_on_not_found;
+          return status;
+        }
+        *retry = false;
+        return Status::OK();
+      },
+      max_wait));
   RETURN_NOT_OK(RetryFunc(
       deadline,
       "Waiting for index to have desired permissions",
@@ -1768,7 +1827,7 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
         Result<IndexPermissions> result = GetIndexPermissions(
             client,
             table_name,
-            index_name,
+            yb_index_info.table_id,
             deadline);
         if (!result) {
           *retry = retry_on_not_found;

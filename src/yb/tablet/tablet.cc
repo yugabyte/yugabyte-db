@@ -2182,15 +2182,11 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
   // Connect and execute.
   auto conn = PQconnectdb(conn_str.c_str());
   if (!conn) {
-    return STATUS(
-        IllegalState,
-        "BACKFILL request failed: failed to connect to DB");
+    return STATUS(IllegalState, "backfill failed to connect to DB");
   }
   auto res = PQexec(conn, query_str.c_str());
   if (!res) {
-    return STATUS(
-        IllegalState,
-        "BACKFILL request failed: query couldn't be sent");
+    return STATUS(IllegalState, "backfill query couldn't be sent");
   }
   auto status = PQresultStatus(res);
 
@@ -2198,22 +2194,14 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
   // TODO(jason): change to PGRES_TUPLES_OK when this query starts returning data
   if (status != PGRES_COMMAND_OK) {
     std::string msg(PQresultErrorMessage(res));
-    size_t num_newlines = std::count(msg.begin(), msg.end(), '\n');
-    if (num_newlines == 1) {
-      if (msg.back() == '\n') {
-        msg.resize(msg.size() - 1);
-      } else {
-        LOG(WARNING) << "Unexpected PQ error message not ending in newline";
-      }
-    } else {
-      LOG(WARNING) << "Unexpected PQ error message with " << num_newlines << " newlines";
+    // Avoid double newline (postgres adds a newline after the error message).
+    if (msg.back() == '\n') {
+      msg.resize(msg.size() - 1);
     }
-    Status s = STATUS_FORMAT(
-        IllegalState,
-        "BACKFILL request failed: got $0 with message \"$1\" when running query \"$2\"",
-        PQresStatus(status),
-        msg,
-        query_str);
+    LOG(WARNING) << "libpq query \"" << query_str
+                 << "\" returned " << PQresStatus(status)
+                 << ": " << msg;
+    Status s = STATUS(IllegalState, msg);
     PQclear(res);
     PQfinish(conn);
     return s;

@@ -2457,7 +2457,7 @@ TEST_F_EX(PgLibPqTest,
 class PgLibPqTestIndexBackfillSlowSmallClientDeadline : public PgLibPqTestIndexBackfillSlow {
  public:
   PgLibPqTestIndexBackfillSlowSmallClientDeadline() {
-    more_tserver_flags.push_back("--ysql_wait_until_index_permissions_timeout_ms=3000");
+    more_tserver_flags.push_back("--backfill_index_client_rpc_timeout_ms=3000");
   }
 };
 
@@ -2481,7 +2481,7 @@ TEST_F_EX(PgLibPqTest,
   Status status = conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName);
   ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
   const std::string msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("Timed out waiting for proper index permissions") != std::string::npos)
+  ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
       << status;
 
   // Make sure that the index is not public.
@@ -2506,7 +2506,7 @@ TEST_F_EX(PgLibPqTest,
   Status status = conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
   ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
   const std::string msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("Timed out waiting for proper index permissions") != std::string::npos)
+  ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
       << status;
 
   // Make sure that the index exists in DocDB metadata.
@@ -2535,12 +2535,12 @@ TEST_F_EX(PgLibPqTest,
   }
 }
 
-// Override the index backfill slow test to have more than one master and 30s
-// WaitUntilIndexPermissionsAtLeast timeout.
+// Override the index backfill slow test to have more than one master and 30s BackfillIndex client
+// timeout.
 class PgLibPqTestIndexBackfillSlowMultiMaster : public PgLibPqTestIndexBackfillSlow {
  public:
   PgLibPqTestIndexBackfillSlowMultiMaster() {
-    more_tserver_flags.push_back("--ysql_wait_until_index_permissions_timeout_ms=30000");
+    more_tserver_flags.push_back("--backfill_index_client_rpc_timeout_ms=30000");
   }
 
   int GetNumMasters() const override { return 3; }
@@ -2588,7 +2588,7 @@ TEST_F_EX(PgLibPqTest,
     Status status = conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
     ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
     const std::string msg = status.message().ToBuffer();
-    ASSERT_TRUE(msg.find("Timed out waiting for proper index permissions") != std::string::npos)
+    ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
         << status;
   });
 
@@ -2637,7 +2637,7 @@ TEST_F_EX(PgLibPqTest,
     // index.
     ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
     const std::string msg = status.message().ToBuffer();
-    ASSERT_TRUE(msg.find("Timed out waiting for proper index permissions") != std::string::npos)
+    ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
         << status;
   });
 
@@ -2688,8 +2688,8 @@ TEST_F_EX(PgLibPqTest,
 
 // TODO(jason): expect success when closing issue #5324.
   ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_TRUE(status.message().ToBuffer().find("index backfill failed") != std::string::npos)
-      << status;
+  ASSERT_TRUE(status.message().ToBuffer().find(
+      "backfill query couldn't be sent") != std::string::npos) << status;
 }
 
 // Override the base test to start a cluster with transparent retries on cache version mismatch

@@ -959,12 +959,15 @@ message IsTruncateTableDoneResponsePB {
 
 message BackfillIndexRequestPB {
   // The index to backfill.
-  optional TableIdentifierPB table_identifier = 1;
+  optional TableIdentifierPB index_identifier = 1;
 }
 
 message BackfillIndexResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
+
+  // The indexed table to backfill.
+  optional TableIdentifierPB table_identifier = 2;
 }
 
 // Delete table request (including index table).

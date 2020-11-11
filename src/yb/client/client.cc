@@ -176,6 +176,10 @@ DEFINE_bool(client_suppress_created_logs, false,
 TAG_FLAG(client_suppress_created_logs, advanced);
 TAG_FLAG(client_suppress_created_logs, hidden);
 
+DEFINE_int32(backfill_index_client_rpc_timeout_ms, 60 * 60 * 1000, // 60 min.
+             "Timeout for BackfillIndex RPCs from client to master.");
+TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
+
 DEFINE_test_flag(int32, yb_num_total_tablets, 0,
                  "The total number of tablets per table when a table is created.");
 
@@ -496,9 +500,10 @@ Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
-Status YBClient::BackfillIndex(const TableId& table_id) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->BackfillIndex(this, YBTableName(), table_id, deadline);
+Status YBClient::BackfillIndex(const TableId& table_id, bool wait) {
+  auto deadline = (CoarseMonoClock::Now()
+                   + MonoDelta::FromMilliseconds(FLAGS_backfill_index_client_rpc_timeout_ms));
+  return data_->BackfillIndex(this, YBTableName(), table_id, deadline, wait);
 }
 
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
