@@ -2698,7 +2698,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		mtstate->ps.plan->targetlist = (List *) linitial(node->returningLists);
 
 		/* Set up a slot for the output of the RETURNING projection(s) */
-		ExecInitResultTupleSlotTL(estate, &mtstate->ps);
+		ExecInitResultTupleSlotTL(&mtstate->ps);
 		slot = mtstate->ps.ps_ResultTupleSlot;
 
 		/* Need an econtext too */
@@ -2728,7 +2728,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 * expects one (maybe should change that?).
 		 */
 		mtstate->ps.plan->targetlist = NIL;
-		ExecInitResultTupleSlotTL(estate, &mtstate->ps);
+		ExecInitResultTypeTL(&mtstate->ps);
 
 		mtstate->ps.ps_ExprContext = NULL;
 	}
@@ -3019,7 +3019,8 @@ ExecEndModifyTable(ModifyTableState *node)
 	/*
 	 * clean out the tuple table
 	 */
-	ExecClearTuple(node->ps.ps_ResultTupleSlot);
+	if (node->ps.ps_ResultTupleSlot)
+		ExecClearTuple(node->ps.ps_ResultTupleSlot);
 
 	/*
 	 * Terminate EPQ execution if active
