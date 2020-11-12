@@ -460,7 +460,7 @@ class NfsBackupStorage(AbstractBackupStorage):
     # This is a single string because that's what we need for doing `mkdir && rsync`.
     def upload_file_cmd(self, src, dest):
         return ["mkdir -p {} && {} {} {}".format(
-            os.path.dirname(dest), " ".join(self._command_list_prefix()),
+            pipes.quote(os.path.dirname(dest)), " ".join(self._command_list_prefix()),
             pipes.quote(src), pipes.quote(dest))]
 
     def download_file_cmd(self, src, dest):
@@ -470,7 +470,7 @@ class NfsBackupStorage(AbstractBackupStorage):
     # `mkdir && rsync` and b) we need a list of 1 element, as it goes through a tuple().
     def upload_dir_cmd(self, src, dest):
         return ["mkdir -p {} && {} {} {}".format(
-            dest, " ".join(self._command_list_prefix()),
+            pipes.quote(dest), " ".join(self._command_list_prefix()),
             pipes.quote(src), pipes.quote(dest))]
 
     def download_dir_cmd(self, src, dest):
