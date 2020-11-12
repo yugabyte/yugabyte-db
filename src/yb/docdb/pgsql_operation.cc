@@ -15,6 +15,7 @@
 
 #include <limits>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/optional/optional_io.hpp>
@@ -26,6 +27,9 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/docdb_debug.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/primitive_value_util.h"
 
 #include "yb/util/flag_tags.h"
@@ -140,6 +144,128 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
   return Status::OK();
 }
 
+// Check if a duplicate value is inserted into a unique index.
+Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
+  VLOG(3) << "Looking for collisions in\n"
+          << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
+  // We need to check backwards only for backfilled entries.
+  bool ret =
+      VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
+      (request_.is_backfill() &&
+       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kBackward)));
+  if (!ret) {
+    VLOG(3) << "No collisions found";
+  }
+  return ret;
+}
+
+Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
+    const DocOperationApplyData& data, Direction direction) {
+  VLOG(2) << "Looking for collision while going " << yb::ToString(direction)
+          << ". Trying to insert " << *doc_key_;
+  auto requested_read_time = data.read_time;
+  if (direction == Direction::kForward) {
+    return HasDuplicateUniqueIndexValue(data, requested_read_time);
+  }
+
+  auto iter = CreateIntentAwareIterator(
+      data.doc_write_batch->doc_db(),
+      BloomFilterMode::USE_BLOOM_FILTER,
+      doc_key_->Encode().AsSlice(),
+      rocksdb::kDefaultQueryId,
+      txn_op_context_,
+      data.deadline,
+      ReadHybridTime::Max());
+
+  HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
+      iter.get(), SubDocKey(*doc_key_), requested_read_time.read));
+  const HybridTime oldest_past_min_ht_liveness =
+      VERIFY_RESULT(FindOldestOverwrittenTimestamp(
+          iter.get(),
+          SubDocKey(*doc_key_,
+                    PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+          requested_read_time.read));
+  oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
+  if (!oldest_past_min_ht.is_valid()) {
+    return false;
+  }
+  return HasDuplicateUniqueIndexValue(
+      data, ReadHybridTime::SingleTime(oldest_past_min_ht));
+}
+
+Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
+    const DocOperationApplyData& data, ReadHybridTime read_time) {
+  // Set up the iterator to read the current primary key associated with the index key.
+  DocPgsqlScanSpec spec(schema_, request_.stmt_id(), *doc_key_);
+  DocRowwiseIterator iterator(schema_,
+                              schema_,
+                              txn_op_context_,
+                              data.doc_write_batch->doc_db(),
+                              data.deadline,
+                              read_time);
+  RETURN_NOT_OK(iterator.Init(spec));
+
+  // It is a duplicate value if the index key exists already and the index value (corresponding to
+  // the indexed table's primary key) is not the same.
+  if (!VERIFY_RESULT(iterator.HasNext())) {
+    VLOG(2) << "No collision found while checking at " << yb::ToString(read_time);
+    return false;
+  }
+
+  QLTableRow table_row;
+  RETURN_NOT_OK(iterator.NextRow(&table_row));
+  for (const auto& column_value : request_.column_values()) {
+    // Get the column.
+    if (!column_value.has_column_id()) {
+      return STATUS(InternalError, "column id missing", column_value.DebugString());
+    }
+    const ColumnId column_id(column_value.column_id());
+
+    // Check column-write operator.
+    CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
+      << "Illegal write instruction";
+
+    // Evaluate column value.
+    QLExprResult expr_result;
+    RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
+
+    boost::optional<const QLValuePB&> existing_value = table_row.GetValue(column_id);
+    const QLValuePB& new_value = expr_result.Value();
+    if (existing_value && *existing_value != new_value) {
+      VLOG(2) << "Found collision while checking at " << yb::ToString(read_time)
+              << "\nExisting: " << yb::ToString(*existing_value)
+              << " vs New: " << yb::ToString(new_value)
+              << "\nUsed read time as " << yb::ToString(data.read_time);
+      DVLOG(3) << "DocDB is now:\n"
+               << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
+      return true;
+    }
+  }
+
+  VLOG(2) << "No collision while checking at " << yb::ToString(read_time);
+  return false;
+}
+
+Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
+    IntentAwareIterator* iter,
+    const SubDocKey& sub_doc_key,
+    HybridTime min_read_time) {
+  HybridTime result;
+  VLOG(3) << "Doing iter->Seek " << *doc_key_;
+  iter->Seek(*doc_key_);
+  if (iter->valid()) {
+    const KeyBytes bytes = sub_doc_key.EncodeWithoutHt();
+    const Slice& sub_key_slice = bytes.AsSlice();
+    result = VERIFY_RESULT(
+        iter->FindOldestRecord(sub_key_slice, min_read_time));
+    VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
+            << SubDocKey::DebugSliceToString(sub_key_slice);
+  } else {
+    VLOG(3) << "iter->Seek " << *doc_key_ << " turned out to be invalid";
+  }
+  return result;
+}
+
 Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   VLOG(4) << "Write, read time: " << data.read_time << ", txn: " << txn_op_context_;
 
@@ -176,13 +302,25 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUpsert is_upsert) {
   QLTableRow table_row;
   if (!is_upsert) {
-    RETURN_NOT_OK(ReadColumns(data, &table_row));
-    if (!table_row.IsEmpty()) {
-      VLOG(4) << "Duplicate row: " << table_row.ToString();
-      // Primary key or unique index value found.
-      response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
-      response_->set_error_message("Duplicate key found in primary key or unique index");
-      return Status::OK();
+    if (request_.is_backfill()) {
+      if (VERIFY_RESULT(HasDuplicateUniqueIndexValue(data))) {
+        // Unique index value conflict found.
+        response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
+        response_->set_error_message("Duplicate key found in unique index");
+        return Status::OK();
+      }
+    } else {
+      // Non-backfill requests shouldn't use HasDuplicateUniqueIndexValue because
+      // - they should error even if the conflicting row matches
+      // - retrieving and calculating whether the conflicting row matches is a waste
+      RETURN_NOT_OK(ReadColumns(data, &table_row));
+      if (!table_row.IsEmpty()) {
+        VLOG(4) << "Duplicate row: " << table_row.ToString();
+        // Primary key or unique index value found.
+        response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
+        response_->set_error_message("Duplicate key found in primary key or unique index");
+        return Status::OK();
+      }
     }
   }
 
