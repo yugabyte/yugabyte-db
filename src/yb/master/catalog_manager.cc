@@ -2944,12 +2944,8 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   //    currently it makes YCQL index backfill unstable - which is indicated by intermittent
   //    failures of various tests under CppCassandraDriverTest - mostly TestCreateIndex.
   if (resp->done() && PROTO_IS_INDEX(pb)) {
-    // TODO(alex, jason): This is a quick fix to make sure we treat unique index as non-backfilling.
-    //    We should remove this once we've implemented #4899.
-    bool is_unique_index = pb.has_index_info() && pb.index_info().is_unique();
     auto& indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(pb);
     if (pb.table_type() == PGSQL_TABLE_TYPE &&
-        !is_unique_index &&
         IsUserCreatedTable(*table) &&
         IsIndexBackfillEnabled(pb.table_type(),
                                pb.schema().table_properties().is_transactional())) {
