@@ -8,8 +8,6 @@ menu:
   latest:
     identifier: aggregate-functions
     parent: api-ysql-exprs
-aliases:
-  - /latest/api/ysql/exprs/aggregate_functions
 isTocNested: true
 showAsideToc: true
 ---

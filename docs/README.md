@@ -151,11 +151,11 @@ The output you see at the O/S prompt following `git push` will tell you which UR
 
 In this kind of work, the nature of your documentation change means that you'll need to modify existing [_syntax diagrams_](#syntax-diagram) or add new ones.
 
-> **Note:** The following covers diagram maintenance and creation for the YSQL documentation. The YCQL documentation still uses an old method for this. You must take advice from colleagues if you need to work on YSQL diagrams.
+> **Note:** The following covers diagram maintenance and creation for the YSQL documentation. The YCQL documentation still uses an old method for this. You must take advice from colleagues if you need to work on YCQL diagrams.
 
 Once you understand this area, modifying existing [_syntax diagrams_](#syntax-diagram) or adding new ones will seem to be very straightforward. However, you must embrace a fairly large mental model. This, in turn, depends on several terms of art. All this is covered in the dedicated section [Creating and maintaining syntax diagrams for YSQL Docs](#3-mental-model-and-glossary-creating-and-maintaining-syntax-diagrams-for-ysql-docs).
 
-Here is a terse step-by-step summary
+Here is a terse step-by-step summary:
 
 ### Get set up
 
@@ -546,8 +546,3 @@ _Step 3:_ Copy a reliable example of the [_diagram inclusion HTML_](#diagram-inc
 _Step 4:_ [_Run the generator_](#run-the-generator).
 
 _Step 5:_ Make sure that you inspect the result immediately in the Hugo rendering of the [_humanly typed documentation source_](#humanly-typed-documentation-source) into which you just included the [_diagram inclusion HTML_](#diagram-inclusion-HTML).
-
-
-```
-
-```
