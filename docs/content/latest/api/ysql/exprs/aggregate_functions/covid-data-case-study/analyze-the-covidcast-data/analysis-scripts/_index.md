@@ -12,4 +12,8 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Bla bla
+Here are the `.sql` scripts that jointly implement analysis:
+
+- [`analysis-queries.sql`](./analysis-queries-sql) executes queries on the actual COVIDcast data.
+
+- [`synthetic-data.sql`](./synthetic-data-sql) generates the data that is used to create the plot descibed in the section [Scatter-plot for synthetic data](../scatter-plot-for-2020-10-21/#scatter-plot-for-synthetic-data).
