@@ -118,11 +118,11 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
     <td> &#x2611;
    </td>
-   <td>&#x2612;
+   <td> &#9746;
    </td>
-   <td>&#x2612;
+   <td> &#9746;
    </td>
-   <td>&#x2611;
+   <td> &#x2611;
    </td>
    <td>&#x2612;
    </td>
