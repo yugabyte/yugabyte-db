@@ -1,70 +1,109 @@
 ---
-title: Linear regression analysis of COVID data
-linkTitle: Linear regression on COVID data use-case
-headerTitle: Linear regression analysis of COVID data from Carnegie Mellon's COVIDcast project
-description: Using the YSQL regr_r2(), regr_slope(), regr_intercept() to examine the correlation between COVID-like symptoms and mask-wearing using data from Carnegie Mellon's COVIDcast
+title: YSQL aggregate functions
+linkTitle: Aggregate functions
+headerTitle: Aggregate functions
+description: This major section describes the syntax and semantics of all of the aggregate functions that YSQL supports.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
-    identifier: covid-data-case-study
-    parent: aggregate-functions
-    weight: 110
+    identifier: aggregate-functions
+    parent: api-ysql-exprs
 isTocNested: true
 showAsideToc: true
 ---
 
-## Overview
+If you are already familiar with aggregate functions, then you can skip straight to the [syntax and semantics](./invocation-syntax-semantics/) section or the section that lists all of [the YSQL aggregate functions](./function-syntax-semantics/) and that links, in turn, to the definitive account of each function.
 
-[Carnegie Mellon’s COVIDcast](https://covidcast.cmu.edu/) is an academic project that tracks real-time coronavirus statistics. The team uses various data collection methods and exposes data for download in various formats. This case study uses data that was collected using daily Facebook surveys with the aim of examining the possible correlation between wearing a face-mask and showing symptoms like those of SARS-CoV-2—hereinafter COVID. Specifically, three so-called signals are recorded.
+This page has only the [Synopsis](./#synopsis) section and the section [Organization of the aggregate functions documentation](./#organization-of-the-aggregate-functions-documentation) section.
 
-- Does the respondent wear a face mask?
+## Synopsis
 
-- Does the respondent have COVID-like symptoms?
-- Does the respondent know someone in their community  who has COVID-like symptoms?
+Aggregate functions operate on a set of values and return a single value that reflects a property of the set. The functions [`count()`](./function-syntax-semantics/avg-count-max-min-sum/#count) and [`avg()`](./function-syntax-semantics/avg-count-max-min-sum/#avg) are very familiar examples.
 
-Each signal is expressed as a percentage relative to the number of people who answered the particular question.
+In the limit, the values in the set that the aggregate function operates on are taken from the whole of the result set that the `FROM` list defines, subject to whatever restriction the subquery's `WHERE` clause might define. Very commonly, the set in question is split into subsets according to what the `GROUP BY` clause specifies.
 
-The download format, for each  signal, is a comma-separated values file—hereinafter `.csv` file. The download page says this:
+Very many aggregate functions may be invoked, not only using the ordinary syntax where `GROUP BY` might be used, but also as [window functions](../window_functions/).
 
-> We are happy for you to use this data in products and publications. Please acknowledge us as a source: Data from Delphi COVIDcast, [covidcast.cmu.edu](https://covidcast.cmu.edu/).
+Notice these differences and similarities between aggregate functions and window functions:
 
-This case study shows you how to use the `ysqlsh` `\COPY` metacommand to load each downloaded file into its own table, how to check that the values conform to rules that the COVIDcast team has documented, and how to join the rows in these staging tables into a single table with this format:
+- A window function produces, in general, a different output value for _each different input row_ in the [_window_](../window_functions/invocation-syntax-semantics/#the-window-definition-rule).
+- When an aggregate function is invoked using the regular `GROUP BY` clause, it produces a _single value_ for each entire subset that the `GROUP BY` clause defines.
+- When an aggregate function is invoked in the same way as a window function, it might, or might not, produce the _same value_ for _each different input row_ in the [_window_](./invocation-syntax-semantics/#the-window-definition-rule). The exact behavior depends on what the [frame clause](../window_functions/invocation-syntax-semantics/#the-frame-clause-1) specifies.
+- All of the thirty-seven aggregate functions are listed in the four tables in the section [Signature and purpose of each aggregate function](./function-syntax-semantics/).
 
-```
-survey_date                 date     not null } primary
-state                       text     not null }   key
-mask_wearing_pct            numeric  not null
-mask_wearing_stderr         numeric  not null
-mask_wearing_sample_size    integer  not null
-symptoms_pct                numeric  not null
-symptoms_stderr             numeric  not null
-symptoms_sample_size        integer  not null
-cmnty_symptoms_pct          numeric  not null
-cmnty_symptoms_stderr       numeric  not null
-cmnty_symptoms_sample_size  integer  not null
-```
+## Organization of the aggregate functions documentation
 
-It then shows you how to use the linear-regression functions [`regr_r2()`](../function-syntax-semantics/linear-regression/regr/#regr-r2), [`regr_slope()`](../function-syntax-semantics/linear-regression/regr/#regr-slope-regr-intercept), and [`regr_intercept()`](../function-syntax-semantics/linear-regression/regr/#regr-slope-regr-intercept) to examine the correlation between mask-wearing and COVID-like symptoms. The section [Functions for linear regression analysis](../function-syntax-semantics/linear-regression/) explains the general background for these functions.
+The remaining pages are organized as follows:
 
-The remaining account of this case-study is divided into three parts:
+### Informal overview of function invocation using the GROUP BY clause: [here](./functionality-overview/)
 
-- [How to find and download the COVIDcast data](./download-the-covidcast-data/)
-- [How to ingest the data](./ingest-the-covidcast-data/), check that the values conform to  the rules that the COVIDcast team has documented, and to transform these into the single _"covidcast_fb_survey_results"_ table.
-- [How to use YSQL aggregate functions to examine the possible correlation](./analyze-the-covidcast-data/) between wearing a face-mask and showing COVID-like symptoms.
+Skip this section entirely if you are already familiar with aggregate functions. It presents code examples that classify the aggregate functions into three kinds according to how they may be invoked:
 
-{{< tip title="Download a zip of all the files that this case study uses" >}}
+- [ordinary aggregate functions](./functionality-overview/#ordinary-aggregate-functions)
 
-All of the `.sql` scripts that this case-study presents for copy-and-paste at the `ysqlsh` prompt are included for download in a zip-file. The zip also includes the three `csv` files that you will download from the <a href="https://covidcast.cmu.edu/" target="_blank">Carnegie Mellon’s COVIDcast <i class="fas fa-external-link-alt"></i></a> site. This will allow you, after you've studied the account of the case study and run the files one by one, then to run everything by starting a single master script that will ingest the data and spool the reports the this study explains to files. It will allow you easily to re-run the analysis on newer data as it becomes available.
+- [within-group ordered-set aggregate functions](./functionality-overview/#ordinary-aggregate-functions)
 
-It is expected that the raw data will be available from the COVIDcast site into the indefinite future. But the downloadable self-contained zip-fie of the complete case study assures readers of the longevity of this study's pedagogy.
+- [within-group hypothetical-set aggregate functions](./functionality-overview/#within-group-hypothetical-set-aggregate-functions)
 
-After unzipping it on a convenient new directory, you'll see a `README.txt`. It tells you to run `0.sql`. You'll see this in the top directory. It looks like this:
+This section focuses on the _effect_ that each illustrated function has. It leaves formal definitions to the [invocation syntax and semantics](./invocation-syntax-semantics/) section and the [Signature and purpose of each aggregate function](./function-syntax-semantics/) section.
 
-```plpgsql
-\i ingest-the-data.sql
-\i analysis-queries.sql
-\i synthetic-data.sql
-```
+### Aggregate function invocation—SQL syntax and semantics: [here](./invocation-syntax-semantics/)
 
-Simply start it in ysqlsh. You can run it time and again. It always finishes silently. You can see the reports that it produces on the _"analysis-results"_ directory and confirm that the the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.
-{{< /tip >}}
+This section presents the formal treatment of the syntax and semantics of how an aggregate function is invoked as a special kind of `SELECT` list item—with the invocation syntax optionally decorated with an `ORDER BY` clause, or a `FILTER` clause. This account also explains the use of the `HAVING` clause which lets you restrict a result set according the the value(s) returned by a list of aggregate functions.
+
+There are four variants of the `GROUP BY` invocation style: `GROUP BY <column list>`; `GROUP BY GROUPING SETS`; `GROUP BY ROLLUP`; and `GROUP BY CUBE`. Further, all but the bare `GROUP BY <column list>` allow the use of  a `GROUPING` keyword in the `SELECT` list to label the different `GROUPING SETS`. Because all of this requires a fairly lengthy explanation, this is covered in the dedicated section [`Using the GROUPING SETS, ROLLUP, and CUBE syntax for aggregate function invocation`](./grouping-sets-rollup-cube/).
+
+### Signature and purpose of each aggregate function: [here](./function-syntax-semantics/)
+
+The following list groups the thirty-seven aggregate functions in the same way that the sidebar items group them. The rationale for the grouping is explained in the referenced sections.
+
+&#160;&#160;&#160;&#160;&#160;&#160;[`avg()`](./function-syntax-semantics/avg-count-max-min-sum/#avg)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`max()`](./function-syntax-semantics/avg-count-max-min-sum/#max-min)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`min()`](./function-syntax-semantics/avg-count-max-min-sum/#max-min)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`sum()`](./function-syntax-semantics/avg-count-max-min-sum/#sum)
+
+&#160;&#160;&#160;&#160;&#160;&#160;[`array_agg()`](./function-syntax-semantics/array-string-jsonb-jsonb-object-agg/#array-agg)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`string_agg()`](./function-syntax-semantics/array-string-jsonb-jsonb-object-agg/#string-agg)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`jsonb_agg()`](./function-syntax-semantics/array-string-jsonb-jsonb-object-agg/#jsonb-agg)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`jsonb_object_agg()`](./function-syntax-semantics/array-string-jsonb-jsonb-object-agg/#jsonb-object-agg)
+
+&#160;&#160;&#160;&#160;&#160;&#160;[`bit_and()`](./function-syntax-semantics/bit-and-or-bool-and-or/#bit-and)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`bit_or()`](./function-syntax-semantics/bit-and-or-bool-and-or/#bit-or)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`bool_and()`](./function-syntax-semantics/bit-and-or-bool-and-or/#bool-and)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`bool_or()`](./function-syntax-semantics/bit-and-or-bool-and-or/#bool-or)
+
+&#160;&#160;&#160;&#160;&#160;&#160;[`variance()`](./function-syntax-semantics/variance-stddev/#variance)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`var_pop()`](./function-syntax-semantics/variance-stddev/#var-pop)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`var_samp()`](./function-syntax-semantics/variance-stddev/#var-samp)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`stddev()`](./function-syntax-semantics/variance-stddev/#stddev)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`stddev_pop()`](./function-syntax-semantics/variance-stddev/#stddev-pop)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`stddev_samp()`](./function-syntax-semantics/variance-stddev/#stddev-samp)
+
+&#160;&#160;&#160;&#160;&#160;&#160;[`covar_pop()`](./function-syntax-semantics/linear-regression/covar-corr/#covar-pop-covar-samp)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`covar_samp()`](./function-syntax-semantics/linear-regression/covar-corr/#covar-pop-covar-samp)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`corr()`](./function-syntax-semantics/linear-regression/covar-corr/#corr)
+
+&#160;&#160;&#160;&#160;&#160;&#160;[`regr_avgy()`](./function-syntax-semantics/linear-regression/regr/#regr-avgy-regr-avgx)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`regr_avgx()`](./function-syntax-semantics/linear-regression/regr/#regr-avgy-regr-avgx)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`regr_count()`](./function-syntax-semantics/linear-regression/regr/#regr-count)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`regr_slope()`](./function-syntax-semantics/linear-regression/regr/#regr-slope-regr-intercept)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`regr_intercept()`](./function-syntax-semantics/linear-regression/regr/#regr-slope-regr-intercept)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`regr_r2()`](./function-syntax-semantics/linear-regression/regr/#regr-r2)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`regr_syy()`](./function-syntax-semantics/linear-regression/regr/#regr-syy-regr-sxx-regr-sxy)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`regr_sxx()`](./function-syntax-semantics/linear-regression/regr/#regr-syy-regr-sxx-regr-sxy)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`regr_sxy()`](./function-syntax-semantics/linear-regression/regr/#regr-syy-regr-sxx-regr-sxy)
+
+&#160;&#160;&#160;&#160;&#160;&#160;[`mode()`](./function-syntax-semantics/mode-percentile-disc-percentile-cont/#mode)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`percentile_disc()`](./function-syntax-semantics/mode-percentile-disc-percentile-cont/#percentile-disc-percentile-cont)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`percentile_cont()`](./function-syntax-semantics/mode-percentile-disc-percentile-cont/#percentile-disc-percentile-cont)
+
+&#160;&#160;&#160;&#160;&#160;&#160;[`rank()`](./function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#rank)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`dense_rank()`](./function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#dense-rank)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`percent_rank()`](./function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#percent-rank)<br>
+&#160;&#160;&#160;&#160;&#160;&#160;[`cume_dist()`](./function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#cume-dist)
+
+### Aggregate functions case study—the "68–95–99.7" rule: [here](./case-study-the-6895997-rule/)
+
+Regard this section as an optional extra. It shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68%e2%80%9395%e2%80%9399.7_rule). This case-study focuses on just one part of the rule:
+
+> 68.27% of the values in a normal distribution lie within one standard deviation each side of the mean.
