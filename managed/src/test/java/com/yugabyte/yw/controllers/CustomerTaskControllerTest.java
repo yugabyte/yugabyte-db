@@ -73,7 +73,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isObject());
-    assertEquals(0, json.size());
+    assertEquals(0, json.get("data").size());
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -195,8 +195,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isObject());
-    assertEquals(2, json.size());
-    JsonNode universeTasks = json.get(universeUUID.toString());
+    assertEquals(2, json.get("data").size());
+    JsonNode universeTasks = json.get("data").get(universeUUID.toString());
     assertTrue(universeTasks.isArray());
     assertEquals(1, universeTasks.size());
     assertValues(universeTasks, "id", ImmutableList.of(taskUUID.toString()));
@@ -209,7 +209,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertTrue(task.get("completionTime").isNull());
     assertThat(task.get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
     assertThat(task.get("targetUUID").asText(), allOf(notNullValue(), equalTo(universeUUID.toString())));
-    JsonNode providerTasks = json.get(providerUUID.toString());
+    JsonNode providerTasks = json.get("data").get(providerUUID.toString());
     assertTrue(providerTasks.isArray());
     assertEquals(2, providerTasks.size());
     assertValues(providerTasks, "id", ImmutableList.of(providerTaskUUID1.toString(),
@@ -230,7 +230,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       assertEquals(OK, result.status());
       assertAuditEntry(0, customer.uuid);
       JsonNode tasksJson = Json.parse(contentAsString(result));
-      JsonNode universeTasks = tasksJson.get(universe.universeUUID.toString());
+      JsonNode universeTasks = tasksJson.get("data").get(universe.universeUUID.toString());
       if (idx == 0) {
         markedCompletionTime = universeTasks.get(0).get("completionTime").asText();
         try {
@@ -239,7 +239,10 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
           e.printStackTrace();
         }
       } else {
-        assertEquals(universeTasks.get(0).get("completionTime").asText(), markedCompletionTime);
+        assertEquals(
+          universeTasks.get(0).get("completionTime").asText(),
+          markedCompletionTime
+        );
       }
     }
   }
@@ -258,7 +261,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isObject());
-    JsonNode universeTasks = json.get(universe.universeUUID.toString());
+    JsonNode universeTasks = json.get("data").get(universe.universeUUID.toString());
     assertTrue(universeTasks.isArray());
     assertEquals(1, universeTasks.size());
     assertValues(universeTasks, "id", ImmutableList.of(taskUUID1.toString()));

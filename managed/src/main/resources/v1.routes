@@ -39,6 +39,7 @@ PUT     /customers/:cUUID/providers/:pUUID/edit                                c
 GET     /customers/:cUUID/providers/:pUUID/regions                             com.yugabyte.yw.controllers.RegionController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/regions                             com.yugabyte.yw.controllers.RegionController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID/regions/:rUUID                      com.yugabyte.yw.controllers.RegionController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
+GET     /customers/:cUUID/providers/:pUUID/tasks                               com.yugabyte.yw.controllers.CustomerTaskController.providerTasks(cUUID: java.util.UUID, pUUID: java.util.UUID, limit: Int ?= 100)
 GET     /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones                com.yugabyte.yw.controllers.AvailabilityZoneController.list(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones                com.yugabyte.yw.controllers.AvailabilityZoneController.create(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones/:azUUID        com.yugabyte.yw.controllers.AvailabilityZoneController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, azUUID: java.util.UUID)
@@ -150,10 +151,10 @@ POST    /customers/:cUUID/universes/:uniUUID/backups/restore                   c
 DELETE  /customers/:cUUID/backups/:backupUUID                                  com.yugabyte.yw.controllers.BackupsController.delete(cUUID: java.util.UUID, backupUUID: java.util.UUID)
 
 # Task History API
-GET    /customers/:cUUID/tasks                                                 com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
+GET    /customers/:cUUID/tasks                                                 com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID, target: java.util.Optional[java.lang.String], status: java.util.Optional[java.lang.String], page: Int ?= 1, limit: Int ?= 100)
 GET    /customers/:cUUID/tasks/:tUUID                                          com.yugabyte.yw.controllers.CustomerTaskController.status(cUUID: java.util.UUID, tUUID: java.util.UUID)
 POST   /customers/:cUUID/tasks/:tUUID                                          com.yugabyte.yw.controllers.CustomerTaskController.retryTask(cUUID: java.util.UUID, tUUID: java.util.UUID)
-GET    /customers/:cUUID/universes/:uniUUID/tasks                              com.yugabyte.yw.controllers.CustomerTaskController.universeTasks(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET    /customers/:cUUID/universes/:uniUUID/tasks                              com.yugabyte.yw.controllers.CustomerTaskController.universeTasks(cUUID: java.util.UUID, uniUUID: java.util.UUID, target: java.util.Optional[java.lang.String], status: java.util.Optional[java.lang.String], page: Int ?= 1, limit: Int ?= 100)
 GET    /customers/:cUUID/tasks/:tUUID/failed                                   com.yugabyte.yw.controllers.CustomerTaskController.failedSubtasks(cUUID: java.util.UUID, tUUID: java.util.UUID)
 
 # Node Management API

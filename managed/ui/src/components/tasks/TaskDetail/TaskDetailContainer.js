@@ -3,10 +3,6 @@
 import { connect } from 'react-redux';
 import { TaskDetail } from '../../tasks';
 import {
-  fetchCustomerTasks,
-  fetchCustomerTasksSuccess,
-  fetchCustomerTasksFailure,
-  resetCustomerTasks,
   fetchFailedSubTasks,
   fetchFailedSubTasksResponse,
   fetchTaskProgress,
@@ -27,15 +23,6 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(fetchFailedSubTasksResponse(response));
       });
     },
-    fetchTaskList: () => {
-      dispatch(fetchCustomerTasks()).then((response) => {
-        if (!response.error) {
-          dispatch(fetchCustomerTasksSuccess(response.payload));
-        } else {
-          dispatch(fetchCustomerTasksFailure(response.payload));
-        }
-      });
-    },
     fetchCurrentTaskDetail: (taskUUID) => {
       dispatch(fetchTaskProgress(taskUUID)).then((response) => {
         dispatch(fetchTaskProgressResponse(response.payload));
@@ -50,9 +37,6 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(fetchUniverseList()).then((response) => {
         dispatch(fetchUniverseListResponse(response.payload));
       });
-    },
-    resetCustomerTasks: () => {
-      dispatch(resetCustomerTasks());
     }
   };
 };
