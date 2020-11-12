@@ -184,7 +184,7 @@ _PG_init(void)
 	planner_hook            		= pgss_planner_hook;
 	emit_log_hook                   = pgsm_emit_log_hook;
 	prev_ExecutorCheckPerms_hook 	= ExecutorCheckPerms_hook;
-	ExecutorCheckPerms_hook		 	= pgss_ExecutorCheckPerms;
+	ExecutorCheckPerms_hook		= pgss_ExecutorCheckPerms;
 
 	system_init = true;
 }
@@ -461,8 +461,12 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 {
 	ListCell *lr;
 	pgssSharedState *pgss = pgsm_get_ss();
+	int i;
 
-	memset(pgss->cmdTag, 0x0, sizeof(int32) * 5);
+	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
+	for (i = 0; i < CMD_LST; i++)
+		pgss->cmdTag[i] = 0;
+
 	foreach(lr, rt)
     {
         RangeTblEntry *rte = lfirst(lr);
@@ -473,7 +477,14 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
         else if (rte->requiredPerms & ACL_UPDATE) pgss->cmdTag[1] = true;
         else if (rte->requiredPerms & ACL_DELETE) pgss->cmdTag[2] = true;
         else if (rte->requiredPerms & ACL_SELECT) pgss->cmdTag[3] = true;
+        else if (rte->requiredPerms & ACL_TRUNCATE) pgss->cmdTag[4] = true;
+        else if (rte->requiredPerms & ACL_REFERENCES) pgss->cmdTag[5] = true;
+        else if (rte->requiredPerms & ACL_TRIGGER) pgss->cmdTag[6] = true;
+        else if (rte->requiredPerms & ACL_EXECUTE) pgss->cmdTag[7] = true;
+        else if (rte->requiredPerms & ACL_CREATE) pgss->cmdTag[8] = true;
+        else pgss->cmdTag[9] = true;
 	}
+	LWLockRelease(pgss->lock);
 
     if (prev_ExecutorCheckPerms_hook)
         return prev_ExecutorCheckPerms_hook(rt, abort);
@@ -910,13 +921,14 @@ static void pgss_store(uint64 queryId,
 			if (total_time > PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * MAX_RESPONSE_BUCKET))
 				e->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
 		}
-		for (i = 0; i < 5; i++)
+		for (i = 0; i < CMD_LST; i++)
 			e->counters.info.cmd_type[i] = pgss->cmdTag[i];
 
 		e->counters.error.elevel = elevel;
 		e->counters.error.sqlcode = sqlcode;
 		for(i = 0; i < message_len; i++)
 			e->counters.error.message[i] = message[i];
+
 		e->counters.calls[kind].rows += rows;
 		e->counters.blocks.shared_blks_hit += bufusage->shared_blks_hit;
 		e->counters.blocks.shared_blks_read += bufusage->shared_blks_read;
@@ -1100,7 +1112,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			else
 				nulls[i++] = true;
 		}
-		values[i++] = ArrayGetTextDatum(tmp.info.cmd_type, 5);
+		values[i++] = ArrayGetTextDatum(tmp.info.cmd_type, CMD_LST);
 		values[i++] = Int64GetDatumFast(tmp.error.elevel);
 		values[i++] = Int64GetDatumFast(tmp.error.sqlcode);
 		if (strlen(tmp.error.message) == 0)
@@ -2093,11 +2105,12 @@ static Datum
 array_get_datum(int32 arr[], int len)
 {
 	int     j;
-	char    str[1024] = {0};
+	char    str[1024];
 	char    tmp[10];
 	bool    first = true;
 
-	memset(str, 0, 1024);
+	memset(str, 0, 1023);
+
 	/* Need to calculate the actual size, and avoid unnessary memory usage */
 	for (j = 0; j < len; j++)
 	{
@@ -2112,6 +2125,7 @@ array_get_datum(int32 arr[], int len)
 		strcat(str,tmp);
 	}
 	return CStringGetTextDatum(str);
+
 }
 
 static uint64

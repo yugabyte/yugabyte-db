@@ -489,4 +489,24 @@ postgres=# select tables_names, query from pg_stat_monitor;
 (8 rows)
 ```
 
+### Query command Type (SELECT, UPDATE, DELETE, UPDATE, TRUNCATE, NONE)
 
+**`cmd_type`**: List the command type of the query.
+
+```
+postgres=# select substr(query,0, 50) as query, cmd_type from pg_stat_monitor where elevel = 0;
+                       query                       |                     cmd_type                     
+---------------------------------------------------+--------------------------------------------------
+ select substr(query,$1, $2) as query, cmd_type fr | {0," 0"," 0"," 1"," 0"," 0"," 0"," 0"," 0"," 1"}
+ vacuum pgbench_branches                           | {0," 0"," 0"," 1"," 0"," 0"," 0"," 0"," 0"," 0"}
+ vacuum analyze pgbench_branches                   | {1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"}
+ alter table pgbench_branches add primary key (bid | {1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"}
+ alter table pgbench_tellers add primary key (tid) | {1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"}
+ insert into pgbench_tellers(tid,bid,tbalance) val | {1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"}
+ UPDATE pgbench_accounts SET abalance = abalance + | {0," 1"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"}
+ insert into pgbench_tellers(tid,bid,tbalance) val | {1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"}
+ insert into pgbench_branches(bid,bbalance) values | {1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"}
+ truncate table pgbench_accounts, pgbench_branches | {0," 0"," 0"," 1"," 0"," 0"," 0"," 0"," 0"," 0"}
+ vacuum analyze pgbench_accounts                   | {1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"}
+ create table pgbench_history(tid int,bid int,aid  | {0," 0"," 0"," 1"," 0"," 0"," 0"," 0"," 0"," 0"}
+```

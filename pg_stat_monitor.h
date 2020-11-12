@@ -61,6 +61,7 @@
 #define MAX_OBJECT_CACHE	100
 #define TEXT_LEN			255
 #define ERROR_MESSAGE_LEN	100
+#define CMD_LST				10
 
 typedef struct GucVariables
 {
@@ -130,7 +131,7 @@ typedef struct QueryInfo
 	Oid			dbid;						/* database OID */
 	uint		host;						/* client IP */
 	int64       type; 						/* type of query, options are query, info, warning, error, fatal */
-	int32		cmd_type[5];				/* query command type SELECT/UPDATE/DELETE/INSERT */
+	int32		cmd_type[CMD_LST];				/* query command type SELECT/UPDATE/DELETE/INSERT */
 	char		tables_name[MAX_REL_LEN];   /* table names involved in the query */
 } QueryInfo;
 
@@ -223,7 +224,7 @@ typedef struct pgssSharedState
 	uint64			bucket_overflow[MAX_BUCKETS];
 	uint64			bucket_entry[MAX_BUCKETS];
 	int				query_buf_size_bucket;
-	int				cmdTag[5];
+	int32			cmdTag[CMD_LST];
 	Timestamp		bucket_start_time[MAX_BUCKETS];   	/* start time of the bucket */
 } pgssSharedState;
 
