@@ -22,7 +22,8 @@ CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
 
     OUT queryid             text,
     OUT query               text,
-    OUT elevel              int,
+	OUT cmd_type			text,
+	OUT elevel              int,
     OUT sqlcode             int,
     OUT message             text,
     OUT bucket_start_time   timestamptz,
@@ -96,6 +97,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	'0.0.0.0'::inet + client_ip AS client_ip,
     queryid,
     query,
+	(string_to_array(cmd_type, ',')) cmd_type,
 	elevel,
 	sqlcode,
 	message,
@@ -153,6 +155,5 @@ $$
 LANGUAGE SQL PARALLEL SAFE;
 
 GRANT SELECT ON pg_stat_monitor_settings TO PUBLIC;
-*/
 -- Don't want this to be available to non-superusers.
 REVOKE ALL ON FUNCTION pg_stat_monitor_reset() FROM PUBLIC;

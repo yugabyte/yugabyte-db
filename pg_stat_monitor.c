@@ -51,6 +51,8 @@ static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static emit_log_hook_type prev_emit_log_hook = NULL;
 void pgsm_emit_log_hook(ErrorData *edata);
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+static ExecutorCheckPerms_hook_type prev_ExecutorCheckPerms_hook = NULL;
+
 
 PG_FUNCTION_INFO_V1(pg_stat_monitor_version);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_reset);
@@ -60,7 +62,7 @@ PG_FUNCTION_INFO_V1(pg_stat_monitor);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_settings);
 
 static uint pg_get_client_addr(void);
-static Datum array_get_datum(int arr[]);
+static Datum array_get_datum(int32 arr[], int len);
 
 #if PG_VERSION_NUM >= 130000
 static PlannedStmt * pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams);
@@ -74,6 +76,7 @@ static void pgss_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count, bool execute_once);
 static void pgss_ExecutorFinish(QueryDesc *queryDesc);
 static void pgss_ExecutorEnd(QueryDesc *queryDesc);
+static bool pgss_ExecutorCheckPerms(List *rt, bool abort);
 
 #if PG_VERSION_NUM >= 130000
 static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
@@ -180,6 +183,8 @@ _PG_init(void)
 	planner_hook_next       		= planner_hook;
 	planner_hook            		= pgss_planner_hook;
 	emit_log_hook                   = pgsm_emit_log_hook;
+	prev_ExecutorCheckPerms_hook 	= ExecutorCheckPerms_hook;
+	ExecutorCheckPerms_hook		 	= pgss_ExecutorCheckPerms;
 
 	system_init = true;
 }
@@ -225,7 +230,7 @@ pg_stat_monitor_version(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(cstring_to_text(BUILD_VERSION));
 }
 
-#define PG_STAT_STATEMENTS_COLS         40  /* maximum of above */
+#define PG_STAT_STATEMENTS_COLS         41  /* maximum of above */
 
 /*
  * Post-parse-analysis hook: mark query with a queryId
@@ -451,6 +456,31 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 
 }
 
+static bool
+pgss_ExecutorCheckPerms(List *rt, bool abort)
+{
+	ListCell *lr;
+	pgssSharedState *pgss = pgsm_get_ss();
+
+	memset(pgss->cmdTag, 0x0, sizeof(int32) * 5);
+	foreach(lr, rt)
+    {
+        RangeTblEntry *rte = lfirst(lr);
+        if (rte->rtekind != RTE_RELATION)
+            continue;
+
+		if (rte->requiredPerms & ACL_INSERT) pgss->cmdTag[0] = true;
+        else if (rte->requiredPerms & ACL_UPDATE) pgss->cmdTag[1] = true;
+        else if (rte->requiredPerms & ACL_DELETE) pgss->cmdTag[2] = true;
+        else if (rte->requiredPerms & ACL_SELECT) pgss->cmdTag[3] = true;
+	}
+
+    if (prev_ExecutorCheckPerms_hook)
+        return prev_ExecutorCheckPerms_hook(rt, abort);
+
+    return true;
+}
+
 /*
  * ProcessUtility hook
  */
@@ -540,6 +570,7 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
 		}
 #endif
+
 		PG_END_TRY();
 		INSTR_TIME_SET_CURRENT(duration);
 		INSTR_TIME_SUBTRACT(duration, start);
@@ -879,6 +910,8 @@ static void pgss_store(uint64 queryId,
 			if (total_time > PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * MAX_RESPONSE_BUCKET))
 				e->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
 		}
+		for (i = 0; i < 5; i++)
+			e->counters.info.cmd_type[i] = pgss->cmdTag[i];
 
 		e->counters.error.elevel = elevel;
 		e->counters.error.sqlcode = sqlcode;
@@ -1067,6 +1100,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			else
 				nulls[i++] = true;
 		}
+		values[i++] = ArrayGetTextDatum(tmp.info.cmd_type, 5);
 		values[i++] = Int64GetDatumFast(tmp.error.elevel);
 		values[i++] = Int64GetDatumFast(tmp.error.sqlcode);
 		if (strlen(tmp.error.message) == 0)
@@ -1102,7 +1136,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Int64GetDatumFast(tmp.blocks.temp_blks_written);
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_read_time);
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_write_time);
-		values[i++] = ArrayGetTextDatum(tmp.resp_calls);
+		values[i++] = ArrayGetTextDatum(tmp.resp_calls, 10);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.utime);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.stime);
 		if (strlen(tmp.info.tables_name) == 0)
@@ -2056,7 +2090,7 @@ comp_location(const void *a, const void *b)
 
 /* Convert array into Text dataum */
 static Datum
-array_get_datum(int arr[])
+array_get_datum(int32 arr[], int len)
 {
 	int     j;
 	char    str[1024] = {0};
@@ -2065,7 +2099,7 @@ array_get_datum(int arr[])
 
 	memset(str, 0, 1024);
 	/* Need to calculate the actual size, and avoid unnessary memory usage */
-	for (j = 0; j < 10; j++)
+	for (j = 0; j < len; j++)
 	{
 		if (first)
 		{

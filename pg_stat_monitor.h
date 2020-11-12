@@ -42,7 +42,7 @@
 #define	TIMEVAL_DIFF(start, end) (((double) end.tv_sec + (double) end.tv_usec / 1000000.0) \
 	- ((double) start.tv_sec + (double) start.tv_usec / 1000000.0)) * 1000
 
-#define  ArrayGetTextDatum(x) array_get_datum(x)
+#define  ArrayGetTextDatum(x,y) array_get_datum(x,y)
 
 /* XXX: Should USAGE_EXEC reflect execution time and/or buffer usage? */
 #define USAGE_EXEC(duration)	(1.0)
@@ -130,6 +130,7 @@ typedef struct QueryInfo
 	Oid			dbid;						/* database OID */
 	uint		host;						/* client IP */
 	int64       type; 						/* type of query, options are query, info, warning, error, fatal */
+	int32		cmd_type[5];				/* query command type SELECT/UPDATE/DELETE/INSERT */
 	char		tables_name[MAX_REL_LEN];   /* table names involved in the query */
 } QueryInfo;
 
@@ -222,6 +223,7 @@ typedef struct pgssSharedState
 	uint64			bucket_overflow[MAX_BUCKETS];
 	uint64			bucket_entry[MAX_BUCKETS];
 	int				query_buf_size_bucket;
+	int				cmdTag[5];
 	Timestamp		bucket_start_time[MAX_BUCKETS];   	/* start time of the bucket */
 } pgssSharedState;
 
