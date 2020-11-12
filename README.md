@@ -116,13 +116,13 @@ The table below shows set up options for each configuration parameter and whethe
   <tr>
    <td>pg_stat_monitor.pgsm_max
    </td>
-    <td> &#x2611;
+    <td> ✓
    </td>
    <td> 
    </td>
    <td> 
    </td>
-   <td> &#x2611;
+   <td> ✓
    </td>
    <td> 
    </td>
@@ -130,13 +130,13 @@ The table below shows set up options for each configuration parameter and whethe
   <tr>
    <td>pg_stat_monitor.pgsm_query_max_len
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
    <td>
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
@@ -144,7 +144,7 @@ The table below shows set up options for each configuration parameter and whethe
   <tr>
    <td>pg_stat_monitor.pgsm_enable
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
@@ -152,47 +152,47 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_track_utility
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_normalized_query
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_max_buckets
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
    <td>
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
@@ -200,13 +200,13 @@ The table below shows set up options for each configuration parameter and whethe
   <tr>
    <td>pg_stat_monitor.pgsm_bucket_time
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
    <td>
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
@@ -214,13 +214,13 @@ The table below shows set up options for each configuration parameter and whethe
   <tr>
    <td>pg_stat_monitor.pgsm_object_cache
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
    <td>
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
@@ -228,13 +228,13 @@ The table below shows set up options for each configuration parameter and whethe
   <tr>
    <td>pg_stat_monitor.pgsm_respose_time_lower_bound
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
    <td>
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
@@ -242,13 +242,13 @@ The table below shows set up options for each configuration parameter and whethe
   <tr>
    <td>pg_stat_monitor.pgsm_respose_time_step
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
    <td>
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
@@ -256,13 +256,13 @@ The table below shows set up options for each configuration parameter and whethe
   <tr>
    <td>pg_stat_monitor.pgsm_query_shared_buffer
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
    <td>
    </td>
-   <td>&#x2611;
+   <td> ✓
    </td>
    <td>
    </td>
