@@ -728,6 +728,11 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
     else
       log "Neither C++ or Java tests are enabled, nothing to run on Spark."
     fi
+  elif [[ ${CIRCLECI:-false} == true ]]; then
+    # Just collect test list so other jobs can run them.
+    if [[ $YB_BUILD_JAVA == "1" ]]; then
+      collect_java_tests
+    fi
   else
     # A single-node way of running tests (without Spark).
 
@@ -752,6 +757,7 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
 
     if [[ $YB_BUILD_JAVA == "1" ]]; then
       set_test_invocation_id
+      collect_java_tests
       log "Running Java tests in a non-distributed way"
       if ! time run_all_java_test_methods_separately; then
         EXIT_STATUS=1

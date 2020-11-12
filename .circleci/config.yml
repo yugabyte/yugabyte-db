@@ -8,11 +8,6 @@ parameters:
     default: "000"
 
 jobs:
-  no-build:
-    docker:
-      - image: circleci/node:latest
-    steps:
-      - run: echo "Not running builds at this time."
 
   build:
     parameters:
@@ -79,19 +74,45 @@ jobs:
             - build/venv
           when: always
 
-      - run:
-          name: Gather Test Results
-          when: always
-          command: |
-            #mkdir -p ~/test-results/java
-            #find java -type f -regex ".*/target/surefire-reports.*/.*xml" -exec cp {} ~/test-results/java/ \;
-            tar -cvzf test_logs.tar.gz test_*.json build/*/yb-test-logs java/*/target/surefire*
+      ## should we package and just save that?
+      - persist_to_workspace:
+          name: Save Build Space
+          root: ./build
+          paths:
+            - ./*
 
-      #- store_test_results:
-      #    path: ~/test-results/java
+      #- store_artifacts:
+      #    paths:
+      #      - test_*.json
+      #      - build/*/yb-test-log
+
+  java_test:
+    parallelism: 3
+
+    parameters:
+      flavor:
+        type: string
+
+    macos:
+      xcode: 11.5.0
+
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: ./build
+
+      - run:
+          name: Run Java Tests
+          command: |
+            export BUILD_TYPE=<< parameters.flavor >>
+            circleci tests split build/<< parameters.flavor >>-clang-dynamic/java_test_list.txt
+            ./build-support/jenkins/run_java_tests.sh
 
       - store_artifacts:
-          path: test_logs.tar.gz
+          path: test_*.json
+      - store_artifacts:
+          path: java/*/target/surefire*
 
 # If no workflow is created, then error is generated for the PR/commit.
 # If worflow is created, but no jobs run, then it is ignored.
@@ -101,8 +122,16 @@ workflows:
   mac-build:
     jobs:
       - build:
-          name: mac-debug
+          name: mac-debug-build
           flavor: "debug"
+          filters:
+            branches:
+              only: "pull/<< pipeline.parameters.pullreq >>"
+      - java_test:
+          name: mac-debug-java-test
+          flavor: "debug"
+          requires:
+            - mac-debug-build
           filters:
             branches:
               only: "pull/<< pipeline.parameters.pullreq >>"

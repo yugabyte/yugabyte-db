@@ -1667,16 +1667,13 @@ collect_java_tests() {
     (
       export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
       set -x
-      # Debug - so head does not kill pipe and give error
-      set +o pipefail
       # The string "YUGABYTE_JAVA_TEST: " is specified in the Java code as COLLECTED_TESTS_PREFIX.
       #
       time mvn "${mvn_opts[@]}" surefire:test \
         2>>"$stderr_log" | \
         tee -a "$stdout_log" | \
         egrep '^YUGABYTE_JAVA_TEST: ' | \
-        sed 's/^YUGABYTE_JAVA_TEST: //g' | head -n 25 >>"$java_test_list_path"
-        ############################### ^^^^^^^^^^ Temporary for debugging automation
+        sed 's/^YUGABYTE_JAVA_TEST: //g' >>"$java_test_list_path"
     )
     if [[ $? -ne 0 ]]; then
       local log_file_path
@@ -1704,7 +1701,6 @@ run_all_java_test_methods_separately() {
     declare -i num_successes=0
     declare -i num_failures=0
     declare -i total_tests=0
-    collect_java_tests
     declare -i start_time_sec=$(date +%s)
     for java_test_name in $( cat "$java_test_list_path" | sort ); do
       if resolve_and_run_java_test "$java_test_name"; then
