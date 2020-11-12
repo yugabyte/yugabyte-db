@@ -24,19 +24,6 @@ The various methods for authenticating users supported by YugabyteDB are listed 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ysql_hba_conf-configuration/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">ysql_hba_conf configuration</div>
-      </div>
-      <div class="body">
-          Use ysql_hba_conf configuration to setup client authentication.
-      </div>
-    </a>
-  </div>
-
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="password-authentication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
@@ -44,6 +31,18 @@ The various methods for authenticating users supported by YugabyteDB are listed 
       </div>
       <div class="body">
           Authenticate using <code>MD5</code> or <code>SCRAM-SHA-256</code> authentication methods.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ldap-authentication/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
+        <div class="title">LDAP Authentication</div>
+      </div>
+      <div class="body">
+          Use an external LDAP service to perform client authentication.
       </div>
     </a>
   </div>
