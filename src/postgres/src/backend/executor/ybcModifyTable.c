@@ -486,12 +486,19 @@ void YBCExecuteInsertIndex(Relation index,
 		HandleYBStatus(YBCPgInsertStmtSetUpsertMode(insert_stmt));
 	}
 
-	/* For index backfill, set write hybrid time to a time in the past.  This
-	 * is to guarantee that backfilled writes are temporally before any online
-	 * writes. */
-	/* TODO(jason): don't hard-code 50. */
 	if (is_backfill)
-		HandleYBStatus(YBCPgInsertStmtSetWriteTime(insert_stmt, 50));
+	{
+		HandleYBStatus(YBCPgInsertStmtSetIsBackfill(insert_stmt,
+													true /* is_backfill */));
+		/*
+		 * For index backfill, set write hybrid time to a time in the past.
+		 * This is to guarantee that backfilled writes are temporally before
+		 * any online writes.
+		 */
+		/* TODO(jason): don't hard-code 50 (issue #6208). */
+		HandleYBStatus(YBCPgInsertStmtSetWriteTime(insert_stmt,
+												   50 /* write_time */));
+	}
 
 	/* Execute the insert and clean up. */
 	YBCExecWriteStmt(insert_stmt, index, NULL /* rows_affected_count */);

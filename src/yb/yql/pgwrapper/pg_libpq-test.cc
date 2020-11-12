@@ -1794,7 +1794,7 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(values[1][2], 2);
 }
 
-// Make sure that unique indexes work when index backfill is enabled (skips backfill for now)
+// Make sure that unique indexes work when index backfill is enabled.
 TEST_F_EX(PgLibPqTest,
           YB_DISABLE_TEST_IN_TSAN(BackfillUnique),
           PgLibPqTestIndexBackfill) {
@@ -1830,7 +1830,8 @@ TEST_F_EX(PgLibPqTest,
   Status status = conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (j ASC)", kTableName);
   ASSERT_NOK(status);
   auto msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("duplicate key value") != std::string::npos) << status;
+  ASSERT_TRUE(msg.find("duplicate key value violates unique constraint") != std::string::npos)
+      << status;
 }
 
 // Make sure that indexes created in postgres nested DDL work and skip backfill (optimization).
@@ -2451,6 +2452,60 @@ TEST_F_EX(PgLibPqTest,
     int value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
     ASSERT_EQ(value, key + 110);
   }
+}
+
+// Make sure that writes during CREATE UNIQUE INDEX don't cause unique duplicate row errors to be
+// thrown.  Simulate this situation:
+//   Session A                                    Session B
+//   --------------------------                   ---------------------------------
+//                                                INSERT a row to the indexed table
+//   CREATE UNIQUE INDEX
+//                                                INSERT a row to the indexed table
+//   - indislive
+//                                                INSERT a row to the indexed table
+//   - indisready
+//                                                INSERT a row to the indexed table
+//   - backfill
+//                                                INSERT a row to the indexed table
+//   - indisvalid
+//                                                INSERT a row to the indexed table
+// Particularly pay attention to the insert between indisready and backfill.  The insert
+// should cause a write to go to the index.  Backfill should choose a read time after this write, so
+// it should try to backfill this same row.  Rather than conflicting when we see the row already
+// exists in the index during backfill, check whether the rows match, and don't error if they do.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(CreateUniqueIndexWithOnlineWrites),
+          PgLibPqTestIndexBackfillSlow) {
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+
+  // Start a thread that continuously inserts distinct values.  The hope is that this would cause
+  // inserts to happen at all permissions.
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, kTableName, &stop = thread_holder.stop_flag()] {
+    auto insert_conn = ASSERT_RESULT(Connect());
+    int i = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      Status status = insert_conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, ++i);
+      if (!status.ok()) {
+        // Schema version mismatches will likely occur when changing index permissions, and we can
+        // just ignore them for the purposes of this test.
+        // TODO(jason): no longer expect these errors after closing issue #3979.
+        ASSERT_TRUE(status.IsNetworkError()) << status;
+        std::string msg = status.message().ToBuffer();
+        ASSERT_TRUE(msg.find("schema version mismatch") != std::string::npos) << status;
+      }
+    }
+  });
+
+  // Create unique index (should not complain about duplicate row).
+  ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (i ASC)", kTableName));
+
+  thread_holder.Stop();
 }
 
 // Override the index backfill slow test to have smaller WaitUntilIndexPermissionsAtLeast deadline.

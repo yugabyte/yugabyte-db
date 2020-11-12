@@ -1003,6 +1003,15 @@ Status PgApiImpl::InsertStmtSetWriteTime(PgStatement *handle, const HybridTime w
   return Status::OK();
 }
 
+Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement *handle, const bool is_backfill) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgInsert*>(handle)->SetIsBackfill(is_backfill);
+  return Status::OK();
+}
+
 // Update ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewUpdate(const PgObjectId& table_id,
