@@ -15,6 +15,7 @@ import play.data.validation.Constraints;
 
 import javax.persistence.*;
 import java.lang.reflect.Field;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.TemporalUnit;
 import java.util.Arrays;
@@ -283,18 +284,22 @@ public class CustomerTask extends Model {
    * deletes customer_task, task_info and all its subtasks of a given task.
    * Assumes task_info tree is one level deep. If this assumption changes then
    * this code needs to be reworked to recurse.
+   * When successful; it deletes at least 2 rows because there is always
+   * customer_task and associated task_info row that get deleted.
    *
-   * @return true if deletion succeeded
+   * @return number of rows deleted.
+   *         ==0 - if deletion was skipped due to data integrity issues.
+   *         >=2 - number of rows deleted
    */
   @Transactional
-  public boolean cascadeDeleteCompleted() {
+  public int cascadeDeleteCompleted() {
     Preconditions.checkNotNull(completionTime,
       String.format("CustomerTask %s has not completed", id));
     TaskInfo rootTaskInfo = TaskInfo.get(taskUUID);
-    if (rootTaskInfo == null || !rootTaskInfo.hasCompleted()) {
+    if (!rootTaskInfo.hasCompleted()) {
       LOG.warn("Completed CustomerTask id {} has incomplete task_info {}",
         id, rootTaskInfo);
-      return false;
+      return 0;
     }
     List<TaskInfo> subTasks = rootTaskInfo.getSubTasks();
     List<TaskInfo> incompleteSubTasks = subTasks.stream()
@@ -303,22 +308,21 @@ public class CustomerTask extends Model {
     if (!incompleteSubTasks.isEmpty()) {
       LOG.warn("Completed CustomerTask id {} has {} incomplete subtasks {}",
         id, incompleteSubTasks.size(), incompleteSubTasks);
-      return false;
+      return 0;
     }
     // Note: delete leaf nodes first to preserve referential integrity.
     subTasks.forEach(Model::delete);
     rootTaskInfo.delete();
     this.delete();
-    return true;
+    return 2 + subTasks.size();
   }
 
   public static CustomerTask findByTaskUUID(UUID taskUUID) {
     return find.query().where().eq("task_uuid", taskUUID).findOne();
   }
 
-  public static List<CustomerTask> findOlderThan(Customer customer, long olderThan,
-                                                 TemporalUnit unit) {
-    Date cutoffDate = new Date(Instant.now().minus(olderThan, unit).toEpochMilli());
+  public static List<CustomerTask> findOlderThan(Customer customer, Duration duration) {
+    Date cutoffDate = new Date(Instant.now().minus(duration).toEpochMilli());
     return find.query().where()
       .eq("customerUUID", customer.uuid)
       .le("completion_time", cutoffDate)
