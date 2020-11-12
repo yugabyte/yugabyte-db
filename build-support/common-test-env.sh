@@ -114,6 +114,8 @@ set_common_test_paths() {
 
   # This is needed for tests to find the lsof program.
   add_path_entry /usr/sbin
+
+  java_test_list_path=$BUILD_ROOT/java_test_list.txt
 }
 
 validate_relative_test_binary_path() {
@@ -1247,7 +1249,7 @@ find_spark_submit_cmd() {
     return
   fi
 
-  spark_submit_cmd_path=$YB_LINUX_PY3_SPARK_SUBMIT_CMD
+  spark_submit_cmd_path=${YB_LINUX_PY3_SPARK_SUBMIT_CMD:-"NoSpark"}
 }
 
 spark_available() {
@@ -1649,7 +1651,6 @@ collect_java_tests() {
     "${MVN_COMMON_SKIPPED_OPTIONS_IN_TEST[@]}"
   )
   append_common_mvn_opts
-  java_test_list_path=$BUILD_ROOT/java_test_list.txt
   local collecting_java_tests_log_prefix=$BUILD_ROOT/collecting_java_tests
   local stdout_log="$collecting_java_tests_log_prefix.out"
   local stderr_log="$collecting_java_tests_log_prefix.err"
@@ -1698,6 +1699,7 @@ run_all_java_test_methods_separately() {
   (
     export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
     export YB_REDIRECT_MVN_OUTPUT_TO_FILE=1
+    set_common_test_paths
     declare -i num_successes=0
     declare -i num_failures=0
     declare -i total_tests=0

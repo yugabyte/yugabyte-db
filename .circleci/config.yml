@@ -22,19 +22,10 @@ jobs:
 
     steps:
       - run:
-          name: Prep Mac Build & Test Environment
+          name: Prep Mac Build Environment
           command: |
             set -x
             sudo mkdir -p -m 0777 /opt/yb-build
-            sudo launchctl limit maxfiles 1048576 1048576
-            # Enable host address lookup
-            echo $(ipconfig getifaddr en0) $(hostname) | sudo tee -a /etc/hosts
-            # Provide plenty of local test addresses
-            for i in {0..1}; do
-              for j in {2..64}; do
-                sudo /sbin/ifconfig lo0 alias 127.0.$i.$j
-              done
-            done
             brew install bash cmake maven pstree ninja
 
       - checkout
@@ -96,15 +87,38 @@ jobs:
     macos:
       xcode: 11.5.0
 
+    environment:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+
     steps:
+      - run:
+          name: Prep Mac Test Environment
+          command: |
+            set -x
+            sudo launchctl limit maxfiles 1048576 1048576
+            # Enable host address lookup
+            echo $(ipconfig getifaddr en0) $(hostname) | sudo tee -a /etc/hosts
+            # Provide plenty of local test addresses
+            for i in {0..1}; do
+              for j in {2..64}; do
+                sudo /sbin/ifconfig lo0 alias 127.0.$i.$j
+              done
+            done
+            brew install bash cmake maven pstree ninja
+
       - checkout
 
       - attach_workspace:
           at: ./build
 
+      - restore_cache:
+          name: Retrieve Thirdparty cache
+          key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
+
       - run:
           name: Run Java Tests
           command: |
+            ulimit -n 1048576
             export BUILD_TYPE=<< parameters.flavor >>
             circleci tests split build/<< parameters.flavor >>-clang-dynamic-ninja/java_test_list.txt
             ./build-support/jenkins/run_java_tests.sh

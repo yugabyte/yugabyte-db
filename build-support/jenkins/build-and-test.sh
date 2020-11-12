@@ -146,6 +146,14 @@ cleanup() {
 # Main script
 # =================================================================================================
 
+# Argument to specify phase to run, defaulting to all phases.
+# Useful for splitting up work between multiple jobs/workers.
+if [[ -n $1 ]]; then
+  YB_PHASE="$1"
+else
+  YB_PHASE="build-cpp_test-java_test"
+fi
+
 log "Running with Bash version $BASH_VERSION"
 
 cd "$YB_SRC_ROOT"
@@ -418,200 +426,203 @@ if [[ $YB_BUILD_CPP == "1" ]] && ! which ctest >/dev/null; then
   fatal "ctest not found, won't be able to run C++ tests"
 fi
 
-export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
-
-# -------------------------------------------------------------------------------------------------
-# Build C++ code regardless of YB_BUILD_CPP, because we'll also need it for Java tests.
-
-heading "Building C++ code"
-
-YB_TRACK_REGRESSIONS=${YB_TRACK_REGRESSIONS:-0}
-if [[ $YB_TRACK_REGRESSIONS == "1" ]]; then
-
-  cd "$YB_SRC_ROOT"
-  if ! git diff-index --quiet HEAD --; then
-    fatal "Uncommitted changes found in '$YB_SRC_ROOT', cannot proceed."
-  fi
-  get_current_git_sha1
-  git_original_commit=$current_git_sha1
-
-  # Set up a separate directory that is one commit behind and launch a C++ build there in parallel
-  # with the main C++ build.
-
-  # TODO: we can probably do this in parallel with running the first batch of tests instead of in
-  # parallel with compilation, so that we deduplicate compilation of almost identical codebases.
-
-  YB_SRC_ROOT_REGR=${YB_SRC_ROOT}_regr
-  heading "Preparing directory for regression tracking: $YB_SRC_ROOT_REGR"
-
-  if [[ -e $YB_SRC_ROOT_REGR ]]; then
-    log "Removing the existing contents of '$YB_SRC_ROOT_REGR'"
-    time rm -rf "$YB_SRC_ROOT_REGR"
+if [[ && $YB_PHASE =~ build ]]; then
+  export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
+  
+  # -------------------------------------------------------------------------------------------------
+  # Build C++ code regardless of YB_BUILD_CPP, because we'll also need it for Java tests.
+  
+  heading "Building C++ code"
+  
+  YB_TRACK_REGRESSIONS=${YB_TRACK_REGRESSIONS:-0}
+  if [[ $YB_TRACK_REGRESSIONS == "1" ]]; then
+  
+    cd "$YB_SRC_ROOT"
+    if ! git diff-index --quiet HEAD --; then
+      fatal "Uncommitted changes found in '$YB_SRC_ROOT', cannot proceed."
+    fi
+    get_current_git_sha1
+    git_original_commit=$current_git_sha1
+  
+    # Set up a separate directory that is one commit behind and launch a C++ build there in parallel
+    # with the main C++ build.
+  
+    # TODO: we can probably do this in parallel with running the first batch of tests instead of in
+    # parallel with compilation, so that we deduplicate compilation of almost identical codebases.
+  
+    YB_SRC_ROOT_REGR=${YB_SRC_ROOT}_regr
+    heading "Preparing directory for regression tracking: $YB_SRC_ROOT_REGR"
+  
     if [[ -e $YB_SRC_ROOT_REGR ]]; then
-      log "Failed to remove '$YB_SRC_ROOT_REGR' right away"
-      sleep 0.5
+      log "Removing the existing contents of '$YB_SRC_ROOT_REGR'"
+      time rm -rf "$YB_SRC_ROOT_REGR"
       if [[ -e $YB_SRC_ROOT_REGR ]]; then
-        fatal "Failed to remove '$YB_SRC_ROOT_REGR'"
+        log "Failed to remove '$YB_SRC_ROOT_REGR' right away"
+        sleep 0.5
+        if [[ -e $YB_SRC_ROOT_REGR ]]; then
+          fatal "Failed to remove '$YB_SRC_ROOT_REGR'"
+        fi
       fi
     fi
-  fi
-
-  log "Cloning '$YB_SRC_ROOT' to '$YB_SRC_ROOT_REGR'"
-  time git clone "$YB_SRC_ROOT" "$YB_SRC_ROOT_REGR"
-  if [[ ! -d $YB_SRC_ROOT_REGR ]]; then
-    log "Directory $YB_SRC_ROOT_REGR did not appear right away"
-    sleep 0.5
+  
+    log "Cloning '$YB_SRC_ROOT' to '$YB_SRC_ROOT_REGR'"
+    time git clone "$YB_SRC_ROOT" "$YB_SRC_ROOT_REGR"
     if [[ ! -d $YB_SRC_ROOT_REGR ]]; then
-      fatal "Directory ''$YB_SRC_ROOT_REGR' still does not exist"
+      log "Directory $YB_SRC_ROOT_REGR did not appear right away"
+      sleep 0.5
+      if [[ ! -d $YB_SRC_ROOT_REGR ]]; then
+        fatal "Directory ''$YB_SRC_ROOT_REGR' still does not exist"
+      fi
+    fi
+  
+    cd "$YB_SRC_ROOT_REGR"
+    git checkout "$git_original_commit^"
+    git_commit_after_rollback=$( git rev-parse --abbrev-ref HEAD )
+    log "Rolling back commit '$git_commit_after_rollback', currently at '$git_original_commit'"
+    heading "Top commits in '$YB_SRC_ROOT_REGR' after reverting one commit:"
+    git log -n 2
+  
+    (
+      build_cpp_code "$PWD" 2>&1 | \
+        while read output_line; do \
+          echo "[base version build] $output_line"
+        done
+    ) &
+    build_cpp_code_regr_pid=$!
+  
+    cd "$YB_SRC_ROOT"
+  fi
+  # End of special logic for the regression tracking mode.
+  
+  build_cpp_code "$YB_SRC_ROOT"
+  
+  if [[ $YB_TRACK_REGRESSIONS == "1" ]]; then
+    log "Waiting for building C++ code one commit behind (at $git_commit_after_rollback)" \
+        "in $YB_SRC_ROOT_REGR"
+    wait "$build_cpp_code_regr_pid"
+  fi
+  
+  log "Disk usage after C++ build:"
+  show_disk_usage
+  
+  # We can grep for this line in the log to determine the stage of the build job.
+  log "ALL OF YUGABYTE C++ BUILD FINISHED"
+  
+  # End of the C++ code build.
+  # -------------------------------------------------------------------------------------------------
+  
+  # -------------------------------------------------------------------------------------------------
+  # Running initdb
+  # -------------------------------------------------------------------------------------------------
+  
+  export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=0
+  
+  if [[ $BUILD_TYPE != "tsan" ]]; then
+    declare -i initdb_attempt_index=1
+    declare -i -r MAX_INITDB_ATTEMPTS=3
+  
+    while [[ $initdb_attempt_index -le $MAX_INITDB_ATTEMPTS ]]; do
+      log "Creating initial system catalog snapshot (attempt $initdb_attempt_index)"
+      if ! time "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" initdb --skip-java; then
+        initdb_err_msg="Failed to create initial sys catalog snapshot at "
+        initdb_err_msg+="attempt $initdb_attempt_index"
+        log "$initdb_err_msg. PostgreSQL tests may take longer."
+        FAILURES+="$initdb_err_msg"$'\n'
+        EXIT_STATUS=1
+      else
+        log "Successfully created initial system catalog snapshot at attempt $initdb_attempt_index"
+        break
+      fi
+      let initdb_attempt_index+=1
+    done
+    if [[ $initdb_attempt_index -gt $MAX_INITDB_ATTEMPTS ]]; then
+      fatal "Failed to run create initial sys catalog snapshot after $MAX_INITDB_ATTEMPTS attempts."
     fi
   fi
-
-  cd "$YB_SRC_ROOT_REGR"
-  git checkout "$git_original_commit^"
-  git_commit_after_rollback=$( git rev-parse --abbrev-ref HEAD )
-  log "Rolling back commit '$git_commit_after_rollback', currently at '$git_original_commit'"
-  heading "Top commits in '$YB_SRC_ROOT_REGR' after reverting one commit:"
-  git log -n 2
-
-  (
-    build_cpp_code "$PWD" 2>&1 | \
-      while read output_line; do \
-        echo "[base version build] $output_line"
-      done
-  ) &
-  build_cpp_code_regr_pid=$!
-
-  cd "$YB_SRC_ROOT"
-fi
-# End of special logic for the regression tracking mode.
-
-build_cpp_code "$YB_SRC_ROOT"
-
-if [[ $YB_TRACK_REGRESSIONS == "1" ]]; then
-  log "Waiting for building C++ code one commit behind (at $git_commit_after_rollback)" \
-      "in $YB_SRC_ROOT_REGR"
-  wait "$build_cpp_code_regr_pid"
-fi
-
-log "Disk usage after C++ build:"
-show_disk_usage
-
-# We can grep for this line in the log to determine the stage of the build job.
-log "ALL OF YUGABYTE C++ BUILD FINISHED"
-
-# End of the C++ code build.
-# -------------------------------------------------------------------------------------------------
-
-# -------------------------------------------------------------------------------------------------
-# Running initdb
-# -------------------------------------------------------------------------------------------------
-
-export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=0
-
-if [[ $BUILD_TYPE != "tsan" ]]; then
-  declare -i initdb_attempt_index=1
-  declare -i -r MAX_INITDB_ATTEMPTS=3
-
-  while [[ $initdb_attempt_index -le $MAX_INITDB_ATTEMPTS ]]; do
-    log "Creating initial system catalog snapshot (attempt $initdb_attempt_index)"
-    if ! time "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" initdb --skip-java; then
-      initdb_err_msg="Failed to create initial sys catalog snapshot at "
-      initdb_err_msg+="attempt $initdb_attempt_index"
-      log "$initdb_err_msg. PostgreSQL tests may take longer."
-      FAILURES+="$initdb_err_msg"$'\n'
-      EXIT_STATUS=1
-    else
-      log "Successfully created initial system catalog snapshot at attempt $initdb_attempt_index"
-      break
+  
+  # -------------------------------------------------------------------------------------------------
+  # Dependency graph analysis allowing to determine what tests to run.
+  # -------------------------------------------------------------------------------------------------
+  
+  if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
+    if ! ( set -x
+           "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+             --build-root "$BUILD_ROOT" self-test --rebuild-graph ); then
+      # Trying to diagnose this error:
+      # https://gist.githubusercontent.com/mbautin/c5c6f14714f7655c10620d8e658e1f5b/raw
+      log "dependency_graph.py failed, listing all pb.{h,cc} files in the build directory"
+      ( set -x; find "$BUILD_ROOT" -name "*.pb.h" -or -name "*.pb.cc" )
+      fatal "Dependency graph construction failed"
     fi
-    let initdb_attempt_index+=1
-  done
-  if [[ $initdb_attempt_index -gt $MAX_INITDB_ATTEMPTS ]]; then
-    fatal "Failed to run create initial sys catalog snapshot after $MAX_INITDB_ATTEMPTS attempts."
   fi
-fi
-
-# -------------------------------------------------------------------------------------------------
-# Dependency graph analysis allowing to determine what tests to run.
-# -------------------------------------------------------------------------------------------------
-
-if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
-  if ! ( set -x
-         "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
-           --build-root "$BUILD_ROOT" self-test --rebuild-graph ); then
-    # Trying to diagnose this error:
-    # https://gist.githubusercontent.com/mbautin/c5c6f14714f7655c10620d8e658e1f5b/raw
-    log "dependency_graph.py failed, listing all pb.{h,cc} files in the build directory"
-    ( set -x; find "$BUILD_ROOT" -name "*.pb.h" -or -name "*.pb.cc" )
-    fatal "Dependency graph construction failed"
-  fi
-fi
-
-# Save the current HEAD commit in case we build Java below and add a new commit. This is used for
-# the following purposes:
-# - So we can upload the release under the correct commit, from Jenkins, to then be picked up from
-#   itest, from the snapshots bucket.
-# - For picking up the changeset corresponding the the current diff being tested and detecting what
-#   tests to run in Phabricator builds. If we just diff with origin/master, we'll always pick up
-#   pom.xml changes we've just made, forcing us to always run Java tests.
-current_git_commit=$(git rev-parse HEAD)
-
-random_build_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
-
-# -------------------------------------------------------------------------------------------------
-# Java build
-# -------------------------------------------------------------------------------------------------
-
-export YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
-
-java_build_failed=false
-if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
-  set_mvn_parameters
-
-  heading "Building Java code..."
-  if [[ -n ${JAVA_HOME:-} ]]; then
-    export PATH=$JAVA_HOME/bin:$PATH
-  fi
-
-  build_yb_java_code_in_all_dirs clean
-
-  heading "Java 'clean' build is complete, will now actually build Java code"
-
-  for java_project_dir in "${yb_java_project_dirs[@]}"; do
-    pushd "$java_project_dir"
-    heading "Building Java code in directory '$java_project_dir'"
-    if ! build_yb_java_code_with_retries -DskipTests clean install; then
-      EXIT_STATUS=1
-      FAILURES+="Java build failed in directory '$java_project_dir'"$'\n'
-      java_build_failed=true
-    else
-      log "Java code build in directory '$java_project_dir' SUCCEEDED"
+  
+  # Save the current HEAD commit in case we build Java below and add a new commit. This is used for
+  # the following purposes:
+  # - So we can upload the release under the correct commit, from Jenkins, to then be picked up from
+  #   itest, from the snapshots bucket.
+  # - For picking up the changeset corresponding the the current diff being tested and detecting what
+  #   tests to run in Phabricator builds. If we just diff with origin/master, we'll always pick up
+  #   pom.xml changes we've just made, forcing us to always run Java tests.
+  current_git_commit=$(git rev-parse HEAD)
+  
+  random_build_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
+  
+  # -------------------------------------------------------------------------------------------------
+  # Java build
+  # -------------------------------------------------------------------------------------------------
+  
+  export YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
+  
+  java_build_failed=false
+  if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" && $YB_PHASE =~ build ]]; then
+    set_mvn_parameters
+  
+    heading "Building Java code..."
+    if [[ -n ${JAVA_HOME:-} ]]; then
+      export PATH=$JAVA_HOME/bin:$PATH
     fi
-    popd
-  done
-
-  if "$java_build_failed"; then
-    fatal "Java build failed, stopping here."
+  
+    build_yb_java_code_in_all_dirs clean
+  
+    heading "Java 'clean' build is complete, will now actually build Java code"
+  
+    for java_project_dir in "${yb_java_project_dirs[@]}"; do
+      pushd "$java_project_dir"
+      heading "Building Java code in directory '$java_project_dir'"
+      if ! build_yb_java_code_with_retries -DskipTests clean install; then
+        EXIT_STATUS=1
+        FAILURES+="Java build failed in directory '$java_project_dir'"$'\n'
+        java_build_failed=true
+      else
+        log "Java code build in directory '$java_project_dir' SUCCEEDED"
+      fi
+      popd
+    done
+  
+    if "$java_build_failed"; then
+      fatal "Java build failed, stopping here."
+    fi
+  
+    heading "Running a test locally to force Maven to download all test-time dependencies"
+    (
+      cd "$YB_SRC_ROOT/java"
+      build_yb_java_code test \
+                         -Dtest=org.yb.client.TestTestUtils#testDummy \
+                         "${MVN_OPTS_TO_DOWNLOAD_ALL_DEPS[@]}"
+    )
+    heading "Finished running a test locally to force Maven to download all test-time dependencies"
+  
+    # Tell gen_version_info.py to store the Git SHA1 of the commit really present in the code
+    # being built, not our temporary commit to update pom.xml files.
+    get_current_git_sha1
+    export YB_VERSION_INFO_GIT_SHA1=$current_git_sha1
+  
+    # Collect test list in build phase, to be divided up downstream.
+    collect_java_tests
+  
+    log "Finished building Java code (see timing information above)"
   fi
-
-  heading "Running a test locally to force Maven to download all test-time dependencies"
-  (
-    cd "$YB_SRC_ROOT/java"
-    build_yb_java_code test \
-                       -Dtest=org.yb.client.TestTestUtils#testDummy \
-                       "${MVN_OPTS_TO_DOWNLOAD_ALL_DEPS[@]}"
-  )
-  heading "Finished running a test locally to force Maven to download all test-time dependencies"
-
-  # Tell gen_version_info.py to store the Git SHA1 of the commit really present in the code
-  # being built, not our temporary commit to update pom.xml files.
-  get_current_git_sha1
-  export YB_VERSION_INFO_GIT_SHA1=$current_git_sha1
-
-  collect_java_tests
-
-  log "Finished building Java code (see timing information above)"
-fi
+fi # build PHASE
 
 # -------------------------------------------------------------------------------------------------
 # Now that that all C++ and Java code has been built, test creating a package.
@@ -736,12 +747,17 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
   else
     # A single-node way of running tests (without Spark).
 
-    if [[ $YB_BUILD_CPP == "1" ]]; then
+    if [[ $YB_BUILD_CPP == "1" && $YB_PHASE =~ cpp_test ]]; then
       log "Run C++ tests in a non-distributed way"
       export GTEST_OUTPUT="xml:$TEST_LOG_DIR/" # Enable JUnit-compatible XML output.
 
       if ! spark_available; then
         log "Did not find Spark on the system, falling back to a ctest-based way of running tests"
+        if [[ ${CIRCLECI:-false} == true ]]; then
+          first=$(( ${CIRCLE_NODE_INDEX:-0} + 1))
+          count=${CIRCLE_NODE_TOTAL:-1}
+          EXTRA_TEST_FLAGS="-I $first,,$count"
+        fi
         set +e
         time ctest -j$NUM_PARALLEL_TESTS ${EXTRA_TEST_FLAGS:-} \
             --output-log "$CTEST_FULL_OUTPUT_PATH" \
@@ -755,9 +771,8 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
       log "Finished running C++ tests (see timing information above)"
     fi
 
-    if [[ $YB_BUILD_JAVA == "1" ]]; then
+    if [[ $YB_BUILD_JAVA == "1" && $YB_PHASE =~ java_test ]]; then
       set_test_invocation_id
-      collect_java_tests
       log "Running Java tests in a non-distributed way"
       if ! time run_all_java_test_methods_separately; then
         EXIT_STATUS=1
