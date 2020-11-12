@@ -9,6 +9,7 @@ import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
@@ -32,9 +33,9 @@ public class CustomerTaskTest extends FakeDBApplication {
 
   private static List<CustomerTask> deleteStaleTasks(Customer defaultCustomer, int days) {
     List<CustomerTask> staleTasks =
-      CustomerTask.findOlderThan(defaultCustomer, days, ChronoUnit.DAYS);
+      CustomerTask.findOlderThan(defaultCustomer, Duration.ofDays(days));
     return staleTasks.stream()
-      .filter(CustomerTask::cascadeDeleteCompleted)
+      .filter(customerTask -> customerTask.cascadeDeleteCompleted() > 0)
       .collect(Collectors.toList());
   }
 
@@ -153,7 +154,7 @@ public class CustomerTaskTest extends FakeDBApplication {
     CustomerTask th = createTaskTree(CustomerTask.TargetType.Table, targetUUID, Create, 2, true,
       true);
     th.markAsCompleted();
-    assertTrue(th.cascadeDeleteCompleted());
+    assertEquals(2, th.cascadeDeleteCompleted());
     assertNull(CustomerTask.findByTaskUUID(th.getTaskUUID()));
   }
 
@@ -163,7 +164,7 @@ public class CustomerTaskTest extends FakeDBApplication {
     CustomerTask th = createTaskTree(CustomerTask.TargetType.Table, targetUUID, Create, 3, false,
       true);
     th.markAsCompleted();
-    assertFalse(th.cascadeDeleteCompleted());
+    assertEquals(0, th.cascadeDeleteCompleted());
     assertEquals(th, CustomerTask.findByTaskUUID(th.getTaskUUID()));
   }
 
@@ -174,7 +175,7 @@ public class CustomerTaskTest extends FakeDBApplication {
     CustomerTask th = createTaskTree(CustomerTask.TargetType.Table, targetUUID, Create, 3, true,
       false);
     th.markAsCompleted();
-    assertFalse(th.cascadeDeleteCompleted());
+    assertEquals(0, th.cascadeDeleteCompleted());
     assertEquals(th, CustomerTask.findByTaskUUID(th.getTaskUUID()));
   }
 
@@ -195,15 +196,22 @@ public class CustomerTaskTest extends FakeDBApplication {
       long completionTimestamp = now.minus(5 + rng.nextInt(100), ChronoUnit.DAYS).toEpochMilli();
       th.markAsCompleted(new Date(completionTimestamp));
     }
+    assertEquals(7, CustomerTask.find.all().size());
+    assertEquals(21, TaskInfo.find.all().size());
+
     staleTasks = deleteStaleTasks(defaultCustomer, 5);
     assertEquals(4, staleTasks.size());
     for (int i = 0; i < 4; i++) {
       assertEquals(CustomerTask.TargetType.Universe, staleTasks.get(i).getTarget());
     }
+    assertEquals(3, CustomerTask.find.all().size());
+    assertEquals(9, TaskInfo.find.all().size());
     staleTasks = deleteStaleTasks(defaultCustomer, 0);
     assertEquals(3, staleTasks.size());
     for (int i = 0; i < 3; i++) {
       assertEquals(CustomerTask.TargetType.Table, staleTasks.get(i).getTarget());
     }
+    assertTrue(CustomerTask.find.all().isEmpty());
+    assertTrue(TaskInfo.find.all().isEmpty());
   }
 }

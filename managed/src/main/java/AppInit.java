@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import io.ebean.Ebean;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
@@ -44,8 +45,9 @@ public class AppInit {
   @Inject
   public AppInit(Environment environment, Application application,
                  ConfigHelper configHelper, ReleaseManager releaseManager,
-                 AWSInitializer awsInitializer, CustomerTaskManager taskManager, YamlWrapper yaml,
-                 ExtraMigrationManager extraMigrationManager) throws ReflectiveOperationException {
+                 AWSInitializer awsInitializer, CustomerTaskManager taskManager,
+                 YamlWrapper yaml, ExtraMigrationManager extraMigrationManager,
+                 TaskGarbageCollector taskGC) throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
@@ -127,6 +129,9 @@ public class AppInit {
 
       // Fail incomplete tasks
       taskManager.failAllPendingTasks();
+
+      // Schedule garbage collection of old completed tasks in database.
+      taskGC.start();
 
       Logger.info("AppInit completed");
    }
