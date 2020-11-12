@@ -13,6 +13,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/secure/enable-authentication/ysql" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
+
+
 Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the database level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics and transparently schema change propagation across the regions would benefit from this feature. 
 
 {{< tip title="" >}}
