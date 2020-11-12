@@ -19,7 +19,10 @@
   .DayPickerInput {
     display: inline-block;
     font-size: 1.3rem;
-    width: 100%;
+
+    input {
+      border: none;
+    }
 
     .DayPicker-Day {
       padding: 7px;
@@ -96,5 +99,36 @@
 .modal-content {
   .info-text {
     margin-bottom: 15px;
+  }
+}
+
+#add-cert-tabs {
+  .date-picker-input {
+    background: #FFF;
+    border: 1px solid #C5C6CE;
+    border-radius: 7px;
+    padding: 8px 15px;
+    cursor: pointer;
+  }
+
+
+  .tab-content {
+    padding: 20px 35px 30px;
+    min-height: initial;
+
+    > .tab-pane {
+      .form-group + .form-group {
+        margin-top: 15px;
+      }
+    }
+  }
+  
+}
+
+.cert-details-modal__list {
+  padding: 20px 10px;
+
+  li + li {
+    margin-top: 15px;
   }
 }

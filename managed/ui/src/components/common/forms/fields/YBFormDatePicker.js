@@ -10,7 +10,7 @@ export default class YBFormDatePicker extends Component {
     const { pickerComponent } = this.props;
     return (
       <YBLabel {...this.props}>
-        <DayPickerInput component={pickerComponent} {...this.props} />
+        <DayPickerInput component={pickerComponent} {...this.props} {...this.props.field} />
       </YBLabel>
     );
   }
