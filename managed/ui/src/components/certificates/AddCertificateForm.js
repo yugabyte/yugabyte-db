@@ -218,7 +218,6 @@ export default class AddCertificateForm extends Component {
           initialValues={initialValues}
           validate={this.validateForm}          
           render={(props) => {
-            console.log(props);
             return (
               <Tabs
                 id="add-cert-tabs"
