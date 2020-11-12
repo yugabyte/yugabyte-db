@@ -58,6 +58,8 @@ All of the `.sql` scripts that this case-study presents for copy-and-paste at th
 
 It is expected that the raw data will be available from the COVIDcast site into the indefinite future. But the downloadable self-contained zip-fie of the complete case study assures readers of the longevity of this study's pedagogy.
 
+[Download `covid-data-case-study.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/covid-data-case-study/covid-data-case-study.zip).
+
 After unzipping it on a convenient new directory, you'll see a `README.txt`. It tells you to run `0.sql`. You'll see this in the top directory. It looks like this:
 
 ```plpgsql
