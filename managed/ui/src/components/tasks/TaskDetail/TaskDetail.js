@@ -12,7 +12,7 @@ import './TaskDetail.scss';
 import moment from 'moment';
 import { YBPanelItem } from '../../panels';
 import _ from 'lodash';
-import Highlight from 'react-highlight';
+import { Highlighter } from '../../../helpers/Highlighter';
 import 'highlight.js/styles/github.css';
 
 class TaskDetail extends Component {
@@ -66,14 +66,15 @@ class TaskDetail extends Component {
       );
     }
     let taskFailureDetails = <span />;
-    const getTruncatedErrorString = function (errorString) {
+    const getTruncatedErrorString = (errorString) => {
+      const truncatedError = _.truncate(errorString, {
+        length: 400,
+        separator: /,? +/
+      });
       return (
-        <Highlight className="json">
-          {_.truncate(errorString, {
-            length: 400,
-            separator: /,? +/
-          })}
-        </Highlight>
+        <div className="onprem-config__json">
+          <Highlighter type="json" text={truncatedError} element="pre" />
+        </div>
       );
     };
 
@@ -81,7 +82,7 @@ class TaskDetail extends Component {
       let errorElement = getTruncatedErrorString(errorString);
       let displayMessage = 'Expand';
       if (self.state.errorStringDisplay) {
-        errorElement = <Highlight className="json">{errorString}</Highlight>;
+        errorElement = <Highlighter type="json" text={errorString} />;
         displayMessage = 'View Less';
       }
 

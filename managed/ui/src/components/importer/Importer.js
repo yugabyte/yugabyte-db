@@ -5,7 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBFormSelect, YBButton } from '../common/forms/fields';
 import { getPromiseState } from '../../utils/PromiseUtils';
 import { isNonEmptyObject } from '../../utils/ObjectUtils';
-import Highlight from 'react-highlight';
+import { Highlighter } from '../../helpers/Highlighter';
 import { Link } from 'react-router';
 import { Formik, Field } from 'formik';
 import * as Yup from 'yup';
@@ -142,8 +142,8 @@ export default class Importer extends Component {
         (!this.props.universeImport.error && idx === currentStep && currentStep !== 0)
           ? 'finished'
           : this.props.universeImport.error && idx === currentStep + 1
-            ? 'failed'
-            : '';
+          ? 'failed'
+          : '';
       return (
         <li key={idx} className={itemClass + ' ' + item.class}>
           <span>{item.replace('_', ' ')}</span>
@@ -186,7 +186,7 @@ export default class Importer extends Component {
       }
     } else if (universeImport.error) {
       status = <span className="yb-fail-color">Universe import failed</span>;
-      errorString = universeImport.error.error;
+      errorString = universeImport.error;
       if (this.state.currentState === 'BEGIN') {
         status = <span className="yb-fail-color">Import YB-Masters failed</span>;
         submitButtonTxt = 'Import TServers';
@@ -285,7 +285,7 @@ export default class Importer extends Component {
                   )}
 
                   <b className="status">{status}</b>
-                  {errorString !== '' && <Highlight className="json">{errorString}</Highlight>}
+                  {errorString && <Highlighter type="json" text={errorString} />}
                   <div className="checks">
                     {isNonEmptyObject(this.state.checks) && this.generateCheckList()}
                   </div>

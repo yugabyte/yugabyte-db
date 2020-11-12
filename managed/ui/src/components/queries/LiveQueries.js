@@ -5,7 +5,7 @@ import { withRouter } from 'react-router';
 import { useSelector } from 'react-redux';
 import { Dropdown, MenuItem, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import Highlight from 'react-highlight';
+import { Highlighter } from '../../helpers/Highlighter';
 import { YBPanelItem } from '../panels';
 import { QueryInfoSidePanel } from './QueryInfoSidePanel';
 import { YBButtonLink } from '../common/forms/fields';
@@ -258,7 +258,7 @@ const LiveQueriesComponent = ({ location }) => {
     const truncatedText = cell.length > 50 ? `${cell.substring(0, 50)}...` : cell;
     return (
       <div className="query-container">
-        <Highlight className="sql">{truncatedText}</Highlight>
+        <Highlighter type="sql" text={truncatedText} element="pre" />
       </div>
     );
   };

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { YBButton } from '../common/forms/fields';
-import Highlight from 'react-highlight';
+import { Highlighter } from '../../helpers/Highlighter';
 import copy from 'copy-to-clipboard';
 
 const statsTextMap = {
@@ -40,7 +40,7 @@ export const QueryInfoSidePanel = ({ data, visible, onHide }) => {
       {data && (
         <div className="side-panel__content">
           <div className="side-panel__query">
-            <Highlight className="sql">{data.query}</Highlight>
+            <Highlighter type="sql" text={data.query} element="pre" />
           </div>
           <div className="copy-btn-container">
             <YBButton
