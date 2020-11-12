@@ -248,14 +248,12 @@ yugabyte=# select ename, account_number from employees limit 1;
 
 ### Step 5. Query using `pgp_pub_decrypt`
 
-Use `pgp_pub_decrypt` and private key for decrypting column data
-
-In order to retrieve the encrypted column data, use `pgp_pub_decrypt` function to decrypt the data. The Decryption function needs to be used in both SELECT and WHERE clause depending on the query. 
+Use `pgp_pub_decrypt` and private key for decrypting column data. In order to retrieve the encrypted column data, use `pgp_pub_decrypt` function to decrypt the data and wrap the pgp private key with dearmor function to convert the private key into PGP ASCII-armor format. The Decryption function needs to be used in both SELECT and WHERE clause depending on the query. 
 
 To allow the decryption, the field name is also casted to the binary data type with the syntax: ` account_number:bytea`.
 
 ```
-yugabyte=# select PGP_PUB_DECRYPT(account_number::bytea,'-----BEGIN PGP PUBLIC KEY BLOCK----- XXXX  -----END PGP PUBLIC KEY BLOCK-----','PRIVATE-KEY-PASSWORD') as AccountNumber from employees;
+yugabyte=# select PGP_PUB_DECRYPT(account_number::bytea,dearmor('-----BEGIN PGP PRIVATE KEY BLOCK----- XXXX  -----END PGP PRIVATE KEY BLOCK-----'),'PRIVATE-KEY-PASSWORD') as AccountNumber from employees;
  accountnumber
 ---------------
  AC-22001
