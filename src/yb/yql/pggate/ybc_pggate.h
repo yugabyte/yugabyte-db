@@ -376,6 +376,8 @@ YBCStatus YBCPgInsertStmtSetUpsertMode(YBCPgStatement handle);
 
 YBCStatus YBCPgInsertStmtSetWriteTime(YBCPgStatement handle, const uint64_t write_time);
 
+YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_backfill);
+
 // UPDATE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,
                          YBCPgOid table_oid,

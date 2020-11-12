@@ -452,17 +452,6 @@ DefineIndex(Oid relationId,
 	 */
 	if (is_indexed_table_colocated)
 		stmt->concurrent = false;
-	/*
-	 * Backfilling unique indexes is currently not supported.  This is desired
-	 * when there would be no concurrency issues (e.g. `CREATE TABLE ... (...
-	 * UNIQUE (...))`).  However, it is not desired in cases where there could
-	 * be concurrency issues (e.g. `CREATE UNIQUE INDEX ...`, `ALTER TABLE ...
-	 * ADD UNIQUE (...)`).  For now, just use the fast path in all cases.
-	 * TODO(jason): support backfill for unique indexes, and use the online
-	 * path for the appropriate statements (issue #4899).
-	 */
-	if (stmt->concurrent && stmt->unique)
-		stmt->concurrent = false;
 
 	/*
 	 * Only SELECT ... FOR UPDATE/SHARE are allowed while doing a standard
