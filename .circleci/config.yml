@@ -45,11 +45,9 @@ jobs:
           command: |
             echo "Building in directory: $PWD"
             set -x
-            ulimit -n 1048576
             export BUILD_TYPE=<< parameters.flavor >>
             export YB_SKIP_CREATING_RELEASE_PACKAGE=1
-            export EXTRA_TEST_FLAGS="-I 1,25" # only run 25 ctests for testing automation
-            ./build-support/jenkins/build-and-test.sh
+            ./build-support/jenkins/build-and-test.sh "build"
 
       - save_cache:
           name: Store Thirdparty cache
@@ -65,17 +63,11 @@ jobs:
             - build/venv
           when: always
 
-      ## should we package and just save that?
       - persist_to_workspace:
           name: Save Build Space
           root: ./build
           paths:
             - ./*
-
-      #- store_artifacts:
-      #    paths:
-      #      - test_*.json
-      #      - build/*/yb-test-log
 
   java_test:
     parallelism: 3
@@ -120,13 +112,69 @@ jobs:
           command: |
             ulimit -n 1048576
             export BUILD_TYPE=<< parameters.flavor >>
-            circleci tests split build/<< parameters.flavor >>-clang-dynamic-ninja/java_test_list.txt
-            ./build-support/jenkins/run_java_tests.sh
+            export YB_SKIP_CREATING_RELEASE_PACKAGE=1
+            testlist="build/<< parameters.flavor >>-clang-dynamic-ninja/java_test_list.txt"
+            mv ${testlist} ${testlist}.full
+            circleci tests split ${testlist}.full > ${testlist}
+            ./build-support/jenkins/build-and-test.sh "java_test"
 
       - store_artifacts:
           path: test_*.json
       - store_artifacts:
           path: java/*/target/surefire*
+
+  cpp_test:
+    parallelism: 3
+
+    parameters:
+      flavor:
+        type: string
+
+    macos:
+      xcode: 11.5.0
+
+    environment:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+
+    steps:
+      - run:
+          name: Prep Mac Test Environment
+          command: |
+            set -x
+            sudo launchctl limit maxfiles 1048576 1048576
+            # Enable host address lookup
+            echo $(ipconfig getifaddr en0) $(hostname) | sudo tee -a /etc/hosts
+            # Provide plenty of local test addresses
+            for i in {0..1}; do
+              for j in {2..64}; do
+                sudo /sbin/ifconfig lo0 alias 127.0.$i.$j
+              done
+            done
+            brew install bash cmake maven pstree ninja
+
+      - checkout
+
+      - attach_workspace:
+          at: ./build
+
+      - restore_cache:
+          name: Retrieve Thirdparty cache
+          key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
+
+      - run:
+          name: Run CPP Tests
+          no_output_timeout: "30m"
+          command: |
+            ulimit -n 1048576
+            export BUILD_TYPE=<< parameters.flavor >>
+            export YB_SKIP_CREATING_RELEASE_PACKAGE=1
+            ./build-support/jenkins/build-and-test.sh "cpp_test"
+
+      - store_artifacts:
+          path: test_*.json
+      - store_artifacts:
+          path: build/*/yb-test-log
+
 
 # If no workflow is created, then error is generated for the PR/commit.
 # If worflow is created, but no jobs run, then it is ignored.
@@ -138,6 +186,14 @@ workflows:
       - build:
           name: mac-debug-build
           flavor: "debug"
+          filters:
+            branches:
+              only: "pull/<< pipeline.parameters.pullreq >>"
+      - cpp_test:
+          name: mac-debug-cpp-test
+          flavor: "debug"
+          requires:
+            - mac-debug-build
           filters:
             branches:
               only: "pull/<< pipeline.parameters.pullreq >>"
