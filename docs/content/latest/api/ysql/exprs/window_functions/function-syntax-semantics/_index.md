@@ -38,7 +38,8 @@ This property is marked by _"Y"_ in the column _"agg?"_ in the following tables;
 
 {{< note title="Functions with both a 'window' and an 'aggregate' variant" >}}
 
-The definitive description of the use, as an aggregate function, of a window function that has such a variant, is outside the scope of this major _"Window functions"_ section. A future documentation effort will add an _"Aggregate functions"_ major section. The topic will be covered there. Meanwhile, you can refer to the section _"9.20. Aggregate Functions"_ in the PostgreSQL documentation. Look for <a href="https://www.postgresql.org/docs/11/functions-aggregate.html#FUNCTIONS-HYPOTHETICAL-TABLE" target="_blank">Table 9.55. Hypothetical-Set Aggregate Functions <i class="fas fa-external-link-alt"></i></a>.
+The definitive description of the use, as an aggregate function, of a window function that has such a variant, is described within the [Aggregate functions](../../aggregate_functions) major section in the section [Within-group hypothetical-set aggregate functions
+](../../aggregate_functions/function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/).
 
 {{< /note >}}
 
