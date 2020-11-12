@@ -1248,9 +1248,12 @@ Status TSTabletManager::DeleteTablet(
   }
 
   RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
-  // TODO(raju): should tablet being tombstoned not avoid flushing memtable as well ?
-  tablet_peer->Shutdown((delete_type == TABLET_DATA_DELETED) ?
-      tablet::IsDropTable::kTrue : tablet::IsDropTable::kFalse);
+  // No matter if the tablet was deleted (drop table), or tombstoned (potentially moved to a
+  // different TS), we do not need to flush rocksdb anymore, as this data is irrelevant.
+  //
+  // Note: This might change for PITR.
+  bool delete_data = delete_type == TABLET_DATA_DELETED || delete_type == TABLET_DATA_TOMBSTONED;
+  tablet_peer->Shutdown(tablet::IsDropTable(delete_data));
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
