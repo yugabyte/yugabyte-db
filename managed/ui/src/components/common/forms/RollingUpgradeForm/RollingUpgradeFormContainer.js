@@ -3,11 +3,6 @@
 import { formValueSelector, reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 import { RollingUpgradeForm } from '../../../common/forms';
-import {
-  fetchCustomerTasks,
-  fetchCustomerTasksSuccess,
-  fetchCustomerTasksFailure
-} from '../../../../actions/tasks';
 import { closeDialog } from '../../../../actions/modal';
 import {
   rollingUpgrade,
@@ -20,6 +15,13 @@ import {
   fetchUniverseInfo,
   fetchUniverseInfoResponse
 } from '../../../../actions/universe';
+
+import {
+  fetchUniversesPendingTasks,
+  fetchUniversesPendingTasksSuccess,
+  fetchUniversesPendingTasksFailure
+} from '../../../../actions/tasks';
+
 import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
@@ -46,18 +48,18 @@ const mapDispatchToProps = (dispatch) => {
         reset();
       });
     },
-    fetchCustomerTasks: () => {
-      dispatch(fetchCustomerTasks()).then((response) => {
-        if (!response.error) {
-          dispatch(fetchCustomerTasksSuccess(response.payload));
-        } else {
-          dispatch(fetchCustomerTasksFailure(response.payload));
-        }
-      });
-    },
     fetchUniverseTasks: (uuid) => {
       dispatch(fetchUniverseTasks(uuid)).then((response) => {
         dispatch(fetchUniverseTasksResponse(response.payload));
+      });
+    },
+    getAllUniversePendingTasks: () => {
+      dispatch(fetchUniversesPendingTasks()).then((response) => {
+        if (!response.error) {
+          dispatch(fetchUniversesPendingTasksSuccess(response.payload));
+        } else {
+          dispatch(fetchUniversesPendingTasksFailure(response.payload));
+        }
       });
     },
     resetRollingUpgrade: () => {

@@ -29,10 +29,16 @@ export default class TableDetail extends Component {
   };
 
   componentDidMount() {
-    const universeUUID = this.props.universeUUID;
-    const tableUUID = this.props.tableUUID;
-    this.props.fetchUniverseDetail(universeUUID);
-    this.props.fetchTableDetail(universeUUID, tableUUID);
+    const {
+      fetchUniverseDetail,
+      fetchCurrentUniversePendingTasks,
+      fetchTableDetail,
+      universeUUID,
+      tableUUID
+    } = this.props;
+    fetchUniverseDetail(universeUUID);
+    fetchCurrentUniversePendingTasks(universeUUID);
+    fetchTableDetail(universeUUID, tableUUID);
   }
 
   componentWillUnmount() {
@@ -49,7 +55,8 @@ export default class TableDetail extends Component {
     const {
       customer,
       universe: { currentUniverse },
-      tables: { currentTableDetail }
+      tables: { currentTableDetail },
+      universesPendingTasks
     } = this.props;
     const width = this.state.dimensions.width;
     if (getPromiseState(currentUniverse).isSuccess()) {
@@ -140,17 +147,19 @@ export default class TableDetail extends Component {
       isNonEmptyObject(currentUniverse.data) &&
       isNonEmptyObject(currentTableDetail.tableDetails)
     ) {
+      const universeUUID = currentUniverse.data.universeUUID;
+      const pendingTasks = universeUUID in universesPendingTasks.data ?
+        universesPendingTasks.data[universeUUID] :
+        [];
       universeState = (
         <Col lg={10} sm={8} xs={6}>
           {/* UNIVERSE NAME */}
           <div className="universe-detail-status-container">
             <h2>
-              <Link to={`/universes/${currentUniverse.data.universeUUID}`}>
-                {currentUniverse.data.name}
-              </Link>
+              <Link to={`/universes/${universeUUID}`}>{currentUniverse.data.name}</Link>
               <span>
                 <i className="fa fa-chevron-right"></i>
-                <Link to={`/universes/${currentUniverse.data.universeUUID}/tables`}>Tables</Link>
+                <Link to={`/universes/${universeUUID}/tables`}>Tables</Link>
                 <i className="fa fa-chevron-right"></i>
                 {tableName}
               </span>
@@ -158,6 +167,7 @@ export default class TableDetail extends Component {
             <UniverseStatusContainer
               currentUniverse={currentUniverse.data}
               showLabelText={true}
+              pendingTasks={pendingTasks}
               refreshUniverseData={this.getUniverseInfo}
             />
           </div>

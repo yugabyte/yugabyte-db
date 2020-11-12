@@ -44,7 +44,7 @@ export default class GFlagArrayComponent extends Component {
 
   handleEditorToggle = () => {
     this.setState({ contentEditable: !this.state.contentEditable });
-  }
+  };
 
   render() {
     const { fields, flagType, isReadOnly } = this.props;
@@ -61,9 +61,10 @@ export default class GFlagArrayComponent extends Component {
       <div className="form-field-grid gflag-array">
         {currentLabel && (
           <label>
-            {currentLabel} 
+            {currentLabel}
             {!isReadOnly && (
-              <i className={`gflag-array__action-btn fa ${contentEditable ? 'fa-list' : 'fa-edit'}`}
+              <i
+                className={`gflag-array__action-btn fa ${contentEditable ? 'fa-list' : 'fa-edit'}`}
                 onClick={this.handleEditorToggle}
               ></i>
             )}
@@ -104,7 +105,11 @@ export default class GFlagArrayComponent extends Component {
                     className="form-right-control"
                     style={isReadOnly ? {} : { marginRight: -10 }}
                   >
-                    {isReadOnly ? <span /> : <YBRemoveRowButton onClick={() => self.removeRow(idx)} />}
+                    {isReadOnly ? (
+                      <span />
+                    ) : (
+                      <YBRemoveRowButton onClick={() => self.removeRow(idx)} />
+                    )}
                   </FlexShrink>
                 </FlexContainer>
               );
@@ -115,7 +120,7 @@ export default class GFlagArrayComponent extends Component {
               </Col>
             </Row>
           </Fragment>
-        )}        
+        )}
       </div>
     );
   }

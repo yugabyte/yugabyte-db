@@ -88,6 +88,7 @@ class UniverseDetail extends Component {
         uuid = this.props.universeUUID;
       }
       this.props.getUniverseInfo(uuid);
+      this.props.fetchCurrentUniversePendingTasks(uuid);
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
         // Get alerts instead of Health
@@ -184,6 +185,7 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal },
       universe,
       tasks,
+      tasks: { universesPendingTasks },
       universe: { currentUniverse },
       location: { query, pathname },
       showSoftwareUpgradesModal,
@@ -206,10 +208,10 @@ class UniverseDetail extends Component {
       pathname.indexOf('edit') < 0
         ? 'Create'
         : this.props.params.type
-          ? this.props.params.type === 'primary'
-            ? 'Edit'
-            : 'Async'
-          : 'Edit';
+        ? this.props.params.type === 'primary'
+          ? 'Edit'
+          : 'Async'
+        : 'Edit';
 
     if (pathname === '/universes/create') {
       return <UniverseFormContainer type="Create" />;
@@ -240,6 +242,9 @@ class UniverseDetail extends Component {
     if (getPromiseState(currentUniverse).isError()) {
       return <YBErrorIndicator type="universe" uuid={uuid} />;
     }
+
+    const getPendingTasks =
+      getPromiseState(universesPendingTasks).isSuccess() && universesPendingTasks.data[uuid];
 
     const width = this.state.dimensions.width;
     const universeInfo = currentUniverse.data;
@@ -319,10 +324,9 @@ class UniverseDetail extends Component {
           </Tab.Pane>
         ),
 
-
         isNotHidden(currentCustomer.data.features, 'universes.details.queries') && (
           <Tab.Pane
-            eventKey={"queries"}
+            eventKey={'queries'}
             tabtitle="Queries"
             key="queries-tab"
             mountOnEnter={true}
@@ -367,33 +371,32 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-          isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
-            <Tab.Pane
-              eventKey={'backups'}
-              tabtitle="Backups"
-              key="backups-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
-            >
-              <ListBackupsContainer currentUniverse={currentUniverse.data} />
-            </Tab.Pane>
-          ),
+            isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
+              <Tab.Pane
+                eventKey={'backups'}
+                tabtitle="Backups"
+                key="backups-tab"
+                mountOnEnter={true}
+                unmountOnExit={true}
+                disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
+              >
+                <ListBackupsContainer currentUniverse={currentUniverse.data} />
+              </Tab.Pane>
+            ),
 
-          isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
-            <Tab.Pane
-              eventKey={'health'}
-              tabtitle="Health"
-              key="health-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
-            >
-              <UniverseHealthCheckList universe={universe} currentCustomer={currentCustomer} />
-            </Tab.Pane>
-          )
-        ]
-      )
+            isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
+              <Tab.Pane
+                eventKey={'health'}
+                tabtitle="Health"
+                key="health-tab"
+                mountOnEnter={true}
+                unmountOnExit={true}
+                disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
+              >
+                <UniverseHealthCheckList universe={universe} currentCustomer={currentCustomer} />
+              </Tab.Pane>
+            )
+          ])
     ].filter((element) => element);
     const currentBreadCrumb = (
       <div className="detail-label-small">
@@ -422,6 +425,7 @@ class UniverseDetail extends Component {
           <UniverseStatusContainer
             currentUniverse={currentUniverse.data}
             showLabelText={true}
+            pendingTasks={getPendingTasks}
             refreshUniverseData={this.getUniverseInfo}
           />
         </div>
@@ -457,17 +461,17 @@ class UniverseDetail extends Component {
                     currentCustomer.data.features,
                     'universes.details.overview.editUniverse'
                   ) && (
-                  <YBMenuItem
-                    eventKey="2"
-                    to={`/universes/${uuid}/edit/primary`}
-                    availability={getFeatureState(
-                      currentCustomer.data.features,
-                      'universes.details.overview.editUniverse'
-                    )}
-                  >
-                    <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
-                  </YBMenuItem>
-                )}
+                    <YBMenuItem
+                      eventKey="2"
+                      to={`/universes/${uuid}/edit/primary`}
+                      availability={getFeatureState(
+                        currentCustomer.data.features,
+                        'universes.details.overview.editUniverse'
+                      )}
+                    >
+                      <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
+                    </YBMenuItem>
+                  )}
                 <YBMenuItem
                   eventKey="4"
                   onClick={showGFlagsModal}

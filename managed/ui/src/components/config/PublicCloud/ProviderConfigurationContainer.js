@@ -25,9 +25,9 @@ import { openDialog, closeDialog } from '../../../actions/modal';
 import {
   fetchTaskProgress,
   fetchTaskProgressResponse,
-  fetchCustomerTasks,
-  fetchCustomerTasksFailure,
-  fetchCustomerTasksSuccess
+  fetchProviderTasks,
+  fetchProviderTasksSuccess,
+  fetchProviderTasksFailure
 } from '../../../actions/tasks';
 import {
   fetchHostInfo,
@@ -163,16 +163,17 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(fetchTaskProgressResponse(response.payload));
       });
     },
-
-    fetchCustomerTasksList: () => {
-      dispatch(fetchCustomerTasks()).then((response) => {
+    
+    fetchLatestProviderTask: (providerUUID) => {
+      dispatch(fetchProviderTasks(providerUUID)).then((response) => {
         if (response.payload.status === 200) {
-          dispatch(fetchCustomerTasksSuccess(response.payload));
+          dispatch(fetchProviderTasksSuccess(response.payload));
         } else {
-          dispatch(fetchCustomerTasksFailure(response.payload));
-        }
+          dispatch(fetchProviderTasksFailure(response.payload));
+        }        
       });
     },
+
     showModal: (modalName) => {
       dispatch(openDialog(modalName));
     },

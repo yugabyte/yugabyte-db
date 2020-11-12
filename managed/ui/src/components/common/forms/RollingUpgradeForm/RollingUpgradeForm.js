@@ -119,7 +119,7 @@ export default class RollingUpgradeForm extends Component {
     ) {
       this.props.fetchCurrentUniverse(universeUUID);
       this.props.fetchUniverseMetadata();
-      this.props.fetchCustomerTasks();
+      this.props.getAllUniversePendingTasks();
       this.props.fetchUniverseTasks(universeUUID);
     }
 
@@ -354,12 +354,12 @@ export default class RollingUpgradeForm extends Component {
         {formBody}
         {getPromiseState(universe.rollingUpgrade).isError() &&
           isNonEmptyString(universe.rollingUpgrade.error) && (
-          <Alert bsStyle={'danger'} variant={'danger'}>
-            Certificate adding has been failed:
-            <br />
-            {JSON.stringify(universe.rollingUpgrade.error)}
-          </Alert>
-        )}
+            <Alert bsStyle={'danger'} variant={'danger'}>
+              Certificate adding has been failed:
+              <br />
+              {JSON.stringify(universe.rollingUpgrade.error)}
+            </Alert>
+          )}
       </YBModal>
     ) : (
       <YBModal
@@ -373,12 +373,12 @@ export default class RollingUpgradeForm extends Component {
         {formBody}
         {getPromiseState(universe.rollingUpgrade).isError() &&
           isNonEmptyString(universe.rollingUpgrade.error) && (
-          <Alert bsStyle={'danger'} variant={'danger'}>
-            Certificate adding has been failed:
-            <br />
-            {JSON.stringify(universe.rollingUpgrade.error)}
-          </Alert>
-        )}
+            <Alert bsStyle={'danger'} variant={'danger'}>
+              Certificate adding has been failed:
+              <br />
+              {JSON.stringify(universe.rollingUpgrade.error)}
+            </Alert>
+          )}
       </YBModal>
     );
   }

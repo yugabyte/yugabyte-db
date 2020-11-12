@@ -11,7 +11,9 @@ import {
 import {
   fetchUniverseInfo,
   fetchUniverseInfoResponse,
-  resetUniverseInfo
+  resetUniverseInfo,
+  fetchUniversePendingTasks,
+  fetchUniversePendingTasksResponse
 } from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
@@ -19,6 +21,12 @@ const mapDispatchToProps = (dispatch) => {
     fetchUniverseDetail: (universeUUID) => {
       dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
         dispatch(fetchUniverseInfoResponse(response.payload));
+      });
+    },
+
+    fetchCurrentUniversePendingTasks: (universeUUID) => {
+      dispatch(fetchUniversePendingTasks(universeUUID)).then((response) => {
+        dispatch(fetchUniversePendingTasksResponse(response.payload));
       });
     },
 
@@ -46,7 +54,8 @@ function mapStateToProps(state) {
   return {
     customer: state.customer,
     universe: state.universe,
-    tables: state.tables
+    tables: state.tables,
+    universesPendingTasks: state.universesPendingTasks
   };
 }
 

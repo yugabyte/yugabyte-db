@@ -11,12 +11,12 @@ import {
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    fetchCustomerTasks: () => {
-      dispatch(fetchCustomerTasks()).then((response) => {
+    fetchCustomerTasks: (page, limit) => {
+      return dispatch(fetchCustomerTasks(page, limit)).then((response) => {
         if (!response.error) {
-          dispatch(fetchCustomerTasksSuccess(response.payload));
+          return dispatch(fetchCustomerTasksSuccess(response.payload));
         } else {
-          dispatch(fetchCustomerTasksFailure(response.payload));
+          return dispatch(fetchCustomerTasksFailure(response.payload));
         }
       });
     },

@@ -1,3 +1,38 @@
 /* Copyright (c) YugaByte, Inc. */
 
 @import '../../../_style/colors.scss';
+
+.pagination-panel {
+  padding: 0 15px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+
+  > * + * {
+    margin-left: 30px;
+  }
+
+  #pageDropDown {
+    padding: 8px 12px;
+
+    .caret {
+      margin-left: 4px;
+    }
+  }
+
+  &__results {
+    color: $YB_DARKER_GRAY;
+    font-weight: 500;
+    font-size: 14px;
+  }
+
+  &__page-size {
+    color: $YB_TEXT_BLACK;
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  .react-bs-table-sizePerPage-dropdown {
+    margin-left: 8px;
+  }
+}
