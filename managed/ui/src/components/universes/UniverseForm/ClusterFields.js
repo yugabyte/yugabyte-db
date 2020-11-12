@@ -1342,26 +1342,39 @@ export default class ClusterFields extends Component {
 
     {
       // Block scope for state variables
-      const { enableClientToNodeEncrypt, enableNodeToNodeEncrypt } = this.state;
-      const tlsCertOptions = [
-        <option key={'cert-option-0'} value={''}>
-          Create new certificate
-        </option>
-      ];
-      if (!_.isEmpty(this.props.userCertificates.data)) {
-        this.props.userCertificates.data.forEach((cert, index) => {
-          tlsCertOptions.push(
-            <option key={`cert-option-${index + 1}`} value={cert.uuid}>
-              {cert.label}
-            </option>
-          );
-        });
-      }
+      const { enableClientToNodeEncrypt, enableNodeToNodeEncrypt } = this.state;      
       if (
         isDefinedNotNull(currentProvider) &&
         (enableClientToNodeEncrypt || enableNodeToNodeEncrypt)
       ) {
-        const isSelectReadOnly = this.props.type === 'Edit';
+        const tlsCertOptions = [];
+        if (this.props.type === 'Create') {
+          tlsCertOptions.push(<option key={'cert-option-0'} value={''}>
+            Create new certificate
+          </option>);
+        }
+
+        if (!_.isEmpty(this.props.userCertificates.data)) {
+          this.props.userCertificates.data.forEach((cert, index) => {            
+            if (this.props.type === 'Create') {
+              const disableOnPremCustomCerts = currentProvider.code !== 'onprem' && cert.certType === 'CustomCertHostPath';
+              tlsCertOptions.push(
+                <option key={`cert-option-${index + 1}`} value={cert.uuid} disabled={disableOnPremCustomCerts}>
+                  {cert.label}
+                </option>
+              );
+            } else {
+              const isCustomCertAndOnPrem = currentProvider.code === 'onprem' && cert.certType === 'CustomCertHostPath';
+              tlsCertOptions.push(
+                <option key={`cert-option-${index + 1}`} value={cert.uuid} disabled={!isCustomCertAndOnPrem}>
+                  {cert.label}
+                </option>
+              );
+            }            
+          });
+        }      
+
+        const isSelectReadOnly = this.props.type === 'Edit' && currentProvider.code !== 'onprem';
         selectTlsCert = (
           <Field
             name={`${clusterType}.tlsCertificateId`}

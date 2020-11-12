@@ -17,8 +17,6 @@ export const FETCH_COLUMN_TYPES_SUCCESS = 'FETCH_COLUMN_TYPES_SUCCESS';
 export const FETCH_COLUMN_TYPES_FAILURE = 'FETCH_COLUMN_TYPES_FAILURE';
 export const BULK_IMPORT = 'BULK_IMPORT';
 export const BULK_IMPORT_RESPONSE = 'BULK_IMPORT_RESPONSE';
-export const DROP_TABLE = 'DROP_TABLE';
-export const DROP_TABLE_RESPONSE = 'DROP_TABLE_RESPONSE';
 export const CREATE_BACKUP_TABLE = 'CREATE_BACKUP_TABLE';
 export const CREATE_BACKUP_TABLE_RESPONSE = 'CREATE_BACKUP_TABLE_RESPONSE';
 export const RESTORE_TABLE_BACKUP = 'RESTORE_TABLE_BACKUP';
@@ -123,22 +121,6 @@ export function bulkImport(universeUUID, tableUUID, formValues) {
 export function bulkImportResponse(response) {
   return {
     type: BULK_IMPORT_RESPONSE,
-    payload: response
-  };
-}
-
-export function dropTable(universeUUID, tableUUID) {
-  const baseUrl = getCustomerEndpoint();
-  const request = axios.delete(`${baseUrl}/universes/${universeUUID}/tables/${tableUUID}`);
-  return {
-    type: DROP_TABLE,
-    payload: request
-  };
-}
-
-export function dropTableResponse(response) {
-  return {
-    type: DROP_TABLE_RESPONSE,
     payload: response
   };
 }

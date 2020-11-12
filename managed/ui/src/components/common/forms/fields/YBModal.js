@@ -88,7 +88,10 @@ export default class YBModal extends Component {
 }
 
 YBModal.propTypes = {
-  title: PropTypes.string.isRequired,
+  title: PropTypes.oneOfType([
+    PropTypes.string,
+    PropTypes.object
+  ]).isRequired,
   visible: PropTypes.bool,
   size: PropTypes.oneOf(['large', 'small', 'xsmall']),
   formName: PropTypes.string,

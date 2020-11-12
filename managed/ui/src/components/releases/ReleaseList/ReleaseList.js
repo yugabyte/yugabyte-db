@@ -85,6 +85,17 @@ export default class ReleaseList extends Component {
     }
   };
 
+  formatReleaseState = (item) => {
+    switch (item) {
+      case 'ACTIVE':
+        return <div className="state-pill state-pill--success">{item}</div>;
+      case 'DISABLED':
+        return <div className="state-pill state-pill--danger">{item}</div>;
+      default:
+        return <div className="state-pill state-pill--secondary">{item}</div>;
+    }
+  }
+
   render() {
     const {
       releases,
@@ -100,7 +111,7 @@ export default class ReleaseList extends Component {
     let releaseStrList = [];
     if (searchResults != null) {
       releaseStrList = searchResults;
-    } else {
+    } else if (releases.data) {
       releaseStrList = Object.keys(releases.data).sort(sortVersion);
     }
     const releaseInfos = releaseStrList.map((version) => {
@@ -169,7 +180,7 @@ export default class ReleaseList extends Component {
                 <YBButton
                   btnText={'Refresh'}
                   btnIcon={'fa fa-refresh'}
-                  btnClass={'btn btn-primary'}
+                  btnClass={'btn btn-orange'}
                   onClick={this.refreshRelease}
                   disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
                 />
@@ -196,9 +207,9 @@ export default class ReleaseList extends Component {
             <TableHeaderColumn
               dataField="version"
               isKey={true}
-              width="100"
               columnClassName="no-border name-column"
               className="no-border"
+              width="120px"
             >
               Version
             </TableHeaderColumn>
@@ -207,6 +218,7 @@ export default class ReleaseList extends Component {
               tdStyle={{ whiteSpace: 'normal' }}
               columnClassName="no-border name-column"
               className="no-border"
+              width="550px"
             >
               File Path
             </TableHeaderColumn>
@@ -215,6 +227,7 @@ export default class ReleaseList extends Component {
               tdStyle={{ whiteSpace: 'normal' }}
               columnClassName="no-border "
               className="no-border"
+              width="120px"
             >
               Registry Path
             </TableHeaderColumn>
@@ -228,9 +241,11 @@ export default class ReleaseList extends Component {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="state"
-              width="150"
+              dataFormat={this.formatReleaseState}
               columnClassName="no-border name-column"
               className="no-border"
+              width="150px"
+              dataAlign="center"
             >
               State
             </TableHeaderColumn>
@@ -239,6 +254,7 @@ export default class ReleaseList extends Component {
               dataFormat={formatActionButtons}
               columnClassName={'yb-actions-cell'}
               className="no-border"
+              width="120px"
             >
               Actions
             </TableHeaderColumn>

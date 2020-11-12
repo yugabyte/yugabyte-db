@@ -14,8 +14,6 @@ import {
   FETCH_COLUMN_TYPES_FAILURE,
   BULK_IMPORT,
   BULK_IMPORT_RESPONSE,
-  DROP_TABLE,
-  DROP_TABLE_RESPONSE,
   CREATE_BACKUP_TABLE,
   CREATE_BACKUP_TABLE_RESPONSE,
   RESTORE_TABLE_BACKUP,
@@ -29,7 +27,6 @@ const INITIAL_STATE = {
   columnDataTypes: {},
   currentTableView: 'list',
   bulkImport: getInitialState({}),
-  dropTable: getInitialState({}),
   createBackup: getInitialState({}),
   restoreBackup: getInitialState({})
 };
@@ -73,10 +70,6 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'bulkImport', {});
     case BULK_IMPORT_RESPONSE:
       return setPromiseResponse(state, 'bulkImport', action);
-    case DROP_TABLE:
-      return setLoadingState(state, 'dropTable', {});
-    case DROP_TABLE_RESPONSE:
-      return setPromiseResponse(state, 'dropTable', action);
     case CREATE_BACKUP_TABLE:
       return setLoadingState(state, 'createBackup', {});
     case CREATE_BACKUP_TABLE_RESPONSE:

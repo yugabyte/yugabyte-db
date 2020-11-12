@@ -12,6 +12,7 @@ import { isNotHidden, isDisabled } from '../../utils/LayoutUtils';
 
 import './certificates.scss';
 import { AddCertificateFormContainer } from './';
+import { CertificateDetails } from './CertificateDetails';
 import { YBFormInput } from '../common/forms/fields';
 
 const validationSchema = Yup.object().shape({
@@ -64,7 +65,7 @@ class DownloadCertificateForm extends Component {
         submitLabel={'Download'}
       >
         <div className="info-text">
-          Clicking download with generate <code>.crt</code> & <code>.key</code> files
+          Clicking download will generate <code>.crt</code> & <code>.key</code> files
         </div>
         <Row>
           <Col lg={5}>
@@ -116,18 +117,31 @@ class Certificates extends Component {
   };
 
   formatActionButtons = (cell, row) => {
+    const downloadDisabled = row.type !== 'SelfSigned';
     const payload = {
       name: row.name,
       uuid: row.uuid,
     };
-
+    // TODO: Replace dropdown option + modal with a side panel
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
+        <MenuItem
+          onClick={() => {
+            if (row.customCertInfo) {
+              Object.assign(payload, row.customCertInfo);
+            }
+            this.setState({ selectedCert: payload });            
+            this.props.showCertificateDetailsModal();
+          }}
+        >
+          <i className="fa fa-info-circle"></i> Details
+        </MenuItem>
         <MenuItem
           onClick={() => {
             this.setState({ selectedCert: payload });
             this.props.showDownloadCertificateModal();
           }}
+          disabled={downloadDisabled}
         >
           <i className="fa fa-download"></i> Download YSQL Cert
         </MenuItem>
@@ -135,6 +149,7 @@ class Certificates extends Component {
           onClick={() => {
             this.downloadRootCertificate(row);
           }}
+          disabled={downloadDisabled}
         >
           <i className="fa fa-download"></i> Download Root CA Cert
         </MenuItem>
@@ -153,12 +168,14 @@ class Certificates extends Component {
     const certificateArray = getPromiseState(userCertificates).isSuccess()
       ? userCertificates.data.map((cert) => {
         return {
+          type: cert.certType,
           uuid: cert.uuid,
           name: cert.label,
           expiryDate: cert.expiryDate,
           certificate: cert.certificate,
           creationTime: cert.startDate,
-          privateKey: cert.privateKey
+          privateKey: cert.privateKey,
+          customCertInfo: cert.customCertInfo
         };
       })
       : [];
@@ -191,13 +208,14 @@ class Certificates extends Component {
                 className="bs-table-certs"
                 trClassName="tr-cert-name"
               >
-                <TableHeaderColumn dataField="name" isKey={true}>
+                <TableHeaderColumn dataField="name" width="300px" isKey={true}>
                   Name
                 </TableHeaderColumn>
                 <TableHeaderColumn
                   dataField="creationTime"
                   dataAlign="left"
                   dataFormat={this.getDateColumn('creationTime')}
+                  width="120px"
                 >
                   Creation Time
                 </TableHeaderColumn>
@@ -205,17 +223,19 @@ class Certificates extends Component {
                   dataField="expiryDate"
                   dataAlign="left"
                   dataFormat={this.getDateColumn('expiryDate')}
+                  width="120px"
                 >
                   Expiration
                 </TableHeaderColumn>
-                <TableHeaderColumn dataField="certificate" dataAlign="left">
+                <TableHeaderColumn dataField="certificate" width="240px" dataAlign="left">
                   Certificate
                 </TableHeaderColumn>
-                <TableHeaderColumn dataField="privateKey" headerAlign="left" dataAlign="left">
+                <TableHeaderColumn dataField="privateKey" width="240px" headerAlign="left" dataAlign="left">
                   Private Key
                 </TableHeaderColumn>
                 <TableHeaderColumn
                   dataField="actions"
+                  width="120px"
                   columnClassName="yb-actions-cell"
                   dataFormat={this.formatActionButtons}
                 >
@@ -226,6 +246,11 @@ class Certificates extends Component {
                 visible={showModal && visibleModal === 'addCertificateModal'}
                 onHide={this.props.closeModal}
                 fetchCustomerCertificates={this.props.fetchCustomerCertificates}
+              />
+              <CertificateDetails
+                visible={showModal && visibleModal === 'certificateDetailsModal'}
+                onHide={this.props.closeModal}
+                certificate={this.state.selectedCert}
               />
               <DownloadCertificateForm
                 handleSubmit={this.downloadYCQLCertificates}

@@ -188,8 +188,8 @@
 }
 
 .az-table-container {
-  .row {
-    padding-bottom: 6px;
+  .az-selector-label ~ div {
+    margin-bottom: 6px;
   }
 
   h4 {
@@ -199,11 +199,8 @@
   label {
     display: block;
     margin-bottom: 0;
-
-    .yb-input-checkbox {
-      width: 16px;
-      float: right;
-    }
+    height: 100%;
+    align-items: center;
   }
   .form-right-control {
     width: 65px;
@@ -213,6 +210,8 @@
       max-width: fit-content;
       width: fit-content;
       margin: 0 auto;
+      display: flex;
+      align-items: center;
     }
   }
 }
