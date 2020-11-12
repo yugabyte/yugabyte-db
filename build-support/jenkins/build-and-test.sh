@@ -426,7 +426,7 @@ if [[ $YB_BUILD_CPP == "1" ]] && ! which ctest >/dev/null; then
   fatal "ctest not found, won't be able to run C++ tests"
 fi
 
-if [[ && $YB_PHASE =~ build ]]; then
+if [[ $YB_PHASE =~ build ]]; then
   export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
   
   # -------------------------------------------------------------------------------------------------
