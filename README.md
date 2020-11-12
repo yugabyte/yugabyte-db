@@ -118,13 +118,13 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
     <td> &#x2611;
    </td>
-   <td> &#9746;
+   <td> 
    </td>
-   <td> &#9746;
+   <td> 
    </td>
    <td> &#x2611;
    </td>
-   <td>&#x2612;
+   <td> 
    </td>
   </tr>
   <tr>
@@ -132,13 +132,13 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
-   <td>&#x2612;
+   <td>
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
   </tr>
   <tr>
@@ -146,11 +146,11 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
-   <td>&#x2612;
+   <td>
    </td>
-   <td>&#x2612;
+   <td>
    </td>
    <td>&#x2611;
    </td>
@@ -164,7 +164,7 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
    <td>&#x2611;
    </td>
@@ -178,7 +178,7 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
    <td>&#x2611;
    </td>
@@ -188,13 +188,13 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
-   <td>&#x2612;
+   <td>
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
   </tr>
   <tr>
@@ -202,13 +202,13 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
-   <td>&#x2612;
+   <td>
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
   </tr>
   <tr>
@@ -216,13 +216,13 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
-   <td>&#x2612;
+   <td>
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
   </tr>
   <tr>
@@ -230,13 +230,13 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
-   <td>&#x2612;
+   <td>
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
   </tr>
   <tr>
@@ -244,13 +244,13 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
-   <td>&#x2612;
+   <td>
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
   </tr>
   <tr>
@@ -258,13 +258,13 @@ The table below shows set up options for each configuration parameter and whethe
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
-   <td>&#x2612;
+   <td>
    </td>
    <td>&#x2611;
    </td>
-   <td>&#x2612;
+   <td>
    </td>
   </tr>
 </table>
