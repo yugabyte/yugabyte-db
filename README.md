@@ -116,155 +116,155 @@ The table below shows set up options for each configuration parameter and whethe
   <tr>
    <td>pg_stat_monitor.pgsm_max
    </td>
-   <td>YES
+    <td> &#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_query_max_len
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_enable
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_track_utility
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_normalized_query
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_max_buckets
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_bucket_time
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_object_cache
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_respose_time_lower_bound
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_respose_time_step
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
   </tr>
   <tr>
    <td>pg_stat_monitor.pgsm_query_shared_buffer
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
-   <td>YES
+   <td>&#x2611;
    </td>
-   <td>NO
+   <td>&#x2612;
    </td>
   </tr>
 </table>
