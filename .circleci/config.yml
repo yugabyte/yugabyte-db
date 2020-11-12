@@ -106,7 +106,7 @@ jobs:
           name: Run Java Tests
           command: |
             export BUILD_TYPE=<< parameters.flavor >>
-            circleci tests split build/<< parameters.flavor >>-clang-dynamic/java_test_list.txt
+            circleci tests split build/<< parameters.flavor >>-clang-dynamic-ninja/java_test_list.txt
             ./build-support/jenkins/run_java_tests.sh
 
       - store_artifacts:
