@@ -264,7 +264,8 @@ class StorageConfiguration extends Component {
       return (
         <div className="provider-config-container">
           <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
-            {error && <Alert bsStyle="danger">{error}</Alert>}
+            {error && <Alert bsStyle="danger">Operation has failed:<br />
+              {JSON.stringify(error)}</Alert>}
             <YBTabsPanel
               defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
               activeTab={activeTab}
