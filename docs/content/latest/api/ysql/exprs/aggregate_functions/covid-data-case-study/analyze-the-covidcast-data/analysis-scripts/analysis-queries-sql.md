@@ -36,7 +36,7 @@ where survey_date = to_date('2020-10-21', 'yyyy-mm-dd')
 order by 1;
 
 \t on
-select 'Symptoms by state, overall average';
+select 'Symptoms by state, overall average.';
 \t off
 select
   round(avg(mask_wearing_pct))  as "% wearing mask",
@@ -47,7 +47,7 @@ group by state
 order by 1;
 
 \t on
-select 'Daily regression analysis report';
+select 'Daily regression analysis report.';
 \t off
 with a as (
   select
@@ -70,7 +70,7 @@ from a
 order by survey_date;
 
 \t on
-select 'Regression analysis report for survey date = 2020-10-21';
+select 'Regression analysis report for survey date = 2020-10-21.';
 \t off
 with a as (
   select
