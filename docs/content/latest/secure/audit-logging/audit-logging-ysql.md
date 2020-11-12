@@ -43,18 +43,18 @@ The goal of the YSQL audit logging is to provide YugabyteDB users with capabilit
 
 This can be done in one of the following ways.
 
-* Using `--ysql_pg_conf` TServer flag
+##### Option A: Using `--ysql_pg_conf` TServer flag
 
-    1. Database administrators can leverage `ysql_pg_conf` to set appropriate values for pgAudit configuration.
-    2. Eg. `ysql_pg_conf="pgaudit.log='DDL',pgaudit.log_level=notice"`
-    3. These configuration values are set when the YugabyteDB cluster is created and hence are picked up for all users and for every session.
+1. Database administrators can leverage `ysql_pg_conf` to set appropriate values for pgAudit configuration.
+2. Eg. `ysql_pg_conf="pgaudit.log='DDL',pgaudit.log_level=notice"`
+3. These configuration values are set when the YugabyteDB cluster is created and hence are picked up for all users and for every session.
 
 
-* Using YugabyteDB `SET` command
+##### Option B: Using YugabyteDB `SET` command
 
-    1. An alternative suggestion is to use the YB `SET` command, which essentially changes the run-time configuration parameters.
-    2. Eg. `SET pgaudit.log='DDL'`
-    3. `SET` only affects the value used by the current session. A detailed description of the set command is illustrated in this [webpage](https://www.postgresql.org/docs/8.3/sql-set.html). 
+1. An alternative suggestion is to use the YB `SET` command, which essentially changes the run-time configuration parameters.
+2. Eg. `SET pgaudit.log='DDL'`
+3. `SET` only affects the value used by the current session. A detailed description of the set command is illustrated in this [webpage](https://www.postgresql.org/docs/8.3/sql-set.html). 
 
 
 ### Step 2. Load the `pgAudit` extension
