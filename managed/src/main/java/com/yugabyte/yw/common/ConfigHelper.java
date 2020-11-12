@@ -109,7 +109,7 @@ public class ConfigHelper {
         continue;
       }
       Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
-      Map<String, Object> config = (HashMap<String, Object>) yaml.load(
+      Map<String, Object> config = yaml.load(
         app.resourceAsStream(type.getConfigFile())
       );
       loadConfigToDB(type, config);
