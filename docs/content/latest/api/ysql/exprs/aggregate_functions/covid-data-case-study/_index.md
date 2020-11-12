@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Overview
+## Overview of the data and the code
 
 [Carnegie Mellon’s COVIDcast](https://covidcast.cmu.edu/) is an academic project that tracks real-time coronavirus statistics. The team uses various data collection methods and exposes data for download in various formats. This case study uses data that was collected using daily Facebook surveys with the aim of examining the possible correlation between wearing a face-mask and showing symptoms like those of SARS-CoV-2—hereinafter COVID. Specifically, three so-called signals are recorded.
 
@@ -70,3 +70,11 @@ After unzipping it on a convenient new directory, you'll see a `README.txt`. It 
 
 Simply start it in ysqlsh. You can run it time and again. It always finishes silently. You can see the reports that it produces on the _"analysis-results"_ directory and confirm that the the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.
 {{< /tip >}}
+
+## Conclusion
+
+The function [`regr_r2()`](../../../function-syntax-semantics/linear-regression/regr/#regr-r2) implements a measure that the literature refers to as "R-squared". When the "R-squared" value is _0.7_, it means that _70%_ of the relationship of the putative _dependent_ variable (incidence of COVID-like symptoms) to the putative _independent_ variable (mask-wearing) is explained by a simple _"y = m*x + c"_ linear dependence—and that the remaining _30%_ is unexplained. A value greater than about _60%_ is generally taken to indicate that the putative _dependent_ variable really does depend upon the putative _independent_ variable.
+
+The downloaded COVIDcast data spanned a fifty day period (from 13-Sep-2020 through 1-Nov-2020). The value of "R-squared" was computed, in turn, for each of these days. It was greater than or equal to _60%_ on about _80%_ of these days.
+
+This outcome means that empirical evidence supports the claim that wearing a mask does indeed inhibit the spread of COVID.

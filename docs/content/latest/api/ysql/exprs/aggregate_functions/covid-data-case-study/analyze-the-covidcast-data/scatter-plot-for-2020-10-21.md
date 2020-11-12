@@ -148,3 +148,6 @@ The emergent values for the slope and intercept are very close to the values (_-
 Here is the resulting plot
 
 ![Scatter-plot for 2020-10-21](/images/api/ysql/exprs/aggregate_functions/covid-data-case-study/scatter-plot-synthetic-data.jpg):
+
+**Note:** The `normal_rand()` function produces a different set of pseudorandomly distributed values each time that  [`synthetic-data.sql`](../analysis-scripts/synthetic-data-sql/) is run. But the overall shape of the scatter-plot will remain the same.
+
