@@ -19,6 +19,18 @@
   }
 }
 
+.onprem-node-instances__title {
+  margin-top: 20px;
+}
+
+.onprem-config__json {
+  background: $YB_CODE_BACKGROUND;
+  border: 1px solid $YB_GRAY;
+  border-radius: 7px;
+  padding: 0 15px;
+  margin: 15px 0;
+}
+
 .node-link-container {
   cursor: pointer;
   margin-left: 8px;
