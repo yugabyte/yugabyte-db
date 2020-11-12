@@ -57,6 +57,7 @@ class UniverseForm extends Component {
       ...initialState,
       hasFieldChanged: true,
       disableSubmit: false,
+
       currentView: props.type === 'Async' ? 'Async' : 'Primary'
     };
   }
@@ -114,31 +115,33 @@ class UniverseForm extends Component {
     this.props.reset();
   };
 
-  handleSubmitButtonClick = () => {
+  handleSubmitButtonClick = async () => {
     const { type } = this.props;
-    setTimeout(this.props.fetchCustomerTasks, 2000);
-    if (type === 'Create') {
-      this.createUniverse().then(() => {
-        this.transitionToDefaultRoute();
-      });
-    } else if (type === 'Async') {
-      const {
-        universe: {
-          currentUniverse: {
-            data: { universeDetails }
+    try {
+      if (type === 'Create') {
+        await this.createUniverse();
+      } else if (type === 'Async') {
+        const {
+          universe: {
+            currentUniverse: {
+              data: { universeDetails }
+            }
           }
+        } = this.props;
+        const readOnlyCluster = universeDetails && getReadOnlyCluster(universeDetails.clusters);
+        if (isNonEmptyObject(readOnlyCluster)) {
+          await this.editReadReplica();
+        } else {
+          await this.addReadReplica();
         }
-      } = this.props;
-      const readOnlyCluster = universeDetails && getReadOnlyCluster(universeDetails.clusters);
-      if (isNonEmptyObject(readOnlyCluster)) {
-        this.editReadReplica();
       } else {
-        this.addReadReplica();
+        await this.editUniverse();
       }
       this.transitionToDefaultRoute();
-    } else {
-      this.editUniverse();
-      this.transitionToDefaultRoute();
+      this.props.getAllUniversePendingTasks();
+    } catch (error) {
+      // TODO: Show alert or feedback to user
+      console.error(error);
     }
   };
 
@@ -235,7 +238,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitEditUniverse(this.getFormPayload(), universeUUID);
+    return this.props.submitEditUniverse(this.getFormPayload(), universeUUID);
   };
 
   addReadReplica = () => {
@@ -246,7 +249,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitAddUniverseReadReplica(this.getFormPayload(), universeUUID);
+    return this.props.submitAddUniverseReadReplica(this.getFormPayload(), universeUUID);
   };
 
   editReadReplica = () => {
@@ -257,7 +260,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
+    return this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
   };
 
   UNSAFE_componentWillMount() {
@@ -690,7 +693,7 @@ class UniverseForm extends Component {
       updateTaskParams: this.updateTaskParams,
       reset: this.props.reset,
       fetchUniverseMetadata: this.props.fetchUniverseMetadata,
-      fetchCustomerTasks: this.props.fetchCustomerTasks,
+      getAllUniversePendingTasks: this.props.getAllUniversePendingTasks,
       getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
       fetchCurrentUniverse: this.props.fetchCurrentUniverse,
       location: this.props.location
@@ -706,12 +709,12 @@ class UniverseForm extends Component {
     // check nodes if all live nodes is going to be removed (full move)
     const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess()
       ? universeConfigTemplate.data.nodeDetailsSet.filter(
-        (node) =>
-          node.nodeName &&
+          (node) =>
+            node.nodeName &&
             (type === 'Async'
               ? node.nodeName.includes('readonly')
               : !node.nodeName.includes('readonly'))
-      )
+        )
       : [];
     const formChangedOrInvalid = hasFieldChanged || disableSubmit;
     let submitControl = (

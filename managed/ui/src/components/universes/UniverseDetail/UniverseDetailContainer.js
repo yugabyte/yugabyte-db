@@ -8,7 +8,9 @@ import {
   resetUniverseInfo,
   closeUniverseDialog,
   getHealthCheck,
-  getHealthCheckResponse
+  getHealthCheckResponse,
+  fetchUniversePendingTasks,
+  fetchUniversePendingTasksResponse
 } from '../../../actions/universe';
 
 import { getAlerts, getAlertsSuccess, getAlertsFailure } from '../../../actions/customers';
@@ -39,6 +41,12 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(fetchUniverseTablesSuccess(response.payload));
         }
+      });
+    },
+
+    fetchCurrentUniversePendingTasks: (universeUUID) => {
+      dispatch(fetchUniversePendingTasks(universeUUID)).then((response) => {
+        dispatch(fetchUniversePendingTasksResponse(response.payload));
       });
     },
 
