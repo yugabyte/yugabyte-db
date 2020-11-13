@@ -65,6 +65,13 @@ Add the specified column with the specified data type and constraint.
 
 Rename the table to the specified table name.
 
+{{< note title="Note" >}}
+
+Renaming a table is a non blocking metadata change operation.
+
+{{< /note >}}
+
+
 #### DROP [ COLUMN ] *column_name* [ RESTRICT | CASCADE ]
 
 Drop the named column from the table. 
