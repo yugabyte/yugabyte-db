@@ -139,6 +139,9 @@ Status TSDescriptor::RegisterUnlocked(
   local_cloud_info_ = std::move(local_cloud_info);
   proxy_cache_ = proxy_cache;
 
+  capabilities_.clear();
+  capabilities_.insert(registration.capabilities().begin(), registration.capabilities().end());
+
   return Status::OK();
 }
 

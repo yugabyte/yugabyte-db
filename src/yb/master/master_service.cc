@@ -68,6 +68,14 @@ DEFINE_test_flag(bool, master_fail_transactional_tablet_lookups, false,
 DEFINE_double(master_slow_get_registration_probability, 0,
               "Probability of injecting delay in GetMasterRegistration.");
 
+DEFINE_int32(tablet_report_limit, 1000,
+             "Max Number of tablets to report during a single heartbeat. "
+             "If this is set to INT32_MAX, then heartbeat will report all dirty tablets.");
+TAG_FLAG(tablet_report_limit, advanced);
+
+DECLARE_CAPABILITY(TabletReportLimit);
+DECLARE_int32(heartbeat_rpc_timeout_ms);
+
 using namespace std::literals;
 
 namespace yb {
@@ -153,9 +161,6 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     rpc.RespondFailure(s);
   }
 
-  // TODO: KUDU-86 if something fails after this point the TS will not be able
-  //       to register again.
-
   // Look up the TS -- if it just registered above, it will be found here.
   // This allows the TS to register and tablet-report in the same RPC.
   TSDescriptorPtr ts_desc;
@@ -181,6 +186,11 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   ts_desc->set_num_live_replicas(req->num_live_tablets());
   ts_desc->set_leader_count(req->leader_count());
 
+  // Adjust the table report limit per heartbeat so this can be dynamically changed.
+  if (ts_desc->HasCapability(CAPABILITY_TabletReportLimit)) {
+    resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
+  }
+
   // Set the TServer metrics in TS Descriptor.
   if (req->has_metrics()) {
     ts_desc->UpdateMetrics(req->metrics());
@@ -196,26 +206,27 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   }
 
   if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
-    // TODO(tsplit): for now we only do splitting in case there is no full tablet report to
-    // minimize probability of TSHeartbeat RPC timeout and retry.
-    // This will be improved to handle split retries appropriately and then we won't need that
-    // check.
-    for (const auto& tablet : req->tablets_for_split()) {
-      VLOG(1) << "Got tablet to split: " << AsString(tablet);
-      const auto split_status = server_->catalog_manager()->SplitTablet(
-          tablet.tablet_id(), tablet.split_encoded_key(), tablet.split_partition_key());
-      if (!split_status.ok()) {
-        if (MasterError(split_status) == MasterErrorPB::REACHED_SPLIT_LIMIT) {
-          YB_LOG_EVERY_N_SECS(WARNING, 60 * 60) << split_status;
-        } else {
-          LOG(WARNING) << split_status;
+    // Only process split tablets if we have plenty of time to process the work (> 50% of timeout).
+    auto safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
+    if (rpc.GetClientDeadline() > safe_time_left) {
+      for (const auto& tablet : req->tablets_for_split()) {
+        VLOG(1) << "Got tablet to split: " << AsString(tablet);
+        const auto split_status = server_->catalog_manager()->SplitTablet(
+            tablet.tablet_id(), tablet.split_encoded_key(), tablet.split_partition_key());
+        if (!split_status.ok()) {
+          if (MasterError(split_status) == MasterErrorPB::REACHED_SPLIT_LIMIT) {
+            YB_LOG_EVERY_N_SECS(WARNING, 60 * 60) << split_status;
+          } else {
+            LOG(WARNING) << split_status;
+          }
         }
       }
     }
-  }
 
-  if (!ts_desc->has_tablet_report()) {
-    resp->set_needs_full_tablet_report(true);
+    // Only set once. It may take multiple heartbeats to receive a full tablet report.
+    if (!ts_desc->has_tablet_report()) {
+      resp->set_needs_full_tablet_report(true);
+    }
   }
 
   // Retrieve all the nodes known by the master.

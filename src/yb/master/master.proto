@@ -679,6 +679,10 @@ message TabletReportPB {
   // changes have not yet been reported to the master.
   // The first tablet report (non-incremental) is sequence number 0.
   required int32 sequence_number = 4;
+
+  // Number of tablets that could not be included in this heartbeat.
+  // If 0, then all tablets have been reported to the master.
+  optional int32 remaining_tablet_count = 5;
 }
 
 message ReportedTabletUpdatesPB {
@@ -689,6 +693,8 @@ message ReportedTabletUpdatesPB {
 // Sent by the Master in response to the TS tablet report (part of the heartbeats)
 message TabletReportUpdatesPB {
   repeated ReportedTabletUpdatesPB tablets = 1;
+  // Returns true if the tablet report had to be truncated because master ran out of time.
+  optional bool processing_truncated = 2 [ default = false ];
 }
 
 message TServerMetricsPB {
@@ -786,6 +792,8 @@ message TSHeartbeatResponsePB {
   optional int32 cluster_config_version = 13;
 
   optional int64 tablet_split_size_threshold_bytes = 14;
+
+  optional int32 tablet_report_limit = 16;
 }
 
 message TSInformationPB {
