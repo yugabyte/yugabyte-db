@@ -242,6 +242,9 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
 DEFINE_test_flag(uint64, inject_latency_during_remote_bootstrap_secs, 0,
                  "Number of seconds to sleep during a remote bootstrap.");
 
+DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
+                 "Number of milliseconds to sleep during the processing of a tablet batch.");
+
 DEFINE_test_flag(bool, catalog_manager_simulate_system_table_create_failure, false,
                  "This is only used in tests to simulate a failure where the table information is "
                  "persisted in syscatalog, but the tablet information is not yet persisted and "
@@ -335,6 +338,12 @@ DEFINE_test_flag(bool, create_table_leader_hint_min_lexicographic, false,
 DEFINE_int32(tablet_split_limit_per_table, 256,
              "Limit of the number of tablets per table for tablet splitting. Limitation is "
              "disabled if this value is set to 0.");
+
+DEFINE_double(heartbeat_safe_deadline_ratio, .20,
+              "When the heartbeat deadline has this percentage of time remaining, "
+              "the master should halt tablet report processing so it can respond in time.");
+DECLARE_int32(heartbeat_rpc_timeout_ms);
+DECLARE_CAPABILITY(TabletReportLimit);
 
 namespace yb {
 namespace master {
@@ -4722,10 +4731,6 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
   // Maps a tablet ID to its corresponding tablet report (owned by 'full_report').
   map<TabletId, const ReportedTabletPB*> reports;
 
-  // Maps a tablet ID to its corresponding tablet report update (owned by
-  // 'full_report_update').
-  map<TabletId, ReportedTabletUpdatesPB*> updates;
-
   // Maps a tablet ID to its corresponding TabletInfo.
   map<TabletId, scoped_refptr<TabletInfo>> tablet_infos;
 
@@ -4741,12 +4746,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
     for (const ReportedTabletPB& report : full_report.updated_tablets()) {
       const string& tablet_id = report.tablet_id();
 
-      // 1a. Prepare an update entry for this tablet. Every tablet in the
-      // report gets one, even if there's no change to it.
-      ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
-      update->set_tablet_id(tablet_id);
-
-      // 1b. Find the tablet, deleting/skipping it if it can't be found.
+      // 1a. Find the tablet, deleting/skipping it if it can't be found.
       scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, tablet_id);
       if (!tablet) {
         // It'd be unsafe to ask the tserver to delete this tablet without first
@@ -4763,19 +4763,24 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         } else {
           LOG(WARNING) << "Ignoring report from unknown tablet " << tablet_id;
         }
+        // Every tablet in the report that is processed gets a heartbeat response entry.
+        ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
+        update->set_tablet_id(tablet_id);
         continue;
       }
       if (!tablet->table() || FindOrNull(*table_ids_map_, tablet->table()->id()) == nullptr) {
         auto table_id = tablet->table() == nullptr ? "(null)" : tablet->table()->id();
         LOG(INFO) << "Got report from an orphaned tablet " << tablet_id << " on table " << table_id;
         tablets_to_delete.insert(tablet_id);
+        // Every tablet in the report that is processed gets a heartbeat response entry.
+        ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
+        update->set_tablet_id(tablet_id);
         continue;
       }
 
-      // 1c. Found the tablet, update local state. If multiple tablets with the
+      // 1b. Found the tablet, update local state. If multiple tablets with the
       // same ID are in the report, all but the last one will be ignored.
       reports[tablet_id] = &report;
-      updates[tablet_id] = update;
       tablet_infos[tablet_id] = tablet;
     }
   }
@@ -4785,6 +4790,10 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
     SendDeleteTabletRequest(tablet_id, TABLET_DATA_DELETED, boost::none, nullptr, ts_desc,
         "Report from an orphaned tablet");
   }
+
+  // Calculate the deadline for this expensive loop coming up.
+  const auto safe_deadline = rpc->GetClientDeadline() -
+    (FLAGS_heartbeat_rpc_timeout_ms * 1ms * FLAGS_heartbeat_safe_deadline_ratio);
 
   // Doing batched processing with inner 'for' loops.  Ensure we iterate all tablets with 'while'.
   auto tablet_iter = tablet_infos.begin();
@@ -4822,7 +4831,12 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
       const scoped_refptr<TabletInfo>& tablet = tablet_iter->second;
       const scoped_refptr<TableInfo>& table = tablet->table();
       const ReportedTabletPB& report = *FindOrDie(reports, tablet_id);
-      ReportedTabletUpdatesPB* update = FindOrDie(updates, tablet_id);
+
+      // Prepare an heartbeat response entry for this tablet, now that we're going to process it.
+      // Every tablet in the report that is processed gets one, even if there are no changes to it.
+      ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
+      update->set_tablet_id(tablet_id);
+
       // Get tablet lock on demand.  This works in the batch case because the loop is ordered.
       tablet_write_locks[tablet_id] = tablet->LockForWrite();
       auto& table_lock = table_read_locks[table->id()];
@@ -5138,17 +5152,40 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
       WARN_NOT_OK(ScheduleTask(rpc), Substitute("Failed to send $0", rpc->description()));
     }
     rpcs.clear();
+
+    // 14. Check deadline. Need to exit before processing all batches if we're close to timing out.
+    if (ts_desc->HasCapability(CAPABILITY_TabletReportLimit) && tablet_iter != tablet_infos.end()) {
+      // [TESTING] Inject latency before processing a batch to test deadline.
+      if (PREDICT_FALSE(FLAGS_TEST_inject_latency_during_tablet_report_ms > 0)) {
+        LOG(INFO) << "Sleeping in CatalogManager::ProcessTabletReport for "
+                  << FLAGS_TEST_inject_latency_during_tablet_report_ms << " ms";
+        SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_inject_latency_during_tablet_report_ms));
+      }
+
+      // Return from here at configured safe heartbeat deadline to give the response packet time.
+      if (safe_deadline < CoarseMonoClock::Now()) {
+        LOG(INFO) << "Reached Heartbeat deadline. Returning early after processing "
+                  << full_report_update->tablets_size() << " tablets";
+        full_report_update->set_processing_truncated(true);
+        return Status::OK();
+      }
+    }
   } // Loop to process the next batch until fully iterated.
 
   if (!full_report.is_incremental()) {
+    // A full report may take multiple heartbeats.
+    // The TS communicates how much is left to process for the full report beyond this specific HB.
+    bool completed_full_report = !full_report.has_remaining_tablet_count()
+                               || full_report.remaining_tablet_count() == 0;
     if (full_report.updated_tablets_size() == 0) {
       LOG(INFO) << ts_desc->permanent_uuid() << " sent full tablet report with 0 tablets.";
     } else if (!ts_desc->has_tablet_report()) {
-      LOG(INFO) << ts_desc->permanent_uuid() << " now has it's first full report: "
+      LOG(INFO) << ts_desc->permanent_uuid()
+                << (completed_full_report ? " finished" : " receiving") << " first full report: "
                 << full_report.updated_tablets_size() << " tablets.";
     }
-    // Do not unset full tablet report missing for ts desc for an incremental case.
-    ts_desc->set_has_tablet_report(true);
+    // We have a tablet report only once we're done processing all the chunks of the initial report.
+    ts_desc->set_has_tablet_report(completed_full_report);
   }
 
   // 14. Queue background processing if we had updates.

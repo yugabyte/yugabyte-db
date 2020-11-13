@@ -116,6 +116,7 @@ DECLARE_int32(max_backoff_ms_exponent);
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
 DEFINE_CAPABILITY(ClientTest, 0x1523c5ae);
+DECLARE_CAPABILITY(TabletReportLimit);
 
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
@@ -2083,6 +2084,10 @@ TEST_F(ClientTest, Capability) {
 
     // Check that fake capability is not reported.
     ASSERT_FALSE(replica->HasCapability(kFakeCapability));
+
+    // This capability is defined on the TServer, passed to the Master on registration,
+    // then propagated to the YBClient.  Ensure that this runtime pipeline holds.
+    ASSERT_TRUE(replica->HasCapability(CAPABILITY_TabletReportLimit));
   }
 }
 
