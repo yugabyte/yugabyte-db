@@ -801,6 +801,7 @@ TEST_P(TwoDCTest, PollWithProducerNodesRestart) {
   MiniMaster* new_master = producer_cluster()->leader_mini_master();
   ASSERT_NE(nullptr, new_master);
   ASSERT_NE(old_master, new_master);
+  ASSERT_OK(producer_cluster()->WaitForAllTabletServers());
 
   // Stop a TServer on the Producer after failing its master.
   producer_cluster_->mini_tablet_server(0)->Shutdown();
@@ -1176,6 +1177,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
   MiniMaster* new_master = producer_cluster()->leader_mini_master();
   ASSERT_NE(nullptr, new_master);
   ASSERT_NE(old_master, new_master);
+  ASSERT_OK(producer_cluster()->WaitForAllTabletServers());
 
   LOG(INFO) << "Add Table after Master Failover";
   // Add a new table to replication and ensure that it can read using the new master config.
