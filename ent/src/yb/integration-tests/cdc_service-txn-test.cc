@@ -12,7 +12,10 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
+
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
+
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
@@ -24,8 +27,11 @@
 #include "yb/integration-tests/cdc_test_util.h"
 
 #include "yb/rpc/messenger.h"
+
 #include "yb/tablet/tablet.h"
+
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/slice.h"
 
@@ -271,6 +277,64 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
     ASSERT_NO_FATALS(CheckApplyRecord(change_resp.records(change_resp.records_size() - 1),
                                       replicate_intents));
   }
+}
+
+// Only test 'enable_replicate_intents = true'.
+class CDCServiceTxnTestEnableReplicateIntents : public CDCServiceTxnTest {
+};
+
+INSTANTIATE_TEST_CASE_P(EnableIntentReplication, CDCServiceTxnTestEnableReplicateIntents,
+                        ::testing::Values(true /* enable_replicate_intents */));
+
+TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
+  static const int32_t entry_to_add = 100;
+  auto txn = CreateTransaction();
+  auto session = CreateSession(txn);
+  ASSERT_RESULT(WriteRow(session, entry_to_add /* key */, entry_to_add /* value */,
+                         WriteOpType::INSERT, Flush::kTrue));
+  ASSERT_OK(txn->CommitFuture().get());
+
+  // Get tablet ID.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTablets(table_->name(), 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Create CDC stream on table.
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+
+  auto tablet_id = tablets.Get(0).tablet_id();
+
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+
+  change_req.set_stream_id(stream_id);
+  change_req.set_tablet_id(tablet_id);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+
+  // Get CDC changes.
+  {
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+    SCOPED_TRACE(change_resp.DebugString());
+    ASSERT_FALSE(change_resp.has_error());
+
+    ASSERT_EQ(change_resp.records_size(), 2);
+  }
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto& tserver = cluster_->mini_tablet_server(0)->server();
+    auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+        tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+    auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
+    // Only check sent lag, since we're just calling GetChanges once and expect committed lag to be
+    // greater than 0.
+    return metrics->async_replication_sent_lag_micros->value() == 0;
+  }, MonoDelta::FromSeconds(10), "Wait for Sent Lag == 0"));
+
+
 }
 
 } // namespace cdc
