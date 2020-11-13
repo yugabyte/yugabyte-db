@@ -30,7 +30,6 @@ jobs:
 
       - checkout
 
-      # Downloading from github releases is fast, so this cache is not much of a win
       - restore_cache:
           name: Retrieve Thirdparty cache
           key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
@@ -69,11 +68,13 @@ jobs:
           paths:
             - ./*
 
-  java_test:
+  test:
     parallelism: 3
 
     parameters:
       flavor:
+        type: string
+      test_type:
         type: string
 
     macos:
@@ -87,6 +88,7 @@ jobs:
           name: Prep Mac Test Environment
           command: |
             set -x
+            sudo mkdir -p -m 0777 /opt/yb-build
             sudo launchctl limit maxfiles 1048576 1048576
             # Enable host address lookup
             echo $(ipconfig getifaddr en0) $(hostname) | sudo tee -a /etc/hosts
@@ -100,80 +102,40 @@ jobs:
 
       - checkout
 
+      # Caches cannot be shared between different jobs, so this is test version of same data.
+      - restore_cache:
+          name: Retrieve Thirdparty cache
+          key: v1-test-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
+
       - attach_workspace:
           at: ./build
 
-      #- restore_cache:
-      #    name: Retrieve Thirdparty cache
-      #    key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
-
       - run:
-          name: Run Java Tests
+          name: Run Tests
+          no_output_timeout: "30m"
           command: |
-            ls
-            ls build
-            ulimit -n 1048576
             export BUILD_TYPE=<< parameters.flavor >>
+            test_type=<< parameters.test_type >>
+            if [[ $test_type == "java_test" ]]; then
+              testlist="build/${BUILD_TYPE}-clang-dynamic-ninja/java_test_list.txt"
+              mv ${testlist} ${testlist}.full
+              circleci tests split ${testlist}.full > ${testlist}
+            fi
+            ulimit -n 1048576
             export YB_SKIP_CREATING_RELEASE_PACKAGE=1
-            testlist="build/<< parameters.flavor >>-clang-dynamic-ninja/java_test_list.txt"
-            mv ${testlist} ${testlist}.full
-            circleci tests split ${testlist}.full > ${testlist}
-            ./build-support/jenkins/build-and-test.sh "java_test"
+            ./build-support/jenkins/build-and-test.sh "<< parameters.test_type >>"
+
+      - save_cache:
+          name: Store Thirdparty cache
+          key: v1-test-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
+          paths:
+            - /opt/yb-build/thirdparty
+          when: always
 
       - store_artifacts:
           path: test_*.json
       - store_artifacts:
           path: java/*/target/surefire*
-
-  cpp_test:
-    parallelism: 3
-
-    parameters:
-      flavor:
-        type: string
-
-    macos:
-      xcode: 11.5.0
-
-    environment:
-      HOMEBREW_NO_AUTO_UPDATE: 1
-
-    steps:
-      - run:
-          name: Prep Mac Test Environment
-          command: |
-            set -x
-            sudo launchctl limit maxfiles 1048576 1048576
-            # Enable host address lookup
-            echo $(ipconfig getifaddr en0) $(hostname) | sudo tee -a /etc/hosts
-            # Provide plenty of local test addresses
-            for i in {0..1}; do
-              for j in {2..64}; do
-                sudo /sbin/ifconfig lo0 alias 127.0.$i.$j
-              done
-            done
-            brew install bash cmake maven pstree ninja
-
-      - checkout
-
-      - restore_cache:
-          name: Retrieve Thirdparty cache
-          key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
-
-      - attach_workspace:
-          at: ./build
-
-      - run:
-          name: Run CPP Tests
-          no_output_timeout: "30m"
-          command: |
-            ulimit -n 1048576
-            export BUILD_TYPE=<< parameters.flavor >>
-            export YB_SKIP_CREATING_RELEASE_PACKAGE=1
-            ./build-support/jenkins/build-and-test.sh "cpp_test"
-
-      - store_artifacts:
-          path: test_*.json
       - store_artifacts:
           path: build/*/yb-test-log
 
@@ -191,17 +153,19 @@ workflows:
           filters:
             branches:
               only: "pull/<< pipeline.parameters.pullreq >>"
-      - cpp_test:
+      - test:
           name: mac-debug-cpp-test
           flavor: "debug"
+          test_type: "cpp_test"
           requires:
             - mac-debug-build
           filters:
             branches:
               only: "pull/<< pipeline.parameters.pullreq >>"
-      - java_test:
+      - test:
           name: mac-debug-java-test
           flavor: "debug"
+          test_type: "java_test"
           requires:
             - mac-debug-build
           filters:
