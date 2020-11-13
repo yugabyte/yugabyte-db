@@ -637,9 +637,9 @@ class ClusterOptions:
         self.ysql_num_shards_per_tserver = args.ysql_num_shards_per_tserver
         self.timeout_yb_admin_sec = args.timeout_yb_admin_sec
         self.timeout_processes_running_sec = args.timeout_processes_running_sec
-        
+
         if hasattr(args,"force"):
-            self.force = args.force    
+            self.force = args.force
 
         if hasattr(args, "master_memory_limit_ratio"):
             self.master_memory_limit_ratio = args.master_memory_limit_ratio
@@ -1066,11 +1066,11 @@ class ClusterControl:
             subparsers[cmd_name] = self.setup_base_parser(cmd_name, help=help)
 
         # Commands that take -f or --force flag
-        force_commands = ["destroy", "stop", "stop_node", "restart"]
+        force_commands = ["destroy", "remove_node", "stop", "stop_node", "restart", "wipe_restart", "restart_node"]
         for cmd in force_commands:
-            subparsers[cmd].add_argument("-f","--force",
-                                        action='store_true', 
-                                        help="%s forcefully" % cmd,)
+            subparsers[cmd].add_argument("--force",
+                                         action='store_true',
+                                         help="%s forcefully" % cmd,)
 
         # commands that take --master
         per_daemon_commands = ["remove_node", "restart_node", "add_node", "start_node", "stop_node"]
@@ -1426,7 +1426,7 @@ class ClusterControl:
         # Kill the process, if it exists.
         try:
             if self.options.force:
-                os.kill(pid,signal.SIGKILL)
+                os.kill(pid, signal.SIGKILL)
             else:
                 os.kill(pid, signal.SIGTERM)
         except OSError as e:
