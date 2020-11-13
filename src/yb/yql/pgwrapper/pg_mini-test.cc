@@ -909,6 +909,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(DropAllTablesInColocatedDB),
   auto new_master = cluster_->leader_mini_master();
   ASSERT_NE(nullptr, new_master);
   ASSERT_NE(old_master, new_master);
+  // Wait for all the TabletServers to report in, so we can run CREATE TABLE with working replicas.
+  ASSERT_OK(cluster_->WaitForAllTabletServers());
   // Ensure we can still access the colocated DB on restart.
   {
     PGConn conn_new = ASSERT_RESULT(ConnectToDB(kDatabaseName));
