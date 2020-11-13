@@ -24,14 +24,11 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertFalse;
 import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -73,10 +70,15 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -102,23 +104,28 @@ import org.pac4j.play.store.PlaySessionStore;
 
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.yb.client.YBClient;
 import play.Application;
 import play.api.Play;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class UniverseControllerTest extends WithApplication {
   private static Commissioner mockCommissioner;
   private static MetricQueryHelper mockMetricQueryHelper;
 
+  @Rule
+  public MockitoRule rule = MockitoJUnit.rule();
+
   @Mock
-  play.Configuration mockAppConfig;
+  private play.Configuration mockAppConfig;
 
   private Customer customer;
   private Users user;
@@ -161,6 +168,7 @@ public class UniverseControllerTest extends WithApplication {
         .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(play.Configuration.class).toInstance(mockAppConfig))
         .build();
   }
 
@@ -227,6 +235,8 @@ public class UniverseControllerTest extends WithApplication {
             .put("api_key", "some_api_token");
     kmsConfig = ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", kmsConfigReq);
     authToken = user.createAuthToken();
+
+    when(mockAppConfig.getString("yb.storage.path")).thenReturn("/tmp");
   }
 
   @After
@@ -1839,55 +1849,24 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testRunQueryWithInvalidUniverse() {
+    // Setting platform type as correct.
+    when(mockAppConfig.getString("yb.mode", "PLATFORM")).thenReturn("OSS");
+    // Setting insecure mode.
+    ConfigHelper configHelper = new ConfigHelper();
+    configHelper.loadConfigToDB(ConfigHelper.ConfigType.Security,
+        ImmutableMap.of("level", "insecure"));
+
     Customer c2 = ModelFactory.testCustomer("tc2", "Test Customer 2");
     Universe u = createUniverse(c2.getCustomerId());
     ObjectNode bodyJson = Json.newObject();
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
         "/run_query";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    Http.RequestBuilder request = Helpers.fakeRequest("POST", url).header("X-AUTH-TOKEN", authToken)
+        .bodyJson(bodyJson).header("Origin", "https://" + UniverseController.LEARN_DOMAIN_NAME);
+    Result result = Helpers.route(request);
     assertBadRequest(result, String.format("Universe UUID: %s doesn't belong to Customer UUID: %s",
         u.universeUUID, customer.uuid));
     assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testRunQueryWithoutInsecureMode() {
-    Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
-    ObjectNode bodyJson = Json.newObject()
-        .put("query", "select * from product limit 1")
-        .put("db_name", "demo");
-    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
-        "/run_query";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    assertBadRequest(result, "run_query not supported for this application");
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testRunQueryWithInsecureMode() {
-    Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
-
-    ConfigHelper configHelper = new ConfigHelper();
-    configHelper.loadConfigToDB(ConfigHelper.ConfigType.Security,
-        ImmutableMap.of("level", "insecure"));
-
-    ObjectNode bodyJson = Json.newObject()
-        .put("query", "select * from product limit 1")
-        .put("db_name", "demo");
-    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
-        "/run_query";
-
-    when(mockYsqlQueryExecutor.executeQuery(any(), any()))
-        .thenReturn(Json.newObject().put("foo", "bar"));
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertOk(result);
-    assertEquals("bar", json.get("foo").asText());
-    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -2153,5 +2132,57 @@ public class UniverseControllerTest extends WithApplication {
     assertNotNull(userIntentJsonNode);
 
     assertEquals("false", userIntentJsonNode.get("enableYEDIS").toString());
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+               // not insecure, wrong origin, wrong ybmode => failure
+               "false,,, false",
+               // insecure, wrong origin, wrong ybmode => failure
+               "true,,, false",
+               // insecure, correct origin, wrong ybmode => failure
+               "true, https://learn.yugabyte.com,, false",
+               // insecure, correct origin, wrong ybmode => failure
+               "true, https://learn.yugabyte.com, PLATFORM, false",
+               // insecure, correct origin, correct ybmode => success
+               "true, https://learn.yugabyte.com, OSS, true",
+              })
+  // @formatter:on
+  public void testRunQuery_ValidPlatform(boolean insecure, String origin, String ybmode,
+      boolean isGoodResult) {
+    Universe u = createUniverse(customer.getCustomerId());
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+
+    if (insecure) {
+      ConfigHelper configHelper = new ConfigHelper();
+      configHelper.loadConfigToDB(ConfigHelper.ConfigType.Security,
+          ImmutableMap.of("level", "insecure"));
+    }
+    when(mockAppConfig.getString("yb.mode", "PLATFORM")).thenReturn(ybmode == null ? "" : ybmode);
+
+    ObjectNode bodyJson = Json.newObject().put("query", "select * from product limit 1")
+        .put("db_name", "demo");
+    when(mockYsqlQueryExecutor.executeQuery(any(), any()))
+        .thenReturn(Json.newObject().put("foo", "bar"));
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/run_query";
+    Http.RequestBuilder request = Helpers.fakeRequest("POST", url).header("X-AUTH-TOKEN", authToken)
+        .bodyJson(bodyJson);
+    if (!StringUtils.isEmpty(origin)) {
+      request = request.header("Origin", origin);
+    }
+    Result result = Helpers.route(request);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    if (isGoodResult) {
+      assertOk(result);
+      assertEquals("bar", json.get("foo").asText());
+      assertAuditEntry(1, customer.uuid);
+    } else {
+      assertBadRequest(result, UniverseController.RUN_QUERY_ISNT_ALLOWED);
+      assertAuditEntry(0, customer.uuid);
+    }
   }
 }
