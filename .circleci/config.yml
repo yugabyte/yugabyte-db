@@ -103,13 +103,15 @@ jobs:
       - attach_workspace:
           at: ./build
 
-      - restore_cache:
-          name: Retrieve Thirdparty cache
-          key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
+      #- restore_cache:
+      #    name: Retrieve Thirdparty cache
+      #    key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
 
       - run:
           name: Run Java Tests
           command: |
+            ls
+            ls build
             ulimit -n 1048576
             export BUILD_TYPE=<< parameters.flavor >>
             export YB_SKIP_CREATING_RELEASE_PACKAGE=1
@@ -154,12 +156,12 @@ jobs:
 
       - checkout
 
-      - attach_workspace:
-          at: ./build
-
       - restore_cache:
           name: Retrieve Thirdparty cache
           key: v1-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
+
+      - attach_workspace:
+          at: ./build
 
       - run:
           name: Run CPP Tests
