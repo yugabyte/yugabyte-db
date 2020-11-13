@@ -288,6 +288,7 @@ using consensus::StartRemoteBootstrapRequestPB;
 using log::Log;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
+using master::TabletReportUpdatesPB;
 using std::shared_ptr;
 using std::string;
 using std::unordered_set;
@@ -1334,6 +1335,7 @@ Status TSTabletManager::DeleteTablet(
     std::lock_guard<RWMutex> lock(mutex_);
     RETURN_NOT_OK(CheckRunningUnlocked(error_code));
     CHECK_EQ(1, tablet_map_.erase(tablet_id)) << tablet_id;
+    dirty_tablets_.erase(tablet_id);
   }
 
   // We unregister TOMBSTONED tablets in addition to DELETED tablets because they do not have
@@ -1602,6 +1604,7 @@ void TSTabletManager::CompleteShutdown() {
   {
     std::lock_guard<RWMutex> l(mutex_);
     tablet_map_.clear();
+    dirty_tablets_.clear();
 
     std::lock_guard<std::mutex> dir_assignment_lock(dir_assignment_mutex_);
     table_data_assignment_map_.clear();
@@ -1877,28 +1880,29 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
   }
 }
 
-void TSTabletManager::GenerateIncrementalTabletReport(TabletReportPB* report) {
+void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_bootstrap) {
   report->Clear();
-  report->set_is_incremental(true);
   // Creating the tablet report can be slow in the case that it is in the
   // middle of flushing its consensus metadata. We don't want to hold
   // lock_ for too long, even in read mode, since it can cause other readers
   // to block if there is a waiting writer (see KUDU-2193). So, we just make
   // a local copy of the set of replicas.
   vector<std::shared_ptr<TabletPeer>> to_report;
-  vector<TabletId> tablet_ids;
+  TabletIdSet tablet_ids;
+  int32_t dirty_count, report_limit;
   {
-    SharedLock<RWMutex> shared_lock(mutex_);
-    tablet_ids.reserve(dirty_tablets_.size() + tablets_being_remote_bootstrapped_.size());
-    to_report.reserve(dirty_tablets_.size() + tablets_being_remote_bootstrapped_.size());
-    report->set_sequence_number(next_report_seq_++);
+    std::lock_guard<RWMutex> write_lock(mutex_);
+    uint32_t cur_report_seq = next_report_seq_++;
+    report->set_sequence_number(cur_report_seq);
+    if (include_bootstrap) {
+      for (auto const& tablet_id : tablets_being_remote_bootstrapped_) {
+        VLOG(1) << "Tablet " << tablet_id << " being remote bootstrapped and marked for report";
+        InsertOrUpdate(&dirty_tablets_, tablet_id, TabletReportState{cur_report_seq});
+      }
+    }
     for (const DirtyMap::value_type& dirty_entry : dirty_tablets_) {
       const TabletId& tablet_id = dirty_entry.first;
-      tablet_ids.push_back(tablet_id);
-    }
-    for (auto const& tablet_id : tablets_being_remote_bootstrapped_) {
-      VLOG(1) << "Tablet " << tablet_id << " being remote bootstrapped";
-      tablet_ids.push_back(tablet_id);
+      tablet_ids.insert(tablet_id);
     }
 
     for (auto const& tablet_id : tablet_ids) {
@@ -1907,58 +1911,82 @@ void TSTabletManager::GenerateIncrementalTabletReport(TabletReportPB* report) {
         // Dirty entry, report on it.
         to_report.push_back(*tablet_peer);
       } else {
-        // Removed.
+        // Tell the Master that this tablet was removed from the TServer side.
         report->add_removed_tablet_ids(tablet_id);
+        // Don't count this as a 'dirty_tablet_' because the Master may not have it either.
+        dirty_tablets_.erase(tablet_id);
       }
     }
+    dirty_count = dirty_tablets_.size();
+    report_limit = report_limit_;
   }
   for (const auto& replica : to_report) {
     CreateReportedTabletPB(replica, report->add_updated_tablets());
+    // Enforce a max tablet limit on reported tablets.
+    if (report->updated_tablets_size() >= report_limit) break;
   }
+  report->set_remaining_tablet_count(dirty_count - report->updated_tablets_size());
 }
 
-void TSTabletManager::GenerateFullTabletReport(TabletReportPB* report) {
+void TSTabletManager::StartFullTabletReport(TabletReportPB* report) {
   report->Clear();
-  report->set_is_incremental(false);
   // Creating the tablet report can be slow in the case that it is in the
   // middle of flushing its consensus metadata. We don't want to hold
   // lock_ for too long, even in read mode, since it can cause other readers
   // to block if there is a waiting writer (see KUDU-2193). So, we just make
   // a local copy of the set of replicas.
   vector<std::shared_ptr<TabletPeer>> to_report;
+  int32_t dirty_count, report_limit;
   {
-    SharedLock<RWMutex> shared_lock(mutex_);
-    report->set_sequence_number(next_report_seq_++);
+    std::lock_guard<RWMutex> write_lock(mutex_);
+    uint32_t cur_report_seq = next_report_seq_++;
+    report->set_sequence_number(cur_report_seq);
     GetTabletPeersUnlocked(&to_report);
+    // Mark all tablets as dirty, to be cleaned when reading the heartbeat response.
+    for (const auto& peer : to_report) {
+      InsertOrUpdate(&dirty_tablets_, peer->tablet_id(), TabletReportState{cur_report_seq});
+    }
+    dirty_count = dirty_tablets_.size();
+    report_limit = report_limit_;
   }
   for (const auto& replica : to_report) {
     CreateReportedTabletPB(replica, report->add_updated_tablets());
+    // Enforce a max tablet limit on reported tablets.
+    if (report->updated_tablets_size() >= report_limit) break;
   }
-
-  std::lock_guard<RWMutex> l(mutex_);
-  dirty_tablets_.clear();
+  report->set_remaining_tablet_count(dirty_count - report->updated_tablets_size());
 }
 
-void TSTabletManager::MarkTabletReportAcknowledged(const TabletReportPB& report) {
+void TSTabletManager::MarkTabletReportAcknowledged(int32_t acked_seq,
+                                                   const TabletReportUpdatesPB& updates,
+                                                   bool dirty_check) {
   std::lock_guard<RWMutex> l(mutex_);
 
-  int32_t acked_seq = report.sequence_number();
   CHECK_LT(acked_seq, next_report_seq_);
 
-  // Clear the "dirty" state for any tablets which have not changed since
-  // this report.
-  auto it = dirty_tablets_.begin();
-  while (it != dirty_tablets_.end()) {
-    const TabletReportState& state = it->second;
-    if (state.change_seq <= acked_seq) {
-      // This entry has not changed since this tablet report, we no longer need
-      // to track it as dirty. If it becomes dirty again, it will be re-added
-      // with a higher sequence number.
-      it = dirty_tablets_.erase(it);
-    } else {
-      ++it;
+  // Clear the "dirty" state for any tablets processed in this report.
+  for (auto const & tablet : updates.tablets()) {
+    auto it = dirty_tablets_.find(tablet.tablet_id());
+    if (it != dirty_tablets_.end()) {
+      const TabletReportState& state = it->second;
+      if (state.change_seq <= acked_seq) {
+        // This entry has not changed since this tablet report, we no longer need to track it
+        // as dirty. Next modification will be re-added with a higher sequence number.
+        dirty_tablets_.erase(it);
+      }
     }
   }
+#ifndef NDEBUG
+  // Verify dirty_tablets_ always processes all tablet changes.
+  if (dirty_check) {
+    for (auto const & d : dirty_tablets_) {
+      if (d.second.change_seq <= acked_seq) {
+        LOG(DFATAL) << "Dirty Tablet should have been reported but wasn't: "
+                    << d.first << "@" << d.second.change_seq << " <= " << acked_seq;
+      }
+    }
+  }
+#endif
 }
 
 Status TSTabletManager::HandleNonReadyTabletOnStartup(
