@@ -3,11 +3,14 @@
 package com.yugabyte.yw.controllers;
 
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -67,6 +70,8 @@ import play.api.Play;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
+import play.mvc.Http.HeaderNames;
+import play.mvc.Http.Request;
 import play.mvc.Result;
 import play.mvc.Results;
 
@@ -256,33 +261,50 @@ public class UniverseController extends AuthenticatedController {
 
   public Result runInShell(UUID customerUUID, UUID universeUUID) {
     return ApiResponse.error(BAD_REQUEST, DEPRECATED);
- }
+  }
+
+  @VisibleForTesting
+  static final String LEARN_DOMAIN_NAME = "learn.yugabyte.com";
+
+  @VisibleForTesting
+  static final String RUN_QUERY_ISNT_ALLOWED = "run_query not supported for this application";
 
   public Result runQuery(UUID customerUUID, UUID universeUUID) {
+    String mode = appConfig.getString("yb.mode", "PLATFORM");
+    if (!mode.equals("OSS")) {
+      return ApiResponse.error(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
+    }
+
+    boolean correctOrigin = false;
+    Optional<String> origin = request().header(HeaderNames.ORIGIN);
+    if (origin.isPresent()) {
+      try {
+        URI uri = new URI(origin.get());
+        correctOrigin = LEARN_DOMAIN_NAME.equals(uri.getHost());
+      } catch (URISyntaxException e) {
+      }
+    }
+
+    String securityLevel = (String)
+        configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
+    if (!correctOrigin || securityLevel == null || !securityLevel.equals("insecure")) {
+      return ApiResponse.error(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
+    }
+
     Universe universe;
     try {
       universe = checkCallValid(customerUUID, universeUUID);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
-    Customer customer = Customer.get(customerUUID);
-
-    String securityLevel = (String)
-        configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
-    if (securityLevel == null || !securityLevel.equals("insecure")) {
-      return ApiResponse.error(BAD_REQUEST, "run_query not supported for this application");
-    }
 
     Form<RunQueryFormData> formData = formFactory.form(RunQueryFormData.class).bindFromRequest();
-
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
-    Audit.createAuditEntry(ctx(), request(),
-        Json.toJson(formData.data()));
-    return ApiResponse.success(
-        ysqlQueryExecutor.executeQuery(universe, formData.get())
+    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    return ApiResponse.success(ysqlQueryExecutor.executeQuery(universe, formData.get())
     );
   }
 
