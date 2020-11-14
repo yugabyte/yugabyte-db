@@ -64,7 +64,7 @@ jobs:
 
       - persist_to_workspace:
           name: Save Build Space
-          root: ./build
+          root: .
           paths:
             - ./*
 
@@ -100,15 +100,13 @@ jobs:
             done
             brew install bash cmake maven pstree ninja
 
-      - checkout
-
       # Caches cannot be shared between different jobs, so this is test version of same data.
       - restore_cache:
           name: Retrieve Thirdparty cache
           key: v1-test-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
 
       - attach_workspace:
-          at: ./build
+          at: .
 
       - run:
           name: Run Tests
@@ -137,7 +135,7 @@ jobs:
       - store_artifacts:
           path: java/*/target/surefire*
       - store_artifacts:
-          path: build/*/yb-test-log
+          path: build/*/yb-test-logs
 
 
 # If no workflow is created, then error is generated for the PR/commit.
