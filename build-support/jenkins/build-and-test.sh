@@ -261,6 +261,7 @@ mkdir_safe "$BUILD_ROOT"
 
 readonly BUILD_ROOT
 export BUILD_ROOT
+export YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
 
 # -------------------------------------------------------------------------------------------------
 # End of build root setup and build directory cleanup
@@ -571,7 +572,6 @@ if [[ $YB_PHASE =~ build ]]; then
   # Java build
   # -------------------------------------------------------------------------------------------------
   
-  export YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
   
   java_build_failed=false
   if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" && $YB_PHASE =~ build ]]; then
@@ -767,6 +767,7 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
     fi
 
     if [[ $YB_BUILD_JAVA == "1" && $YB_PHASE =~ java_test ]]; then
+      cd "$YB_SRC_ROOT/java"
       set_mvn_parameters
       set_test_invocation_id
       log "Running Java tests in a non-distributed way"
