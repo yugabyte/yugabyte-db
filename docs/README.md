@@ -13,7 +13,7 @@ All the source material for the YugabyteDB documentation is held in the main [yu
 
 If you want to make changes to existing documentation, or to add new content, make sure first to [open a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new). Then reference the Issue Number in your eventual Pull Request. Start the title with `[DOC]` and select the label `area/documentation` By clicking the gearwheel icon at "**Labels**" in the list of classifications on the right.
 
-YugabyteDB docs are based on the Hugo framework and use the Material Docs theme.
+YugabyteDB docs are based on the "hugo" framework and use the "Material Docs" theme.
 
 - [Hugo framework](https://gohugo.io/getting-started/)
 
@@ -35,115 +35,156 @@ The [Google developer documentation style guide](https://developers.google.com/s
 
 In this kind of work, the nature of your documentation change means that you will not need to modify existing syntax diagrams or to add new ones.
 
-### Step 1. Initial setup
+### Initial setup
 
-Follow these steps if this is the first time you are setting up for working on the docs locally.
+Follow these steps if this is the first time you are setting up to work on the docs locally.
 
-1. Fork the yugabyte-db GitHub repository and create a local clone of your fork. This should look something like below:
-
-   ```sh
-   git clone git@github.com:<YOUR_GITHUB_ID>/yugabyte-db.git
-   ```
-
-   Add the original repository as an upstream remote:
-   ```sh
-   git remote add --track master upstream https://github.com/yugabyte/yugabyte-db.git
-   ```
-
-1. Install Hugo. For example, on a Mac, you can run the following commands:
-   ```sh
-   brew update
-   brew install hugo
-   brew install npm
-   ```
-
-1. Install node modules as shown below:
-   ```sh
-   npm ci
-   ```
-
-### Step 2. Update your repo and start the local webserver
-
-The assumption here is that you are working on a local clone of your fork. See the previous step.
-
-1. Rebase your fork to fetch the latest docs changes:
-Ensure you are on the master branch.
-   ```
-   $ git checkout master
-   ```
-
-   Now rebase to the latest changes.
-   ```
-   $ git pull --rebase upstream master
-   $ git push origin master
-   ```
-
-2. `cd` to the top directory for the documentation.
+> **Note**: Many Yugabyte engineers use an Apple Mac computer; and many have taken the bold step of upgrading to MacOS Catalina. The move from Mojave to Catalina brought all sorts of changes that cannot be resisted and that seem to make things suddenly "just not work". In particular, `git` commands and  `npm ci` (see below) fail. The error messages are inscrutable. For example `npm ci` produces pages of errors including ones like this:
 
    ```
-   cd <your path>/yugabyte-db/docs/
+   No receipt for 'com.apple.pkg.DeveloperToolsCLI' ...
    ```
 
-   Start the local webserver on `127.0.0.1` interface by running the following:
-   ```
-   $ npm start
-   ```
+> Some Internet search leads to a consensus that the fix is to (re)install an Apple component called "Xcode" from [this Apple site for downloading tools for Apple Developers](https://developer.apple.com/download/more/). Look for "Xcode" in the list, choose the latest production version, download the `.dmg` file, double-click on it, and follow the on-screen instructions. It is recommended that you check periodically to make sure that you stay on the current version. (The usual paradigm that alerts you when a new version of installed software becomes available seems to be unreliable for "Xcode".)
 
+Then:
+
+Fork the yugabyte-db GitHub repository and create a local clone of your fork with a command like this:
+
+```
+git clone https://github.com/<YOUR_GITHUB_ID>/yugabyte-db.git
+```
+
+Identify your fork as `origin` and the original YB repository as `upstream`:
+
+```
+cd <your path>/yugabyte-db/
+git remote set-url origin git@github.com:<YOUR_GITHUB_ID>/yugabyte-db.git
+git remote add upstream git@github.com:YugaByte/yugabyte-db.git
+```
+
+For belt-and-braces, make sure that your local git is still current with the YB repo:
+
+```
+git checkout master
+git pull upstream master
+```
+
+Install "hugo". For example, on a Mac, you can run the following commands:
+
+```
+brew update
+brew install hugo
+brew install npm
+```
+
+Install node modules thus:
+
+```
+npm ci
+```
+
+Create a branch for your doc project and switch into it:
+
+```
+git branch feature_branch_name
+git checkout feature_branch_name
+```
+
+It's recommended that you routinely check that you have the current latest "Xcode". You should also ensure that you have the current latest "brew", and the current latest "hugo", thus:
+
+```
+brew update
+brew upgrade hugo
+npm ci   
+```
+You _must_ do this if ever you drop your local `git` (for example after a successful `git push` and subsequent merge) and re-do the `git clone` step.
+
+You might also find yourself needing to do this if you want to review a colleague's pending doc PR in WYSIWYG mode using "hugo". If your colleague's GitHub ID is _"archieb"_ and if the branch used to make the changes is called _"some_doc_changes"_, then clone it thus:
+
+```
+git clone --branch some_doc_changes https://github.com/archieb/yugabyte-db.git
+```
+
+Start the local webserver on `127.0.0.1` interface by running the following:
+
+```
+npm start
+```
 You can now see the local version of the docs by browsing to [localhost:1313/](http://localhost:1313/).
 
-> **Note #1** that the URL may be different if the port 1313 is not available. In any case, the URL is printed out on your shell as shown below.
-   ```
-   Web Server is available at //localhost:1313/ (bind address 0.0.0.0)
-   Press Ctrl+C to stop
-   ```
+> **Note #1:** You'll probably find that the first time after the very first `npm start` in a newly-cloned local `git` that you view a page that "hugo" generates, it will look like nonsense. Simply control-C "hugo" and re-issue `npm start`. This sometimes happens, too, after rebasing to the latest commit in the GitHub `yugabyte-db` repo.
 
-> **Note #2** To start the webserver on some other IP address (in case you want to share the URL of your local docs with someone else), do the following:
+> **Note #2:** The URL may be different if the port 1313 is not available. In any case, the URL is printed out on your shell as shown below.
+
+```
+Web Server is available at //localhost:1313/ (bind address 0.0.0.0)
+Press Ctrl+C to stop
+```
+
+> **Note #3:** To start the webserver on some other IP address (in case you want to share the URL of your local docs with someone else), do the following:
+
    ```
    YB_HUGO_BASE=<YOUR_IP_OR_HOSTNAME> npm start
    ```
-   You can now share the following link: `http://<YOUR_IP_OR_HOSTNAME>:1313`
+   You can now share this link: `http://<YOUR_IP_OR_HOSTNAME>:1313`
 
+### Make your changes
 
-### Step 3. Make changes
-
-It is suggested that you create and checkout a feature branch off `master` for your changes. The examples that follow assumed that you called it `feature_branch_name`.
-
-```
-$ git branch feature_branch_name master
-$ git checkout feature_branch_name
-```
-
-Make the changes locally and test them by viewing them in a browser.
-
-Once you are satisfied with your changes, use `git status` to list the files that you modified and created. And if you edited them in a non-Unix environment, you should now ensure that they have Unix-style line endings with a utility like `dos2unix`. You can easily find such a utility with Internet search.
-
-> **Note**: If you commit files with non-Unix-style line endings, then you risk getting spurious conflicts reported when you do `git rebase master`. In particular, you risk confusing the `git` differencing heuristics so that it reports that your file and a same-named file that someone else has changed are _entirely_ different—even when human inspection shows only two small non-conflicting changes.
-
-Then commit tour changes to your local branch and push these changes to your fork of the [yugabyte-db](https://github.com/yugabyte/yugabyte-db) GitHub repository. Do this by running the following commands:
+Make sure that your `feature_branch_name` branch is current:
 
 ```
-# Add files you have made changes to.
-$ git add .
+git branch
+```
 
-# Commit these changes.
-$ git commit -m "A useful bried comment about what you did."
+If this doesn't respond with `feature_branch_name`, then do this:
 
-# Bring your local git up to date with the yugabyte-db GitHub repository.
+```
+git checkout feature_branch_name
+```
+
+Then make the changes locally and test them by viewing them in a browser.
+
+Once you are satisfied with your changes, use `git status` to list the files that you have modified and created. And if you edited them in a non-Unix environment, you should now ensure that they have Unix-style line endings with a utility like `dos2unix`. You can easily find such a utility with Internet search.
+
+> **Note**: If you commit files with non-Unix-style line endings, then you risk getting spurious conflicts reported when you do `git rebase master`. In particular, you risk confusing the `git` differencing heuristics so that it reports that your file and the same-named file that someone else has changed, and that _does_ have Unix-style line endings, are _entirely_ different—even when human inspection shows only two small non-conflicting changes.
+
+Then commit your changes to your local branch and push these changes to your fork of the [yugabyte-db](https://github.com/yugabyte/yugabyte-db) GitHub repository. Do this by running the following commands.
+
+#### Add files you have made changes to.
+
+```
+git add .
+```
+
+#### Commit these changes.
+
+```
+git commit -m "A useful brief comment about what you did."
+```
+
+#### Bring your local git up to date with the yugabyte-db GitHub repository
+
+```
 git checkout master
 git pull upstream master
 git checkout feature_branch_name
 git rebase master
+```
 
-# Push your work to your fork
+### Now push your work to your fork
+
+```
 git push origin feature_branch_name
 ```
+
 You can now check that your work arrived safely by visiting this URL and then navigating the file hierarchy:
 
 ```
-https://github.com/your-id/yugabyte-db/blob/feature_branch_name/docs/
+https://github.com/<YOUR_GITHUB_ID>/yugabyte-db/blob/feature_branch_name/docs/
 ```
 
-### Step 4. Submit a pull request
+### Submit a pull request
 
 The output you see at the O/S prompt following `git push` will tell you which URL to visit in order to create a pull request. We will review your changes, provide feedback when appropriate, and once everything looks good merge your changes into the mainline.
 
@@ -290,7 +331,7 @@ The [Syntax section](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/
 ```
 cd <your path>/yugabyte-db/docs
 ```
-You install the [_diagram generator_](#diagram-generator) here. And you stand here when you [_run the generator_](#run-the-generator). You also typically stand here when you start Hugo; and when you prepare for, and then do, a `git push` to your personal GitHub fork.
+You install the [_diagram generator_](#diagram-generator) here. And you stand here when you [_run the generator_](#run-the-generator). You also typically stand here when you start "hugo"; and when you prepare for, and then do, a `git push` to your personal GitHub fork.
 
 ### content directory
 
@@ -301,7 +342,7 @@ In other words, it holds the entire [_humanly typed documentation source_](#huma
 ```
 cd <your path>/yugabyte-db/docs/content
 ```
-Hugo uses the tree starting at the [_content directory_](#content-directory) to generate the documentation site (under the influence of the [_supporting doc infrastructure_](#supporting-doc-infrastructure)) as a set of static files.
+"hugo" uses the tree starting at the [_content directory_](#content-directory) to generate the documentation site (under the influence of the [_supporting doc infrastructure_](#supporting-doc-infrastructure)) as a set of static files.
 
 Notice that, when your current directory is the [_docs directory_](#docs-directory), `git status` shows the paths of what it reports starting with the [_content directory_](#content-directory) like this:
 
@@ -488,7 +529,7 @@ java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.eb
   content/latest/api/ysql/syntax_resources/
 ```
 
-This will (re)generate _all_ of the files that it ought to. You can run this at any time. In the worst case, a typing error somewhere, especially in the [_diagram inclusion HTML_](#diagram-inclusion-HTML), can crash Hugo, resulting in the notorious blanked out screen in the browser.
+This will (re)generate _all_ of the files that it ought to. You can run this at any time. In the worst case, a typing error somewhere, especially in the [_diagram inclusion HTML_](#diagram-inclusion-HTML), can crash "hugo", resulting in the notorious blanked out screen in the browser.
 
 > **Note:** To see help, run `java -jar rrdiagram.jar` (without arguments).
 
@@ -545,4 +586,12 @@ _Step 3:_ Copy a reliable example of the [_diagram inclusion HTML_](#diagram-inc
 
 _Step 4:_ [_Run the generator_](#run-the-generator).
 
-_Step 5:_ Make sure that you inspect the result immediately in the Hugo rendering of the [_humanly typed documentation source_](#humanly-typed-documentation-source) into which you just included the [_diagram inclusion HTML_](#diagram-inclusion-HTML).
+_Step 5:_ Make sure that you inspect the result immediately in the "hugo" rendering of the [_humanly typed documentation source_](#humanly-typed-documentation-source) into which you just included the [_diagram inclusion HTML_](#diagram-inclusion-HTML).
+
+```
+
+```
+
+```
+
+```
