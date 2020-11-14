@@ -511,7 +511,9 @@ if [[ $YB_PHASE =~ build ]]; then
   
   # End of the C++ code build.
   # -------------------------------------------------------------------------------------------------
+fi # build PHASE
   
+if [[ $YB_PHASE =~ test ]]; then
   # -------------------------------------------------------------------------------------------------
   # Running initdb
   # -------------------------------------------------------------------------------------------------
@@ -540,6 +542,7 @@ if [[ $YB_PHASE =~ build ]]; then
       fatal "Failed to run create initial sys catalog snapshot after $MAX_INITDB_ATTEMPTS attempts."
     fi
   fi
+fi # test PHASE
   
   # -------------------------------------------------------------------------------------------------
   # Dependency graph analysis allowing to determine what tests to run.
@@ -622,7 +625,6 @@ if [[ $YB_PHASE =~ build ]]; then
   
     log "Finished building Java code (see timing information above)"
   fi
-fi # build PHASE
 
 # -------------------------------------------------------------------------------------------------
 # Now that that all C++ and Java code has been built, test creating a package.
@@ -784,9 +786,10 @@ fi
 # Finished running tests.
 remove_latest_symlink
 
-log "Aggregating test reports"
-cd "$YB_SRC_ROOT"  # even though we should already be in this directory
-find . -type f -name "*_test_report.json" | \
+if [[ $YB_PHASE =~ test ]]; then
+  log "Aggregating test reports"
+  cd "$YB_SRC_ROOT"  # even though we should already be in this directory
+  find . -type f -name "*_test_report.json" | \
     "$YB_SRC_ROOT/python/yb/aggregate_test_reports.py" \
       --yb-src-root "$YB_SRC_ROOT" \
       --output-dir "$YB_SRC_ROOT" \
@@ -794,9 +797,10 @@ find . -type f -name "*_test_report.json" | \
       --compiler-type "$YB_COMPILER_TYPE" \
       --build-root "$BUILD_ROOT"
 
-if [[ -n $FAILURES ]]; then
-  heading "Failure summary"
-  echo >&2 "$FAILURES"
-fi
+  if [[ -n $FAILURES ]]; then
+    heading "Failure summary"
+    echo >&2 "$FAILURES"
+  fi
+fi # test phase
 
 exit $EXIT_STATUS
