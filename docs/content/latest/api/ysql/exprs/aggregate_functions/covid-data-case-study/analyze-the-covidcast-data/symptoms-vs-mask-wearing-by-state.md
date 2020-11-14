@@ -82,7 +82,7 @@ selects out the data for 21-Oct-2020 so that it can be used to draw a scatter-pl
              96 |              12 | dc
 ```
 
-The overall trend is clear: as mask-wearing percent, the incidence of COVID-like symptoms decreases.
+The overall trend is clear: as mask-wearing percent increases, the incidence of COVID-like symptoms decreases.
 
 You can re-run the query for several different arbitrarily selected dates. Or you can calculate the averages per state over the whole observation period like this:
 
