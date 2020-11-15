@@ -511,9 +511,7 @@ if [[ $YB_PHASE =~ build ]]; then
   
   # End of the C++ code build.
   # -------------------------------------------------------------------------------------------------
-fi # build PHASE
   
-if [[ $YB_PHASE =~ test ]]; then
   # -------------------------------------------------------------------------------------------------
   # Running initdb
   # -------------------------------------------------------------------------------------------------
@@ -542,7 +540,7 @@ if [[ $YB_PHASE =~ test ]]; then
       fatal "Failed to run create initial sys catalog snapshot after $MAX_INITDB_ATTEMPTS attempts."
     fi
   fi
-fi # test PHASE
+fi # build PHASE
   
   # -------------------------------------------------------------------------------------------------
   # Dependency graph analysis allowing to determine what tests to run.

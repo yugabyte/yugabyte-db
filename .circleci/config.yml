@@ -69,7 +69,7 @@ jobs:
             - ./*
 
   test:
-    parallelism: 3
+    parallelism: 5
 
     parameters:
       flavor:
@@ -100,13 +100,13 @@ jobs:
             done
             brew install bash cmake maven pstree ninja
 
+      - attach_workspace:
+          at: .
+
       # Caches cannot be shared between different jobs, so this is test version of same data.
       - restore_cache:
           name: Retrieve Thirdparty cache
           key: v1-test-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
-
-      - attach_workspace:
-          at: .
 
       - run:
           name: Run Tests
@@ -123,19 +123,22 @@ jobs:
             export YB_SKIP_CREATING_RELEASE_PACKAGE=1
             ./build-support/jenkins/build-and-test.sh "<< parameters.test_type >>"
 
+      - run:
+          name: Archive Reults
+          when: always
+          command: |
+            mkdir -p job_results
+            tar czvf job_results/logs${CIRCLE_NODE_INDEX}.tgz test_*.json java/*/target/surefire*/** build/*/yb-test-logs/**
+
+      - store_artifacts:
+          path: job_results
+
       - save_cache:
           name: Store Thirdparty cache
           key: v1-test-3p-mac-{{ checksum "build-support/thirdparty_url_mac.txt" }}
           paths:
             - /opt/yb-build/thirdparty
           when: always
-
-      - store_artifacts:
-          path: test_*.json
-      - store_artifacts:
-          path: java/*/target/surefire*
-      - store_artifacts:
-          path: build/*/yb-test-logs
 
 
 # If no workflow is created, then error is generated for the PR/commit.
