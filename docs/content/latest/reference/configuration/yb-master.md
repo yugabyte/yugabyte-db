@@ -425,7 +425,7 @@ Default: `false`
 
 The expected maximum clock skew, in microseconds (µs), between any two servers in your deployment.
 
-Default: `50000` (50,000 µs = 50ms)
+Default: `200000` (200,000 µs = 200ms)
 
 ##### --replication_factor
 
