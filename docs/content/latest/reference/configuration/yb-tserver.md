@@ -557,6 +557,12 @@ Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate) s
 
 Default: `false`
 
+##### --ycql_enable_audit_log
+
+Set this flag to `true` to enable audit logging for the universe.
+
+For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/ycql).
+
 ---
 
 ### YEDIS flags
