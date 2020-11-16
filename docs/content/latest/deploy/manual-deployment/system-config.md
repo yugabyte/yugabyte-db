@@ -18,15 +18,10 @@ Do the following configuration steps on each of the nodes in the cluster.
 
 ## ntp
 
- If your instance does not have public Internet access, make sure the following packages have been installed (all can be retrieved from the yum repo **epel**, make sure to use the latest epel release repository):
-
-- epel-release
-- ntp
-
-Here's the command to install these packages.
+ If your instance does not have public Internet access, make sure the ntp package is installed:
 
 ```sh
-$ sudo yum install -y epel-release ntp
+$ sudo yum install -y ntp
 ```
 
 ## ulimits
