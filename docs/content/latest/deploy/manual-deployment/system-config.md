@@ -82,7 +82,7 @@ $ ulimit -n <value>
 
 {{< /note >}}
 
-Most of these settings can also be applied permanently by adding the following in `/etc/security/limits.conf`.
+These settings should be applied permanently by adding the following in `/etc/security/limits.conf`.
 
 ```
 *                -       core            unlimited
@@ -99,7 +99,7 @@ Most of these settings can also be applied permanently by adding the following i
 *                -       locks           unlimited
 ```
 
-On CentOS, /etc/security/limits.d/20-nproc.conf must also be configured
+On CentOS, /etc/security/limits.d/20-nproc.conf must also be configured to match.
 
 ```
 *          soft    nproc     12000
