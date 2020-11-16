@@ -39,13 +39,20 @@ In this kind of work, the nature of your documentation change means that you wil
 
 Follow these steps if this is the first time you are setting up to work on the docs locally.
 
-> **Note**: Many Yugabyte engineers use an Apple Mac computer; and many have taken the bold step of upgrading to MacOS Catalina. The move from Mojave to Catalina brought all sorts of changes that cannot be resisted and that seem to make things suddenly "just not work". In particular, `git` commands and  `npm ci` (see below) fail. The error messages are inscrutable. For example `npm ci` produces pages of errors including ones like this:
+> **Note**: Many Yugabyte engineers use an Apple Mac computer; and many have taken the bold step of upgrading to MacOS Catalina—or even to Big Sur. The move from Mojave to Catalina brought all sorts of changes that cannot be resisted and that seem to make things suddenly "just not work". In particular, `git` commands and  `npm ci` (see below) fail. The error messages are inscrutable. For example `npm ci` produces pages of errors including ones like this:
 
    ```
    No receipt for 'com.apple.pkg.DeveloperToolsCLI' ...
    ```
 
-> Some Internet search leads to a consensus that the fix is to (re)install an Apple component called "Xcode" from [this Apple site for downloading tools for Apple Developers](https://developer.apple.com/download/more/). Look for "Xcode" in the list, choose the latest production version, download the `.dmg` file, double-click on it, and follow the on-screen instructions. It is recommended that you check periodically to make sure that you stay on the current version. (The usual paradigm that alerts you when a new version of installed software becomes available seems to be unreliable for "Xcode".)
+> Some Internet search leads to a consensus that the fix is to (re)install an Apple component called "Xcode" from [this Apple site for downloading tools for Apple Developers](https://developer.apple.com/download/more/). Look for "Xcode" in the list, choose the latest production version, download the `.dmg` file (or `.xip` for Big Sur), double-click on it, and follow the on-screen instructions. It is recommended that you check periodically to make sure that you stay on the current version. (The usual paradigm that alerts you when a new version of installed software becomes available seems to be unreliable for "Xcode".)
+>
+> This business is yet more tedious after upgrading to MacOS Big Sur. Look at the Stack Exchange article [Git is not working after macOS Update...](https://stackoverflow.com/questions/52522565/git-is-not-working-after-macos-update-xcrun-error-invalid-active-developer-pa) and look for this:
+>
+> _"With any major or semi-major [MacOS] update you'll need to update the command line tools in order to get them functioning properly again. Check Xcode with any update."_
+>
+> The (re)installation of Xcode from the referenced  [tools for Apple Developers](https://developer.apple.com/download/more/) site is a bit different for Big Sur than it is for Catalina. The downloaded file is a `.xip` — an Apple proprietary compressed file, digitally signed for integrity. `Xcode_12.2.xip` is 11.43 GB and took ~ 30 minutes to download with a 175 MBPS download speed. Then it must be expanded—and that takes time too. This simply leaves you with `Xcode.app` in your "downloads" folder. It's about 30 MB (so who knows why the `.xip` is so ginormous). Anyway, drop it into the `/applications` folder. But even this is not enough. Then you need to do `xcode-select --install` at the command line prompt. It responds with "xcode-select: note: install requested for command line developer tools". You will then be prompted in an alert window to update Xcode Command Line tools—and this takes a long time too (maybe as much as 30 minutes). Only now do `git` commands start to work normally. Now, too (but not before) `npm ci` works properly.
+
 
 Then:
 
