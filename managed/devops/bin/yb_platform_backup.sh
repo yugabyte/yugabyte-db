@@ -54,14 +54,16 @@ create_backup() {
   echo "Creating snapshot of platform data"
   docker_aware_cmd "postgres" "pg_dump -U postgres -Fc yugaware" > \
                               "${data_dir}/${YUGAWARE_DUMP_FNAME}"
+
   # Backup prometheus data.
-  if [[ "$3" = false ]]; then
+  if [[ "$exclude_prometheus" = false ]]; then
     echo "Creating prometheus snapshot"
     set_prometheus_data_dir
     snapshot_dir=$(curl -X POST http://localhost:9090/api/v1/admin/tsdb/snapshot |
       python -c "import sys, json; print(json.load(sys.stdin)['data']['name'])")
     mkdir -p "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
     sudo cp -aR "$PROMETHEUS_DATA_DIR/snapshots/$snapshot_dir" "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
+    rm -rf "$PROMETHEUS_DATA_DIR/snapshots/$snapshot_dir"
   fi
   echo "Creating platform backup package"
   tar $exclude_prometheus_flag --exclude "postgresql" -czf $tarname -C $data_dir .
