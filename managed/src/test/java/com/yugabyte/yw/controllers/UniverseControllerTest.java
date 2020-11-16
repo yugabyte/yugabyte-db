@@ -1898,8 +1898,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
         "/run_in_shell";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    assertBadRequest(result, String.format("Universe UUID: %s doesn't belong to Customer UUID: %s",
-        u.universeUUID, customer.uuid));
+    assertBadRequest(result, UniverseController.DEPRECATED);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1914,68 +1913,8 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
         "/run_in_shell";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    assertBadRequest(result, "run_in_shell not supported for this application");
+    assertBadRequest(result, UniverseController.DEPRECATED);
     assertAuditEntry(0, customer.uuid);
-  }
-
-  private void mockAndAssertRunInShell(Universe u,
-                                       RunInShellFormData.ShellType shellType,
-                                       String scriptLocation,
-                                       String commandFile) {
-    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID +
-        "/run_in_shell";
-
-    ObjectNode bodyJson = Json.newObject()
-        .put("db_name", "demo")
-        .put("shell_type", shellType.name());
-
-    if (commandFile != null) {
-      bodyJson.put("command_file", commandFile);
-    } else {
-      bodyJson.put("command", "select * from product limit 1");
-    }
-
-    if (scriptLocation != null) {
-      bodyJson.put("shell_location", scriptLocation);
-    } else {
-      Application application = Play.current().injector().instanceOf(Application.class);
-      scriptLocation = application.path().getAbsolutePath() + "/../bin";
-    }
-
-    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
-    response.message = "Some Response";
-    when(mockShellProcessHandler.run(anyList(), anyMap(), anyBoolean())).thenReturn(response);
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    ArgumentCaptor<ArrayList> command = ArgumentCaptor.forClass(ArrayList.class);
-    ArgumentCaptor<HashMap> config = ArgumentCaptor.forClass(HashMap.class);
-    ArgumentCaptor<Boolean> logOutput = ArgumentCaptor.forClass(Boolean.class);
-    Mockito.verify(mockShellProcessHandler, times(1))
-        .run(command.capture(), (Map<String, String>) config.capture(), logOutput.capture());
-    List<String> shellCommand = new ArrayList<>();
-    if (shellType.equals(RunInShellFormData.ShellType.YSQLSH)) {
-      shellCommand.addAll(ImmutableList.of(scriptLocation + "/ysqlsh", "-h", "host-n1",
-          "-p", "5433", "-d", "demo"));
-      if (bodyJson.has("command_file")) {
-        shellCommand.addAll(ImmutableList.of("-f",
-            scriptLocation + "/" + bodyJson.get("command_file").asText()));
-      } else {
-        shellCommand.addAll(ImmutableList.of("-c", bodyJson.get("command").asText()));
-      }
-    } else if (shellType.equals(RunInShellFormData.ShellType.YCQLSH)) {
-      shellCommand.addAll(ImmutableList.of(scriptLocation + "/cqlsh", "host-n1",
-          "9042", "-k", "demo"));
-      if (bodyJson.has("command_file")) {
-        shellCommand.addAll(ImmutableList.of("-f",
-            scriptLocation + "/" + bodyJson.get("command_file").asText()));
-      } else {
-        shellCommand.addAll(ImmutableList.of("-e", bodyJson.get("command").asText()));
-      }
-    }
-    assertEquals(shellCommand, command.getValue());
-    assertFalse(logOutput.getValue());
-    assertTrue(config.getValue().isEmpty());
-    assertOk(result);
-    assertEquals("\"Some Response\"", contentAsString(result));
   }
 
   @Test
@@ -1989,33 +1928,15 @@ public class UniverseControllerTest extends WithApplication {
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.Security,
         ImmutableMap.of("level", "insecure"));
 
-    for(RunInShellFormData.ShellType shellType: RunInShellFormData.ShellType.values()) {
-      mockAndAssertRunInShell(u, shellType, null, "/share/myscript.sql");
-      reset(mockShellProcessHandler);
-      mockAndAssertRunInShell(u, shellType, null, null);
-      reset(mockShellProcessHandler);
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID
+        + "/run_in_shell";
+    for (RunInShellFormData.ShellType shellType : RunInShellFormData.ShellType.values()) {
+      ObjectNode bodyJson = Json.newObject().put("db_name", "demo")
+          .put("shell_type", shellType.name()).put("command", "select * from product limit 1");
+      Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+      assertBadRequest(result, UniverseController.DEPRECATED);
+      assertAuditEntry(0, customer.uuid);
     }
-    assertAuditEntry(RunInShellFormData.ShellType.values().length * 2, customer.uuid);
-  }
-
-  @Test
-  public void testRunInShellWithInsecureModeAndScriptLocation() {
-    Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdaterWithYSQLNodes(true));
-
-    ConfigHelper configHelper = new ConfigHelper();
-    configHelper.loadConfigToDB(ConfigHelper.ConfigType.Security,
-        ImmutableMap.of("level", "insecure"));
-
-    for(RunInShellFormData.ShellType shellType: RunInShellFormData.ShellType.values()) {
-      mockAndAssertRunInShell(u, shellType, "/tmp/bin", "../share/myscript.sql");
-      reset(mockShellProcessHandler);
-      mockAndAssertRunInShell(u, shellType, "/tmp/bin", null);
-      reset(mockShellProcessHandler);
-    }
-    assertAuditEntry(RunInShellFormData.ShellType.values().length * 2, customer.uuid);
   }
 
   @Test
