@@ -1,18 +1,18 @@
 ---
-title: Explore global distribution on macOS
-headerTitle: Global distribution
-linkTitle: Global distribution
-description: Simulate globally distributed SQL across regions using a local YugabyteDB cluster on macOS.
+title: Synchronous replication (3+ regions) in YSQL
+headerTitle: Synchronous replication (3+ regions) in YSQL
+linkTitle: Sync replication (3+ regions)
+description: Global data distributed using synchronous replication across regions in YSQL.
 aliases:
-  - /explore/global-distribution/
-  - /latest/explore/global-distribution/
-  - /latest/explore/planet-scale/global-distribution/
-  - /latest/explore/global-distribution-macos/
+  - /latest/explore/global-distribution-linux/
+  - /latest/explore/global-distribution/macos
+  - /latest/explore/global-distribution/linux
 menu:
   latest:
-    identifier: global-distribution-1-macos
-    parent: explore
-    weight: 220
+    name: Sync replication (3+ regions)
+    identifier: explore-multi-region-deployments-sync-replication-1-ysql
+    parent: explore-multi-region-deployments
+    weight: 710
 isTocNested: true
 showAsideToc: true
 ---
@@ -20,16 +20,16 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/global-distribution/macos" class="nav-link active">
-      <i class="fab fa-apple" aria-hidden="true"></i>
-      macOS
+    <a href="/latest/explore/multi-region-deployments/synchronous-replication-ysql/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/global-distribution/linux" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
-      Linux
+    <a href="/latest/explore/multi-region-deployments/synchronous-replication-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
     </a>
   </li>
 
@@ -49,7 +49,7 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with a replication factor (RF) of `3`, and each replica placed in different zones (`us-west-2a`, `us-west-2b`, `us-west-2c`) in the `us-west-2` (Oregon) region of AWS. This can be done by running the following: 
+Start a new local universe with a replication factor (RF) of `3`, and each replica placed in different zones (`us-west-2a`, `us-west-2b`, `us-west-2c`) in the `us-west-2` (Oregon) region of AWS. This can be done by running the following:
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create --placement_info "aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,aws.us-west-2.us-west-2c"
@@ -100,7 +100,7 @@ Add another node in the zone `ap-northeast-1a` of region `ap-northeast-1`.
 $ ./bin/yb-ctl add_node --placement_info "aws.ap-northeast-1.ap-northeast-1a"
 ```
 
-At this point, these two new nodes are added into the cluster but are not taking any read or write IO. This is because YB Master's initial placement policy of storing data across the zones in `us-west-2` region still applies.
+At this point, these two new nodes are added into the cluster but are not taking any read or write IO. This is because  YB Master's initial placement policy of storing data across the zones in `us-west-2` region still applies.
 
 ![Add node in a new region](/images/ce/online-reconfig-add-regions-no-load.png)
 
@@ -115,7 +115,7 @@ $ ./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100
 
 You should see that the data as well as the IO gradually moves from the nodes in `us-west-2b` and `us-west-2c` to the newly added nodes. The [tablet servers page](http://localhost:7000/tablet-servers) should soon look something like the screenshot below.
 
-![Multi-region workload](/images/ce/online-reconfig-multi-region-load.png)
+![Multi region workload](/images/ce/online-reconfig-multi-region-load.png)
 
 ## 4. Retire old nodes
 

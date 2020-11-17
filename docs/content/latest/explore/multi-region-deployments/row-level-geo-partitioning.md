@@ -6,7 +6,7 @@ headcontent: Row-Level Geo-Partitioning
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
-    identifier: explore-multi-region-deployments-geo-partitioning
+    identifier: explore-multi-region-geo-partitioning
     parent: explore-multi-region-deployments
     weight: 750
 isTocNested: true
@@ -131,7 +131,8 @@ First, we pin the data of the EU partition `transactions_eu` to live across thre
 ```
 $ yb-admin --master_addresses <yb-master-addresses>           \
     modify_table_placement_info ysql.yugabyte transactions_eu \
-    aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,... 3
+    aws.eu-central-1.eu-central-1a,aws.eu-central-1.eu-central-1b,\
+    ... 3
 ```
 
 
