@@ -38,12 +38,12 @@ In workloads that do very little IOPS and have a small data set, the bottleneck 
 
 Colocating various SQL tables puts all of their data into a single tablet, called the _colocation tablet_. Note that all the data in the colocation tablet is still replicated across 3 nodes (or whatever the replication factor is).
 
-This tutorial uses the [yb-ctl](../../../admin/yb-ctl) local cluster management utility.
+This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) local cluster management utility.
 
 ## 1. Create a universe
 
 ```sh
-$ ./bin/yb-ctl create
+$ ./bin/yugabyted start
 ```
 
 ## 2. Create a colocated database
@@ -134,6 +134,14 @@ If you go to tables view in [master UI](http://localhost:7000/tables), you'll se
 
 You can use standard [YSQL DML statements](../../../api/ysql) to read and write data in colocated tables. YSQL's query planner and executor
 will handle routing the data to the correct tablet.
+
+## 6. Clean up (optional)
+
+Optionally, you can shutdown the local cluster created in Step 1.
+
+```sh
+$ ./bin/yugabyted destroy
+```
 
 ## What's next?
 
