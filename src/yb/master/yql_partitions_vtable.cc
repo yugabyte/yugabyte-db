@@ -36,8 +36,10 @@ const std::string kReplicaAddresses = "replica_addresses";
 
 }
 
-YQLPartitionsVTable::YQLPartitionsVTable(const Master* const master)
-    : YQLVirtualTable(master::kSystemPartitionsTableName, master, CreateSchema()) {
+YQLPartitionsVTable::YQLPartitionsVTable(const TableName& table_name,
+                                         const NamespaceName& namespace_name,
+                                         Master * const master)
+    : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
 Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
