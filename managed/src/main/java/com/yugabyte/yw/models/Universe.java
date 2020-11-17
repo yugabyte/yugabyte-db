@@ -772,7 +772,7 @@ public class Universe extends Model {
         port == n.masterHttpPort ||
           port == n.tserverHttpPort ||
           port == n.ysqlServerHttpPort ||
-          port == n.yqlServerRpcPort ||
+          port == n.yqlServerHttpPort ||
           port == n.redisServerHttpPort));
   }
 }
