@@ -1,16 +1,18 @@
 ---
-title: Explore two data center (2DC) deployment on macOS
-headerTitle: Two data center (2DC) deployment
-linkTitle: Two data center (2DC)
-description: Simulate a geo-distributed two data center (2DC) deployment with two local YugabyteDB clusters on macOS.
+title: Asynchronous replication (2+ regions) in YSQL
+headerTitle: Asynchronous replication (2+ regions) in YSQL
+linkTitle: Async replication (2+ regions)
+description: Multi-region deployment using asynchronous replication across two or more data centers in YSQL.
 aliases:
-  - /latest/explore/two-data-centers/
-  - /latest/explore/two-data-centers-macos/
+  - /latest/explore/two-data-centers-linux/
+  - /latest/explore/two-data-centers/linux/
+  - /latest/explore/two-data-centers/macos/
 menu:
   latest:
-    identifier: two-data-centers-1-macos
-    parent: explore
-    weight: 250
+    name: Async Replication (2+ regions)
+    identifier: explore-multi-region-deployments-async-replication-1-ysql
+    parent: explore-multi-region-deployments
+    weight: 720
 isTocNested: true
 showAsideToc: true
 ---
@@ -18,16 +20,16 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/two-data-centers/macos" class="nav-link active">
-      <i class="fab fa-apple" aria-hidden="true"></i>
-      macOS
+    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ysql/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/two-data-centers/linux" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
-      Linux
+    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
     </a>
   </li>
 
@@ -38,8 +40,6 @@ By default, YugabyteDB provides synchronous replication and strong consistency a
 This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the [yb-ctl](../../../admin/yb-ctl) and [yb-admin](../../../admin/yb-admin) utilities.
 
 ## Prerequisites
-
-- Verify that you have the required extra loopback addresses by reviewing the [Quick Start section](../../../quick-start/install/macos/#configure).
 
 - For the tutorial, use the default database `yugabyte` and the default user `yugabyte`.
 
@@ -95,32 +95,32 @@ Waiting for cluster to be ready.
 
 In the default `yugabyte` database, create the database table `users` on the "Data Center - East" cluster.
 
-Open `ysqlsh` specifying the host IP address of `127.0.0.1`.
+Open `ycqlsh` specifying the host IP address of `127.0.0.1`.
 
 ```sh
-$ ./bin/ysqlsh -h 127.0.0.1
+$ ./bin/ycqlsh 127.0.0.1
 ```
 
 Run the following `CREATE TABLE` statement.
 
-```plpgsql
+```sql
 CREATE TABLE users (
-    email varchar(35) PRIMARY KEY,
-    username varchar(20)
+    email varchar PRIMARY KEY,
+    username varchar
     );
 ```
 
 Now create the identical database table on cluster B.
 
-Open `ysqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`.
+Open `ycqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`.
 
 ```sh
-$ ./bin/ysqlsh -h 127.0.0.2
+$ ./bin/ycqlsh 127.0.0.2
 ```
 
 Run the following `CREATE TABLE` statement.
 
-```plpgsql
+```sql
 CREATE TABLE users (
     email varchar(35) PRIMARY KEY,
     username varchar(20)
@@ -164,20 +164,20 @@ Replication setup successfully
 
 Now that you've configured unidirectional replication, you can now add data to the `users` table on the "Data Center - East" cluster and see the data appear in the `users` table on "Data Center - West" cluster.
 
-To add data to the "Data Center - East" cluster, open `ysqlsh` by running the following command, making sure you are pointing to the new producer host.
+To add data to the "Data Center - East" cluster, open `ycqlsh` by running the following command, making sure you are pointing to the new producer host.
 
 ```sh
-$ ./bin/ysqlsh -host 127.0.0.1
+$ ./bin/ycqlsh 127.0.0.1
 ```
 
 ```plpgsql
 yugabyte=# INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector'), ('steve@example.com', 'steve');
 ```
 
-On the consumer "Data Center - West" cluster, open `ysqlsh` and run the following to quickly see that data has been replicated between clusters.
+On the consumer "Data Center - West" cluster, open `ycqlsh` and run the following to quickly see that data has been replicated between clusters.
 
 ```sh
-$ ./bin/ysqlsh -host 127.0.0.2
+$ ./bin/ycqlsh 127.0.0.2
 ```
 
 ```plpgsql
@@ -220,20 +220,20 @@ Replication setup successfully
 
 Now that you've configured bidirectional replication, you can now add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster.
 
-To add data to the "Data Center - West" cluster, open `ysqlsh` by running the following command, making sure you are pointing to the new producer host.
+To add data to the "Data Center - West" cluster, open`ysqlsh` by running the following command, making sure you are pointing to the new producer host.
 
 ```sh
-$ ./bin/ysqlsh -host 127.0.0.2
+$ ./bin/ycqlsh 127.0.0.2
 ```
 
 ```plpgsql
 yugabyte=# INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha'), ('mikhail@example.com', 'mikhail');
 ```
 
-On the new "consumer" cluster, open `ysqlsh` and run the following to quickly see that data has been replicated between clusters.
+On the new "consumer" cluster, open `ycqlsh` and run the following to quickly see that data has been replicated between clusters.
 
 ```sh
-$ ./bin/ysqlsh -host 127.0.0.1
+$ ./bin/ycqlsh 127.0.0.1
 ```
 
 ```plpgsql

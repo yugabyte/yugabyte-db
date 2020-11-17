@@ -23,82 +23,44 @@ YugabyteDB supports a rich set of multi-region deployment topologies. This secti
 
 The table below summarizes these different multi-region deployments in YugabyteDB along with some of their key characteristics.
 
-<table>
-  <tr>
-   <td>
-   </td>
-   <td><strong>Default</strong>
-   </td>
-   <td><strong>xCluster</strong>
-   </td>
-   <td><strong>Geo-partitioning</strong>
-   </td>
-  </tr>
-  <tr>
-   <td><strong>Replication</strong>
-   </td>
-   <td>Synchronous
-   </td>
-   <td>Asynchronous <br/>(unidirectional and bidirectional)
-   </td>
-   <td>Synchronous
-   </td>
-  </tr>
-  <tr>
-   <td><strong>Data residency</strong>
-   </td>
-   <td>All data replicated across regions
-   </td>
-   <td>All data replicated inside region. <br/>Some data replicated across regions.
-   </td>
-   <td>Data partitioned across regions. <br/>Partitions replicated inside region.
-   </td>
-  </tr>
-  <tr>
-   <td><strong>Consistency</strong>
-   </td>
-   <td>Transactional
-   </td>
-   <td>Eventual consistency
-   </td>
-   <td>Transactional
-   </td>
-  </tr>
-  <tr>
-   <td><strong>Query latency</strong>
-   </td>
-   <td>High latency
-   </td>
-   <td>Low latency
-   </td>
-   <td>Low latency (when queried from nearby geography)
-   </td>
-  </tr>
-  <tr>
-   <td><strong>Schema changes</strong>
-   </td>
-   <td>Transparently managed
-   </td>
-   <td>Manual propagation
-   </td>
-   <td>Transparently managed
-   </td>
-  </tr>
-  <tr>
-   <td><strong>RPO (region outage)</strong>
-   </td>
-   <td>No data loss
-   </td>
-   <td>Some data loss
-   </td>
-   <td>No data loss (partial unavailability possible)
-   </td>
-  </tr>
-</table>
+
+|                             | [Default](synchronous-replication-ysql/) | [Geo-partitioning](row-level-geo-partitioning/) | [xCluster](asynchronous-replication-ysql/) | Read replicas
+|-----------------------------|---------|------------------|-----------------------------|-----------------------------
+|<strong>Replication</strong> | Synchronous | Synchronous  | Asynchronous <br/> *(unidirectional and bidirectional)* | Asynchronous <br/> *(unidirectional only)*
+|<strong>Data residency</strong> | All data replicated across regions | Data partitioned across regions. <br/>Partitions replicated inside region. | All data replicated inside region. <br/>Configure per-table cross-region replication. | All data replicated in primary region. <br/>Cluster-wide async replication to read replicas.
+| <strong>Consistency</strong> | Transactional | Transactional | Eventual consistency | Eventual consistency
+| <strong>Write latency</strong> | High latency | Low latency | Low latency | Low latency
+| <strong>Read latency</strong> | High latency | Low latency <br/> *(when queried from nearby geography)* | Low latency | Low latency
+| <strong>Schema changes</strong> | Transparently managed | Transparently managed | Manual propagation | Transparently managed
+| <strong>RPO</strong> <br/> | No data loss | No data loss <br/> *(partial unavailability possible)* | Some data loss | No data loss
 
 The different deployments are explained in the sections below.
 
 <div class="row">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="synchronous-replication-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
+        <div class="title">Synchronous Replication</div>
+      </div>
+      <div class="body">
+          Achieve synchronous replication across 3 or more regions in YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="asynchronous-replication-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
+        <div class="title">Asynchronous Replication</div>
+      </div>
+      <div class="body">
+          Achieve asynchronous replication across 2 or more regions in YugabyteDB.
+      </div>
+    </a>
+  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="row-level-geo-partitioning/">
