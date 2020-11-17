@@ -869,6 +869,14 @@ Histogram::Histogram(const HistogramPrototype* proto)
     export_percentiles_(proto->export_percentiles()) {
 }
 
+Histogram::Histogram(
+  std::unique_ptr <HistogramPrototype> proto,  uint64_t highest_trackable_value,
+  int num_significant_digits, ExportPercentiles export_percentiles)
+  : Metric(std::move(proto)),
+    histogram_(new HdrHistogram(highest_trackable_value, num_significant_digits)),
+    export_percentiles_(export_percentiles) {
+}
+
 void Histogram::Increment(int64_t value) {
   histogram_->Increment(value);
 }
