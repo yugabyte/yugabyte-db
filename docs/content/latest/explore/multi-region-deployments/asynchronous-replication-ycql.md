@@ -1,15 +1,18 @@
 ---
-title: Explore two data center (2DC) deployment on Linux
-headerTitle: Two data center (2DC) deployment
-linkTitle: Two data center (2DC)
-description: Simulate a geo-distributed two data center (2DC) deployment with two local YugabyteDB clusters on Linux.
+title: Asynchronous replication (2+ regions) in YCQL
+headerTitle: Asynchronous replication (2+ regions) in YCQL
+linkTitle: Async replication (2+ regions)
+description: Multi-region deployment using asynchronous replication across two or more data centers in YCQL.
 aliases:
   - /latest/explore/two-data-centers-linux/
+  - /latest/explore/two-data-centers/linux/
+  - /latest/explore/two-data-centers/macos/
 menu:
   latest:
-    identifier: two-data-centers-2-linux
-    parent: explore
-    weight: 250
+    name: Async Replication (2+ regions)
+    identifier: explore-multi-region-deployments-async-replication-2-ycql
+    parent: explore-multi-region-deployments
+    weight: 720
 isTocNested: true
 showAsideToc: true
 ---
@@ -17,16 +20,16 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/two-data-centers/macos" class="nav-link">
-      <i class="fab fa-apple" aria-hidden="true"></i>
-      macOS
+    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ysql/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/two-data-centers/linux" class="nav-link active">
-      <i class="fab fa-linux" aria-hidden="true"></i>
-      Linux
+    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ycql/" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
     </a>
   </li>
 

@@ -1,15 +1,18 @@
 ---
-title: Explore global distribution on Linux
-headerTitle: Global distribution
-linkTitle: Global distribution
-description: Simulate globally distributed SQL across regions using a local YugabyteDB cluster on Linux.
+title: Synchronous replication (3+ regions) in YCQL
+headerTitle: Synchronous replication (3+ regions) in YCQL
+linkTitle: Sync replication (3+ regions)
+description: Global data distributed using synchronous replication across regions in YCQL.
 aliases:
   - /latest/explore/global-distribution-linux/
+  - /latest/explore/global-distribution/macos
+  - /latest/explore/global-distribution/linux
 menu:
   latest:
-    identifier: global-distribution-2-linux
-    parent: explore
-    weight: 220
+    name: Sync replication (3+ regions)
+    identifier: explore-multi-region-deployments-sync-replication-2-ycql
+    parent: explore-multi-region-deployments
+    weight: 710
 isTocNested: true
 showAsideToc: true
 ---
@@ -17,16 +20,16 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/global-distribution/macos" class="nav-link">
-      <i class="fab fa-apple" aria-hidden="true"></i>
-      macOS
+    <a href="/latest/explore/multi-region-deployments/synchronous-replication-ysql/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/global-distribution/linux" class="nav-link active">
-      <i class="fab fa-linux" aria-hidden="true"></i>
-      Linux
+    <a href="/latest/explore/multi-region-deployments/synchronous-replication-ycql/" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
     </a>
   </li>
 
@@ -71,8 +74,8 @@ $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.1/yb-sam
 Run a `SqlInserts` workload in a separate shell.
 
 ```sh
-$ java -jar ./yb-sample-apps.jar --workload SqlInserts \
-                                    --nodes 127.0.0.1:5433 \
+$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
+                                    --nodes 127.0.0.1:9042 \
                                     --num_threads_write 1 \
                                     --num_threads_read 4
 ```
