@@ -1344,11 +1344,6 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   (*output) << "<div class='col-xs-12 col-md-8 col-lg-6'>\n";
   HandleMasters(req, resp);
   (*output) << "</div> <!-- col-xs-12 col-md-8 col-lg-6 -->\n";
-
-  // Display the user tables if any.
-  (*output) << "<div class='col-md-12 col-lg-12'>\n";
-  HandleCatalogManager(req, resp, true /* only_user_tables */);
-  (*output) << "</div> <!-- col-md-12 col-lg-12 -->\n";
 }
 
 void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
