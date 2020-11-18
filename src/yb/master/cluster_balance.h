@@ -98,6 +98,8 @@ class ClusterLoadBalancer {
   // Indirection methods to CatalogManager that we override in the subclasses (or testing).
   //
 
+  virtual void InitializeTSDescriptors();
+
   // Get the list of all live TSDescriptors which reported their tablets.
   virtual void GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const;
 
@@ -126,10 +128,10 @@ class ClusterLoadBalancer {
 
   // Increment the provided variables by the number of pending tasks that were found. Do not call
   // more than once for the same table because it also modifies the internal state.
-  virtual void CountPendingTasksUnlocked(const TableId& table_uuid,
-                                 int* pending_add_replica_tasks,
-                                 int* pending_remove_replica_tasks,
-                                 int* pending_stepdown_leader_tasks)
+  virtual CHECKED_STATUS CountPendingTasksUnlocked(const TableId& table_uuid,
+                                                   int* pending_add_replica_tasks,
+                                                   int* pending_remove_replica_tasks,
+                                                   int* pending_stepdown_leader_tasks)
     REQUIRES_SHARED(catalog_manager_->lock_);
 
   // Wrapper around CatalogManager::GetPendingTasks so it can be mocked by TestLoadBalancer.
@@ -156,7 +158,7 @@ class ClusterLoadBalancer {
   //
 
   // Resets the global_state_ object, and the map of per-table states.
-  virtual void ResetGlobalState();
+  virtual void ResetGlobalState(bool initialize_ts_descs = true);
 
 
   // Resets the pointer state_ to point to the correct table's state.

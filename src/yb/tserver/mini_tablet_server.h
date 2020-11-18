@@ -123,7 +123,7 @@ class MiniTabletServer {
 
   bool is_started() const { return started_; }
 
-  void FailHeartbeats();
+  void FailHeartbeats(bool fail_heartbeats_for_tests = true);
 
   // Close and disable all connections from this server to any other servers in the cluster.
   void Isolate();

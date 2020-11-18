@@ -227,6 +227,8 @@ class TestLoadBalancerBase {
 
  protected:
   Status AnalyzeTablets() NO_THREAD_SAFETY_ANALYSIS /* don't need locks for mock class  */ {
+    cb_->GetAllReportedDescriptors(&cb_->global_state_->ts_descs_);
+    cb_->InitializeTSDescriptors();
     return cb_->AnalyzeTabletsUnlocked(cur_table_uuid_);
   }
 
@@ -370,7 +372,8 @@ class TestLoadBalancerBase {
     ts_descs_.pop_back();
     // Add a tablet server with proper placement and peer it to all tablets. Now all tablets
     // should have 2 peers.
-    ts_descs_.push_back(SetupTS("1new", "a"));
+    // Using empty ts_uuid here since our mocked PendingTasksUnlocked only returns empty ts_uuids.
+    ts_descs_.push_back(SetupTS("", "a"));
     for (auto tablet : tablets_) {
       AddRunningReplica(tablet.get(), ts_descs_[1]);
     }
@@ -407,7 +410,7 @@ class TestLoadBalancerBase {
     }
     int count = 0;
     int pending_add_count = 0;
-    cb_->CountPendingTasksUnlocked(cur_table_uuid_, &pending_add_count, &count, &count);
+    ASSERT_OK(cb_->CountPendingTasksUnlocked(cur_table_uuid_, &pending_add_count, &count, &count));
     ASSERT_EQ(pending_add_count, pending_add_replica_tasks_.size());
     ASSERT_OK(AnalyzeTablets());
     string placeholder, tablet_id;
@@ -432,7 +435,8 @@ class TestLoadBalancerBase {
       pending_remove_replica_tasks_.push_back(tablet->id());
     }
     int pending_remove_count = 0;
-    cb_->CountPendingTasksUnlocked(cur_table_uuid_, &count, &pending_remove_count, &count);
+    ASSERT_OK(
+        cb_->CountPendingTasksUnlocked(cur_table_uuid_, &count, &pending_remove_count, &count));
     ASSERT_EQ(pending_remove_count, pending_remove_replica_tasks_.size());
     ASSERT_OK(AnalyzeTablets());
     ASSERT_FALSE(ASSERT_RESULT(cb_->HandleRemoveReplicas(&tablet_id, &placeholder)));
