@@ -265,8 +265,8 @@ class TSDescriptor {
     return removed_;
   }
 
-  void SetRemoved() {
-    removed_ = true;
+  void SetRemoved(bool removed = true) {
+    removed_ = removed;
   }
 
   explicit TSDescriptor(std::string perm_id);
