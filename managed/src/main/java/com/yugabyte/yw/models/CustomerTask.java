@@ -297,8 +297,8 @@ public class CustomerTask extends Model {
       String.format("CustomerTask %s has not completed", id));
     TaskInfo rootTaskInfo = TaskInfo.get(taskUUID);
     if (!rootTaskInfo.hasCompleted()) {
-      LOG.warn("Completed CustomerTask id {} has incomplete task_info {}",
-        id, rootTaskInfo);
+      LOG.warn("Completed CustomerTask(id:{}, type:{}) has incomplete task_info {}",
+        id, type, rootTaskInfo);
       return 0;
     }
     List<TaskInfo> subTasks = rootTaskInfo.getSubTasks();
@@ -306,8 +306,8 @@ public class CustomerTask extends Model {
       .filter(taskInfo -> !taskInfo.hasCompleted())
       .collect(Collectors.toList());
     if (!incompleteSubTasks.isEmpty()) {
-      LOG.warn("Completed CustomerTask id {} has {} incomplete subtasks {}",
-        id, incompleteSubTasks.size(), incompleteSubTasks);
+      LOG.warn("Completed CustomerTask(id: {}, type:{}) has {} incomplete subtasks {}",
+        id, type, incompleteSubTasks.size(), incompleteSubTasks);
       return 0;
     }
     // Note: delete leaf nodes first to preserve referential integrity.
