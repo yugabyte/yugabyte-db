@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Singleton
 public class TaskGarbageCollector {
@@ -124,7 +125,7 @@ public class TaskGarbageCollector {
       LOG.info("yb.taskGC.gc_check_interval set to 0.");
       LOG.warn("!!! TASK GC DISABLED !!!");
     } else {
-      LOG.info("Scheduling health checker every " + gcInterval);
+      LOG.info("Scheduling TaskGC every " + gcInterval);
       scheduler.schedule(
         Duration.ZERO, // InitialDelay
         gcInterval,
@@ -146,8 +147,10 @@ public class TaskGarbageCollector {
   @VisibleForTesting
   void purgeStaleTasks(Customer c, List<CustomerTask> staleTasks) {
     numTaskGCRuns.ifPresent(Counter::inc);
-    staleTasks.forEach(customerTask -> {
+    int numRowsGCdInThisRun = 0;
+    for (CustomerTask customerTask : staleTasks) {
       int numRowsDeleted = customerTask.cascadeDeleteCompleted();
+      numRowsGCdInThisRun += numRowsDeleted;
       if (numRowsDeleted > 0) {
         purgedCustomerTaskCount
           .ifPresent(counter -> counter.labels(c.getUuid().toString()).inc());
@@ -156,7 +159,8 @@ public class TaskGarbageCollector {
       } else {
         numTaskGCErrors.ifPresent(Counter::inc);
       }
-    });
+    }
+    LOG.info("Garbage collected {} rows", numRowsGCdInThisRun);
   }
 
   /**
