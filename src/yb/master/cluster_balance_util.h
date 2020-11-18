@@ -27,6 +27,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/util/random.h"
+#include "yb/util/status.h"
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 
@@ -225,6 +226,8 @@ class GlobalLoadState {
     const auto& ts_meta = per_ts_global_meta_.at(ts_uuid);
     return ts_meta.starting_tablets_count + ts_meta.running_tablets_count;
   }
+
+  TSDescriptorVector ts_descs_;
 };
 
 class PerTableLoadState {
@@ -338,7 +341,7 @@ class PerTableLoadState {
       // Fill leader info.
       if (replica.second.role == consensus::RaftPeerPB::LEADER) {
         tablet_meta.leader_uuid = ts_uuid;
-        AddLeaderTablet(tablet_id, ts_uuid);
+        RETURN_NOT_OK(AddLeaderTablet(tablet_id, ts_uuid));
       }
 
       const tablet::RaftGroupStatePB& tablet_state = replica.second.state;
@@ -346,11 +349,11 @@ class PerTableLoadState {
       VLOG(2) << "Tablet " << tablet_id << " for table " << table_id_
                 << " is in state " << RaftGroupStatePB_Name(tablet_state);
       if (tablet_state == tablet::RUNNING) {
-        AddRunningTablet(tablet_id, ts_uuid);
+        RETURN_NOT_OK(AddRunningTablet(tablet_id, ts_uuid));
       } else if (!replica_is_stale &&
                  (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED)) {
         // Keep track of transitioning state (not running, but not in a stopped or failed state).
-        AddStartingTablet(tablet_id, ts_uuid);
+        RETURN_NOT_OK(AddStartingTablet(tablet_id, ts_uuid));
         VLOG(1) << "Increased total_starting to "
                    << total_starting_ << " for tablet " << tablet_id << " and table " << table_id_;
       } else if (replica_is_stale) {
@@ -604,14 +607,14 @@ class PerTableLoadState {
   }
 
   Status AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
-    AddStartingTablet(tablet_id, to_ts);
+    RETURN_NOT_OK(AddStartingTablet(tablet_id, to_ts));
     tablets_added_.insert(tablet_id);
     SortLoad();
     return Status::OK();
   }
 
   Status RemoveReplica(const TabletId& tablet_id, const TabletServerId& from_ts) {
-    RemoveRunningTablet(tablet_id, from_ts);
+    RETURN_NOT_OK(RemoveRunningTablet(tablet_id, from_ts));
     if (per_ts_meta_[from_ts].starting_tablets.count(tablet_id)) {
       LOG(DFATAL) << "Invalid request: remove starting tablet " << tablet_id
                   << " from ts " << from_ts;
@@ -643,9 +646,9 @@ class PerTableLoadState {
                                tablet_id, per_tablet_meta_[tablet_id].leader_uuid, from_ts);
     }
     per_tablet_meta_[tablet_id].leader_uuid = to_ts;
-    RemoveLeaderTablet(tablet_id, from_ts);
+    RETURN_NOT_OK(RemoveLeaderTablet(tablet_id, from_ts));
     if (!to_ts.empty()) {
-      AddLeaderTablet(tablet_id, to_ts);
+      RETURN_NOT_OK(AddLeaderTablet(tablet_id, to_ts));
     }
     SortLeaderLoad();
     return Status::OK();
@@ -704,43 +707,58 @@ class PerTableLoadState {
     tablet->GetReplicaLocations(replica_locations);
   }
 
-  void AddRunningTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+  Status AddRunningTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+    SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
+           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
     // Set::Insert returns a pair where the second value is whether or not an item was inserted.
-    auto ret = per_ts_meta_[ts_uuid].running_tablets.insert(tablet_id);
+    auto ret = per_ts_meta_.at(ts_uuid).running_tablets.insert(tablet_id);
     if (ret.second) {
       ++global_state_->per_ts_global_meta_[ts_uuid].running_tablets_count;
       ++total_running_;
       ++per_tablet_meta_[tablet_id].running;
     }
+    return Status::OK();
   }
 
-  void RemoveRunningTablet(TabletId tablet_id, TabletServerId ts_uuid) {
-    int num_erased = per_ts_meta_[ts_uuid].running_tablets.erase(tablet_id);
+  Status RemoveRunningTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+    SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
+           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+    int num_erased = per_ts_meta_.at(ts_uuid).running_tablets.erase(tablet_id);
     global_state_->per_ts_global_meta_[ts_uuid].running_tablets_count -= num_erased;
     total_running_ -= num_erased;
     per_tablet_meta_[tablet_id].running -= num_erased;
+    return Status::OK();
   }
 
-  void AddStartingTablet(TabletId tablet_id, TabletServerId ts_uuid) {
-    auto ret = per_ts_meta_[ts_uuid].starting_tablets.insert(tablet_id);
+  Status AddStartingTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+    SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
+           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+    auto ret = per_ts_meta_.at(ts_uuid).starting_tablets.insert(tablet_id);
     if (ret.second) {
       ++global_state_->per_ts_global_meta_[ts_uuid].starting_tablets_count;
       ++total_starting_;
       ++global_state_->total_starting_tablets_;
       ++per_tablet_meta_[tablet_id].starting;
     }
+    return Status::OK();
   }
 
-  void AddLeaderTablet(TabletId tablet_id, TabletServerId ts_uuid) {
-    auto ret = per_ts_meta_[ts_uuid].leaders.insert(tablet_id);
+  Status AddLeaderTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+    SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
+           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+    auto ret = per_ts_meta_.at(ts_uuid).leaders.insert(tablet_id);
     if (ret.second) {
       ++global_state_->per_ts_global_meta_[ts_uuid].leaders_count;
     }
+    return Status::OK();
   }
 
-  void RemoveLeaderTablet(TabletId tablet_id, TabletServerId ts_uuid) {
-    int num_erased = per_ts_meta_[ts_uuid].leaders.erase(tablet_id);
+  Status RemoveLeaderTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+    SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
+           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+    int num_erased = per_ts_meta_.at(ts_uuid).leaders.erase(tablet_id);
     global_state_->per_ts_global_meta_[ts_uuid].leaders_count -= num_erased;
+    return Status::OK();
   }
 
   // PerTableLoadState member fields
@@ -819,6 +837,9 @@ class PerTableLoadState {
   bool use_preferred_zones_ = true;
 
  private:
+  const std::string uninitialized_ts_meta_format_msg =
+      "Found uninitialized ts_meta: ts_uuid: $0, table_uuid: $1";
+
   DISALLOW_COPY_AND_ASSIGN(PerTableLoadState);
 }; // PerTableLoadState
 

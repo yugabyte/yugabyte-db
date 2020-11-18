@@ -107,7 +107,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   MetricsSnapshotter* metrics_snapshotter() { return metrics_snapshotter_.get(); }
 
   void set_fail_heartbeats_for_tests(bool fail_heartbeats_for_tests) {
-    base::subtle::NoBarrier_Store(&fail_heartbeats_for_tests_, 1);
+    base::subtle::NoBarrier_Store(&fail_heartbeats_for_tests_, fail_heartbeats_for_tests);
   }
 
   bool fail_heartbeats_for_tests() const {
