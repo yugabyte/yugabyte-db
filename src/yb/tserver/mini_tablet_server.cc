@@ -280,8 +280,8 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
       partition.first, boost::none /* index_info */, config, nullptr);
 }
 
-void MiniTabletServer::FailHeartbeats() {
-  server_->set_fail_heartbeats_for_tests(true);
+void MiniTabletServer::FailHeartbeats(bool fail_heartbeats_for_tests) {
+  server_->set_fail_heartbeats_for_tests(fail_heartbeats_for_tests);
 }
 
 Endpoint MiniTabletServer::bound_rpc_addr() const {
