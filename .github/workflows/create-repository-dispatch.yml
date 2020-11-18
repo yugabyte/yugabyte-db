@@ -92,7 +92,7 @@ jobs:
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
           -H "Accept: application/vnd.github.everest-preview+json" \
           -H "Content-Type: application/json" https://api.github.com/repos/yugabyte/homebrew-yugabytedb/dispatches \
-          --data '{"event_type": "build-on-release", "client_payload":
+          --data '{"event_type": "update-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",
                     "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
@@ -112,7 +112,7 @@ jobs:
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
           -H "Accept: application/vnd.github.everest-preview+json" \
           -H "Content-Type: application/json" https://api.github.com/repos/yugabyte/charts/dispatches \
-          --data '{"event_type": "build-on-release", "client_payload":
+          --data '{"event_type": "update-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",
                     "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
