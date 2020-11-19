@@ -1413,7 +1413,7 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
 
   // Release the lock while we wait for the log append to finish so that commits can go through.
   if (!result.wait_for_op_id.empty()) {
-    RETURN_NOT_OK(WaitForWrites(result.wait_for_op_id));
+    RETURN_NOT_OK(WaitForWrites(result.current_term, result.wait_for_op_id));
   }
 
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
@@ -1534,7 +1534,9 @@ Status RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_r
     LOG_WITH_PREFIX(INFO) << "Deduplicated request from leader. Original: "
                           << rpc_req->preceding_id() << "->" << OpsRangeString(*rpc_req)
                           << "   Dedup: " << deduplicated_req->preceding_op_id << "->"
-                          << deduplicated_req->OpsRangeString();
+                          << deduplicated_req->OpsRangeString()
+                          << ", known committed: " << last_committed << ", received committed: "
+                          << OpId::FromPB(rpc_req->committed_op_id());
   }
 
   return Status::OK();
@@ -1678,7 +1680,10 @@ Status RaftConsensus::CheckLeaderRequestUnlocked(ConsensusRequestPB* request,
     // If the index is in our log but the terms are not the same abort down to the leader's
     // preceding id.
     if (term_mismatch) {
+      // Since we are holding the lock ApplyPendingOperationsUnlocked would be invoked between
+      // those two.
       RETURN_NOT_OK(state_->AbortOpsAfterUnlocked(deduped_req->preceding_op_id.index));
+      RETURN_NOT_OK(log_->ResetLastSyncedEntryOpId(deduped_req->preceding_op_id));
     }
   }
 
@@ -1801,6 +1806,8 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   ReplicaState::UniqueLock lock;
   RETURN_NOT_OK(state_->LockForUpdate(&lock));
 
+  const auto old_leader = state_->GetLeaderUuidUnlocked();
+
   auto prev_committed_op_id = state_->GetCommittedOpIdUnlocked();
 
   deduped_req.leader_uuid = request->caller_uuid();
@@ -1808,6 +1815,8 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   RETURN_NOT_OK(CheckLeaderRequestUnlocked(request, response, &deduped_req));
 
   if (response->status().has_error()) {
+    LOG_WITH_PREFIX(INFO)
+        << "Returning from UpdateConsensus because of error: " << AsString(response->status());
     // We had an error, like an invalid term, we still fill the response.
     FillConsensusResponseOKUnlocked(response);
     return UpdateReplicaResult();
@@ -1842,6 +1851,10 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
     return UpdateReplicaResult();
   }
 
+  if (deduped_req.committed_op_id.index < prev_committed_op_id.index) {
+    deduped_req.committed_op_id = prev_committed_op_id;
+  }
+
   // 3 - Enqueue the writes.
   auto last_from_leader = EnqueueWritesUnlocked(
       deduped_req, WriteEmpty(prev_committed_op_id != deduped_req.committed_op_id));
@@ -1864,6 +1877,7 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   if (!deduped_req.messages.empty()) {
     result.wait_for_op_id = state_->GetLastReceivedOpIdUnlocked();
   }
+  result.current_term = state_->GetCurrentTermUnlocked();
 
   uint64_t update_time_ms = 0;
   if (request->has_propagated_hybrid_time()) {
@@ -1908,7 +1922,7 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
   Status prepare_status;
   auto iter = deduped_req.messages.begin();
 
-  if (PREDICT_TRUE(deduped_req.messages.size() > 0)) {
+  if (PREDICT_TRUE(!deduped_req.messages.empty())) {
     // TODO Temporary until the leader explicitly propagates the safe hybrid_time.
     // TODO: what if there is a failure here because the updated time is too far in the future?
     clock_->Update(HybridTime(deduped_req.messages.back()->hybrid_time()));
@@ -2006,7 +2020,7 @@ yb::OpId RaftConsensus::EnqueueWritesUnlocked(const LeaderRequest& deduped_req,
       yb::OpId::FromPB(deduped_req.messages.back()->id()) : deduped_req.preceding_op_id;
 }
 
-Status RaftConsensus::WaitForWrites(const yb::OpId& wait_for_op_id) {
+Status RaftConsensus::WaitForWrites(int64_t term, const OpId& wait_for_op_id) {
   // 5 - We wait for the writes to be durable.
 
   // Note that this is safe because dist consensus now only supports a single outstanding
@@ -2021,6 +2035,16 @@ Status RaftConsensus::WaitForWrites(const yb::OpId& wait_for_op_id) {
     if (!wait_result.empty()) {
       break;
     }
+    int64_t new_term;
+    {
+      auto lock = state_->LockForRead();
+      new_term = state_->GetCurrentTermUnlocked();
+    }
+    if (term != new_term) {
+      return STATUS_FORMAT(IllegalState, "Term changed to $0 while waiting for writes in term $1",
+                           new_term, term);
+    }
+
     SnoozeFailureDetector(DO_NOT_LOG);
 
     const auto election_timeout_at = MonoTime::Now() + MinimumElectionTimeout();
@@ -2042,7 +2066,7 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB
     // we should never apply anything later than what we received in this request
     apply_up_to = last_from_leader;
 
-    VLOG_WITH_PREFIX(2)
+    LOG_WITH_PREFIX(INFO)
         << "Received commit index " << request.committed_op_id()
         << " from the leader but only marked up to " << apply_up_to << " as committed.";
   } else {

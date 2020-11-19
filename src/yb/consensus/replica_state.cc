@@ -594,12 +594,15 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   for (auto it = preceding_op_iter; it != pending_operations_.end(); ++it) {
     const scoped_refptr<ConsensusRound>& round = *it;
     LOG_WITH_PREFIX(INFO) << "Aborting uncommitted operation due to leader change: "
-                          << round->replicate_msg()->id();
+                          << round->replicate_msg()->id() << ", committed: "
+                          << last_committed_op_id_;
     NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm,
                                       nullptr /* applied_op_ids */);
   }
+
   // Clear entries from pending operations.
   pending_operations_.erase(preceding_op_iter, pending_operations_.end());
+  CheckPendingOperationsHead();
 
   return Status::OK();
 }
@@ -738,7 +741,15 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
     // Might be need some tool to be able to remove SPLIT_OP from Raft log.
   }
 
+  LOG_IF_WITH_PREFIX(
+      DFATAL,
+      !pending_operations_.empty() &&
+          pending_operations_.back()->id().index() + 1 != round->id().index())
+      << "Adding operation with wrong index: " << AsString(round) << ", last op id: "
+      << AsString(pending_operations_.back()->id()) << ", operations: "
+      << AsString(pending_operations_);
   pending_operations_.push_back(round);
+  CheckPendingOperationsHead();
   return Status::OK();
 }
 
@@ -804,6 +815,7 @@ void ReplicaState::SetLastCommittedIndexUnlocked(const yb::OpId& committed_op_id
   DCHECK(IsLocked());
   CHECK_GE(last_received_op_id_.index, committed_op_id.index);
   last_committed_op_id_ = committed_op_id;
+  CheckPendingOperationsHead();
 }
 
 Status ReplicaState::InitCommittedOpIdUnlocked(const yb::OpId& committed_op_id) {
@@ -823,6 +835,18 @@ Status ReplicaState::InitCommittedOpIdUnlocked(const yb::OpId& committed_op_id) 
   SetLastCommittedIndexUnlocked(committed_op_id);
 
   return Status::OK();
+}
+
+void ReplicaState::CheckPendingOperationsHead() const {
+  if (pending_operations_.empty() || last_committed_op_id_.empty() ||
+      pending_operations_.front()->id().index() == last_committed_op_id_.index + 1) {
+    return;
+  }
+
+  LOG_WITH_PREFIX(FATAL)
+      << "The first pending operation's index is supposed to immediately follow the last committed "
+      << "operation's index. Committed op id: " << last_committed_op_id_ << ", pending operations: "
+      << AsString(pending_operations_);
 }
 
 Result<bool> ReplicaState::AdvanceCommittedOpIdUnlocked(
@@ -849,8 +873,7 @@ Result<bool> ReplicaState::AdvanceCommittedOpIdUnlocked(
         last_committed_op_id_, committed_op_id, last_received_op_id_);
   }
 
-  // Start at the operation after the last committed one.
-  CHECK_EQ(pending_operations_.front()->id().index(), last_committed_op_id_.index + 1);
+  CheckPendingOperationsHead();
 
   auto old_index = last_committed_op_id_.index;
 
@@ -881,15 +904,18 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
   OpIds applied_op_ids;
   applied_op_ids.reserve(committed_op_id.index - prev_id.index);
 
+  Status status;
+
   while (!pending_operations_.empty()) {
     auto round = pending_operations_.front();
     auto current_id = yb::OpId::FromPB(round->id());
-    if (current_id.index > committed_op_id.index) {
-      break;
-    }
 
     if (PREDICT_TRUE(prev_id)) {
       CHECK_OK(CheckOpInSequence(prev_id, current_id));
+    }
+
+    if (current_id.index > committed_op_id.index) {
+      break;
     }
 
     auto type = round->replicate_msg()->op_type();
@@ -906,10 +932,29 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
     } else if (current_id.index > max_allowed_op_id.index ||
                current_id.term > max_allowed_op_id.term) {
       max_allowed_op_id = safe_op_id_waiter_->WaitForSafeOpIdToApply(current_id);
-      SCHECK(max_allowed_op_id.index >= current_id.index &&
-                 max_allowed_op_id.term >= current_id.term,
-             RuntimeError,
-             Format("Bad max allowed: $0, while current: $1", max_allowed_op_id, current_id));
+      // This situation should not happen. Prior to #4150 it could happen as follows.  Suppose
+      // replica A was the leader of term 1 and added operations 1.100 and 1.101 to the WAL but
+      // has not committed them yet.  Replica B decides that A is unavailable, starts and wins
+      // term 2 election, and tries to replicate a no-op 2.100.  Replica A starts and wins term 3
+      // election and then continues to replicate 1.100 and 1.101 and the new no-op 3.102.
+      // Suppose an UpdateConsensus from replica A reaches replica B with a committed op id of
+      // 3.102 (because perhaps some other replica has already received those entries).  Replica B
+      // will abort 2.100 and try to apply all three operations. Suppose the last op id flushed to
+      // the WAL on replica B is currently 2.100, and current_id is 1.101. Then
+      // WaitForSafeOpIdToApply would return 2.100 immediately as 2.100 > 1.101 in terms of OpId
+      // comparison, and we will throw an error here.
+      //
+      // However, after the #4150 fix we are resetting flushed op id using ResetLastSynchedOpId
+      // when aborting operations during term changes, so WaitForSafeOpIdToApply would correctly
+      // wait until 1.101 is written and return 1.101 or 3.102 in the above example.
+      if (max_allowed_op_id.index < current_id.index || max_allowed_op_id.term < current_id.term) {
+        status = STATUS_FORMAT(
+            RuntimeError,
+            "Bad max allowed op id ($0), term/index must be no less than that of current op id "
+            "($1)",
+            max_allowed_op_id, current_id);
+        break;
+      }
     }
 
     pending_operations_.pop_front();
@@ -926,7 +971,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
 
   applied_ops_tracker_(applied_op_ids);
 
-  return Status::OK();
+  return status;
 }
 
 void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
