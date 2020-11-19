@@ -12,10 +12,7 @@ import play.libs.Json;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Date;
-import java.util.List;
-import java.util.Random;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
@@ -48,19 +45,19 @@ public class CustomerTaskTest extends FakeDBApplication {
 
   private CustomerTask createTaskTree(CustomerTask.TargetType targetType, UUID targetUUID,
                                       CustomerTask.TaskType taskType) {
-    return createTaskTree(targetType, targetUUID, taskType, 3, true, true);
+    return createTaskTree(targetType, targetUUID, taskType, 3,
+      Optional.of(TaskInfo.State.Success), true);
   }
 
   private CustomerTask createTaskTree(CustomerTask.TargetType targetType, UUID targetUUID,
                                       CustomerTask.TaskType taskType, int depth,
-                                      boolean completeRoot, boolean completeSubtasks) {
+                                      Optional<TaskInfo.State> completeRoot,
+                                      boolean completeSubtasks) {
     UUID rootTaskUUID = null;
     if (depth > 1) {
       TaskInfo rootTaskInfo = buildTaskInfo(null, TaskType.CreateUniverse);
       rootTaskUUID = rootTaskInfo.getTaskUUID();
-      if (completeRoot) {
-        rootTaskInfo.setTaskState(TaskInfo.State.Success);
-      }
+      completeRoot.ifPresent(rootTaskInfo::setTaskState);
       rootTaskInfo.save();
     }
     if (depth > 2) {
@@ -151,7 +148,8 @@ public class CustomerTaskTest extends FakeDBApplication {
   @Test
   public void testCascadeDelete_noSubtasks_success() {
     UUID targetUUID = UUID.randomUUID();
-    CustomerTask th = createTaskTree(CustomerTask.TargetType.Table, targetUUID, Create, 2, true,
+    CustomerTask th = createTaskTree(CustomerTask.TargetType.Table, targetUUID, Create, 2,
+      Optional.of(TaskInfo.State.Success),
       true);
     th.markAsCompleted();
     assertEquals(2, th.cascadeDeleteCompleted());
@@ -161,8 +159,8 @@ public class CustomerTaskTest extends FakeDBApplication {
   @Test
   public void testCascadeDelete_taskInfoIncomplete_skipped() {
     UUID targetUUID = UUID.randomUUID();
-    CustomerTask th = createTaskTree(CustomerTask.TargetType.Table, targetUUID, Create, 3, false,
-      true);
+    CustomerTask th = createTaskTree(CustomerTask.TargetType.Table, targetUUID, Create, 3,
+      Optional.empty(), true);
     th.markAsCompleted();
     assertEquals(0, th.cascadeDeleteCompleted());
     assertEquals(th, CustomerTask.findByTaskUUID(th.getTaskUUID()));
@@ -170,13 +168,26 @@ public class CustomerTaskTest extends FakeDBApplication {
 
 
   @Test
-  public void testCascadeDelete_subtasksIncomplete_skipped() {
+  public void testCascadeDeleteSuccessfulTask_subtasksIncomplete_skipped() {
     UUID targetUUID = UUID.randomUUID();
-    CustomerTask th = createTaskTree(CustomerTask.TargetType.Table, targetUUID, Create, 3, true,
+    CustomerTask th = createTaskTree(CustomerTask.TargetType.Table, targetUUID, Create, 3,
+      Optional.of(TaskInfo.State.Success),
       false);
     th.markAsCompleted();
     assertEquals(0, th.cascadeDeleteCompleted());
     assertEquals(th, CustomerTask.findByTaskUUID(th.getTaskUUID()));
+  }
+
+  @Test
+  public void testCascadeDeleteFailedTask_subtasksIncomplete_success() {
+    UUID targetUUID = UUID.randomUUID();
+    CustomerTask th = createTaskTree(CustomerTask.TargetType.Table, targetUUID, Create, 3,
+      Optional.of(TaskInfo.State.Failure),
+      false);
+    th.markAsCompleted();
+    assertEquals(4, th.cascadeDeleteCompleted());
+    assertTrue(CustomerTask.find.all().isEmpty());
+    assertTrue(TaskInfo.find.all().isEmpty());
   }
 
   @Test
