@@ -207,6 +207,11 @@ class DestroyInstancesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(DestroyInstancesMethod, self).__init__(base_command, "destroy")
 
+    def add_extra_args(self):
+        super(DestroyInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to delete.")
+
     def callback(self, args):
         self.update_ansible_vars_with_args(args)
         self.cloud.setup_ansible(args).run("destroy-instance.yml", self.extra_vars)
