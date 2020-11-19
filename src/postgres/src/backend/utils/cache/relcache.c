@@ -1533,6 +1533,7 @@ void YBPreloadRelCache()
 				need = relation->rd_rel->relnatts;
 				ndef = 0;
 				attrdef = NULL;
+				attrmiss = NULL;
 				constr = (TupleConstr*) MemoryContextAlloc(CacheMemoryContext, sizeof(TupleConstr));
 				constr->has_not_null = false;
 			}
@@ -1671,7 +1672,8 @@ void YBPreloadRelCache()
 			/*
 			 * Set up constraint/default info
 			 */
-			if (constr->has_not_null || ndef > 0 || relation->rd_rel->relchecks)
+			if (constr->has_not_null || ndef > 0 ||
+				attrmiss || relation->rd_rel->relchecks)
 			{
 				relation->rd_att->constr = constr;
 
