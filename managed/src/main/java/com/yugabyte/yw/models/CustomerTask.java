@@ -288,8 +288,8 @@ public class CustomerTask extends Model {
    * customer_task and associated task_info row that get deleted.
    *
    * @return number of rows deleted.
-   *         ==0 - if deletion was skipped due to data integrity issues.
-   *         >=2 - number of rows deleted
+   * ==0 - if deletion was skipped due to data integrity issues.
+   * >=2 - number of rows deleted
    */
   @Transactional
   public int cascadeDeleteCompleted() {
@@ -305,9 +305,10 @@ public class CustomerTask extends Model {
     List<TaskInfo> incompleteSubTasks = subTasks.stream()
       .filter(taskInfo -> !taskInfo.hasCompleted())
       .collect(Collectors.toList());
-    if (!incompleteSubTasks.isEmpty()) {
-      LOG.warn("Completed CustomerTask(id: {}, type:{}) has {} incomplete subtasks {}",
-        id, type, incompleteSubTasks.size(), incompleteSubTasks);
+    if (rootTaskInfo.getTaskState() == TaskInfo.State.Success && !incompleteSubTasks.isEmpty()) {
+      LOG.warn(
+        "For a customer_task.id: {}, Successful task_info.uuid ({}) has {} incomplete subtasks {}",
+        id, rootTaskInfo.getTaskUUID(), incompleteSubTasks.size(), incompleteSubTasks);
       return 0;
     }
     // Note: delete leaf nodes first to preserve referential integrity.
