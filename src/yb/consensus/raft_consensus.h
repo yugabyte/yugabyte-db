@@ -366,10 +366,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       MonoDelta initial_fd_wait = MonoDelta());
 
   struct UpdateReplicaResult {
-    yb::OpId wait_for_op_id;
+    OpId wait_for_op_id;
 
     // Start an election after the writes are committed?
     bool start_election = false;
+
+    int64_t current_term = OpId::kUnknownTerm;
   };
 
   // Updates the state in a replica by storing the received operations in the log
@@ -605,8 +607,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   yb::OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, WriteEmpty write_empty);
   CHECKED_STATUS MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB& request,
                                                    const LeaderRequest& deduped_req,
-                                                   yb::OpId last_from_leader);
-  CHECKED_STATUS WaitForWrites(const yb::OpId& wait_for_op_id);
+                                                   OpId last_from_leader);
+
+  // Wait until the operation with op id equal to wait_for_op_id is flushed in the WAL.
+  // If term was changed during wait from the specified one - exit with error.
+  CHECKED_STATUS WaitForWrites(int64_t term, const OpId& wait_for_op_id);
 
   // See comment for ReplicaState::CancelPendingOperation
   void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg, bool should_exists);

@@ -1897,7 +1897,7 @@ TEST_F_EX(CppCassandraDriverTest, TestDeleteAndCreateIndex, CppCassandraDriverTe
 }
 
 TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestIndex) {
-  constexpr int kLoops = 20;
+  constexpr int kLoops = RegularBuildVsSanitizers(20, 10);
   constexpr int kKeys = 30;
 
   typedef TestTable<int, int> MyTable;
