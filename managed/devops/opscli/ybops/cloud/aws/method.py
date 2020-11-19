@@ -122,11 +122,6 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
     def __init__(self, base_command):
         super(AwsDestroyInstancesMethod, self).__init__(base_command)
 
-    def add_extra_args(self):
-        super(AwsDestroyInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--node_ip", default=None,
-                                 help="The ip of the instance to delete.")
-
     def callback(self, args):
         host_info = self.cloud.get_host_info(args, private_ip=args.node_ip)
         if not host_info:
