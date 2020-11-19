@@ -1468,6 +1468,21 @@ Status Log::TEST_SubmitFuncToAppendToken(const std::function<void()>& func) {
   return appender_->TEST_SubmitFunc(func);
 }
 
+Status Log::ResetLastSyncedEntryOpId(const OpId& op_id) {
+  RETURN_NOT_OK(WaitUntilAllFlushed());
+
+  OpId old_value;
+  {
+    std::lock_guard<std::mutex> write_lock(last_synced_entry_op_id_mutex_);
+    old_value = last_synced_entry_op_id_.load(boost::memory_order_acquire);
+    last_synced_entry_op_id_.store(op_id, boost::memory_order_release);
+    last_synced_entry_op_id_cond_.notify_all();
+  }
+  LOG_WITH_PREFIX(INFO) << "Reset last synced entry op id from " << old_value << " to " << op_id;
+
+  return Status::OK();
+}
+
 Log::~Log() {
   WARN_NOT_OK(Close(), "Error closing log");
 }
