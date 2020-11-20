@@ -3,6 +3,7 @@ import React, { FC, useState } from 'react';
 import { Input } from '../Input/Input';
 import { PlusButton } from '../PlusButton/PlusButton';
 import { ReactComponent as DeleteIcon } from './clear-24px.svg';
+import { translate } from '../I18n/I18n';
 import './KeyValueInput.scss';
 
 type ValueType = Record<string, string | number>;
@@ -15,8 +16,9 @@ interface RowItem {
 interface KeyValueInputProps {
   value: ValueType;
   onChange(value: ValueType): void;
+  placeholderKey?: string;
+  placeholderValue?: string;
   disabled?: boolean;
-  softReadonly?: boolean; // only values are editable, add/delete row controls are hidden and keys are read only
 }
 
 const objectToArray = (data: ValueType): RowItem[] => {
@@ -41,10 +43,11 @@ const arrayToObject = (data: RowItem[]): ValueType => {
 };
 
 export const KeyValueInput: FC<KeyValueInputProps> = ({
+  placeholderKey,
+  placeholderValue,
   value,
   onChange,
-  disabled,
-  softReadonly
+  disabled
 }) => {
   const [internalValue, setInternalValue] = useState<RowItem[]>(objectToArray(value));
 
@@ -63,9 +66,9 @@ export const KeyValueInput: FC<KeyValueInputProps> = ({
         <div key={index} className="key-value-input__row">
           <Input
             type="text"
+            placeholder={placeholderKey}
             disabled={disabled}
             className="key-value-input__input"
-            readOnly={softReadonly}
             value={row.key}
             onChange={(event) => {
               const newValue = [...internalValue];
@@ -75,6 +78,7 @@ export const KeyValueInput: FC<KeyValueInputProps> = ({
           />
           <Input
             type="text"
+            placeholder={placeholderValue}
             disabled={disabled}
             className="key-value-input__input"
             value={row.value}
@@ -84,13 +88,13 @@ export const KeyValueInput: FC<KeyValueInputProps> = ({
               updateData(newValue);
             }}
           />
-          {!disabled && !softReadonly && (
+          {!disabled && (
             <DeleteIcon className="key-value-input__icon" onClick={() => deleteRow(row)} />
           )}
         </div>
       ))}
 
-      {!disabled && !softReadonly && (
+      {!disabled && (
         <PlusButton text="Add Row" className="key-value-input__add-row-btn" onClick={addRow} />
       )}
     </div>

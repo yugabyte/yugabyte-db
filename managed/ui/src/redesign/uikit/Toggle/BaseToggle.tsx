@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import React, { FC, useLayoutEffect, useRef, useState, ReactNode } from 'react';
 import { ReactComponent as Checkmark } from './done-24px.svg';
 import { ReactComponent as Crossmark } from './close-24px.svg';
@@ -51,7 +52,7 @@ export const BaseToggle: FC<BaseToggleProps> = ({
 
   return (
     <div
-      className={`yb-uikit-toggle ${disabled ? 'yb-uikit-toggle--disabled' : ''}`}
+      className={clsx('yb-uikit-toggle', { 'yb-uikit-toggle--disabled': disabled })}
       onClick={toggle}
     >
       {sliderTexts && (
@@ -61,35 +62,26 @@ export const BaseToggle: FC<BaseToggleProps> = ({
         </div>
       )}
       <div
-        className={`
-        yb-uikit-toggle__slider
-        ${
-          checked
-            ? `yb-uikit-toggle__slider--on ${sliderClass?.on || ''}`
-            : `yb-uikit-toggle__slider--off ${sliderClass?.off || ''}`
-        }
-        ${disabled ? 'yb-uikit-toggle__slider--disabled' : ''}
-      `}
+        className={clsx('yb-uikit-toggle__slider', {
+          'yb-uikit-toggle__slider--disabled': disabled,
+          'yb-uikit-toggle__slider--on': checked,
+          'yb-uikit-toggle__slider--off': !checked,
+          [sliderClass?.on || '']: checked,
+          [sliderClass?.off || '']: !checked
+        })}
       >
         <div className="yb-uikit-toggle__value" style={{ width }}>
-          {sliderTexts ? (
-            checked ? (
-              sliderTexts.on
-            ) : (
-              sliderTexts.off
-            )
-          ) : checked ? (
-            <Checkmark />
-          ) : (
-            <Crossmark />
-          )}
+          {sliderTexts
+            ? (checked ? sliderTexts.on : sliderTexts.off)
+            : (checked ? <Checkmark /> : <Crossmark />)
+          }
         </div>
         <div
-          className={`
-          yb-uikit-toggle__handle
-          ${checked ? 'yb-uikit-toggle__handle--on' : 'yb-uikit-toggle__handle--off'}
-          ${disabled ? 'yb-uikit-toggle__handle--disabled' : ''}
-        `}
+          className={clsx('yb-uikit-toggle__handle', {
+            'yb-uikit-toggle__handle--disabled': disabled,
+            'yb-uikit-toggle__handle--on': checked,
+            'yb-uikit-toggle__handle--off': !checked
+          })}
         />
       </div>
       {descriptions && (

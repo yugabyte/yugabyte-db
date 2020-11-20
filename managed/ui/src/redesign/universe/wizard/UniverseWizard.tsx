@@ -166,8 +166,9 @@ export const UniverseWizard: FC<UniverseWizardProps> = ({
           <div className="universe-wizard__title">
             {operation === ClusterOperation.NEW_PRIMARY && <I18n>Create Universe</I18n>}
             {operation === ClusterOperation.NEW_ASYNC && <I18n>Create Read Replica</I18n>}
-            {operation === ClusterOperation.EDIT_PRIMARY && <I18n>Edit Universe: {universe?.name}</I18n>}
+            {operation === ClusterOperation.EDIT_PRIMARY && <I18n>Edit Universe</I18n>}
             {operation === ClusterOperation.EDIT_ASYNC && <I18n>Edit Read Replica</I18n>}
+            {wizardState.formData.cloudConfig.universeName && `: ${wizardState.formData.cloudConfig.universeName}` }
           </div>
           <div className="universe-wizard__beta">BETA</div>
         </div>
