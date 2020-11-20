@@ -270,6 +270,9 @@ webserver_worker_main(Datum unused)
    * is not allocated when we enter this function. The memory is allocated after the background
    * works are registered.
    */
+
+  YBCInitThreading();
+
   backendStatusArrayPointer = getBackendStatusArrayPointer();
 
   BackgroundWorkerUnblockSignals();

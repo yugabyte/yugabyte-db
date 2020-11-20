@@ -538,16 +538,12 @@ void Webserver::BootstrapPageFooter(stringstream* output) {
   *output << "</body></html>";
 }
 
-namespace {
-thread_local std::unique_ptr<CDSAttacher> cds_attacher;
-}  // namespace
-
 void Webserver::EnterWorkerThreadCallbackStatic() {
-  cds_attacher = std::make_unique<CDSAttacher>();
+  cds::threading::Manager::attachThread();
 }
 
 void Webserver::LeaveWorkerThreadCallbackStatic() {
-  cds_attacher.reset();
+  cds::threading::Manager::detachThread();
 }
 
 } // namespace yb
