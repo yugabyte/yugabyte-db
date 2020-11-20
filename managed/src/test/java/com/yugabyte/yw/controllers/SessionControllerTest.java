@@ -21,6 +21,7 @@ import static play.test.Helpers.route;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
@@ -56,6 +57,7 @@ public class SessionControllerTest {
   CallHome mockCallHome;
   CallbackController mockCallbackController;
   PlayCacheSessionStore mockSessionStore;
+  QueryAlerts mockQueryAlerts;
 
   Application app;
 
@@ -65,6 +67,7 @@ public class SessionControllerTest {
     mockCallHome = mock(CallHome.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
+    mockQueryAlerts = mock(QueryAlerts.class);
     app = new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .configure(ImmutableMap.of("yb.multiTenant", isMultiTenant))
@@ -73,6 +76,7 @@ public class SessionControllerTest {
         .overrides(bind(CallHome.class).toInstance(mockCallHome))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
         .build();
     Helpers.start(app);
   }
