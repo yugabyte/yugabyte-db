@@ -1,4 +1,5 @@
 import React, { FC } from 'react';
+import clsx from 'clsx';
 import { I18n } from '../../../../uikit/I18n/I18n';
 import './WizardStepper.scss';
 
@@ -35,11 +36,10 @@ export const WizardStepper: FC<WizardStepperProps> = ({ activeStep, clickableTab
     <div className="wizard-stepper">
       {wizardSteps.map(([step, stepComponent]) => (
         <div
-          className={`
-            wizard-stepper__item
-            ${step === activeStep ? 'wizard-stepper__item--active' : ''}
-            ${clickableTabs && step !== activeStep ? 'wizard-stepper__item--clickable' : ''}
-         `}
+          className={clsx('wizard-stepper__item', {
+            'wizard-stepper__item--active': step === activeStep,
+            'wizard-stepper__item--clickable': clickableTabs && step !== activeStep
+          })}
           key={step}
           onClick={() => click(step)}
         >

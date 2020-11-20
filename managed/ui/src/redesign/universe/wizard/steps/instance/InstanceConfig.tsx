@@ -56,7 +56,7 @@ export const InstanceConfig: FC<InstanceConfigProps> = ({ dispatch }) => {
         <WizardStepper activeStep={WizardStep.Instance} clickableTabs onChange={submit} />
       </div>
       <div className="wizard-step-wrapper__container">
-        <div className="wizard-step-wrapper__form">
+        <div className="wizard-step-wrapper__col-form">
           <FormProvider {...formMethods}>
             <Grid fluid>
               <div className="instance-config">
@@ -69,7 +69,7 @@ export const InstanceConfig: FC<InstanceConfigProps> = ({ dispatch }) => {
                 </Row>
 
                 <Row className="instance-config__row">
-                  <Col sm={2} className="instance-config__label-col">
+                  <Col sm={2}>
                     <I18n className="instance-config__label">Instance Type</I18n>
                   </Col>
                   <Col sm={6}>
@@ -92,7 +92,7 @@ export const InstanceConfig: FC<InstanceConfigProps> = ({ dispatch }) => {
                 <AdvancedSettings expanded>
                   {cloudProviders.has(formData.cloudConfig.provider?.code as CloudType) && (
                     <Row className="instance-config__row">
-                      <Col sm={2} className="instance-config__label-col">
+                      <Col sm={2}>
                         <I18n className="instance-config__label">Assign Public IP</I18n>
                       </Col>
                       <Col sm={10}>
@@ -102,7 +102,7 @@ export const InstanceConfig: FC<InstanceConfigProps> = ({ dispatch }) => {
                   )}
                   {formData.cloudConfig.provider?.code === CloudType.aws && (
                     <Row className="instance-config__row">
-                      <Col sm={2} className="instance-config__label-col">
+                      <Col sm={2}>
                         <I18n className="instance-config__label">Instance Profile ARN</I18n>
                       </Col>
                       <Col sm={4}>
@@ -157,7 +157,7 @@ export const InstanceConfig: FC<InstanceConfigProps> = ({ dispatch }) => {
             */}
           </FormProvider>
         </div>
-        <div className="wizard-step-wrapper__summary">
+        <div className="wizard-step-wrapper__col-summary">
           <Summary formData={{ ...formData, instanceConfig: formMethods.getValues() }} />
         </div>
       </div>

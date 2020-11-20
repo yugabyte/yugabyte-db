@@ -1,15 +1,8 @@
 @import '../../../../uikit/common';
 
 .availability-zones {
-  &__row {
-    margin-top: 22px;
-    position: relative;
-  }
-
-  &__label {
-    color: $YB_TEXT_2;
-    font-size: 16px;
-  }
+  @include wizard-form-row();
+  @include wizard-form-text-label();
 
   &__nodes-col {
     position: relative;

@@ -4,7 +4,6 @@
   display: inline-flex;
   font-family: $YB_FONT_FAMILY;
   user-select: none;
-  margin: 0 6px;
   position: relative;
 
   &--disabled {
@@ -55,21 +54,21 @@
   }
 
   &__handle {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     background-color: $YB_PAGE_BACKGROUND;
     box-shadow: 0 0 10px #00000029;
     position: absolute;
-    top: 0;
+    top: 2px;
     transition: left 250ms;
 
     &--on {
-      left: calc(100% - 26px);
+      left: calc(100% - 30px);
     }
 
     &--off {
-      left: -6px;
+      left: 2px;
     }
 
     &--disabled {

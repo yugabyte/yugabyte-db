@@ -2,6 +2,7 @@ import _ from 'lodash';
 import React, { FC, useContext } from 'react';
 import { useQuery } from 'react-query';
 import { Controller, useFormContext } from 'react-hook-form';
+import { GroupType } from 'react-select';
 import pluralize from 'pluralize';
 import { Select } from '../../../../uikit/Select/Select';
 import { ErrorMessage } from '../../../../uikit/ErrorMessage/ErrorMessage';
@@ -21,6 +22,52 @@ const getOptionLabel = (option: InstanceType): string => {
   return result;
 };
 const getOptionValue = (option: InstanceType): string => option.instanceTypeCode;
+const formatGroupLabel = (group: GroupType<InstanceType>): string => group.label;
+
+const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): GroupType<InstanceType>[] => {
+  if (!data) return [];
+
+  const getGroupName = (instanceTypeCode: string): string => {
+    switch (cloud) {
+      case CloudType.aws:
+        return instanceTypeCode.split('.')[0]; // c5.large --> c5
+      case CloudType.gcp:
+        return instanceTypeCode.split('-')[0]; // n1-standard-1 --> n1
+      case CloudType.azu:
+        return instanceTypeCode.split('_')[1]; // Standard_NV24s_v3 --> NV24s
+      default:
+        return '';
+    }
+  };
+
+  // to sort in a human-friendly order: ['a10', 'a2', 'a12', 'a1'] --> ['a1', 'a2', 'a10', 'a12']
+  const comparator = (a: InstanceType, b: InstanceType): number => {
+    const options = { numeric: true, sensitivity: 'base' };
+    return a.instanceTypeCode.localeCompare(b.instanceTypeCode, 'en', options);
+  };
+
+  const result: GroupType<InstanceType>[] = [];
+  const groups: Record<string, InstanceType[]> = {};
+
+  // breakdown instance types by categories
+  data.forEach((item) => {
+    const groupName = getGroupName(item.instanceTypeCode);
+    if (Array.isArray(groups[groupName])) {
+      groups[groupName].push(item);
+    } else {
+      groups[groupName] = [item];
+    }
+  });
+
+  // convert categories map to dropdown list format and sort group items
+  for (const [groupName, list] of Object.entries(groups)) {
+    list.sort(comparator);
+    result.push({ label: groupName, options: list });
+  }
+
+  // sort by group names and return final result
+  return _.sortBy(result, 'label');
+};
 
 const DEFAULT_INSTANCE_TYPES = {
   [CloudType.aws]: 'c5.large',
@@ -29,7 +76,6 @@ const DEFAULT_INSTANCE_TYPES = {
 };
 
 const ERROR_NO_INSTANCE_TYPE = 'Instance Type value is required';
-
 const FIELD_NAME = 'instanceType';
 
 export const InstanceTypeField: FC = () => {
@@ -50,7 +96,7 @@ export const InstanceTypeField: FC = () => {
       }
     }
   );
-  const instanceTypes = _.isEmpty(data) ? [] : _.sortBy(data, 'instanceTypeCode');
+  const instanceTypes = sortAndGroup(data, formData.cloudConfig.provider?.code);
 
   return (
     <div className="instance-type-field">
@@ -65,12 +111,17 @@ export const InstanceTypeField: FC = () => {
             className={errors[FIELD_NAME]?.message ? 'validation-error' : ''}
             getOptionLabel={getOptionLabel}
             getOptionValue={getOptionValue}
-            value={instanceTypes.find((item) => item.instanceTypeCode === value) || null}
+            value={
+              instanceTypes
+                .flatMap((item) => item.options)
+                .find((item) => item.instanceTypeCode === value) || null
+            }
             onBlur={onBlur}
             onChange={(item) => {
               onChange((item as InstanceType).instanceTypeCode);
             }}
             options={instanceTypes}
+            formatGroupLabel={formatGroupLabel}
           />
         )}
       />

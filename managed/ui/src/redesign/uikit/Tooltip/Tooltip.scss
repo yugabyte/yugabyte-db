@@ -5,7 +5,7 @@
   margin: 0 10px;
   position: relative;
 
-  &__handler {
+  &__handle {
     &:before {
       content: '?';
       user-select: none;
@@ -24,23 +24,20 @@
       cursor: pointer;
     }
   }
+}
 
-  // TODO: temp, replace with popper.js
-  &__content {
-    position: absolute;
-    display: none;
-    top: 40px;
-    left: 0;
-    background-color: $YB_PAGE_BACKGROUND;
-    box-shadow: 0 0 10px #00000029;
-    border-radius: 10px;
-    padding: 10px;
-    max-width: 300px;
-    z-index: 2000;
-    font-size: 14px;
-  }
-
-  &:hover &__content {
-    display: block;
-  }
+// tooltip popup has standalone styles as it rendered via react portal at the bottom of the document body
+.yb-uikit-tooltip-popup {
+  position: absolute;
+  display: block;
+  opacity: 0;
+  margin-top: 6px; // margin between tooltip handler and its content
+  background-color: $YB_PAGE_BACKGROUND;
+  box-shadow: 0 0 10px #00000029;
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 400px;
+  z-index: 2000;
+  font-size: 14px;
+  transition: opacity 200ms;
 }
