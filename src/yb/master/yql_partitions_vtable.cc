@@ -73,9 +73,10 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     scoped_refptr<NamespaceInfo> namespace_info;
     scoped_refptr<TableInfo> table;
     scoped_refptr<TabletInfo> tablet;
-    TabletLocationsPB locations;
+    TabletLocationsPB* locations;
   };
   std::vector<TabletData> tablets;
+  google::protobuf::Arena arena;
 
   for (const scoped_refptr<TableInfo>& table : tables) {
     // Skip non-YQL tables.
@@ -99,11 +100,12 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
       data.namespace_info = namespace_info;
       data.table = table;
       data.tablet = info;
-      auto s = catalog_manager->GetTabletLocations(info->id(), &data.locations);
+      data.locations = google::protobuf::Arena::Create<TabletLocationsPB>(&arena);
+      auto s = catalog_manager->GetTabletLocations(info, data.locations);
       if (!s.ok()) {
-        data.locations.Clear();
+        data.locations->Clear();
       }
-      for (const auto& replica : data.locations.replicas()) {
+      for (const auto& replica : data.locations->replicas()) {
         auto host = DesiredHostPort(replica.ts_info(), CloudInfoPB()).host();
         if (dns_lookups.count(host) == 0) {
           dns_lookups.emplace(host, resolver.ResolveFuture(host));
@@ -120,7 +122,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
 
   for (const auto& data : tablets) {
     // Skip not-found tablets: they might not be running yet or have been deleted.
-    if (data.locations.table_id().empty()) {
+    if (data.locations->table_id().empty()) {
       continue;
     }
 
@@ -128,7 +130,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, data.namespace_info->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kTableName, data.table->name(), &row));
 
-    const PartitionPB& partition = data.locations.partition();
+    const PartitionPB& partition = data.locations->partition();
     RETURN_NOT_OK(SetColumnValue(kStartKey, partition.partition_key_start(), &row));
     RETURN_NOT_OK(SetColumnValue(kEndKey, partition.partition_key_end(), &row));
 
@@ -140,7 +142,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     // Get replicas for tablet.
     QLValuePB replica_addresses;
     QLMapValuePB *map_value = replica_addresses.mutable_map_value();
-    for (const auto& replica : data.locations.replicas()) {
+    for (const auto& replica : data.locations->replicas()) {
       auto host = DesiredHostPort(replica.ts_info(), CloudInfoPB()).host();
       QLValue::set_inetaddress_value(dns_results[host], map_value->add_keys());
 
