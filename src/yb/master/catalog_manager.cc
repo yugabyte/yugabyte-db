@@ -6971,8 +6971,6 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const
 
 Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocationsPB* locs_pb) {
   RETURN_NOT_OK(CheckOnline());
-
-  locs_pb->mutable_replicas()->Clear();
   scoped_refptr<TabletInfo> tablet_info;
   {
     SharedLock<LockType> l(lock_);
@@ -6980,19 +6978,26 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
       return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
     }
   }
-
-  Status s = BuildLocationsForTablet(tablet_info, locs_pb);
+  Status s = GetTabletLocations(tablet_info, locs_pb);
 
   int num_replicas = 0;
   if (GetReplicationFactorForTablet(tablet_info, &num_replicas).ok() && num_replicas > 0 &&
       locs_pb->replicas().size() != num_replicas) {
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << "Expected replicas " << num_replicas << " but found "
-        << locs_pb->replicas().size() << " for tablet " << tablet_id << ": "
+        << locs_pb->replicas().size() << " for tablet " << tablet_info->id() << ": "
         << locs_pb->ShortDebugString() << THROTTLE_MSG;
   }
-
   return s;
+}
+
+Status CatalogManager::GetTabletLocations(
+    scoped_refptr<TabletInfo> tablet_info, TabletLocationsPB* locs_pb) {
+  RETURN_NOT_OK(CheckOnline());
+
+  DCHECK_EQ(locs_pb->replicas().size(), 0);
+  locs_pb->mutable_replicas()->Clear();
+  return BuildLocationsForTablet(tablet_info, locs_pb);
 }
 
 Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,

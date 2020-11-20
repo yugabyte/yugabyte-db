@@ -34,6 +34,7 @@ syntax = "proto2";
 package yb.master;
 
 option java_package = "org.yb.master";
+option cc_enable_arenas = true;
 
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
