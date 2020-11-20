@@ -278,13 +278,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS GetTableLocations(const GetTableLocationsRequestPB* req,
                                    GetTableLocationsResponsePB* resp);
 
+  // Lookup tablet by ID, then call GetTabletLocations below.
+  CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id, TabletLocationsPB* locs_pb);
+
   // Look up the locations of the given tablet. The locations
   // vector is overwritten (not appended to).
   // If the tablet is not found, returns Status::NotFound.
   // If the tablet is not running, returns Status::ServiceUnavailable.
   // Otherwise, returns Status::OK and puts the result in 'locs_pb'.
   // This only returns tablets which are in RUNNING state.
-  CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
+  CHECKED_STATUS GetTabletLocations(scoped_refptr<TabletInfo> tablet_info,
                                     TabletLocationsPB* locs_pb);
 
   // Returns the system tablet in catalog manager by the id.

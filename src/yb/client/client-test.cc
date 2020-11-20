@@ -1419,6 +1419,7 @@ TEST_F(ClientTest, TestStaleLocations) {
   }
   ASSERT_OK(cluster_->mini_master()->Restart());
   ASSERT_OK(cluster_->mini_master()->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  locs_pb.Clear();
   ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
                   tablet_id, &locs_pb));
   ASSERT_TRUE(locs_pb.stale());
@@ -1428,6 +1429,7 @@ TEST_F(ClientTest, TestStaleLocations) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
   }
   ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers()));
+  locs_pb.Clear();
   ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
                   tablet_id, &locs_pb));
 
@@ -1435,6 +1437,7 @@ TEST_F(ClientTest, TestStaleLocations) {
   // so spin until we get a non-stale location.
   int wait_time = 1000;
   for (int i = 0; i < 80; ++i) {
+    locs_pb.Clear();
     ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
                     tablet_id, &locs_pb));
     if (!locs_pb.stale()) {
