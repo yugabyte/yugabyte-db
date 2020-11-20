@@ -29,6 +29,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/version_info.h"
+#include "yb/util/thread.h"
 
 #include "yb/util/net/net_util.h"
 
@@ -294,6 +295,10 @@ void YBCResolveHostname() {
     LOG(WARNING) << "Failed to get fully qualified domain name of the local hostname: "
                  << status;
   }
+}
+
+void YBCInitThreading() {
+  InitThreading();
 }
 
 } // extern "C"
