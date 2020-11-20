@@ -8,6 +8,7 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.AccessManager;
@@ -60,7 +61,7 @@ import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
 public abstract class CommissionerBaseTest extends WithApplication {
-  private int maxRetryCount = 100;
+  private int maxRetryCount = 200;
   protected AccessManager mockAccessManager;
   protected NetworkManager mockNetworkManager;
   protected ConfigHelper mockConfigHelper;
@@ -78,6 +79,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
   protected ApiHelper mockApiHelper;
+  protected QueryAlerts mockQueryAlerts;
 
   Customer defaultCustomer;
   Provider defaultProvider;
@@ -109,6 +111,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockApiHelper = mock(ApiHelper.class);
+    mockQueryAlerts = mock(QueryAlerts.class);
 
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
@@ -129,6 +132,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
+        .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
         .build();
   }
 
