@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_READER_H_
-#define YB_DOCDB_DOC_READER_H_
+#ifndef YB_DOCDB_DOC_READER_REDIS_H_
+#define YB_DOCDB_DOC_READER_REDIS_H_
 
 #include <string>
 #include <vector>
@@ -24,7 +24,6 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/doc_reader_redis.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/expiration.h"
 #include "yb/docdb/intent.h"
@@ -38,19 +37,88 @@
 namespace yb {
 namespace docdb {
 
-// Pass data to GetSubDocument function.
-struct GetSubDocumentData {
-  GetSubDocumentData(
+class SliceKeyBound {
+ public:
+  SliceKeyBound() {}
+  SliceKeyBound(const Slice& key, BoundType type)
+      : key_(key), type_(type) {}
+
+  bool CanInclude(const Slice& other) const {
+    if (!is_valid()) {
+      return true;
+    }
+    int comp = key_.compare(Slice(other.data(), std::min(other.size(), key_.size())));
+    if (is_lower()) {
+      comp = -comp;
+    }
+    return is_exclusive() ? comp > 0 : comp >= 0;
+  }
+
+  static const SliceKeyBound& Invalid();
+
+  bool is_valid() const { return type_ != BoundType::kInvalid; }
+  const Slice& key() const { return key_; }
+
+  bool is_exclusive() const {
+    return type_ == BoundType::kExclusiveLower || type_ == BoundType::kExclusiveUpper;
+  }
+
+  bool is_lower() const {
+    return type_ == BoundType::kExclusiveLower || type_ == BoundType::kInclusiveLower;
+  }
+
+  explicit operator bool() const {
+    return is_valid();
+  }
+
+  std::string ToString() const {
+    if (!is_valid()) {
+      return "{ empty }";
+    }
+    return Format("{ $0$1 $2 }", is_lower() ? ">" : "<", is_exclusive() ? "" : "=",
+                  SubDocKey::DebugSliceToString(key_));
+  }
+
+ private:
+  Slice key_;
+  BoundType type_ = BoundType::kInvalid;
+};
+
+class IndexBound {
+ public:
+  IndexBound() :
+      index_(-1),
+      is_lower_bound_(false) {}
+
+  IndexBound(int64 index, bool is_lower_bound) :
+      index_(index),
+      is_lower_bound_(is_lower_bound) {}
+
+  bool CanInclude(int64 curr_index) const {
+    if (index_ == -1 ) {
+      return true;
+    }
+    return is_lower_bound_ ? index_ <= curr_index : index_ >= curr_index;
+  }
+
+  static const IndexBound& Empty();
+
+ private:
+  int64 index_;
+  bool is_lower_bound_;
+};
+
+// Pass data to GetRedisSubDocument function.
+struct GetRedisSubDocumentData {
+  GetRedisSubDocumentData(
     const Slice& subdoc_key,
     SubDocument* result_,
     bool* doc_found_ = nullptr,
-    MonoDelta default_ttl = Value::kMaxTtl,
-    DocHybridTime* table_tombstone_time_ = nullptr)
+    MonoDelta default_ttl = Value::kMaxTtl)
       : subdocument_key(subdoc_key),
         result(result_),
         doc_found(doc_found_),
-        exp(default_ttl),
-        table_tombstone_time(table_tombstone_time_) {}
+        exp(default_ttl) {}
 
   Slice subdocument_key;
   SubDocument* result;
@@ -76,13 +144,10 @@ struct GetSubDocumentData {
   bool count_only = false;
   // Stores the count of records found, if count_only option is set.
   mutable size_t record_count = 0;
-  // Hybrid time of latest table tombstone.  Used by colocated tables to compare with the write
-  // times of records belonging to the table.
-  DocHybridTime* table_tombstone_time;
 
-  GetSubDocumentData Adjusted(
+  GetRedisSubDocumentData Adjusted(
       const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
-    GetSubDocumentData result(subdoc_key, result_, doc_found_);
+    GetRedisSubDocumentData result(subdoc_key, result_, doc_found_);
     result.deadline_info = deadline_info;
     result.exp = exp;
     result.return_type_only = return_type_only;
@@ -96,13 +161,13 @@ struct GetSubDocumentData {
 
   std::string ToString() const {
     return Format("{ subdocument_key: $0 exp.ttl: $1 exp.write_time: $2 return_type_only: $3 "
-                      "low_subkey: $4 high_subkey: $5 table_tombstone_time: $6 }",
+                      "low_subkey: $4 high_subkey: $5 }",
                   SubDocKey::DebugSliceToString(subdocument_key), exp.ttl,
-                  exp.write_ht, return_type_only, low_subkey, high_subkey, table_tombstone_time);
+                  exp.write_ht, return_type_only, low_subkey, high_subkey);
   }
 };
 
-inline std::ostream& operator<<(std::ostream& out, const GetSubDocumentData& data) {
+inline std::ostream& operator<<(std::ostream& out, const GetRedisSubDocumentData& data) {
   return out << data.ToString();
 }
 
@@ -118,17 +183,18 @@ inline std::ostream& operator<<(std::ostream& out, const GetSubDocumentData& dat
 // behavior.
 // The projection, if set, restricts the scan to a subset of keys in the first level.
 // The projection is used for QL selects to get only a subset of columns.
-yb::Status GetSubDocument(
+yb::Status GetRedisSubDocument(
     IntentAwareIterator *db_iter,
-    const GetSubDocumentData& data,
+    const GetRedisSubDocumentData& data,
     const std::vector<PrimitiveValue>* projection = nullptr,
     SeekFwdSuffices seek_fwd_suffices = SeekFwdSuffices::kTrue);
 
-// This version of GetSubDocument creates a new iterator every time. This is not recommended for
-// multiple calls to subdocs that are sequential or near each other, in e.g. doc_rowwise_iterator.
-yb::Status GetSubDocument(
+// This version of GetRedisSubDocument creates a new iterator every time. This is not recommended
+// for multiple calls to subdocs that are sequential or near each other, in e.g.
+// doc_rowwise_iterator.
+yb::Status GetRedisSubDocument(
     const DocDB& doc_db,
-    const GetSubDocumentData& data,
+    const GetRedisSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
     CoarseTimePoint deadline,
@@ -137,4 +203,4 @@ yb::Status GetSubDocument(
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOC_READER_H_
+#endif  // YB_DOCDB_DOC_READER_REDIS_H_

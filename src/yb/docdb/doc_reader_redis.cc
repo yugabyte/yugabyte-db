@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/docdb/doc_reader.h"
+#include "yb/docdb/doc_reader_redis.h"
 
 #include <string>
 #include <vector>
@@ -39,6 +39,17 @@ using yb::HybridTime;
 
 namespace yb {
 namespace docdb {
+
+const SliceKeyBound& SliceKeyBound::Invalid() {
+  static SliceKeyBound result;
+  return result;
+}
+
+const IndexBound& IndexBound::Empty() {
+  static IndexBound result;
+  return result;
+}
+
 
 // ------------------------------------------------------------------------------------------------
 // Standalone functions
@@ -71,7 +82,7 @@ void SeekToLowerBound(const SliceKeyBound& lower_bound, IntentAwareIterator* ite
 // values before building the subdocument.
 CHECKED_STATUS BuildSubDocument(
     IntentAwareIterator* iter,
-    const GetSubDocumentData& data,
+    const GetRedisSubDocumentData& data,
     DocHybridTime low_ts,
     int64* num_values_observed) {
   VLOG(3) << "BuildSubDocument data: " << data << " read_time: " << iter->read_time()
@@ -164,20 +175,6 @@ CHECKED_STATUS BuildSubDocument(
         }
         continue;
       } else if (IsPrimitiveValueType(value_type)) {
-        // TODO: the ttl_seconds in primitive value is currently only in use for CQL. At some
-        // point streamline by refactoring CQL to use the mutable Expiration in GetSubDocumentData.
-        if (data.exp.ttl == Value::kMaxTtl) {
-          doc_value.mutable_primitive_value()->SetTtl(-1);
-        } else {
-          int64_t time_since_write_seconds = (
-              server::HybridClock::GetPhysicalValueMicros(iter->read_time().read) -
-              server::HybridClock::GetPhysicalValueMicros(write_time.hybrid_time())) /
-              MonoTime::kMicrosecondsPerSecond;
-          int64_t ttl_seconds = std::max(static_cast<int64_t>(0),
-              data.exp.ttl.ToMilliseconds() /
-              MonoTime::kMillisecondsPerSecond - time_since_write_seconds);
-          doc_value.mutable_primitive_value()->SetTtl(ttl_seconds);
-        }
         // Choose the user supplied timestamp if present.
         const UserTimeMicros user_timestamp = doc_value.user_timestamp();
         doc_value.mutable_primitive_value()->SetWriteTime(
@@ -363,9 +360,9 @@ Status FindLastWriteTime(
 
 }  // namespace
 
-yb::Status GetSubDocument(
+yb::Status GetRedisSubDocument(
     const DocDB& doc_db,
-    const GetSubDocumentData& data,
+    const GetRedisSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
     CoarseTimePoint deadline,
@@ -373,12 +370,12 @@ yb::Status GetSubDocument(
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, query_id,
       txn_op_context, deadline, read_time);
-  return GetSubDocument(iter.get(), data, nullptr /* projection */, SeekFwdSuffices::kFalse);
+  return GetRedisSubDocument(iter.get(), data, nullptr /* projection */, SeekFwdSuffices::kFalse);
 }
 
-yb::Status GetSubDocument(
+yb::Status GetRedisSubDocument(
     IntentAwareIterator *db_iter,
-    const GetSubDocumentData& data,
+    const GetRedisSubDocumentData& data,
     const vector<PrimitiveValue>* projection,
     const SeekFwdSuffices seek_fwd_suffices) {
   // TODO(dtxn) scan through all involved transactions first to cache statuses in a batch,
@@ -391,12 +388,12 @@ yb::Status GetSubDocument(
   // Question: what will break if we allow later commit at ht <= scan_ht ? Need to write down
   // detailed example.
   *data.doc_found = false;
-  DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", data.subdocument_key.ToDebugHexString(),
+  DOCDB_DEBUG_LOG("GetRedisSubDocument for key $0 @ $1", data.subdocument_key.ToDebugHexString(),
                   db_iter->read_time().ToString());
 
   // The latest time at which any prefix of the given key was overwritten.
   DocHybridTime max_overwrite_ht(DocHybridTime::kMin);
-  VLOG(4) << "GetSubDocument(" << data << ")";
+  VLOG(4) << "GetRedisSubDocument(" << data << ")";
 
   SubDocKey found_subdoc_key;
   auto dockey_size =
@@ -404,46 +401,7 @@ yb::Status GetSubDocument(
 
   Slice key_slice(data.subdocument_key.data(), dockey_size);
 
-  // Check ancestors for init markers, tombstones, and expiration, tracking the expiration and
-  // corresponding most recent write time in exp, and the general most recent overwrite time in
-  // max_overwrite_ht.
-  //
-  // First, check for an ancestor at the ID level: a table tombstone.  Currently, this is only
-  // supported for YSQL colocated tables.  Since iterators only ever pertain to one table, there is
-  // no need to create a prefix scope here.
-  if (data.table_tombstone_time && *data.table_tombstone_time == DocHybridTime::kInvalid) {
-    // Only check for table tombstones if the table is colocated, as signified by the prefix of
-    // kPgTableOid.
-    // TODO: adjust when fixing issue #3551
-    if (key_slice[0] == ValueTypeAsChar::kPgTableOid) {
-      // Seek to the ID level to look for a table tombstone.  Since this seek is expensive, cache
-      // the result in data.table_tombstone_time to avoid double seeking for the lifetime of the
-      // DocRowwiseIterator.
-      DocKey empty_key;
-      RETURN_NOT_OK(empty_key.DecodeFrom(key_slice, DocKeyPart::kUpToId));
-      db_iter->Seek(empty_key);
-      Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
-      RETURN_NOT_OK(FindLastWriteTime(
-          db_iter,
-          empty_key.Encode(),
-          &max_overwrite_ht,
-          &data.exp,
-          &doc_value));
-      if (doc_value.value_type() == ValueType::kTombstone) {
-        SCHECK_NE(max_overwrite_ht, DocHybridTime::kInvalid, Corruption,
-                  "Invalid hybrid time for table tombstone");
-        *data.table_tombstone_time = max_overwrite_ht;
-      } else {
-        *data.table_tombstone_time = DocHybridTime::kMin;
-      }
-    } else {
-      *data.table_tombstone_time = DocHybridTime::kMin;
-    }
-  } else if (data.table_tombstone_time) {
-    // Use the cached result.  Don't worry about exp as YSQL does not support TTL, yet.
-    max_overwrite_ht = *data.table_tombstone_time;
-  }
-  // Second, check the descendants of the ID level.
+  // First, check the descendants of the ID level for TTL or more recent writes.
   IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
   if (seek_fwd_suffices) {
     db_iter->SeekForward(key_slice);
