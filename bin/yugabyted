@@ -1907,7 +1907,7 @@ class YsqlProxy(object):
 
     # Creates specified db.
     def create_db(self, db):
-        cmd = self.cmd + ["-c", "create database {}".format(db)]
+        cmd = self.cmd + ["-c", "create database \"{}\"".format(db)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Deletes specified db.
@@ -1936,7 +1936,7 @@ class YsqlProxy(object):
 
     # Create specified superuser
     def create_user(self, ysql_username, ysql_password):
-        cmd = self.cmd + ["-c", "create role {} with LOGIN SUPERUSER password '{}';".
+        cmd = self.cmd + ["-c", "create role \"{}\" with LOGIN SUPERUSER password '{}';".
                 format(ysql_username, ysql_password)]
         run_process_checked(cmd=cmd, log_cmd=False, env_vars=self.env)
 
@@ -1955,7 +1955,7 @@ class YsqlProxy(object):
 
     # Change specified DB's owner
     def db_owner(self, db, new_owner):
-        cmd = self.cmd + ["-c", "alter database {} owner to {};".format(db, new_owner)]
+        cmd = self.cmd + ["-c", "alter database \"{}\" owner to \"{}\";".format(db, new_owner)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Check YSQL is UP
@@ -1999,7 +1999,7 @@ class YcqlProxy(object):
     # Create specified superuser
     def create_user(self, ycql_username, ycql_password):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-                "CREATE ROLE {} WITH PASSWORD = '{}' AND LOGIN = true AND SUPERUSER = true;".
+                "CREATE ROLE \"{}\" WITH PASSWORD = '{}' AND LOGIN = true AND SUPERUSER = true;".
                 format(ycql_username, ycql_password)]
         run_process_checked(cmd, log_cmd=False)
 
@@ -2026,7 +2026,7 @@ class YcqlProxy(object):
     # Create specified keyspace
     def create_keyspace(self, keyspace):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-                "CREATE KEYSPACE {};".format(keyspace)]
+                "CREATE KEYSPACE \"{}\";".format(keyspace)]
         run_process_checked(cmd)
 
     # Runs ycqlsh with specified files.
