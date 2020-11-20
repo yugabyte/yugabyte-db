@@ -46,7 +46,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ "$should_create_package" ]]; then
+if [[ "$should_create_package" == "1" ]]; then
   log "Removing any existing pyenv"
   rm -rf "$virtualenv_dir"
 fi
