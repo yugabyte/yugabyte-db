@@ -82,7 +82,7 @@ struct FetchKeyResult {
 //   SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value.
 // TxnId, IntentType, HybridTime are all prefixed with their respective value types.
 //
-// KeyBytes passed to Seek* methods should not contain hybrid time.
+// KeyBytes/Slice passed to Seek* methods should not contain hybrid time.
 // HybridTime of subdoc_key in Seek* methods would be ignored.
 class IntentAwareIterator {
  public:
@@ -134,36 +134,31 @@ class IntentAwareIterator {
   void PrevDocKey(const DocKey& doc_key);
   void PrevDocKey(const Slice& encoded_doc_key);
 
-  // Adds new value to prefix stack. The top value of this stack is used to filter returned entries.
-  void PushPrefix(const Slice& prefix);
-
-  // Removes top value from prefix stack. This iteration could became valid after poping prefix,
-  // if new top prefix is a prefix of currently pointed value.
-  void PopPrefix();
-
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
   Result<FetchKeyResult> FetchKey();
 
   bool valid();
   Slice value();
-  ReadHybridTime read_time() { return read_time_; }
+  const ReadHybridTime& read_time() { return read_time_; }
   HybridTime max_seen_ht() { return max_seen_ht_; }
 
-  // Iterate through Next() until a row containing a full record (non merge record) is found.
-  // The key is not guaranteed to stay the same. The key without hybrid time and value of the
-  // merge record go in final_key (optionally), and result_value, while the write time of the
-  // merge record goes in latest_record_ht.
+  // Iterate through Next() until a row containing a full record (non merge record) is found, or the
+  // key changes.
+  //
+  // If a new full record with the same key is found, latest_record_ht is set to the write time of
+  // that record, result_value is set to the value, and final_key is set to the key.
+  //
+  // If the key changes, latest_record_ht is set to the write time of the last merge record seen,
+  // result_value is set to its value, and final_key is set to the key.
   CHECKED_STATUS NextFullValue(
       DocHybridTime* latest_record_ht,
       Slice* result_value,
       Slice* final_key = nullptr);
 
-  // Finds the latest record for a particular key, returns the overwrite
-  // time, and optionally also the result value. This latest record may not
-  // be a full record, but instead a merge record (e.g. a TTL row).
-  // This function used to be FindLastWriteTime, which has since been
-  // largely abstracted out into the docdb layer.
+  // Finds the latest record for a particular key after the provided max_overwrite_time, returns the
+  // write time of the found record, and optionally also the result value. This latest record may
+  // not be a full record, but instead a merge record (e.g. a TTL row).
   CHECKED_STATUS FindLatestRecord(
       const Slice& key_without_ht,
       DocHybridTime* max_overwrite_time,
@@ -184,6 +179,17 @@ class IntentAwareIterator {
   void DebugDump();
 
  private:
+  friend class IntentAwareIteratorPrefixScope;
+
+  // Adds new value to prefix stack. The top value of this stack is used to filter returned entries.
+  void PushPrefix(const Slice& prefix);
+
+  // Removes top value from prefix stack. This iteration could became valid after popping prefix,
+  // if new top prefix is a prefix of currently pointed value.
+  void PopPrefix();
+
+  Slice CurrentPrefix() const;
+
   // Seek forward on regular sub-iterator.
   void SeekForwardRegular(const Slice& slice);
 
@@ -336,7 +342,6 @@ class IntentAwareIterator {
   Slice seek_key_prefix_;
 };
 
-// Utility class that controls stack of prefixes in IntentAwareIterator.
 class IntentAwareIteratorPrefixScope {
  public:
   IntentAwareIteratorPrefixScope(const Slice& prefix, IntentAwareIterator* iterator)
