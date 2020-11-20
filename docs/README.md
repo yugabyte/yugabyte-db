@@ -5,6 +5,7 @@ This repository contains the source code for the (public documentation for Yugab
 
 # Contributing to YugabyteDB Docs
 
+## Prerequisites
 YugabyteDB docs are based on the Hugo framework and use the Material Docs theme.
 
 * Hugo framework: http://gohugo.io/overview/introduction/
@@ -22,7 +23,7 @@ git clone git@github.com:<YOUR_GITHUB_ID>/yugabyte-db.git
 
 Add the master as a remote branch by running the following:
 ```
-$ git remote add --track master upstream https://github.com/YugaByte/docs.git
+$ git remote add --track master upstream https://github.com/yugabyte/docs.git
 ```
 
 2. Install Hugo. For example, on a Mac, you can run the following commands:
@@ -80,7 +81,19 @@ YB_HUGO_BASE=<YOUR_IP_OR_HOSTNAME> npm start
 You can now share the following link: `http://<YOUR_IP_OR_HOSTNAME>:1313`
 
 
-## Step 3. Make changes
+## Step 3. Identify an issue
+
+There needs to be a GitHub issue describing the enhancement you intend to do. Please post a comment on the issue you plan to work on before starting to work on it. This is to ensure someone else does not end up working on this in parallel.
+
+In case you do not have an issue and you're looking for one to work on, here is some useful information to help you:
+* All issues are tracked using [GitHub issues](https://github.com/yugabyte/yugabyte-db/issues)
+* Documentation related issues have the `area/documentation` label, here is a [list of documentation issues](https://github.com/yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3Aarea%2Fdocumentation)
+* If you are new, look for [issues with the label `good first issue`](https://github.com/yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3Aarea%2Fdocumentation+label%3A%22good+first+issue%22). If none exist, join [the community slack](https://www.yugabyte.com/slack) and let us know in the `contributors` channel.
+* You can also look for [issues with the label `help wanted`](https://github.com/yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3Aarea%2Fdocumentation+label%3A%22help+wanted%22+). If none exist, join [the community slack](https://www.yugabyte.com/slack) and let us know in the `contributors` channel.
+
+If you run into any issues, please let us know by posting in our [the community slack](https://www.yugabyte.com/slack), we really appreciate your feedback (and love to talk to you as well).
+
+## Step 4. Make changes
 
 Make the changes locally and test them on the browser.
 
@@ -93,8 +106,8 @@ $ git add -A
 $ git commit
 ```
 
-## Step 4. Submit a pull request
+## Step 5. Submit a pull request
 
-Create a [pull request in the YugaByte docs repo](https://github.com/YugaByte/docs/pulls) once you are ready to submit your changes.
+Create a [pull request in the YugabyteDB docs repo](https://github.com/yugabyte/docs/pulls) once you are ready to submit your changes.
 
 We will review your changes, add any feedback and once everything looks good merge your changes into the mainline.
