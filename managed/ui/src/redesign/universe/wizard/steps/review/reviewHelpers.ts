@@ -181,9 +181,8 @@ export const useLaunchUniverse = () => {
             userIntent.instanceTags = tagsToArray(formData.instanceConfig.instanceTags);
             userIntent.deviceInfo = formData.instanceConfig.deviceInfo;
 
-            if (payload.userAZSelected) {
-              payload.clusters[0].placementInfo.cloudList[0].regionList = getPlacements(formData);
-            }
+            // update placements and leaders
+            payload.clusters[0].placementInfo.cloudList[0].regionList = getPlacements(formData);
 
             // submit configure call to validate the payload
             const finalPayload = await api.universeConfigure(QUERY_KEY.universeConfigure, payload);
@@ -192,7 +191,7 @@ export const useLaunchUniverse = () => {
             // TODO: detect if full move is going to happen by analyzing finalPayload.nodeDetailsSet
             // TODO: maybe consider universe.universeDetails.updateInProgress to avoid edits while it's true
 
-            await api.universeEdit(payload, universe.universeUUID);
+            await api.universeEdit(finalPayload, universe.universeUUID);
           } else {
             console.log('Nothing to update - no fields changed');
           }

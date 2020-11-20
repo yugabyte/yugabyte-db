@@ -25,6 +25,7 @@ export const KMSConfigField: FC<KMSConfigFieldProps> = ({ disabled }) => {
   const kmsConfigs: KmsConfig[] = data || [];
 
   // don't validate when field is disabled and make it required otherwise
+  // TODO: reset validation error when field becomes disabled
   const validate = (value: string | null): boolean | string => {
     if (disabled) {
       return true;

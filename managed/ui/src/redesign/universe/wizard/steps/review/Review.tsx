@@ -128,7 +128,7 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
         <WizardStepper activeStep={WizardStep.Review} clickableTabs={true} onChange={jumpToStep} />
       </div>
       <div className="wizard-step-wrapper__container">
-        <div className="wizard-step-wrapper__form">
+        <div className="wizard-step-wrapper__col-form">
           <Grid fluid>
             <div className="review-step">
               {isLoading ? (
@@ -409,7 +409,7 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
             )}
           </div>
         </div>
-        <div className="wizard-step-wrapper__summary">
+        <div className="wizard-step-wrapper__col-summary">
           <Summary formData={formData} />
         </div>
       </div>

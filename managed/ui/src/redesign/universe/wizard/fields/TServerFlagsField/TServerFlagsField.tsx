@@ -2,7 +2,7 @@ import React, { FC } from 'react';
 import { Controller, useFormContext } from 'react-hook-form';
 import { KeyValueInput } from '../../../../uikit/KeyValueInput/KeyValueInput';
 import { DBConfigFormValue } from '../../steps/db/DBConfig';
-import { I18n } from '../../../../uikit/I18n/I18n';
+import { I18n, translate } from '../../../../uikit/I18n/I18n';
 import { ControllerRenderProps } from '../../../../helpers/types';
 import { FlagsObject } from '../../../../helpers/dtos';
 import './TServerFlagsField.scss';
@@ -24,7 +24,13 @@ export const TServerFlagsField: FC<TServerFlagsFieldProps> = ({ disabled }) => {
         control={control}
         name="tserverGFlags"
         render={({ value, onChange }: ControllerRenderProps<FlagsObject>) => (
-          <KeyValueInput value={value} onChange={onChange} disabled={disabled} />
+          <KeyValueInput
+            placeholderKey={translate('Flag')}
+            placeholderValue={translate('Value')}
+            value={value}
+            onChange={onChange}
+            disabled={disabled}
+          />
         )}
       />
     </div>

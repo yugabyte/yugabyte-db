@@ -1,4 +1,5 @@
 import _ from 'lodash';
+import clsx from 'clsx';
 import React, { FC, ReactNode, useState } from 'react';
 import { I18n } from '../../../../uikit/I18n/I18n';
 import { useUpdateEffect } from 'react-use';
@@ -56,9 +57,10 @@ export const BaseExpandableSection: FC<BaseExpandableSectionProps> = ({
           )}
         </div>
         <div
-          className={`wizard-expandable-section__body wizard-expandable-section__body--${
-            internalIsExpanded ? 'show' : 'hide'
-          }`}
+          className={clsx('wizard-expandable-section__body', {
+            'wizard-expandable-section__body--show': internalIsExpanded,
+            'wizard-expandable-section__body--hide': !internalIsExpanded
+          })}
         >
           {children}
         </div>

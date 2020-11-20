@@ -1,42 +1,9 @@
 @import '../../../../uikit/common';
 
 .instance-config {
-  position: relative;
-  background-color: $YB_UNIVERSE_WIZARD_FORM_BACKGROUND;
-  border: 1px solid $YB_BORDER_1;
-  padding: 35px 50px;
-  min-height: 752px;
-
-  &__title {
-    font-size: 22px;
-    font-weight: 600;
-    color: $YB_TEXT_2;
-  }
-
-  &__row {
-    margin-top: 22px;
-    display: flex;
-    align-items: center;
-  }
-
-  &__label-col {
-    min-width: 180px;
-  }
-
-  &__label {
-    display: block;
-    color: $YB_TEXT_2;
-    font-size: 16px;
-  }
-
-  &__footer-row {
-    margin-top: 25px;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-  }
-
-  &__footer-btn:not(:last-child) {
-    margin-right: 20px;
-  }
+  @include wizard-step-form();
+  @include wizard-form-section-title();
+  @include wizard-form-row();
+  @include wizard-form-text-label();
+  @include wizard-form-footer();
 }
