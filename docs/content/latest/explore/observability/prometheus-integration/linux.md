@@ -1,40 +1,35 @@
 ---
-title: Explore observability with Prometheus on macOS
-headerTitle: Observability
-linkTitle: Observability 
-description: Learn about observability and monitoring with Prometheus in a local three-node YugabyteDB cluster on macOS.
-aliases:
-  - /latest/explore/cloud-native/observability/
-  - /latest/explore/observability/
-  - /latest/explore/observability-macos/
-  - /latest/explore/cloud-native/binary/observability/
+title: Prometheus Integration
+headerTitle: Prometheus Integration
+linkTitle: Prometheus Integration 
+description: Learn about exporting YugabyteDB metrics and monitoring the cluster with Prometheus.
 menu:
   latest:
-    identifier: observability-1-macos
-    parent: explore
+    identifier: observability-2-linux
+    parent: explore-observability
     weight: 240
 isTocNested: true
 showAsideToc: true
 ---
 
- <ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/observability/macos" class="nav-link active">
+    <a href="/latest/explore/observability/prometheus-integration/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/observability/linux" class="nav-link">
+    <a href="/latest/explore/observability/prometheus-integration/linux" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/observability/docker" class="nav-link">
+    <a href="/latest/explore/observability/prometheus-integration/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>

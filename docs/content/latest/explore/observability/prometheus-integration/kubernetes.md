@@ -1,14 +1,12 @@
 ---
-title: Explore observability with Prometheus on Kubernetes
-headerTitle: Observability with Prometheus
-linkTitle: Observability 
-description: Learn about observability and monitoring with Prometheus using a local three-node YugabyteDB cluster on Kubernetes.
-aliases:
-  - /latest/explore/observability-kubernetes/
+title: Prometheus Integration
+headerTitle: Prometheus Integration
+linkTitle: Prometheus Integration 
+description: Learn about exporting YugabyteDB metrics and monitoring the cluster with Prometheus.
 menu:
   latest:
     identifier: observability-4-kubernetes
-    parent: explore
+    parent: explore-observability
     weight: 240
 isTocNested: true
 showAsideToc: true
@@ -17,21 +15,21 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/observability/macos" class="nav-link">
+    <a href="/latest/explore/observability/prometheus-integration/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/observability/linux" class="nav-link">
+    <a href="/latest/explore/observability/prometheus-integration/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/observability/docker" class="nav-link">
+    <a href="/latest/explore/observability/prometheus-integration/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
