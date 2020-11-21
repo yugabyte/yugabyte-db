@@ -1,44 +1,42 @@
 ---
-title: Explore observability with Prometheus on Docker
-headerTitle: Observability with Prometheus
-linkTitle: Observability 
-description: Learn about observability and monitoring with Prometheus in a local three-node YugabyteDB cluster on Docker.
-aliases:
-  - /latest/explore/observability-docker/
+title: Prometheus Integration
+headerTitle: Prometheus Integration
+linkTitle: Prometheus Integration 
+description: Learn about exporting YugabyteDB metrics and monitoring the cluster with Prometheus.
 menu:
   latest:
-    identifier: observability-3-docker
-    parent: explore
+    identifier: observability-1-macos
+    parent: explore-observability
     weight: 240
 isTocNested: true
 showAsideToc: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+ <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/observability/macos" class="nav-link">
+    <a href="/latest/explore/observability/prometheus-integration/macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/observability/linux" class="nav-link">
+    <a href="/latest/explore/observability/prometheus-integration/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/observability/docker" class="nav-link active">
+    <a href="/latest/explore/observability/prometheus-integration/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 <!--
   <li >
-    <a href="/latest/explore/observability/kubernetes" class="nav-link">
+    <a href="/latest/explore/observability-kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -48,53 +46,50 @@ showAsideToc: true
 
 You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../reference/configuration/default-ports/#prometheus-monitoring).
 
-This tutorial uses the [yb-docker-ctl](../../../admin/yb-docker-ctl) local cluster management utility.
+This tutorial uses the [yb-ctl](../../../admin/yb-ctl) local cluster management utility.
 
 ## Prerequisite
 
-Install a local YugabyteDB universe on Docker using the steps below.
+Prometheus is installed on your local machine. If you have not done so already, follow the links below.
 
-```sh
-mkdir ~/yugabyte && cd ~/yugabyte
-wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
-docker pull yugabytedb/yugabyte
-```
+- [Download Prometheus](https://prometheus.io/download/)
+- [Get Started with Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/)
 
 ## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.
 
 ```sh
-$ ./yb-docker-ctl destroy
+$ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with replication factor of `3`.
+Start a new local YugabyteDB cluster - this will create a three-node universe with a replication factor of `3`.
 
 ```sh
-$ ./yb-docker-ctl create  --rf 3
+$ ./bin/yb-ctl create --rf 3
 ```
 
 ## 2. Run the YugabyteDB workload generator
 
-Pull the [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps) Docker container image. This container image has built-in Java client programs for various workloads including SQL inserts and updates.
+Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command.
 
 ```sh
-$ docker pull yugabytedb/yb-sample-apps
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.1/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 Run the `CassandraKeyValue` workload application in a separate shell.
 
 ```sh
-$ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugabytedb/yb-sample-apps \
+$ java -jar ./yb-sample-apps.jar \
     --workload CassandraKeyValue \
-    --nodes yb-tserver-n1:9042 \
-    --num_threads_write 1 \
-    --num_threads_read 4
+    --nodes 127.0.0.1:9042 \
+    --num_threads_read 1 \
+    --num_threads_write 1
 ```
 
 ## 3. Prepare Prometheus configuration file
 
-Copy the following into a file called `yugabytedb.yml`. Move this file to the `/tmp` directory so that you can bind the file to the Prometheus container later on.
+Copy the following into a file called `yugabytedb.yml`.
 
 ```yaml
 global:
@@ -134,42 +129,38 @@ scrape_configs:
         replacement: "rpc_latency$4"
 
     static_configs:
-      - targets: ["yb-master-n1:7000", "yb-master-n2:7000", "yb-master-n3:7000"]
+      - targets: ["127.0.0.1:7000", "127.0.0.2:7000", "127.0.0.3:7000"]
         labels:
           export_type: "master_export"
 
-      - targets: ["yb-tserver-n1:9000", "yb-tserver-n2:9000", "yb-tserver-n3:9000"]
+      - targets: ["127.0.0.1:9000", "127.0.0.2:9000", "127.0.0.3:9000"]
         labels:
           export_type: "tserver_export"
 
-      - targets: ["yb-tserver-n1:12000", "yb-tserver-n2:12000", "yb-tserver-n3:12000"]
+      - targets: ["127.0.0.1:12000", "127.0.0.2:12000", "127.0.0.3:12000"]
         labels:
           export_type: "cql_export"
 
-      - targets: ["yb-tserver-n1:13000", "yb-tserver-n2:13000", "yb-tserver-n3:13000"]
+      - targets: ["127.0.0.1:13000", "127.0.0.2:13000", "127.0.0.3:13000"]
         labels:
           export_type: "ysql_export"
 
-      - targets: ["yb-tserver-n1:11000", "yb-tserver-n2:11000", "yb-tserver-n3:11000"]
+      - targets: ["127.0.0.1:11000", "127.0.0.2:11000", "127.0.0.3:11000"]
         labels:
           export_type: "redis_export"
 ```
 
 ## 4. Start Prometheus server
 
-Start the Prometheus server as below. The `prom/prometheus` container image will be pulled from the Docker registry if not already present on the localhost.
+Go to the directory where Prometheus is installed and start the Prometheus server as below.
 
 ```sh
-$ docker run \
-    -p 9090:9090 \
-    -v /tmp/yugabytedb.yml:/etc/prometheus/prometheus.yml \
-    --net yb-net \
-    prom/prometheus
+$ ./prometheus --config.file=yugabytedb.yml
 ```
 
 Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets page under Status.
 
-![Prometheus Targets](/images/ce/prom-targets-docker.png)
+![Prometheus Targets](/images/ce/prom-targets.png)
 
 ## 5. Analyze key metrics
 
@@ -220,7 +211,7 @@ avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 Optionally, you can shut down the local cluster created in Step 1.
 
 ```sh
-$ ./yb-docker-ctl destroy
+$ ./bin/yb-ctl destroy
 ```
 
 ## What's next?
