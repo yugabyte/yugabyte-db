@@ -229,6 +229,8 @@ DEFINE_test_flag(int32, leader_stepdown_delay_ms, 0,
 DEFINE_test_flag(int32, transactional_read_delay_ms, 0,
                  "Amount of time to delay between transaction status check and reading start.");
 
+DEFINE_test_flag(int32, alter_schema_delay_ms, 0, "Delay before processing AlterSchema.");
+
 namespace yb {
 namespace tserver {
 
@@ -641,6 +643,15 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
+  if (req->indexes().empty()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(InvalidArgument, "No indexes given in request"),
+        TabletServerErrorPB::OPERATION_NOT_SUPPORTED,
+        &context);
+    return;
+  }
+
   const CoarseTimePoint &deadline = context.GetClientDeadline();
   const auto coarse_start = CoarseMonoClock::Now();
   {
@@ -724,6 +735,7 @@ void TabletServiceAdminImpl::BackfillIndex(
     } else {
       LOG(WARNING) << "index " << idx.table_id() << " not found in tablet matadata";
       all_at_backfill = false;
+      all_past_backfill = false;
     }
   }
 
@@ -740,14 +752,16 @@ void TabletServiceAdminImpl::BackfillIndex(
       return;
     }
 
+    uint32_t our_schema_version = tablet.peer->tablet_metadata()->schema_version();
+    uint32_t their_schema_version = req->schema_version();
+    DCHECK_NE(our_schema_version, their_schema_version);
     SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS_SUBSTITUTE(
             InvalidArgument,
             "Tablet has a different schema $0 vs $1. "
             "Requested index is not ready to backfill. IndexMap: $2",
-            tablet.peer->tablet_metadata()->schema_version(), req->schema_version(),
-            ToString(index_map)),
+            our_schema_version, their_schema_version, ToString(index_map)),
         TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
     return;
   }
@@ -808,6 +822,11 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
     return;
   }
   VLOG(1) << "Received Change Metadata RPC: " << req->DebugString();
+  if (FLAGS_TEST_alter_schema_delay_ms) {
+    LOG(INFO) << __func__ << ": sleeping for " << FLAGS_TEST_alter_schema_delay_ms << "ms";
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_alter_schema_delay_ms));
+    LOG(INFO) << __func__ << ": done sleeping for " << FLAGS_TEST_alter_schema_delay_ms << "ms";
+  }
 
   server::UpdateClock(*req, server_->Clock());
 

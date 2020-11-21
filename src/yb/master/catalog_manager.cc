@@ -275,8 +275,7 @@ DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
 
-// TODO(jason): get rid of this when closing issue #6234.
-DEFINE_int32(ysql_backfill_is_create_table_done_delay_ms, 1000, // 1 min.
+DEFINE_int32(ysql_backfill_is_create_table_done_delay_ms, 0,
     "Time to wait after IsCreateTableDone for an index using online schema migration finds the"
     " index in the master index map.");
 TAG_FLAG(ysql_backfill_is_create_table_done_delay_ms, hidden);
@@ -1621,6 +1620,13 @@ Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& index
   auto l = DCHECK_NOTNULL(indexed_table)->LockForWrite();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
+  // Make sure that the index appears to not have been added to the table until the tservers apply
+  // the alter and respond back.
+  // Heed issue #6233.
+  if (!l->data().pb.has_fully_applied_schema()) {
+    MultiStageAlterTable::CopySchemaDetailsToFullyApplied(&l->mutable_data()->pb);
+  }
+
   // Add index info to indexed table and increment schema version.
   l->mutable_data()->pb.add_indexes()->CopyFrom(index_info);
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
@@ -2962,9 +2968,10 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
       for (const auto& index : get_schema_resp.indexes()) {
         if (index.has_table_id() && index.table_id() == table->id()) {
           resp->set_done(true);
-          // We need to wait to hopefully avoid consistency issues.
-          // TODO(jason): get rid of this when closing issue #6234.
-          VLOG(1) << "Wait to give tservers time to apply schema change";
+          // This wait was to give tservers time to apply schema changes and hopefully avoid
+          // consistency issues.  It should now be fixed, but it still exists for now because the
+          // gflag was part of the 2.5 release.  Later, it shouldn't be a big deal to remove this
+          // and the gflag.
           SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_backfill_is_create_table_done_delay_ms));
           break;
         }
@@ -3504,7 +3511,10 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   auto l = indexed_table->LockForWrite();
   auto &indexed_table_data = *l->mutable_data();
 
-  MultiStageAlterTable::CopySchemaDetailsToFullyApplied(&indexed_table_data.pb);
+  // Heed issue #6233.
+  if (!l->data().pb.has_fully_applied_schema()) {
+    MultiStageAlterTable::CopySchemaDetailsToFullyApplied(&indexed_table_data.pb);
+  }
   auto *indexes = indexed_table_data.pb.mutable_indexes();
   for (int i = 0; i < indexes->size(); i++) {
     if (indexes->Get(i).table_id() == index_table_id) {

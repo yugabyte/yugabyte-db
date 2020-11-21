@@ -2164,6 +2164,27 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
 }
 
+// Override the index backfill test to do alter slowly.
+class PgLibPqTestIndexBackfillAlterSlowly : public PgLibPqTestIndexBackfill {
+ public:
+  PgLibPqTestIndexBackfillAlterSlowly() {
+    more_tserver_flags.push_back("--TEST_alter_schema_delay_ms=10000");
+  }
+};
+
+// Test whether IsCreateTableDone works when creating an index with backfill enabled.  See issue
+// #6234.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillIsCreateTableDone),
+          PgLibPqTestIndexBackfillAlterSlowly) {
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
+}
+
 namespace {
 
 Result<bool> IsAtTargetIndexStateFlags(
