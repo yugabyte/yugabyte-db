@@ -154,7 +154,7 @@ You are ready to try **wal2json**. In one terminal:
 
 ```
 $ pg_recvlogical -d postgres --slot test_slot --create-slot -P wal2json
-$ pg_recvlogical -d postgres --slot test_slot --start -o pretty-print=1 -f -
+$ pg_recvlogical -d postgres --slot test_slot --start -o pretty-print=1 -o add-msg-prefixes=wal2json -f -
 ```
 
 In another terminal:
@@ -168,12 +168,18 @@ BEGIN;
 INSERT INTO table_with_pk (b, c) VALUES('Backup and Restore', now());
 INSERT INTO table_with_pk (b, c) VALUES('Tuning', now());
 INSERT INTO table_with_pk (b, c) VALUES('Replication', now());
+SELECT pg_logical_emit_message(true, 'wal2json', 'this message will be delivered');
+SELECT pg_logical_emit_message(true, 'pgoutput', 'this message will be filtered');
 DELETE FROM table_with_pk WHERE a < 3;
+SELECT pg_logical_emit_message(false, 'wal2json', 'this non-transactional message will be delivered even if you rollback the transaction');
 
 INSERT INTO table_without_pk (b, c) VALUES(2.34, 'Tapir');
 -- it is not added to stream because there isn't a pk or a replica identity
 UPDATE table_without_pk SET c = 'Anta' WHERE c = 'Tapir';
 COMMIT;
+
+DROP TABLE table1_with_pk;
+DROP TABLE table1_without_pk;
 
 $ psql -At -f /tmp/example1.sql postgres
 CREATE TABLE
@@ -182,10 +188,15 @@ BEGIN
 INSERT 0 1
 INSERT 0 1
 INSERT 0 1
+3/78BFC828
+3/78BFC880
 DELETE 2
+3/78BFC990
 INSERT 0 1
 UPDATE 1
 COMMIT
+DROP TABLE
+DROP TABLE
 ```
 
 The output in the first terminal is:
@@ -199,13 +210,23 @@ The output in the first terminal is:
 	"change": [
 	]
 }
-WARNING:  table "table_without_pk" without primary key or replica identity is nothing
+{
+    "change": [
+        {
+            "kind": "message",
+            "transactional": false,
+            "prefix": "wal2json",
+            "content": "this non-transactional message will be delivered even if you rollback the transaction"
+        }
+    ]
+}
+WARNING:  table "table1_without_pk" without primary key or replica identity is nothing
 {
 	"change": [
 		{
 			"kind": "insert",
 			"schema": "public",
-			"table": "table_with_pk",
+			"table": "table1_with_pk",
 			"columnnames": ["a", "b", "c"],
 			"columntypes": ["integer", "character varying(30)", "timestamp without time zone"],
 			"columnvalues": [1, "Backup and Restore", "2018-03-27 11:58:28.988414"]
@@ -213,7 +234,7 @@ WARNING:  table "table_without_pk" without primary key or replica identity is no
 		,{
 			"kind": "insert",
 			"schema": "public",
-			"table": "table_with_pk",
+			"table": "table1_with_pk",
 			"columnnames": ["a", "b", "c"],
 			"columntypes": ["integer", "character varying(30)", "timestamp without time zone"],
 			"columnvalues": [2, "Tuning", "2018-03-27 11:58:28.988414"]
@@ -221,15 +242,21 @@ WARNING:  table "table_without_pk" without primary key or replica identity is no
 		,{
 			"kind": "insert",
 			"schema": "public",
-			"table": "table_with_pk",
+			"table": "table1_with_pk",
 			"columnnames": ["a", "b", "c"],
 			"columntypes": ["integer", "character varying(30)", "timestamp without time zone"],
 			"columnvalues": [3, "Replication", "2018-03-27 11:58:28.988414"]
 		}
+        ,{
+            "kind": "message",
+            "transactional": true,
+            "prefix": "wal2json",
+            "content": "this message will be delivered"
+        }
 		,{
 			"kind": "delete",
 			"schema": "public",
-			"table": "table_with_pk",
+			"table": "table1_with_pk",
 			"oldkeys": {
 				"keynames": ["a", "c"],
 				"keytypes": ["integer", "timestamp without time zone"],
@@ -239,7 +266,7 @@ WARNING:  table "table_without_pk" without primary key or replica identity is no
 		,{
 			"kind": "delete",
 			"schema": "public",
-			"table": "table_with_pk",
+			"table": "table1_with_pk",
 			"oldkeys": {
 				"keynames": ["a", "c"],
 				"keytypes": ["integer", "timestamp without time zone"],
@@ -249,12 +276,20 @@ WARNING:  table "table_without_pk" without primary key or replica identity is no
 		,{
 			"kind": "insert",
 			"schema": "public",
-			"table": "table_without_pk",
+			"table": "table1_without_pk",
 			"columnnames": ["a", "b", "c"],
 			"columntypes": ["integer", "numeric(5,2)", "text"],
 			"columnvalues": [1, 2.34, "Tapir"]
 		}
 	]
+}
+{
+    "change": [
+    ]
+}
+{
+    "change": [
+    ]
 }
 ```
 
@@ -279,15 +314,21 @@ BEGIN;
 INSERT INTO table2_with_pk (b, c) VALUES('Backup and Restore', now());
 INSERT INTO table2_with_pk (b, c) VALUES('Tuning', now());
 INSERT INTO table2_with_pk (b, c) VALUES('Replication', now());
+SELECT pg_logical_emit_message(true, 'wal2json', 'this message will be delivered');
+SELECT pg_logical_emit_message(true, 'pgoutput', 'this message will be filtered');
 DELETE FROM table2_with_pk WHERE a < 3;
+SELECT pg_logical_emit_message(false, 'wal2json', 'this non-transactional message will be delivered even if you rollback the transaction');
 
 INSERT INTO table2_without_pk (b, c) VALUES(2.34, 'Tapir');
 -- it is not added to stream because there isn't a pk or a replica identity
 UPDATE table2_without_pk SET c = 'Anta' WHERE c = 'Tapir';
 COMMIT;
 
-SELECT data FROM pg_logical_slot_get_changes('test_slot', NULL, NULL, 'pretty-print', '1');
+SELECT data FROM pg_logical_slot_get_changes('test_slot', NULL, NULL, 'pretty-print', '1', 'add-msg-prefixes', 'wal2json');
 SELECT 'stop' FROM pg_drop_replication_slot('test_slot');
+
+DROP TABLE table2_with_pk;
+DROP TABLE table2_without_pk;
 ```
 
 The script above produces the output below:
@@ -301,10 +342,23 @@ BEGIN
 INSERT 0 1
 INSERT 0 1
 INSERT 0 1
+3/78C2CA50
+3/78C2CAA8
 DELETE 2
+3/78C2CBD8
 INSERT 0 1
 UPDATE 1
 COMMIT
+{
+    "change": [
+        {
+            "kind": "message",
+            "transactional": false,
+            "prefix": "wal2json",
+            "content": "this non-transactional message will be delivered even if you rollback the transaction"
+        }
+    ]
+}
 psql:/tmp/example2.sql:17: WARNING:  table "table2_without_pk" without primary key or replica identity is nothing
 {
 	"change": [
@@ -332,6 +386,12 @@ psql:/tmp/example2.sql:17: WARNING:  table "table2_without_pk" without primary k
 			"columntypes": ["integer", "character varying(30)", "timestamp without time zone"],
 			"columnvalues": [3, "Replication", "2018-03-27 12:05:29.914496"]
 		}
+        ,{
+            "kind": "message",
+            "transactional": true,
+            "prefix": "wal2json",
+            "content": "this message will be delivered"
+        }
 		,{
 			"kind": "delete",
 			"schema": "public",
@@ -363,30 +423,38 @@ psql:/tmp/example2.sql:17: WARNING:  table "table2_without_pk" without primary k
 	]
 }
 stop
+DROP TABLE
+DROP TABLE
 ```
 
 Let's repeat the same example with `format-version` 2:
 
 ```
 $ cat /tmp/example3.sql
-CREATE TABLE table2_with_pk (a SERIAL, b VARCHAR(30), c TIMESTAMP NOT NULL, PRIMARY KEY(a, c));
-CREATE TABLE table2_without_pk (a SERIAL, b NUMERIC(5,2), c TEXT);
+CREATE TABLE table3_with_pk (a SERIAL, b VARCHAR(30), c TIMESTAMP NOT NULL, PRIMARY KEY(a, c));
+CREATE TABLE table3_without_pk (a SERIAL, b NUMERIC(5,2), c TEXT);
 
 SELECT 'init' FROM pg_create_logical_replication_slot('test_slot', 'wal2json');
 
 BEGIN;
-INSERT INTO table2_with_pk (b, c) VALUES('Backup and Restore', now());
-INSERT INTO table2_with_pk (b, c) VALUES('Tuning', now());
-INSERT INTO table2_with_pk (b, c) VALUES('Replication', now());
-DELETE FROM table2_with_pk WHERE a < 3;
+INSERT INTO table3_with_pk (b, c) VALUES('Backup and Restore', now());
+INSERT INTO table3_with_pk (b, c) VALUES('Tuning', now());
+INSERT INTO table3_with_pk (b, c) VALUES('Replication', now());
+SELECT pg_logical_emit_message(true, 'wal2json', 'this message will be delivered');
+SELECT pg_logical_emit_message(true, 'pgoutput', 'this message will be filtered');
+DELETE FROM table3_with_pk WHERE a < 3;
+SELECT pg_logical_emit_message(false, 'wal2json', 'this non-transactional message will be delivered even if you rollback the transaction');
 
-INSERT INTO table2_without_pk (b, c) VALUES(2.34, 'Tapir');
+INSERT INTO table3_without_pk (b, c) VALUES(2.34, 'Tapir');
 -- it is not added to stream because there isn't a pk or a replica identity
-UPDATE table2_without_pk SET c = 'Anta' WHERE c = 'Tapir';
+UPDATE table3_without_pk SET c = 'Anta' WHERE c = 'Tapir';
 COMMIT;
 
-SELECT data FROM pg_logical_slot_get_changes('test_slot', NULL, NULL, 'format-version', '2');
+SELECT data FROM pg_logical_slot_get_changes('test_slot', NULL, NULL, 'format-version', '2', 'add-msg-prefixes', 'wal2json');
 SELECT 'stop' FROM pg_drop_replication_slot('test_slot');
+
+DROP TABLE table3_with_pk;
+DROP TABLE table3_without_pk;
 ```
 
 The script above produces the output below:
@@ -400,20 +468,27 @@ BEGIN
 INSERT 0 1
 INSERT 0 1
 INSERT 0 1
+3/78CB8F30
+3/78CB8F88
 DELETE 2
+3/78CB90B8
 INSERT 0 1
 UPDATE 1
 COMMIT
-psql:/tmp/example3.sql:17: WARNING:  no tuple identifier for UPDATE in table "public"."table2_without_pk"
+psql:/tmp/example3.sql:20: WARNING:  no tuple identifier for UPDATE in table "public"."table3_without_pk"
+{"action":"M","transactional":false,"prefix":"wal2json","content":"this non-transactional message will be delivered even if you rollback the transaction"}
 {"action":"B"}
-{"action":"I","schema":"public","table":"table2_with_pk","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"character varying(30)","value":"Backup and Restore"},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
-{"action":"I","schema":"public","table":"table2_with_pk","columns":[{"name":"a","type":"integer","value":2},{"name":"b","type":"character varying(30)","value":"Tuning"},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
-{"action":"I","schema":"public","table":"table2_with_pk","columns":[{"name":"a","type":"integer","value":3},{"name":"b","type":"character varying(30)","value":"Replication"},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
-{"action":"D","schema":"public","table":"table2_with_pk","identity":[{"name":"a","type":"integer","value":1},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
-{"action":"D","schema":"public","table":"table2_with_pk","identity":[{"name":"a","type":"integer","value":2},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
-{"action":"I","schema":"public","table":"table2_without_pk","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"numeric(5,2)","value":2.34},{"name":"c","type":"text","value":"Tapir"}]}
+{"action":"I","schema":"public","table":"table3_with_pk","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"character varying(30)","value":"Backup and Restore"},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
+{"action":"I","schema":"public","table":"table3_with_pk","columns":[{"name":"a","type":"integer","value":2},{"name":"b","type":"character varying(30)","value":"Tuning"},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
+{"action":"I","schema":"public","table":"table3_with_pk","columns":[{"name":"a","type":"integer","value":3},{"name":"b","type":"character varying(30)","value":"Replication"},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
+{"action":"M","transactional":true,"prefix":"wal2json","content":"this message will be delivered"}
+{"action":"D","schema":"public","table":"table3_with_pk","identity":[{"name":"a","type":"integer","value":1},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
+{"action":"D","schema":"public","table":"table3_with_pk","identity":[{"name":"a","type":"integer","value":2},{"name":"c","type":"timestamp without time zone","value":"2019-12-29 04:58:34.806671"}]}
+{"action":"I","schema":"public","table":"table3_without_pk","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"numeric(5,2)","value":2.34},{"name":"c","type":"text","value":"Tapir"}]}
 {"action":"C"}
 stop
+DROP TABLE
+DROP TABLE
 ```
 
 License
