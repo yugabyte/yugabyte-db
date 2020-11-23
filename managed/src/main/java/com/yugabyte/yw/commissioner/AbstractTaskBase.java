@@ -174,11 +174,11 @@ public abstract class AbstractTaskBase implements ITask {
       CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
       Customer customer = Customer.get(task.getCustomerUUID());
       ObjectNode notificationData = Json.newObject()
-        .put("alertname", "Backup failure")
+        .put("alert_name", "Backup failure")
         .put("task_type", task.getType().name())
         .put("target_type", task.getTarget().name())
         .put("target_name", task.getNotificationTargetName())
-        .put("alert_info", taskInfo);
+        .put("task_info", taskInfo);
       String customerTag = String.format("[%s][%s]", customer.name, customer.code);
       List<String> destinations = new ArrayList<>();
       String ybEmail = appConfig.getString("yb.health.default_email", null);
