@@ -985,6 +985,60 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
+  public void testUniverseRollingRestartValidParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject()
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "Restart")
+        .put("upgradeOption", "Rolling");
+    ObjectNode userIntentJson = Json.newObject().put("universeName", "Single UserUniverse");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject()
+                                                 .set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), any(UniverseTaskParams.class));
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Restart)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseRollingRestartNonRolling() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject()
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "Restart")
+        .put("upgradeOption", "Non-Rolling");
+    ObjectNode userIntentJson = Json.newObject().put("universeName", "Single UserUniverse");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject()
+                                                 .set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertBadRequest(result, "Rolling restart has to be a ROLLING UPGRADE.");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
   public void testUniverseSoftwareUpgradeWithInvalidParams() {
     Universe u = createUniverse(customer.getCustomerId());
 

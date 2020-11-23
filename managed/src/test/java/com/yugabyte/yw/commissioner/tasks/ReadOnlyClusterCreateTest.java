@@ -72,15 +72,12 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
-    // TODO(bogdan): I don't think these mocks of the AbstractModifyMasterClusterConfig are doing
-    // anything..
-    modifyUC = mock(ModifyUniverseConfig.class);
-    amuc = mock(AbstractModifyMasterClusterConfig.class);
+    ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     try {
-      GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", null, null);
-      when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
-      ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
     } catch (Exception e) {}
+    // WaitForServer mock.
+    mockWaits(mockClient);
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {
@@ -109,6 +106,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   );
 
   List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS = ImmutableList.of(
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
