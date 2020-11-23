@@ -43,6 +43,8 @@ Use the `UPDATE` statement to modify the values of specified columns in all rows
   </div>
 </div>
 
+See the section [The WITH clause (Common Table Expression)](../../with-clause/) for mor information about the semantics of the `with_clause_substatement_defn` grammar rule.
+
 ## Semantics
 
 Updating columns that are part of an index key including PRIMARY KEY is not yet supported.
