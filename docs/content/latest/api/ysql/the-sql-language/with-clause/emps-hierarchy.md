@@ -87,7 +87,7 @@ end;
 $body$;
 ```
 
-## List the employees with their immediate managers in breadth first order
+## List the employees top-down with their immediate managers in breadth first order
 
 This simplest formulation of the query to list the employees with their immediate managers uses a `WITH` clause that has a recursive substatement like this:
 
@@ -98,7 +98,7 @@ with
 
     -- Non-recursive term.
     -- Select the exactly one ultimate manager.
-    -- Define this emp to be at depth zero.
+    -- Define this emp to be at depth 1.
     (
       select
         1,
@@ -113,8 +113,9 @@ with
     -- Recursive term.
     -- Treat the emps from the previous iteration as managers.
     -- Join these with their reports, if they have any.
+    -- Increase the emergent depth by 1 with each step.
     -- Stop when none of the current putative managers has a report.
-    -- each successive iteration goes one level deeper in the hierarchy.
+    -- Each successive iteration goes one level deeper in the hierarchy.
     (
       select
         h.depth + 1,
@@ -134,6 +135,8 @@ from hierarchy_of_emps;
 ```
 
 Each successive iteration of the recursive term accumulates the set of direct reports, where such a report exists, of the employees produced first by the non-recursive term (i.e. the ultimate manager) and then by the employees produced by the previous  iteration of the recursive term. The iteration stops when none of the employees produced by  the previous  iteration of the recursive term has a report. 
+
+Notice that the choice to define the ultimate manager to be at depth _1_ is just that: a design choice. You might prefer to define the ultimate manager to be at depth _0_, arguing that it's better to interpret this measure as the number of managers up the chain that the present employee has.
 
 The result set that this view represents is usually ordered first by the calculated _"depth"_ column and then by usefully orderable actual columns—the manager name and then the employee name in the case of the "_emps"_ example table:
 
@@ -167,7 +170,7 @@ This produces a so-called "breadth first" order. This is the result:
      4 | bill     | joan
 ```
 
-## List the path from the ultimate manager to each employee in breadth first order
+## List the path top-down from the ultimate manager to each employee in breadth first order
 
 The term of art "path" denotes the list of managers from the ultimate manager through each next direct report down to the current employee. It is easily calculated by using array concatenation as described in the [The&nbsp;||&nbsp;operator](../../../datatypes/type_array/functions-operators/concatenation/#the-160-160-160-160-operator) subsection of the [Array data types and functionality](../../../datatypes/type_array/) major section.
 
@@ -269,7 +272,7 @@ $body$;
 
 This "`UNION ALL` of two complementary `EXCEPT` queries" is the standard pattern for checking if two different relations have the same content. Notice how the use of a `WITH` clause with ordinary (non-recursive) substatements lets you express the logic in a maximally readable way.
 
-## List the path from the ultimate manager to each employee in depth-first order
+## List the path top-down from the ultimate manager to each employee in depth-first order
 
 Do this:
 
@@ -312,7 +315,7 @@ select max(cardinality(path)) from top_down_path;
 ```
 returns the value _4_ for the present example. This means that `path[5]` returns `NULL`—as would, for example, `path[6]`, `path[17]`, and `path[42]`. When such a query is issued programmatically, you can determine the maximum path cardinality and build the `ORDER BY	` clause to have just the necessary and sufficient number of terms. Alternatively, for simpler code, you could write it with a number of terms that exceeds your best estimate of the maximum cardinality of the arrays that your program will have to deal with, ensuring safety with a straightforward test of the actual maximum cardinality.
 
-## Pretty-printing the depth-first report of paths
+## Pretty-printing the top-down depth-first report of paths
 
 Users often like to use indentation to visualize hierarchical depth. This is easy to achieve, thus:
 
@@ -490,18 +493,18 @@ select t from unix_tree();
 This is a sketch of the required logic, expressed crudely and somewhat approximately:
 
 - Scan each result row looking for an "L" in any of the character positions that it might occur.
-- When an "L" is found, look forward over as many result rows as it takes until you find the first non-space character.
+- When an "L" is found, look forward over as many result rows as it takes until you find the first non-space character in the character position where the "L" was found.
   - If this is found on the immediately next row, then do nothing; move to the next row, and start again.
   - Otherwise, and when the next non-space character is an "L" or a "T", substitute a "T" for the starting "L" or "T" and substitute a vertical bar for the remaining spaces. When the next non-space is not an "L" or "T", leave the spaces as is.
 - Repeat this for each character position where an "L" is found.
 
 Implementing, and testing, the logic is left as an exercise for the reader.
 
-## List the path upwards from a chosen employee to the ultimate manager
+## List the path bottom-up from a chosen employee to the ultimate manager
 
-The essential property of a hierarchy is that each successive upwards step defines exactly one parent (in this example, exactly one manager). It's this that distinguishes a hierarchy from a more general graph. This means that there is no distinction between breadth-first and depth-first when traversing a hierarchy upwards.
+The essential property of a hierarchy is that each successive upwards step defines exactly one parent (in this example, exactly one manager) by traversing the foreign key reference in the "many" to "one" direction. It's this property that distinguishes a hierarchy from a more general graph. This means that there is no distinction between breadth-first and depth-first when traversing a hierarchy upwards.
 
-Here is the query. It's presented using the prepare-and-execute paradigm so that you can supply the starting employee of interest as a parameter.
+Here is the query. It's presented using the prepare-and-execute paradigm so that you can supply the starting employee of interest as a parameter. Notice that _"path"_ is not yet defined in the non-recursive term. This means that the only practical design for the _"depth"_ notion here is different from what was used in the top-down approach: the design chosen has it starting at _0_ and _increasing_ by _1_ with each step up the hierarchy.
 
 ```plpgsql
 deallocate all;
@@ -511,8 +514,8 @@ with
   recursive hierarchy_of_emps(depth, name, mgr_name) as (
 
     -- Non-recursive term.
-    -- Select the exactly one ultimate manager.
-    -- Define this emp to be at depth zero.
+    -- Select the exactly one employee of interest.
+    -- Define the depth to be zero.
     (
       select
         0,
@@ -525,10 +528,12 @@ with
     union all
 
     -- Recursive term.
-    -- Treat the emps from the previous iteration as managers.
-    -- Join these with their reports, if they have any.
-    -- Stop when none of the current putative managers has a report.
-    -- each successive iteration goes one level deeper in the hierarchy.
+    -- Treat the emps from the previous iteration as reports.
+    -- Join these with their managers.
+    -- Increase the depth with each step upwards.
+    -- Stop when the current putative report has no manager, i.e. is
+    -- the ultimate manager.
+    -- Each successive iteration goes one level higher in the hierarchy.
     (
       select
         h.depth + 1,
@@ -560,7 +565,7 @@ This is the result:
      3 | mary | -
 ```
 
-Alternatively, you could encapsulate the query in a function to deliver the same benefit.
+Alternatively, you could encapsulate the query in a function to deliver the same benefit. In this scheme, the result is a single array that represents the path from bottom to top.
 
 ```plpgsql
 set client_min_messages = warning;
