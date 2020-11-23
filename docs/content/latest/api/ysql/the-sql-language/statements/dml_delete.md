@@ -43,6 +43,8 @@ Use the `DELETE` statement to remove rows that meet certain conditions, and when
   </div>
 </div>
 
+See the section [The WITH clause (Common Table Expression)](../../with-clause/) for mor information about the semantics of the `with_clause_substatement_defn` grammar rule.
+
 ## Semantics
 
 - `USING` clause is not yet supported.

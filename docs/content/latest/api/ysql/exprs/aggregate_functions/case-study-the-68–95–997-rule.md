@@ -1,6 +1,6 @@
 ---
 title: Aggregate functions case study—the 68–95–99.7 rule
-linkTitle: percentile_cont() use-case
+linkTitle: percentile_cont() use case
 headerTitle: Aggregate functions case study—the "68–95–99.7" rule
 description: Shows the use of percentile_cont() to illustrate a well-known rule about a normal distribution. 
 menu:

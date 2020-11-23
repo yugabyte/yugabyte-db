@@ -416,7 +416,7 @@ This is the result:
      2 |     5
 ```
 
-This illustrates the use-case that motivates the `HAVING` clause: you want to restrict the results using a predicate that references an aggregate function. Try this counter-example:
+This illustrates the use case that motivates the `HAVING` clause: you want to restrict the results using a predicate that references an aggregate function. Try this counter-example:
 
 ```plpgsql
 select class, count(v)
