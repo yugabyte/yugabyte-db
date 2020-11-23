@@ -138,7 +138,9 @@ class ListTableGrid extends Component {
     const formatKeySpace = function (cell) {
       return <div>{cell}</div>;
     };
-    const actions_disabled = isDisabled(currentCustomer.data.features, 'universes.backup');
+    const actions_disabled =
+      isDisabled(currentCustomer.data.features, 'universes.backup') ||
+      currentUniverse.universeDetails.backupInProgress;
     const formatActionButtons = function (item, row, disabled) {
       if (!row.isIndexTable) {
         const actions = [
