@@ -1304,6 +1304,12 @@ public class UniverseController extends AuthenticatedController {
                 BAD_REQUEST, "Neither master nor tserver gflags changed.");
           }
           break;
+        case Restart:
+          customerTaskType = CustomerTask.TaskType.Restart;
+          if (taskParams.upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
+            return ApiResponse.error(
+                BAD_REQUEST, "Rolling restart has to be a ROLLING UPGRADE.");
+          }
       }
 
       LOG.info("Got task type {}", customerTaskType.toString());
