@@ -1,18 +1,16 @@
 ## User Guide
 
-Create the extension using the ``create extension`` command.
+Create the extension using the ``CREATE EXTENSION`` command.
 
 ```sql
-postgres=# create extension pg_stat_monitor;
+CREATE EXTENSION pg_stat_monitor;
 CREATE EXTENSION
 ```
-
-After doing that change, we need to restart the PostgreSQL server. PostgreSQL will start monitoring and collecting the statistics. 
 
 ### Configuration
 Here is the complete list of configuration parameters.
 ```sql
-postgres=# select * from pg_stat_monitor_settings;
+SELECT * FROM pg_stat_monitor_settings;
                      name                      | value  | default_value |                            description                            | minimum |  maximum   | restart 
 -----------------------------------------------+--------+---------------+-------------------------------------------------------------------+---------+------------+---------
  pg_stat_monitor.pgsm_max                      |   5000 |          5000 | Sets the maximum number of statements tracked by pg_stat_monitor. |    5000 | 2147483647 |       1
@@ -117,12 +115,12 @@ pg_stat_monitor collects and aggregates data on a bucket basis. The size of a bu
 **`bucket_start_time`**: shows the start time of the bucket. 
 
 ```sql
-postgres=# select bucket, bucket_start_time, query from pg_stat_monitor;
+SELECT bucket, bucket_start_time, query FROM pg_stat_monitor;
  bucket |       bucket_start_time       |                            query                             
 --------+-------------------------------+--------------------------------------------------------
-2 | 2020-05-23 13:24:44.652415+00 | select * from pg_stat_monitor_reset()
-3 | 2020-05-23 13:45:01.55658+00  | select bucket, bucket_start_time, query from pg_stat_monitor
-2 | 2020-05-23 13:24:44.652415+00 | SELECT * FROM foo
+2       | 2020-05-23 13:24:44.652415+00 | select * from pg_stat_monitor_reset()
+3       | 2020-05-23 13:45:01.55658+00  | select bucket, bucket_start_time, query from pg_stat_monitor
+2       | 2020-05-23 13:24:44.652415+00 | SELECT * FROM foo
 (3 rows)
 ```
 
@@ -141,7 +139,7 @@ postgres=# select bucket, bucket_start_time, query from pg_stat_monitor;
 
 ##### Example 1: Shows the userid, dbid, unique queryid hash, query, and the total number of calls or that query.
 ```sql
-postgres=# select userid,  dbid, queryid, substr(query,0, 50) as query, calls from pg_stat_monitor;
+SELECT userid,  dbid, queryid, substr(query,0, 50) AS query, calls FROM pg_stat_monitor;
  userid | dbid  |     queryid      |                       query                       | calls 
 --------+-------+------------------+---------------------------------------------------+-------
      10 | 12709 | 214646CE6F9B1A85 | BEGIN                                             |  1577
@@ -168,7 +166,7 @@ postgres=# select userid,  dbid, queryid, substr(query,0, 50) as query, calls f
 ##### Example 2: Shows the different usernames for the query. 
 
 ```
-postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
+SELECT userid::regrole, datname, substr(query,0, 50) AS query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
   userid  | datname  |                       query                       | calls 
 ----------+----------+---------------------------------------------------+-------
  vagrant  | postgres | select userid::regrole, datname, substr(query,$1, |     1
@@ -182,7 +180,7 @@ postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls 
 ##### Example 3: Shows the different database involved in the queries.
 
 ```
-postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
+SELECT userid::regrole, datname, substr(query,0, 50) as query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
  userid  | datname  |                       query                       | calls 
 ---------+----------+---------------------------------------------------+-------
  vagrant | postgres | select userid::regrole, datname, substr(query,$1, |     0
@@ -194,7 +192,7 @@ postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls 
 ##### Example 4: Shows the connected application_name.
 
 ```sql
-postgres=# select application_name, query from pg_stat_monitor;
+SELECT application_name, query FROM pg_stat_monitor;
  application_name |                                                query                                                 
 ------------------+------------------------------------------------------------------------------------------------------
  pgbench          | UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2
@@ -218,7 +216,8 @@ postgres=# select application_name, query from pg_stat_monitor;
 **`elevel`**, **`sqlcode`**,**`message`**,: error level / sql code and  log/warning/error message
 
 ```sql
-postgres=# select substr(query,0,50) as query, decode_error_level(elevel)as elevel,sqlcode,calls, substr(message,0,50) message from pg_stat_monitor;
+SELECT substr(query,0,50) AS query, decode_error_level(elevel) AS elevel,sqlcode, calls, substr(message,0,50) message 
+FROM pg_stat_monitor;
                        query                       | elevel | sqlcode | calls |                      message                      
 ---------------------------------------------------+--------+---------+-------+---------------------------------------------------
  select substr(query,$1,$2) as query, decode_error |        |       0 |     1 | 
@@ -236,7 +235,7 @@ postgres=# select substr(query,0,50) as query, decode_error_level(elevel)as elev
 
 
 ```
-postgres=# select userid,  total_time, min_time, max_time, mean_time, query from pg_stat_monitor;
+SELECT  userid,  total_time, min_time, max_time, mean_time, query FROM pg_stat_monitor;
  userid |     total_time     |      min_time      |      max_time      |     mean_time      |                              query                               
 --------+--------------------+--------------------+--------------------+--------------------+------------------------------------------------------------------
      10 |               0.14 |               0.14 |               0.14 |               0.14 | select * from pg_stat_monitor_reset()
@@ -251,8 +250,10 @@ postgres=# select userid,  total_time, min_time, max_time, mean_time, query fro
 **`client_ip`**: The IP address of the client that originated the query.
 
 ```sql
-postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls,client_ip from pg_stat_monitor, pg_database WHERE dbid = oid;
- userid  | datname  |                       query                       | calls | client_ip 
+SELECT userid::regrole, datname, substr(query,0, 50) AS query, calls, client_ip 
+FROM pg_stat_monitor, pg_database 
+WHERE dbid = oid;
+userid  | datname  |                       query                       | calls | client_ip 
 ---------+----------+---------------------------------------------------+-------+-----------
  vagrant | postgres | UPDATE pgbench_branches SET bbalance = bbalance + |  1599 | 10.0.2.15
  vagrant | postgres | select userid::regrole, datname, substr(query,$1, |     5 | 10.0.2.15
@@ -274,7 +275,7 @@ postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls,
 **`resp_calls`**: Call histogram
 
 ```sql
-postgres=# select resp_calls, query from pg_stat_monitor;
+SELECT resp_calls, query FROM pg_stat_monitor;
                     resp_calls                    |                 query                                         
 --------------------------------------------------+---------------------------------------------- 
 {1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"} | select client_ip, query from pg_stat_monitor
@@ -291,7 +292,7 @@ There are 10 timebase buckets of the time **`pg_stat_monitor.pgsm_respose_time_s
 
 ##### Example 1: List all the table names involved in the query.
 ```sql
-postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
+SELECT relations::oid[]::regclass[], query FROM pg_stat_monitor;
      relations      |                                                query                                                 
 --------------------+------------------------------------------------------------------------------------------------------
  {pgbench_accounts} | UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2
@@ -305,7 +306,7 @@ postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
 
 ##### Example 2: List all the views and the name of the table in the view. Here we have a view "test_view"
 ```sql
-postgres=# \d+ test_view
+\d+ test_view
                           View "public.test_view"
  Column |  Type   | Collation | Nullable | Default | Storage | Description 
 --------+---------+-----------+----------+---------+---------+-------------
@@ -320,7 +321,7 @@ View definition:
 
 Now when we query the pg_stat_monitor, it will show the view name and also all the table names in the view.
 ```sql
-postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
+SELECT relations::oid[]::regclass[], query FROM pg_stat_monitor;
       relations      |                                                query                                                 
 ---------------------+------------------------------------------------------------------------------------------------------
  {test_view,foo,bar} | select * from test_view
@@ -333,7 +334,7 @@ postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
 **`cmd_type`**: List the command type of the query.
 
 ```sql
-postgres=# select substr(query,0, 50) as query, cmd_type from pg_stat_monitor where elevel = 0;
+SELECT substr(query,0, 50) AS query, cmd_type FROM pg_stat_monitor WHERE elevel = 0;
                        query                       |    cmd_type     
 ---------------------------------------------------+-----------------
  BEGIN                                             | {INSERT}
