@@ -470,18 +470,26 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useTimeSync) {
             commandArgs.add("--use_chrony");
           }
+
           if (userIntent.instanceTags != null && !userIntent.instanceTags.isEmpty()) {
             Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
             commandArgs.add("--instance_tags");
             commandArgs.add(Json.stringify(Json.toJson(useTags)));
           }
+
           if (taskParam.cmkArn != null) {
             commandArgs.add("--cmk_res_name");
             commandArgs.add(taskParam.cmkArn);
           }
+
           if (taskParam.ipArnString != null) {
             commandArgs.add("--iam_profile_arn");
             commandArgs.add(taskParam.ipArnString);
+          }
+
+          if (!taskParam.remotePackagePath.isEmpty()) {
+            commandArgs.add("--remote_package_path");
+            commandArgs.add(taskParam.remotePackagePath);
           }
         }
         if (cloudType.equals(Common.CloudType.azu)) {

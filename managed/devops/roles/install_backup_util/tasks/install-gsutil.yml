@@ -7,18 +7,20 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 - block:
-    - name: Copy and unarchive {{ gcloud_package }} from thirdparty
-      unarchive:
-        src: "{{ local_package_path }}/{{ gcloud_package }}"
-        dest: "/usr"
-
     - set_fact:
         gcloud_package_path: "/usr/{{ gcloud_package_name }}"
 
-    - name: Run install script
+    - name: gsutil | Copy and unarchive {{ gcloud_package }} from {{ package_path }}
+      unarchive:
+        src: "{{ package_path }}/{{ gcloud_package }}"
+        dest: "/usr"
+        creates: "{{ gcloud_package_path }}"
+        remote_src: "{{ is_remote }}"
+
+    - name: gsutil | Run install script
       command: "{{ gcloud_package_path }}/install.sh --quiet --usage-reporting false  --command-completion true --override-components gsutil"
 
-    - name: Create symlinks to {{ bin_path }}
+    - name: gsutil | Create symlinks to {{ bin_path }}
       file:
         src: "{{ gcloud_package_path }}/bin/gsutil"
         path: "{{ bin_path }}/gsutil"

@@ -6,6 +6,15 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+- name: Confirm package_path exists
+  assert:
+    that:
+      - local_package_path is defined or remote_package_path is defined
+
+- set_fact:
+    package_path: "{{ remote_package_path if remote_package_path is defined and remote_package_path != '' else local_package_path }}"
+    is_remote: "{{ 'yes' if remote_package_path is defined and remote_package_path != '' else 'no' }}"
+
 - name: Check if {{ util.name }} already exists
   become: yes
   become_method: sudo
