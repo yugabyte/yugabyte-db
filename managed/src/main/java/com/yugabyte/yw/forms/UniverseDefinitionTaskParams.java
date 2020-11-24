@@ -99,6 +99,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // Development flag to download package from s3 bucket.
   public String itestS3PackagePath = "";
+  public String remotePackagePath = "";
 
   /**
    * Allowed states for an imported universe.

@@ -363,6 +363,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="The port for node_exporter to bind to")
         self.parser.add_argument("--node_exporter_user", default="prometheus")
         self.parser.add_argument("--install_node_exporter", action="store_true")
+        self.parser.add_argument('--remote_package_path', default=None,
+                                 help="Path to download thirdparty packages "
+                                      "for itest. Only for AWS/onprem")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -389,6 +392,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
         if args.node_exporter_user:
             self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
+        if args.remote_package_path:
+            self.extra_vars.update({"remote_package_path": args.remote_package_path})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
