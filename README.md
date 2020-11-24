@@ -25,36 +25,21 @@ The ``pg_stat_monitor`` should work on the latest version of PostgreSQL but is o
 | Percona Distribution    | Version 13     | :heavy_check_mark: |
 
 ## Installation
+pg_stat_monitor is supplied as part of Percona Distribution for PostgreSQL. The rpm/deb packages are available from Percona repositories. Refer to [Percona Documentation](https://www.percona.com/doc/postgresql/LATEST/installing.html) for installation instructions. 
 
-There are two ways to install ``pg_stat_monitor``either by downloading the pg_stat_monitor source code and compiling it or by downloading the ``deb`` or ``rpm`` packages.
-
-### Compile from the source code
-
-The latest release of ``pg_stat_monitor`` can be downloaded from [this GitHub page](https://github.com/Percona/pg_stat_monitor/releases) or it can be downloaded using the git:
-
+The source code of latest release of ``pg_stat_monitor`` can be downloaded from [this GitHub page](https://github.com/Percona/pg_stat_monitor/releases) or it can be downloaded using the git:
 ```sh
 git clone git://github.com/Percona/pg_stat_monitor.git
 ```
 
-After downloading the code, set the path for the PostgreSQL binary.
-
-The release notes can be find [here](https://github.com/percona/pg_stat_monitor/blob/master/RELEASE_NOTES.md).
-
 Compile and Install the extension
-
 ```sh
 cd pg_stat_monitor
 make USE_PGXS=1
 make USE_PGXS=1 install
 ```
 
-### Installing from rpm/deb packages
-
-``pg_stat_monitor`` is supplied as part of Percona Distribution for PostgreSQL. The rpm/deb packages are available from Percona repositories. Refer to [Percona Documentation](https://www.percona.com/doc/postgresql/LATEST/installing.html) for installation instructions.
-
-
 ## Setup
-
 ``pg_stat_monitor`` cannot be installed in your running PostgreSQL instance. It should be set in the ``postgresql.conf`` file.
 
 ```
@@ -68,22 +53,19 @@ shared_preload_libraries = 'pg_stat_monitor' # (change requires restart)
 Or you can do from `psql` terminal using the ``alter system`` command.
 
 ``pg_stat_monitor`` needs to be loaded at the start time. This requires adding the  ``pg_stat_monitor`` extension for the ``shared_preload_libraries`` parameter and restart the PostgreSQL instance.
-
 ```sql
-postgres=# alter system set shared_preload_libraries=pg_stat_monitor;
+postgres=# ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_monitor';
 ALTER SYSTEM
 
 sudo systemctl restart postgresql-13
 ```
 
 
-Create the extension using the ``create extension`` command.
-
+Create the extension using the ``CREATE EXTENSION`` command.
 ```sql
-postgres=# create extension pg_stat_monitor;
+postgres=# CREATE EXTENSION pg_stat_monitor;
 CREATE EXTENSION
 ```
 
 ## Copyright Notice
-
 Copyright (c) 2006 - 2020, Percona LLC.
