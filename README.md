@@ -54,9 +54,11 @@ Or you can do from `psql` terminal using the ``alter system`` command.
 
 ``pg_stat_monitor`` needs to be loaded at the start time. This requires adding the  ``pg_stat_monitor`` extension for the ``shared_preload_libraries`` parameter and restart the PostgreSQL instance.
 ```sql
-postgres=# ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_monitor';
+ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_monitor';
 ALTER SYSTEM
+```
 
+```sh
 sudo systemctl restart postgresql-13
 ```
 
@@ -68,6 +70,8 @@ CREATE EXTENSION
 ```
 
 ```sql
+-- Select some of the query information, like client_ip, username and application_name etc.
+
 SELECT application_name, userid::regrole AS user_name, datname AS database_name, substr(query,0, 50) AS query, calls, client_ip 
            FROM pg_stat_monitor, pg_database 
            WHERE dbid = oid;
@@ -85,17 +89,17 @@ SELECT application_name, userid::regrole AS user_name, datname AS database_name,
 ```
 
 ```sql
-SELECT decode_error_level(elevel) AS elevel, sqlcode, message 
-           FROM pg_stat_monitor
-           WHERE elevel != 0;
- 
- elevel.            | sqlcode |                    message                     
---------------------+---------+------------------------------------------------
- ERROR              |     132 | permission denied for table pgbench_branches
- ERROR              |     130 | division by zero
- ERROR              |     132 | function decode_elevel(integer) does not exist
- ERROR              |     132 | must be owner of table pgbench_accounts
+-- Select queries along with elevel, message and sqlcode which have some errors.
+
+SELECT  decode_error_level(elevel) AS elevel, sqlcode, query, message FROM pg_stat_monitor WHERE elevel != 0;
+ elevel.   | sqlcode |                                           query                                           |                    message                     
+--------------------+---------+-------------------------------------------------------------------------------------------+------------------------------------------------
+ ERROR     |     132 | select count(*) from pgbench_branches                                                     | permission denied for table pgbench_branches
+ ERROR     |     130 | select 1/0;                                                                               | division by zero
+ ERROR     |     132 | SELECT decode_elevel(elevel), sqlcode, message from pg_stat_monitor where elevel != 0;    | function decode_elevel(integer) does not exist
+ ERROR     |     132 | drop table if exists pgbench_accounts, pgbench_branches, pgbench_history, pgbench_tellers | must be owner of table pgbench_accounts
 (4 rows)
+
 ```
 
 ## Copyright Notice
