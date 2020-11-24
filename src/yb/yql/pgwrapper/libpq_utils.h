@@ -34,6 +34,7 @@ struct PGResultClear {
   void operator()(PGresult* result) const;
 };
 
+typedef std::unique_ptr<PGconn, PGConnClose> PGConnPtr;
 typedef std::unique_ptr<PGresult, PGResultClear> PGResultPtr;
 
 Result<bool> GetBool(PGresult* result, int row, int column);
@@ -74,7 +75,10 @@ class PGConn {
   PGConn(PGConn&& rhs);
   PGConn& operator=(PGConn&& rhs);
 
-  static Result<PGConn> Connect(const HostPort& host_port, const std::string& db_name = "");
+  static Result<PGConn> Connect(
+      const HostPort& host_port,
+      const std::string& db_name = "",
+      const std::string& user = "postgres");
 
   CHECKED_STATUS Execute(const std::string& command);
 
@@ -125,7 +129,6 @@ class PGConn {
   }
 
  private:
-  typedef std::unique_ptr<PGconn, PGConnClose> PGConnPtr;
   struct CopyData;
 
   explicit PGConn(PGConnPtr ptr);
