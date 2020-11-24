@@ -102,8 +102,6 @@ HTAB* pgsm_get_hash(void)
 void
 pgss_shmem_shutdown(int code, Datum arg)
 {
-	printf("--%s", __FUNCTION__);
-
 	/* Don't try to dump during a crash. */
 	if (code)
 		return;
