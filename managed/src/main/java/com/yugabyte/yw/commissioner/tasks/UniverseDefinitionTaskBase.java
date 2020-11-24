@@ -556,7 +556,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
-
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
@@ -587,6 +586,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         taskParams().extraDependencies.installNodeExporter;
       // Which user the node exporter service will run as
       params.nodeExporterUser = taskParams().nodeExporterUser;
+      // Development testing variable.
+      params.remotePackagePath = taskParams().remotePackagePath;
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
