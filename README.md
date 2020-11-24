@@ -26,15 +26,13 @@ The ``pg_stat_monitor`` should work on the latest version of PostgreSQL but is o
 
 ## Installation
 
-There are two ways to install ``pg_stat_monitor``:
-- by downloading the pg_stat_monitor source code and compiling it. 
-- by downloading the ``deb`` or ``rpm`` packages.
+There are two ways to install ``pg_stat_monitor``either by downloading the pg_stat_monitor source code and compiling it or by downloading the ``deb`` or ``rpm`` packages.
 
-**Compile from the source code**
+### Compile from the source code
 
 The latest release of ``pg_stat_monitor`` can be downloaded from [this GitHub page](https://github.com/Percona/pg_stat_monitor/releases) or it can be downloaded using the git:
 
-```
+```sh
 git clone git://github.com/Percona/pg_stat_monitor.git
 ```
 
@@ -44,15 +42,13 @@ The release notes can be find [here](https://github.com/percona/pg_stat_monitor/
 
 Compile and Install the extension
 
-```
+```sh
 cd pg_stat_monitor
-
 make USE_PGXS=1
-
 make USE_PGXS=1 install
 ```
 
-**Installing from rpm/deb packages**
+### Installing from rpm/deb packages
 
 ``pg_stat_monitor`` is supplied as part of Percona Distribution for PostgreSQL. The rpm/deb packages are available from Percona repositories. Refer to [Percona Documentation](https://www.percona.com/doc/postgresql/LATEST/installing.html) for installation instructions.
 
@@ -73,11 +69,11 @@ Or you can do from `psql` terminal using the ``alter system`` command.
 
 ``pg_stat_monitor`` needs to be loaded at the start time. This requires adding the  ``pg_stat_monitor`` extension for the ``shared_preload_libraries`` parameter and restart the PostgreSQL instance.
 
-```
+```sql
 postgres=# alter system set shared_preload_libraries=pg_stat_monitor;
 ALTER SYSTEM
 
-sudo systemctl restart postgresql-11
+sudo systemctl restart postgresql-13
 ```
 
 
