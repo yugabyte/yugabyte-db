@@ -1,4 +1,4 @@
-# pg_stat_monitor - Statistics collector for PostgreSQL.
+## What is pg_stat_monitor?
 
 The pg_stat_monitor is the statistics collection tool based on PostgreSQL's contrib module ``pg_stat_statements``. PostgreSQL’s ``pg_stat_statements`` provides the basic statistics, which is sometimes not enough. The major shortcoming in ``pg_stat_statements`` is that it accumulates all the queries and their statistics and does not provide aggregated statistics nor histogram information. In this case, a user needs to calculate the aggregate which is quite expensive. 
 
@@ -15,22 +15,25 @@ The pg_stat_monitor is the statistics collection tool based on PostgreSQL's cont
 
 The ``pg_stat_monitor`` should work on the latest version of PostgreSQL but is only tested with these PostgreSQL versions:
 
-*   PostgreSQL Version 11, 12 and 13
-*   Percona Distribution for PostgreSQL 11, 12 and 13
+| Distribution            |  Version       | Supported          |
+| ------------------------|----------------|--------------------|
+| PostgreSQL              | Version < 11   | :x:                |
+| PostgreSQL              | Version 11     | :heavy_check_mark: |
+| PostgreSQL              | Version 12     | :heavy_check_mark: |
+| PostgreSQL              | Version 13     | :heavy_check_mark: |
+| Percona Distribution    | Version < 11   | :x:                |
+| Percona Distribution    | Version 11     | :heavy_check_mark: |
+| Percona Distribution    | Version 12     | :heavy_check_mark: |
+| Percona Distribution    | Version 13     | :heavy_check_mark: |
 
 
 # Documentation
 
 1. [Installation](#installation)
-2. [Configuration](#configuration)
-3. [Setup](#setup) 
+2. [Setup](#setup) 
+3. [Configuration](#configuration)
 4. [User Guide](#user-guide)
 5. [License](#license)
-
-**Copyright notice**
-
-Copyright (c) 2006 - 2020, Percona LLC.
-
 
 ## Installation
 
@@ -65,11 +68,46 @@ make USE_PGXS=1 install
 ``pg_stat_monitor`` is supplied as part of Percona Distribution for PostgreSQL. The rpm/deb packages are available from Percona repositories. Refer to [Percona Documentation](https://www.percona.com/doc/postgresql/LATEST/installing.html) for installation instructions.
 
 
+## Setup
+
+``pg_stat_monitor`` cannot be installed in your running PostgreSQL instance. It should be set in the ``postgresql.conf`` file.
+
+```
+# - Shared Library Preloading -
+
+shared_preload_libraries = 'pg_stat_monitor' # (change requires restart)
+#local_preload_libraries = ''
+#session_preload_libraries = ''
+```
+
+Or you can do from `psql` terminal using the ``alter system`` command.
+
+``pg_stat_monitor`` needs to be loaded at the start time. This requires adding the  ``pg_stat_monitor`` extension for the ``shared_preload_libraries`` parameter and restart the PostgreSQL instance.
+
+```
+postgres=# alter system set shared_preload_libraries=pg_stat_monitor;
+ALTER SYSTEM
+
+sudo systemctl restart postgresql-11
+```
+
+
+Create the extension using the ``create extension`` command.
+
+```sql
+postgres=# create extension pg_stat_monitor;
+CREATE EXTENSION
+```
+
+After doing that change, we need to restart the PostgreSQL server. PostgreSQL will start monitoring and collecting the statistics. 
+
+
+
 ## Configuration
 
 Here is the complete list of configuration parameters.
 
-```
+```sql
 postgres=# select * from pg_stat_monitor_settings;
                      name                      | value  | default_value |                            description                            | minimum |  maximum   | restart 
 -----------------------------------------------+--------+---------------+-------------------------------------------------------------------+---------+------------+---------
@@ -281,47 +319,12 @@ The table below shows set up options for each configuration parameter and whethe
 - **pg_stat_monitor.pgsm_respose_time_lower_bound**: ``pg_stat_monitor`` also stores the execution time histogram. This parameter is used to set the lower bound of the histogram.
 - **pg_stat_monitor.pgsm_respose_time_step:** This parameter is used to set the steps for the histogram. 
 
-## Setup
-
-``pg_stat_monitor`` cannot be installed in your running PostgreSQL instance. It should be set in the ``postgresql.conf`` file.
-
-```
-# - Shared Library Preloading -
-
-shared_preload_libraries = 'pg_stat_monitor' # (change requires restart)
-#local_preload_libraries = ''
-#session_preload_libraries = ''
-```
-
-Or you can do from `psql` terminal using the ``alter system`` command.
-
-``pg_stat_monitor`` needs to be loaded at the start time. This requires adding the  ``pg_stat_monitor`` extension for the ``shared_preload_libraries`` parameter and restart the PostgreSQL instance.
-
-```
-postgres=# alter system set shared_preload_libraries=pg_stat_monitor;
-ALTER SYSTEM
-
-sudo systemctl restart postgresql-11
-```
-
-
-Create the extension using the ``create extension`` command.
-
-
-```
-postgres=# create extension pg_stat_monitor;
-CREATE EXTENSION
-```
-
-After doing that change, we need to restart the PostgreSQL server. PostgreSQL will start monitoring and collecting the statistics. 
-
-
 ##  User Guide
 
 To view the statistics, there are multiple views available.
 
 
-```
+```sql
 postgres=# \d pg_stat_monitor;
                           View "public.pg_stat_monitor"
        Column        |           Type           | Collation | Nullable | Default 
@@ -371,7 +374,7 @@ postgres=# \d pg_stat_monitor;
 
 **`bucket_start_time`**: `bucket_start_time` shows the start time of the bucket. 
 
-```
+```sql
 postgres=# select bucket, bucket_start_time, query from pg_stat_monitor;
  bucket |       bucket_start_time       |                            query                             
 --------+-------------------------------+--------------------------------------------------------
@@ -395,8 +398,7 @@ postgres=# select bucket, bucket_start_time, query from pg_stat_monitor;
 
 
 #### Example 1: Shows the userid, dbid, unique queryid hash, query and total number of calls or that query.
-
-```
+```sql
 postgres=# select userid,  dbid, queryid, substr(query,0, 50) as query, calls from pg_stat_monitor;
  userid | dbid  |     queryid      |                       query                       | calls 
 --------+-------+------------------+---------------------------------------------------+-------
@@ -449,7 +451,7 @@ postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls 
 
 #### Example 4: Shows the connected application_name.
 
-```
+```sql
 postgres=# select application_name, query from pg_stat_monitor;
  application_name |                                                query                                                 
 ------------------+------------------------------------------------------------------------------------------------------
@@ -473,7 +475,7 @@ postgres=# select application_name, query from pg_stat_monitor;
 
 **`elevel`**, **`sqlcode`**,**`message`**,: error level / sql code and  log/warning/error message
 
-```
+```sql
 postgres=# select substr(query,0,50) as query, decode_error_level(elevel)as elevel,sqlcode,calls, substr(message,0,50) message from pg_stat_monitor;
                        query                       | elevel | sqlcode | calls |                      message                      
 ---------------------------------------------------+--------+---------+-------+---------------------------------------------------
@@ -506,7 +508,7 @@ postgres=# select userid,  total_time, min_time, max_time, mean_time, query from
 
 **`client_ip`**: The IP address of the client that originated the query.
 
-```
+```sql
 postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls,client_ip from pg_stat_monitor, pg_database WHERE dbid = oid;
  userid  | datname  |                       query                       | calls | client_ip 
 ---------+----------+---------------------------------------------------+-------+-----------
@@ -529,7 +531,7 @@ postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls,
 
 **`resp_calls`**: Call histogram
 
-```
+```sql
 postgres=# select resp_calls, query from pg_stat_monitor;
                     resp_calls                    |                 query                                         
 --------------------------------------------------+---------------------------------------------- 
@@ -546,8 +548,7 @@ There are 10 timebase buckets of the time **`pg_stat_monitor.pgsm_respose_time_s
 **`relations`**: The list of tables involved in the query
 
 #### Example 1: List all the table names involved in the query.
-
-```
+```sql
 postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
      relations      |                                                query                                                 
 --------------------+------------------------------------------------------------------------------------------------------
@@ -561,8 +562,7 @@ postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
 ```
 
 #### Example 2: List all the views and the name of table in the view. Here we have a view "test_view"
-
-```
+```sql
 postgres=# \d+ test_view
                           View "public.test_view"
  Column |  Type   | Collation | Nullable | Default | Storage | Description 
@@ -577,8 +577,7 @@ View definition:
 ```
 
 Now when we query the pg_stat_monitor, it will shows the view name and also all the table names in the view.
-
-```
+```sql
 postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
       relations      |                                                query                                                 
 ---------------------+------------------------------------------------------------------------------------------------------
@@ -591,7 +590,7 @@ postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
 
 **`cmd_type`**: List the command type of the query.
 
-```
+```sql
 postgres=# select substr(query,0, 50) as query, cmd_type from pg_stat_monitor where elevel = 0;
                        query                       |    cmd_type     
 ---------------------------------------------------+-----------------
@@ -612,3 +611,7 @@ postgres=# select substr(query,0, 50) as query, cmd_type from pg_stat_monitor wh
  truncate pgbench_history                          | {}
 (15 rows)
 ```
+
+**Copyright notice**
+
+Copyright (c) 2006 - 2020, Percona LLC.
