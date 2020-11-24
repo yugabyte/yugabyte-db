@@ -1276,7 +1276,7 @@ Status Log::DeleteOnDiskData(Env* env,
   if (!env->FileExists(wal_dir)) {
     return Status::OK();
   }
-  LOG(INFO) << "T " << tablet_id << "P " << peer_uuid
+  LOG(INFO) << "T " << tablet_id << " P " << peer_uuid
             << ": Deleting WAL dir " << wal_dir;
   RETURN_NOT_OK_PREPEND(env->DeleteRecursively(wal_dir),
                         "Unable to recursively delete WAL dir for tablet " + tablet_id);
