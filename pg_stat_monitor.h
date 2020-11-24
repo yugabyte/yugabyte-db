@@ -42,7 +42,8 @@
 #define	TIMEVAL_DIFF(start, end) (((double) end.tv_sec + (double) end.tv_usec / 1000000.0) \
 	- ((double) start.tv_sec + (double) start.tv_usec / 1000000.0)) * 1000
 
-#define  ArrayGetTextDatum(x,y) array_get_datum(x,y)
+#define  TextArrayGetTextDatum(x,y) textarray_get_datum(x,y)
+#define  IntArrayGetTextDatum(x,y) intarray_get_datum(x,y)
 
 /* XXX: Should USAGE_EXEC reflect execution time and/or buffer usage? */
 #define USAGE_EXEC(duration)	(1.0)
@@ -62,6 +63,7 @@
 #define TEXT_LEN			255
 #define ERROR_MESSAGE_LEN	100
 #define CMD_LST				10
+#define CMD_LEN				20
 
 typedef struct GucVariables
 {
@@ -131,7 +133,7 @@ typedef struct QueryInfo
 	Oid			dbid;						/* database OID */
 	uint		host;						/* client IP */
 	int64       type; 						/* type of query, options are query, info, warning, error, fatal */
-	int32		cmd_type[CMD_LST];				/* query command type SELECT/UPDATE/DELETE/INSERT */
+	char		cmd_type[CMD_LST][CMD_LEN];				/* query command type SELECT/UPDATE/DELETE/INSERT */
 	char		tables_name[MAX_REL_LEN];   /* table names involved in the query */
 } QueryInfo;
 
@@ -224,7 +226,7 @@ typedef struct pgssSharedState
 	uint64			bucket_overflow[MAX_BUCKETS];
 	uint64			bucket_entry[MAX_BUCKETS];
 	int				query_buf_size_bucket;
-	int32			cmdTag[CMD_LST];
+	char			cmdTag[CMD_LST][20];
 	Timestamp		bucket_start_time[MAX_BUCKETS];   	/* start time of the bucket */
 } pgssSharedState;
 
