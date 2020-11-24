@@ -48,6 +48,8 @@ git clone git://github.com/Percona/pg_stat_monitor.git
 
 After downloading the code, set the path for the PostgreSQL binary.
 
+The release notes can be find [here](https://github.com/percona/pg_stat_monitor/RELEASE_NOTES.md).
+
 Compile and Install the extension
 
 ```
