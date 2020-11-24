@@ -447,6 +447,27 @@ postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls 
 (3 rows)
 ```
 
+#### Example 4: Shows the connected application_name.
+
+```
+postgres=# select application_name, query from pg_stat_monitor;
+ application_name |                                                query                                                 
+------------------+------------------------------------------------------------------------------------------------------
+ pgbench          | UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2
+ pgbench          | UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2
+ pgbench          | vacuum pgbench_tellers
+ pgbench          | SELECT abalance FROM pgbench_accounts WHERE aid = $1
+ pgbench          | END
+ pgbench          | select count(*) from pgbench_branches
+ pgbench          | BEGIN
+ pgbench          | INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+ psql             | select application_name, query from pg_stat_monitor
+ pgbench          | vacuum pgbench_branches
+ psql             | select application_name query from pg_stat_monitor
+ pgbench          | truncate pgbench_history
+ pgbench          | UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2
+(13 rows)
+```
 
 ### Error Messages / Error Codes and Error Level
 
