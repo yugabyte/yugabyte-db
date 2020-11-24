@@ -1,11 +1,11 @@
 ---
 title: Avg symptoms vs avg mask-wearing by state
-linkTitle: Scatter-plot for 2020-10-21
+linkTitle: Scatter-plot for 21-Oct-2020
 headerTitle: Average COVID-like symptoms vs average mask-wearing by state scatter plot for 21-Oct-2020
 description: Average COVID-like symptoms vs average mask-wearing by state scatter plot for 21-Oct-2020
 menu:
   latest:
-    identifier: scatter-plot-for-2020-10-21
+    identifier: scatter-plot-for-21-Oct-2020
     parent: analyze-the-covidcast-data
     weight: 30
 isTocNested: true
@@ -147,7 +147,7 @@ The emergent values for the slope and intercept are very close to the values (_-
 
 Here is the resulting plot
 
-![Scatter-plot for 2020-10-21](/images/api/ysql/exprs/aggregate_functions/covid-data-case-study/scatter-plot-synthetic-data.jpg):
+![Scatter-plot for synthetic data](/images/api/ysql/exprs/aggregate_functions/covid-data-case-study/scatter-plot-synthetic-data.jpg):
 
 **Note:** The `normal_rand()` function produces a different set of pseudorandomly distributed values each time that  [`synthetic-data.sql`](../analysis-scripts/synthetic-data-sql/) is run. But the overall shape of the scatter-plot will remain the same.
 
