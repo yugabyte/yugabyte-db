@@ -44,8 +44,11 @@ type_specification ::= { JSONB }
 
 {{< note title="Note" >}}
 
-Due to internal conversions, small float/decimal values are stored and shown with a significant error.
-For now it's best to store decimal precision values in strings inside JSONB objects. [#996 issue](https://github.com/yugabyte/yugabyte-db/issues/996) 
+Internally, numbers that appear in a JSONB string (used without quotes. e.g `{'a': 3.14}` ) are stored as floating point values. 
+Due to the inherent imprecision in storing floating-point numbers, one should avoid comparing them for equality. 
+Users can either use error bounds while querying for these values in order to perform the correct floating-point comparison, or store them as strings (e.g: `{'a': "3.14"}`). 
+[#996 issue](https://github.com/yugabyte/yugabyte-db/issues/996)
+
 
 {{< /note >}}
 
