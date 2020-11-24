@@ -1,8 +1,8 @@
 ---
-title: Select data for COVID-like symptoms vs mask-wearing by state scatter plot
-linkTitle: Select data for scatter-plot for 2020-10-21
-headerTitle: Select data for COVID-like symptoms vs mask-wearing by state scatter plot
-description: Select data for COVID-like symptoms vs mask-wearing by state scatter plot
+title: Select the data for COVID-like symptoms vs mask-wearing by state scatter plot for 21-Oct-2020
+linkTitle: Data for scatter-plot for 21-Oct-2020
+headerTitle: Select the data for COVID-like symptoms vs mask-wearing by state scatter plot for 21-Oct-2020
+description: Select the data for COVID-like symptoms vs mask-wearing by state scatter plot for 21-Oct-2020
 menu:
   latest:
     identifier: symptoms-vs-mask-wearing-by-state
