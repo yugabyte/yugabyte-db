@@ -80,7 +80,6 @@ postgres=# select * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_normalized_query         |      1 |             0 | Selects whether save query in normalized format.                  |       0 |          0 |       0
  pg_stat_monitor.pgsm_max_buckets              |     10 |            10 | Sets the maximum number of buckets.                               |       1 |         10 |       1
  pg_stat_monitor.pgsm_bucket_time              |     60 |            60 | Sets the time in seconds per bucket.                              |       1 | 2147483647 |       1
- pg_stat_monitor.pgsm_object_cache             |     50 |            50 | Sets the maximum number of object cache                           |      50 | 2147483647 |       1
  pg_stat_monitor.pgsm_respose_time_lower_bound |      1 |             1 | Sets the time in millisecond.                                     |       1 | 2147483647 |       1
  pg_stat_monitor.pgsm_respose_time_step        |      1 |             1 | Sets the respose time steps in millisecond.                       |       1 | 2147483647 |       1
  pg_stat_monitor.pgsm_query_shared_buffer      | 500000 |        500000 | Sets the query shared_buffer size.                                |  500000 | 2147483647 |       1
@@ -279,7 +278,6 @@ The table below shows set up options for each configuration parameter and whethe
 - **pg_stat_monitor.pgsm_normalized_query**: By default, query shows the actual parameter instead of the placeholder. It is quite useful when users want to use that query and try to run that query to check the abnormalities. But in most cases users like the queries with a placeholder. This parameter is used to toggle between the two said options.
 - **pg_stat_monitor.pgsm_max_buckets**: ``pg_stat_monitor`` accumulates the information in the form of buckets. All the aggregated information is bucket based. This parameter is used to set the number of buckets the system can have. For example, if this parameter is set to 2, then the system will create two buckets. First, the system will add all the information into the first bucket. After its lifetime (defined in the  pg_stat_monitor.pgsm_bucket_time parameter) expires, it will switch to the second bucket,  reset all the counters and repeat the process.
 - **pg_stat_monitor.pgsm_bucket_time**: This parameter is used to set the lifetime of the bucket. System switches between buckets on the basis of ``pg_stat_monitor.pgsm_bucket_time``. 
-- **pg_stat_monitor.pgsm_object_cache**: This parameter is used to store information about the objects in the query.  ``pg_stat_monitor`` saves the information used by the objects in the query. To limit that information, you can set the length of that memory.
 - **pg_stat_monitor.pgsm_respose_time_lower_bound**: ``pg_stat_monitor`` also stores the execution time histogram. This parameter is used to set the lower bound of the histogram.
 - **pg_stat_monitor.pgsm_respose_time_step:** This parameter is used to set the steps for the histogram. 
 
@@ -363,7 +361,7 @@ postgres=# \d pg_stat_monitor;
  resp_calls          | text[]                   |           |          | 
  cpu_user_time       | double precision         |           |          | 
  cpu_sys_time        | double precision         |           |          | 
- tables_names        | text[]                   |           |          | 
+ relations           | text[]                   |           |          | 
 
 ```
 
@@ -396,7 +394,7 @@ postgres=# select bucket, bucket_start_time, query from pg_stat_monitor;
 **`calls`**: Number of calls of that particular query.
 
 
-Example 1: Shows the userid, dbid, unique queryid hash, query and total number of calls or that query.
+#### Example 1: Shows the userid, dbid, unique queryid hash, query and total number of calls or that query.
 
 ```
 postgres=# select userid,  dbid, queryid, substr(query,0, 50) as query, calls from pg_stat_monitor;
@@ -423,7 +421,7 @@ postgres=# select userid,  dbid, queryid, substr(query,0, 50) as query, calls fr
 (18 rows)
 ```
 
-Example 2: Shows the different username for the queries. 
+#### Example 2: Shows the different username for the queries. 
 
 ```
 postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
@@ -437,7 +435,7 @@ postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls 
 (5 rows)
 ```
 
-Example 3: Shows the differen database involved in the queries.
+#### Example 3: Shows the differen database involved in the queries.
 
 ```
 postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
@@ -524,21 +522,48 @@ There are 10 timebase buckets of the time **`pg_stat_monitor.pgsm_respose_time_s
 
 ### Object Information.
 
-**`tables_names`**: The list of tables involved in the query
+**`relations`**: The list of tables involved in the query
+
+#### Example 1: List all the table names involved in the query.
 
 ```
-postgres=# select tables_names, query from pg_stat_monitor;
-       tables_names       |                                         query                                         
---------------------------+---------------------------------------------------------------------------------------
- {public.pg_stat_monitor} | select client_ip, query from pg_stat_monitor
-                          | select * from pg_stat_monitor_reset()
- {public.pg_stat_monitor} | select userid,  dbid, queryid, query from pg_stat_monitor
- {public.pg_stat_monitor} | select bucket, bucket_start_time, query from pg_stat_monitor
- {public.pg_stat_monitor} | select userid,  total_time, min_time, max_time, mean_time, query from pg_stat_monitor
- {public.pg_stat_monitor} | select userid,  dbid, queryid, query, calls from pg_stat_monitor
- {public.foo}             | SELECT * FROM foo
- {public.pg_stat_monitor} | select resp_calls, query from pg_stat_monitor
-(8 rows)
+postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
+     relations      |                                                query                                                 
+--------------------+------------------------------------------------------------------------------------------------------
+ {pgbench_accounts} | UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2
+ {pgbench_accounts} | SELECT abalance FROM pgbench_accounts WHERE aid = $1
+ {pg_stat_monitor}  | select relations::oid[]::regclass[], cmd_type,resp_calls,query from pg_stat_monitor
+ {pgbench_branches} | select count(*) from pgbench_branches
+ {pgbench_history}  | INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+ {foo,bar}          | select * from foo,bar
+(5 rows)
+```
+
+#### Example 2: List all the views and the name of table in the view. Here we have a view "test_view"
+
+```
+postgres=# \d+ test_view
+                          View "public.test_view"
+ Column |  Type   | Collation | Nullable | Default | Storage | Description 
+--------+---------+-----------+----------+---------+---------+-------------
+ foo_a  | integer |           |          |         | plain   | 
+ bar_a  | integer |           |          |         | plain   | 
+View definition:
+ SELECT f.a AS foo_a,
+    b.a AS bar_a
+   FROM foo f,
+    bar b;
+```
+
+Now when we query the pg_stat_monitor, it will shows the view name and also all the table names in the view.
+
+```
+postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
+      relations      |                                                query                                                 
+---------------------+------------------------------------------------------------------------------------------------------
+ {test_view,foo,bar} | select * from test_view
+ {foo,bar}           | select * from foo,bar
+(2 rows)
 ```
 
 ### Query command Type (SELECT, INSERT, UPDATE OR DELETE)
