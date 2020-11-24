@@ -63,12 +63,12 @@ sudo systemctl restart postgresql-13
 
 Create the extension using the ``CREATE EXTENSION`` command.
 ```sql
-postgres=# CREATE EXTENSION pg_stat_monitor;
+CREATE EXTENSION pg_stat_monitor;
 CREATE EXTENSION
 ```
 
 ```sql
-postgres=# SELECT application_name, userid::regrole AS user_name, datname AS database_name, substr(query,0, 50) AS query, calls, client_ip 
+SELECT application_name, userid::regrole AS user_name, datname AS database_name, substr(query,0, 50) AS query, calls, client_ip 
            FROM pg_stat_monitor, pg_database 
            WHERE dbid = oid;
  
@@ -85,7 +85,7 @@ postgres=# SELECT application_name, userid::regrole AS user_name, datname AS dat
 ```
 
 ```sql
-postgres=# SELECT decode_error_level(elevel) AS elevel, sqlcode, message 
+SELECT decode_error_level(elevel) AS elevel, sqlcode, message 
            FROM pg_stat_monitor
            WHERE elevel != 0;
  
