@@ -67,5 +67,36 @@ postgres=# CREATE EXTENSION pg_stat_monitor;
 CREATE EXTENSION
 ```
 
+```sql
+postgres=# SELECT application_name, userid::regrole AS user_name, datname AS database_name, substr(query,0, 50) AS query, calls, client_ip 
+           FROM pg_stat_monitor, pg_database 
+           WHERE dbid = oid;
+ 
+ application_name  | user_name | database_name |                       query                       | calls | client_ip 
+-------------------+-----------+---------------+---------------------------------------------------+-------+-----------
+ psql              | vagrant   | postgres      | SELECT elevel, sqlcode, message from pg_stat_moni |     1 | 127.0.0.1
+ psql              | vagrant   | postgres      | SELECT c.relchecks, c.relkind, c.relhasindex, c.r |     1 | 127.0.0.1
+ pg_cron scheduler | vagrant   | postgres      | update cron.job_run_details set status = $1, retu |     1 | 127.0.0.1
+ pgbench           | vagrant   | postgres      | vacuum analyze pgbench_accounts                   |     1 | 10.0.2.15
+ pgbench           | vagrant   | postgres      | alter table pgbench_branches add primary key (bid |     1 | 10.0.2.15
+ psql              | vagrant   | postgres      | SELECT pg_catalog.quote_ident(c.relname) FROM pg_ |     1 | 127.0.0.1
+ psql              | vagrant   | postgres      | SELECT decode_error_level(elevel), sqlcode, messa |     2 | 127.0.0.1
+(37 rows)
+```
+
+```sql
+postgres=# SELECT decode_error_level(elevel) AS elevel, sqlcode, message 
+           FROM pg_stat_monitor
+           WHERE elevel != 0;
+ 
+ elevel.            | sqlcode |                    message                     
+--------------------+---------+------------------------------------------------
+ ERROR              |     132 | permission denied for table pgbench_branches
+ ERROR              |     130 | division by zero
+ ERROR              |     132 | function decode_elevel(integer) does not exist
+ ERROR              |     132 | must be owner of table pgbench_accounts
+(4 rows)
+```
+
 ## Copyright Notice
 Copyright (c) 2006 - 2020, Percona LLC.
