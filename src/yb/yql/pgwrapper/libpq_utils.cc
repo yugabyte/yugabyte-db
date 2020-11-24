@@ -11,6 +11,9 @@
 // under the License.
 //
 
+#include <string>
+#include <utility>
+
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -22,6 +25,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pg_quote.h"
 
 using namespace std::literals;
 
@@ -125,13 +129,20 @@ struct PGConn::CopyData {
   }
 };
 
-Result<PGConn> PGConn::Connect(const HostPort& host_port, const std::string& db_name) {
+Result<PGConn> PGConn::Connect(
+    const HostPort& host_port,
+    const std::string& db_name,
+    const std::string& user) {
   auto start = CoarseMonoClock::now();
   auto deadline = start + 60s;
   for (;;) {
-    auto conn_info = Format("host=$0 port=$1 user=postgres", host_port.host(), host_port.port());
+    auto conn_info = Format(
+        "host=$0 port=$1 user=$2",
+        host_port.host(),
+        host_port.port(),
+        QuotePgConnStrValue(user));
     if (!db_name.empty()) {
-      conn_info = Format("$0 dbname=$1", conn_info, db_name);
+      conn_info = Format("dbname=$0 $1", QuotePgConnStrValue(db_name), conn_info);
     }
     PGConnPtr result(PQconnectdb(conn_info.c_str()));
     auto status = PQstatus(result.get());
@@ -172,7 +183,8 @@ Status PGConn::Execute(const std::string& command) {
   if (ExecStatusType::PGRES_COMMAND_OK != status) {
     return STATUS(NetworkError,
                   Format("Execute '$0' failed: $1, message: $2",
-                         command, status, PQresultErrorMessage(res.get())), Slice(),
+                         command, status, PQresultErrorMessage(res.get())),
+                  Slice() /* msg2 */,
                   PgsqlError(GetSqlState(res.get())));
   }
   return Status::OK();
@@ -183,7 +195,8 @@ Result<PGResultPtr> CheckResult(PGResultPtr result, const std::string& command) 
   if (ExecStatusType::PGRES_TUPLES_OK != status && ExecStatusType::PGRES_COPY_IN != status) {
     return STATUS(NetworkError,
                   Format("Fetch '$0' failed: $1, message: $2",
-                         command, status, PQresultErrorMessage(result.get())), Slice(),
+                         command, status, PQresultErrorMessage(result.get())),
+                  Slice() /* msg2 */,
                   PgsqlError(GetSqlState(result.get())));
   }
   return std::move(result);
