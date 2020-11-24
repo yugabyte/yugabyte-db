@@ -22,7 +22,7 @@ void
 init_guc(void)
 {
 	int i = 0;
-	conf[i++] = (GucVariable) { 
+	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_max",
 		.guc_desc = "Sets the maximum number of statements tracked by pg_stat_monitor.",
 		.guc_default = 5000,
@@ -31,15 +31,15 @@ init_guc(void)
 		.guc_restart = true
 		};
 
-	conf[i++] = (GucVariable) { 
+	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_query_max_len",
 		.guc_desc = "Sets the maximum length of query.",
-		.guc_default = 1024,	
+		.guc_default = 1024,
 		.guc_min = 1024,
 		.guc_max = INT_MAX,
 		.guc_restart = true
 	};
-	conf[i++] = (GucVariable) { 
+	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_enable",
 		.guc_desc = "Enable/Disable statistics collector.",
 		.guc_default = 1,
@@ -47,7 +47,7 @@ init_guc(void)
 		.guc_max = 0,
 		.guc_restart = true
 	};
-	conf[i++] = (GucVariable) { 
+	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_track_utility",
 		.guc_desc = "Selects whether utility commands are tracked.",
 		.guc_default = 0,
@@ -56,7 +56,7 @@ init_guc(void)
 		.guc_restart = false
 	};
 
-	conf[i++] = (GucVariable) { 
+	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_normalized_query",
 		.guc_desc = "Selects whether save query in normalized format.",
 		.guc_default = 1,
@@ -64,7 +64,7 @@ init_guc(void)
 		.guc_max = 0,
 		.guc_restart = false
 	};
-	conf[i++] = (GucVariable) { 
+	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_max_buckets",
 		.guc_desc = "Sets the maximum number of buckets.",
 		.guc_default = 10,
@@ -72,7 +72,7 @@ init_guc(void)
 		.guc_max = 10,
 		.guc_restart = true
 	};
-	conf[i++] = (GucVariable) { 
+	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_bucket_time",
 		.guc_desc = "Sets the time in seconds per bucket.",
 		.guc_default = 60,
@@ -80,16 +80,8 @@ init_guc(void)
 		.guc_max = INT_MAX,
 		.guc_restart = true
 	};
-	conf[i++] = (GucVariable) { 
-		.guc_name = "pg_stat_monitor.pgsm_object_cache",
-		.guc_desc = "Sets the maximum number of object cache",
-		.guc_default = 50,
-		.guc_min = 50,
-		.guc_max = INT_MAX,
-		.guc_restart = true
-	};
-	
-	conf[i++] = (GucVariable) { 
+
+	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_respose_time_lower_bound",
 		.guc_desc = "Sets the time in millisecond.",
 		.guc_default = 1,
@@ -97,8 +89,8 @@ init_guc(void)
 		.guc_max = INT_MAX,
 		.guc_restart = true
 	};
-	
-	conf[i++] = (GucVariable) { 
+
+	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_respose_time_step",
 		.guc_desc = "Sets the response time steps in millisecond.",
 		.guc_default = 1,
@@ -107,7 +99,7 @@ init_guc(void)
 		.guc_restart = true
 	};
 
-	conf[i++] = (GucVariable) { 
+	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_query_shared_buffer",
 		.guc_desc = "Sets the query shared_buffer size.",
 		.guc_default = 500000,
@@ -116,7 +108,7 @@ init_guc(void)
 		.guc_restart = true
 	};
 #if PG_VERSION_NUM >= 130000
-	conf[i++] = (GucVariable) { 
+	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_track_planning",
 		.guc_desc = "Selects whether planning statistics are tracked.",
 		.guc_default = 1,
@@ -124,8 +116,8 @@ init_guc(void)
 		.guc_max = 0,
 		.guc_restart = false
 	};
-#endif	
-	
+#endif
+
 	DefineCustomIntVariable("pg_stat_monitor.pgsm_max",
 							"Sets the maximum number of statements tracked by pg_stat_monitor.",
 							NULL,
@@ -211,19 +203,6 @@ init_guc(void)
 							NULL,
 							NULL);
 
-
-	DefineCustomIntVariable("pg_stat_monitor.pgsm_object_cache",
-							"Sets the maximum number of object cache",
-							NULL,
-							&PGSM_OBJECT_CACHE,
-							50,
-							50,
-							INT_MAX,
-							PGC_POSTMASTER,
-							0,
-							NULL,
-							NULL,
-							NULL);
 
 	DefineCustomIntVariable("pg_stat_monitor.pgsm_respose_time_lower_bound",
 							"Sets the time in millisecond.",

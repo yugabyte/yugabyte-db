@@ -16,7 +16,6 @@
 
 static pgssSharedState *pgss;
 static HTAB *pgss_hash;
-static HTAB *pgss_object_hash;
 
 static HTAB* hash_init(const char *hash_name, int key_size, int entry_size, int hash_size);
 
@@ -40,7 +39,6 @@ pgss_startup(void)
 
 	pgss = NULL;
 	pgss_hash = NULL;
-	pgss_object_hash = NULL;
 
 	/*
 	* Create or attach to the shared memory state, including hash table
@@ -66,7 +64,6 @@ pgss_startup(void)
 	}
 
 	pgss_hash = hash_init("pg_stat_monitor: Queries hashtable", sizeof(pgssHashKey), sizeof(pgssEntry),PGSM_MAX);
-	pgss_object_hash = hash_init("pg_stat_monitor: Object hashtable", sizeof(pgssObjectHashKey), sizeof(pgssObjectEntry), PGSM_OBJECT_CACHE);
 
 	LWLockRelease(AddinShmemInitLock);
 
@@ -197,44 +194,6 @@ hash_entry_reset()
 	LWLockRelease(pgss->lock);
 }
 
-void
-hash_alloc_object_entry(uint64 queryid, char *objects)
-{
-    pgssObjectEntry *entry = NULL;
-    bool            found;
-    pgssObjectHashKey key;
-
-	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
-    key.queryid = queryid;
-    entry = (pgssObjectEntry *) hash_search(pgss_object_hash, &key, HASH_ENTER, &found);
-    if (!found)
-    {
-        SpinLockAcquire(&entry->mutex);
-        snprintf(entry->tables_name, MAX_REL_LEN, "%s", objects);
-        SpinLockRelease(&entry->mutex);
-    }
-	LWLockRelease(pgss->lock);
-}
-
-/* De-alocate memory */
-void
-hash_dealloc_object_entry(uint64 queryid, char *objects)
-{
-    pgssObjectHashKey       key;
-    pgssObjectEntry         *entry;
-
-    key.queryid = queryid;
-
-	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
-    entry = (pgssObjectEntry *) hash_search(pgss_object_hash, &key, HASH_FIND, NULL);
-    if (entry != NULL)
-    {
-        snprintf(objects, MAX_REL_LEN, "%s", entry->tables_name);
-        hash_search(pgss_object_hash, &entry->key, HASH_REMOVE, NULL);
-    }
-    LWLockRelease(pgss->lock);
-}
-
 pgssEntry*
 hash_create_query_entry(unsigned int queryid,
                         unsigned int userid,
@@ -270,7 +229,6 @@ bool
 IsHashInitialize(void)
 {
 	return (pgss != NULL &&
-			pgss_hash != NULL &&
-			pgss_object_hash !=NULL);
+			pgss_hash != NULL);
 }
 

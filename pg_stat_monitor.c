@@ -240,7 +240,6 @@ static void
 pgss_post_parse_analyze(ParseState *pstate, Query *query)
 {
 	pgssJumbleState jstate;
-	char			tables_name[MAX_REL_LEN] = {0};
 
 	if (prev_post_parse_analyze_hook)
 		prev_post_parse_analyze_hook(pstate, query);
@@ -264,40 +263,6 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 	}
 
 	query->queryId = get_query_id(&jstate, query);
-	if (query->rtable)
-	{
-		ListCell *lc;
-		bool first = true;
-		foreach(lc, query->rtable)
-		{
-			RangeTblEntry *rte = lfirst_node(RangeTblEntry, lc);
-			if (rte->rtekind == RTE_RELATION)
-			{
-				char *relname = get_rel_name(rte->relid);
-				char *relspacename = get_namespace_name(get_rel_namespace(rte->relid));
-				if (relname)
-				{
-					if (first)
-					{
-						if (relspacename)
-							snprintf(tables_name, MAX_REL_LEN, "%s.%s", relspacename, relname);
-						else
-							snprintf(tables_name, MAX_REL_LEN, "%s", relname);
-						first = false;
-					}
-					else
-					{
-						if (relspacename)
-							snprintf(tables_name, MAX_REL_LEN, "%s,%s.%s", tables_name, relspacename, relname);
-						else
-							snprintf(tables_name, MAX_REL_LEN, "%s,%s", tables_name, relname);
-					}
-				}
-			}
-		}
-		hash_alloc_object_entry(query->queryId, tables_name);
-	}
-
 	/*
 	 * If we are unlucky enough to get a hash of zero, use 1 instead, to
 	 * prevent confusion with the utility-statement case.
@@ -463,15 +428,29 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 {
 	ListCell		*lr;
 	pgssSharedState *pgss = pgsm_get_ss();
+	int				i = 0;
+	int				j = 0;
 
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 	memset(pgss->cmdTag, 0x0, sizeof(pgss->cmdTag));
 
 	foreach(lr, rt)
     {
+		bool found = false;
         RangeTblEntry *rte = lfirst(lr);
         if (rte->rtekind != RTE_RELATION)
             continue;
+
+		if (i < REL_LST)
+		{
+			for(j = 0; j < i; j++)
+			{
+				if (pgss->relations[j] == rte->relid)
+					found = true;
+			}
+			if (!found)
+				pgss->relations[i++] = rte->relid;
+		}
 		if (rte->requiredPerms & ACL_INSERT) snprintf(pgss->cmdTag[0],CMD_LEN,"%s", "INSERT");
         if (rte->requiredPerms & ACL_UPDATE) snprintf(pgss->cmdTag[1],CMD_LEN,"%s", "UPDATE");
         if (rte->requiredPerms & ACL_DELETE) snprintf(pgss->cmdTag[2],CMD_LEN,"%s", "DELETE");
@@ -748,8 +727,6 @@ static void pgss_store(uint64 queryId,
 	bool			reset = false;
 	bool			found = false;
 	int				i,j;
-	char			tables_name[MAX_REL_LEN] = {0};
-	int             len;
 	pgssSharedState *pgss = pgsm_get_ss();
 	HTAB            *pgss_hash = pgsm_get_hash();
 	int				message_len = message ? strlen(message) : 0;
@@ -799,9 +776,6 @@ static void pgss_store(uint64 queryId,
 	 */
 	if (queryId == UINT64CONST(0))
 		queryId = pgss_hash_string(query, query_len);
-
-	hash_dealloc_object_entry(queryId, tables_name);
-	len = strlen(tables_name);
 
 	for (i = 0; i < CMD_LST; i++)
 		cmd_len[i] = strlen(pgss->cmdTag[i]);
@@ -925,6 +899,15 @@ static void pgss_store(uint64 queryId,
 				e->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
 		}
 
+		for (i = 0; i < REL_LST; i++)
+			if (e->counters.info.relations[i] != 0)
+				found = true;
+
+		if (!found)
+			for (i = 0; i < REL_LST; i++)
+				e->counters.info.relations[i] = pgss->relations[i];
+
+		found = false;
 		/* This is bit ugly hack to check we already updated the counter or not */
 		for (i = 0; i < CMD_LST; i++)
 			if (e->counters.info.cmd_type[i][0] != 0)
@@ -964,8 +947,6 @@ static void pgss_store(uint64 queryId,
 		e->counters.info.host = pg_get_client_addr();
 		e->counters.sysinfo.utime = utime;
 		e->counters.sysinfo.stime = stime;
-		for(i = 0; i < len; i++)
-			e->counters.info.tables_name[i] = tables_name[i];
 		SpinLockRelease(&e->mutex);
 		}
 	}
@@ -1064,13 +1045,14 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	hash_seq_init(&hash_seq, pgss_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
-		Datum		values[PG_STAT_STATEMENTS_COLS];
-		bool		nulls[PG_STAT_STATEMENTS_COLS];
-		int		i = 0;
-		int		kind;
-		Counters	tmp;
-		double		stddev;
-		int64		queryid = entry->key.queryid;
+		Datum       values[PG_STAT_STATEMENTS_COLS];
+		bool        nulls[PG_STAT_STATEMENTS_COLS];
+		int		    i = 0,j;
+		int         len = 0;
+		int		    kind;
+		Counters    tmp;
+		double      stddev;
+		int64       queryid = entry->key.queryid;
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
@@ -1130,6 +1112,17 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			else
 				nulls[i++] = true;
 		}
+
+		len = 0;
+		for (j = 0; j < REL_LST; j++)
+			if (tmp.info.relations[j] != 0)
+				len++;
+
+		if (len == 0)
+			nulls[i++] = true;
+		else
+			values[i++] = IntArrayGetTextDatum(tmp.info.relations, len);
+
 		values[i++] = TextArrayGetTextDatum(tmp.info.cmd_type, CMD_LST);
 		values[i++] = Int64GetDatumFast(tmp.error.elevel);
 		values[i++] = Int64GetDatumFast(tmp.error.sqlcode);
@@ -1169,10 +1162,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, 10);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.utime);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.stime);
-		if (strlen(tmp.info.tables_name) == 0)
-			nulls[i++] = true;
-		else
-			values[i++] = CStringGetTextDatum(tmp.info.tables_name);
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
 	free(query_txt);
@@ -2165,7 +2154,7 @@ intarray_get_datum(int32 arr[], int len)
 			first = false;
 			continue;
 		}
-		snprintf(tmp, 10, ", %d", arr[j]);
+		snprintf(tmp, 10, ",%d", arr[j]);
 		strcat(str,tmp);
 	}
 	return CStringGetTextDatum(str);

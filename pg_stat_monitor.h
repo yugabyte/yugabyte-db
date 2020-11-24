@@ -59,9 +59,9 @@
 #define MAX_RESPONSE_BUCKET 10
 #define MAX_REL_LEN			255
 #define MAX_BUCKETS			10
-#define MAX_OBJECT_CACHE	100
 #define TEXT_LEN			255
 #define ERROR_MESSAGE_LEN	100
+#define REL_LST				10
 #define CMD_LST				10
 #define CMD_LEN				20
 
@@ -102,18 +102,6 @@ typedef enum AGG_KEY
 	AGG_KEY_HOST
 } AGG_KEY;
 
-typedef struct pgssObjectHashKey
-{
-	uint64		queryid;		/* query id */
-} pgssObjectHashKey;
-
-typedef struct pgssObjectEntry
-{
-	pgssObjectHashKey	key;						/* hash key of entry - MUST BE FIRST */
-	char				tables_name[MAX_REL_LEN];   /* table names involved in the query */
-	slock_t				mutex;						/* protects the counters only */
-} pgssObjectEntry;
-
 #define MAX_QUERY_LEN 1024
 
 /* shared nenory storage for the query */
@@ -133,8 +121,8 @@ typedef struct QueryInfo
 	Oid			dbid;						/* database OID */
 	uint		host;						/* client IP */
 	int64       type; 						/* type of query, options are query, info, warning, error, fatal */
-	char		cmd_type[CMD_LST][CMD_LEN];				/* query command type SELECT/UPDATE/DELETE/INSERT */
-	char		tables_name[MAX_REL_LEN];   /* table names involved in the query */
+	int32		relations[REL_LST];
+	char		cmd_type[CMD_LST][CMD_LEN];	/* query command type SELECT/UPDATE/DELETE/INSERT */
 } QueryInfo;
 
 typedef struct ErrorInfo
@@ -220,13 +208,14 @@ typedef struct pgssSharedState
 	double			cur_median_usage;	/* current median usage in hashtable */
 	slock_t			mutex;				/* protects following fields only: */
 	Size			extent;				/* current extent of query file */
-	int				n_writers;			/* number of active writers to query file */
+	int64			n_writers;			/* number of active writers to query file */
 	uint64			current_wbucket;
 	uint64			prev_bucket_usec;
 	uint64			bucket_overflow[MAX_BUCKETS];
 	uint64			bucket_entry[MAX_BUCKETS];
-	int				query_buf_size_bucket;
-	char			cmdTag[CMD_LST][20];
+	int64			query_buf_size_bucket;
+	int32			relations[REL_LST];
+	char			cmdTag[CMD_LST][CMD_LEN];
 	Timestamp		bucket_start_time[MAX_BUCKETS];   	/* start time of the bucket */
 } pgssSharedState;
 
@@ -285,8 +274,6 @@ void init_guc(void);
 GucVariable *get_conf(int i);
 
 /* hash_create.c */
-void hash_alloc_object_entry(uint64 queryid, char *objects);
-void hash_dealloc_object_entry(uint64 queryid, char *objects);
 bool IsHashInitialize(void);
 void pgss_shmem_startup(void);
 void pgss_shmem_shutdown(int code, Datum arg);
@@ -313,10 +300,9 @@ void pgss_startup(void);
 #define PGSM_NORMALIZED_QUERY get_conf(4)->guc_variable
 #define PGSM_MAX_BUCKETS get_conf(5)->guc_variable
 #define PGSM_BUCKET_TIME get_conf(6)->guc_variable
-#define PGSM_OBJECT_CACHE get_conf(7)->guc_variable
-#define PGSM_RESPOSE_TIME_LOWER_BOUND get_conf(8)->guc_variable
-#define PGSM_RESPOSE_TIME_STEP get_conf(9)->guc_variable
-#define PGSM_QUERY_BUF_SIZE get_conf(10)->guc_variable
-#define PGSM_TRACK_PLANNING get_conf(11)->guc_variable
+#define PGSM_RESPOSE_TIME_LOWER_BOUND get_conf(7)->guc_variable
+#define PGSM_RESPOSE_TIME_STEP get_conf(8)->guc_variable
+#define PGSM_QUERY_BUF_SIZE get_conf(9)->guc_variable
+#define PGSM_TRACK_PLANNING get_conf(10)->guc_variable
 
 #endif
