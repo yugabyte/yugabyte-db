@@ -12,6 +12,7 @@
 
 #include "yb/gutil/strings/join.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pg_quote.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -52,6 +53,16 @@ class PgLibPqTest : public LibPqTestBase {
   void TestOnConflict(bool kill_master, const MonoDelta& duration);
 
   void TestCacheRefreshRetry(const bool is_retry_disabled);
+
+  const std::vector<std::string> names{
+    "uppercase:P",
+    "space: ",
+    "symbol:#",
+    "single_quote:'",
+    "double_quote:\"",
+    "backslash:\\",
+    "mixed:P #'\"\\",
+  };
 };
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
@@ -73,6 +84,26 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
     ASSERT_EQ(key, 1);
     auto value = ASSERT_RESULT(GetString(res.get(), 0, 1));
     ASSERT_EQ(value, "hello");
+  }
+}
+
+// Test libpq connection to various database names.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DatabaseNames)) {
+  PGConn conn = ASSERT_RESULT(Connect());
+
+  for (const std::string& db_name : names) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", QuotePgName(db_name)));
+    ASSERT_OK(ConnectToDB(db_name));
+  }
+}
+
+// Test libpq connection to various user names.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UserNames)) {
+  PGConn conn = ASSERT_RESULT(Connect());
+
+  for (const std::string& user_name : names) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE USER $0", QuotePgName(user_name)));
+    ASSERT_OK(ConnectToDBAsUser("" /* db_name */, user_name));
   }
 }
 

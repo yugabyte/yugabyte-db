@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/util/pg_connstr.h"
+#include "yb/util/pg_quote.h"
 
 #include <string>
 
@@ -31,10 +31,26 @@ std::string ReplaceAll(std::string str, const std::string& from, const std::stri
 
 } // anonymous namespace
 
-std::string EscapePgConnStrValue(const std::string input) {
+// Quote names in PG connection string values (e.g. to make a libpq connection to a database named
+// `this->'\<-this`, use `dbname='this->\'\\<-this'`).
+std::string QuotePgConnStrValue(const std::string input) {
   std::string output = input;
+  // Escape certain characters.
   output = ReplaceAll(output, "\\", "\\\\");
   output = ReplaceAll(output, "'", "\\'");
+  // Quote.
+  output = "'" + output + "'";
+  return output;
+}
+
+// Quote names in PG queries (e.g. to create a database named `this->"\<-this`, use `CREATE DATABASE
+// "this->""\<-this"`).
+std::string QuotePgName(const std::string input) {
+  std::string output = input;
+  // Escape certain characters.
+  output = ReplaceAll(output, "\"", "\"\"");
+  // Quote.
+  output = "\"" + output + "\"";
   return output;
 }
 

@@ -127,12 +127,14 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/pg_connstr.h"
+#include "yb/util/pg_quote.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/url-coding.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DEFINE_bool(tablet_do_dup_key_checks, true,
             "Whether to check primary keys for duplicate on insertion. "
@@ -2150,8 +2152,8 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
   // Construct connection string.
   // TODO(jason): handle "yugabyte" role being password protected
   std::string conn_str = Format(
-      "dbname='$0' host=$1 port=$2 user=$3",
-      EscapePgConnStrValue(database_name),
+      "dbname=$0 host=$1 port=$2 user=$3",
+      QuotePgConnStrValue(database_name),
       pgsql_proxy_bind_address.host(),
       pgsql_proxy_bind_address.port(),
       "yugabyte");
@@ -2181,20 +2183,29 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
   VLOG(1) << __func__ << ": libpq query string: " << query_str;
 
   // Connect and execute.
-  auto conn = PQconnectdb(conn_str.c_str());
+  pgwrapper::PGConnPtr conn(PQconnectdb(conn_str.c_str()));
   if (!conn) {
     return STATUS(IllegalState, "backfill failed to connect to DB");
   }
-  auto res = PQexec(conn, query_str.c_str());
+  pgwrapper::PGResultPtr res(PQexec(conn.get(), query_str.c_str()));
   if (!res) {
+    std::string msg(PQerrorMessage(conn.get()));
+
+    // Avoid double newline (postgres adds a newline after the error message).
+    if (msg.back() == '\n') {
+      msg.resize(msg.size() - 1);
+    }
+    LOG(WARNING) << "libpq query \"" << query_str
+                 << "\" was not sent: " << msg;
     return STATUS(IllegalState, "backfill query couldn't be sent");
   }
-  auto status = PQresultStatus(res);
+  ExecStatusType status = PQresultStatus(res.get());
 
   // TODO(jason): more properly handle bad statuses
   // TODO(jason): change to PGRES_TUPLES_OK when this query starts returning data
   if (status != PGRES_COMMAND_OK) {
-    std::string msg(PQresultErrorMessage(res));
+    std::string msg(PQresultErrorMessage(res.get()));
+
     // Avoid double newline (postgres adds a newline after the error message).
     if (msg.back() == '\n') {
       msg.resize(msg.size() - 1);
@@ -2202,15 +2213,10 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
     LOG(WARNING) << "libpq query \"" << query_str
                  << "\" returned " << PQresStatus(status)
                  << ": " << msg;
-    Status s = STATUS(IllegalState, msg);
-    PQclear(res);
-    PQfinish(conn);
-    return s;
+    return STATUS(IllegalState, msg);
   }
   // TODO(jason): handle partially finished backfills.  How am I going to get that info?  From
   // response message by libpq or manual DocDB inspection?
-  PQclear(res);
-  PQfinish(conn);
   return "";
 }
 
