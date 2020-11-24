@@ -43,6 +43,10 @@ Result<PGConn> LibPqTestBase::ConnectToDB(const string& db_name) {
   return PGConn::Connect(HostPort(pg_ts->bind_host(), pg_ts->pgsql_rpc_port()), db_name);
 }
 
+Result<PGConn> LibPqTestBase::ConnectToDBAsUser(const string& db_name, const string& user) {
+  return PGConn::Connect(HostPort(pg_ts->bind_host(), pg_ts->pgsql_rpc_port()), db_name, user);
+}
+
 bool LibPqTestBase::TransactionalFailure(const Status& status) {
   const uint8_t* pgerr = status.ErrorData(PgsqlErrorTag::kCategory);
   if (pgerr == nullptr) {

@@ -11,16 +11,17 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_PG_CONNSTR_H
-#define YB_UTIL_PG_CONNSTR_H
+#ifndef YB_UTIL_PG_QUOTE_H
+#define YB_UTIL_PG_QUOTE_H
 
 #include <string>
 
 namespace yb {
 
 // TODO(jason): integrate better with Format (yb/util/format.h).
-std::string EscapePgConnStrValue(const std::string input);
+std::string QuotePgConnStrValue(const std::string input);
+std::string QuotePgName(const std::string input);
 
 } // namespace yb
 
-#endif // YB_UTIL_PG_CONNSTR_H
+#endif // YB_UTIL_PG_QUOTE_H
