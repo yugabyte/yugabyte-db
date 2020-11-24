@@ -1,18 +1,7 @@
 ## What is pg_stat_monitor?
-
-The pg_stat_monitor is the statistics collection tool based on PostgreSQL's contrib module ``pg_stat_statements``. PostgreSQL’s ``pg_stat_statements`` provides the basic statistics, which is sometimes not enough. The major shortcoming in ``pg_stat_statements`` is that it accumulates all the queries and their statistics and does not provide aggregated statistics nor histogram information. In this case, a user needs to calculate the aggregate which is quite expensive. 
-
-``pg_stat_monitor`` is developed on the basis of ``pg_stat_statements`` as its more advanced replacement. It provides all the features of ``pg_stat_statements`` plus its own feature set.  
-
-``pg_stat_monitor`` collects and aggregates data on a bucket basis. The size of a bucket and the number of buckets should be configured using GUC (Grand Unified Configuration). The flow is the following:
-
-* ``pg_stat_monitor`` collects the statistics and aggregates it in a bucket.
-* When a bucket time elapses, ``pg_stat_monitor`` resets all the statistics and switches to the next bucket. 
-*   After the last bucket elapses, ``pg_stat_monitor`` goes back to the first bucket. All the data on the first bucket will vanish; therefore, users must read the buckets before that to not lose the data.
-
+The pg_stat_monitor is the statistics collection tool based on PostgreSQL's contrib module ``pg_stat_statements``. PostgreSQL’s pg_stat_statements provides the basic statistics, which is sometimes not enough. The major shortcoming in pg_stat_statements is that it accumulates all the queries and their statistics and does not provide aggregated statistics nor histogram information. In this case, a user needs to calculate the aggregate which is quite expensive. ``pg_stat_monitor`` is developed on the basis of pg_stat_statements as its more advanced replacement. It provides all the features of pg_stat_statements plus its own feature set.  
 
 ## Supported PostgreSQL Versions
-
 The ``pg_stat_monitor`` should work on the latest version of PostgreSQL but is only tested with these PostgreSQL versions:
 
 | Distribution            |  Version       | Supported          |
@@ -26,9 +15,7 @@ The ``pg_stat_monitor`` should work on the latest version of PostgreSQL but is o
 | Percona Distribution    | Version 12     | :heavy_check_mark: |
 | Percona Distribution    | Version 13     | :heavy_check_mark: |
 
-
-# Documentation
-
+## Documentation
 1. [Installation](#installation)
 2. [Setup](#setup) 
 3. [Configuration](#configuration)
@@ -101,12 +88,8 @@ CREATE EXTENSION
 
 After doing that change, we need to restart the PostgreSQL server. PostgreSQL will start monitoring and collecting the statistics. 
 
-
-
 ## Configuration
-
 Here is the complete list of configuration parameters.
-
 ```sql
 postgres=# select * from pg_stat_monitor_settings;
                      name                      | value  | default_value |                            description                            | minimum |  maximum   | restart 
@@ -123,190 +106,25 @@ postgres=# select * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_query_shared_buffer      | 500000 |        500000 | Sets the query shared_buffer size.                                |  500000 | 2147483647 |       1
 (11 rows)
 ```
-
-
 Some configuration parameters require the server restart and should be set before the server startup. These must be set in the ``postgresql.conf`` file. Other parameters do not require server restart and  can be set permanently either in the ``postgresql.conf`` or from the client (``psql``).
 
 The table below shows set up options for each configuration parameter and whether the server restart is required to apply its value:
 
 
-<table>
-  <tr>
-   <td rowspan="2" ><strong>Name</strong>
-   </td>
-   <td colspan="3" ><strong>Setup options</strong>
-   </td>
-   <td colspan="2" ><strong>Restart methods</strong>
-   </td>
-  </tr>
-  <tr>
-   <td>edit postgresql  conf
-   </td>
-   <td>set 
-   </td>
-   <td>alter system set 
-   </td>
-   <td>server restart
-   </td>
-   <td>configuration reload (via pg_reload_conf)
-   </td>
-  </tr>
-  <tr>
-   <td>pg_stat_monitor.pgsm_max
-   </td>
-    <td> ✓
-   </td>
-   <td> 
-   </td>
-   <td> 
-   </td>
-   <td> ✓
-   </td>
-   <td> 
-   </td>
-  </tr>
-  <tr>
-   <td>pg_stat_monitor.pgsm_query_max_len
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-   <td>
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>pg_stat_monitor.pgsm_enable
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-   <td>
-   </td>
-   <td>
-   </td>
-   <td> ✓
-   </td>
-  </tr>
-  <tr>
-   <td>pg_stat_monitor.pgsm_track_utility
-   </td>
-   <td> ✓
-   </td>
-   <td> ✓
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-   <td> ✓
-   </td>
-  </tr>
-  <tr>
-   <td>pg_stat_monitor.pgsm_normalized_query
-   </td>
-   <td> ✓
-   </td>
-   <td> ✓
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-   <td> ✓
-   </td>
-  </tr>
-  <tr>
-   <td>pg_stat_monitor.pgsm_max_buckets
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-   <td>
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>pg_stat_monitor.pgsm_bucket_time
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-   <td>
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>pg_stat_monitor.pgsm_object_cache
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-   <td>
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>pg_stat_monitor.pgsm_respose_time_lower_bound
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-   <td>
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>pg_stat_monitor.pgsm_respose_time_step
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-   <td>
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>pg_stat_monitor.pgsm_query_shared_buffer
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-   <td>
-   </td>
-   <td> ✓
-   </td>
-   <td>
-   </td>
-  </tr>
-</table>
-
+| Parameter Name                                |  postgresql.conf   | SET | ALTER SYSTEM SET  |  server restart   | configuration reload
+| ----------------------------------------------|--------------------|-----|-------------------|-------------------|---------------------
+| pg_stat_monitor.pgsm_max                      | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_query_max_len            | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_enable                   | :heavy_check_mark: | :x:                |:heavy_check_mark: |:x: | :x:
+| pg_stat_monitor.pgsm_track_utility            | :heavy_check_mark: | :heavy_check_mark: |:heavy_check_mark: |:x: | :heavy_check_mark:
+| pg_stat_monitor.pgsm_normalized_query         | :heavy_check_mark: | :heavy_check_mark: |:heavy_check_mark: |:x: | :heavy_check_mark:
+| pg_stat_monitor.pgsm_max_buckets              | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :heavy_check_mark:
+| pg_stat_monitor.pgsm_bucket_time              | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_object_cache             | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_respose_time_lower_bound | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_respose_time_step        | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_query_shared_buffer      | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+  
 ### Parameters description:
 
 - **pg_stat_monitor.pgsm_max**: This parameter defines the limit of shared memory for ``pg_stat_monitor``. This memory is used by buckets in a circular manner. The memory is divided between the buckets equally, at the start of the PostgreSQL. 
@@ -320,59 +138,56 @@ The table below shows set up options for each configuration parameter and whethe
 - **pg_stat_monitor.pgsm_respose_time_step:** This parameter is used to set the steps for the histogram. 
 
 ##  User Guide
-
-To view the statistics, there are multiple views available.
-
-
-```sql
-postgres=# \d pg_stat_monitor;
-                          View "public.pg_stat_monitor"
-       Column        |           Type           | Collation | Nullable | Default 
----------------------+--------------------------+-----------+----------+---------
- bucket              | integer                  |           |          | 
- bucket_start_time   | timestamp with time zone |           |          | 
- userid              | oid                      |           |          | 
- dbid                | oid                      |           |          | 
- client_ip           | inet                     |           |          | 
- queryid             | text                     |           |          | 
- query               | text                     |           |          | 
- plans               | bigint                   |           |          | 
- plan_total_time     | double precision         |           |          | 
- plan_min_timei      | double precision         |           |          | 
- plan_max_time       | double precision         |           |          | 
- plan_mean_time      | double precision         |           |          | 
- plan_stddev_time    | double precision         |           |          |  
- calls               | bigint                   |           |          | 
- total_time          | double precision         |           |          | 
- min_time            | double precision         |           |          | 
- max_time            | double precision         |           |          | 
- mean_time           | double precision         |           |          | 
- stddev_time         | double precision         |           |          | 
- rows                | bigint                   |           |          | 
- shared_blks_hit     | bigint                   |           |          | 
- shared_blks_read    | bigint                   |           |          | 
- shared_blks_dirtied | bigint                   |           |          | 
- shared_blks_written | bigint                   |           |          | 
- local_blks_hit      | bigint                   |           |          | 
- local_blks_read     | bigint                   |           |          | 
- local_blks_dirtied  | bigint                   |           |          | 
- local_blks_written  | bigint                   |           |          | 
- temp_blks_read      | bigint                   |           |          | 
- temp_blks_written   | bigint                   |           |          | 
- blk_read_time       | double precision         |           |          | 
- blk_write_time      | double precision         |           |          | 
- resp_calls          | text[]                   |           |          | 
- cpu_user_time       | double precision         |           |          | 
- cpu_sys_time        | double precision         |           |          | 
- relations           | text[]                   |           |          | 
-
-```
+|      Column        |           Type           | pg_stat_monitor      | pg_stat_statments
+|--------------------|--------------------------|----------------------|------------------
+ bucket              | integer                  | :heavy_check_mark:  | :x:
+ bucket_start_time   | timestamp with time zone | :heavy_check_mark:  | :x:
+ userid              | oid                      | :heavy_check_mark:  | :heavy_check_mark:
+ dbid                | oid                      | :heavy_check_mark:  | :heavy_check_mark:
+ client_ip           | inet                     | :heavy_check_mark:  | :x:
+ queryid             | text                     | :heavy_check_mark:  | :heavy_check_mark:
+ query               | text                     | :heavy_check_mark:  | :heavy_check_mark:
+ application_name    | text                     | :heavy_check_mark:  | :x:
+ relations           | text[]                   | :heavy_check_mark:  | :x:
+ cmd_type            | text[]                   | :heavy_check_mark:  | :x:
+ elevel              | integer                  | :heavy_check_mark:  | :x:
+ sqlcode             | integer                  | :heavy_check_mark:  | :x:
+ message             | text                     | :heavy_check_mark:  | :x:
+ plans               | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ plan_total_time     | double precision         | :heavy_check_mark:  | :heavy_check_mark:
+ plan_min_timei      | double precision         | :heavy_check_mark:  | :heavy_check_mark:
+ plan_max_time       | double precision         | :heavy_check_mark:  | :heavy_check_mark: 
+ plan_mean_time      | double precision         | :heavy_check_mark:  | :heavy_check_mark:
+ plan_stddev_time    | double precision         | :heavy_check_mark:  | :heavy_check_mark: 
+ calls               | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ total_time          | double precision         | :heavy_check_mark:  | :heavy_check_mark:
+ min_time            | double precision         | :heavy_check_mark:  | :heavy_check_mark:
+ max_time            | double precision         | :heavy_check_mark:  | :heavy_check_mark:
+ mean_time           | double precision         | :heavy_check_mark:  | :heavy_check_mark:
+ stddev_time         | double precision         | :heavy_check_mark:  | :heavy_check_mark:
+ rows                | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ shared_blks_hit     | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ shared_blks_read    | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ shared_blks_dirtied | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ shared_blks_written | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ local_blks_hit      | bigint                   | :heavy_check_mark:  | :heavy_check_mark: 
+ local_blks_read     | bigint                   | :heavy_check_mark:  | :heavy_check_mark: 
+ local_blks_dirtied  | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ local_blks_written  | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ temp_blks_read      | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ temp_blks_written   | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ blk_read_time       | double precision         | :heavy_check_mark:  | :heavy_check_mark:
+ blk_write_time      | double precision         | :heavy_check_mark:  | :heavy_check_mark:
+ resp_calls          | text[]                   | :heavy_check_mark:  | :x:
+ cpu_user_time       | double precision         | :heavy_check_mark:  | :x:
+ cpu_sys_time        | double precision         | :heavy_check_mark:  | :x:
 
 ### Buckets
+pg_stat_monitor collects and aggregates data on a bucket basis. The size of a bucket and the number of buckets should be configured using GUC (Grand Unified Configuration). When a bucket time elapses, pg_stat_monitor resets all the statistics and switches to the next bucket. After the last bucket elapses, pg_stat_monitor goes back to the first bucket. All the data on the first bucket will vanish; therefore, users must read the buckets before that to not lose the data.
 
-**`bucket`**: ``pg_stat_monitor`` accumulates the statistics per bucket. All the information and aggregate reset for each bucket. The `bucket` will be a number showing the number of buckets for which this record belongs.
+**`bucket`**: Accumulates the statistics per bucket. All the information and aggregate reset for each bucket. The bucket will be a number showing the number of buckets for which this record belongs.
 
-**`bucket_start_time`**: `bucket_start_time` shows the start time of the bucket. 
+**`bucket_start_time`**: shows the start time of the bucket. 
 
 ```sql
 postgres=# select bucket, bucket_start_time, query from pg_stat_monitor;
@@ -386,13 +201,13 @@ postgres=# select bucket, bucket_start_time, query from pg_stat_monitor;
 
 ### Query Information
 
-**`userid`**: An ID of the user whom  that query belongs. ``pg_stat_monitor`` is used to collect queries from all the users; therefore, `userid` is used to segregate the queries based on different users.
+**`userid`**: An ID of the user whom  that query belongs. pg_stat_monitor is used to collect queries from all the users; therefore, `userid` is used to segregate the queries based on different users.
 
-**`dbid`**: The database ID of the query. ``pg_stat_monitor`` accumulates queries from all the databases; therefore, this column is used to identify the database.
+**`dbid`**: The database ID of the query. pg_stat_monitor accumulates queries from all the databases; therefore, this column is used to identify the database.
 
-**`queryid`**:  ``pg_stat_monitor`` generates a unique ID for each query (queryid). 
+**`queryid`**:  pg_stat_monitor generates a unique ID for each query (queryid). 
 
-**`query`**: The `query` column contains the actual text of the query. This parameter depends on the **`pg_stat_monitor.pgsm_normalized_query`** configuration parameters, in which format to show the query.
+**`query`**: The query column contains the actual text of the query. This parameter depends on the **`pg_stat_monitor.pgsm_normalized_query`** configuration parameters, in which format to show the query.
 
 **`calls`**: Number of calls of that particular query.
 
