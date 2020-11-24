@@ -64,6 +64,7 @@
 #define REL_LST				10
 #define CMD_LST				10
 #define CMD_LEN				20
+#define APPLICATIONNAME_LEN	100
 
 typedef struct GucVariables
 {
@@ -121,6 +122,7 @@ typedef struct QueryInfo
 	Oid			dbid;						/* database OID */
 	uint		host;						/* client IP */
 	int64       type; 						/* type of query, options are query, info, warning, error, fatal */
+	char		application_name[APPLICATIONNAME_LEN];
 	int32		relations[REL_LST];
 	char		cmd_type[CMD_LST][CMD_LEN];	/* query command type SELECT/UPDATE/DELETE/INSERT */
 } QueryInfo;

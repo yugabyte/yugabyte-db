@@ -62,6 +62,8 @@ PG_FUNCTION_INFO_V1(pg_stat_monitor);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_settings);
 
 static uint pg_get_client_addr(void);
+static int pg_get_application_name(char* application_name);
+static PgBackendStatus *pg_get_backend_status(void);
 static Datum textarray_get_datum(char arr[][CMD_LEN], int len);
 static Datum intarray_get_datum(int32 arr[], int len);
 
@@ -655,36 +657,61 @@ pgss_hash_string(const char *str, int len)
 											len, 0));
 }
 
-static uint
-pg_get_client_addr(void)
+static PgBackendStatus*
+pg_get_backend_status(void)
 {
-	char	remote_host[NI_MAXHOST];
-	int		num_backends = pgstat_fetch_stat_numbackends();
-	int		ret;
-	int		i;
+	LocalPgBackendStatus *local_beentry; 
+	int		             num_backends = pgstat_fetch_stat_numbackends();
+	int                  i;
 
-	memset(remote_host, 0x0, NI_MAXHOST);
 	for (i = 1; i <= num_backends; i++)
 	{
-		LocalPgBackendStatus *local_beentry;
 		PgBackendStatus *beentry;
 
 		local_beentry = pgstat_fetch_stat_local_beentry(i);
 		beentry = &local_beentry->backendStatus;
 
 		if (beentry->st_procpid == MyProcPid)
-		{
-			ret = pg_getnameinfo_all(&beentry->st_clientaddr.addr,
+			return beentry;
+	}
+	return NULL;
+}
+
+static int
+pg_get_application_name(char *application_name)
+{
+	PgBackendStatus *beentry = pg_get_backend_status();
+
+	snprintf(application_name, APPLICATIONNAME_LEN, "%s", beentry->st_appname);
+	return strlen(application_name);
+}
+
+/*
+ * Store some statistics for a statement.
+ *
+ * If queryId is 0 then this is a utility statement and we should compute
+ * a suitable queryId internally.
+ *
+ * If jstate is not NULL then we're trying to create an entry for which
+ * we have no statistics as yet; we just want to record the normalized
+ */
+
+static uint
+pg_get_client_addr(void)
+{
+	PgBackendStatus *beentry = pg_get_backend_status();
+	char	remote_host[NI_MAXHOST];
+	int		ret;
+
+	memset(remote_host, 0x0, NI_MAXHOST);
+	ret = pg_getnameinfo_all(&beentry->st_clientaddr.addr,
 							 beentry->st_clientaddr.salen,
 							 remote_host, sizeof(remote_host),
 							 NULL, 0,
 							 NI_NUMERICHOST | NI_NUMERICSERV);
-			if (ret == 0)
-				break;
-			else
-				return ntohl(inet_addr("127.0.0.1"));
-		}
-	}
+	if (ret != 0)
+		return ntohl(inet_addr("127.0.0.1"));
+
 	if (strcmp(remote_host, "[local]") == 0)
 		return ntohl(inet_addr("127.0.0.1"));
 	return ntohl(inet_addr(remote_host));
@@ -731,9 +758,12 @@ static void pgss_store(uint64 queryId,
 	HTAB            *pgss_hash = pgsm_get_hash();
 	int				message_len = message ? strlen(message) : 0;
 	int				cmd_len[CMD_LST];
-
+	char			application_name[APPLICATIONNAME_LEN];
+	int				application_name_len;
 	Assert(query != NULL);
 	Assert(PGSM_ENABLED);
+
+	application_name_len = pg_get_application_name(application_name);
 
 	/* Safety check... */
 	if (!IsSystemInitialized() || !pgss_qbuf[pgss->current_wbucket])
@@ -898,6 +928,9 @@ static void pgss_store(uint64 queryId,
 			if (total_time > PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * MAX_RESPONSE_BUCKET))
 				e->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
 		}
+
+		for (i = 0; i < application_name_len; i++)
+				e->counters.info.application_name[i] = application_name[i];
 
 		for (i = 0; i < REL_LST; i++)
 			if (e->counters.info.relations[i] != 0)
@@ -1112,6 +1145,10 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			else
 				nulls[i++] = true;
 		}
+		if (strlen(tmp.info.application_name) <= 0)
+			nulls[i++] = true;
+		else
+			values[i++] = CStringGetTextDatum(tmp.info.application_name);
 
 		len = 0;
 		for (j = 0; j < REL_LST; j++)
