@@ -32,7 +32,7 @@ It acts, in turn, on the data for all _51_ states for each day. The semantics of
 - Mask-wearing edges up, in fact monotonically, over the observation period.
 - But the incidence of COVID-like symptoms climbs too, and again monotonically.
 
-The hope would be that increased mask-wearing would lead to reduced incidence of COVID-like symptoms. Indeed, this effect is substantiated, for each individual date, by the regression analysis results. So there must be other factors at work. But the data at hand cannot shed light on these.
+The hope would be that increased mask-wearing would lead to reduced incidence of COVID-like symptoms. Indeed, this effect is substantiated, for each individual date, by the regression analysis results across the set of 51 states for that date. So there must be other factors at work that influence the long-term trend of the across-state avaerages over a period of days. But the data at hand cannot shed light on these.
 
 The main point, though, is the daily regression analysis. You can understand this by picturing a scatter-plot for a particular day with mask-wearing (the putative _independent_ variable) along the x-axis and incidence of COVID-like symptoms (the putative _dependent_ variable) along the y-axis. The plot will have _51_ points, one for each state. The values returned by [`regr_slope()`](../../../function-syntax-semantics/linear-regression/regr/#regr-slope-regr-intercept) and [`regr_intercept()`](../../../function-syntax-semantics/linear-regression/regr/#regr-slope-regr-intercept) allow the line that minimizes the [residuals](https://statisticsbyjim.com/glossary/residuals/) through the points to be drawn. And the value returned by [`regr_r2()`](../../../function-syntax-semantics/linear-regression/regr/#regr-r2) is a measure of the noisiness of the data. It's usefulness is somewhat analogous to the variance of these residuals—except that the maximum possible value, _1.0_, indicates a perfect fit (i.e. all the residuals are zero) and successively smaller values indicate larger variance over the set of residuals. A more careful account is given in the section [Functions for linear regression analysis](../../../function-syntax-semantics/linear-regression/). Here's the rule:
 
@@ -125,20 +125,24 @@ This query (also included in the [`analysis-queries.sql`](./../analysis-scripts/
 
 ```plpgsql
 with a as (
-  select regr_r2 (symptoms_pct, mask_wearing_pct) as r2
+  select regr_r2 (symptoms_pct, mask_wearing_pct) as r2,
+  regr_slope    (symptoms_pct, mask_wearing_pct) as s,
+  regr_intercept(symptoms_pct, mask_wearing_pct) as i
   from covidcast_fb_survey_results_v
   group by survey_date)
 select
-  to_char(avg(r2), '0.99') as "avg(R-squared)"
+  to_char(avg(r2), '0.99') as "avg(R-squared)",
+  to_char(avg(s), '0.99') as "avg(s)",
+  to_char(avg(i), '990.99') as "avg(i)"
 from a;
 ```
 
 This is the result:
 
 ```
- avg(R-squared) 
-----------------
-  0.63
+ avg(R-squared) | avg(s) | avg(i)  
+----------------+--------+---------
+  0.63          | -0.97  |  105.59
 ```
 
 The outcome of the regression analysis, for any particular day, is best understood with the help of a picture: a so-called scatter-plot which shows the input data with the line that best fits the data superimposed. The following section, [Select data for COVID-like symptoms vs mask-wearing by state scatter plot](../symptoms-vs-mask-wearing-by-state/), shows the query that gets the data. And the section that follows that, [Average COVID-like symptoms vs average mask-wearing by state scatter plot for 21-Oct-2020](../scatter-plot-for-2020-10-21/), shows the picture.
