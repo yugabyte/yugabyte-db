@@ -1,5 +1,66 @@
 ## User Guide
 
+Create the extension using the ``create extension`` command.
+
+```sql
+postgres=# create extension pg_stat_monitor;
+CREATE EXTENSION
+```
+
+After doing that change, we need to restart the PostgreSQL server. PostgreSQL will start monitoring and collecting the statistics. 
+
+### Configuration
+Here is the complete list of configuration parameters.
+```sql
+postgres=# select * from pg_stat_monitor_settings;
+                     name                      | value  | default_value |                            description                            | minimum |  maximum   | restart 
+-----------------------------------------------+--------+---------------+-------------------------------------------------------------------+---------+------------+---------
+ pg_stat_monitor.pgsm_max                      |   5000 |          5000 | Sets the maximum number of statements tracked by pg_stat_monitor. |    5000 | 2147483647 |       1
+ pg_stat_monitor.pgsm_query_max_len            |   1024 |          1024 | Sets the maximum length of query.                                 |    1024 | 2147483647 |       1
+ pg_stat_monitor.pgsm_enable                   |      1 |             1 | Enable/Disable statistics collector.                              |       0 |          0 |       1
+ pg_stat_monitor.pgsm_track_utility            |      1 |             0 | Selects whether utility commands are tracked.                     |       0 |          0 |       0
+ pg_stat_monitor.pgsm_normalized_query         |      1 |             0 | Selects whether save query in normalized format.                  |       0 |          0 |       0
+ pg_stat_monitor.pgsm_max_buckets              |     10 |            10 | Sets the maximum number of buckets.                               |       1 |         10 |       1
+ pg_stat_monitor.pgsm_bucket_time              |     60 |            60 | Sets the time in seconds per bucket.                              |       1 | 2147483647 |       1
+ pg_stat_monitor.pgsm_respose_time_lower_bound |      1 |             1 | Sets the time in millisecond.                                     |       1 | 2147483647 |       1
+ pg_stat_monitor.pgsm_respose_time_step        |      1 |             1 | Sets the respose time steps in millisecond.                       |       1 | 2147483647 |       1
+ pg_stat_monitor.pgsm_query_shared_buffer      | 500000 |        500000 | Sets the query shared_buffer size.                                |  500000 | 2147483647 |       1
+(11 rows)
+```
+Some configuration parameters require the server restart and should be set before the server startup. These must be set in the ``postgresql.conf`` file. Other parameters do not require server restart and  can be set permanently either in the ``postgresql.conf`` or from the client (``psql``).
+
+The table below shows set up options for each configuration parameter and whether the server restart is required to apply its value:
+
+
+| Parameter Name                                |  postgresql.conf   | SET | ALTER SYSTEM SET  |  server restart   | configuration reload
+| ----------------------------------------------|--------------------|-----|-------------------|-------------------|---------------------
+| pg_stat_monitor.pgsm_max                      | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_query_max_len            | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_enable                   | :heavy_check_mark: | :x:                |:heavy_check_mark: |:x: | :x:
+| pg_stat_monitor.pgsm_track_utility            | :heavy_check_mark: | :heavy_check_mark: |:heavy_check_mark: |:x: | :heavy_check_mark:
+| pg_stat_monitor.pgsm_normalized_query         | :heavy_check_mark: | :heavy_check_mark: |:heavy_check_mark: |:x: | :heavy_check_mark:
+| pg_stat_monitor.pgsm_max_buckets              | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :heavy_check_mark:
+| pg_stat_monitor.pgsm_bucket_time              | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_object_cache             | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_respose_time_lower_bound | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_respose_time_step        | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| pg_stat_monitor.pgsm_query_shared_buffer      | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+  
+#### Parameters description:
+
+- **pg_stat_monitor.pgsm_max**: This parameter defines the limit of shared memory for ``pg_stat_monitor``. This memory is used by buckets in a circular manner. The memory is divided between the buckets equally, at the start of the PostgreSQL. 
+- **pg_stat_monitor.pgsm_query_max_len**: Sets the maximum size of the query. This parameter can only be set at the start of PostgreSQL. For long queries, the query is truncated to that particular length. This is to avoid unnecessary usage of shared memory.
+- **pg_stat_monitor.pgsm_enable**: This parameter enables or disables the monitoring. "Disable" means that ``pg_stat_monitor`` will not collect the statistics for the whole cluster.
+- **pg_stat_monitor.pgsm_track_utility**: This parameter controls whether utility commands are tracked by the module. Utility commands are all those other than ``SELECT``, ``INSERT``, ``UPDATE`` and ``DELETE``. 
+- **pg_stat_monitor.pgsm_normalized_query**: By default, query shows the actual parameter instead of the placeholder. It is quite useful when users want to use that query and try to run that query to check the abnormalities. But in most cases users like the queries with a placeholder. This parameter is used to toggle between the two said options.
+- **pg_stat_monitor.pgsm_max_buckets**: ``pg_stat_monitor`` accumulates the information in the form of buckets. All the aggregated information is bucket based. This parameter is used to set the number of buckets the system can have. For example, if this parameter is set to 2, then the system will create two buckets. First, the system will add all the information into the first bucket. After its lifetime (defined in the  pg_stat_monitor.pgsm_bucket_time parameter) expires, it will switch to the second bucket,  reset all the counters and repeat the process.
+- **pg_stat_monitor.pgsm_bucket_time**: This parameter is used to set the lifetime of the bucket. System switches between buckets on the basis of ``pg_stat_monitor.pgsm_bucket_time``. 
+- **pg_stat_monitor.pgsm_respose_time_lower_bound**: ``pg_stat_monitor`` also stores the execution time histogram. This parameter is used to set the lower bound of the histogram.
+- **pg_stat_monitor.pgsm_respose_time_step:** This parameter is used to set the steps for the histogram. 
+
+
+### Usage
+
 pg_stat_monitor extension contains a view called pg_stat_monitor, which contains all the monitoring information. Following is the list of columns in pg_stat_monitor.
 
 |      Column        |           Type           | pg_stat_monitor      | pg_stat_statments
@@ -48,7 +109,7 @@ pg_stat_monitor extension contains a view called pg_stat_monitor, which contains
 
 Here are some key features of pg_stat_monitor.
 
-### Buckets
+#### Buckets
 pg_stat_monitor collects and aggregates data on a bucket basis. The size of a bucket and the number of buckets should be configured using GUC (Grand Unified Configuration). When a bucket time elapses, pg_stat_monitor resets all the statistics and switches to the next bucket. After the last bucket elapses, pg_stat_monitor goes back to the first bucket. All the data on the first bucket will vanish; therefore, users must read the buckets before that to not lose the data.
 
 **`bucket`**: Accumulates the statistics per bucket. All the information and aggregate reset for each bucket. The bucket will be a number showing the number of buckets for which this record belongs.
@@ -65,7 +126,7 @@ postgres=# select bucket, bucket_start_time, query from pg_stat_monitor;
 (3 rows)
 ```
 
-### Query Information
+#### Query Information
 
 **`userid`**: An ID of the user whom  that query belongs. pg_stat_monitor is used to collect queries from all the users; therefore, `userid` is used to segregate the queries based on different users.
 
@@ -78,7 +139,7 @@ postgres=# select bucket, bucket_start_time, query from pg_stat_monitor;
 **`calls`**: Number of calls of that particular query.
 
 
-#### Example 1: Shows the userid, dbid, unique queryid hash, query and total number of calls or that query.
+##### Example 1: Shows the userid, dbid, unique queryid hash, query and total number of calls or that query.
 ```sql
 postgres=# select userid,  dbid, queryid, substr(query,0, 50) as query, calls from pg_stat_monitor;
  userid | dbid  |     queryid      |                       query                       | calls 
@@ -104,7 +165,7 @@ postgres=# select userid,  dbid, queryid, substr(query,0, 50) as query, calls fr
 (18 rows)
 ```
 
-#### Example 2: Shows the different username for the queries. 
+##### Example 2: Shows the different username for the queries. 
 
 ```
 postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
@@ -118,7 +179,7 @@ postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls 
 (5 rows)
 ```
 
-#### Example 3: Shows the differen database involved in the queries.
+##### Example 3: Shows the differen database involved in the queries.
 
 ```
 postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
@@ -130,7 +191,7 @@ postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls 
 (3 rows)
 ```
 
-#### Example 4: Shows the connected application_name.
+##### Example 4: Shows the connected application_name.
 
 ```sql
 postgres=# select application_name, query from pg_stat_monitor;
@@ -152,7 +213,7 @@ postgres=# select application_name, query from pg_stat_monitor;
 (13 rows)
 ```
 
-### Error Messages / Error Codes and Error Level
+#### Error Messages / Error Codes and Error Level
 
 **`elevel`**, **`sqlcode`**,**`message`**,: error level / sql code and  log/warning/error message
 
@@ -169,7 +230,7 @@ postgres=# select substr(query,0,50) as query, decode_error_level(elevel)as elev
 (6 rows)
 ```
 
-### Query Timing Information
+#### Query Timing Information
 
 **`total_time`**,  **`min_time`**, **`max_time`**, **`mean_time`**: The total / minimum / maximum and mean time spent for the same query.
 
@@ -185,7 +246,7 @@ postgres=# select userid,  total_time, min_time, max_time, mean_time, query from
      10 |           11277.79 |           11277.79 |           11277.79 |           11277.79 | SELECT * FROM foo
 ```
 
-### Client IP address 
+#### Client IP address 
 
 **`client_ip`**: The IP address of the client that originated the query.
 
@@ -208,7 +269,7 @@ postgres=# select userid::regrole, datname, substr(query,0, 50) as query, calls,
  vagrant | postgres | UPDATE pgbench_tellers SET tbalance = tbalance +  |  1599 | 10.0.2.15
 ```
 
-### Call Timings Histogram
+#### Call Timings Histogram
 
 **`resp_calls`**: Call histogram
 
@@ -224,11 +285,11 @@ postgres=# select resp_calls, query from pg_stat_monitor;
 There are 10 timebase buckets of the time **`pg_stat_monitor.pgsm_respose_time_step`** in the field ``resp_calls``. The value in the field shows how many queries run in that period of time.
 
 
-### Object Information.
+#### Object Information.
 
 **`relations`**: The list of tables involved in the query
 
-#### Example 1: List all the table names involved in the query.
+##### Example 1: List all the table names involved in the query.
 ```sql
 postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
      relations      |                                                query                                                 
@@ -242,7 +303,7 @@ postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
 (5 rows)
 ```
 
-#### Example 2: List all the views and the name of table in the view. Here we have a view "test_view"
+##### Example 2: List all the views and the name of table in the view. Here we have a view "test_view"
 ```sql
 postgres=# \d+ test_view
                           View "public.test_view"
@@ -267,7 +328,7 @@ postgres=# select relations::oid[]::regclass[], query from pg_stat_monitor;
 (2 rows)
 ```
 
-### Query command Type (SELECT, INSERT, UPDATE OR DELETE)
+#### Query command Type (SELECT, INSERT, UPDATE OR DELETE)
 
 **`cmd_type`**: List the command type of the query.
 
@@ -292,7 +353,3 @@ postgres=# select substr(query,0, 50) as query, cmd_type from pg_stat_monitor wh
  truncate pgbench_history                          | {}
 (15 rows)
 ```
-
-## Copyright Notice
-
-Copyright (c) 2006 - 2020, Percona LLC.
