@@ -211,6 +211,11 @@ TAG_FLAG(disable_alter_vs_write_mutual_exclusion, runtime);
 DEFINE_bool(cleanup_intents_sst_files, true,
             "Cleanup intents files that are no more relevant to any running transaction.");
 
+DEFINE_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 minutes
+             "Max amount of time we can wait for active transactions to abort on a tablet "
+             "after DDL (ie. DROP TABLE) is executed. This deadline is same as "
+             "unresponsive_ts_rpc_timeout_ms");
+
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
 
