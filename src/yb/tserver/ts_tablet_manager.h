@@ -125,6 +125,7 @@ YB_DEFINE_ENUM(TabletDirType, (kData)(kWal));
 class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::TabletSplitter {
  public:
   typedef std::vector<std::shared_ptr<tablet::TabletPeer>> TabletPeers;
+  typedef std::vector<tablet::TabletPtr> TabletPtrs;
 
   // Construct the tablet manager.
   // 'fs_manager' must remain valid until this object is destructed.
@@ -242,7 +243,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void MarkTabletReportAcknowledged(const master::TabletReportPB& report);
 
   // Get all of the tablets currently hosted on this server.
-  void GetTabletPeers(TabletPeers* tablet_peers) const;
+  void GetTabletPeers(TabletPeers* tablet_peers,
+                      TabletPtrs* tablet_ptrs = nullptr) const;
   TabletPeers GetTabletPeers() const;
   void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const REQUIRES_SHARED(mutex_);
   void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;

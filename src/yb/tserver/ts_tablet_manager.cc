@@ -1698,9 +1698,17 @@ Status TSTabletManager::GetRegistration(ServerRegistrationPB* reg) const {
   return server_->GetRegistration(reg, server::RpcOnly::kTrue);
 }
 
-void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers) const {
+void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tablet_ptrs) const {
   SharedLock<RWMutex> shared_lock(mutex_);
   GetTabletPeersUnlocked(tablet_peers);
+  if (tablet_ptrs) {
+    for (const auto peer : *tablet_peers) {
+      auto tablet_ptr = peer->shared_tablet();
+      if (tablet_ptr) {
+        tablet_ptrs->push_back(tablet_ptr);
+      }
+    }
+  }
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
