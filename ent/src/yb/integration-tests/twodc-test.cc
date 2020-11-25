@@ -97,6 +97,8 @@ using tserver::enterprise::CDCConsumer;
 
 namespace enterprise {
 
+using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransactionPtr>;
+
 class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<int> {
  public:
   Result<std::vector<std::shared_ptr<client::YBTable>>> SetUpWithParams(
@@ -220,38 +222,6 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<int> 
     }
   }
 
-  client::YBTransactionPtr CreateTransaction(client::TransactionManager* txn_mgr) {
-    auto result = std::make_shared<client::YBTransaction>(txn_mgr);
-    ReadHybridTime read_time;
-    EXPECT_OK(result->Init(IsolationLevel::SNAPSHOT_ISOLATION, read_time));
-    return result;
-  }
-
-  client::YBTransactionPtr WriteTransactionalWorkload(
-      uint32_t start, uint32_t end, YBClient* client,
-      client::TransactionManager* txn_mgr, const YBTableName& table,
-      bool commit = true) {
-    auto session = client->NewSession();
-    auto transaction = CreateTransaction(txn_mgr);
-    session->SetTransaction(transaction);
-
-    client::TableHandle table_handle;
-    EXPECT_OK(table_handle.Open(table, client));
-    std::vector<std::shared_ptr<client::YBqlOp>> ops;
-
-    for (uint32_t i = start; i < end; i++) {
-      auto op = table_handle.NewInsertOp();
-      int32_t key = i;
-      auto req = op->mutable_request();
-      QLAddInt32HashValue(req, key);
-      EXPECT_OK(session->ApplyAndFlush(op));
-    }
-    if (commit) {
-      EXPECT_OK(transaction->CommitFuture().get());
-    }
-    return transaction;
-  }
-
   void DeleteWorkload(uint32_t start, uint32_t end, YBClient* client, const YBTableName& table) {
     WriteWorkload(start, end, client, table, true /* delete_op */);
   }
@@ -278,6 +248,40 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<int> 
       auto results = ScanToStrings(table, client);
       return results.size() == expected_size;
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
+  }
+
+  Result<SessionTransactionPair> CreateSessionWithTransaction(
+      YBClient* client, client::TransactionManager* txn_mgr) {
+    auto session = client->NewSession();
+    auto transaction = std::make_shared<client::YBTransaction>(txn_mgr);
+    ReadHybridTime read_time;
+    RETURN_NOT_OK(transaction->Init(IsolationLevel::SNAPSHOT_ISOLATION, read_time));
+    session->SetTransaction(transaction);
+    return std::make_pair(session, transaction);
+  }
+
+  void WriteIntents(uint32_t start, uint32_t end, YBClient* client,
+                    const std::shared_ptr<YBSession>& session, const YBTableName& table,
+                    bool delete_op = false) {
+    client::TableHandle table_handle;
+    ASSERT_OK(table_handle.Open(table, client));
+    std::vector<std::shared_ptr<client::YBqlOp>> ops;
+
+    for (uint32_t i = start; i < end; i++) {
+      auto op = delete_op ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
+      int32_t key = i;
+      auto req = op->mutable_request();
+      QLAddInt32HashValue(req, key);
+      ASSERT_OK(session->ApplyAndFlush(op));
+    }
+  }
+
+  void WriteTransactionalWorkload(uint32_t start, uint32_t end, YBClient* client,
+                                  client::TransactionManager* txn_mgr, const YBTableName& table,
+                                  bool delete_op = false) {
+    auto pair = ASSERT_RESULT(CreateSessionWithTransaction(client, txn_mgr));
+    ASSERT_NO_FATALS(WriteIntents(start, end, client, pair.first, table, delete_op));
+    pair.second->CommitFuture().get();
   }
 
  private:
@@ -776,6 +780,71 @@ TEST_P(TwoDCTest, ApplyOperations) {
   Destroy();
 }
 
+TEST_P(TwoDCTest, MultipleTransactions) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
+
+  auto txn_0 = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+  auto txn_1 = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+
+  ASSERT_NO_FATALS(WriteIntents(0, 5, producer_client(), txn_0.first, tables[0]->name()));
+  ASSERT_NO_FATALS(WriteIntents(5, 10, producer_client(), txn_0.first, tables[0]->name()));
+  ASSERT_NO_FATALS(WriteIntents(10, 15, producer_client(), txn_1.first, tables[0]->name()));
+  ASSERT_NO_FATALS(WriteIntents(10, 20, producer_client(), txn_1.first, tables[0]->name()));
+
+  ASSERT_OK(WaitFor([&]() {
+    return CountIntents(consumer_cluster()) > 0;
+  }, MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster replicated intents"));
+
+  // Make sure that none of the intents replicated have been committed.
+  auto consumer_results = ScanToStrings(tables[1]->name(), consumer_client());
+  ASSERT_EQ(consumer_results.size(), 0);
+
+  txn_0.second->CommitFuture().get();
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  txn_1.second->CommitFuture().get();
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+}
+
+// Make sure when we compact a tablet, we retain intents.
+TEST_P(TwoDCTest, NoCleanupOfFlushedFiles) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
+  auto txn_0 = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+  ASSERT_NO_FATALS(WriteIntents(0, 5, producer_client(), txn_0.first, tables[0]->name()));
+  auto consumer_results = ScanToStrings(tables[1]->name(), consumer_client());
+  ASSERT_EQ(consumer_results.size(), 0);
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  ASSERT_NO_FATALS(WriteIntents(5, 10, producer_client(), txn_0.first, tables[0]->name()));
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+  SleepFor(MonoDelta::FromSeconds(5));
+  txn_0.second->CommitFuture().get();
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+}
+
 TEST_P(TwoDCTest, ApplyOperationsWithTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
@@ -823,26 +892,19 @@ TEST_P(TwoDCTest, UpdateWithinTransaction) {
   // After creating the cluster, make sure all producer tablets are being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kNumTablets));
 
-  client::TableHandle table_handle;
-  EXPECT_OK(table_handle.Open(tables[0]->name(), producer_client()));
-
-  auto session = producer_client()->NewSession();
-
-  auto transaction = CreateTransaction(producer_txn_mgr());
-  session->SetTransaction(transaction);
+  auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
   for (bool del : {false, true}) {
-    auto op = del ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
-    auto req = op->mutable_request();
-    QLAddInt32HashValue(req, 1);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), del);
   }
-  ASSERT_OK(transaction->CommitFuture().get());
+  ASSERT_OK(txn.second->CommitFuture().get());
 
-  session->SetTransaction(nullptr);
+  txn.first->SetTransaction(nullptr);
+  client::TableHandle table_handle;
+  ASSERT_OK(table_handle.Open(tables[0]->name(), producer_client()));
   auto op = table_handle.NewInsertOp();
   auto req = op->mutable_request();
   QLAddInt32HashValue(req, 0);
-  ASSERT_OK(session->ApplyAndFlush(op));
+  ASSERT_OK(txn.first->ApplyAndFlush(op));
 
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
@@ -865,9 +927,10 @@ TEST_P(TwoDCTest, TransactionsWithRestart) {
   // After creating the cluster, make sure all producer tablets are being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
 
+  auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
   // Write some transactional rows.
-  auto transaction = WriteTransactionalWorkload(
-      0, 5, producer_client(), producer_txn_mgr(), tables[0]->name(), /* commit= */ false);
+  WriteTransactionalWorkload(
+      0, 5, producer_client(), producer_txn_mgr(), tables[0]->name(), /* delete_op */ false);
 
   WriteWorkload(6, 10, producer_client(), tables[0]->name());
 
@@ -879,7 +942,7 @@ TEST_P(TwoDCTest, TransactionsWithRestart) {
   ASSERT_OK(consumer_cluster()->RestartSync());
   std::this_thread::sleep_for(5s);
   LOG(INFO) << "Commit";
-  ASSERT_OK(transaction->CommitFuture().get());
+  ASSERT_OK(txn.second->CommitFuture().get());
 
   // Verify that both clusters have the same records.
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
