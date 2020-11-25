@@ -3839,9 +3839,9 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 			if (need_global_cache_refresh)
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Catalog Version Mismatch: A DDL occurred "
-								"while processing this query. Try again."),
-						 errdetail("Internal error: %s", edata->message)));
+						 errmsg("%s", edata->message),
+						 errdetail("Internal error: %s", "Catalog Version Mismatch: A DDL occurred "
+								   "while processing this query. Try again.")));
 			else
 			{
 				Assert(need_table_cache_refresh);

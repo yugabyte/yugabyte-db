@@ -107,7 +107,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   virtual void TearDown() override {
     messenger_->Shutdown();
     session_.reset();
-    tablet_peer_->Shutdown();
+    WARN_NOT_OK(tablet_peer_->Shutdown(), "Tablet peer shutdown failed");
     YBTabletTest::TearDown();
   }
 

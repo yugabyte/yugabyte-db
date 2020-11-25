@@ -180,7 +180,10 @@ class TabletPeer : public consensus::ConsensusContext,
   // Completes shutdown process and waits for it's completeness.
   void CompleteShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
-  void Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  // Abort active transactions on the tablet after shutdown is initiated.
+  CHECKED_STATUS AbortSQLTransactions();
+
+  CHECKED_STATUS Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
   // Check that the tablet is in a RUNNING state.
   CHECKED_STATUS CheckRunning() const;
