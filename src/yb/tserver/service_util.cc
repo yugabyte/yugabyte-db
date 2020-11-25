@@ -95,6 +95,11 @@ Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
   return leader_state.term;
 }
 
+void LeaderTabletPeer::FillTabletPeer(TabletPeerTablet source) {
+  peer = std::move(source.tablet_peer);
+  tablet = std::move(source.tablet);
+}
+
 bool LeaderTabletPeer::FillTerm(TabletServerErrorPB* error, rpc::RpcContext* context) {
   auto leader_term = LeaderTerm(*peer);
   if (!leader_term.ok()) {
