@@ -1152,7 +1152,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /** Run a query and check row-count. */
-  private void runQueryWithRowCount(Statement stmt, String query, int expectedRowCount)
+  public int runQueryWithRowCount(Statement stmt, String query, int expectedRowCount)
       throws Exception {
     // Query and check row count.
     int rowCount = 0;
@@ -1167,6 +1167,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     } else {
       LOG.info(String.format("Exec query: row count = %d", rowCount));
     }
+
+    return rowCount;
   }
 
   /** Run a query and check row-count. */
