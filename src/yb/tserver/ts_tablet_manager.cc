@@ -1209,7 +1209,7 @@ Status TSTabletManager::DeleteTablet(
   //
   // Note: This might change for PITR.
   bool delete_data = delete_type == TABLET_DATA_DELETED || delete_type == TABLET_DATA_TOMBSTONED;
-  tablet_peer->Shutdown(tablet::IsDropTable(delete_data));
+  RETURN_NOT_OK(tablet_peer->Shutdown(tablet::IsDropTable(delete_data)));
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 

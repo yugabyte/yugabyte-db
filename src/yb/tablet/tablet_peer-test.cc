@@ -201,7 +201,7 @@ class TabletPeerTest : public YBTabletTest {
 
   void TearDown() override {
     messenger_->Shutdown();
-    tablet_peer_->Shutdown();
+    WARN_NOT_OK(tablet_peer_->Shutdown(), "Tablet peer shutdown failed");
     YBTabletTest::TearDown();
   }
 
