@@ -57,14 +57,6 @@ create or replace function unsupported1() returns void as $$
 declare a text collate "en_US";
 begin
 end$$ language plpgsql;
-create or replace function unsupported5() returns void as $$
-declare a refcursor;
-begin
-end$$ language plpgsql;
-create or replace function unsupported3() returns void as $$
-declare a cursor;
-begin
-end$$ language plpgsql;
 
 create table test(k int, v int);
 
