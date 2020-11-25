@@ -58,7 +58,18 @@ typedef enum statementType
 } statementType;
 int num_entries = kMaxStatementType;
 ybpgmEntry *ybpgm_table = NULL;
+
+/* Statement nesting level is used when setting up dml statements.
+ * - Some state variables are set up for the top-level query but not the nested query.
+ * - Time recorder is initialized and used for top-level query only.
+ */
 static int statement_nesting_level = 0;
+
+/* Block nesting level is used when setting up execution block such as "DO $$ ... END $$;".
+ * - Some state variables are set up for the top level block but not the nested blocks.
+ */
+static int block_nesting_level = 0;
+
 char *metric_node_name = NULL;
 struct WebserverWrapper *webserver = NULL;
 int port = 0;
@@ -100,6 +111,36 @@ bool
 isTopLevelStatement(void)
 {
   return statement_nesting_level == 0;
+}
+
+static void
+IncStatementNestingLevel(void)
+{
+  statement_nesting_level++;
+}
+
+static void
+DecStatementNestingLevel(void)
+{
+  statement_nesting_level--;
+}
+
+bool
+isTopLevelBlock(void)
+{
+  return block_nesting_level == 0;
+}
+
+static void
+IncBlockNestingLevel(void)
+{
+  block_nesting_level++;
+}
+
+static void
+DecBlockNestingLevel(void)
+{
+  block_nesting_level--;
 }
 
 void
@@ -389,15 +430,29 @@ ybpgm_startup_hook(void)
 static void
 ybpgm_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
+  /* Each PORTAL execution will run the following steps.
+   * 1- ExecutorStart()
+   * 2- Execute statements in the portal.
+   *    Some statement execution (CURSOR execution) can open a nested PORTAL. Our metric routines
+   *    will ignore the nested PORTAL for now.
+   * 3- ExecutorEnd()
+   */
   if (prev_ExecutorStart)
     prev_ExecutorStart(queryDesc, eflags);
   else
     standard_ExecutorStart(queryDesc, eflags);
 
-  if (isTopLevelStatement() && queryDesc->totaltime == NULL)
+  /* PORTAL run can be nested inside another PORTAL, and we only run metric routines for the top
+   * level portal statement. The current design of using global variable "statement_nesting_level"
+   * is very flawed as it cannot find the starting and ending point of a top statement execution.
+   * For now, as a workaround, "queryDesc" attribute is used as an indicator for logging metric.
+   * Whenever "time value" is not null, it is logged at the end of a portal run.
+   * - When starting, we allocate "queryDesc->totaltime".
+   * - When ending, we check for "queryDesc->totaltime". If not null, its metric is log.
+   */
+  if (isTopLevelStatement() && !queryDesc->totaltime)
   {
     MemoryContext oldcxt;
-
     oldcxt = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
     queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_TIMER);
     MemoryContextSwitchTo(oldcxt);
@@ -408,18 +463,18 @@ static void
 ybpgm_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
                  bool execute_once)
 {
-  statement_nesting_level++;
+  IncStatementNestingLevel();
   PG_TRY();
   {
     if (prev_ExecutorRun)
       prev_ExecutorRun(queryDesc, direction, count, execute_once);
     else
       standard_ExecutorRun(queryDesc, direction, count, execute_once);
-    statement_nesting_level--;
+    DecStatementNestingLevel();
   }
   PG_CATCH();
   {
-    statement_nesting_level--;
+    DecStatementNestingLevel();
     PG_RE_THROW();
   }
   PG_END_TRY();
@@ -428,18 +483,18 @@ ybpgm_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 static void
 ybpgm_ExecutorFinish(QueryDesc *queryDesc)
 {
-  statement_nesting_level++;
+  IncStatementNestingLevel();
   PG_TRY();
   {
     if (prev_ExecutorFinish)
       prev_ExecutorFinish(queryDesc);
     else
       standard_ExecutorFinish(queryDesc);
-    statement_nesting_level--;
+    DecStatementNestingLevel();
   }
   PG_CATCH();
   {
-    statement_nesting_level--;
+    DecStatementNestingLevel();
     PG_RE_THROW();
   }
   PG_END_TRY();
@@ -468,7 +523,16 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
       break;
   }
 
-  if (isTopLevelStatement()) {
+  /* Collecting metric.
+   * - Only processing metric for top level statement in top level portal.
+   *   For example, CURSOR execution can have many nested portal and nested statement. The metric
+   *   for all of the nested items are not processed.
+   * - However, it's difficult to know the starting and ending point of a statement, we check for
+   *   not null "queryDesc->totaltime".
+   * - The design for this metric module for using global state variables is very flawed, so we
+   *   use this not-null check for now.
+   */
+  if (isTopLevelStatement() && queryDesc->totaltime) {
 	uint64_t time;
 
 	InstrEndLoop(queryDesc->totaltime);
@@ -484,18 +548,18 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 	  ybpgm_Store(AggregatePushdown, time);
   }
 
-  statement_nesting_level++;
+  IncStatementNestingLevel();
   PG_TRY();
   {
     if (prev_ExecutorEnd)
       prev_ExecutorEnd(queryDesc);
     else
       standard_ExecutorEnd(queryDesc);
-    statement_nesting_level--;
+    DecStatementNestingLevel();
   }
   PG_CATCH();
   {
-    statement_nesting_level--;
+    DecStatementNestingLevel();
     PG_RE_THROW();
   }
   PG_END_TRY();
@@ -523,14 +587,14 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
                      ParamListInfo params, QueryEnvironment *queryEnv,
                      DestReceiver *dest, char *completionTag)
 {
-  if (isTopLevelStatement() && !IsA(pstmt->utilityStmt, ExecuteStmt) &&
+  if (isTopLevelBlock() && !IsA(pstmt->utilityStmt, ExecuteStmt) &&
       !IsA(pstmt->utilityStmt, PrepareStmt) && !IsA(pstmt->utilityStmt, DeallocateStmt))
   {
     instr_time start;
     instr_time end;
     INSTR_TIME_SET_CURRENT(start);
 
-    ++statement_nesting_level;
+    IncBlockNestingLevel();
     PG_TRY();
     {
       if (prev_ProcessUtility)
@@ -541,11 +605,11 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
         standard_ProcessUtility(pstmt, queryString,
                                 context, params, queryEnv,
                                 dest, completionTag);
-      --statement_nesting_level;
+      DecBlockNestingLevel();
     }
     PG_CATCH();
     {
-      --statement_nesting_level;
+      DecBlockNestingLevel();
       PG_RE_THROW();
     }
     PG_END_TRY();
