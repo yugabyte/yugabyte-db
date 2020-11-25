@@ -101,6 +101,8 @@ DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
 
 DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
 
+DECLARE_int32(ysql_transaction_abort_timeout_ms);
+
 namespace yb {
 namespace tablet {
 
@@ -527,12 +529,35 @@ void TabletPeer::WaitUntilShutdown() {
   }
 }
 
-void TabletPeer::Shutdown(IsDropTable is_drop_table) {
-  if (StartShutdown()) {
+Status TabletPeer::Shutdown(IsDropTable is_drop_table) {
+  bool isShutdownInitiated = StartShutdown();
+
+  RETURN_NOT_OK(AbortSQLTransactions());
+
+  if (isShutdownInitiated) {
     CompleteShutdown(is_drop_table);
   } else {
     WaitUntilShutdown();
   }
+  return Status::OK();
+}
+
+Status TabletPeer::AbortSQLTransactions() {
+  // Once raft group state enters QUIESCING state,
+  // new queries cannot be processed from then onwards.
+  // Aborting any remaining active transactions in the tablet.
+  if (tablet_ && tablet_->table_type() == TableType::PGSQL_TABLE_TYPE) {
+    if (tablet_->transaction_participant()) {
+      HybridTime maxCutoff = HybridTime::kMax;
+      LOG(INFO) << "Aborting transactions that started prior to " << maxCutoff
+                << " for tablet id " << tablet_->tablet_id();
+      CoarseTimePoint deadline = CoarseMonoClock::Now() +
+          MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
+      WARN_NOT_OK(tablet_->transaction_participant()->StopActiveTxnsPriorTo(maxCutoff, deadline),
+                  "Cannot abort transactions for tablet " + tablet_->tablet_id());
+    }
+  }
+  return Status::OK();
 }
 
 Status TabletPeer::CheckRunning() const {
