@@ -105,6 +105,7 @@ Parameters
 * `include-type-oids`: add type oids. Default is _false_.
 * `include-domain-data-type`: replace domain name with the underlying data type. Default is _false_.
 * `include-column-positions`: add column position (_pg_attribute.attnum_). Default is _false_.
+* `include-origin`: add origin of a piece of data. Default is _false_.
 * `include-not-null`: add _not null_ information as _columnoptionals_. Default is _false_.
 * `include-default`: add default expression. Default is _false_.
 * `include-pk`: add _primary key_ information as _pk_. Column name and data type is included. Default is _false_.
