@@ -1,6 +1,10 @@
-## User Guide
+# User Guide
 
-Create the extension using the ``CREATE EXTENSION`` command.
+This document describes the configuration, key features and usage of ``pg_stat_monitor`` extension and compares it with ``pg_stat_statements``.
+
+For how to install and set up ``pg_stat_monitor``, see [README](https://github.com/percona/pg_stat_monitor/blob/master/README.md).
+
+After you've installed and enabled ``pg_stat_monitor``, create the ``pg_stat_monitor`` extension using the ``CREATE EXTENSION`` command.
 
 ```sql
 CREATE EXTENSION pg_stat_monitor;
@@ -27,7 +31,7 @@ SELECT * FROM pg_stat_monitor_settings;
 ```
 Some configuration parameters require the server restart and should be set before the server startup. These must be set in the ``postgresql.conf`` file. Other parameters do not require server restart and can be set permanently either in the ``postgresql.conf`` or from the client (``psql``).
 
-The table below shows set up options for each configuration parameter and whether the server restart is required to apply its value:
+The table below shows set up options for each configuration parameter and whether the server restart is required to apply the parameter's value:
 
 
 | Parameter Name                                |  postgresql.conf   | SET | ALTER SYSTEM SET  |  server restart   | configuration reload
@@ -59,9 +63,10 @@ The table below shows set up options for each configuration parameter and whethe
 
 ### Usage
 
-pg_stat_monitor extension contains a view called pg_stat_monitor, which contains all the monitoring information. Following is the list of columns in pg_stat_monitor.
+pg_stat_monitor extension contains a view called pg_stat_monitor, which contains all the monitoring information. Find the list of columns in pg_stat_monitor view in the following table. The table also shows whether a particular column is available in pg_stat_statements.
 
-|      Column        |           Type           | pg_stat_monitor      | pg_stat_statments
+
+|      Column        |           Type           | pg_stat_monitor      | pg_stat_statements
 |--------------------|--------------------------|----------------------|------------------
  bucket              | integer                  | :heavy_check_mark:  | :x:
  bucket_start_time   | timestamp with time zone | :heavy_check_mark:  | :x:
@@ -105,10 +110,11 @@ pg_stat_monitor extension contains a view called pg_stat_monitor, which contains
  cpu_user_time       | double precision         | :heavy_check_mark:  | :x:
  cpu_sys_time        | double precision         | :heavy_check_mark:  | :x:
 
-Here are some key features of pg_stat_monitor.
+
+
+The following are some key features of pg_stat_monitor and usage examples.
 
 #### Buckets
-pg_stat_monitor collects and aggregates data on a bucket basis. The size of a bucket and the number of buckets should be configured using GUC (Grand Unified Configuration). When a bucket time elapses, pg_stat_monitor resets all the statistics and switches to the next bucket. After the last bucket elapses, pg_stat_monitor goes back to the first bucket. All the data on the first bucket will vanish; therefore, users must read the buckets before that to not lose the data.
 
 **`bucket`**: Accumulates the statistics per bucket. All the information and aggregate reset for each bucket. The bucket will be a number showing the number of buckets for which this record belongs.
 
@@ -126,7 +132,7 @@ SELECT bucket, bucket_start_time, query FROM pg_stat_monitor;
 
 #### Query Information
 
-**`userid`**: An ID of the user to whom that query belongs. pg_stat_monitor is used to collect queries from all the users; therefore, `userid` is used to segregate the queries based on different users.
+**`userid`**: An ID of the user to whom that query belongs. pg_stat_monitor collects queries from all the users and uses the `userid` to segregate the queries based on different users.
 
 **`dbid`**: The database ID of the query. pg_stat_monitor accumulates queries from all the databases; therefore, this column is used to identify the database.
 
@@ -137,7 +143,7 @@ SELECT bucket, bucket_start_time, query FROM pg_stat_monitor;
 **`calls`**: Number of calls of that particular query.
 
 
-##### Example 1: Shows the userid, dbid, unique queryid hash, query, and the total number of calls or that query.
+##### Example 1: Shows the userid, dbid, unique queryid hash, query, and the total number of calls of that query.
 ```sql
 SELECT userid,  dbid, queryid, substr(query,0, 50) AS query, calls FROM pg_stat_monitor;
  userid | dbid  |     queryid      |                       query                       | calls 
@@ -163,7 +169,7 @@ SELECT userid,  dbid, queryid, substr(query,0, 50) AS query, calls FROM pg_stat
 (18 rows)
 ```
 
-##### Example 2: Shows the different usernames for the query. 
+##### Example 2: Shows different usernames for the query. 
 
 ```
 SELECT userid::regrole, datname, substr(query,0, 50) AS query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
@@ -177,7 +183,7 @@ SELECT userid::regrole, datname, substr(query,0, 50) AS query, calls from pg_sta
 (5 rows)
 ```
 
-##### Example 3: Shows the different database involved in the queries.
+##### Example 3: Shows the different databases involved in the queries.
 
 ```
 SELECT userid::regrole, datname, substr(query,0, 50) as query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
@@ -213,7 +219,7 @@ SELECT application_name, query FROM pg_stat_monitor;
 
 #### Error Messages / Error Codes and Error Level
 
-**`elevel`**, **`sqlcode`**,**`message`**,: error level / sql code and  log/warning/error message
+**`elevel`**, **`sqlcode`**,**`message`**,: error level / sql code and  log/warning/ error message
 
 ```sql
 SELECT substr(query,0,50) AS query, decode_error_level(elevel) AS elevel,sqlcode, calls, substr(message,0,50) message 
