@@ -453,13 +453,25 @@ import static org.mockito.Mockito.when;
   }
 
   @Test
-  public void testCreateKubernetesConfig() {
+  public void testCreateKubernetesConfig_PureConfigName() {
+    doTestCreateKubernetesConfig("demo.cnf");
+  }
+
+  @Test
+  public void testCreateKubernetesConfig_ConfigNameWithPath() {
+    doTestCreateKubernetesConfig("../../demo.cnf");
+  }
+
+  void doTestCreateKubernetesConfig(String configName) {
     try {
       Map<String, String> config = new HashMap<>();
-      config.put("KUBECONFIG_NAME", "demo.conf");
+      config.put("KUBECONFIG_NAME", configName);
       config.put("KUBECONFIG_CONTENT", "hello world");
-      String configFile = accessManager.createKubernetesConfig(defaultProvider.uuid.toString(), config, false);
-      assertEquals("/tmp/yugaware_tests/keys/" + defaultProvider.uuid + "/demo.conf", configFile);
+      String configFile = accessManager.createKubernetesConfig(defaultProvider.uuid.toString(),
+          config, false);
+      assertEquals(
+          "/tmp/yugaware_tests/keys/" + defaultProvider.uuid + "/" + Util.getFileName(configName),
+          configFile);
       List<String> lines = Files.readAllLines(Paths.get(configFile));
       assertEquals("hello world", lines.get(0));
       assertNull(config.get("KUBECONFIG_NAME"));
