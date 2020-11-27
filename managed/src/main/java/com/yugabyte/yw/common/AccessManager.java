@@ -4,11 +4,9 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,7 +108,7 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException("Duplicate Access KeyCode: " + keyCode);
     }
     Path source = Paths.get(uploadedFile.getAbsolutePath());
-    Path destination = Paths.get(keyFilePath, keyCode + keyType.getExtension());
+    Path destination = Paths.get(keyFilePath, Util.getFileName(keyCode) + keyType.getExtension());
     if (!Files.exists(source)) {
       throw new RuntimeException("Key file " + source.getFileName() + " not found.");
     }
