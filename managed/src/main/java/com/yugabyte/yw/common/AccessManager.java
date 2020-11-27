@@ -277,7 +277,7 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException("Missing KUBECONFIG_CONTENT data in the provider config.");
     }
     String configFilePath = getOrCreateKeyFilePath(path);
-    Path configFile = Paths.get(configFilePath, configFileName);
+    Path configFile = Paths.get(configFilePath, Util.getFileName(configFileName));
     if (!edit && Files.exists(configFile)) {
       throw new RuntimeException("File " + configFile.getFileName() + " already exists.");
     }
@@ -296,7 +296,7 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException("Missing KUBECONFIG_PULL_SECRET_CONTENT data in the provider config.");
     }
     String pullSecretFilePath = getOrCreateKeyFilePath(providerUUID);
-    Path pullSecretFile = Paths.get(pullSecretFilePath, pullSecretFileName);
+    Path pullSecretFile = Paths.get(pullSecretFilePath, Util.getFileName(pullSecretFileName));
     if (!edit && Files.exists(pullSecretFile)) {
       throw new RuntimeException("File " + pullSecretFile.getFileName() + " already exists.");
     }
