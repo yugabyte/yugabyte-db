@@ -4,11 +4,9 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,6 +103,8 @@ public class AccessManager extends DevopsBase {
                                  boolean airGapInstall, boolean skipProvisioning) {
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
+    // Removing paths from keyCode.
+    keyCode = Util.getFileName(keyCode);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
     if (accessKey != null) {
       throw new RuntimeException("Duplicate Access KeyCode: " + keyCode);

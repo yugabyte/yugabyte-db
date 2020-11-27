@@ -23,7 +23,6 @@ import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.*;
-import java.util.stream.Collectors;
 import java.text.SimpleDateFormat;
 
 import org.slf4j.Logger;
@@ -326,4 +325,23 @@ public class Util {
     return stringBuilder.toString();
   }
 
+  /**
+   * Extracts the name and extension parts of a file name.
+   *
+   * The resulting string is the rightmost characters of fullName, starting with
+   * the first character after the path separator that separates the path
+   * information from the name and extension.
+   *
+   * The resulting string is equal to fullName, if fullName contains no path.
+   *
+   * @param fullName
+   * @return
+   */
+  public static String getFileName(String fullName) {
+    if (fullName == null) {
+      return null;
+    }
+    int delimiterIndex = fullName.lastIndexOf(File.separatorChar);
+    return delimiterIndex >= 0 ? fullName.substring(delimiterIndex + 1) : fullName;
+  }
 }
