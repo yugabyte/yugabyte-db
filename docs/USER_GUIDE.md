@@ -14,20 +14,21 @@ CREATE EXTENSION
 ### Configuration
 Here is the complete list of configuration parameters.
 ```sql
-SELECT * FROM pg_stat_monitor_settings;
-                     name                      | value  | default_value |                            description                            | minimum |  maximum   | restart 
------------------------------------------------+--------+---------------+-------------------------------------------------------------------+---------+------------+---------
- pg_stat_monitor.pgsm_max                      |   5000 |          5000 | Sets the maximum number of statements tracked by pg_stat_monitor. |    5000 | 2147483647 |       1
- pg_stat_monitor.pgsm_query_max_len            |   1024 |          1024 | Sets the maximum length of query.                                 |    1024 | 2147483647 |       1
- pg_stat_monitor.pgsm_enable                   |      1 |             1 | Enable/Disable statistics collector.                              |       0 |          0 |       1
- pg_stat_monitor.pgsm_track_utility            |      1 |             0 | Selects whether utility commands are tracked.                     |       0 |          0 |       0
- pg_stat_monitor.pgsm_normalized_query         |      1 |             0 | Selects whether save query in normalized format.                  |       0 |          0 |       0
- pg_stat_monitor.pgsm_max_buckets              |     10 |            10 | Sets the maximum number of buckets.                               |       1 |         10 |       1
- pg_stat_monitor.pgsm_bucket_time              |     60 |            60 | Sets the time in seconds per bucket.                              |       1 | 2147483647 |       1
- pg_stat_monitor.pgsm_respose_time_lower_bound |      1 |             1 | Sets the time in millisecond.                                     |       1 | 2147483647 |       1
- pg_stat_monitor.pgsm_respose_time_step        |      1 |             1 | Sets the respose time steps in millisecond.                       |       1 | 2147483647 |       1
- pg_stat_monitor.pgsm_query_shared_buffer      | 500000 |        500000 | Sets the query shared_buffer size.                                |  500000 | 2147483647 |       1
-(11 rows)
+postgres=# SELECT * from pg_stat_monitor_settings;
+                     name                      | value | default_value |                                               description                                                | minimum |  maximum   | restart 
+-----------------------------------------------+-------+---------------+----------------------------------------------------------------------------------------------------------+---------+------------+---------
+ pg_stat_monitor.pgsm_max                      |   100 |           100 | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |       1
+ pg_stat_monitor.pgsm_query_max_len            |  1024 |          1024 | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |       1
+ pg_stat_monitor.pgsm_enable                   |     1 |             1 | Enable/Disable statistics collector.                                                                     |       0 |          0 |       1
+ pg_stat_monitor.pgsm_track_utility            |     1 |             0 | Selects whether utility commands are tracked.                                                            |       0 |          0 |       0
+ pg_stat_monitor.pgsm_normalized_query         |     1 |             1 | Selects whether save query in normalized format.                                                         |       0 |          0 |       0
+ pg_stat_monitor.pgsm_max_buckets              |    10 |            10 | Sets the maximum number of buckets.                                                                      |       1 |         10 |       1
+ pg_stat_monitor.pgsm_bucket_time              |    60 |            60 | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |       1
+ pg_stat_monitor.pgsm_respose_time_lower_bound |     1 |             1 | Sets the time in millisecond.                                                                            |       1 | 2147483647 |       1
+ pg_stat_monitor.pgsm_respose_time_step        |     1 |             1 | Sets the response time steps in millisecond.                                                             |       1 | 2147483647 |       1
+ pg_stat_monitor.pgsm_query_shared_buffer      |     1 |            20 | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.                |       1 |      10000 |       1
+(10 rows)
+
 ```
 Some configuration parameters require the server restart and should be set before the server startup. These must be set in the ``postgresql.conf`` file. Other parameters do not require server restart and can be set permanently either in the ``postgresql.conf`` or from the client (``psql``).
 
