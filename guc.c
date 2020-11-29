@@ -12,7 +12,7 @@
 #include "postgres.h"
 
 #include "pg_stat_monitor.h"
- 
+
 GucVariable conf[12];
 
 /*
@@ -24,10 +24,10 @@ init_guc(void)
 	int i = 0;
 	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_max",
-		.guc_desc = "Sets the maximum number of statements tracked by pg_stat_monitor.",
-		.guc_default = 5000,
-		.guc_min = 5000,
-		.guc_max = INT_MAX,
+		.guc_desc = "Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor.",
+		.guc_default = 100,
+		.guc_min = 1,
+		.guc_max = 1000,
 		.guc_restart = true
 		};
 
@@ -101,10 +101,10 @@ init_guc(void)
 
 	conf[i++] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_query_shared_buffer",
-		.guc_desc = "Sets the query shared_buffer size.",
-		.guc_default = 500000,
-		.guc_min = 500000,
-		.guc_max = INT_MAX,
+		.guc_desc = "Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.",
+		.guc_default = 20,
+		.guc_min = 1,
+		.guc_max = 10000,
 		.guc_restart = true
 	};
 #if PG_VERSION_NUM >= 130000
@@ -119,14 +119,14 @@ init_guc(void)
 #endif
 
 	DefineCustomIntVariable("pg_stat_monitor.pgsm_max",
-							"Sets the maximum number of statements tracked by pg_stat_monitor.",
+							"Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor.",
 							NULL,
 							&PGSM_MAX,
-							5000,
-							5000,
-							INT_MAX,
+							100,
+							1,
+							1000,
 							PGC_POSTMASTER,
-							0,
+							GUC_UNIT_MB,
 							NULL,
 							NULL,
 							NULL);
@@ -231,12 +231,12 @@ init_guc(void)
 							NULL);
 
 	DefineCustomIntVariable("pg_stat_monitor.pgsm_query_shared_buffer",
-							"Sets the query shared_buffer size",
+							"Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.",
 							NULL,
 							&PGSM_QUERY_BUF_SIZE,
-							500000,
-							500000,
-							INT_MAX,
+							20,
+							1,
+							10000,
 							PGC_POSTMASTER,
 							0,
 							NULL,
@@ -253,7 +253,6 @@ init_guc(void)
 							 NULL,
 							 NULL,
 							 NULL);
-
 }
 
 GucVariable*

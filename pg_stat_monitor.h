@@ -57,6 +57,7 @@
 #define JUMBLE_SIZE				1024	/* query serialization buffer size */
 
 #define MAX_RESPONSE_BUCKET 10
+#define INVALID_BUCKET_ID	-1
 #define MAX_REL_LEN			255
 #define MAX_BUCKETS			10
 #define TEXT_LEN			255
@@ -65,6 +66,18 @@
 #define CMD_LST				10
 #define CMD_LEN				20
 #define APPLICATIONNAME_LEN	100
+#define PGSM_OVER_FLOW_MAX	10
+
+
+#define MAX_QUERY_BUF						(PGSM_QUERY_BUF_SIZE * 1024 * 1024)
+#define MAX_BUCKETS_MEM 					(PGSM_MAX * 1024 * 1024)
+#define BUCKETS_MEM_OVERFLOW() 				((hash_get_num_entries(pgss_hash) * sizeof(pgssEntry)) >= MAX_BUCKETS_MEM)
+//#define MAX_QUERY_BUFFER_BUCKET				200
+#define MAX_QUERY_BUFFER_BUCKET			MAX_QUERY_BUF / PGSM_MAX_BUCKETS
+#define MAX_BUCKET_ENTRIES 					(MAX_BUCKETS_MEM / sizeof(pgssEntry))
+#define QUERY_BUFFER_OVERFLOW(x,y)  		((x + y + sizeof(uint64) + sizeof(uint64)) > MAX_QUERY_BUFFER_BUCKET)
+#define QUERY_MARGIN 						100
+#define MIN_QUERY_LEN						10
 
 typedef struct GucVariables
 {
@@ -106,6 +119,18 @@ typedef enum AGG_KEY
 #define MAX_QUERY_LEN 1024
 
 /* shared nenory storage for the query */
+typedef struct pgssQueryHashKey
+{
+	uint64		queryid;		/* query identifier */
+	uint64		bucket_id;		/* bucket number */
+} pgssQueryHashKey;
+
+typedef struct pgssQueryEntry
+{
+	pgssQueryHashKey	key;		/* hash key of entry - MUST BE FIRST */
+	uint64			    pos;		/* bucket number */
+} pgssQueryEntry;
+
 typedef struct pgssHashKey
 {
 	uint64		bucket_id;		/* bucket number */
@@ -213,7 +238,6 @@ typedef struct pgssSharedState
 	int64			n_writers;			/* number of active writers to query file */
 	uint64			current_wbucket;
 	uint64			prev_bucket_usec;
-	uint64			bucket_overflow[MAX_BUCKETS];
 	uint64			bucket_entry[MAX_BUCKETS];
 	int64			query_buf_size_bucket;
 	int32			relations[REL_LST];
@@ -228,7 +252,6 @@ do { \
 		x->n_writers = 0; \
 		x->current_wbucket = 0; \
 		x->prev_bucket_usec = 0; \
-		memset(&x->bucket_overflow, 0, MAX_BUCKETS * sizeof(uint64)); \
 		memset(&x->bucket_entry, 0, MAX_BUCKETS * sizeof(uint64)); \
 } while(0)
 
@@ -282,11 +305,15 @@ void pgss_shmem_shutdown(int code, Datum arg);
 int pgsm_get_bucket_size(void);
 pgssSharedState* pgsm_get_ss(void);
 HTAB* pgsm_get_hash(void);
+HTAB* pgsm_get_query_hash(void);
 void hash_entry_reset(void);
+void hash_query_entry_dealloc(int bucket);
 void hash_entry_dealloc(int bucket);
 pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
 Size hash_memsize(void);
-pgssEntry* hash_create_query_entry(unsigned int queryid, unsigned int userid, unsigned int dbid, unsigned int bucket_id, unsigned int ip);
+
+bool hash_find_query_entry(uint64 bucket_id, uint64 queryid);
+bool hash_create_query_entry(uint64 bucket_id, uint64 queryid);
 
 /* hash_query.c */
 void pgss_startup(void);
