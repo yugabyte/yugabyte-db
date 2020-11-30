@@ -91,6 +91,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   }
 
   List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE = ImmutableList.of(
+      TaskType.PrecheckNode,
       TaskType.AnsibleSetupServer,
       TaskType.AnsibleUpdateNodeInfo,
       TaskType.AnsibleConfigureServers,
@@ -156,7 +157,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       iter++;
     }
     TaskInfo taskInfo = submitTask(taskParams);
-    verify(mockNodeManager, times(6)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));

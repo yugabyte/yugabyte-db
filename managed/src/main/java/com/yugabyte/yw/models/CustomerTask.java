@@ -242,6 +242,13 @@ public class CustomerTask extends Model {
       .idEq(id).findOne();
   }
 
+  public static CustomerTask get(UUID customerUUID, UUID taskUUID) {
+    return CustomerTask.find.query().where()
+    .eq("customer_uuid", customerUUID)
+    .eq("task_uuid", taskUUID)
+    .findOne();
+  }
+
   public String getFriendlyDescription() {
     StringBuilder sb = new StringBuilder();
     sb.append(type.toString(completionTime != null));
