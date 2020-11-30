@@ -70,7 +70,7 @@ else
   log "Installing ybops package"
   install_ybops_package
 
-  if [[ "$should_create_package" ]]; then
+  if [[ "$should_create_package" == "1" ]]; then
     log "Changing virtualenv absolute paths to dynamic paths"
     # Change shebangs to use local python instead of absolute python path - required for our Jenkins
     # pipeline and packaging (e.g. "/tmp/python_virtual_env/bin/python" -> "/usr/bin/env python")
