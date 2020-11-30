@@ -14,7 +14,8 @@ from ybops.cloud.common.method import ConfigureInstancesMethod, ListInstancesMet
     InitYSQLMethod, CronCheckMethod
 from ybops.cloud.onprem.method import OnPremCreateInstancesMethod, OnPremDestroyInstancesMethod, \
     OnPremProvisionInstancesMethod, OnPremValidateMethod, \
-    OnPremFillInstanceProvisionTemplateMethod, OnPremListInstancesMethod
+    OnPremFillInstanceProvisionTemplateMethod, OnPremListInstancesMethod, \
+    OnPremPrecheckInstanceMethod
 
 
 class OnPremInstanceCommand(InstanceCommand):
@@ -31,6 +32,7 @@ class OnPremInstanceCommand(InstanceCommand):
         self.add_method(OnPremDestroyInstancesMethod(self))
         self.add_method(OnPremListInstancesMethod(self))
         self.add_method(OnPremValidateMethod(self))
+        self.add_method(OnPremPrecheckInstanceMethod(self))
         self.add_method(OnPremFillInstanceProvisionTemplateMethod(self))
         self.add_method(InitYSQLMethod(self))
         self.add_method(CronCheckMethod(self))

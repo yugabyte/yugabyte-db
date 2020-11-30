@@ -45,7 +45,7 @@ class AnsibleProcess(object):
     def build_connection_target(self, target):
         return target + ","
 
-    def run(self, filename, extra_vars=dict(), host_info={}):
+    def run(self, filename, extra_vars=dict(), host_info={}, print_output=True):
         """Method used to call out to the respective Ansible playbooks.
         Args:
             filename: The playbook file to execute
@@ -122,8 +122,10 @@ class AnsibleProcess(object):
 
         logging.info("Running ansible command {}".format(json.dumps(process_args,
                                                                     separators=(' ', ' '))))
-        p = subprocess.Popen(process_args, stderr=subprocess.PIPE)
-        _, stderr = p.communicate()
+        p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        if print_output:
+            print(stdout)
         if p.returncode != 0:
             raise YBOpsRuntimeError(
                 "Playbook with args {} failed with return code {} and error {}".format(
