@@ -329,6 +329,9 @@ bool BloomFilterAwareFileFilter::Filter(TableReader* reader) const {
   auto table = down_cast<BlockBasedTable*>(reader);
   if (table->rep_->filter_type == FilterType::kFixedSizeFilter) {
     const auto filter_key = table->GetFilterKeyFromUserKey(user_key_);
+    if (filter_key.empty()) {
+      return true;
+    }
     auto filter_entry = table->GetFilter(read_options_.query_id,
         read_options_.read_tier == kBlockCacheTier /* no_io */, &filter_key);
     FilterBlockReader* filter = filter_entry.value;
@@ -1265,9 +1268,9 @@ bool BlockBasedTable::PrefixMayMatch(const Slice& internal_key) {
 
   assert(rep_->ioptions.prefix_extractor != nullptr);
   auto user_key = ExtractUserKey(internal_key);
-  auto filter_key = rep_->filter_key_transformer ?
-      rep_->filter_key_transformer->Transform(user_key) : user_key;
-  if (!rep_->ioptions.prefix_extractor->InDomain(filter_key) ||
+  auto filter_key = GetFilterKeyFromUserKey(user_key);
+  if (filter_key.empty() ||
+      !rep_->ioptions.prefix_extractor->InDomain(filter_key) ||
       !rep_->ioptions.prefix_extractor->InDomain(user_key)) {
     return true;
   }
@@ -1384,9 +1387,12 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& intern
   Slice filter_key;
   if (!skip_filters) {
     filter_key = GetFilterKeyFromInternalKey(internal_key);
-    filter_entry = GetFilter(read_options.query_id,
-                             read_options.read_tier == kBlockCacheTier,
-                             &filter_key);
+    if (!filter_key.empty()) {
+      filter_entry =
+          GetFilter(read_options.query_id, read_options.read_tier == kBlockCacheTier, &filter_key);
+    } else {
+      skip_filters = true;
+    }
   }
   FilterBlockReader* filter = filter_entry.value;
 
@@ -1396,7 +1402,6 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& intern
   if (!is_block_based_filter && !NonBlockBasedFilterKeyMayMatch(filter, filter_key)) {
     RecordTick(rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
   } else {
-
     // Either filter is block-based or key may match.
     IndexIteratorHolder iiter_holder(this, read_options);
     InternalIterator& iiter = *iiter_holder.iter();

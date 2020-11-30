@@ -612,9 +612,12 @@ class TestFilterPolicy : public FilterPolicy {
   TKeyTransformer key_transformer_;
 };
 
-class KeyToEmptyTransformer : public FilterPolicy::KeyTransformer {
+class KeyToConstTransformer : public FilterPolicy::KeyTransformer {
  public:
-  Slice Transform(Slice key) const override { return Slice(); }
+  Slice Transform(Slice key) const override {
+    static const std::string kFilterKey("fixed-filter-key");
+    return kFilterKey;
+  }
 };
 
 class KeyIdentityTransformer : public FilterPolicy::KeyTransformer {
@@ -674,8 +677,8 @@ void DBBloomFilterTest::CheckOtherFilterPoliciesSupport(
 }
 
 TEST_F(DBBloomFilterTest, OtherFilterPoliciesSupport) {
-  FilterPolicyCreator emptyPolicyCreator = []{
-    return new TestFilterPolicy<KeyToEmptyTransformer>("EmptyFilterPolicy");
+  FilterPolicyCreator constPolicyCreator = []{
+    return new TestFilterPolicy<KeyToConstTransformer>("ConstFilterPolicy");
   };
   FilterPolicyCreator identityPolicyCreator = []{
     return new TestFilterPolicy<KeyIdentityTransformer>("IdentityFilterPolicy");
@@ -685,14 +688,14 @@ TEST_F(DBBloomFilterTest, OtherFilterPoliciesSupport) {
   Options options = CurrentOptions();
 
   ASSERT_NO_FATALS(CheckOtherFilterPoliciesSupport(
-    &options, kNumKeys, emptyPolicyCreator, identityPolicyCreator, /* should_be_useful =*/ false));
-  // Bloom filter with empty key transformer is not useful.
+    &options, kNumKeys, constPolicyCreator, identityPolicyCreator, /* should_be_useful =*/ false));
+  // Bloom filter with const key transformer is not useful.
   ASSERT_EQ(TestGetTickerCount(options, BLOOM_FILTER_USEFUL), 0);
 
   DestroyAndReopen(options);
 
   ASSERT_NO_FATALS(CheckOtherFilterPoliciesSupport(
-    &options, kNumKeys, identityPolicyCreator, emptyPolicyCreator, /* should_be_useful =*/ true));
+    &options, kNumKeys, identityPolicyCreator, constPolicyCreator, /* should_be_useful =*/ true));
   ASSERT_GT(TestGetTickerCount(options, BLOOM_FILTER_USEFUL), 0);
 }
 

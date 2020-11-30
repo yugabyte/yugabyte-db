@@ -1072,6 +1072,13 @@ DocDbAwareHashedComponentsFilterPolicy::GetKeyTransformer() const {
 
 const rocksdb::FilterPolicy::KeyTransformer*
 DocDbAwareV2FilterPolicy::GetKeyTransformer() const {
+  // We want for DocDbAwareV2FilterPolicy to disable bloom filtering during read path for
+  // range-partitioned tablets (see https://github.com/yugabyte/yugabyte-db/issues/6435).
+  return &DocKeyComponentsExtractor<DocKeyPart::kUpToHash>::GetInstance();
+}
+
+const rocksdb::FilterPolicy::KeyTransformer*
+DocDbAwareV3FilterPolicy::GetKeyTransformer() const {
   return &DocKeyComponentsExtractor<DocKeyPart::kUpToHashOrFirstRange>::GetInstance();
 }
 
