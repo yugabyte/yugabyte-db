@@ -462,7 +462,7 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
         BytewiseComparator()->Compare(r->last_filter_key, filter_key) != 0) {
       // No need to insert duplicate keys into Bloom filter.
       if (r->filter_block_builder->ShouldFlush()) {
-        FlushFilterBlock(key);
+        FlushFilterBlock(filter_key);
       }
       r->filter_block_builder->Add(filter_key);
       r->last_filter_key.assign(filter_key.cdata(), filter_key.size());
@@ -533,7 +533,7 @@ void BlockBasedTableBuilder::FlushDataBlock(const Slice& next_block_first_key) {
   }
 }
 
-void BlockBasedTableBuilder::FlushFilterBlock(const Slice& next_block_first_key) {
+void BlockBasedTableBuilder::FlushFilterBlock(const Slice& next_block_first_filter_key) {
   Rep* const r = rep_;
   assert(!r->closed);
   assert(r->filter_block_builder != nullptr);
@@ -551,14 +551,14 @@ void BlockBasedTableBuilder::FlushFilterBlock(const Slice& next_block_first_key)
   r->props.filter_size += filter_block_size;
   ++r->props.num_filter_blocks;
 
-  const bool is_last_flush = next_block_first_key.empty();
+  const bool is_last_flush = next_block_first_filter_key.empty();
   if (!is_last_flush) {
     r->filter_block_builder->StartBlock(0);
   }
 
   // See explanation in BlockBasedTableBuilder::FlushDataBlock.
   r->filter_index_builder->AddIndexEntry(&r->last_filter_key,
-      is_last_flush ? nullptr : &next_block_first_key,  r->filter_pending_handle);
+      is_last_flush ? nullptr : &next_block_first_filter_key,  r->filter_pending_handle);
 }
 
 size_t BlockBasedTableBuilder::WriteBlock(BlockBuilder* block,
