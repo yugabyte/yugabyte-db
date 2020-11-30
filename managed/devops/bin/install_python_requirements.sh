@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
       export YB_NO_VIRTUAL_ENV=1
     ;;
     -h|--help)
-      show_help >&2
+      show_usage >&2
       exit 1
     ;;
     --create_package)
