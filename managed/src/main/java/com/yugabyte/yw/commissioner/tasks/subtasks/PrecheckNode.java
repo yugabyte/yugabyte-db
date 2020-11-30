@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -27,6 +28,14 @@ public class PrecheckNode extends NodeTaskBase {
 
   @Override
   public void run() {
+    Universe u = Universe.get(taskParams().universeUUID);
+    CloudType providerType = u.getUniverseDetails()
+        .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent.providerType;
+    if (!providerType.equals(CloudType.onprem)) {
+      LOG.info("Skipping preflight checks.");
+      return;
+    }
+
     LOG.info("Running preflight checks for universe.");
     ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
         NodeManager.NodeCommandType.Precheck, taskParams());
