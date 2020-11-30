@@ -25,7 +25,7 @@ from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
     generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
     YB_HOME_DIR
 from ansible_vault import Vault
-from ybops.utils import generate_rsa_keypair, scp_package_to_tmp
+from ybops.utils import generate_rsa_keypair, get_datafile_path, scp_to_tmp
 
 
 class AbstractMethod(object):
@@ -605,7 +605,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     self.cloud.setup_ansible(args).run(
                         "configure-{}.yml".format(args.type), itest_extra_vars, host_info)
                 else:
-                    scp_package_to_tmp(
+                    scp_to_tmp(
                         args.package,
                         self.extra_vars["private_ip"],
                         self.extra_vars["ssh_user"],
@@ -666,7 +666,7 @@ class ControlInstanceMethod(AbstractInstancesMethod):
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
         if not host_info:
-            raise YBOpsRuntimeError("Instance: {} does not exists, cannot run ctl commands"
+            raise YBOpsRuntimeError("Instance: {} does not exist, cannot run ctl commands"
                                     .format(args.search_pattern))
 
         if host_info['server_type'] != self.YB_SERVER_TYPE:

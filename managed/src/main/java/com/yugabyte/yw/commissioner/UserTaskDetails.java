@@ -18,6 +18,9 @@ public class UserTaskDetails {
     // Ignore this subtask and do not display it to the user.
     Invalid,
 
+    // Perform preflight checks to determine if the node is ready to be configured or provisioned.
+    PreflightChecks(true),
+
     // Deploying machines in the desired cloud, fetching information (ip address, etc) of these
     // newly deployed machines, etc.
     Provisioning,
@@ -139,7 +142,21 @@ public class UserTaskDetails {
     KubernetesInitYSQL,
 
     // Start master process on a node
-    StartingMasterProcess,
+    StartingMasterProcess;
+
+    private boolean alwaysRunAll;
+
+    SubTaskGroupType() {
+      this.alwaysRunAll = false;
+    }
+
+    SubTaskGroupType(boolean alwaysRunAll) {
+      this.alwaysRunAll = alwaysRunAll;
+    }
+
+    public boolean getAlwaysRunAll() {
+      return this.alwaysRunAll;
+    }
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -149,6 +166,11 @@ public class UserTaskDetails {
     String title;
     String description;
     switch (subTaskGroupType) {
+      case PreflightChecks:
+        title = "Preflight Checks";
+        description = "Perform preflight checks to determine if node is ready" +
+          " to be provisioned/configured.";
+          break;
       case Provisioning:
         title = "Provisioning";
         description = "Deploying machines of the required config into the desired cloud and" +

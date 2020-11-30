@@ -66,6 +66,7 @@ public class NodeManager extends DevopsBase {
     Destroy,
     List,
     Control,
+    Precheck,
     Tags,
     InitYSQL,
     Disk_Update
@@ -151,6 +152,22 @@ public class NodeManager extends DevopsBase {
       if (type == NodeCommandType.Provision && keyInfo.sshUser != null) {
         subCommand.add("--ssh_user");
         subCommand.add(keyInfo.sshUser);
+      }
+
+      if (type == NodeCommandType.Precheck) {
+        subCommand.add("--precheck_type");
+        if (keyInfo.skipProvisioning) {
+          subCommand.add("configure");
+        } else {
+          subCommand.add("provision");
+        }
+
+        if (keyInfo.airGapInstall) {
+          subCommand.add("--air_gap");
+        }
+        if (keyInfo.installNodeExporter) {
+          subCommand.add("--install_node_exporter");
+        }
       }
 
       if (params instanceof AnsibleSetupServer.Params) {
@@ -565,6 +582,13 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
         }
         commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+      }
+      case Precheck: {
+        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+        if (nodeTaskParam.deviceInfo != null) {
+          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+        }
+        break;
       }
     }
     commandArgs.add(nodeTaskParam.nodeName);

@@ -70,6 +70,9 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
         throw new IllegalArgumentException(errMsg);
       }
 
+      createPrecheckTasks(nodesToProvision)
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
       // Create the required number of nodes in the appropriate locations.
       createSetupServerTasks(nodesToProvision)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);

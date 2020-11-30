@@ -85,6 +85,8 @@ public enum TaskType {
 
   AnsibleSetupServer("subtasks.AnsibleSetupServer"),
 
+  PrecheckNode("subtasks.PrecheckNode"),
+
   AnsibleUpdateNodeInfo("subtasks.AnsibleUpdateNodeInfo"),
 
   BulkImport("subtasks.BulkImport"),

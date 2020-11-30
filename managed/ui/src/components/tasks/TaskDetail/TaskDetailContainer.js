@@ -2,8 +2,23 @@
 
 import { connect } from 'react-redux';
 import { TaskDetail } from '../../tasks';
-import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure,
-          resetCustomerTasks, fetchFailedSubTasks, fetchFailedSubTasksResponse, fetchTaskProgress, fetchTaskProgressResponse} from '../../../actions/tasks';
+import {
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure,
+  resetCustomerTasks,
+  fetchFailedSubTasks,
+  fetchFailedSubTasksResponse,
+  fetchTaskProgress,
+  fetchTaskProgressResponse,
+  retryTask,
+  retryTaskResponse
+} from '../../../actions/tasks';
+import {
+  fetchUniverseList,
+  fetchUniverseListResponse
+} from '../../../actions/universe';
+
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -28,6 +43,16 @@ const mapDispatchToProps = (dispatch) => {
         .then((response) => {
           dispatch(fetchTaskProgressResponse(response.payload));
         });
+    },
+    retryCurrentTask: (taskUUID) => {
+      dispatch(retryTask(taskUUID)).then((response) => {
+        dispatch(retryTaskResponse(response.payload));
+      });
+    },
+    fetchUniverseList: () => {
+      dispatch(fetchUniverseList()).then((response) => {
+        dispatch(fetchUniverseListResponse(response.payload));
+      });
     },
     resetCustomerTasks: () => {
       dispatch(resetCustomerTasks());
