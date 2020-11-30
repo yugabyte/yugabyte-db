@@ -1342,7 +1342,7 @@ export default class ClusterFields extends Component {
 
     {
       // Block scope for state variables
-      const { enableClientToNodeEncrypt, enableNodeToNodeEncrypt } = this.state;      
+      const { enableClientToNodeEncrypt, enableNodeToNodeEncrypt } = this.state;
       if (
         isDefinedNotNull(currentProvider) &&
         (enableClientToNodeEncrypt || enableNodeToNodeEncrypt)
@@ -1355,7 +1355,7 @@ export default class ClusterFields extends Component {
         }
 
         if (!_.isEmpty(this.props.userCertificates.data)) {
-          this.props.userCertificates.data.forEach((cert, index) => {            
+          this.props.userCertificates.data.forEach((cert, index) => {
             if (this.props.type === 'Create') {
               const disableOnPremCustomCerts = currentProvider.code !== 'onprem' && cert.certType === 'CustomCertHostPath';
               tlsCertOptions.push(
@@ -1370,9 +1370,9 @@ export default class ClusterFields extends Component {
                   {cert.label}
                 </option>
               );
-            }            
+            }
           });
-        }      
+        }
 
         const isSelectReadOnly = this.props.type === 'Edit' && currentProvider.code !== 'onprem';
         selectTlsCert = (

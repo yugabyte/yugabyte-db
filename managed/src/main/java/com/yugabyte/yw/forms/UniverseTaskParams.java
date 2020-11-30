@@ -148,4 +148,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
 
   // Dependencies that can be install on nodes or not
   public ExtraDependencies extraDependencies = new ExtraDependencies();
+
+  // Whether this task has been tried before or not. Awkward naming because we cannot use
+  // `isRetry` due to play reading the "is" prefix differently.
+  public boolean firstTry = true;
 }

@@ -12,6 +12,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
@@ -168,9 +169,11 @@ public class SubTaskGroup implements Runnable {
   }
 
   public boolean waitFor() {
-    String errorString = null;
+    boolean hasErrored = false;
+    boolean alwaysRunAll = this.getSubTaskGroupType().getAlwaysRunAll();
     for (Future<?> future : futuresMap.keySet()) {
       // Wait for each future to finish.
+      String errorString = null;
       try {
         if (future.get() == null) {
           // Task succeeded.
@@ -185,16 +188,18 @@ public class SubTaskGroup implements Runnable {
         LOG.error(errorString, e);
       } finally {
         if (errorString != null) {
+          hasErrored = true;
           TaskInfo taskInfo = futuresMap.get(future);
           ObjectNode details = taskInfo.getTaskDetails().deepCopy();
           details.put("errorString", errorString);
           taskInfo.setTaskDetails(details);
           taskInfo.save();
-          return false;
+          if (!alwaysRunAll) {
+            return false;
+          }
         }
       }
     }
-
-    return true;
+    return !hasErrored;
   }
 }
