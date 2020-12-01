@@ -33,6 +33,8 @@ namespace docdb {
     ((kLowest, 0)) \
     /* Prefix for transaction apply state records. */ \
     ((kTransactionApplyState, 7)) \
+    /* Externally received transaction id */ \
+    ((kExternalTransactionId, 8)) \
     /* Obsolete intent prefix. Should be deleted when DBs in old format are gone. */ \
     ((kObsoleteIntentPrefix, 10)) \
     /* We use ASCII code 13 in order to have it before all other value types which can occur in */ \
@@ -220,7 +222,8 @@ constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
   return (kMinPrimitiveValueType <= value_type && value_type <= kMaxPrimitiveValueType &&
           !IsCollectionType(value_type) &&
           value_type != ValueType::kTombstone) ||
-         value_type == ValueType::kTransactionApplyState;
+         value_type == ValueType::kTransactionApplyState ||
+         value_type == ValueType::kExternalTransactionId;
 }
 
 constexpr inline bool IsSpecialValueType(ValueType value_type) {
