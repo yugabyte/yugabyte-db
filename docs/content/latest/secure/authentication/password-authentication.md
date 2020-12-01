@@ -186,7 +186,7 @@ can connect without a password:
 ```sh
 $ ./bin/ysqlsh
 ```
-And update the password of the user:
+And update the password of the user to new desired password:
 
 ```postgresql
 yugabyte=# ALTER ROLE yugabyte WITH PASSWORD 'new-password';
