@@ -164,6 +164,7 @@ message CDCRecordPB {
   enum OperationType {
     WRITE = 1;
     DELETE = 2;
+    APPLY = 3;
   }
   optional uint64 time = 1;
   optional OperationType operation = 2;
@@ -177,7 +178,6 @@ message CDCRecordPB {
   repeated KeyValuePairPB after = 6;   // NOT CURRENTLY USED
 
   optional tserver.TransactionStatePB transaction_state = 7;
-  optional TransactionMetadataPB transaction = 8;
 
   // If transaction_state.status is APPLYING, then partitions will contain the partition for the
   // tablet being polled.
