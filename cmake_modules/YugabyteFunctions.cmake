@@ -161,17 +161,7 @@ endfunction()
 # Makes sure that we are using a supported compiler family.
 function(VALIDATE_COMPILER_TYPE)
   set(USING_SANITIZERS FALSE PARENT_SCOPE)
-  if ("${YB_USE_ASAN}" OR "${YB_USE_TSAN}" OR "${YB_USE_UBSAN}")
-    if (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "" AND
-        NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "clang")
-      message(FATAL_ERROR
-              "YB_COMPILER_TYPE is set to '$ENV{YB_COMPILER_TYPE}', but it must be 'clang' for "
-              "ASAN/TSAN/UBSAN builds. "
-              "YB_USE_ASAN=${YB_USE_ASAN}, "
-              "YB_USE_TSAN=${YB_USE_TSAN}, "
-              "YB_USE_UBSAN=${YB_USE_UBSAN}")
-    endif()
-    set(ENV{YB_COMPILER_TYPE} "clang")
+  if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
     set(USING_SANITIZERS TRUE PARENT_SCOPE)
   endif()
 
@@ -357,14 +347,15 @@ macro(YB_SETUP_CLANG THIRDPARTY_BUILD_TYPE)
 endmacro()
 
 macro(YB_SETUP_SANITIZER SANITIZER)
-  if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang")))
-    message(FATAL_ERROR "Cannot use ${SANITIZER} without clang")
-  endif()
-
   string(TOLOWER "${SANITIZER}" LOWER_SANITIZER)
 
-  message("Using ${SANITIZER}-instrumented libc++")
-  YB_SETUP_CLANG("${LOWER_SANITIZER}")
+  if("${COMPILER_FAMILY}" STREQUAL "clang")
+    message("Using ${SANITIZER}-instrumented libc++")
+    YB_SETUP_CLANG("${LOWER_SANITIZER}")
+  else()
+    message("Not using ${SANITIZER}-instrumented standard C++ library for compiler family "
+            "${COMPILER_FAMILY} yet.")
+  endif()
 endmacro()
 
 function(SHOW_FOUND_BOOST_DETAILS BOOST_LIBRARY_TYPE)
@@ -442,4 +433,49 @@ function(allow_using_postgres_libraries)
   include_directories(${YB_BUILD_ROOT}/postgres/include)
   add_postgres_shared_library(pq "${LIBPQ_SHARED_LIB}")
   add_postgres_shared_library(yb_pgbackend "${YB_PGBACKEND_SHARED_LIB}")
+endfunction()
+
+function(parse_build_root_basename)
+  get_filename_component(YB_BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
+  string(REPLACE "-" ";" YB_BUILD_ROOT_BASENAME_COMPONENTS ${YB_BUILD_ROOT_BASENAME})
+  list(LENGTH YB_BUILD_ROOT_BASENAME_COMPONENTS YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH)
+  if(YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH LESS 3 OR
+     YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 4)
+    message(
+        FATAL_ERROR
+        "Wrong number of components of the build root basename: "
+        "${YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH}. Expected 3 or 4 components. "
+        "Basename: ${YB_BUILD_ROOT_BASENAME}")
+  endif()
+  list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 0 YB_BUILD_TYPE)
+  set(YB_BUILD_TYPE "${YB_BUILD_TYPE}" PARENT_SCOPE)
+  if(NOT "${YB_COMPILER_TYPE}" STREQUAL "" AND
+     NOT "${YB_COMPILER_TYPE}" STREQUAL "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}")
+    message(
+        FATAL_ERROR
+        "The YB_COMPILER_TYPE CMake variable is already set to '${YB_COMPILER_TYPE}', but the "
+        "value auto-detected from the build root basename '${YB_BUILD_ROOT_BASENAME}' is "
+        "different: '${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}'.")
+  endif()
+
+  list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 1 YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME)
+  if(NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "" AND
+     NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}")
+    message(
+        FATAL_ERROR
+        "The YB_COMPILER_TYPE environment variable is already set to '${YB_COMPILER_TYPE}', but "
+        "the value auto-detected from the build root basename '${YB_BUILD_ROOT_BASENAME}' is "
+        "different: '${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}'.")
+  endif()
+  set(YB_COMPILER_TYPE "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}" PARENT_SCOPE)
+  set(ENV{YB_COMPILER_TYPE} "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}")
+
+  list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 2 YB_LINKING_TYPE)
+  if(NOT "${YB_LINKING_TYPE}" MATCHES "^(static|dynamic)$")
+    message(
+        FATAL_ERROR
+        "Invalid linking type from the build root basename '${YB_BUILD_ROOT_BASENAME}': "
+        "'${YB_LINKING_TYPE}'. Expected 'static' or 'dynamic'.")
+  endif()
+  set(YB_LINKING_TYPE "${YB_LINKING_TYPE}" PARENT_SCOPE)
 endfunction()

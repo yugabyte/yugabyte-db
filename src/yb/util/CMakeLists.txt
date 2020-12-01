@@ -293,8 +293,11 @@ if(NOT APPLE)
     libbacktrace)
 endif()
 
-if(${YB_TCMALLOC_AVAILABLE})
+if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+  message("Adding tcmalloc as a dependency of yb_util")
   list(APPEND UTIL_LIBS tcmalloc)
+else()
+  message("Not adding tcmalloc as a dependency of yb_util")
 endif()
 
 # We need libdl for accessing library load addresses.
@@ -399,7 +402,7 @@ ADD_YB_TEST(rolling_log-test)
 ADD_YB_TEST(rw_mutex-test)
 ADD_YB_TEST(rw_semaphore-test)
 ADD_YB_TEST(rwc_lock-test)
-if (NOT YB_USE_UBSAN)
+if (NOT "${YB_BUILD_TYPE}" STREQUAL "asan")
   # We disable this test when Undefined Behavior Sanitizer turned on (which is enabled in ASAN
   # builds). This test involves some integer overflows.
   ADD_YB_TEST(safe_math-test)
