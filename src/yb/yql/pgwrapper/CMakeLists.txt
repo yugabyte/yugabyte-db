@@ -66,10 +66,11 @@ set(CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME ${LAST_ADDED_TEST_BINARY_NAM
 set(gen_initial_sys_catalog_snapshot_cmd
     "${BUILD_SUPPORT_DIR}/gen_initial_sys_catalog_snapshot_wrapper")
 
-if (YB_USE_TSAN)
-  # Don't build the initial sys catalog snapshot target automatically in TSAN.
+if (NOT "${YB_BUILD_TYPE}" STREQUAL "tsan")
+  # Don't build the initial sys catalog snapshot target automatically in TSAN. But still create the
+  # target so it could be built explicitly.
   add_custom_target(
-    initial_sys_catalog_snapshot
+    initial_sys_catalog_snapshot  # Don't add "ALL" here.
     COMMAND ${gen_initial_sys_catalog_snapshot_cmd})
 else()
   add_custom_target(

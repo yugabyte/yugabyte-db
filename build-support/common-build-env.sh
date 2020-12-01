@@ -483,19 +483,6 @@ validate_cmake_build_type() {
   fi
 }
 
-ensure_using_clang() {
-  if [[ -n ${YB_COMPILER_TYPE:-} && $YB_COMPILER_TYPE != "clang" ]]; then
-    fatal "ASAN/TSAN builds require clang," \
-          "but YB_COMPILER_TYPE is already set to '$YB_COMPILER_TYPE'"
-  fi
-  YB_COMPILER_TYPE="clang"
-}
-
-enable_tsan() {
-  cmake_opts+=( "-DYB_USE_TSAN=1" )
-  ensure_using_clang
-}
-
 # This performs two configuration actions:
 # - Sets cmake_build_type based on build_type. cmake_build_type is what's being passed to CMake
 #   using the CMAKE_BUILD_TYPE variable. CMAKE_BUILD_TYPE can't be "asan" or "tsan".
@@ -517,9 +504,7 @@ set_cmake_build_type_and_compiler_type() {
 
   case "$build_type" in
     asan)
-      cmake_opts+=( "-DYB_USE_ASAN=1" "-DYB_USE_UBSAN=1" )
       cmake_build_type=fastdebug
-      ensure_using_clang
     ;;
     compilecmds)
       cmake_build_type=debug
@@ -533,11 +518,9 @@ set_cmake_build_type_and_compiler_type() {
       export YB_REMOTE_COMPILATION=0
     ;;
     tsan)
-      enable_tsan
       cmake_build_type=fastdebug
     ;;
     tsan_slow)
-      enable_tsan
       cmake_build_type=debug
     ;;
     *)
@@ -554,8 +537,16 @@ set_cmake_build_type_and_compiler_type() {
             "found YB_COMPILER_TYPE=$YB_COMPILER_TYPE."
     fi
   elif [[ -z ${YB_COMPILER_TYPE:-} ]]; then
-    # The default on Linux.
-    YB_COMPILER_TYPE=gcc
+    if [[ $build_type =~ ^(asan|tsan)$ ]]; then
+      # Use Clang by default for ASAN/TSAN builds.
+      YB_COMPILER_TYPE=clang
+    else
+      # The default on Linux.
+      YB_COMPILER_TYPE=gcc
+    fi
+  elif [[ $build_type =~ ^(asan|tsan)$ && $YB_COMPILER_TYPE == "gcc" ]]; then
+    fatal "Cannot use ASAN/TSAN with the 'gcc' compiler type. Has to be a specific version of " \
+          "GCC such as gcc8 or gcc9."
   fi
 
   validate_compiler_type
@@ -1022,9 +1013,6 @@ popd() {
 # Creates files such as thirdparty_url.txt, thirdparty_path.txt, linuxbrew_path.txt in the build
 # directory. This is only being done if the file does not exist.
 save_var_to_file_in_build_dir() {
-  if [[ ${YB_IS_BUILD_THIRDPARTY_SCRIPT:-0} == "1" ]]; then
-    return
-  fi
   expect_num_args 2 "$@"
   local value=$1
   if [[ -z ${value:-} ]]; then
@@ -1109,24 +1097,28 @@ download_thirdparty() {
   if ! is_centos; then
     return
   fi
-  # Read a linuxbrew_url.txt file in the third-party directory that we downloaded, and follow that
-  # link to download and install the appropriate Linuxbrew package.
-  local linuxbrew_url_path=$YB_THIRDPARTY_DIR/linuxbrew_url.txt
-  if [[ -f $linuxbrew_url_path ]]; then
-    local linuxbrew_url
-    linuxbrew_url=$(<"$linuxbrew_url_path")
-    download_and_extract_archive "$linuxbrew_url" "$LOCAL_LINUXBREW_DIRS"
-    if [[ -n ${YB_LINUXBREW_DIR:-} &&
-          $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
-      log_thirdparty_and_toolchain_details
-      fatal "YB_LINUXBREW_DIR is already set to '$YB_LINUXBREW_DIR', cannot set it to" \
-            "'$extracted_dir'"
+
+  # Only attempt to download Linuxbrew if the third-party tarball name explicitly mentions it.
+  if [[ ${YB_THIRDPARTY_URL##*/} == *linuxbrew* ]]; then
+    # Read a linuxbrew_url.txt file in the third-party directory that we downloaded, and follow that
+    # link to download and install the appropriate Linuxbrew package.
+    local linuxbrew_url_path=$YB_THIRDPARTY_DIR/linuxbrew_url.txt
+    if [[ -f $linuxbrew_url_path ]]; then
+      local linuxbrew_url
+      linuxbrew_url=$(<"$linuxbrew_url_path")
+      download_and_extract_archive "$linuxbrew_url" "$LOCAL_LINUXBREW_DIRS"
+      if [[ -n ${YB_LINUXBREW_DIR:-} &&
+            $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
+        log_thirdparty_and_toolchain_details
+        fatal "YB_LINUXBREW_DIR is already set to '$YB_LINUXBREW_DIR', cannot set it to" \
+              "'$extracted_dir'"
+      fi
+      export YB_LINUXBREW_DIR=$extracted_dir
+      yb_linuxbrew_dir_where_from=" (downloaded from $linuxbrew_url)"
+      save_brew_path_to_build_dir
+    else
+      fatal "Cannot download Linuxbrew: file $linuxbrew_url_path does not exist"
     fi
-    export YB_LINUXBREW_DIR=$extracted_dir
-    yb_linuxbrew_dir_where_from=" (downloaded from $linuxbrew_url)"
-    save_brew_path_to_build_dir
-  else
-    fatal "Cannot download Linuxbrew: file $linuxbrew_url_path does not exist"
   fi
 }
 
@@ -1246,30 +1238,32 @@ save_paths_to_build_dir() {
 }
 
 detect_linuxbrew() {
-  if [[ ${YB_IS_BUILD_THIRDPARTY_SCRIPT:-0} == "0" && -z ${BUILD_ROOT:-} ]]; then
-    fatal "BUILD_ROOT is not set, and we are not building third-party dependencies, not trying" \
-          "to use the default version of Linuxbrew."
+  if [[ -z ${BUILD_ROOT:-} ]]; then
+    fatal "BUILD_ROOT is not set, not trying to use the default version of Linuxbrew."
   fi
   if ! is_linux; then
     fatal "Expected this function to only be called on Linux"
+  fi
+  if is_ubuntu; then
+    # Not using Linuxbrew on Ubuntu.
+    unset YB_LINUXBREW_DIR
+    return
+  fi
+  if [[ $YB_COMPILER_TYPE =~ ^.*[0-9]+$ ]]; then
+    # Not allowing to use Linuxbrew if the compiler type mentions a specific compiler version, e.g.
+    # gcc9 or clang11.
+    unset YB_LINUXBREW_DIR
+    return
   fi
   if [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
     export YB_LINUXBREW_DIR
     return
   fi
+
   if ! "$is_clean_build" && [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/linuxbrew_path.txt ]]; then
     YB_LINUXBREW_DIR=$(<"$BUILD_ROOT/linuxbrew_path.txt")
     export YB_LINUXBREW_DIR
     yb_linuxbrew_dir_where_from=" (from file '$BUILD_ROOT/linuxbrew_path.txt')"
-    return
-  fi
-
-  unset YB_LINUXBREW_DIR
-  if ! is_linux; then
-    return
-  fi
-  if is_ubuntu; then
-    # Not using Linuxbrew on Ubuntu.
     return
   fi
 
@@ -1681,6 +1675,9 @@ find_or_download_thirdparty() {
   if [[ ${YB_IS_THIRDPARTY_BUILD:-} == "1" ]]; then
     return
   fi
+  if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
+    fatal "YB_COMPILER_TYPE is not set"
+  fi
   if ! "$is_clean_build"; then
     if [[ -f $BUILD_ROOT/thirdparty_url.txt ]]; then
       local thirdparty_url_from_file
@@ -1717,14 +1714,6 @@ find_or_download_thirdparty() {
     if ! using_default_thirdparty_dir; then
       export NO_REBUILD_THIRDPARTY=1
     fi
-    return
-  fi
-
-  if [[ -n ${YB_COMPILER_TYPE:-} &&
-        ${YB_COMPILER_TYPE} != "gcc" &&
-        ${YB_COMPILER_TYPE} != "clang" ]]; then
-    # For compiler types like clang11 or gcc8, don't attempt to use a prebuilt thirdparty archive
-    # yet (as of 11/01/2020). We will do that when we pre-build those archives.
     return
   fi
 
@@ -2171,9 +2160,15 @@ update_submodules() {
 }
 
 set_prebuilt_thirdparty_url() {
+  expect_vars_to_be_set YB_COMPILER_TYPE
   if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
     local auto_thirdparty_url=""
-    local thirdparty_url_file=$YB_BUILD_SUPPORT_DIR/thirdparty_url_${short_os_name}.txt
+    local thirdparty_url_file=$YB_BUILD_SUPPORT_DIR/thirdparty_url_${short_os_name}
+    if [[ ${YB_COMPILER_TYPE} =~ ^.*[0-9]+$ ]]; then
+      # For compiler types like gcc9 or clang11, append the compiler type to the file path.
+      thirdparty_url_file+="_${YB_COMPILER_TYPE}"
+    fi
+    thirdparty_url_file+=.txt
     if [[ -f $thirdparty_url_file ]]; then
       auto_thirdparty_url=$( read_file_and_trim "$thirdparty_url_file" )
       if [[ $auto_thirdparty_url != http://* && $auto_thirdparty_url != https://* ]]; then

@@ -170,20 +170,36 @@ find_package(Hiredis REQUIRED)
 include_directories(SYSTEM ${HIREDIS_INCLUDE_DIR})
 ADD_THIRDPARTY_LIB(hiredis STATIC_LIB "${HIREDIS_STATIC_LIB}")
 
-if (NOT "${YB_USE_ASAN}" AND
-    NOT "${YB_USE_TSAN}")
-  ## Google PerfTools
-  ##
-  ## Disabled with TSAN/ASAN as well.
-  find_package(GPerf REQUIRED)
-  message("Deciding whether to use tcmalloc based on:\
-          YB_TCMALLOC_AVAILABLE=${YB_TCMALLOC_AVAILABLE}")
+# -------------------------------------------------------------------------------------------------
+# Deciding whether to use tcmalloc
+# -------------------------------------------------------------------------------------------------
+
+# Do not use tcmalloc for ASAN/TSAN but also temporarily for gcc8 and gcc9, because initdb crashes
+# with bad deallocation with those compilers. That needs to be properly investigated.
+if ("${YB_TCMALLOC_ENABLED}" STREQUAL "")
+  if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+    set(YB_TCMALLOC_ENABLED "0")
+    message("Not using tcmalloc due to build type ${YB_BUILD_TYPE}")
+  else()
+    set(YB_TCMALLOC_ENABLED "1")
+    message("Using tcmalloc due to build type ${YB_BUILD_TYPE}")
+  endif()
 else()
-  set(YB_TCMALLOC_AVAILABLE "Ignored")
+  if (NOT "${YB_TCMALLOC_ENABLED}" MATCHES "^[01]$")
+    message(FATAL_ERROR
+            "YB_TCMALLOC_ENABLED has an invalid value '${YB_TCMALLOC_ENABLED}'. Can be 0, 1, or "
+            "empty (undefined).")
+  endif()
+
+  message("YB_TCMALLOC_ENABLED is already set to '${YB_TCMALLOC_ENABLED}'")
 endif()
 
-if ("${YB_TCMALLOC_AVAILABLE}" STREQUAL "")
+if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
   message("Using tcmalloc")
+  ## Google PerfTools
+  ##
+  find_package(GPerf REQUIRED)
+
   ADD_THIRDPARTY_LIB(tcmalloc
     STATIC_LIB "${TCMALLOC_STATIC_LIB}"
     SHARED_LIB "${TCMALLOC_SHARED_LIB}")
@@ -192,10 +208,12 @@ if ("${YB_TCMALLOC_AVAILABLE}" STREQUAL "")
     SHARED_LIB "${PROFILER_SHARED_LIB}")
   list(APPEND YB_BASE_LIBS tcmalloc profiler)
   ADD_CXX_FLAGS("-DTCMALLOC_ENABLED")
-  set(YB_TCMALLOC_AVAILABLE 1)
 else()
-  message("Not using tcmalloc, because of '${YB_TCMALLOC_AVAILABLE}'")
+  message("Not using tcmalloc, YB_TCMALLOC_ENABLED is '${YB_TCMALLOC_ENABLED}'")
 endif()
+
+#
+# -------------------------------------------------------------------------------------------------
 
 ## curl
 find_package(CURL REQUIRED)
