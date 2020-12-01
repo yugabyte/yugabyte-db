@@ -1354,6 +1354,10 @@ void TabletServiceAdminImpl::SplitTablet(
       std::make_unique<tablet::SplitOperation>(std::move(state)), leader_tablet_peer.leader_term);
 }
 
+bool EmptyWriteBatch(const docdb::KeyValueWriteBatchPB& write_batch) {
+  return write_batch.write_pairs().empty() && write_batch.apply_external_transactions().empty();
+}
+
 void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
                               rpc::RpcContext context) {
@@ -1415,11 +1419,10 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  bool has_operations = (req->ql_write_batch_size() != 0 ||
-                         req->redis_write_batch_size() != 0 ||
-                         req->pgsql_write_batch_size() != 0 ||
-                         (req->write_batch().write_pairs_size() != 0 &&
-                          req->has_external_hybrid_time()));
+  bool has_operations = req->ql_write_batch_size() != 0 ||
+                        req->redis_write_batch_size() != 0 ||
+                        req->pgsql_write_batch_size() != 0 ||
+                        (req->has_external_hybrid_time() && !EmptyWriteBatch(req->write_batch()));
   if (!has_operations && tablet.peer->tablet()->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.

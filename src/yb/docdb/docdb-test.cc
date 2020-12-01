@@ -3300,12 +3300,24 @@ TEST_F(DocDBTest, CompactionWithTransactions) {
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key, "subkey2"), PrimitiveValue("value5"), kTxn2HT));
 
+  ResetCurrentTransactionId();
+  TransactionId txn3 = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000003"));
+  const auto kTxn3HT = 7000_usec_ht;
+  std::vector<ExternalIntent> intents = {
+    { DocPath(encoded_doc_key, "subkey3"), Value(PrimitiveValue("value6")) },
+    { DocPath(encoded_doc_key, "subkey4"), Value(PrimitiveValue("value7")) }
+  };
+  ASSERT_OK(AddExternalIntents(txn3, intents, kTxn3HT));
+
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 2000 }]) -> "value2"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 1000 }]) -> "value1"
+TXN EXT 30303030-3030-3030-3030-303030303033 HT{ physical: 7000 } -> [\
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey3"]) -> "value6", \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey4"]) -> "value7"]
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 1 } -> \
@@ -3353,6 +3365,9 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 6000 w: 3 } -> \
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
+TXN EXT 30303030-3030-3030-3030-303030303033 HT{ physical: 7000 } -> [\
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey3"]) -> "value6", \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey4"]) -> "value7"]
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 1 } -> \

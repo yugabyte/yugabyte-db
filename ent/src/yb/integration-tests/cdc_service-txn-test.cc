@@ -81,10 +81,10 @@ void CheckIntentRecord(const CDCRecordPB& record, int expected_value, bool repli
   ASSERT_NO_FATALS(AssertIntKey(record.key(), expected_value));
   // Make sure transaction metadata is set.
   if (replicate_intents) {
-    ASSERT_TRUE(record.has_transaction());
+    ASSERT_TRUE(record.has_transaction_state());
     ASSERT_TRUE(record.has_time());
-    const auto& transaction = record.transaction();
-    ASSERT_TRUE(transaction.has_transaction_id());
+    const auto& transaction_state = record.transaction_state();
+    ASSERT_TRUE(transaction_state.has_transaction_id());
   }
 }
 
@@ -95,8 +95,8 @@ void CheckApplyRecord(const CDCRecordPB& apply_record, bool replicate_intents) {
     ASSERT_TRUE(apply_record.has_partition());
     const auto& txn_state = apply_record.transaction_state();
     ASSERT_TRUE(txn_state.has_transaction_id());
-    ASSERT_TRUE(txn_state.status() == TransactionStatus::APPLYING);
-    ASSERT_TRUE(txn_state.has_commit_hybrid_time());
+    ASSERT_EQ(apply_record.operation(), cdc::CDCRecordPB::APPLY);
+    ASSERT_TRUE(apply_record.has_time());
   }
 }
 
@@ -329,9 +329,11 @@ TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
     auto cdc_service = dynamic_cast<CDCServiceImpl*>(
         tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
+    auto lag = metrics->async_replication_sent_lag_micros->value();
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "Sent lag: " << lag << "us";
     // Only check sent lag, since we're just calling GetChanges once and expect committed lag to be
     // greater than 0.
-    return metrics->async_replication_sent_lag_micros->value() == 0;
+    return lag == 0;
   }, MonoDelta::FromSeconds(10), "Wait for Sent Lag == 0"));
 
 

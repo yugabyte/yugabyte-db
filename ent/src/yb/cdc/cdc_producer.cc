@@ -335,9 +335,9 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
       // Check whether operation is WRITE or DELETE.
       if (decoded_value.value_type() == docdb::ValueType::kTombstone &&
           decoded_key.num_subkeys() == 0) {
-        record->set_operation(CDCRecordPB_OperationType_DELETE);
+        record->set_operation(CDCRecordPB::DELETE);
       } else {
-        record->set_operation(CDCRecordPB_OperationType_WRITE);
+        record->set_operation(CDCRecordPB::WRITE);
       }
 
       // Process intent records.
@@ -349,7 +349,8 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
           // If we're not replicating intents, set record time using the transaction map.
           RETURN_NOT_OK(SetRecordTxnAndTime(txn_id, txn_map, record));
         } else {
-          record->mutable_transaction()->CopyFrom(batch.transaction());
+          record->mutable_transaction_state()->set_transaction_id(
+              batch.transaction().transaction_id());
         }
       }
     }
@@ -418,7 +419,6 @@ Status GetChanges(const std::string& stream_id,
     consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
   }
 
-  ReplicateMsgs messages = read_ops.messages;
   OpId checkpoint;
   TxnStatusMap txn_map;
   if (!replicate_intents) {
@@ -429,14 +429,24 @@ Status GetChanges(const std::string& stream_id,
     txn_map = TxnStatusMap(VERIFY_RESULT(BuildTxnStatusMap(
       read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant)));
   }
-  messages = VERIFY_RESULT(FilterAndSortWrites(read_ops.messages, txn_map, replicate_intents,
-                                               &checkpoint));
+  ReplicateMsgs messages = VERIFY_RESULT(FilterAndSortWrites(
+      read_ops.messages, txn_map, replicate_intents, &checkpoint));
 
   for (const auto& msg : messages) {
     switch (msg->op_type()) {
       case consensus::OperationType::UPDATE_TRANSACTION_OP:
-        RETURN_NOT_OK(PopulateTransactionRecord(
-            msg, tablet_peer, replicate_intents, resp->add_records()));
+        if (!replicate_intents) {
+          RETURN_NOT_OK(PopulateTransactionRecord(
+              msg, tablet_peer, replicate_intents, resp->add_records()));
+        } else if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
+          auto record = resp->add_records();
+          record->set_operation(CDCRecordPB::APPLY);
+          record->set_time(msg->hybrid_time());
+          auto* txn_state = record->mutable_transaction_state();
+          txn_state->set_transaction_id(msg->transaction_state().transaction_id());
+          txn_state->set_commit_hybrid_time(msg->transaction_state().commit_hybrid_time());
+          tablet_peer->tablet()->metadata()->partition()->ToPB(record->mutable_partition());
+        }
         break;
       case consensus::OperationType::WRITE_OP:
         RETURN_NOT_OK(PopulateWriteRecord(msg, txn_map, stream_metadata, tablet_peer,

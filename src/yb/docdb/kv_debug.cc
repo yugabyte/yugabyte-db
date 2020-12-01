@@ -81,6 +81,15 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
           "Error: failed decoding RocksDB intent key " +
           FormatSliceAsStr(key_slice));
       return subdoc_key.ToString();
+    case KeyType::kExternalIntents:
+    {
+      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kExternalTransactionId));
+      auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
+      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kHybridTime));
+      DocHybridTime doc_hybrid_time;
+      RETURN_NOT_OK(doc_hybrid_time.DecodeFrom(&key_slice));
+      return Format("TXN EXT $0 $1", transaction_id, doc_hybrid_time);
+    }
   }
   return STATUS_FORMAT(Corruption, "Corrupted KeyType: $0", yb::ToString(key_type));
 }
@@ -129,6 +138,22 @@ Result<std::string> DocDBValueToDebugStr(
     case KeyType::kIntentKey: FALLTHROUGH_INTENDED;
     case KeyType::kValueKey:
       return DocDBValueToDebugStr(value, key_type);
+    case KeyType::kExternalIntents: {
+      std::vector<std::string> result;
+      SubDocKey sub_doc_key;
+      while (!value.empty()) {
+        auto len = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value));
+        RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(value.Prefix(len), HybridTimeRequired::kFalse));
+        value.remove_prefix(len);
+        len = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value));
+        result.push_back(Format(
+            "$0 -> $1",
+            sub_doc_key,
+            VERIFY_RESULT(DocDBValueToDebugStr(value.Prefix(len), KeyType::kValueKey))));
+        value.remove_prefix(len);
+      }
+      return AsString(result);
+    }
   }
   FATAL_INVALID_ENUM_VALUE(KeyType, key_type);
 }

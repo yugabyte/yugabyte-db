@@ -215,6 +215,7 @@ string PrimitiveValue::ToString() const {
     case ValueType::kPgTableOid:
       return Format("PgTableOid($0)", uint32_val_);
     case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionId:
       return Substitute("TransactionId($0)", uuid_val_.ToString());
     case ValueType::kWriteId:
@@ -371,6 +372,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
     }
 
     case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
@@ -541,6 +543,7 @@ string PrimitiveValue::ToValue() const {
 
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
@@ -846,7 +849,8 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       return Status::OK();
     }
 
-    case ValueType::kTransactionApplyState:
+    case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case ValueType::kExternalTransactionId:
       if (slice->size() < boost::uuids::uuid::static_size()) {
         return STATUS_FORMAT(Corruption, "Not enough bytes for UUID: $0", slice->size());
       }
@@ -1136,6 +1140,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     }
 
     case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
@@ -1382,6 +1387,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddress: return *inetaddress_val_ == *(other.inetaddress_val_);
     case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
@@ -1485,6 +1491,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       }
     }
     case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending:
