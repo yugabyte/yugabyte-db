@@ -158,14 +158,16 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
 
   // Inspect all records in the response and strip out records we don't support on the Consumer.
   for (int i = 0; i < poller_resp->records_size(); i++) {
-    if (poller_resp->records(i).key_size() == 0) {
+    const auto& record = poller_resp->records(i);
+    if (record.key_size() == 0 && record.operation() != cdc::CDCRecordPB::APPLY) {
       // Transaction status record, ignore for now.
       // Support for handling transactions will be added in future.
       std::lock_guard<decltype(lock_)> l(lock_);
       IncProcessedRecordCount();
-    } else {
-      twodc_resp_copy_.add_records()->CopyFrom(poller_resp->records(i));
+      continue;
     }
+
+    *twodc_resp_copy_.add_records() = record;
   }
 
   for (int i = 0; i < twodc_resp_copy_.records_size(); i++) {
@@ -197,25 +199,28 @@ bool TwoDCOutputClient::UseLocalTserver() {
 
 void TwoDCOutputClient::ProcessRecord(const std::string& tablet_id,
                                       const cdc::CDCRecordPB& record) {
-  bool done = false;
   std::unique_ptr<WriteRequestPB> write_request;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
-    write_strategy_->ProcessRecord(tablet_id, record);
-    done = IncProcessedRecordCount();
-    if (done && error_status_.ok()) {
+    auto status = write_strategy_->ProcessRecord(tablet_id, record);
+    if (!status.ok()) {
+      error_status_ = status;
+      return;
+    }
+    if (!IncProcessedRecordCount()) {
+      return;
+    }
+    if (error_status_.ok()) {
       write_request = write_strategy_->GetNextWriteRequest();
     }
   }
-  if (done) {
-    // Found tablets for all records, now we should write the records.
-    if (write_request) {
-      // Apply the writes on consumer.
-      SendNextCDCWriteToTablet(std::move(write_request));
-    } else {
-      // No write_request on error. Respond, without applying records.
-      HandleResponse();
-    }
+  // Found tablets for all records, now we should write the records.
+  if (write_request) {
+    // Apply the writes on consumer.
+    SendNextCDCWriteToTablet(std::move(write_request));
+  } else {
+    // No write_request on error. Respond, without applying records.
+    HandleResponse();
   }
 }
 
