@@ -189,7 +189,7 @@ $ ./bin/ysqlsh
 And update the password of the user:
 
 ```postgresql
-yugabyte=# ALTER ROLE yugabyte WITH PASSWORD 'yugabyte';
+yugabyte=# ALTER ROLE yugabyte WITH PASSWORD 'new-password';
 ```
 
 Rollback the configuration and restart the yb-tserver to enable password authentication for `yugabyte` user again.
